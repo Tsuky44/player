@@ -1,0 +1,22 @@
+version: '3.8'
+
+services:
+  backend:
+    image: ghcr.io/tsuky44/playeur-server:latest
+    container_name: playeur-server
+    ports:
+      - "8080:8080"
+    volumes:
+      - ./data:/app/data
+      # --- IMPORTANT : REMPLACEZ LES CHEMINS DE GAUCHE CI-DESSOUS ---
+      # Mettez les vrais chemins de votre serveur où sont stockés vos films et séries :
+      - /chemin/physique/sur/serveur/Films:/media/Films:ro
+      - /chemin/physique/sur/serveur/Series:/media/Series:ro
+    environment:
+      - MOVIES_DIR=/media/Films
+      - SERIES_DIR=/media/Series
+      # --- OPTIONNEL : CLE API TMDB ---
+      # Ajoutez votre clé API TMDB gratuite ici pour récupérer automatiquement
+      # les jaquettes, affiches, résumés de films et séries en français !
+      - TMDB_API_KEY=votre_cle_api_tmdb_ici
+    restart: unless-stopped

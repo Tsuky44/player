@@ -1,0 +1,21 @@
+version: '3.8'
+
+services:
+  backend:
+    build:
+      context: ./server
+      dockerfile: Dockerfile
+    container_name: project-player-backend
+    ports:
+      - "8080:8080"
+    volumes:
+      - ./data:/app/data
+      # Mount your local media folders here.
+      # Replace the left-hand side paths with your actual system media paths if different.
+      - ./media/Films:/media/Films:ro
+      - ./media/Series:/media/Series:ro
+    environment:
+      - MOVIES_DIR=/media/Films
+      - SERIES_DIR=/media/Series
+      - TMDB_API_KEY=your_tmdb_api_key_here
+    restart: unless-stopped
