@@ -60,19 +60,19 @@ echo $PlainToken | docker login ghcr.io -u $GitHubUser --password-stdin
 Check-Error "Échec de la connexion à GitHub Packages."
 
 # Build & Push App
-Write-Host "2. Build & Tag de l'image Go Server..." -ForegroundColor Yellow
-docker build -t "ghcr.io/$GitHubUser/${ImageName}:latest" -t "ghcr.io/$GitHubUser/${ImageName}:${VersionTag}" -t "ghcr.io/$GitHubUser/${ImageName}:${MinorVersionTag}" "$ServerPath"
-Check-Error "Échec du build de l'application"
+Write-Host "2. Build & Push de l'image Go Server (amd64)..." -ForegroundColor Yellow
 
-Write-Host "3. Push des images vers ghcr.io..." -ForegroundColor Yellow
-docker push "ghcr.io/$GitHubUser/${ImageName}:latest"
-Check-Error "Échec du push (latest)"
-
-docker push "ghcr.io/$GitHubUser/${ImageName}:${VersionTag}"
-Check-Error "Échec du push ($VersionTag)"
-
-docker push "ghcr.io/$GitHubUser/${ImageName}:${MinorVersionTag}"
-Check-Error "Échec du push ($MinorVersionTag)"
+# Utilisation de buildx avec --platform linux/amd64 pour forcer la
+# compilation d'une image amd64, meme depuis un Mac ARM64.
+# Le --push publie l'image directement sans stocker l'image locale ARM64.
+docker buildx build `
+    --platform linux/amd64 `
+    --push `
+    -t "ghcr.io/$GitHubUser/${ImageName}:latest" `
+    -t "ghcr.io/$GitHubUser/${ImageName}:${VersionTag}" `
+    -t "ghcr.io/$GitHubUser/${ImageName}:${MinorVersionTag}" `
+    "$ServerPath"
+Check-Error "Échec du build ou du push de l'application"
 
 Write-Host "=== Terminé ! ===" -ForegroundColor Green
 Write-Host "L'image est disponible sur :"

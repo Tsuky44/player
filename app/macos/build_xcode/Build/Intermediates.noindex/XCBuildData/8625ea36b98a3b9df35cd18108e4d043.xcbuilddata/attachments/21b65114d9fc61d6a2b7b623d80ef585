@@ -1,0 +1,19 @@
+{
+  "" : {
+    "diagnostics" : "/Users/mathis/Documents/project-mac/player/app/macos/build_xcode/Build/Intermediates.noindex/FlutterFramework.build/Debug/FlutterFramework.build/Objects-normal/arm64/FlutterFramework-primary.dia",
+    "emit-module-dependencies" : "/Users/mathis/Documents/project-mac/player/app/macos/build_xcode/Build/Intermediates.noindex/FlutterFramework.build/Debug/FlutterFramework.build/Objects-normal/arm64/FlutterFramework-primary-emit-module.d",
+    "emit-module-diagnostics" : "/Users/mathis/Documents/project-mac/player/app/macos/build_xcode/Build/Intermediates.noindex/FlutterFramework.build/Debug/FlutterFramework.build/Objects-normal/arm64/FlutterFramework-primary-emit-module.dia",
+    "pch" : "/Users/mathis/Documents/project-mac/player/app/macos/build_xcode/Build/Intermediates.noindex/FlutterFramework.build/Debug/FlutterFramework.build/Objects-normal/arm64/FlutterFramework-primary-Bridging-header.pch",
+    "swift-dependencies" : "/Users/mathis/Documents/project-mac/player/app/macos/build_xcode/Build/Intermediates.noindex/FlutterFramework.build/Debug/FlutterFramework.build/Objects-normal/arm64/FlutterFramework-primary.swiftdeps"
+  },
+  "/Users/mathis/Documents/project-mac/player/app/macos/Flutter/ephemeral/Packages/.packages/FlutterFramework/Sources/FlutterFramework/FlutterFramework.swift" : {
+    "const-values" : "/Users/mathis/Documents/project-mac/player/app/macos/build_xcode/Build/Intermediates.noindex/FlutterFramework.build/Debug/FlutterFramework.build/Objects-normal/arm64/FlutterFramework.swiftconstvalues",
+    "dependencies" : "/Users/mathis/Documents/project-mac/player/app/macos/build_xcode/Build/Intermediates.noindex/FlutterFramework.build/Debug/FlutterFramework.build/Objects-normal/arm64/FlutterFramework.d",
+    "diagnostics" : "/Users/mathis/Documents/project-mac/player/app/macos/build_xcode/Build/Intermediates.noindex/FlutterFramework.build/Debug/FlutterFramework.build/Objects-normal/arm64/FlutterFramework.dia",
+    "index-unit-output-path" : "/FlutterFramework.build/Debug/FlutterFramework.build/Objects-normal/arm64/FlutterFramework.o",
+    "llvm-bc" : "/Users/mathis/Documents/project-mac/player/app/macos/build_xcode/Build/Intermediates.noindex/FlutterFramework.build/Debug/FlutterFramework.build/Objects-normal/arm64/FlutterFramework.bc",
+    "object" : "/Users/mathis/Documents/project-mac/player/app/macos/build_xcode/Build/Intermediates.noindex/FlutterFramework.build/Debug/FlutterFramework.build/Objects-normal/arm64/FlutterFramework.o",
+    "swift-dependencies" : "/Users/mathis/Documents/project-mac/player/app/macos/build_xcode/Build/Intermediates.noindex/FlutterFramework.build/Debug/FlutterFramework.build/Objects-normal/arm64/FlutterFramework.swiftdeps",
+    "swiftmodule" : "/Users/mathis/Documents/project-mac/player/app/macos/build_xcode/Build/Intermediates.noindex/FlutterFramework.build/Debug/FlutterFramework.build/Objects-normal/arm64/FlutterFramework~partial.swiftmodule"
+  }
+}

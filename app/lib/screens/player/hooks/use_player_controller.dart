@@ -35,6 +35,14 @@ class PlayerController {
   VoidCallback? _onDurationChanged;
   VoidCallback? _onQualitySwitchingChanged;
 
+  /// Tracks probed from the original media file. Used to show consistent names
+  /// in the settings sheet while transcoding.
+  MediaTracks? mediaTracks;
+
+  /// Currently selected audio stream index (within mediaTracks.audio).
+  /// Relevant when transcoding, because FFmpeg only muxes one audio track.
+  int _selectedAudioIndex = 0;
+
   Timer? _heartbeatTimer;
 
   StreamSubscription? _positionSubscription;
@@ -66,8 +74,6 @@ class PlayerController {
       await (player.platform as dynamic).setProperty('demuxer-max-bytes', '52428800');
       await (player.platform as dynamic).setProperty('demuxer-readahead-secs', '120');
       await (player.platform as dynamic).setProperty('hwdec', 'auto');
-      await (player.platform as dynamic).setProperty('sub-visibility', 'no');
-      await (player.platform as dynamic).setProperty('sub-auto', 'no');
     } catch (e) {
       print("Player: Failed to apply native MPV properties: $e");
     }
@@ -110,6 +116,17 @@ class PlayerController {
     _apiClient = apiClient;
     _onDurationChanged = onDurationChanged;
     _onQualitySwitchingChanged = onQualitySwitchingChanged;
+
+    // Load original media tracks so the settings sheet can display consistent
+    // audio/subtitle names in both direct play and transcoding modes.
+    try {
+      mediaTracks = await apiClient.getMediaTracks(media.id);
+      if (mediaTracks != null && mediaTracks!.audio.isNotEmpty) {
+        _selectedAudioIndex = 0;
+      }
+    } catch (e) {
+      print("Player: Failed to load media tracks: $e");
+    }
 
     final streamUrl = apiClient.getStreamUrl(media.id);
     await player.open(mk.Media(streamUrl), play: false);
@@ -175,18 +192,101 @@ class PlayerController {
     }
   }
 
+  /// Quality ranking: higher number = higher quality.
+  /// Direct Play (null) is ranked highest.
+  static const _qualityRank = {
+    '360p': 1,
+    '480p': 2,
+    '720p': 3,
+    '1080p': 4,
+  };
+
+  int _rankOf(String? q) => q == null ? 5 : (_qualityRank[q] ?? 3);
+
+  /// Returns true if switching from [from] to [to] is a quality downgrade.
+  bool _isQualityDowngrade(String? from, String to) {
+    return _rankOf(from) > _rankOf(to);
+  }
+
   /// Switch from Direct Play to HLS transcoding at the given quality.
-  /// Saves the current position, starts an HLS session (fetching the session ID),
-  /// writes the master playlist to a temp file, opens it, and seeks to the saved position.
+  /// For downgrades (e.g. Direct → 360p): pre-buffers the new stream on the
+  /// server while the current one keeps playing, then switches seamlessly.
+  /// For upgrades (e.g. 360p → 720p): cuts immediately with a loading spinner.
   Future<void> switchToQuality(String quality) async {
     if (_media == null || _apiClient == null) return;
     if (currentQuality == quality) return;
 
-    final savedSeconds = player.state.position.inSeconds;
+    final savedSeconds = position.inSeconds;
+
+    if (_isQualityDowngrade(currentQuality, quality)) {
+      await _smoothSwitchToQuality(quality, savedSeconds);
+    } else {
+      await _immediateSwitchToQuality(quality, savedSeconds);
+    }
+  }
+
+  /// Smooth quality downgrade: start the new HLS session on the server, poll
+  /// until enough segments are ready, then switch the player. The current
+  /// stream keeps playing during server-side preparation — no spinner needed
+  /// until the actual switch.
+  Future<void> _smoothSwitchToQuality(String quality, int savedSeconds) async {
+    final oldSessionId = _hlsSessionId;
+    final oldMediaId = _media!.id;
+
+    try {
+      // Start new HLS session without destroying the old one yet
+      final hls = await _apiClient!.startHlsSession(
+        _media!.id,
+        quality,
+        startSeconds: savedSeconds,
+        audioIndex: _selectedAudioIndex,
+      );
+
+      // Poll the variant playlist until at least 1 segment is ready (~2s)
+      final mediaId = _media!.id;
+      final sessionId = hls.sessionId;
+      int readySegments = 0;
+      for (int i = 0; i < 60; i++) {
+        final playlist = await _apiClient!.fetchVariantPlaylist(mediaId, sessionId);
+        if (playlist != null) {
+          readySegments = _countSegments(playlist);
+          if (readySegments >= 1) break;
+        }
+        await Future.delayed(const Duration(milliseconds: 500));
+      }
+
+      // Now switch the player — show spinner only for the brief switch
+      isSwitchingQuality = true;
+      _onQualitySwitchingChanged?.call();
+
+      // Destroy old session (fire-and-forget)
+      if (oldSessionId != null) {
+        _apiClient!.destroyHlsSession(oldMediaId, oldSessionId);
+      }
+
+      _hlsSessionId = hls.sessionId;
+      currentQuality = quality;
+      _hlsStartOffset = savedSeconds;
+
+      final tmpFile = await _writeTempPlaylist(hls.playlistContent);
+      await _applyHlsPlayerProperties();
+      await player.open(mk.Media(tmpFile.path), play: true);
+
+      _forceDuration(hls.totalDuration);
+      _hideLoadingAfterBuffer();
+    } catch (e) {
+      print("Player: Failed smooth quality switch: $e");
+      isSwitchingQuality = false;
+      _onQualitySwitchingChanged?.call();
+    }
+  }
+
+  /// Immediate quality switch (for upgrades or same-level changes).
+  /// Shows spinner immediately and cuts to the new stream.
+  Future<void> _immediateSwitchToQuality(String quality, int savedSeconds) async {
     isSwitchingQuality = true;
     _onQualitySwitchingChanged?.call();
 
-    // Fire-and-forget: destroy previous session in background, don't block new session
     _destroyHlsSessionAsync();
 
     try {
@@ -194,30 +294,36 @@ class PlayerController {
         _media!.id,
         quality,
         startSeconds: savedSeconds,
+        audioIndex: _selectedAudioIndex,
       );
       _hlsSessionId = hls.sessionId;
       currentQuality = quality;
       _hlsStartOffset = savedSeconds;
 
-      // Write master playlist to temp file so MPV can open it
       final tmpFile = await _writeTempPlaylist(hls.playlistContent);
       await _applyHlsPlayerProperties();
-      await player.open(mk.Media(tmpFile.path), play: false);
+      await player.open(mk.Media(tmpFile.path), play: true);
 
-      // Force the full media duration so the timeline matches direct play
       _forceDuration(hls.totalDuration);
-
-      // No seek needed — the HLS stream starts at savedSeconds (via FFmpeg -ss).
-      // Just wait for the stream to be ready and play.
-      _playAfterLoad();
+      _hideLoadingAfterBuffer();
     } catch (e) {
       print("Player: Failed to start HLS session: $e");
       currentQuality = null;
       _hlsSessionId = null;
-    } finally {
       isSwitchingQuality = false;
       _onQualitySwitchingChanged?.call();
     }
+  }
+
+  /// Count the number of segment lines in an M3U8 variant playlist.
+  int _countSegments(String playlist) {
+    int count = 0;
+    for (final line in playlist.split('\n')) {
+      final trimmed = line.trim();
+      if (trimmed.isEmpty || trimmed.startsWith('#')) continue;
+      count++;
+    }
+    return count;
   }
 
   /// Switch back to Direct Play from HLS transcoding.
@@ -225,16 +331,76 @@ class PlayerController {
     if (_media == null || _apiClient == null) return;
     if (currentQuality == null) return;
 
-    final savedSeconds = player.state.position.inSeconds;
+    final savedSeconds = position.inSeconds;
+    print("Player: switchToDirectPlay: savedSeconds = $savedSeconds");
+    isSwitchingQuality = true;
+    _onQualitySwitchingChanged?.call();
 
     await _destroyHlsSession();
 
     currentQuality = null;
     _hlsStartOffset = 0;
-    final streamUrl = _apiClient!.getStreamUrl(_media!.id);
-    await player.open(mk.Media(streamUrl), play: false);
+    duration = Duration.zero;
 
-    _seekAfterLoad(savedSeconds);
+    final streamUrl = _apiClient!.getStreamUrl(_media!.id);
+    print("Player: switchToDirectPlay: streamUrl = $streamUrl");
+
+    // Open direct play with play:true to trigger buffering/decoding.
+    // The loading spinner covers the UI so the transition is invisible.
+    await player.open(mk.Media(streamUrl), play: true);
+
+    // Wait for the buffering cycle (loading started -> loading finished).
+    // This guarantees MPV has established the connection, parsed headers,
+    // and is actively playing, meaning the stream is 100% ready and seekable.
+    try {
+      print("Player: switchToDirectPlay: Waiting for buffering to start...");
+      if (!player.state.buffering) {
+        await player.stream.buffering
+            .firstWhere((isBuffering) => isBuffering)
+            .timeout(const Duration(seconds: 3));
+      }
+      print("Player: switchToDirectPlay: Buffering started. Waiting for buffering to finish...");
+      await player.stream.buffering
+          .firstWhere((isBuffering) => !isBuffering)
+          .timeout(const Duration(seconds: 7));
+      print("Player: switchToDirectPlay: Buffering finished. Stream is fully ready.");
+    } catch (e) {
+      print("Player: switchToDirectPlay: Buffering sync timeout or error: $e");
+      // Fallback: wait a short safe delay if buffering events were missed
+      await Future.delayed(const Duration(milliseconds: 1200));
+    }
+
+    if (savedSeconds > 0 && !_disposed) {
+      print("Player: switchToDirectPlay: Seeking to target $savedSeconds");
+      await player.seek(Duration(seconds: savedSeconds));
+      // Give the player a tiny window to register the seek command before hiding loader
+      await Future.delayed(const Duration(milliseconds: 400));
+    }
+
+    isSwitchingQuality = false;
+    _onQualitySwitchingChanged?.call();
+    print("Player: switchToDirectPlay: Switch completed successfully!");
+  }
+
+  /// Current selected audio index (within mediaTracks.audio). 0 by default.
+  int get selectedAudioIndex => _selectedAudioIndex;
+
+  /// Select a different audio track. In transcoding mode this recreates the
+  /// HLS session with the new audio_index, because FFmpeg only muxes one
+  /// audio stream. In direct play this is a no-op; media_kit handles the switch
+  /// directly via setAudioTrack.
+  Future<void> switchAudioTrack(int index) async {
+    if (_media == null || _apiClient == null) return;
+    if (index < 0) return;
+    if (mediaTracks != null && index >= mediaTracks!.audio.length) return;
+
+    _selectedAudioIndex = index;
+
+    if (currentQuality != null) {
+      // Recreate the HLS session at the current position so the new audio
+      // stream is transcoded from now on.
+      await reloadHlsAtPosition(position.inSeconds);
+    }
   }
 
   /// Reload the HLS session at a new position (used on large seeks >30s
@@ -252,22 +418,23 @@ class PlayerController {
         _media!.id,
         currentQuality!,
         startSeconds: newPositionSeconds,
+        audioIndex: _selectedAudioIndex,
       );
       _hlsSessionId = hls.sessionId;
       _hlsStartOffset = newPositionSeconds;
 
       final tmpFile = await _writeTempPlaylist(hls.playlistContent);
       await _applyHlsPlayerProperties();
-      await player.open(mk.Media(tmpFile.path), play: false);
+      // Open with play:true so MPV handles buffering and auto-plays when ready
+      await player.open(mk.Media(tmpFile.path), play: true);
 
       // Force the full media duration so the timeline matches direct play
       _forceDuration(hls.totalDuration);
 
       // No seek needed — the HLS stream starts at newPositionSeconds (via FFmpeg -ss).
-      _playAfterLoad();
+      _hideLoadingAfterBuffer();
     } catch (e) {
       print("Player: Failed to reload HLS session: $e");
-    } finally {
       isSwitchingQuality = false;
       _onQualitySwitchingChanged?.call();
     }
@@ -303,27 +470,27 @@ class PlayerController {
     _onDurationChanged?.call();
   }
 
-  /// Wait for the stream to be ready (buffering=false), then start playing.
-  /// Used after opening an HLS stream that already starts at the right position.
-  void _playAfterLoad() {
+  /// Wait for buffering to actually start (true) then stop (false) before
+  /// hiding the loading indicator. This prevents the spinner from disappearing
+  /// too early when the player hasn't started buffering yet.
+  void _hideLoadingAfterBuffer() {
     StreamSubscription? sub;
+    bool sawBuffering = false;
     sub = player.stream.buffering.listen((isBuffering) {
-      if (!isBuffering) {
-        player.play();
+      if (isBuffering) {
+        sawBuffering = true;
+      } else if (sawBuffering) {
+        isSwitchingQuality = false;
+        _onQualitySwitchingChanged?.call();
         sub?.cancel();
       }
     });
-  }
-
-  /// Seeks to the saved position after a source switch.
-  /// Listens for the first buffering=false event, then seeks.
-  /// Used for Direct Play mode where the stream starts at position 0.
-  void _seekAfterLoad(int targetSeconds) {
-    StreamSubscription? sub;
-    sub = player.stream.buffering.listen((isBuffering) {
-      if (!isBuffering && targetSeconds > 0) {
-        player.seek(Duration(seconds: targetSeconds));
-        sub?.cancel();
+    // Safety timeout: hide loading after 15s even if buffering events were missed
+    Timer(const Duration(seconds: 15), () {
+      sub?.cancel();
+      if (isSwitchingQuality) {
+        isSwitchingQuality = false;
+        _onQualitySwitchingChanged?.call();
       }
     });
   }

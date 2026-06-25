@@ -467,18 +467,6 @@ class _PlayerScreenState extends State<PlayerScreen> {
                   aspectRatio: _playerController.videoAspectRatio,
                 ),
               ),
-              if (_playerController.isSwitchingQuality)
-                Positioned.fill(
-                  child: Container(
-                    color: Colors.black54,
-                    child: const Center(
-                      child: CircularProgressIndicator(
-                        color: Color(0xFF00A4DC),
-                        strokeWidth: 3,
-                      ),
-                    ),
-                  ),
-                ),
               Positioned.fill(
                 child: Row(
                   children: [
@@ -587,6 +575,7 @@ class _PlayerScreenState extends State<PlayerScreen> {
                   player: _playerController.player,
                   currentFit: _videoFit,
                   onFitChanged: _updateVideoFit,
+                  playerController: _playerController,
                 ),
               // Overlays must be AFTER HUD in Stack to render on top
               if (_episodeNav?.showSkipIntro ?? false)
@@ -605,6 +594,20 @@ class _PlayerScreenState extends State<PlayerScreen> {
                   countdownSeconds: _episodeNav!.outroCountdownSeconds,
                   onPlayNext: _goToNextEpisode,
                   onCancel: () => _episodeNav!.cancelAutoPlay(),
+                ),
+              if (_playerController.isSwitchingQuality)
+                Positioned.fill(
+                  child: AbsorbPointer(
+                    child: Container(
+                      color: Colors.black54,
+                      child: const Center(
+                        child: CircularProgressIndicator(
+                          color: Color(0xFF00A4DC),
+                          strokeWidth: 3,
+                        ),
+                      ),
+                    ),
+                  ),
                 ),
             ],
           ),

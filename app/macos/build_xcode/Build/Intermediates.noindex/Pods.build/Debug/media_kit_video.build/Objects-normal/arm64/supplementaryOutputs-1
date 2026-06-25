@@ -1,0 +1,23 @@
+{
+  "/Users/mathis/.pub-cache/hosted/pub.dev/media_kit_video-1.2.4/macos/Classes/plugin/common/MPVHelpers.swift" : {
+    "const-values" : "/Users/mathis/Documents/project-mac/player/app/macos/build_xcode/Build/Intermediates.noindex/Pods.build/Debug/media_kit_video.build/Objects-normal/arm64/MPVHelpers.swiftconstvalues",
+    "dependencies" : "/Users/mathis/Documents/project-mac/player/app/macos/build_xcode/Build/Intermediates.noindex/Pods.build/Debug/media_kit_video.build/Objects-normal/arm64/MPVHelpers.d",
+    "diagnostics" : "/Users/mathis/Documents/project-mac/player/app/macos/build_xcode/Build/Intermediates.noindex/Pods.build/Debug/media_kit_video.build/Objects-normal/arm64/MPVHelpers.dia",
+    "object" : "/Users/mathis/Documents/project-mac/player/app/macos/build_xcode/Build/Intermediates.noindex/Pods.build/Debug/media_kit_video.build/Objects-normal/arm64/MPVHelpers.o",
+    "swift-dependencies" : "/Users/mathis/Documents/project-mac/player/app/macos/build_xcode/Build/Intermediates.noindex/Pods.build/Debug/media_kit_video.build/Objects-normal/arm64/MPVHelpers.swiftdeps"
+  },
+  "/Users/mathis/.pub-cache/hosted/pub.dev/media_kit_video-1.2.4/macos/Classes/plugin/common/MPVVideoOutParams.swift" : {
+    "const-values" : "/Users/mathis/Documents/project-mac/player/app/macos/build_xcode/Build/Intermediates.noindex/Pods.build/Debug/media_kit_video.build/Objects-normal/arm64/MPVVideoOutParams.swiftconstvalues",
+    "dependencies" : "/Users/mathis/Documents/project-mac/player/app/macos/build_xcode/Build/Intermediates.noindex/Pods.build/Debug/media_kit_video.build/Objects-normal/arm64/MPVVideoOutParams.d",
+    "diagnostics" : "/Users/mathis/Documents/project-mac/player/app/macos/build_xcode/Build/Intermediates.noindex/Pods.build/Debug/media_kit_video.build/Objects-normal/arm64/MPVVideoOutParams.dia",
+    "object" : "/Users/mathis/Documents/project-mac/player/app/macos/build_xcode/Build/Intermediates.noindex/Pods.build/Debug/media_kit_video.build/Objects-normal/arm64/MPVVideoOutParams.o",
+    "swift-dependencies" : "/Users/mathis/Documents/project-mac/player/app/macos/build_xcode/Build/Intermediates.noindex/Pods.build/Debug/media_kit_video.build/Objects-normal/arm64/MPVVideoOutParams.swiftdeps"
+  },
+  "/Users/mathis/.pub-cache/hosted/pub.dev/media_kit_video-1.2.4/macos/Classes/plugin/common/MediaKitVideoPlugin.swift" : {
+    "const-values" : "/Users/mathis/Documents/project-mac/player/app/macos/build_xcode/Build/Intermediates.noindex/Pods.build/Debug/media_kit_video.build/Objects-normal/arm64/MediaKitVideoPlugin.swiftconstvalues",
+    "dependencies" : "/Users/mathis/Documents/project-mac/player/app/macos/build_xcode/Build/Intermediates.noindex/Pods.build/Debug/media_kit_video.build/Objects-normal/arm64/MediaKitVideoPlugin.d",
+    "diagnostics" : "/Users/mathis/Documents/project-mac/player/app/macos/build_xcode/Build/Intermediates.noindex/Pods.build/Debug/media_kit_video.build/Objects-normal/arm64/MediaKitVideoPlugin.dia",
+    "object" : "/Users/mathis/Documents/project-mac/player/app/macos/build_xcode/Build/Intermediates.noindex/Pods.build/Debug/media_kit_video.build/Objects-normal/arm64/MediaKitVideoPlugin.o",
+    "swift-dependencies" : "/Users/mathis/Documents/project-mac/player/app/macos/build_xcode/Build/Intermediates.noindex/Pods.build/Debug/media_kit_video.build/Objects-normal/arm64/MediaKitVideoPlugin.swiftdeps"
+  }
+}

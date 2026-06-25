@@ -1,12 +1,15 @@
 package streaming
 
 import (
+	"bytes"
 	"encoding/json"
 	"fmt"
 	"log"
+	"os"
 	"os/exec"
 	"strconv"
 	"strings"
+	"sync"
 )
 
 // VideoStreamInfo holds metadata about a video stream.
@@ -158,8 +161,23 @@ func isTextSubtitle(codec string) bool {
 	}
 }
 
-// BuildFFmpegArgs constructs the FFmpeg command-line arguments for HLS transcoding.
-func BuildFFmpegArgs(inputPath, quality, startSeconds, tmpDir string, probe *ProbeResult) []string {
+// sanitizeVSM removes characters that would break the -var_stream_map syntax,
+// where entries are separated by spaces and key/value pairs by commas.
+func sanitizeVSM(s string) string {
+	r := strings.NewReplacer(" ", "_", ",", "_", "\"", "")
+	return r.Replace(s)
+}
+
+// BuildFFmpegArgs constructs the FFmpeg command-line arguments for an HLS
+// transcode with one video, one audio, and multiple subtitle tracks.
+// FFmpeg generates:
+//   - master.m3u8 + stream_0.m3u8 : video + single audio (H.264 + AAC)
+//   - sub_N.m3u8 + sub_N_*.vtt    : one WebVTT segment playlist per text subtitle
+//
+// Only the selected audio track (audioIndex) is transcoded to keep CPU usage
+// low. Switching audio tracks recreates the session client-side. Subtitles are
+// all generated in the same process and exposed as native HLS renditions.
+func BuildFFmpegArgs(inputPath, quality, startSeconds, tmpDir string, probe *ProbeResult, audioIndex int) []string {
 	preset, ok := qualityPresets[quality]
 	if !ok {
 		preset = qualityPresets["720p"]
@@ -167,79 +185,216 @@ func BuildFFmpegArgs(inputPath, quality, startSeconds, tmpDir string, probe *Pro
 
 	args := []string{}
 
-	// Fast seek to start position
-	if startSeconds != "" && startSeconds != "0" {
-		args = append(args, "-ss", startSeconds)
+	var startVal int
+	if startSeconds != "" {
+		fmt.Sscanf(startSeconds, "%d", &startVal)
 	}
 
-	// Input
+	// Single input seek (keyframe-accurate, fast). Using one input -ss keeps the
+	// HLS output and the subtitle segment outputs on the same reset timeline, so
+	// subtitles stay in sync with the video.
+	if startVal > 0 {
+		args = append(args, "-ss", fmt.Sprintf("%d", startVal))
+	}
 	args = append(args, "-i", inputPath)
 
-	// Video: transcode to target resolution with libx264
+	// --- Stream mapping ---
+	// Video (always first)
+	args = append(args, "-map", "0:v:0")
+
+	// Audio: map only the selected audio track (by audioIndex). This keeps
+	// CPU usage low — encoding multiple audio tracks simultaneously was the
+	// main cause of the 8-minute transcoding delay on 4K HDR sources.
+	if probe != nil && audioIndex >= 0 && audioIndex < len(probe.Audio) {
+		args = append(args, "-map", fmt.Sprintf("0:%d", probe.Audio[audioIndex].Index))
+	} else {
+		args = append(args, "-map", "0:a:0?")
+	}
+
+	// --- Codecs ---
+	// Force 8-bit 4:2:0 (yuv420p) so 10-bit HEVC sources don't produce a 10-bit
+	// H.264 "High 10" stream, which most HLS clients cannot decode.
+	// Tuned for fast startup on a many-core CPU (no GPU): ultrafast + zerolatency
+	// removes lookahead/B-frames so the first segments are produced almost
+	// immediately, and fast_bilinear scaling is cheaper than the default bicubic.
 	args = append(args,
-		"-map", "0:v:0",
 		"-c:v", "libx264",
 		"-preset", "ultrafast",
-		"-crf", "24",
-		"-vf", fmt.Sprintf("scale=%d:%d", preset.W, preset.H),
+		"-tune", "zerolatency",
+		"-crf", "23",
+		"-pix_fmt", "yuv420p",
+		"-vf", fmt.Sprintf("scale=%d:%d:flags=fast_bilinear", preset.W, preset.H),
+		"-g", "48",
 		"-force_key_frames", "expr:gte(t,n_forced*2)",
-		"-threads", "4",
+		"-threads", "0",
 	)
+	// Audio: always transcode to AAC for HLS reliability (TrueHD/DTS cannot be
+	// muxed into HLS audio renditions, and mixing copy/transcode is fragile).
+	args = append(args, "-c:a", "aac", "-b:a", "192k")
+	// Drop subtitles from the main process — they are generated separately (see
+	// ExtractSubtitles) so the video transcode stays lean and never stalls
+	// waiting on sparse subtitle packets.
+	args = append(args, "-sn", "-max_muxing_queue_size", "1024")
 
-	// Audio: copy if TS-compatible, otherwise transcode to AAC
-	allCompatible := true
-	if probe != nil {
-		for _, a := range probe.Audio {
-			if !IsAudioTSCompatible(a.Codec) {
-				allCompatible = false
-				break
-			}
+	// --- var_stream_map (single video + single audio) ---
+	// Only one audio rendition — switching audio recreates the session.
+	var vsm strings.Builder
+	vsm.WriteString("v:0,agroup:aud a:0,agroup:aud,default:yes")
+	if probe != nil && audioIndex >= 0 && audioIndex < len(probe.Audio) {
+		lang := probe.Audio[audioIndex].Language
+		if lang == "" {
+			lang = "und"
 		}
+		name := probe.Audio[audioIndex].Title
+		if name == "" {
+			name = fmt.Sprintf("Audio %d", audioIndex+1)
+		}
+		fmt.Fprintf(&vsm, ",language:%s,name:%s", sanitizeVSM(lang), sanitizeVSM(name))
 	}
 
-	if allCompatible {
-		args = append(args, "-map", "0:a?", "-c:a", "copy")
-	} else {
-		args = append(args, "-map", "0:a?", "-c:a", "aac", "-b:a", "192k")
-	}
-
-	// HLS output settings
-	// Growing playlist (hls_list_size 0, no delete_segments) so the player sees
-	// the full transcoded timeline and can seek within already-generated segments.
+	// --- HLS output (video + audio) ---
+	// FFmpeg writes master.m3u8 and stream_%v.m3u8 (+ segments) into tmpDir.
 	args = append(args,
 		"-f", "hls",
 		"-hls_time", "2",
 		"-hls_list_size", "0",
 		"-hls_flags", "independent_segments",
-		"-hls_segment_filename", tmpDir+"/seg_%03d.ts",
-		tmpDir+"/variant.m3u8",
+		"-master_pl_name", "master.m3u8",
+		"-var_stream_map", vsm.String(),
+		"-hls_segment_filename", tmpDir+"/stream_%v_%03d.ts",
+		tmpDir+"/stream_%v.m3u8",
 	)
 
 	return args
 }
 
-// ExtractSubtitles extracts text subtitle streams to WebVTT files.
-// This runs in a background goroutine and is non-blocking.
-func ExtractSubtitles(inputPath, tmpDir string, probe *ProbeResult) {
+// subtitleIntermediateCodec returns the best intermediate codec to extract a
+// given source subtitle codec to before converting it to WebVTT.
+func subtitleIntermediateCodec(sourceCodec string) string {
+	switch strings.ToLower(sourceCodec) {
+	case "webvtt":
+		return "webvtt"
+	case "subrip", "srt":
+		return "srt"
+	case "ass", "ssa":
+		return "ass"
+	default:
+		return "srt"
+	}
+}
+
+// ExtractSubtitles extracts each text subtitle track to a single full WebVTT
+// file in its own lightweight FFmpeg process (no video decoding involved, so
+// it is near-instant) and writes a one-segment HLS playlist (sub_N.m3u8) that
+// references it. This decouples subtitles from the heavy video transcode
+// (Jellyfin-style) so subtitle switching is instant and never stalls the
+// video pipeline. startSeconds applies the same input seek as the video so the
+// subtitle timeline matches the reset HLS timeline. totalDuration is the full
+// media duration in seconds (used for the playlist EXTINF).
+func ExtractSubtitles(inputPath, tmpDir string, probe *ProbeResult, startSeconds int, totalDuration float64) *sync.WaitGroup {
+	wg := &sync.WaitGroup{}
 	if probe == nil || len(probe.Subtitles) == 0 {
-		return
+		return wg
+	}
+
+	// Remaining duration covered by the extracted subtitles (timeline reset to 0).
+	remaining := totalDuration - float64(startSeconds)
+	if remaining <= 0 {
+		remaining = totalDuration
 	}
 
 	for i, sub := range probe.Subtitles {
-		go func(idx int, subIdx int) {
+		// Write the one-segment playlist up-front so it always exists when the
+		// player requests it, even before the .vtt has finished extracting.
+		writeSubtitlePlaylist(tmpDir, i, remaining)
+
+		wg.Add(1)
+		go func(idx int, subIdx int, subCodec string) {
+			defer wg.Done()
 			outPath := fmt.Sprintf("%s/sub_%d.vtt", tmpDir, idx)
-			cmd := exec.Command("ffmpeg",
+
+			// Optional input seek so subtitle timestamps reset to ~0, matching the
+			// video HLS timeline (which uses the same -ss before -i).
+			seek := func() []string {
+				if startSeconds > 0 {
+					return []string{"-ss", fmt.Sprintf("%d", startSeconds)}
+				}
+				return nil
+			}
+
+			intermediateCodec := subtitleIntermediateCodec(subCodec)
+			if intermediateCodec == "webvtt" {
+				// Direct extraction is enough for WebVTT sources.
+				args := append(seek(),
+					"-i", inputPath,
+					"-map", fmt.Sprintf("0:s:%d", subIdx),
+					"-c:s", "webvtt",
+					outPath,
+				)
+				cmd := exec.Command("ffmpeg", args...)
+				var stderr bytes.Buffer
+				cmd.Stderr = &stderr
+				if err := cmd.Run(); err != nil {
+					log.Printf("Subtitle extraction failed for stream %d: %v (stderr: %s)", subIdx, err, stderr.String())
+				} else {
+					log.Printf("Subtitle extraction completed: sub_%d.vtt", idx)
+				}
+				return
+			}
+
+			// For other text formats, extract to the original format first then
+			// convert to WebVTT. This avoids "text to text or bitmap to bitmap"
+			// errors when the source has Matroska time offsets or codec quirks.
+			tmpPath := fmt.Sprintf("%s/sub_%d.%s", tmpDir, idx, intermediateCodec)
+			extractArgs := append(seek(),
 				"-i", inputPath,
 				"-map", fmt.Sprintf("0:s:%d", subIdx),
+				"-c:s", "copy",
+				tmpPath,
+			)
+			extractCmd := exec.Command("ffmpeg", extractArgs...)
+			var extractStderr bytes.Buffer
+			extractCmd.Stderr = &extractStderr
+			if err := extractCmd.Run(); err != nil {
+				log.Printf("Subtitle extraction failed for stream %d: %v (stderr: %s)", subIdx, err, extractStderr.String())
+				return
+			}
+
+			convertCmd := exec.Command("ffmpeg",
+				"-i", tmpPath,
 				"-c:s", "webvtt",
 				outPath,
 			)
-			if err := cmd.Run(); err != nil {
-				log.Printf("Subtitle extraction failed for stream %d: %v", subIdx, err)
-			} else {
-				log.Printf("Subtitle extraction completed: sub_%d.vtt", idx)
+			var convertStderr bytes.Buffer
+			convertCmd.Stderr = &convertStderr
+			if err := convertCmd.Run(); err != nil {
+				log.Printf("Subtitle conversion failed for stream %d: %v (stderr: %s)", subIdx, err, convertStderr.String())
+				os.Remove(tmpPath)
+				return
 			}
-		}(i, sub.Index)
+
+			os.Remove(tmpPath)
+			log.Printf("Subtitle extraction completed: sub_%d.vtt", idx)
+		}(i, sub.Index, sub.Codec)
+	}
+
+	return wg
+}
+
+// writeSubtitlePlaylist writes a VOD HLS playlist that references the full
+// sub_<idx>.vtt file as a single segment covering the whole duration.
+func writeSubtitlePlaylist(tmpDir string, idx int, duration float64) {
+	if duration <= 0 {
+		duration = 86400 // 24h fallback
+	}
+	target := int(duration) + 1
+	content := fmt.Sprintf(
+		"#EXTM3U\n#EXT-X-VERSION:3\n#EXT-X-TARGETDURATION:%d\n#EXT-X-MEDIA-SEQUENCE:0\n#EXT-X-PLAYLIST-TYPE:VOD\n#EXTINF:%.3f,\nsub_%d.vtt\n#EXT-X-ENDLIST\n",
+		target, duration, idx,
+	)
+	playlistPath := fmt.Sprintf("%s/sub_%d.m3u8", tmpDir, idx)
+	if err := os.WriteFile(playlistPath, []byte(content), 0644); err != nil {
+		log.Printf("Subtitle playlist write failed for sub_%d: %v", idx, err)
 	}
 }
 

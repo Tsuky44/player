@@ -1,5 +1,5 @@
 # Stage 1: Build the Go binary
-FROM golang:1.21-alpine AS builder
+FROM --platform=linux/amd64 golang:1.21-alpine AS builder
 
 WORKDIR /app
 
@@ -12,11 +12,12 @@ RUN go mod download
 # Copy all source files
 COPY . .
 
-# Build a statically-linked binary (pure Go, CGO disabled)
-RUN CGO_ENABLED=0 GOOS=linux go build -ldflags="-w -s" -o media-server .
+# Build a statically-linked binary (pure Go, CGO disabled) for linux/amd64
+# (matches the server architecture, even if built on a Mac arm64).
+RUN CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -ldflags="-w -s" -o media-server .
 
 # Stage 2: Final lightweight runtime image
-FROM alpine:latest
+FROM --platform=linux/amd64 alpine:latest
 
 # Install basic dependencies (ca-certificates, tzdata, ffmpeg)
 RUN apk --no-cache add ca-certificates tzdata ffmpeg

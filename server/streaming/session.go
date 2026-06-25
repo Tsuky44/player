@@ -12,17 +12,19 @@ import (
 
 // TranscodeSession represents a single active HLS transcoding session.
 type TranscodeSession struct {
-	ID        string
-	MediaID   int
-	Quality   string
-	TmpDir    string
-	ctx       context.Context
-	cancel    context.CancelFunc
-	cmd       *exec.Cmd
-	mu        sync.Mutex
-	active    bool
+	ID         string
+	MediaID    int
+	Quality    string
+	AudioIndex int
+	TmpDir     string
+	Probe      *ProbeResult
+	ctx        context.Context
+	cancel     context.CancelFunc
+	cmd        *exec.Cmd
+	mu         sync.Mutex
+	active     bool
 	lastAccess time.Time
-	stderr    bytes.Buffer
+	stderr     bytes.Buffer
 }
 
 // Start launches the FFmpeg process associated with this session.
@@ -108,8 +110,15 @@ func (s *TranscodeSession) Kill() {
 // WaitForVariantPlaylist polls for the variant.m3u8 file to appear in the temp dir.
 // Returns nil if the file appears within the timeout, or an error otherwise.
 func (s *TranscodeSession) WaitForVariantPlaylist(timeout time.Duration) error {
+	return s.WaitForFile("variant.m3u8", timeout)
+}
+
+// WaitForFile polls for the given file (relative to the session temp dir) to
+// appear. Returns nil if it appears within the timeout, or an error otherwise.
+// It also fails fast if the FFmpeg process dies before the file is written.
+func (s *TranscodeSession) WaitForFile(name string, timeout time.Duration) error {
 	deadline := time.Now().Add(timeout)
-	playlistPath := s.TmpDir + "/variant.m3u8"
+	playlistPath := s.TmpDir + "/" + name
 
 	for time.Now().Before(deadline) {
 		if _, err := os.Stat(playlistPath); err == nil {

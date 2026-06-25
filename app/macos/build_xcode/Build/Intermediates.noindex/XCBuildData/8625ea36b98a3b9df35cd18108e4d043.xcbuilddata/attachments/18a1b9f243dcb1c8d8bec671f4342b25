@@ -1,0 +1,29 @@
+{
+  "" : {
+    "diagnostics" : "/Users/mathis/Documents/project-mac/player/app/macos/build_xcode/Build/Intermediates.noindex/wakelock_plus.build/Debug/wakelock_plus.build/Objects-normal/arm64/wakelock_plus-primary.dia",
+    "emit-module-dependencies" : "/Users/mathis/Documents/project-mac/player/app/macos/build_xcode/Build/Intermediates.noindex/wakelock_plus.build/Debug/wakelock_plus.build/Objects-normal/arm64/wakelock_plus-primary-emit-module.d",
+    "emit-module-diagnostics" : "/Users/mathis/Documents/project-mac/player/app/macos/build_xcode/Build/Intermediates.noindex/wakelock_plus.build/Debug/wakelock_plus.build/Objects-normal/arm64/wakelock_plus-primary-emit-module.dia",
+    "pch" : "/Users/mathis/Documents/project-mac/player/app/macos/build_xcode/Build/Intermediates.noindex/wakelock_plus.build/Debug/wakelock_plus.build/Objects-normal/arm64/wakelock_plus-primary-Bridging-header.pch",
+    "swift-dependencies" : "/Users/mathis/Documents/project-mac/player/app/macos/build_xcode/Build/Intermediates.noindex/wakelock_plus.build/Debug/wakelock_plus.build/Objects-normal/arm64/wakelock_plus-primary.swiftdeps"
+  },
+  "/Users/mathis/.pub-cache/hosted/pub.dev/wakelock_plus-1.5.2/macos/wakelock_plus/Sources/wakelock_plus/WakelockPlusMacosPlugin.swift" : {
+    "const-values" : "/Users/mathis/Documents/project-mac/player/app/macos/build_xcode/Build/Intermediates.noindex/wakelock_plus.build/Debug/wakelock_plus.build/Objects-normal/arm64/WakelockPlusMacosPlugin.swiftconstvalues",
+    "dependencies" : "/Users/mathis/Documents/project-mac/player/app/macos/build_xcode/Build/Intermediates.noindex/wakelock_plus.build/Debug/wakelock_plus.build/Objects-normal/arm64/WakelockPlusMacosPlugin.d",
+    "diagnostics" : "/Users/mathis/Documents/project-mac/player/app/macos/build_xcode/Build/Intermediates.noindex/wakelock_plus.build/Debug/wakelock_plus.build/Objects-normal/arm64/WakelockPlusMacosPlugin.dia",
+    "index-unit-output-path" : "/wakelock_plus.build/Debug/wakelock_plus.build/Objects-normal/arm64/WakelockPlusMacosPlugin.o",
+    "llvm-bc" : "/Users/mathis/Documents/project-mac/player/app/macos/build_xcode/Build/Intermediates.noindex/wakelock_plus.build/Debug/wakelock_plus.build/Objects-normal/arm64/WakelockPlusMacosPlugin.bc",
+    "object" : "/Users/mathis/Documents/project-mac/player/app/macos/build_xcode/Build/Intermediates.noindex/wakelock_plus.build/Debug/wakelock_plus.build/Objects-normal/arm64/WakelockPlusMacosPlugin.o",
+    "swift-dependencies" : "/Users/mathis/Documents/project-mac/player/app/macos/build_xcode/Build/Intermediates.noindex/wakelock_plus.build/Debug/wakelock_plus.build/Objects-normal/arm64/WakelockPlusMacosPlugin.swiftdeps",
+    "swiftmodule" : "/Users/mathis/Documents/project-mac/player/app/macos/build_xcode/Build/Intermediates.noindex/wakelock_plus.build/Debug/wakelock_plus.build/Objects-normal/arm64/WakelockPlusMacosPlugin~partial.swiftmodule"
+  },
+  "/Users/mathis/Documents/project-mac/player/app/macos/build_xcode/Build/Intermediates.noindex/wakelock_plus.build/Debug/wakelock_plus.build/DerivedSources/resource_bundle_accessor.swift" : {
+    "const-values" : "/Users/mathis/Documents/project-mac/player/app/macos/build_xcode/Build/Intermediates.noindex/wakelock_plus.build/Debug/wakelock_plus.build/Objects-normal/arm64/resource_bundle_accessor.swiftconstvalues",
+    "dependencies" : "/Users/mathis/Documents/project-mac/player/app/macos/build_xcode/Build/Intermediates.noindex/wakelock_plus.build/Debug/wakelock_plus.build/Objects-normal/arm64/resource_bundle_accessor.d",
+    "diagnostics" : "/Users/mathis/Documents/project-mac/player/app/macos/build_xcode/Build/Intermediates.noindex/wakelock_plus.build/Debug/wakelock_plus.build/Objects-normal/arm64/resource_bundle_accessor.dia",
+    "index-unit-output-path" : "/wakelock_plus.build/Debug/wakelock_plus.build/Objects-normal/arm64/resource_bundle_accessor.o",
+    "llvm-bc" : "/Users/mathis/Documents/project-mac/player/app/macos/build_xcode/Build/Intermediates.noindex/wakelock_plus.build/Debug/wakelock_plus.build/Objects-normal/arm64/resource_bundle_accessor.bc",
+    "object" : "/Users/mathis/Documents/project-mac/player/app/macos/build_xcode/Build/Intermediates.noindex/wakelock_plus.build/Debug/wakelock_plus.build/Objects-normal/arm64/resource_bundle_accessor.o",
+    "swift-dependencies" : "/Users/mathis/Documents/project-mac/player/app/macos/build_xcode/Build/Intermediates.noindex/wakelock_plus.build/Debug/wakelock_plus.build/Objects-normal/arm64/resource_bundle_accessor.swiftdeps",
+    "swiftmodule" : "/Users/mathis/Documents/project-mac/player/app/macos/build_xcode/Build/Intermediates.noindex/wakelock_plus.build/Debug/wakelock_plus.build/Objects-normal/arm64/resource_bundle_accessor~partial.swiftmodule"
+  }
+}

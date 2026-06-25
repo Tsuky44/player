@@ -14,6 +14,7 @@ import (
 	"project-player/server/database"
 	"project-player/server/indexer"
 	"project-player/server/models"
+	"project-player/server/streaming"
 
 	"github.com/julienschmidt/httprouter"
 )
@@ -835,6 +836,53 @@ func GetEpisodeChapters(w http.ResponseWriter, r *http.Request, ps httprouter.Pa
 
 	json.NewEncoder(w).Encode(map[string]interface{}{
 		"chapters": chapters,
+	})
+}
+
+// GetMediaTracks returns the audio and subtitle tracks of a media file as
+// detected by ffprobe. This lets the client display consistent track names
+// in both direct play and transcoding modes.
+func GetMediaTracks(w http.ResponseWriter, r *http.Request, ps httprouter.Params, _ int) {
+	w.Header().Set("Content-Type", "application/json")
+
+	mediaID, err := strconv.Atoi(ps.ByName("id"))
+	if err != nil {
+		http.Error(w, `{"error": "Invalid media ID"}`, http.StatusBadRequest)
+		return
+	}
+
+	var filePath string
+	err = database.DB.QueryRow("SELECT file_path FROM medias WHERE id = ?", mediaID).Scan(&filePath)
+	if err != nil {
+		if err == sql.ErrNoRows {
+			http.Error(w, `{"error": "Media not found"}`, http.StatusNotFound)
+		} else {
+			log.Printf("GetMediaTracks DB error: %v", err)
+			http.Error(w, `{"error": "Internal database error"}`, http.StatusInternalServerError)
+		}
+		return
+	}
+
+	if filePath == "" {
+		http.Error(w, `{"error": "Media file path is empty"}`, http.StatusBadRequest)
+		return
+	}
+
+	if _, err := os.Stat(filePath); os.IsNotExist(err) {
+		http.Error(w, `{"error": "Media file not found on disk"}`, http.StatusNotFound)
+		return
+	}
+
+	probe, err := streaming.ProbeTracks(filePath)
+	if err != nil {
+		log.Printf("GetMediaTracks probe error for media %d: %v", mediaID, err)
+		http.Error(w, `{"error": "Failed to probe media tracks"}`, http.StatusInternalServerError)
+		return
+	}
+
+	json.NewEncoder(w).Encode(map[string]interface{}{
+		"audio":     probe.Audio,
+		"subtitles": probe.Subtitles,
 	})
 }
 

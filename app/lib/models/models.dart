@@ -248,3 +248,75 @@ class HomeResponse {
     );
   }
 }
+
+/// Audio track metadata as probed from the original media file.
+class MediaAudioTrack {
+  final int index;
+  final String codec;
+  final String? language;
+  final String? title;
+
+  MediaAudioTrack({
+    required this.index,
+    required this.codec,
+    this.language,
+    this.title,
+  });
+
+  factory MediaAudioTrack.fromJson(Map<String, dynamic> json) {
+    return MediaAudioTrack(
+      index: json['index'] as int? ?? 0,
+      codec: json['codec_name'] as String? ?? '',
+      language: json['language'] as String?,
+      title: json['title'] as String?,
+    );
+  }
+}
+
+/// Subtitle track metadata as probed from the original media file.
+class MediaSubtitleTrack {
+  final int index;
+  final String codec;
+  final String? language;
+  final String? title;
+
+  MediaSubtitleTrack({
+    required this.index,
+    required this.codec,
+    this.language,
+    this.title,
+  });
+
+  factory MediaSubtitleTrack.fromJson(Map<String, dynamic> json) {
+    return MediaSubtitleTrack(
+      index: json['index'] as int? ?? 0,
+      codec: json['codec_name'] as String? ?? '',
+      language: json['language'] as String?,
+      title: json['title'] as String?,
+    );
+  }
+}
+
+/// Combined audio/subtitle tracks returned by the tracks API.
+class MediaTracks {
+  final List<MediaAudioTrack> audio;
+  final List<MediaSubtitleTrack> subtitles;
+
+  MediaTracks({
+    required this.audio,
+    required this.subtitles,
+  });
+
+  factory MediaTracks.fromJson(Map<String, dynamic> json) {
+    return MediaTracks(
+      audio: (json['audio'] as List<dynamic>?)
+              ?.map((e) => MediaAudioTrack.fromJson(e as Map<String, dynamic>))
+              .toList() ??
+          [],
+      subtitles: (json['subtitles'] as List<dynamic>?)
+              ?.map((e) => MediaSubtitleTrack.fromJson(e as Map<String, dynamic>))
+              .toList() ??
+          [],
+    );
+  }
+}

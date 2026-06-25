@@ -1,18 +1,21 @@
 import 'dart:ui';
 import 'package:flutter/material.dart';
 import 'package:media_kit/media_kit.dart' as mk;
+import '../hooks/use_player_controller.dart';
 import 'settings_menu.dart';
 
 class TopRightControls extends StatefulWidget {
   final mk.Player player;
   final BoxFit currentFit;
   final ValueChanged<BoxFit> onFitChanged;
+  final PlayerController? playerController;
 
   const TopRightControls({
     super.key,
     required this.player,
     required this.currentFit,
     required this.onFitChanged,
+    this.playerController,
   });
 
   @override
@@ -166,6 +169,7 @@ class _TopRightControlsState extends State<TopRightControls> {
             onClose: _closeSettings,
             currentFit: widget.currentFit,
             onFitChanged: widget.onFitChanged,
+            playerController: widget.playerController,
           ),
       ],
     );

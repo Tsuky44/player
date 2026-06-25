@@ -1,0 +1,83 @@
+{
+  "object" : {
+    "artifacts" : [
+
+    ],
+    "dependencies" : [
+      {
+        "basedOn" : null,
+        "packageRef" : {
+          "identity" : "flutterframework",
+          "kind" : "fileSystem",
+          "location" : "/Users/mathis/Documents/project-mac/player/app/macos/Flutter/ephemeral/Packages/.packages/FlutterFramework",
+          "name" : "FlutterFramework"
+        },
+        "state" : {
+          "name" : "fileSystem",
+          "path" : "/Users/mathis/Documents/project-mac/player/app/macos/Flutter/ephemeral/Packages/.packages/FlutterFramework"
+        },
+        "subpath" : "flutterframework"
+      },
+      {
+        "basedOn" : null,
+        "packageRef" : {
+          "identity" : "package_info_plus-9.0.1",
+          "kind" : "fileSystem",
+          "location" : "/Users/mathis/Documents/project-mac/player/app/macos/Flutter/ephemeral/Packages/.packages/package_info_plus-9.0.1",
+          "name" : "package_info_plus"
+        },
+        "state" : {
+          "name" : "fileSystem",
+          "path" : "/Users/mathis/Documents/project-mac/player/app/macos/Flutter/ephemeral/Packages/.packages/package_info_plus-9.0.1"
+        },
+        "subpath" : "package_info_plus-9.0.1"
+      },
+      {
+        "basedOn" : null,
+        "packageRef" : {
+          "identity" : "shared_preferences_foundation-2.5.6",
+          "kind" : "fileSystem",
+          "location" : "/Users/mathis/Documents/project-mac/player/app/macos/Flutter/ephemeral/Packages/.packages/shared_preferences_foundation-2.5.6",
+          "name" : "shared_preferences_foundation"
+        },
+        "state" : {
+          "name" : "fileSystem",
+          "path" : "/Users/mathis/Documents/project-mac/player/app/macos/Flutter/ephemeral/Packages/.packages/shared_preferences_foundation-2.5.6"
+        },
+        "subpath" : "shared_preferences_foundation-2.5.6"
+      },
+      {
+        "basedOn" : null,
+        "packageRef" : {
+          "identity" : "sqflite_darwin-2.4.3",
+          "kind" : "fileSystem",
+          "location" : "/Users/mathis/Documents/project-mac/player/app/macos/Flutter/ephemeral/Packages/.packages/sqflite_darwin-2.4.3",
+          "name" : "sqflite_darwin"
+        },
+        "state" : {
+          "name" : "fileSystem",
+          "path" : "/Users/mathis/Documents/project-mac/player/app/macos/Flutter/ephemeral/Packages/.packages/sqflite_darwin-2.4.3"
+        },
+        "subpath" : "sqflite_darwin-2.4.3"
+      },
+      {
+        "basedOn" : null,
+        "packageRef" : {
+          "identity" : "wakelock_plus-1.5.2",
+          "kind" : "fileSystem",
+          "location" : "/Users/mathis/Documents/project-mac/player/app/macos/Flutter/ephemeral/Packages/.packages/wakelock_plus-1.5.2",
+          "name" : "wakelock_plus"
+        },
+        "state" : {
+          "name" : "fileSystem",
+          "path" : "/Users/mathis/Documents/project-mac/player/app/macos/Flutter/ephemeral/Packages/.packages/wakelock_plus-1.5.2"
+        },
+        "subpath" : "wakelock_plus-1.5.2"
+      }
+    ],
+    "prebuilts" : [
+
+    ]
+  },
+  "version" : 7
+}

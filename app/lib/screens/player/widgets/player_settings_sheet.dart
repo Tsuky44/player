@@ -2,6 +2,7 @@ import 'dart:ui';
 import 'package:flutter/material.dart';
 import 'package:flutter_animate/flutter_animate.dart';
 import 'package:media_kit/media_kit.dart' as mk;
+import '../../../models/models.dart';
 import '../hooks/use_player_controller.dart';
 
 /// Bottom-sheet widget that lets the user pick audio / subtitle tracks,
@@ -57,11 +58,19 @@ class _PlayerSettingsSheetState extends State<PlayerSettingsSheet> {
             : 'Sous-titre ${index + 1}');
   }
 
+  String _mediaAudioTrackName(MediaAudioTrack track, int index) {
+    return track.title ??
+        (track.language != null ? 'Audio (${track.language})' : 'Audio ${index + 1}');
+  }
+
   @override
   Widget build(BuildContext context) {
     final tracks = widget.player.state.tracks;
     final currentAudio = widget.player.state.track.audio;
     final currentSubtitle = widget.player.state.track.subtitle;
+    final controller = widget.playerController;
+    final isTranscoding = controller?.currentQuality != null;
+    final mediaTracks = controller?.mediaTracks;
 
     return ConstrainedBox(
       constraints: const BoxConstraints(maxWidth: 300, maxHeight: 380),
@@ -156,12 +165,16 @@ class _PlayerSettingsSheetState extends State<PlayerSettingsSheet> {
                   Flexible(
                     child: TabBarView(
                       children: [
-                        _buildTrackList(
-                          tracks.audio,
-                          currentAudio,
-                          (track) => _audioTrackName(track, tracks.audio.indexOf(track)),
-                          (track) => widget.player.setAudioTrack(track),
-                        ),
+                        // Audio tracks
+                        isTranscoding && mediaTracks != null && mediaTracks.audio.isNotEmpty
+                            ? _buildTranscodingAudioList(mediaTracks.audio, controller!)
+                            : _buildTrackList(
+                                tracks.audio,
+                                currentAudio,
+                                (track) => _audioTrackName(track, tracks.audio.indexOf(track)),
+                                (track) => widget.player.setAudioTrack(track),
+                              ),
+                        // Subtitle tracks (native HLS renditions or direct play)
                         _buildTrackList(
                           tracks.subtitle,
                           currentSubtitle,
@@ -327,14 +340,88 @@ class _PlayerSettingsSheetState extends State<PlayerSettingsSheet> {
             selected: isSelected,
             onTap: () {
               if (controller == null) return;
+              _close();
               if (quality == null) {
                 controller.switchToDirectPlay();
               } else {
                 controller.switchToQuality(quality);
               }
-              setState(() {});
+            },
+          ),
+        );
+      },
+    );
+  }
+
+  Widget _buildTranscodingAudioList(
+    List<MediaAudioTrack> audioTracks,
+    PlayerController controller,
+  ) {
+    final selectedIndex = controller.selectedAudioIndex;
+
+    return ListView.builder(
+      shrinkWrap: true,
+      padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 4),
+      itemCount: audioTracks.length,
+      itemBuilder: (context, index) {
+        final track = audioTracks[index];
+        final isSelected = index == selectedIndex;
+
+        return Material(
+          color: Colors.transparent,
+          child: InkWell(
+            onTap: () {
+              if (!isSelected) {
+                controller.switchAudioTrack(index);
+              }
               _close();
             },
+            borderRadius: BorderRadius.circular(10),
+            child: Container(
+              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+              decoration: BoxDecoration(
+                color: isSelected
+                    ? Colors.white.withOpacity(0.12)
+                    : Colors.transparent,
+                borderRadius: BorderRadius.circular(10),
+              ),
+              child: Row(
+                children: [
+                  if (isSelected)
+                    Container(
+                      width: 6,
+                      height: 6,
+                      decoration: const BoxDecoration(
+                        color: Color(0xFF007AFF),
+                        shape: BoxShape.circle,
+                      ),
+                    )
+                  else
+                    const SizedBox(width: 6),
+                  const SizedBox(width: 10),
+                  Expanded(
+                    child: Text(
+                      _mediaAudioTrackName(track, index),
+                      style: TextStyle(
+                        color: isSelected
+                            ? Colors.white
+                            : Colors.white.withOpacity(0.7),
+                        fontSize: 13,
+                        fontWeight:
+                            isSelected ? FontWeight.w600 : FontWeight.w400,
+                        fontFamily: 'Manrope',
+                      ),
+                    ),
+                  ),
+                  if (isSelected)
+                    const Icon(
+                      Icons.check,
+                      color: Color(0xFF007AFF),
+                      size: 18,
+                    ),
+                ],
+              ),
+            ),
           ),
         );
       },

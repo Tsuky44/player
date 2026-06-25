@@ -71,6 +71,7 @@ func main() {
 	router.GET("/api/episodes/:id/next", handlers.RequireAuth(handlers.GetNextEpisode))
 	router.GET("/api/episodes/:id/timestamps", handlers.RequireAuth(handlers.GetEpisodeTimestamps))
 	router.GET("/api/episodes/:id/chapters", handlers.RequireAuth(handlers.GetEpisodeChapters))
+	router.GET("/api/media/:id/tracks", handlers.RequireAuth(handlers.GetMediaTracks))
 
 	// 4. Indexer Scan Routes
 	router.POST("/api/indexer/scan", handlers.RequireAuth(handlers.TriggerScan))
