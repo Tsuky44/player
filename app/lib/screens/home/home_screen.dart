@@ -1,394 +1,357 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
+import '../../models/models.dart';
 import '../../providers/auth_provider.dart';
 import '../../providers/home_provider.dart';
-import '../../models/models.dart';
-import '../../widgets/global/media_card.dart';
-import '../library/movies_screen.dart';
-import '../library/shows_screen.dart';
-import '../library/seasons_screen.dart';
+import '../../providers/library_provider.dart';
+import '../../theme/app_colors.dart';
+import '../../utils/hero_slides.dart';
+import '../../widgets/global/empty_state.dart';
+import '../../widgets/global/hero_carousel.dart';
+import '../../widgets/global/media_row.dart';
+import '../library/movie_detail_screen.dart';
+import '../library/show_detail_screen.dart';
 import '../player/player_screen.dart';
 import '../player_studio/player_studio_screen.dart';
+import '../../navigation/search_route_observer.dart';
 
 class HomeScreen extends StatefulWidget {
-  const HomeScreen({super.key});
+  final bool embedded;
+  final VoidCallback? onNavigateToMovies;
+  final VoidCallback? onNavigateToShows;
+
+  const HomeScreen({
+    super.key,
+    this.embedded = false,
+    this.onNavigateToMovies,
+    this.onNavigateToShows,
+  });
 
   @override
   State<HomeScreen> createState() => _HomeScreenState();
 }
 
 class _HomeScreenState extends State<HomeScreen> {
+  HomeProvider? _homeProvider;
+  final _scrollController = ScrollController();
+  double _scrollOffset = 0;
+
   @override
   void initState() {
     super.initState();
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      Provider.of<HomeProvider>(context, listen: false).loadHome();
+    _scrollController.addListener(() {
+      setState(() => _scrollOffset = _scrollController.offset);
     });
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _homeProvider = Provider.of<HomeProvider>(context, listen: false);
+      _homeProvider!.addListener(_onHomeProviderChanged);
+      _homeProvider!.loadHome();
+      Provider.of<LibraryProvider>(context, listen: false).ensureCatalogLoaded();
+    });
+  }
+
+  @override
+  void dispose() {
+    _homeProvider?.removeListener(_onHomeProviderChanged);
+    _scrollController.dispose();
+    super.dispose();
+  }
+
+  void _onHomeProviderChanged() {
+    if (!mounted || _homeProvider == null) return;
+    final msg = _homeProvider!.consumeCompletionMessage();
+    if (msg != null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(msg)),
+      );
+    }
+  }
+
+
+  void _openMedia(BuildContext context, Media media) {
+    if (media.type == MediaType.movie) {
+      Navigator.of(context).push(
+        MaterialPageRoute(builder: (_) => MovieDetailScreen(movie: media)),
+      );
+    } else if (media.type == MediaType.show) {
+      Navigator.of(context).push(
+        MaterialPageRoute(builder: (_) => ShowDetailScreen(show: media)),
+      );
+    }
+  }
+
+  void _openContinueWatchingDetails(BuildContext context, HomeMediaItem item) {
+    final target = item.detailMedia;
+    if (target == null) return;
+
+    if (target.type == MediaType.movie) {
+      Navigator.of(context).push(
+        MaterialPageRoute(
+          builder: (_) => MovieDetailScreen(
+            movieItem: item,
+            movie: target,
+          ),
+        ),
+      );
+      return;
+    }
+
+    if (target.type == MediaType.show) {
+      Navigator.of(context).push(
+        MaterialPageRoute(builder: (_) => ShowDetailScreen(show: target)),
+      );
+    }
+  }
+
+  void _playMedia(BuildContext context, dynamic media) async {
+    await Navigator.of(context).push(
+      MaterialPageRoute(
+        settings: const RouteSettings(name: SearchRouteObserver.playerRouteName),
+        builder: (_) => PlayerScreen(media: media),
+      ),
+    );
+    if (!context.mounted) return;
+    Provider.of<HomeProvider>(context, listen: false).loadHome(silent: true);
+  }
+
+  void _onHeroPlay(BuildContext context, HeroSlide slide) {
+    if (slide.continueItem != null) {
+      _playMedia(context, slide.continueItem);
+      return;
+    }
+    if (slide.media.type == MediaType.movie) {
+      _playMedia(context, slide.media);
+    } else if (slide.media.type == MediaType.show) {
+      Navigator.of(context).push(
+        MaterialPageRoute(builder: (_) => ShowDetailScreen(show: slide.media)),
+      );
+    }
+  }
+
+  void _onHeroInfo(BuildContext context, HeroSlide slide) {
+    _openMedia(context, slide.media);
   }
 
   @override
   Widget build(BuildContext context) {
     final homeProvider = Provider.of<HomeProvider>(context);
     final authProvider = Provider.of<AuthProvider>(context);
-    final brandColor = const Color(0xFF00A4DC);
+    final data = homeProvider.homeData;
+    final heroSlides = data != null
+        ? buildHeroSlides(
+            data,
+            serverBaseUrl: authProvider.apiClient.baseUrl,
+            userId: authProvider.currentUser?.id ?? 0,
+          )
+        : <HeroSlide>[];
 
     return Scaffold(
-      backgroundColor: const Color(0xFF141414), // Cinematic Background
-      appBar: AppBar(
-        backgroundColor: const Color(0xFF1F1F1F),
-        elevation: 0,
-        title: Row(
-          children: [
-            Icon(Icons.play_circle_fill, color: brandColor, size: 28),
-            const SizedBox(width: 8),
-            const Text(
-              "PLAYEUR",
-              style: TextStyle(
-                fontWeight: FontWeight.bold,
-                letterSpacing: 1.5,
-                fontSize: 20,
-              ),
-            ),
-          ],
-        ),
-        actions: [
-          // Indexer Scan Button / Indicator
-          if (homeProvider.isScanning)
-            Container(
-              padding: const EdgeInsets.symmetric(horizontal: 16),
-              child: const Row(
-                children: [
-                  SizedBox(
-                    width: 16,
-                    height: 16,
-                    child: CircularProgressIndicator(
-                      strokeWidth: 2,
-                      color: Color(0xFF00A4DC),
+      backgroundColor: AppColors.background,
+      body: homeProvider.isLoading
+          ? const LoadingView()
+          : homeProvider.errorMessage != null
+              ? ErrorStateView(
+                  message: homeProvider.errorMessage!,
+                  onRetry: () => homeProvider.loadHome(),
+                )
+              : Stack(
+                  children: [
+                    RefreshIndicator(
+                      onRefresh: () => homeProvider.loadHome(),
+                      color: AppColors.primary,
+                      edgeOffset: widget.embedded ? 0 : 56,
+                      child: CustomScrollView(
+                        controller: _scrollController,
+                        physics: const AlwaysScrollableScrollPhysics(),
+                        slivers: [
+                          if (!widget.embedded)
+                            const SliverToBoxAdapter(
+                              child: SizedBox(height: 56),
+                            ),
+                          if (heroSlides.isNotEmpty)
+                            SliverToBoxAdapter(
+                              child: HeroCarousel(
+                                slides: heroSlides,
+                                onPlay: (slide) => _onHeroPlay(context, slide),
+                                onInfo: (slide) => _onHeroInfo(context, slide),
+                              ),
+                            )
+                          else
+                            SliverToBoxAdapter(
+                              child: SizedBox(
+                                height: widget.embedded ? 120 : 200,
+                                child: Center(
+                                  child: Text(
+                                    'Bienvenue sur Playeur',
+                                    style: Theme.of(context).textTheme.headlineSmall,
+                                  ),
+                                ),
+                              ),
+                            ),
+
+                          if (data != null &&
+                              data.continueWatching.isEmpty &&
+                              data.recentMovies.isEmpty &&
+                              data.recentShows.isEmpty)
+                            SliverFillRemaining(
+                              child: EmptyStateView(
+                                icon: Icons.movie_filter_outlined,
+                                title: 'Bibliothèque vide',
+                                message:
+                                    'Ajoutez des fichiers dans vos dossiers Films et Séries, puis synchronisez depuis le menu profil.',
+                                actionLabel: 'Synchroniser',
+                                onAction: () => homeProvider.triggerLibraryScan(),
+                                secondaryActionLabel: 'Extraire les sous-titres',
+                                onSecondaryAction: () => homeProvider.triggerSubtitleExtract(),
+                              ),
+                            )
+                          else ...[
+                            const SliverToBoxAdapter(child: SizedBox(height: 8)),
+                            if (data != null && data.continueWatching.isNotEmpty)
+                              SliverToBoxAdapter(
+                                child: MediaRow(
+                                  title: 'Reprendre la lecture',
+                                  items: data.continueWatching,
+                                  isContinueWatching: true,
+                                  onItemTap: (item) => _playMedia(context, item),
+                                  onContinueWatchingTitleTap: (item) =>
+                                      _openContinueWatchingDetails(context, item),
+                                ),
+                              ),
+                            if (data != null && data.recentMovies.isNotEmpty) ...[
+                              const SliverToBoxAdapter(child: SizedBox(height: 32)),
+                              SliverToBoxAdapter(
+                                child: MediaRow(
+                                  title: 'Films récents',
+                                  items: data.recentMovies,
+                                  onSeeAll: widget.onNavigateToMovies,
+                                  onItemTap: (item) => _openMedia(context, item as Media),
+                                ),
+                              ),
+                            ],
+                            if (data != null && data.recentShows.isNotEmpty) ...[
+                              const SliverToBoxAdapter(child: SizedBox(height: 32)),
+                              SliverToBoxAdapter(
+                                child: MediaRow(
+                                  title: 'Séries récentes',
+                                  items: data.recentShows,
+                                  onSeeAll: widget.onNavigateToShows,
+                                  onItemTap: (item) => _openMedia(context, item as Media),
+                                ),
+                              ),
+                            ],
+                            const SliverToBoxAdapter(child: SizedBox(height: 48)),
+                          ],
+                        ],
+                      ),
                     ),
+
+                    if (!widget.embedded)
+                      Positioned(
+                        top: 0,
+                        left: 0,
+                        right: 0,
+                        child: _HomeOverlayBar(
+                          scrollOffset: _scrollOffset,
+                          homeProvider: homeProvider,
+                          authProvider: authProvider,
+                        ),
+                      ),
+                  ],
+                ),
+    );
+  }
+}
+
+class _HomeOverlayBar extends StatelessWidget {
+  final double scrollOffset;
+  final HomeProvider homeProvider;
+  final AuthProvider authProvider;
+
+  const _HomeOverlayBar({
+    required this.scrollOffset,
+    required this.homeProvider,
+    required this.authProvider,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final opaque = scrollOffset > 80;
+
+    return AnimatedContainer(
+      duration: const Duration(milliseconds: 200),
+      decoration: BoxDecoration(
+        color: opaque ? AppColors.background : Colors.black.withValues(alpha: 0.35),
+        boxShadow: opaque
+            ? [BoxShadow(color: Colors.black.withValues(alpha: 0.5), blurRadius: 12)]
+            : null,
+      ),
+      child: SafeArea(
+        bottom: false,
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(16, 4, 16, 8),
+          child: Row(
+            children: [
+              Container(
+                width: 32,
+                height: 32,
+                decoration: BoxDecoration(
+                  color: AppColors.primary,
+                  borderRadius: BorderRadius.circular(6),
+                ),
+                child: const Icon(Icons.play_arrow_rounded, color: Colors.white, size: 22),
+              ),
+              const Spacer(),
+              if (homeProvider.isScanning ||
+                  homeProvider.isBackfillingMetadata ||
+                  homeProvider.isExtractingSubtitles)
+                const Padding(
+                  padding: EdgeInsets.only(right: 8),
+                  child: SizedBox(
+                    width: 18,
+                    height: 18,
+                    child: CircularProgressIndicator(strokeWidth: 2),
                   ),
-                  SizedBox(width: 8),
-                  Text(
-                    "Scan...",
-                    style: TextStyle(color: Colors.grey, fontSize: 13),
+                ),
+              PopupMenuButton<String>(
+                icon: CircleAvatar(
+                  radius: 16,
+                  backgroundColor: AppColors.surfaceElevated.withValues(alpha: 0.8),
+                  child: Text(
+                    (authProvider.currentUser?.username ?? '?')[0].toUpperCase(),
+                    style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 14),
                   ),
+                ),
+                color: AppColors.surfaceElevated,
+                onSelected: (value) async {
+                  switch (value) {
+                    case 'scan':
+                      homeProvider.triggerLibraryScan();
+                    case 'posters':
+                      homeProvider.triggerMetadataBackfill();
+                    case 'subtitles':
+                      await homeProvider.triggerSubtitleExtract();
+                    case 'studio':
+                      Navigator.of(context).push(
+                        MaterialPageRoute(builder: (_) => const PlayerStudioScreen()),
+                      );
+                    case 'logout':
+                      authProvider.logout();
+                  }
+                },
+                itemBuilder: (_) => [
+                  if (!homeProvider.isScanning)
+                    const PopupMenuItem(value: 'scan', child: Text('Synchroniser')),
+                  if (!homeProvider.isBackfillingMetadata)
+                    const PopupMenuItem(value: 'posters', child: Text('Mettre à jour les affiches')),
+                  if (!homeProvider.isExtractingSubtitles)
+                    const PopupMenuItem(value: 'subtitles', child: Text('Sous-titres')),
+                  const PopupMenuItem(value: 'studio', child: Text('Player Studio')),
+                  const PopupMenuItem(value: 'logout', child: Text('Déconnexion')),
                 ],
               ),
-            )
-          else
-            IconButton(
-              tooltip: "Scanner la bibliothèque",
-              icon: const Icon(Icons.sync, color: Colors.white),
-              onPressed: () {
-                homeProvider.triggerLibraryScan();
-                ScaffoldMessenger.of(context).showSnackBar(
-                  const SnackBar(
-                    content: Text("Scan de la bibliothèque lancé en arrière-plan..."),
-                    backgroundColor: Colors.blue,
-                  ),
-                );
-              },
-            ),
-
-          // Player Studio (customize controls layout)
-          IconButton(
-            tooltip: "Player Studio",
-            icon: const Icon(Icons.tune, color: Colors.white),
-            onPressed: () {
-              Navigator.of(context).push(
-                MaterialPageRoute(builder: (_) => const PlayerStudioScreen()),
-              );
-            },
+            ],
           ),
-
-          // Logout Button
-          IconButton(
-            tooltip: "Se déconnecter",
-            icon: const Icon(Icons.logout, color: Colors.white),
-            onPressed: () {
-              authProvider.logout();
-            },
-          ),
-        ],
-      ),
-      body: RefreshIndicator(
-        onRefresh: () => homeProvider.loadHome(),
-        color: brandColor,
-        backgroundColor: const Color(0xFF1F1F1F),
-        child: homeProvider.isLoading
-            ? const Center(
-                child: CircularProgressIndicator(color: Color(0xFF00A4DC)),
-              )
-            : homeProvider.errorMessage != null
-                ? _buildErrorView(homeProvider.errorMessage!)
-                : SingleChildScrollView(
-                    physics: const AlwaysScrollableScrollPhysics(),
-                    padding: const EdgeInsets.symmetric(vertical: 24),
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        // 1. Navigation Category Shortcuts
-                        _buildCategoryShortcuts(),
-                        const SizedBox(height: 32),
-
-                        // 2. Continue Watching ("Reprendre la lecture")
-                        if (homeProvider.homeData != null &&
-                            homeProvider.homeData!.continueWatching.isNotEmpty) ...[
-                          _buildSectionHeader("Reprendre la lecture", Icons.history),
-                          const SizedBox(height: 12),
-                          _buildContinueWatchingList(homeProvider.homeData!.continueWatching),
-                          const SizedBox(height: 32),
-                        ],
-
-                        // 3. Recent Movies ("Films récents")
-                        if (homeProvider.homeData != null &&
-                            homeProvider.homeData!.recentMovies.isNotEmpty) ...[
-                          _buildSectionHeader("Films récents", Icons.movie_outlined),
-                          const SizedBox(height: 12),
-                          _buildMediaHorizontalList(homeProvider.homeData!.recentMovies),
-                          const SizedBox(height: 32),
-                        ],
-
-                        // 4. Recent TV Shows ("Séries récentes")
-                        if (homeProvider.homeData != null &&
-                            homeProvider.homeData!.recentShows.isNotEmpty) ...[
-                          _buildSectionHeader("Séries récentes", Icons.tv),
-                          const SizedBox(height: 12),
-                          _buildMediaHorizontalList(homeProvider.homeData!.recentShows),
-                        ],
-
-                        // Empty State fallback
-                        if (homeProvider.homeData == null ||
-                            (homeProvider.homeData!.continueWatching.isEmpty &&
-                                homeProvider.homeData!.recentMovies.isEmpty &&
-                                homeProvider.homeData!.recentShows.isEmpty))
-                          _buildEmptyStateView(),
-                      ],
-                    ),
-                  ),
-      ),
-    );
-  }
-
-  Widget _buildCategoryShortcuts() {
-    return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 16),
-      child: Row(
-        children: [
-          // Films Button
-          Expanded(
-            child: _buildShortcutCard(
-              title: "FILMS",
-              icon: Icons.movie_filter_rounded,
-              color: const Color(0xFFE50914), // Elegant Red
-              onTap: () {
-                Navigator.of(context).push(
-                  MaterialPageRoute(builder: (_) => const MoviesScreen()),
-                );
-              },
-            ),
-          ),
-          const SizedBox(width: 16),
-          // Séries Button
-          Expanded(
-            child: _buildShortcutCard(
-              title: "SÉRIES",
-              icon: Icons.tv_rounded,
-              color: const Color(0xFF00A4DC), // Emby Blue
-              onTap: () {
-                Navigator.of(context).push(
-                  MaterialPageRoute(builder: (_) => const ShowsScreen()),
-                );
-              },
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildShortcutCard({
-    required String title,
-    required IconData icon,
-    required Color color,
-    required VoidCallback onTap,
-  }) {
-    return InkWell(
-      onTap: onTap,
-      borderRadius: BorderRadius.circular(12),
-      child: Ink(
-        padding: const EdgeInsets.symmetric(vertical: 20),
-        decoration: BoxDecoration(
-          color: const Color(0xFF1F1F1F),
-          borderRadius: BorderRadius.circular(12),
-          border: Border.all(color: color.withOpacity(0.3), width: 1.5),
-        ),
-        child: Column(
-          children: [
-            Icon(icon, size: 36, color: color),
-            const SizedBox(height: 10),
-            Text(
-              title,
-              style: const TextStyle(
-                color: Colors.white,
-                fontWeight: FontWeight.bold,
-                fontSize: 16,
-                letterSpacing: 1.5,
-              ),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-
-  Widget _buildSectionHeader(String title, IconData icon) {
-    return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 16),
-      child: Row(
-        children: [
-          Icon(icon, color: const Color(0xFF00A4DC), size: 20),
-          const SizedBox(width: 8),
-          Text(
-            title,
-            style: const TextStyle(
-              color: Colors.white,
-              fontWeight: FontWeight.bold,
-              fontSize: 18,
-              letterSpacing: 0.5,
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildContinueWatchingList(List<HomeMediaItem> items) {
-    return SizedBox(
-      height: 250,
-      child: ListView.builder(
-        scrollDirection: Axis.horizontal,
-        padding: const EdgeInsets.symmetric(horizontal: 16),
-        itemCount: items.length,
-        itemBuilder: (context, index) {
-          final item = items[index];
-          return Padding(
-            padding: const EdgeInsets.only(right: 14),
-            child: MediaCard(
-              media: item.media,
-              progress: item.percentWatched,
-              onTap: () {
-                // Click on in-progress media: launch player directly!
-                Navigator.of(context).push(
-                  MaterialPageRoute(
-                    builder: (_) => PlayerScreen(media: item.media),
-                  ),
-                );
-              },
-            ),
-          );
-        },
-      ),
-    );
-  }
-
-  Widget _buildMediaHorizontalList(List<Media> items) {
-    return SizedBox(
-      height: 250,
-      child: ListView.builder(
-        scrollDirection: Axis.horizontal,
-        padding: const EdgeInsets.symmetric(horizontal: 16),
-        itemCount: items.length,
-        itemBuilder: (context, index) {
-          final item = items[index];
-          return Padding(
-            padding: const EdgeInsets.only(right: 14),
-            child: MediaCard(
-              media: item,
-              onTap: () {
-                if (item.type == MediaType.movie) {
-                  // Direct play movie
-                  Navigator.of(context).push(
-                    MaterialPageRoute(
-                      builder: (_) => PlayerScreen(media: item),
-                    ),
-                  );
-                } else if (item.type == MediaType.show) {
-                  // Open TV series seasons list
-                  Navigator.of(context).push(
-                    MaterialPageRoute(
-                      builder: (_) => SeasonsScreen(show: item),
-                    ),
-                  );
-                }
-              },
-            ),
-          );
-        },
-      ),
-    );
-  }
-
-  Widget _buildErrorView(String error) {
-    return Center(
-      child: Padding(
-        padding: const EdgeInsets.all(32.0),
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            const Icon(Icons.error_outline, size: 64, color: Colors.red),
-            const SizedBox(height: 16),
-            Text(
-              error,
-              textAlign: TextAlign.center,
-              style: const TextStyle(color: Colors.grey, fontSize: 16),
-            ),
-            const SizedBox(height: 24),
-            ElevatedButton(
-              onPressed: () {
-                Provider.of<HomeProvider>(context, listen: false).loadHome();
-              },
-              style: ElevatedButton.styleFrom(
-                backgroundColor: const Color(0xFF00A4DC),
-              ),
-              child: const Text("RÉESSAYER"),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-
-  Widget _buildEmptyStateView() {
-    return Center(
-      child: Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 32, vertical: 64),
-        child: Column(
-          children: [
-            const Icon(Icons.movie_filter_outlined, size: 80, color: Colors.grey),
-            const SizedBox(height: 16),
-            const Text(
-              "Bibliothèque Vide",
-              style: TextStyle(color: Colors.white, fontSize: 20, fontWeight: FontWeight.bold),
-            ),
-            const SizedBox(height: 8),
-            const Text(
-              "Ajoutez des fichiers vidéos dans vos répertoires Docker /media/Films ou /media/Series, puis cliquez sur le bouton Synchroniser en haut à droite.",
-              textAlign: TextAlign.center,
-              style: TextStyle(color: Colors.grey, fontSize: 14),
-            ),
-            const SizedBox(height: 24),
-            ElevatedButton.icon(
-              onPressed: () {
-                Provider.of<HomeProvider>(context, listen: false).triggerLibraryScan();
-              },
-              icon: const Icon(Icons.sync),
-              label: const Text("LANCER LA SYNCHRONISATION"),
-              style: ElevatedButton.styleFrom(
-                backgroundColor: const Color(0xFF00A4DC),
-                padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
-              ),
-            ),
-          ],
         ),
       ),
     );

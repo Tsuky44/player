@@ -20,4 +20,5 @@ services:
       # Ajoutez votre clé API TMDB gratuite ici pour récupérer automatiquement
       # les jaquettes, affiches, résumés de films et séries en français !
       - TMDB_API_KEY=votre_cle_api_tmdb_ici
+      - TMDB_LANGUAGE=fr-FR
     restart: unless-stopped

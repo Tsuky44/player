@@ -1,67 +1,95 @@
-import 'dart:convert';
+import 'dart:io';
+
 import 'package:dio/dio.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../models/models.dart';
 
 /// Holds the result of starting an HLS transcoding session.
+///
+/// [masterUrl] is opened directly by media_kit/mpv, which fetches the child
+/// playlists and segments itself (no local temp file, no playlist rewriting).
 class HlsSession {
   final String sessionId;
-  final String playlistContent;
+  final String masterUrl;
   final double totalDuration; // full media duration in seconds
+  final int startOffset; // seconds into the original media
 
   HlsSession({
     required this.sessionId,
-    required this.playlistContent,
+    required this.masterUrl,
     required this.totalDuration,
+    required this.startOffset,
   });
+
+  factory HlsSession.fromJson(Map<String, dynamic> json) {
+    return HlsSession(
+      sessionId: json['session_id'] as String? ?? '',
+      masterUrl: json['master_url'] as String? ?? '',
+      totalDuration: (json['duration'] as num? ?? 0).toDouble(),
+      startOffset: json['start_offset'] as int? ?? 0,
+    );
+  }
 }
 
 class ApiClient {
-  static const String _defaultBaseUrl = "http://10.0.2.2:8080"; // Default emulator localhost IP
+  static String get _defaultBaseUrl =>
+      Platform.isAndroid ? 'http://10.0.2.2:8080' : 'http://127.0.0.1:8080';
+
   final Dio _dio = Dio();
   final _secureStorage = const FlutterSecureStorage();
-  
+
   String? _baseUrl;
   String? _token;
+  String? _savedUsername;
+  bool _configLoaded = false;
+
+  /// Loads persisted server URL and auth token. Call once at app startup.
+  Future<void> initialize() async {
+    await _loadConfig();
+  }
 
   Future<String?> _readToken() async {
-    try {
-      return await _secureStorage.read(key: "auth_token");
-    } catch (_) {
-      final prefs = await SharedPreferences.getInstance();
-      return prefs.getString("auth_token");
+    final prefs = await SharedPreferences.getInstance();
+    final fromPrefs = prefs.getString('auth_token');
+    if (fromPrefs != null && fromPrefs.isNotEmpty) {
+      return fromPrefs;
     }
+
+    try {
+      final fromSecure = await _secureStorage.read(key: 'auth_token');
+      if (fromSecure != null && fromSecure.isNotEmpty) {
+        await prefs.setString('auth_token', fromSecure);
+        return fromSecure;
+      }
+    } catch (_) {}
+
+    return null;
   }
 
   Future<void> _writeToken(String token) async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setString('auth_token', token);
     try {
-      await _secureStorage.write(key: "auth_token", value: token);
-    } catch (_) {
-      final prefs = await SharedPreferences.getInstance();
-      await prefs.setString("auth_token", token);
-    }
+      await _secureStorage.write(key: 'auth_token', value: token);
+    } catch (_) {}
   }
 
   Future<void> _deleteToken() async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.remove('auth_token');
     try {
-      await _secureStorage.delete(key: "auth_token");
-    } catch (_) {
-      final prefs = await SharedPreferences.getInstance();
-      await prefs.remove("auth_token");
-    }
+      await _secureStorage.delete(key: 'auth_token');
+    } catch (_) {}
   }
 
   ApiClient() {
     _dio.interceptors.add(InterceptorsWrapper(
       onRequest: (options, handler) async {
-        // Automatically inject current base URL
-        if (_baseUrl != null) {
-          options.baseUrl = _baseUrl!;
-        } else {
+        if (!_configLoaded) {
           await _loadConfig();
-          options.baseUrl = _baseUrl ?? _defaultBaseUrl;
         }
+        options.baseUrl = _baseUrl ?? _defaultBaseUrl;
 
         // Inject Authorization Header
         if (_token != null) {
@@ -90,14 +118,21 @@ class ApiClient {
   // Get current active base URL
   String get baseUrl => _baseUrl ?? _defaultBaseUrl;
 
+  String? get savedUsername => _savedUsername;
+
+  bool get hasSavedToken => _token != null && _token!.isNotEmpty;
+
+  Future<void> saveLastUsername(String username) async {
+    final value = username.trim();
+    if (value.isEmpty) return;
+    _savedUsername = value;
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setString('last_username', value);
+  }
+
   // Stream URL generator (Direct Play)
   String getStreamUrl(int mediaId) {
     return "$baseUrl/stream?media_id=$mediaId";
-  }
-
-  // HLS Transcoding URL generator
-  String getHlsStreamUrl(int mediaId, String quality, {int startSeconds = 0, int audioIndex = 0}) {
-    return "$baseUrl/api/v1/stream/$mediaId/master.m3u8?quality=$quality&start=$startSeconds&audio_index=$audioIndex";
   }
 
   // HLS session destroy URL (to notify server on stop)
@@ -105,50 +140,57 @@ class ApiClient {
     return "$baseUrl/api/v1/stream/$mediaId/$sessionId";
   }
 
-  // Start an HLS session: fetches the master playlist, extracts the session ID
-  // and total media duration from response headers, and returns both.
-  Future<HlsSession> startHlsSession(int mediaId, String quality, {int startSeconds = 0, int audioIndex = 0}) async {
-    final url = getHlsStreamUrl(mediaId, quality, startSeconds: startSeconds, audioIndex: audioIndex);
-    final stopwatch = Stopwatch()..start();
-    final response = await _dio.get(
-      url,
+  /// URL of an external WebVTT subtitle for a given language. [start] shifts the
+  /// timeline to match an HLS stream that begins at an offset; Direct Play uses 0.
+  String getSubtitleUrl(int mediaId, String lang, {int start = 0}) {
+    // URL ends in ".vtt" so libmpv/media_kit detects the WebVTT parser from the
+    // extension; without it the external track silently fails to load.
+    return "$baseUrl/api/v1/media/$mediaId/subtitles/$lang.vtt?start=$start";
+  }
+
+  /// Download the raw WebVTT text for a subtitle. Fetching it ourselves and
+  /// injecting via SubtitleTrack.data() is far more reliable than asking mpv to
+  /// fetch a URL while it is already busy pulling an HLS stream.
+  Future<String> fetchSubtitleContent(int mediaId, String lang, {int start = 0}) async {
+    final response = await _dio.get<String>(
+      "/api/v1/media/$mediaId/subtitles/$lang.vtt",
+      queryParameters: {"start": start},
       options: Options(responseType: ResponseType.plain),
     );
-    final sessionId = response.headers.value('X-Session-Id') ?? '';
-    final durationStr = response.headers.value('X-Total-Duration') ?? '0';
-    final totalDuration = double.tryParse(durationStr) ?? 0.0;
-    final playlistContent = response.data as String;
-    stopwatch.stop();
-    print("ApiClient: startHlsSession took ${stopwatch.elapsedMilliseconds}ms for media $mediaId quality $quality audioIndex $audioIndex");
-    return HlsSession(
-      sessionId: sessionId,
-      playlistContent: playlistContent,
-      totalDuration: totalDuration,
+    return response.data ?? "";
+  }
+
+  /// Start an HLS transcoding session and return its descriptor. The server
+  /// blocks until the first segment is ready, so the returned [HlsSession.masterUrl]
+  /// can be opened immediately by the player.
+  Future<HlsSession> startHlsSession(
+    int mediaId,
+    String quality, {
+    int startSeconds = 0,
+    int audioIndex = 0,
+  }) async {
+    final stopwatch = Stopwatch()..start();
+    final response = await _dio.post(
+      "/api/v1/stream/$mediaId/start",
+      queryParameters: {
+        "quality": quality,
+        "start": startSeconds,
+        "audio": audioIndex,
+      },
     );
+    stopwatch.stop();
+    print("ApiClient: startHlsSession took ${stopwatch.elapsedMilliseconds}ms "
+        "for media $mediaId quality $quality audio $audioIndex");
+    return HlsSession.fromJson(response.data as Map<String, dynamic>);
   }
 
-  /// Fetch the video variant playlist for an HLS session to check how many
-  /// segments are ready. Returns null if the playlist is not yet available.
-  /// The video rendition is always stream_0.m3u8 in the native multi-track HLS.
-  Future<String?> fetchVariantPlaylist(int mediaId, String sessionId) async {
-    try {
-      final url = "$baseUrl/api/v1/stream/$mediaId/$sessionId/stream_0.m3u8";
-      final response = await _dio.get(
-        url,
-        options: Options(responseType: ResponseType.plain),
-      );
-      return response.data as String;
-    } catch (_) {
-      return null;
-    }
-  }
-
-  // Notify server to destroy an HLS transcoding session
+  // Notify server to destroy an HLS transcoding session (kills FFmpeg + temp files)
   Future<void> destroyHlsSession(int mediaId, String sessionId) async {
+    if (sessionId.isEmpty) return;
     try {
       await _dio.delete(getHlsDestroyUrl(mediaId, sessionId));
     } catch (_) {
-      // Best-effort: server reaper will clean up anyway
+      // Best-effort: the server reaper cleans up idle sessions anyway.
     }
   }
 
@@ -163,23 +205,27 @@ class ApiClient {
       formattedUrl = formattedUrl.substring(0, formattedUrl.length - 1);
     }
 
+    final previousUrl = _baseUrl;
     _baseUrl = formattedUrl;
-    _token = token;
 
     final prefs = await SharedPreferences.getInstance();
     await prefs.setString("server_url", formattedUrl);
 
     if (token != null) {
+      _token = token;
       await _writeToken(token);
-    } else {
+    } else if (previousUrl != null && previousUrl != formattedUrl) {
+      _token = null;
       await _deleteToken();
     }
   }
 
   Future<void> _loadConfig() async {
     final prefs = await SharedPreferences.getInstance();
-    _baseUrl = prefs.getString("server_url") ?? _defaultBaseUrl;
+    _baseUrl = prefs.getString('server_url') ?? _defaultBaseUrl;
+    _savedUsername = prefs.getString('last_username');
     _token = await _readToken();
+    _configLoaded = true;
   }
 
   Future<void> clearAuth() async {
@@ -194,6 +240,7 @@ class ApiClient {
       "username": username,
       "password": password,
     });
+    await saveLastUsername(username);
     return response.data as Map<String, dynamic>;
   }
 
@@ -208,6 +255,7 @@ class ApiClient {
     final user = User.fromJson(userJson);
 
     await setConnection(baseUrl, token: token);
+    await saveLastUsername(user.username);
     return user;
   }
 
@@ -258,6 +306,11 @@ class ApiClient {
         .toList();
   }
 
+  Future<ShowResumeResponse> getShowResumeEpisode(int showId) async {
+    final response = await _dio.get("/api/shows/$showId/resume");
+    return ShowResumeResponse.fromJson(response.data as Map<String, dynamic>);
+  }
+
   // ==================== PROGRESSION HEARTBEAT ====================
 
   Future<Map<String, dynamic>> getProgress(int mediaId) async {
@@ -283,6 +336,13 @@ class ApiClient {
     return response.data["is_finished"] as bool? ?? isFinished;
   }
 
+  Future<Map<String, dynamic>> setMediaWatched(int mediaId, bool watched) async {
+    final response = await _dio.post("/api/media/$mediaId/watched", data: {
+      "watched": watched,
+    });
+    return response.data as Map<String, dynamic>;
+  }
+
   // ==================== EPISODE NAVIGATION ====================
 
   Future<NextEpisodeResponse> getNextEpisode(int episodeId) async {
@@ -301,6 +361,25 @@ class ApiClient {
     return data.map((json) => VideoChapter.fromJson(json as Map<String, dynamic>)).toList();
   }
 
+  /// Fetches rich, Emby-style catalog details (cast, genres, rating, backdrop,
+  /// crew…) for a movie or show, merging local library data with live TMDB.
+  Future<MediaDetails> getMediaDetails(int mediaId) async {
+    final response = await _dio.get("/api/media/$mediaId/details");
+    return MediaDetails.fromJson(response.data as Map<String, dynamic>);
+  }
+
+  /// Fetches an actor/crew profile with filmography (TMDB person id).
+  Future<PersonDetails> getPersonDetails(int personTmdbId) async {
+    final response = await _dio.get("/api/person/$personTmdbId");
+    return PersonDetails.fromJson(response.data as Map<String, dynamic>);
+  }
+
+  /// Fetches a movie saga/collection with all its films (TMDB collection id).
+  Future<CollectionDetails> getCollectionDetails(int collectionTmdbId) async {
+    final response = await _dio.get("/api/collection/$collectionTmdbId");
+    return CollectionDetails.fromJson(response.data as Map<String, dynamic>);
+  }
+
   Future<MediaTracks> getMediaTracks(int mediaId) async {
     final response = await _dio.get("/api/media/$mediaId/tracks");
     return MediaTracks.fromJson(response.data as Map<String, dynamic>);
@@ -312,8 +391,135 @@ class ApiClient {
     await _dio.post("/api/indexer/scan");
   }
 
-  Future<bool> getScanStatus() async {
+  Future<void> triggerMetadataBackfill() async {
+    await _dio.post("/api/indexer/metadata/backfill");
+  }
+
+  /// Fetches TMDB poster/overview for a single movie or show.
+  Future<Media> enrichMediaMetadata(int mediaId) async {
+    final response = await _dio.post("/api/media/$mediaId/metadata/enrich");
+    return Media.fromJson(response.data as Map<String, dynamic>);
+  }
+
+  /// Re-identifies a movie/show against TMDB to fix a wrong match. Provide a
+  /// [title] to search for, or a [tmdbId] to force an exact entry.
+  Future<Media> rematchMediaMetadata(
+    int mediaId, {
+    String? title,
+    int? tmdbId,
+  }) async {
+    final response = await _dio.post(
+      "/api/media/$mediaId/metadata/rematch",
+      queryParameters: {
+        if (title != null && title.trim().isNotEmpty) "title": title.trim(),
+        if (tmdbId != null && tmdbId > 0) "tmdb_id": tmdbId,
+      },
+    );
+    return Media.fromJson(response.data as Map<String, dynamic>);
+  }
+
+  /// Search TMDB manually for the "fix metadata" poster picker.
+  Future<List<TmdbCandidate>> searchTmdb(
+    String query, {
+    MediaType type = MediaType.movie,
+  }) async {
+    final response = await _dio.get(
+      "/api/tmdb/search",
+      queryParameters: {
+        "query": query.trim(),
+        "type": type == MediaType.show ? "show" : "movie",
+      },
+    );
+    final results = response.data["results"] as List? ?? [];
+    return results
+        .map((e) => TmdbCandidate.fromJson(e as Map<String, dynamic>))
+        .toList();
+  }
+
+  Future<void> triggerSubtitleExtract() async {
+    await _dio.post("/api/indexer/subtitles/extract");
+  }
+
+  /// Extract subtitles for a single movie or episode.
+  ///
+  /// [force] (default) re-extracts everything — used by the manual button.
+  /// When [force] is false the server only extracts if nothing is registered
+  /// yet, which is the cheap "ensure" path used in the background on playback.
+  Future<List<MediaSubtitleTrack>> forceMediaSubtitleExtract(
+    int mediaId, {
+    bool force = true,
+  }) async {
+    final response = await _dio.post(
+      "/api/media/$mediaId/subtitles/extract",
+      queryParameters: force ? null : {"force": "false"},
+    );
+    final subs = response.data["subtitles"] as List? ?? [];
+    return subs
+        .map((e) => MediaSubtitleTrack.fromJson(e as Map<String, dynamic>))
+        .toList();
+  }
+
+  Future<IndexerStatus> getIndexerStatus() async {
     final response = await _dio.get("/api/indexer/status");
-    return response.data["is_scanning"] as bool? ?? false;
+    return IndexerStatus.fromJson(response.data as Map<String, dynamic>);
+  }
+
+  Future<bool> getScanStatus() async {
+    final status = await getIndexerStatus();
+    return status.isScanning;
+  }
+}
+
+/// Combined indexer / subtitle-extraction status from the server.
+class IndexerStatus {
+  final bool isScanning;
+  final bool isBackfillingMetadata;
+  final bool isExtractingSubtitles;
+  final SubtitleExtractionStats subtitleExtraction;
+
+  IndexerStatus({
+    required this.isScanning,
+    required this.isBackfillingMetadata,
+    required this.isExtractingSubtitles,
+    required this.subtitleExtraction,
+  });
+
+  factory IndexerStatus.fromJson(Map<String, dynamic> json) {
+    return IndexerStatus(
+      isScanning: json["is_scanning"] as bool? ?? false,
+      isBackfillingMetadata: json["is_backfilling_metadata"] as bool? ?? false,
+      isExtractingSubtitles: json["is_extracting_subtitles"] as bool? ?? false,
+      subtitleExtraction: SubtitleExtractionStats.fromJson(
+        json["subtitle_extraction"] as Map<String, dynamic>? ?? {},
+      ),
+    );
+  }
+
+  bool get isBusy => isScanning || isBackfillingMetadata || isExtractingSubtitles;
+}
+
+class SubtitleExtractionStats {
+  final int total;
+  final int processed;
+  final int succeeded;
+  final int failed;
+  final int tracks;
+
+  SubtitleExtractionStats({
+    this.total = 0,
+    this.processed = 0,
+    this.succeeded = 0,
+    this.failed = 0,
+    this.tracks = 0,
+  });
+
+  factory SubtitleExtractionStats.fromJson(Map<String, dynamic> json) {
+    return SubtitleExtractionStats(
+      total: json["total"] as int? ?? 0,
+      processed: json["processed"] as int? ?? 0,
+      succeeded: json["succeeded"] as int? ?? 0,
+      failed: json["failed"] as int? ?? 0,
+      tracks: json["tracks"] as int? ?? 0,
+    );
   }
 }

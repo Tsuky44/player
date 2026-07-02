@@ -1,4 +1,5 @@
 import 'dart:convert';
+import 'dart:math';
 import 'package:flutter/material.dart';
 
 /// Relative size boundaries for controls (fraction of shortest screen side).
@@ -8,10 +9,23 @@ const double kMaxSizePct = 0.12;
 /// Minimum width percentage so the progress bar never disappears.
 const double kMinProgressWidthPct = 0.1;
 
+/// Glass styling bounds for the modular control chrome.
+const double kMinBlurSigma = 0.0;
+const double kMaxBlurSigma = 30.0;
+const double kDefaultBlurSigma = 8.0;
+
+const double kMinGlassOpacity = 0.0;
+const double kMaxGlassOpacity = 0.4;
+const double kDefaultGlassOpacity = 0.07;
+
+/// When false, controls use a lightweight flat glass (blur + tint only).
+const bool kDefaultLiquidGlass = false;
+
 /// The set of button variants available in the Player Studio shop.
 enum PlayerControlType {
   back,
   mediaTitle,
+  mediaLogo,
   rewind,
   playPause,
   forward,
@@ -38,6 +52,8 @@ extension PlayerControlTypeX on PlayerControlType {
         return 'Retour';
       case PlayerControlType.mediaTitle:
         return 'Titre du média';
+      case PlayerControlType.mediaLogo:
+        return 'Logo du média';
       case PlayerControlType.rewind:
         return 'Reculer 10s';
       case PlayerControlType.playPause:
@@ -75,6 +91,8 @@ extension PlayerControlTypeX on PlayerControlType {
         return Icons.arrow_back;
       case PlayerControlType.mediaTitle:
         return Icons.title;
+      case PlayerControlType.mediaLogo:
+        return Icons.branding_watermark_outlined;
       case PlayerControlType.rewind:
         return Icons.replay_10;
       case PlayerControlType.playPause:
@@ -111,6 +129,7 @@ extension PlayerControlTypeX on PlayerControlType {
       this == PlayerControlType.progressBar ||
       this == PlayerControlType.timeline ||
       this == PlayerControlType.mediaTitle ||
+      this == PlayerControlType.mediaLogo ||
       this == PlayerControlType.volumeSlider;
 
   /// Whether this control is a progress/timeline bar (has width slider).
@@ -228,7 +247,37 @@ class PlacedControl {
 class PlayerLayoutConfig {
   final List<PlacedControl> controls;
 
-  const PlayerLayoutConfig({required this.controls});
+  /// Blur sigma applied to the frosted control chrome (0 = no blur).
+  final double blurIntensity;
+
+  /// Background opacity of the frosted control chrome (0 = fully transparent).
+  final double glassOpacity;
+
+  /// Apple-style liquid glass (saturation boost, rim, sheen). Off = flat glass.
+  final bool liquidGlass;
+
+  const PlayerLayoutConfig({
+    required this.controls,
+    this.blurIntensity = kDefaultBlurSigma,
+    this.glassOpacity = kDefaultGlassOpacity,
+    this.liquidGlass = kDefaultLiquidGlass,
+  });
+
+  PlayerLayoutConfig copyWith({
+    List<PlacedControl>? controls,
+    double? blurIntensity,
+    double? glassOpacity,
+    bool? liquidGlass,
+  }) {
+    return PlayerLayoutConfig(
+      controls: controls ?? this.controls,
+      blurIntensity: (blurIntensity ?? this.blurIntensity)
+          .clamp(kMinBlurSigma, kMaxBlurSigma),
+      glassOpacity: (glassOpacity ?? this.glassOpacity)
+          .clamp(kMinGlassOpacity, kMaxGlassOpacity),
+      liquidGlass: liquidGlass ?? this.liquidGlass,
+    );
+  }
 
   /// Default layout that mirrors the standard player look.
   factory PlayerLayoutConfig.standard() {
@@ -273,7 +322,7 @@ class PlayerLayoutConfig {
 
   /// Replace a placed control by [id].
   PlayerLayoutConfig copyWithControl(String id, PlacedControl placed) {
-    return PlayerLayoutConfig(
+    return copyWith(
       controls: [
         for (final c in controls)
           if (c.id == id) placed else c,
@@ -283,31 +332,49 @@ class PlayerLayoutConfig {
 
   /// Remove a placed control by [id].
   PlayerLayoutConfig withoutControl(String id) {
-    return PlayerLayoutConfig(
+    return copyWith(
       controls: controls.where((c) => c.id != id).toList(),
     );
   }
 
   /// Append a new placed control.
   PlayerLayoutConfig withAddedControl(PlacedControl placed) {
-    return PlayerLayoutConfig(controls: [...controls, placed]);
+    return copyWith(controls: [...controls, placed]);
   }
 
   Map<String, dynamic> toJson() => {
         'version': 2,
+        'blur_intensity': blurIntensity,
+        'glass_opacity': glassOpacity,
+        'liquid_glass': liquidGlass,
         'controls': controls.map((c) => c.toJson()).toList(),
       };
 
   factory PlayerLayoutConfig.fromJson(Map<String, dynamic> json) {
+    final blur = ((json['blur_intensity'] as num?)?.toDouble() ??
+            kDefaultBlurSigma)
+        .clamp(kMinBlurSigma, kMaxBlurSigma);
+    final opacity = ((json['glass_opacity'] as num?)?.toDouble() ??
+            kDefaultGlassOpacity)
+        .clamp(kMinGlassOpacity, kMaxGlassOpacity);
+    final liquid = json['liquid_glass'] as bool? ?? kDefaultLiquidGlass;
+
     // New format (v2)
     if (json['controls'] is List) {
       final list = (json['controls'] as List).cast<Map<String, dynamic>>();
       return PlayerLayoutConfig(
         controls: list.map(PlacedControl.fromJson).toList(),
+        blurIntensity: blur,
+        glassOpacity: opacity,
+        liquidGlass: liquid,
       );
     }
     // Migrate from old v1 format (Map<typeId, config>)
-    return _migrateFromV1(json);
+    return _migrateFromV1(json).copyWith(
+      blurIntensity: blur,
+      glassOpacity: opacity,
+      liquidGlass: liquid,
+    );
   }
 
   static PlayerLayoutConfig _migrateFromV1(Map<String, dynamic> json) {
@@ -332,5 +399,131 @@ class PlayerLayoutConfig {
     return PlayerLayoutConfig.fromJson(
       jsonDecode(raw) as Map<String, dynamic>,
     );
+  }
+}
+
+/// Default subtitle padding when player controls are hidden.
+const kSubtitlePaddingBase = EdgeInsets.fromLTRB(16, 0, 16, 24);
+
+/// Distance from the screen bottom to the top of the progress bar (standard HUD).
+const kStandardHudTimelineTopInset = 118.0;
+
+const kSubtitleGapAboveTimeline = 12.0;
+
+/// Computes subtitle bottom padding so text sits above visible player controls.
+class SubtitlePaddingCalculator {
+  static EdgeInsets resolve({
+    required bool controlsVisible,
+    required bool useModularLayout,
+    required PlayerLayoutConfig modularConfig,
+    required Size screenSize,
+    double? measuredTimelineTopDy,
+  }) {
+    if (!controlsVisible) return kSubtitlePaddingBase;
+
+    if (measuredTimelineTopDy != null) {
+      return fromTimelineTop(measuredTimelineTopDy, screenSize);
+    }
+
+    final bottomInset = useModularLayout
+        ? modularConfig.subtitleInsetAboveTimeline(screenSize)
+        : kStandardHudTimelineTopInset;
+
+    return EdgeInsets.fromLTRB(
+      16,
+      0,
+      16,
+      bottomInset + kSubtitleGapAboveTimeline,
+    );
+  }
+
+  /// Builds padding from the timeline/progress bar top edge (screen coordinates).
+  static EdgeInsets fromTimelineTop(double timelineTopDy, Size screenSize) {
+    final bottomInset = (screenSize.height - timelineTopDy)
+        .clamp(kSubtitlePaddingBase.bottom, screenSize.height * 0.45);
+    return EdgeInsets.fromLTRB(
+      16,
+      0,
+      16,
+      bottomInset + kSubtitleGapAboveTimeline,
+    );
+  }
+}
+
+extension PlayerLayoutSubtitleLayout on PlayerLayoutConfig {
+  /// Bottom padding target: just above the timeline / progress bar (YouTube-style).
+  double subtitleInsetAboveTimeline(Size screenSize) {
+    PlacedControl? bottomTimeline;
+    for (final placed in controls) {
+      if (!placed.type.isProgressBar) continue;
+      if (bottomTimeline == null ||
+          placed.config.yPercentage > bottomTimeline.config.yPercentage) {
+        bottomTimeline = placed;
+      }
+    }
+
+    if (bottomTimeline != null) {
+      return _controlTopInset(bottomTimeline, screenSize);
+    }
+
+    // No timeline placed: use the top edge of the bottom control band only.
+    var clusterTop = 0.0;
+    for (final placed in controls) {
+      if (placed.config.yPercentage < 0.55) continue;
+      final top = _controlTopY(placed, screenSize);
+      clusterTop = max(clusterTop, top);
+    }
+    if (clusterTop > 0) {
+      return screenSize.height - clusterTop;
+    }
+
+    return kStandardHudTimelineTopInset;
+  }
+
+  double _controlTopY(PlacedControl placed, Size screenSize) {
+    final size = estimatePlacedControlSize(placed, screenSize);
+    final centerY = placed.config.yPercentage * screenSize.height;
+    return centerY - size.height / 2;
+  }
+
+  double _controlTopInset(PlacedControl placed, Size screenSize) {
+    return screenSize.height - _controlTopY(placed, screenSize);
+  }
+
+  /// Mirrors [ControlChrome] sizing so subtitle lift matches the real layout.
+  Size estimatePlacedControlSize(PlacedControl placed, Size screenSize) {
+    final config = placed.config;
+    final pixelSize = screenSize.shortestSide * config.sizePercentage;
+
+    switch (placed.type) {
+      case PlayerControlType.progressBar:
+        final barHeight = (pixelSize * 0.4).clamp(10.0, 32.0);
+        final verticalPadding = (barHeight / 2).clamp(8.0, 16.0) * 2;
+        return Size(
+          screenSize.width * config.widthPercentage.clamp(0.1, 1.0),
+          barHeight + verticalPadding,
+        );
+      case PlayerControlType.timeline:
+        final height = (pixelSize * 0.5).clamp(14.0, 40.0);
+        return Size(
+          screenSize.width * config.widthPercentage.clamp(0.3, 1.0),
+          height,
+        );
+      case PlayerControlType.mediaTitle:
+        final height = (pixelSize * 0.8).clamp(24.0, 48.0);
+        return Size(screenSize.width * 0.5, height);
+      case PlayerControlType.mediaLogo:
+        final height = (pixelSize * 1.4).clamp(36.0, 100.0);
+        return Size(screenSize.width * 0.38, height);
+      case PlayerControlType.volumeSlider:
+        final height = (pixelSize * 0.5).clamp(16.0, 40.0);
+        return Size(
+          screenSize.width * config.widthPercentage.clamp(0.05, 0.5),
+          height,
+        );
+      default:
+        final diameter = pixelSize * 1.4;
+        return Size(diameter, diameter);
+    }
   }
 }

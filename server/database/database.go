@@ -28,8 +28,10 @@ func InitDB(dbPath string) (*sql.DB, error) {
 		return nil, fmt.Errorf("failed to open sqlite database: %w", err)
 	}
 
-	// Set connection limits (SQLite works best with limited concurrent writes)
-	DB.SetMaxOpenConns(1)
+	// Set connection limits — WAL allows concurrent readers; never hold open
+	// rows while executing another query on the same pool (deadlocks otherwise).
+	DB.SetMaxOpenConns(4)
+	DB.SetMaxIdleConns(4)
 
 	// Configure SQLite performance and WAL mode
 	pragmas := []string{
@@ -91,6 +93,9 @@ func createTables() error {
 		`ALTER TABLE medias ADD COLUMN outro_end INTEGER DEFAULT 0;`,
 		// Migration: Add imdb_id column for caching TheIntroDB lookups
 		`ALTER TABLE medias ADD COLUMN imdb_id TEXT;`,
+		// Migration: season/episode numbers for TMDB episode metadata
+		`ALTER TABLE medias ADD COLUMN season_number INTEGER DEFAULT 0;`,
+		`ALTER TABLE medias ADD COLUMN episode_number INTEGER DEFAULT 0;`,
 
 		// Progressions Table
 		`CREATE TABLE IF NOT EXISTS progressions (
@@ -114,6 +119,19 @@ func createTables() error {
 
 		// Index on progressions updated_at for "Continue Watching" ordering
 		`CREATE INDEX IF NOT EXISTS idx_progressions_updated_at ON progressions(updated_at DESC);`,
+
+		// Subtitles Table: pre-extracted external .vtt tracks discovered at scan time.
+		`CREATE TABLE IF NOT EXISTS subtitles (
+			id INTEGER PRIMARY KEY AUTOINCREMENT,
+			media_id INTEGER NOT NULL,
+			language TEXT NOT NULL,
+			title TEXT,
+			path TEXT NOT NULL,
+			created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+			UNIQUE(media_id, language),
+			FOREIGN KEY (media_id) REFERENCES medias(id) ON DELETE CASCADE
+		);`,
+		`CREATE INDEX IF NOT EXISTS idx_subtitles_media_id ON subtitles(media_id);`,
 	}
 
 	for _, query := range queries {

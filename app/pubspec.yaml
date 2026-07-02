@@ -25,6 +25,7 @@ dependencies:
   intl: ^0.19.0
   audio_video_progress_bar: ^2.0.3
   flutter_animate: ^4.5.0
+  google_fonts: ^6.2.1
   
   # Media Player (Basé sur MPV via media-kit)
   media_kit: 1.1.10
@@ -33,7 +34,6 @@ dependencies:
 
   # Desktop window management
   window_manager: ^0.3.7
-
 dev_dependencies:
   flutter_test:
     sdk: flutter

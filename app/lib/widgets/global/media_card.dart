@@ -1,164 +1,117 @@
 import 'package:flutter/material.dart';
-import 'package:cached_network_image/cached_network_image.dart';
 import '../../models/models.dart';
+import '../../theme/app_colors.dart';
+import '../../utils/format.dart';
+import 'media_poster.dart';
 
-class MediaCard extends StatelessWidget {
+class MediaCard extends StatefulWidget {
   final Media media;
-  final double width;
-  final double height;
-  final double? progress; // Watch progression (from 0.0 to 1.0)
+  final double? progress;
   final VoidCallback onTap;
+  final bool compact;
 
   const MediaCard({
     super.key,
     required this.media,
-    this.width = 130,
-    this.height = 195,
     this.progress,
     required this.onTap,
+    this.compact = false,
   });
 
   @override
-  Widget build(BuildContext context) {
-    final hasPoster = media.posterUrl != null && media.posterUrl!.isNotEmpty;
+  State<MediaCard> createState() => _MediaCardState();
+}
 
-    return GestureDetector(
-      onTap: onTap,
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          // Poster Container with Progress overlay
-          ClipRRect(
-            borderRadius: BorderRadius.circular(8),
-            child: Stack(
+class _MediaCardState extends State<MediaCard> {
+  bool _hovered = false;
+
+  @override
+  Widget build(BuildContext context) {
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final width = constraints.maxWidth.isFinite && constraints.maxWidth > 0
+            ? constraints.maxWidth
+            : 150.0;
+        final posterRatio = widget.compact ? 1.45 : 1.5;
+        final height = width * posterRatio;
+        final year = widget.compact ? null : extractYear(widget.media.releaseDate);
+
+        return MouseRegion(
+          onEnter: (_) => setState(() => _hovered = true),
+          onExit: (_) => setState(() => _hovered = false),
+          child: GestureDetector(
+            onTap: widget.onTap,
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              mainAxisSize: MainAxisSize.min,
               children: [
-                // 1. Poster Image
                 SizedBox(
                   width: width,
                   height: height,
-                  child: hasPoster
-                      ? CachedNetworkImage(
-                          imageUrl: media.posterUrl!,
-                          fit: BoxFit.cover,
-                          placeholder: (context, url) => Container(
-                            color: const Color(0xFF2B2B2B),
-                            child: const Center(
-                              child: CircularProgressIndicator(
-                                strokeWidth: 2,
-                                color: Color(0xFF00A4DC),
-                              ),
+                  child: Stack(
+                    fit: StackFit.expand,
+                    clipBehavior: Clip.hardEdge,
+                    children: [
+                      MediaPoster(
+                        media: widget.media,
+                        width: width,
+                        height: height,
+                      ),
+                      if (_hovered)
+                        Container(
+                          color: Colors.black.withValues(alpha: 0.35),
+                          child: Center(
+                            child: Icon(
+                              Icons.play_circle_fill_rounded,
+                              color: Colors.white,
+                              size: widget.compact ? 40 : 48,
                             ),
                           ),
-                          errorWidget: (context, url, error) => _buildFallbackPoster(),
-                        )
-                      : _buildFallbackPoster(),
-                ),
-
-                // 2. Play Icon Overlay on Hover (Visual decoration)
-                Positioned.fill(
-                  child: Container(
-                    color: Colors.black.withOpacity(0.15),
-                    child: Center(
-                      child: Container(
-                        padding: const EdgeInsets.all(8),
-                        decoration: BoxDecoration(
-                          color: Colors.black.withOpacity(0.5),
-                          shape: BoxShape.circle,
                         ),
-                        child: const Icon(
-                          Icons.play_arrow,
-                          color: Colors.white,
-                          size: 20,
-                        ),
-                      ),
-                    ),
-                  ),
-                ),
-
-                // 3. Progress Bar Overlay at bottom
-                if (progress != null && progress! > 0 && progress! < 0.99)
-                  Positioned(
-                    left: 0,
-                    right: 0,
-                    bottom: 0,
-                    child: Container(
-                      height: 4,
-                      color: Colors.black.withOpacity(0.5),
-                      child: Align(
-                        alignment: Alignment.centerLeft,
-                        child: FractionallySizedBox(
-                          widthFactor: progress,
-                          child: Container(
-                            color: const Color(0xFFE50914), // Netflix Red for watch progression
+                      if (widget.progress != null &&
+                          widget.progress! > 0 &&
+                          widget.progress! < 0.99)
+                        Positioned(
+                          left: 0,
+                          right: 0,
+                          bottom: 0,
+                          child: LinearProgressIndicator(
+                            value: widget.progress,
+                            minHeight: 3,
+                            backgroundColor: AppColors.border,
+                            valueColor: const AlwaysStoppedAnimation(AppColors.progress),
                           ),
                         ),
-                      ),
+                    ],
+                  ),
+                ),
+                const SizedBox(height: 6),
+                Text(
+                  widget.media.title,
+                  maxLines: widget.compact ? 1 : 2,
+                  overflow: TextOverflow.ellipsis,
+                  style: TextStyle(
+                    color: AppColors.textPrimary,
+                    fontWeight: FontWeight.w600,
+                    fontSize: widget.compact ? 12 : 13,
+                    height: 1.2,
+                  ),
+                ),
+                if (year != null)
+                  Text(
+                    year,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: const TextStyle(
+                      color: AppColors.textMuted,
+                      fontSize: 11,
                     ),
                   ),
               ],
             ),
           ),
-          const SizedBox(height: 6),
-          // Title
-          SizedBox(
-            width: width,
-            child: Text(
-              media.title,
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
-              style: const TextStyle(
-                color: Colors.white,
-                fontWeight: FontWeight.w500,
-                fontSize: 13,
-              ),
-            ),
-          ),
-          // Subtitle / Year
-          if (media.releaseDate != null && media.releaseDate!.isNotEmpty) ...[
-            const SizedBox(height: 2),
-            Text(
-              media.releaseDate!.split('-').first, // Extract year
-              style: const TextStyle(
-                color: Colors.grey,
-                fontSize: 11,
-              ),
-            ),
-          ],
-        ],
-      ),
-    );
-  }
-
-  // Placeholder poster if poster URL fails or is empty
-  Widget _buildFallbackPoster() {
-    final isShow = media.type == MediaType.show;
-    return Container(
-      width: width,
-      height: height,
-      color: const Color(0xFF222222),
-      padding: const EdgeInsets.all(12),
-      child: Column(
-        mainAxisAlignment: MainAxisAlignment.center,
-        children: [
-          Icon(
-            isShow ? Icons.tv_off : Icons.movie_creation_outlined,
-            size: 36,
-            color: Colors.grey,
-          ),
-          const SizedBox(height: 12),
-          Text(
-            media.title,
-            maxLines: 3,
-            textAlign: TextAlign.center,
-            overflow: TextOverflow.ellipsis,
-            style: const TextStyle(
-              color: Colors.white,
-              fontWeight: FontWeight.bold,
-              fontSize: 11,
-            ),
-          ),
-        ],
-      ),
+        );
+      },
     );
   }
 }

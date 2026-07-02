@@ -54,6 +54,9 @@ class StudioCanvas extends StatelessWidget {
                         onDrag: (delta) =>
                             controller.dragBy(placed.id, delta, canvasSize),
                         onDragEnd: controller.endDrag,
+                        blurSigma: controller.draft.blurIntensity,
+                        glassOpacity: controller.draft.glassOpacity,
+                        liquidGlass: controller.draft.liquidGlass,
                       ),
 
                     // Real-time coordinate tooltip

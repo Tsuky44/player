@@ -1,5 +1,3 @@
-import 'dart:convert';
-
 class User {
   final int id;
   final String username;
@@ -56,6 +54,8 @@ class Media {
   final String? overview;
   final String? releaseDate;
   final int? tmdbId;
+  final int? seasonNumber;
+  final int? episodeNumber;
   final DateTime createdAt;
 
   Media({
@@ -69,6 +69,8 @@ class Media {
     this.overview,
     this.releaseDate,
     this.tmdbId,
+    this.seasonNumber,
+    this.episodeNumber,
     required this.createdAt,
   });
 
@@ -84,6 +86,8 @@ class Media {
       overview: json['overview'] as String?,
       releaseDate: json['release_date'] as String?,
       tmdbId: json['tmdb_id'] as int?,
+      seasonNumber: json['season_number'] as int?,
+      episodeNumber: json['episode_number'] as int?,
       createdAt: DateTime.parse(json['created_at'] as String),
     );
   }
@@ -100,9 +104,94 @@ class Media {
       'overview': overview,
       'release_date': releaseDate,
       'tmdb_id': tmdbId,
+      'season_number': seasonNumber,
+      'episode_number': episodeNumber,
       'created_at': createdAt.toIso8601String(),
     };
   }
+
+  /// Compact TV code such as [S01E02], or null when not an episode.
+  String? get seasonEpisodeCode {
+    if (type != MediaType.episode) return null;
+
+    final season = effectiveSeasonNumber;
+    final episode = effectiveEpisodeNumber;
+    if ((season == null || season <= 0) && (episode == null || episode <= 0)) {
+      return null;
+    }
+
+    final buffer = StringBuffer();
+    if (season != null && season > 0) {
+      buffer.write('S${season.toString().padLeft(2, '0')}');
+    }
+    if (episode != null && episode > 0) {
+      buffer.write('E${episode.toString().padLeft(2, '0')}');
+    }
+    return buffer.isEmpty ? null : buffer.toString();
+  }
+
+  /// Season number from metadata, with fallbacks parsed from titles/paths (S01E02, Saison 1…).
+  int? get effectiveSeasonNumber {
+    if (seasonNumber != null && seasonNumber! > 0) return seasonNumber;
+    if (filePath != null && filePath!.isNotEmpty) {
+      final fromPath = _tvNumberFromTitle(filePath!, season: true);
+      if (fromPath != null) return fromPath;
+    }
+    return _tvNumberFromTitle(title, season: true);
+  }
+
+  /// Episode number from metadata, with fallbacks parsed from titles/paths (S01E02…).
+  int? get effectiveEpisodeNumber {
+    if (episodeNumber != null && episodeNumber! > 0) return episodeNumber;
+    if (filePath != null && filePath!.isNotEmpty) {
+      final fromPath = _tvNumberFromTitle(filePath!, season: false);
+      if (fromPath != null) return fromPath;
+    }
+    return _tvNumberFromTitle(title, season: false);
+  }
+
+  String? seasonEpisodeCodeWith({int? seasonOverride}) {
+    if (type != MediaType.episode) return null;
+
+    final season = (seasonOverride != null && seasonOverride > 0)
+        ? seasonOverride
+        : effectiveSeasonNumber;
+    final episode = effectiveEpisodeNumber;
+    if ((season == null || season <= 0) && (episode == null || episode <= 0)) {
+      return null;
+    }
+
+    final buffer = StringBuffer();
+    if (season != null && season > 0) {
+      buffer.write('S${season.toString().padLeft(2, '0')}');
+    }
+    if (episode != null && episode > 0) {
+      buffer.write('E${episode.toString().padLeft(2, '0')}');
+    }
+    return buffer.isEmpty ? null : buffer.toString();
+  }
+}
+
+int? _tvNumberFromTitle(String title, {required bool season}) {
+  final sxxExx =
+      RegExp(r's(\d+)e(\d+)', caseSensitive: false).firstMatch(title);
+  if (sxxExx != null) {
+    final group = season ? sxxExx.group(1) : sxxExx.group(2);
+    return group != null ? int.tryParse(group) : null;
+  }
+
+  if (season) {
+    final saison = RegExp(r'(?:saison|season)\s*(\d+)', caseSensitive: false)
+        .firstMatch(title);
+    if (saison != null) return int.tryParse(saison.group(1)!);
+  }
+
+  return null;
+}
+
+DateTime? _parseOptionalDateTime(dynamic value) {
+  if (value is! String || value.isEmpty) return null;
+  return DateTime.tryParse(value);
 }
 
 class HomeMediaItem {
@@ -114,16 +203,26 @@ class HomeMediaItem {
   final int introEnd;
   final int outroStart;
   final int outroEnd;
+  final String? showTitle;
+  final String? showPosterUrl;
+  final int? showId;
+  final String? episodeTitle;
+  final DateTime? updatedAt;
 
   HomeMediaItem({
     required this.media,
     required this.currentPositionSeconds,
     required this.duration,
     required this.isFinished,
+    this.updatedAt,
     this.introStart = 0,
     this.introEnd = 0,
     this.outroStart = 0,
     this.outroEnd = 0,
+    this.showTitle,
+    this.showPosterUrl,
+    this.showId,
+    this.episodeTitle,
   });
 
   factory HomeMediaItem.fromJson(Map<String, dynamic> json) {
@@ -135,22 +234,444 @@ class HomeMediaItem {
       finished = rawFinished == 1;
     }
 
+    final media = Media.fromJson(json);
+
     return HomeMediaItem(
-      media: Media.fromJson(json),
+      media: media,
       currentPositionSeconds: json['current_position_seconds'] as int? ?? 0,
       duration: json['duration'] as int? ?? 0,
       isFinished: finished,
+      updatedAt: _parseOptionalDateTime(json['updated_at']) ??
+          _parseOptionalDateTime(json['created_at']),
       introStart: json['intro_start'] as int? ?? 0,
       introEnd: json['intro_end'] as int? ?? 0,
       outroStart: json['outro_start'] as int? ?? 0,
       outroEnd: json['outro_end'] as int? ?? 0,
+      showTitle: json['show_title'] as String?,
+      showPosterUrl: json['show_poster_url'] as String?,
+      showId: json['show_id'] as int?,
+      episodeTitle: json['episode_title'] as String?,
     );
   }
 
-  double get percentWatched {
-    if (duration <= 0) return 0.0;
-    return (currentPositionSeconds / duration).clamp(0.0, 1.0);
+  /// Builds a [Media] handle for navigating to movie/show detail screens.
+  Media? get detailMedia {
+    if (media.type == MediaType.movie) return media;
+    if (media.type == MediaType.episode && showId != null && showId! > 0) {
+      return Media(
+        id: showId!,
+        type: MediaType.show,
+        title: displayTitle,
+        posterUrl: showPosterUrl,
+        duration: 0,
+        createdAt: updatedAt ?? media.createdAt,
+      );
+    }
+    return null;
   }
+
+  /// Title shown in lists (show name for episodes in continue watching).
+  String get displayTitle =>
+      showTitle?.isNotEmpty == true ? showTitle! : media.title;
+
+  /// Title shown in the player overlay (show name + SxxExx for TV episodes).
+  String playerTitle({int? seasonNumber}) {
+    if (media.type != MediaType.episode) return displayTitle;
+
+    final code = media.seasonEpisodeCodeWith(seasonOverride: seasonNumber);
+    if (code == null) return displayTitle;
+
+    return '$displayTitle – $code';
+  }
+
+  /// Poster shown in continue watching (show artwork for TV episodes).
+  String? get displayPosterUrl =>
+      showPosterUrl?.isNotEmpty == true ? showPosterUrl : media.posterUrl;
+
+  int get effectiveDuration {
+    if (duration > 0) return duration;
+    return media.duration;
+  }
+
+  double get percentWatched {
+    final total = effectiveDuration;
+    if (total <= 0) return 0.0;
+    return (currentPositionSeconds / total).clamp(0.0, 1.0);
+  }
+
+  String? get continueWatchingSubtitle {
+    if (media.type != MediaType.episode) return null;
+    final parts = <String>[];
+    final season = media.effectiveSeasonNumber;
+    final episode = media.effectiveEpisodeNumber;
+    if (season != null && season > 0) {
+      parts.add('S$season');
+    }
+    if (episode != null && episode > 0) {
+      parts.add('E$episode');
+    }
+    final epTitle = episodeTitle ?? media.title;
+    if (epTitle.isNotEmpty) {
+      parts.add(epTitle);
+    }
+    return parts.isEmpty ? null : parts.join(' · ');
+  }
+
+  HomeMediaItem copyWith({
+    int? currentPositionSeconds,
+    int? duration,
+    bool? isFinished,
+    DateTime? updatedAt,
+  }) {
+    return HomeMediaItem(
+      media: media,
+      currentPositionSeconds: currentPositionSeconds ?? this.currentPositionSeconds,
+      duration: duration ?? this.duration,
+      isFinished: isFinished ?? this.isFinished,
+      updatedAt: updatedAt ?? this.updatedAt,
+      introStart: introStart,
+      introEnd: introEnd,
+      outroStart: outroStart,
+      outroEnd: outroEnd,
+      showTitle: showTitle,
+      showPosterUrl: showPosterUrl,
+      episodeTitle: episodeTitle,
+    );
+  }
+}
+
+/// Resolves the title shown in player overlays (HUD + Player Studio).
+String playerMediaTitle(Object? media, {int? seasonNumber}) {
+  if (media is HomeMediaItem) {
+    return media.playerTitle(seasonNumber: seasonNumber);
+  }
+  if (media is Media) {
+    if (media.type != MediaType.episode) return media.title;
+    final code = media.seasonEpisodeCodeWith(seasonOverride: seasonNumber);
+    if (code == null) return media.title;
+    return '${media.title} – $code';
+  }
+  return '';
+}
+
+/// A single actor entry for the cast row on detail pages.
+class CastMember {
+  final int? tmdbId;
+  final String name;
+  final String? character;
+  final String? profileUrl;
+
+  CastMember({
+    this.tmdbId,
+    required this.name,
+    this.character,
+    this.profileUrl,
+  });
+
+  factory CastMember.fromJson(Map<String, dynamic> json) {
+    return CastMember(
+      tmdbId: json['tmdb_id'] as int?,
+      name: json['name'] as String? ?? '',
+      character: json['character'] as String?,
+      profileUrl: json['profile_url'] as String?,
+    );
+  }
+}
+
+/// A lightweight movie/show reference used in filmographies and collections.
+/// [localId] is set (> 0) when the title exists in the library.
+class CatalogItem {
+  final int tmdbId;
+  final int? localId;
+  final String title;
+  final String? posterUrl;
+  final String? backdropUrl;
+  final String? year;
+  final MediaType mediaType;
+  final String? character;
+
+  CatalogItem({
+    required this.tmdbId,
+    this.localId,
+    required this.title,
+    this.posterUrl,
+    this.backdropUrl,
+    this.year,
+    required this.mediaType,
+    this.character,
+  });
+
+  bool get isOwned => (localId ?? 0) > 0;
+
+  factory CatalogItem.fromJson(Map<String, dynamic> json) {
+    final typeStr = json['media_type'] as String? ?? 'movie';
+    return CatalogItem(
+      tmdbId: json['tmdb_id'] as int? ?? 0,
+      localId: json['local_id'] as int?,
+      title: json['title'] as String? ?? '',
+      posterUrl: json['poster_url'] as String?,
+      backdropUrl: json['backdrop_url'] as String?,
+      year: json['year'] as String?,
+      mediaType: typeStr == 'show' ? MediaType.show : MediaType.movie,
+      character: json['character'] as String?,
+    );
+  }
+
+  /// Builds a local [Media] handle to open the detail screen (owned titles).
+  Media toLocalMedia() {
+    return Media(
+      id: localId ?? 0,
+      type: mediaType,
+      title: title,
+      duration: 0,
+      posterUrl: posterUrl,
+      releaseDate: year,
+      tmdbId: tmdbId,
+      createdAt: DateTime.now(),
+    );
+  }
+}
+
+/// A TMDB search result offered in the manual "fix metadata" picker.
+class TmdbCandidate {
+  final int tmdbId;
+  final String title;
+  final String? year;
+  final String? overview;
+  final String? posterUrl;
+  final MediaType mediaType;
+
+  TmdbCandidate({
+    required this.tmdbId,
+    required this.title,
+    this.year,
+    this.overview,
+    this.posterUrl,
+    required this.mediaType,
+  });
+
+  factory TmdbCandidate.fromJson(Map<String, dynamic> json) {
+    return TmdbCandidate(
+      tmdbId: json['tmdb_id'] as int? ?? 0,
+      title: json['title'] as String? ?? '',
+      year: json['year'] as String?,
+      overview: json['overview'] as String?,
+      posterUrl: json['poster_url'] as String?,
+      mediaType:
+          (json['media_type'] as String?) == 'show' ? MediaType.show : MediaType.movie,
+    );
+  }
+}
+
+/// The compact saga reference embedded in a movie's details.
+class CollectionInfo {
+  final int id;
+  final String name;
+  final String? backdropUrl;
+  final String? posterUrl;
+
+  CollectionInfo({
+    required this.id,
+    required this.name,
+    this.backdropUrl,
+    this.posterUrl,
+  });
+
+  factory CollectionInfo.fromJson(Map<String, dynamic> json) {
+    return CollectionInfo(
+      id: json['id'] as int,
+      name: json['name'] as String? ?? '',
+      backdropUrl: json['backdrop_url'] as String?,
+      posterUrl: json['poster_url'] as String?,
+    );
+  }
+}
+
+/// The full saga payload with all its films.
+class CollectionDetails {
+  final int id;
+  final String name;
+  final String? overview;
+  final String? backdropUrl;
+  final List<CatalogItem> parts;
+
+  CollectionDetails({
+    required this.id,
+    required this.name,
+    this.overview,
+    this.backdropUrl,
+    this.parts = const [],
+  });
+
+  factory CollectionDetails.fromJson(Map<String, dynamic> json) {
+    return CollectionDetails(
+      id: json['id'] as int,
+      name: json['name'] as String? ?? '',
+      overview: json['overview'] as String?,
+      backdropUrl: json['backdrop_url'] as String?,
+      parts: (json['parts'] as List<dynamic>?)
+              ?.map((e) => CatalogItem.fromJson(e as Map<String, dynamic>))
+              .toList() ??
+          const [],
+    );
+  }
+}
+
+/// An actor/crew profile with filmography.
+class PersonDetails {
+  final int id;
+  final String name;
+  final String? profileUrl;
+  final String? biography;
+  final String? birthday;
+  final String? deathday;
+  final String? placeOfBirth;
+  final String? knownForDepartment;
+  final String? backdropUrl;
+  final List<CatalogItem> filmography;
+
+  PersonDetails({
+    required this.id,
+    required this.name,
+    this.profileUrl,
+    this.biography,
+    this.birthday,
+    this.deathday,
+    this.placeOfBirth,
+    this.knownForDepartment,
+    this.backdropUrl,
+    this.filmography = const [],
+  });
+
+  factory PersonDetails.fromJson(Map<String, dynamic> json) {
+    return PersonDetails(
+      id: json['id'] as int,
+      name: json['name'] as String? ?? '',
+      profileUrl: json['profile_url'] as String?,
+      biography: json['biography'] as String?,
+      birthday: json['birthday'] as String?,
+      deathday: json['deathday'] as String?,
+      placeOfBirth: json['place_of_birth'] as String?,
+      knownForDepartment: json['known_for_department'] as String?,
+      backdropUrl: json['backdrop_url'] as String?,
+      filmography: (json['filmography'] as List<dynamic>?)
+              ?.map((e) => CatalogItem.fromJson(e as Map<String, dynamic>))
+              .toList() ??
+          const [],
+    );
+  }
+}
+
+/// Rich, Emby-style catalog details for a movie/show, returned by
+/// GET /api/media/:id/details. Merges local library data with live TMDB
+/// metadata (cast, genres, rating, backdrop, crew…).
+class MediaDetails {
+  final int id;
+  final int? tmdbId;
+  final MediaType type;
+  final String title;
+  final String? originalTitle;
+  final String? tagline;
+  final String? overview;
+  final String? posterUrl;
+  final String? backdropUrl;
+  final String? logoUrl;
+  final String? fileName; // basename of the local file (movies)
+  final String? releaseDate;
+  final int runtime; // minutes (TMDB)
+  final int duration; // seconds (local file)
+  final String? status;
+  final double voteAverage;
+  final List<String> genres;
+  final List<String> studios;
+  final List<String> countries;
+  final String? originalLanguage;
+  final String? director;
+  final List<String> writers;
+  final List<CastMember> cast;
+  final CollectionInfo? collection;
+  final int numberOfSeasons;
+  final int numberOfEpisodes;
+
+  MediaDetails({
+    required this.id,
+    this.tmdbId,
+    required this.type,
+    required this.title,
+    this.originalTitle,
+    this.tagline,
+    this.overview,
+    this.posterUrl,
+    this.backdropUrl,
+    this.logoUrl,
+    this.fileName,
+    this.releaseDate,
+    this.runtime = 0,
+    this.duration = 0,
+    this.status,
+    this.voteAverage = 0,
+    this.genres = const [],
+    this.studios = const [],
+    this.countries = const [],
+    this.originalLanguage,
+    this.director,
+    this.writers = const [],
+    this.cast = const [],
+    this.collection,
+    this.numberOfSeasons = 0,
+    this.numberOfEpisodes = 0,
+  });
+
+  factory MediaDetails.fromJson(Map<String, dynamic> json) {
+    List<String> stringList(dynamic value) {
+      if (value is List) {
+        return value.map((e) => e.toString()).toList();
+      }
+      return const [];
+    }
+
+    return MediaDetails(
+      id: json['id'] as int,
+      tmdbId: json['tmdb_id'] as int?,
+      type: parseMediaType(json['type'] as String),
+      title: json['title'] as String? ?? '',
+      originalTitle: json['original_title'] as String?,
+      tagline: json['tagline'] as String?,
+      overview: json['overview'] as String?,
+      posterUrl: json['poster_url'] as String?,
+      backdropUrl: json['backdrop_url'] as String?,
+      logoUrl: json['logo_url'] as String?,
+      fileName: json['file_name'] as String?,
+      releaseDate: json['release_date'] as String?,
+      runtime: json['runtime'] as int? ?? 0,
+      duration: json['duration'] as int? ?? 0,
+      status: json['status'] as String?,
+      voteAverage: (json['vote_average'] as num?)?.toDouble() ?? 0,
+      genres: stringList(json['genres']),
+      studios: stringList(json['studios']),
+      countries: stringList(json['countries']),
+      originalLanguage: json['original_language'] as String?,
+      director: json['director'] as String?,
+      writers: stringList(json['writers']),
+      cast: (json['cast'] as List<dynamic>?)
+              ?.map((e) => CastMember.fromJson(e as Map<String, dynamic>))
+              .toList() ??
+          const [],
+      collection: json['collection'] != null
+          ? CollectionInfo.fromJson(json['collection'] as Map<String, dynamic>)
+          : null,
+      numberOfSeasons: json['number_of_seasons'] as int? ?? 0,
+      numberOfEpisodes: json['number_of_episodes'] as int? ?? 0,
+    );
+  }
+
+  /// Runtime in seconds preferring TMDB minutes, falling back to local duration.
+  int get effectiveDurationSeconds {
+    if (runtime > 0) return runtime * 60;
+    return duration;
+  }
+
+  bool get hasRating => voteAverage > 0;
 }
 
 class EpisodeTimestamps {
@@ -167,16 +688,52 @@ class EpisodeTimestamps {
   });
 
   factory EpisodeTimestamps.fromJson(Map<String, dynamic> json) {
+    int readInt(dynamic value) {
+      if (value == null) return 0;
+      if (value is int) return value;
+      if (value is double) return value.round();
+      if (value is num) return value.toInt();
+      return int.tryParse(value.toString()) ?? 0;
+    }
+
+    int introStart = readInt(json['intro_start']);
+    int introEnd = readInt(json['intro_end']);
+    int outroStart = readInt(json['outro_start']);
+    int outroEnd = readInt(json['outro_end']);
+
+    // Legacy nested format from GET /api/episodes/:id/timestamps
+    final intro = json['intro'];
+    if (intro is Map) {
+      introStart = readInt(intro['start']);
+      introEnd = readInt(intro['end']);
+    }
+    final outro = json['outro'];
+    if (outro is Map) {
+      outroStart = readInt(outro['start']);
+      outroEnd = readInt(outro['end']);
+    }
+
     return EpisodeTimestamps(
-      introStart: json['intro_start'] as int? ?? 0,
-      introEnd: json['intro_end'] as int? ?? 0,
-      outroStart: json['outro_start'] as int? ?? 0,
-      outroEnd: json['outro_end'] as int? ?? 0,
+      introStart: introStart,
+      introEnd: introEnd,
+      outroStart: outroStart,
+      outroEnd: outroEnd,
     );
   }
 
   bool get hasIntro => introEnd > 0 && introEnd > introStart;
   bool get hasOutro => outroEnd > 0 && outroEnd > outroStart;
+
+  /// Rejects DB/chapter values that span most of the episode (bad detection).
+  bool isPlausibleIntro({int? mediaDurationSeconds}) {
+    if (!hasIntro) return false;
+    final length = introEnd - introStart;
+    if (length > 600) return false;
+    if (mediaDurationSeconds != null && mediaDurationSeconds > 0) {
+      if (introEnd > (mediaDurationSeconds * 0.85).round()) return false;
+    }
+    return true;
+  }
 }
 
 class NextEpisodeResponse {
@@ -192,6 +749,27 @@ class NextEpisodeResponse {
     final episodeJson = json['episode'] as Map<String, dynamic>?;
     return NextEpisodeResponse(
       hasNext: json['has_next'] as bool? ?? false,
+      episode: episodeJson != null ? HomeMediaItem.fromJson(episodeJson) : null,
+    );
+  }
+}
+
+class ShowResumeResponse {
+  final bool hasEpisode;
+  final int? seasonId;
+  final HomeMediaItem? episode;
+
+  ShowResumeResponse({
+    required this.hasEpisode,
+    this.seasonId,
+    this.episode,
+  });
+
+  factory ShowResumeResponse.fromJson(Map<String, dynamic> json) {
+    final episodeJson = json['episode'] as Map<String, dynamic>?;
+    return ShowResumeResponse(
+      hasEpisode: json['has_episode'] as bool? ?? false,
+      seasonId: json['season_id'] as int?,
       episode: episodeJson != null ? HomeMediaItem.fromJson(episodeJson) : null,
     );
   }
@@ -224,11 +802,15 @@ class HomeResponse {
   final List<HomeMediaItem> continueWatching;
   final List<Media> recentMovies;
   final List<Media> recentShows;
+  final List<Media> discoveryMovies;
+  final List<Media> discoveryShows;
 
   HomeResponse({
     required this.continueWatching,
     required this.recentMovies,
     required this.recentShows,
+    this.discoveryMovies = const [],
+    this.discoveryShows = const [],
   });
 
   factory HomeResponse.fromJson(Map<String, dynamic> json) {
@@ -245,56 +827,147 @@ class HomeResponse {
               ?.map((e) => Media.fromJson(e as Map<String, dynamic>))
               .toList() ??
           [],
+      discoveryMovies: (json['discovery_movies'] as List<dynamic>?)
+              ?.map((e) => Media.fromJson(e as Map<String, dynamic>))
+              .toList() ??
+          [],
+      discoveryShows: (json['discovery_shows'] as List<dynamic>?)
+              ?.map((e) => Media.fromJson(e as Map<String, dynamic>))
+              .toList() ??
+          [],
     );
   }
 }
 
+/// Maps an ISO 639 language code (2 or 3 letters) to a readable French name.
+/// Falls back to the upper-cased code, or "Indéterminé" when unknown/empty.
+String languageName(String? code) {
+  if (code == null) return 'Indéterminé';
+  final c = code.trim().toLowerCase();
+  if (c.isEmpty || c == 'und') return 'Indéterminé';
+  const map = {
+    'fre': 'Français', 'fra': 'Français', 'fr': 'Français',
+    'eng': 'Anglais', 'en': 'Anglais',
+    'spa': 'Espagnol', 'es': 'Espagnol',
+    'ger': 'Allemand', 'deu': 'Allemand', 'de': 'Allemand',
+    'ita': 'Italien', 'it': 'Italien',
+    'por': 'Portugais', 'pt': 'Portugais',
+    'jpn': 'Japonais', 'ja': 'Japonais',
+    'kor': 'Coréen', 'ko': 'Coréen',
+    'chi': 'Chinois', 'zho': 'Chinois', 'zh': 'Chinois',
+    'rus': 'Russe', 'ru': 'Russe',
+    'ara': 'Arabe', 'ar': 'Arabe',
+    'nld': 'Néerlandais', 'dut': 'Néerlandais', 'nl': 'Néerlandais',
+    'pol': 'Polonais', 'pl': 'Polonais',
+    'tur': 'Turc', 'tr': 'Turc',
+    'hin': 'Hindi', 'hi': 'Hindi',
+    'swe': 'Suédois', 'sv': 'Suédois',
+    'nor': 'Norvégien', 'no': 'Norvégien',
+    'dan': 'Danois', 'da': 'Danois',
+    'fin': 'Finnois', 'fi': 'Finnois',
+    'ces': 'Tchèque', 'cze': 'Tchèque', 'cs': 'Tchèque',
+    'ukr': 'Ukrainien', 'uk': 'Ukrainien',
+    'heb': 'Hébreu', 'he': 'Hébreu',
+    'tha': 'Thaï', 'th': 'Thaï',
+    'vie': 'Vietnamien', 'vi': 'Vietnamien',
+  };
+  return map[c] ?? code.toUpperCase();
+}
+
+String? _channelsLabel(int channels) {
+  switch (channels) {
+    case 1:
+      return 'Mono';
+    case 2:
+      return 'Stéréo';
+    case 6:
+      return '5.1';
+    case 8:
+      return '7.1';
+    default:
+      return channels > 0 ? '${channels}ch' : null;
+  }
+}
+
 /// Audio track metadata as probed from the original media file.
+///
+/// [typedIndex] is the position among audio streams only (FFmpeg "0:a:N") and
+/// is the stable identifier used everywhere — for HLS rendition mapping and for
+/// matching against the player's enumerated audio tracks in Direct Play.
 class MediaAudioTrack {
   final int index;
+  final int typedIndex;
   final String codec;
   final String? language;
   final String? title;
+  final int channels;
+  final bool isDefault;
 
   MediaAudioTrack({
     required this.index,
+    required this.typedIndex,
     required this.codec,
     this.language,
     this.title,
+    this.channels = 0,
+    this.isDefault = false,
   });
 
   factory MediaAudioTrack.fromJson(Map<String, dynamic> json) {
     return MediaAudioTrack(
       index: json['index'] as int? ?? 0,
+      typedIndex: json['typed_index'] as int? ?? 0,
       codec: json['codec_name'] as String? ?? '',
       language: json['language'] as String?,
       title: json['title'] as String?,
+      channels: json['channels'] as int? ?? 0,
+      isDefault: json['default'] as bool? ?? false,
     );
+  }
+
+  /// Emby-style readable name, e.g. "Français (AC3 5.1)".
+  String get displayName {
+    final parts = <String>[];
+    final t = title?.trim() ?? '';
+    if (t.isNotEmpty) parts.add(t);
+    if (codec.isNotEmpty) parts.add(codec.toUpperCase());
+    final ch = _channelsLabel(channels);
+    if (ch != null) parts.add(ch);
+    final lang = languageName(language);
+    return parts.isEmpty ? lang : '$lang (${parts.join(' ')})';
   }
 }
 
-/// Subtitle track metadata as probed from the original media file.
+/// An external subtitle language offered by the server (sidecar file or
+/// OpenSubtitles download), addressed by its ISO-639 [lang] code.
+///
+/// MKV-embedded subtitle extraction has been abandoned: subtitles are always
+/// clean external .vtt files served by the backend and injected into the player
+/// as external tracks.
 class MediaSubtitleTrack {
-  final int index;
-  final String codec;
-  final String? language;
-  final String? title;
+  final String lang;
+  final String name;
+  // True when a local file already exists (no download needed). When false the
+  // server will fetch it on first request, which may take a moment.
+  final bool ready;
 
   MediaSubtitleTrack({
-    required this.index,
-    required this.codec,
-    this.language,
-    this.title,
+    required this.lang,
+    required this.name,
+    this.ready = false,
   });
 
   factory MediaSubtitleTrack.fromJson(Map<String, dynamic> json) {
+    final lang = (json['lang'] as String?) ?? '';
+    final name = (json['name'] as String?) ?? '';
     return MediaSubtitleTrack(
-      index: json['index'] as int? ?? 0,
-      codec: json['codec_name'] as String? ?? '',
-      language: json['language'] as String?,
-      title: json['title'] as String?,
+      lang: lang,
+      name: name.isNotEmpty ? name : languageName(lang),
+      ready: json['ready'] as bool? ?? false,
     );
   }
+
+  String get displayName => name.isNotEmpty ? name : languageName(lang);
 }
 
 /// Combined audio/subtitle tracks returned by the tracks API.

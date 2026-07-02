@@ -17,5 +17,9 @@ services:
     environment:
       - MOVIES_DIR=/media/Films
       - SERIES_DIR=/media/Series
+      # Clé API TMDB gratuite (obligatoire pour les affiches) :
+      # https://www.themoviedb.org/settings/api
       - TMDB_API_KEY=your_tmdb_api_key_here
+      # Langue des titres/synopsis TMDB (films et séries)
+      - TMDB_LANGUAGE=fr-FR
     restart: unless-stopped

@@ -1,15 +1,9 @@
 package streaming
 
 import (
-	"errors"
 	"log"
 	"sync"
 	"time"
-)
-
-var (
-	errFFmpegDied             = errors.New("ffmpeg process died before producing output")
-	errTimeoutWaitingForPlaylist = errors.New("timeout waiting for variant playlist")
 )
 
 // SessionManager manages all active transcoding sessions.

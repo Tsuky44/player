@@ -79,10 +79,17 @@ class StudioPreview extends StatelessWidget {
               : null,
           currentSeconds: placed.type == PlayerControlType.timeline ? 521 : null,
           onToggleFullscreen: placed.type == PlayerControlType.timeline ? () {} : null,
-          mediaTitle: placed.type == PlayerControlType.mediaTitle ? 'Arcane – S01E02' : null,
+          mediaTitle: placed.type == PlayerControlType.mediaTitle ||
+                  placed.type == PlayerControlType.mediaLogo
+              ? 'Arcane – S01E02'
+              : null,
+          mediaLogoUrl: placed.type == PlayerControlType.mediaLogo ? null : null,
           volume: placed.type == PlayerControlType.volumeSlider ? 65.0 : null,
           onVolumeChanged: placed.type == PlayerControlType.volumeSlider ? (_) {} : null,
           onBack: placed.type == PlayerControlType.back ? () {} : null,
+          blurSigma: config.blurIntensity,
+          glassOpacity: config.glassOpacity,
+          liquidGlass: config.liquidGlass,
         ),
       ),
     );

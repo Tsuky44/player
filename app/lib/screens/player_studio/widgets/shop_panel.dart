@@ -27,6 +27,7 @@ const _kCategories = <String, List<PlayerControlType>>{
   'Contrôles généraux': [
     PlayerControlType.back,
     PlayerControlType.mediaTitle,
+    PlayerControlType.mediaLogo,
     PlayerControlType.settings,
     PlayerControlType.subtitles,
     PlayerControlType.fullscreen,

@@ -22,21 +22,31 @@ class AuthProvider extends ChangeNotifier {
   bool get isLoading => _isLoading;
   String? get errorMessage => _errorMessage;
 
-  // Attempt connection with saved credentials
+  // Attempt connection with saved session token
   Future<void> tryAutoLogin() async {
     _isInitializing = true;
     notifyListeners();
 
+    if (!apiClient.hasSavedToken) {
+      _isInitializing = false;
+      notifyListeners();
+      return;
+    }
+
     try {
-      // Fetch me from API
-      // If ApiClient has a saved token, getMe will succeed. Otherwise, it will fail.
       _currentUser = await apiClient.getMe();
+      await apiClient.saveLastUsername(_currentUser!.username);
       _isAuthenticated = true;
       _errorMessage = null;
-    } catch (e) {
+    } on DioException catch (e) {
       _currentUser = null;
       _isAuthenticated = false;
-      await apiClient.clearAuth();
+      if (e.response?.statusCode == 401) {
+        await apiClient.clearAuth();
+      }
+    } catch (_) {
+      _currentUser = null;
+      _isAuthenticated = false;
     } finally {
       _isInitializing = false;
       notifyListeners();

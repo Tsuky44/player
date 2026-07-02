@@ -9,6 +9,7 @@ import (
 	"net/http"
 	"os"
 	"os/exec"
+	"path/filepath"
 	"strconv"
 	"strings"
 
@@ -23,9 +24,134 @@ type ChapterItem struct {
 	Title     string  `json:"title"`
 }
 
-// Keywords for matching intro and outro chapters
-var introKeywords = []string{"intro", "opening", "op", "générique de début", "generique debut", "générique début", "generique de debut", "debut"}
-var outroKeywords = []string{"outro", "ending", "ed", "credits", "crédits", "générique de fin", "generique fin", "générique fin", "generique de fin"}
+// Keywords for matching intro and outro chapters (multi-word only; short tokens
+// like "op"/"ed" use exact-token matching to avoid false positives).
+var introKeywords = []string{
+	"intro", "opening", "recap", "previously on",
+	"generique de debut", "generique debut",
+}
+var outroKeywords = []string{
+	"outro", "ending", "crédits",
+	"generique de fin", "generique fin", "generique de fin",
+}
+
+// isOpeningCreditsChapter matches Plex/Jellyfin-style opening credit markers.
+func isOpeningCreditsChapter(normTitle string) bool {
+	if normTitle == "" {
+		return false
+	}
+	if strings.Contains(normTitle, "opencreditstart") || strings.Contains(normTitle, "open_credit_start") {
+		return true
+	}
+	if strings.Contains(normTitle, "open") && strings.Contains(normTitle, "credit") && strings.Contains(normTitle, "start") {
+		return true
+	}
+	if strings.Contains(normTitle, "opening") && strings.Contains(normTitle, "credit") {
+		return true
+	}
+	return false
+}
+
+// isClosingCreditsChapter matches end-credit chapters without false positives on
+// openCreditStart / openCreditEnd style names.
+func isClosingCreditsChapter(normTitle string) bool {
+	if normTitle == "" {
+		return false
+	}
+	if isOpeningCreditsChapter(normTitle) {
+		return false
+	}
+	if strings.Contains(normTitle, "open") && strings.Contains(normTitle, "credit") {
+		return false
+	}
+	if normTitle == "credits" || normTitle == "credit" {
+		return true
+	}
+	if strings.Contains(normTitle, "credits") {
+		return true
+	}
+	return false
+}
+
+// IsPlausibleIntroRange rejects chapter/DB values that span most of an episode.
+func IsPlausibleIntroRange(start, end, mediaDuration int) bool {
+	if end <= start || end <= 0 {
+		return false
+	}
+	if end-start > 600 {
+		return false
+	}
+	if mediaDuration > 0 && end > int(float64(mediaDuration)*0.85) {
+		return false
+	}
+	return true
+}
+
+func titleMatchesKeyword(normTitle, keyword string) bool {
+	if keyword == "op" || keyword == "ed" {
+		if normTitle == keyword {
+			return true
+		}
+		return strings.HasPrefix(normTitle, keyword+" ") || strings.HasSuffix(normTitle, " "+keyword)
+	}
+	return strings.Contains(normTitle, keyword)
+}
+
+// ChapterTitleMatchesIntro detects intro/recap chapter titles from MKV metadata.
+func ChapterTitleMatchesIntro(title string) bool {
+	normTitle := normalizeString(title)
+	if normTitle == "" {
+		return false
+	}
+	if isOpeningCreditsChapter(normTitle) {
+		return true
+	}
+	for _, kw := range introKeywords {
+		if titleMatchesKeyword(normTitle, kw) {
+			return true
+		}
+	}
+	return titleMatchesKeyword(normTitle, "op")
+}
+
+// ChapterTitleMatchesOutro detects outro/credits chapter titles from MKV metadata.
+func ChapterTitleMatchesOutro(title string) bool {
+	normTitle := normalizeString(title)
+	if normTitle == "" {
+		return false
+	}
+	if isClosingCreditsChapter(normTitle) {
+		return true
+	}
+	for _, kw := range outroKeywords {
+		if titleMatchesKeyword(normTitle, kw) {
+			return true
+		}
+	}
+	return titleMatchesKeyword(normTitle, "ed")
+}
+
+// MergeIntroDBSkipRange builds the skippable window from IntroDB intro + recap.
+func MergeIntroDBSkipRange(intro, recap *IntroDBSegment) (start, end int, ok bool) {
+	if recap != nil {
+		start = int(recap.StartSec)
+		end = int(recap.EndSec)
+		ok = true
+	}
+	if intro != nil {
+		iStart := int(intro.StartSec)
+		iEnd := int(intro.EndSec)
+		if !ok {
+			start, end, ok = iStart, iEnd, true
+		} else {
+			if iStart < start {
+				start = iStart
+			}
+			end = iEnd
+		}
+	}
+	return start, end, ok
+}
 
 // TheIntroDB API structures
 type IntroDBSegment struct {
@@ -173,28 +299,28 @@ func DetectFromChapters(episodeID int, filePath string) (bool, error) {
 			}
 		}
 
-		normTitle := normalizeString(title)
-		if normTitle == "" {
+		if title == "" {
 			continue
 		}
 
-		// Check intro keywords
-		for _, kw := range introKeywords {
-			if strings.Contains(normTitle, kw) {
-				introStart = int(start)
-				introEnd = int(end)
-				foundIntro = true
-				break
+		iStart := int(start)
+		iEnd := int(end)
+
+		if ChapterTitleMatchesIntro(title) {
+			if !foundIntro || iStart < introStart {
+				if IsPlausibleIntroRange(iStart, iEnd, 0) {
+					introStart = iStart
+					introEnd = iEnd
+					foundIntro = true
+				}
 			}
 		}
 
-		// Check outro keywords
-		for _, kw := range outroKeywords {
-			if strings.Contains(normTitle, kw) {
-				outroStart = int(start)
-				outroEnd = int(end)
+		if ChapterTitleMatchesOutro(title) {
+			if !foundOutro || iStart > outroStart {
+				outroStart = iStart
+				outroEnd = iEnd
 				foundOutro = true
-				break
 			}
 		}
 	}
@@ -357,17 +483,21 @@ type EpisodeInfo struct {
 }
 
 func AnalyzeSeason(seasonID int) error {
-	// First, get the season number and show ID from the season
 	var seasonNumber int
 	var showID int
 	err := database.DB.QueryRow(`
-		SELECT CAST(SUBSTR(title, INSTR(title, 'Season ') + 7) AS INTEGER),
-		       parent_id
+		SELECT COALESCE(NULLIF(season_number, 0), 0), parent_id
 		FROM medias
-		WHERE id = ?
+		WHERE id = ? AND type = 'season'
 	`, seasonID).Scan(&seasonNumber, &showID)
 	if err != nil {
 		return fmt.Errorf("failed to get season number or show ID: %v", err)
+	}
+	if seasonNumber <= 0 {
+		var seasonTitle string
+		if err := database.DB.QueryRow("SELECT title FROM medias WHERE id = ?", seasonID).Scan(&seasonTitle); err == nil {
+			seasonNumber = parseSeasonNumberFromTitle(seasonTitle)
+		}
 	}
 
 	// Get the show's TMDB ID (tmdb_id is stored on the show, not the season)
@@ -398,11 +528,10 @@ func AnalyzeSeason(seasonID int) error {
 
 	// Fetch all episodes in this season with their episode numbers
 	rows, err := database.DB.Query(`
-		SELECT id, title, file_path, duration,
-		       CAST(SUBSTR(title, INSTR(title, 'E') + 1) AS INTEGER) as ep_num
-		FROM medias 
+		SELECT id, title, file_path, duration, COALESCE(episode_number, 0)
+		FROM medias
 		WHERE type = 'episode' AND parent_id = ?
-		ORDER BY id ASC
+		ORDER BY COALESCE(NULLIF(episode_number, 0), 9999), id ASC
 	`, seasonID)
 	if err != nil {
 		return err
@@ -413,12 +542,17 @@ func AnalyzeSeason(seasonID int) error {
 	for rows.Next() {
 		var ep EpisodeInfo
 		var filePath sql.NullString
-		var epNum sql.NullInt64
+		var epNum int
 		if err := rows.Scan(&ep.ID, &ep.Title, &filePath, &ep.Duration, &epNum); err == nil {
 			if filePath.Valid && filePath.String != "" {
 				ep.FilePath = filePath.String
-				if epNum.Valid {
-					ep.Episode = int(epNum.Int64)
+				ep.Episode = epNum
+				if ep.Episode <= 0 {
+					if s, e, ok := ParseEpisodeNumbers(filepath.Base(ep.FilePath)); ok && s == seasonNumber {
+						ep.Episode = e
+					} else if s, e, ok := ParseEpisodeNumbers(ep.Title); ok && s == seasonNumber {
+						ep.Episode = e
+					}
 				}
 				ep.Season = seasonNumber
 				episodes = append(episodes, ep)
@@ -454,19 +588,20 @@ func AnalyzeSeason(seasonID int) error {
 
 			introStart, introEnd, outroStart, outroEnd := 0, 0, 0, 0
 
-			// Use intro from IntroDB
-			if segments.Intro != nil {
-				introStart = int(segments.Intro.StartSec)
-				introEnd = int(segments.Intro.EndSec)
-				log.Printf("Detection: IntroDB found intro for S%dE%d: [%d-%ds] (confidence: %.2f)", 
-					ep.Season, ep.Episode, introStart, introEnd, segments.Intro.Confidence)
+			if skipStart, skipEnd, ok := MergeIntroDBSkipRange(segments.Intro, segments.Recap); ok {
+				if IsPlausibleIntroRange(skipStart, skipEnd, 0) {
+					introStart = skipStart
+					introEnd = skipEnd
+					log.Printf("Detection: IntroDB skip window for S%dE%d: [%d-%ds]",
+						ep.Season, ep.Episode, introStart, introEnd)
+				}
 			}
 
 			// Use outro from IntroDB
 			if segments.Outro != nil {
 				outroStart = int(segments.Outro.StartSec)
 				outroEnd = int(segments.Outro.EndSec)
-				log.Printf("Detection: IntroDB found outro for S%dE%d: [%d-%ds] (confidence: %.2f)", 
+				log.Printf("Detection: IntroDB found outro for S%dE%d: [%d-%ds] (confidence: %.2f)",
 					ep.Season, ep.Episode, outroStart, outroEnd, segments.Outro.Confidence)
 			}
 

@@ -6,24 +6,40 @@ import 'package:provider/provider.dart';
 import 'package:media_kit_video/media_kit_video.dart';
 import 'package:window_manager/window_manager.dart';
 import '../../models/models.dart';
+import '../../models/player_layout.dart';
 import '../../providers/auth_provider.dart';
 import '../../providers/home_provider.dart';
 import '../../providers/player_layout_provider.dart';
+import '../../navigation/search_route_observer.dart';
 import '../../services/api_client.dart';
 import 'hooks/use_player_controller.dart';
 import 'hooks/use_episode_navigation.dart';
+import 'hooks/use_player_media_keys.dart';
 import 'widgets/skip_intro_button.dart';
 import 'widgets/next_episode_overlay.dart';
 import 'widgets/player_hud_overlay.dart';
 import 'widgets/modular_controls_layer.dart';
 import 'widgets/top_right_controls.dart';
 import 'widgets/player_settings_sheet.dart';
+import 'widgets/player_settings_anchor.dart';
+import 'player_playback_preferences.dart';
 import '../../desktop_window.dart';
 
 class PlayerScreen extends StatefulWidget {
   final dynamic media; // Can be Media or HomeMediaItem
+  final PlayerPlaybackPreferences? inheritedPreferences;
+  final bool autoAdvance;
+  final BoxFit? initialVideoFit;
+  final int? seasonNumber;
 
-  const PlayerScreen({super.key, required this.media});
+  const PlayerScreen({
+    super.key,
+    required this.media,
+    this.inheritedPreferences,
+    this.autoAdvance = false,
+    this.initialVideoFit,
+    this.seasonNumber,
+  });
 
   @override
   State<PlayerScreen> createState() => _PlayerScreenState();
@@ -34,8 +50,10 @@ class _PlayerScreenState extends State<PlayerScreen> {
   EpisodeNavigationController? _episodeNav;
   bool _isInitialized = false;
   bool _showControls = true;
+  bool _isEpisodeTransition = false;
   Timer? _controlsTimer;
   bool _isDisposing = false;
+  bool _progressFlushed = false;
   ApiClient? _apiClient;
 
   /// How the video is fitted inside the player viewport.
@@ -49,23 +67,81 @@ class _PlayerScreenState extends State<PlayerScreen> {
   /// Key to access VideoState and call update() so fit changes propagate.
   final GlobalKey<VideoState> _videoKey = GlobalKey();
 
+  /// Anchors subtitle lift to the real progress/timeline bar position.
+  final GlobalKey _timelineAnchorKey = GlobalKey();
+
+  final FocusNode _keyboardFocusNode = FocusNode();
+
+  static const double _volumeStep = 5.0;
+
+  EdgeInsets? _lastSubtitlePadding;
+
   // Store the listener so we can properly remove it in dispose
   VoidCallback? _episodeNavListener;
+  late final PlayerMediaKeysBinding _mediaKeys;
+  int _lastMediaSessionSyncPos = -1;
+  bool? _lastMediaSessionPlaying;
+
+  String? _mediaLogoUrl;
+
+  String get _playerTitle =>
+      playerMediaTitle(widget.media, seasonNumber: widget.seasonNumber);
+
+  Future<void> _loadMediaLogo(Media media) async {
+    final api = _apiClient;
+    if (api == null) return;
+
+    int? detailsId;
+    if (media.type == MediaType.movie || media.type == MediaType.show) {
+      detailsId = media.id;
+    } else if (media.type == MediaType.episode &&
+        widget.media is HomeMediaItem) {
+      detailsId = (widget.media as HomeMediaItem).showId;
+    }
+    if (detailsId == null || detailsId <= 0) return;
+
+    try {
+      final details = await api.getMediaDetails(detailsId);
+      if (!mounted) return;
+      setState(() => _mediaLogoUrl = details.logoUrl);
+    } catch (_) {}
+  }
+
+  int? _seasonNumberFor(dynamic media) {
+    if (widget.seasonNumber != null && widget.seasonNumber! > 0) {
+      return widget.seasonNumber;
+    }
+    if (media is HomeMediaItem) {
+      return media.media.effectiveSeasonNumber;
+    }
+    if (media is Media) {
+      return media.effectiveSeasonNumber;
+    }
+    return null;
+  }
 
   @override
   void initState() {
     super.initState();
+    _showControls = !widget.autoAdvance;
+    _videoFit = widget.initialVideoFit ?? BoxFit.contain;
     SystemChrome.setPreferredOrientations([
       DeviceOrientation.landscapeLeft,
       DeviceOrientation.landscapeRight,
     ]);
     SystemChrome.setEnabledSystemUIMode(SystemUiMode.immersiveSticky);
-    if (Platform.isWindows || Platform.isMacOS || Platform.isLinux) {
+    if (Platform.isWindows) {
       WidgetsBinding.instance.addPostFrameCallback((_) {
         showDesktopCaption.value = false;
       });
     }
     _playerController = PlayerController();
+    _mediaKeys = PlayerMediaKeysBinding(
+      onPlayPause: _togglePlayPause,
+      onRewind: () => _seekRelative(-10),
+      onFastForward: _handleMediaFastForward,
+      isPlaying: () => _playerController.isPlaying,
+    );
     _init();
   }
 
@@ -82,11 +158,23 @@ class _PlayerScreenState extends State<PlayerScreen> {
       actualMedia = widget.media as Media;
     }
 
+    int knownDuration = actualMedia.duration;
+    if (widget.media is HomeMediaItem) {
+      final item = widget.media as HomeMediaItem;
+      knownDuration = item.effectiveDuration;
+    }
+
     await _playerController.init(
       media: actualMedia,
       apiClient: apiClient,
+      knownDurationSeconds: knownDuration,
+      inheritedPreferences: widget.inheritedPreferences,
       onCompleted: _onPlaybackCompleted,
       onPositionChanged: _onPositionChanged,
+      onPlayingChanged: () {
+        _safeSetState(() {});
+        unawaited(_syncMediaSession(force: true));
+      },
       onDurationChanged: () {
         if (_isDisposing || !mounted) return;
         setState(() {});
@@ -94,7 +182,14 @@ class _PlayerScreenState extends State<PlayerScreen> {
       onQualitySwitchingChanged: () {
         _safeSetState(() {});
       },
+      onTracksChanged: () {
+        // Background subtitle extraction finished: rebuild so the settings
+        // menu reflects the freshly available tracks.
+        _safeSetState(() {});
+      },
     );
+
+    unawaited(_loadMediaLogo(actualMedia));
 
     if (actualMedia.type == MediaType.episode) {
       // Extract timestamps from the media if available (from season episodes list)
@@ -139,7 +234,34 @@ class _PlayerScreenState extends State<PlayerScreen> {
   void _onPositionChanged() {
     if (_isDisposing || !mounted) return;
     _safeSetState(() {});
-    _episodeNav?.checkPosition(_playerController.position.inSeconds);
+    _episodeNav?.checkPosition(
+      _playerController.position.inSeconds,
+      mediaDurationSeconds: _playerController.duration.inSeconds,
+    );
+    unawaited(_syncMediaSession());
+  }
+
+  Future<void> _syncMediaSession({bool force = false}) async {
+    if (!_isInitialized || _isDisposing) return;
+
+    final positionSeconds = _playerController.position.inSeconds;
+    final playing = _playerController.isPlaying;
+    if (!force &&
+        _lastMediaSessionPlaying == playing &&
+        _lastMediaSessionSyncPos >= 0 &&
+        (positionSeconds - _lastMediaSessionSyncPos).abs() < 5) {
+      return;
+    }
+
+    _lastMediaSessionSyncPos = positionSeconds;
+    _lastMediaSessionPlaying = playing;
+
+    await _mediaKeys.syncSession(
+      title: _playerTitle,
+      durationSeconds: _playerController.duration.inSeconds,
+      positionSeconds: positionSeconds,
+      playing: playing,
+    );
   }
 
   void _onPlaybackCompleted() {
@@ -148,8 +270,7 @@ class _PlayerScreenState extends State<PlayerScreen> {
     if (_episodeNav?.nextEpisode != null) {
       _goToNextEpisode();
     } else {
-      _finishAndPop();
-      Navigator.of(context).pop();
+      unawaited(_leavePlayer());
     }
   }
 
@@ -163,25 +284,34 @@ class _PlayerScreenState extends State<PlayerScreen> {
     }
 
     int savedPositionSeconds = 0;
+    if (widget.media is HomeMediaItem) {
+      final item = widget.media as HomeMediaItem;
+      if (!item.isFinished) {
+        savedPositionSeconds = item.currentPositionSeconds;
+      }
+    }
+
     try {
       final progressData = await apiClient.getProgress(actualMedia.id);
-      savedPositionSeconds = progressData["current_position_seconds"] as int? ?? 0;
+      final fromApi = progressData["current_position_seconds"] as int? ?? 0;
       final isFinished = progressData["is_finished"] as bool? ?? false;
-      if (isFinished) savedPositionSeconds = 0;
+      if (isFinished) {
+        savedPositionSeconds = 0;
+      } else if (fromApi > savedPositionSeconds) {
+        savedPositionSeconds = fromApi;
+      }
     } catch (e) {
       print("Player: Failed to query progress: $e");
     }
 
     if (!mounted) return;
-    if (savedPositionSeconds > 10) {
-      _showResumeDialog(savedPositionSeconds);
-    } else {
-      _startPlayback();
-    }
+    final resumeAt = (!widget.autoAdvance && savedPositionSeconds >= 3)
+        ? savedPositionSeconds
+        : 0;
+    await _startPlayback(resumeAtSeconds: resumeAt);
   }
 
-  void _startPlayback() {
-    // Extract the actual Media object (handle both Media and HomeMediaItem)
+  Future<void> _startPlayback({int resumeAtSeconds = 0}) async {
     Media actualMedia;
     if (widget.media is HomeMediaItem) {
       actualMedia = (widget.media as HomeMediaItem).media;
@@ -189,47 +319,28 @@ class _PlayerScreenState extends State<PlayerScreen> {
       actualMedia = widget.media as Media;
     }
 
-    _playerController.player.play();
-    _playerController.startHeartbeat(
+    await _playerController.startPlayback(
       mediaId: actualMedia.id,
       apiClient: _apiClient!,
+      resumeAtSeconds: resumeAtSeconds,
     );
+    if (!mounted) return;
     setState(() => _isInitialized = true);
+    unawaited(_mediaKeys.attach(
+      title: _playerTitle,
+      durationSeconds: _playerController.duration.inSeconds,
+      positionSeconds: _playerController.position.inSeconds,
+    ));
+    _keyboardFocusNode.requestFocus();
     _hideControlsWithDelay();
   }
 
-  void _showResumeDialog(int resumeSeconds) {
-    final minutes = resumeSeconds ~/ 60;
-    final seconds = resumeSeconds % 60;
-    final timeStr = "$minutes:${seconds.toString().padLeft(2, '0')}";
-
-    showDialog(
-      context: context,
-      barrierDismissible: false,
-      builder: (context) => AlertDialog(
-        backgroundColor: const Color(0xFF1F1F1F),
-        title: const Text("Reprendre la lecture ?", style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
-        content: Text("Voulez-vous reprendre l\u00e0 o\u00f9 vous vous \u00eates arr\u00eat\u00e9 \u00e0 $timeStr ?", style: const TextStyle(color: Color(0xFFCCCCCC))),
-        actions: [
-          TextButton(
-            onPressed: () {
-              Navigator.of(context).pop();
-              _startPlayback();
-            },
-            child: const Text("Recommencer", style: TextStyle(color: Colors.grey)),
-          ),
-          ElevatedButton(
-            style: ElevatedButton.styleFrom(backgroundColor: const Color(0xFF00A4DC)),
-            onPressed: () async {
-              Navigator.of(context).pop();
-              await _playerController.player.seek(Duration(seconds: resumeSeconds));
-              _startPlayback();
-            },
-            child: const Text("Reprendre", style: TextStyle(color: Colors.white)),
-          ),
-        ],
-      ),
-    );
+  void _handleMediaFastForward() {
+    if (_episodeNav?.nextEpisode != null) {
+      _goToNextEpisode();
+    } else {
+      _seekRelative(10);
+    }
   }
 
   void _toggleControls() {
@@ -242,7 +353,7 @@ class _PlayerScreenState extends State<PlayerScreen> {
     _controlsTimer = Timer(const Duration(seconds: 4), () {
       if (_isDisposing) return;
       if (!mounted) return;
-      if (_showControls && !_playerController.isDraggingSlider && _playerController.player.state.playing) {
+      if (_showControls && !_playerController.isDraggingSlider && _playerController.isPlaying) {
         setState(() => _showControls = false);
       }
     });
@@ -252,6 +363,12 @@ class _PlayerScreenState extends State<PlayerScreen> {
     setState(() => _showControls = true);
     _hideControlsWithDelay();
   }
+
+  /// Netflix-style: hide the cursor while controls are hidden during playback.
+  bool get _shouldHideCursor =>
+      !_showControls &&
+      _playerController.isPlaying &&
+      !_playerController.isDraggingSlider;
 
   void _seekRelative(int seconds) {
     final currentPos = _playerController.player.state.position;
@@ -265,13 +382,67 @@ class _PlayerScreenState extends State<PlayerScreen> {
     _showControlsTransient();
   }
 
-  void _goToNextEpisode() {
-    _isDisposing = true;
-    final next = _episodeNav?.nextEpisode;
-    if (next == null) {
-      _isDisposing = false;
-      return;
+  void _adjustVolume(double delta) {
+    final player = _playerController.player;
+    final next = (player.state.volume + delta).clamp(0.0, 100.0);
+    player.setVolume(next);
+    _showControlsTransient();
+    _safeSetState(() {});
+  }
+
+  KeyEventResult _handlePlayerKeyEvent(FocusNode node, KeyEvent event) {
+    if (!_isInitialized || _isDisposing) return KeyEventResult.ignored;
+    if (event is! KeyDownEvent && event is! KeyRepeatEvent) {
+      return KeyEventResult.ignored;
     }
+
+    final mediaResult = _mediaKeys.handleKeyboardEvent(event);
+    if (mediaResult != null) return mediaResult;
+
+    final key = event.logicalKey;
+
+    if (key == LogicalKeyboardKey.space) {
+      if (event is KeyRepeatEvent) return KeyEventResult.handled;
+      _togglePlayPause();
+      return KeyEventResult.handled;
+    }
+
+    if (key == LogicalKeyboardKey.arrowLeft) {
+      _seekRelative(-10);
+      return KeyEventResult.handled;
+    }
+
+    if (key == LogicalKeyboardKey.arrowRight) {
+      _seekRelative(10);
+      return KeyEventResult.handled;
+    }
+
+    if (key == LogicalKeyboardKey.arrowUp) {
+      _adjustVolume(_volumeStep);
+      return KeyEventResult.handled;
+    }
+
+    if (key == LogicalKeyboardKey.arrowDown) {
+      _adjustVolume(-_volumeStep);
+      return KeyEventResult.handled;
+    }
+
+    if (key == LogicalKeyboardKey.escape) {
+      unawaited(_exitFullscreenIfActive());
+      return KeyEventResult.handled;
+    }
+
+    return KeyEventResult.ignored;
+  }
+
+  void _goToNextEpisode() {
+    final next = _episodeNav?.nextEpisode;
+    if (next == null) return;
+
+    _isEpisodeTransition = true;
+    final inheritedPreferences =
+        _playerController.exportPreferences();
+    final videoFit = _videoFit;
 
     // Cancel all streams BEFORE navigation
     _playerController.cancelStreams();
@@ -282,64 +453,106 @@ class _PlayerScreenState extends State<PlayerScreen> {
       _episodeNavListener = null;
     }
 
-    _finishAndPop();
+    unawaited(_syncProgressOnExit(popAfter: false));
 
     // Defer navigation by one frame so pending stream events flush safely
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (!mounted) return;
       Navigator.of(context).pushReplacement(
-        MaterialPageRoute(builder: (_) => PlayerScreen(media: next)),
+        MaterialPageRoute(
+          settings: const RouteSettings(name: SearchRouteObserver.playerRouteName),
+          builder: (_) => PlayerScreen(
+            media: next,
+            inheritedPreferences: inheritedPreferences,
+            autoAdvance: true,
+            initialVideoFit: videoFit,
+            seasonNumber: _seasonNumberFor(next),
+          ),
+        ),
       );
     });
   }
 
-  Future<void> _finishAndPop() async {
+  Future<void> _syncProgressOnExit({required bool popAfter}) async {
+    if (_progressFlushed) {
+      if (popAfter && mounted) Navigator.of(context).pop();
+      return;
+    }
+    _progressFlushed = true;
     _controlsTimer?.cancel();
-    // Extract the actual Media object (handle both Media and HomeMediaItem)
+
     Media actualMedia;
+    HomeMediaItem? sourceItem;
     if (widget.media is HomeMediaItem) {
-      actualMedia = (widget.media as HomeMediaItem).media;
+      sourceItem = widget.media as HomeMediaItem;
+      actualMedia = sourceItem.media;
     } else {
       actualMedia = widget.media as Media;
     }
 
-    await _playerController.finishPlayback(
-      mediaId: actualMedia.id,
-      apiClient: _apiClient!,
-    );
-    if (mounted) {
-      Provider.of<HomeProvider>(context, listen: false).loadHome(silent: true);
+    final posSeconds = _playerController.position.inSeconds;
+    var durSeconds = _playerController.duration.inSeconds;
+    if (durSeconds <= 0 && widget.media is HomeMediaItem) {
+      durSeconds = (widget.media as HomeMediaItem).effectiveDuration;
+    } else if (durSeconds <= 0) {
+      durSeconds = actualMedia.duration;
     }
+
+    final isFinished =
+        durSeconds > 0 && (posSeconds / durSeconds) * 100 >= 90.0;
+
+    HomeProvider? homeProvider;
+    if (mounted) {
+      homeProvider = Provider.of<HomeProvider>(context, listen: false);
+      if (posSeconds > 0) {
+        homeProvider.updateContinueWatchingProgress(
+          mediaId: actualMedia.id,
+          positionSeconds: posSeconds,
+          durationSeconds: durSeconds,
+          isFinished: isFinished,
+          sourceItem: sourceItem,
+        );
+      }
+    }
+
+    if (_apiClient != null) {
+      await _playerController.finishPlayback(
+        mediaId: actualMedia.id,
+        apiClient: _apiClient!,
+        isFinished: isFinished,
+      );
+    }
+
+    homeProvider?.loadHome(silent: true);
+
+    if (popAfter && mounted) Navigator.of(context).pop();
   }
+
+  Future<void> _leavePlayer() => _syncProgressOnExit(popAfter: true);
 
   @override
   void dispose() {
-    // Extract the actual Media object (handle both Media and HomeMediaItem)
-    Media actualMedia;
-    if (widget.media is HomeMediaItem) {
-      actualMedia = (widget.media as HomeMediaItem).media;
-    } else {
-      actualMedia = widget.media as Media;
-    }
-
+    unawaited(_mediaKeys.detach());
+    _keyboardFocusNode.dispose();
     _isDisposing = true;
     _controlsTimer?.cancel();
-    if (_apiClient != null) {
-      _playerController.finishPlayback(
-        mediaId: actualMedia.id,
-        apiClient: _apiClient!,
-      );
+    if (!_progressFlushed && _apiClient != null) {
+      unawaited(_syncProgressOnExit(popAfter: false));
     }
-    if (Platform.isWindows || Platform.isMacOS || Platform.isLinux) {
-      WidgetsBinding.instance.addPostFrameCallback((_) {
-        showDesktopCaption.value = true;
-      });
+    if (Platform.isWindows) {
+      if (!_isEpisodeTransition) {
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          showDesktopCaption.value = true;
+        });
+      }
     }
-    SystemChrome.setPreferredOrientations([
-      DeviceOrientation.portraitUp,
-      DeviceOrientation.portraitDown,
-    ]);
-    SystemChrome.setEnabledSystemUIMode(SystemUiMode.edgeToEdge);
+    if (!_isEpisodeTransition) {
+      SystemChrome.setPreferredOrientations([
+        DeviceOrientation.portraitUp,
+        DeviceOrientation.portraitDown,
+      ]);
+      SystemChrome.setEnabledSystemUIMode(SystemUiMode.edgeToEdge);
+    }
     if (_episodeNav != null && _episodeNavListener != null) {
       _episodeNav!.removeListener(_episodeNavListener!);
     }
@@ -358,14 +571,67 @@ class _PlayerScreenState extends State<PlayerScreen> {
     });
   }
 
+  void _syncSubtitlePadding(BuildContext context) {
+    if (!mounted || !_isInitialized) return;
+
+    final layoutProvider = Provider.of<PlayerLayoutProvider>(context, listen: false);
+    final screenSize = MediaQuery.sizeOf(context);
+    final measuredTop = _measureTimelineTop(context);
+    final padding = SubtitlePaddingCalculator.resolve(
+      controlsVisible: _showControls,
+      useModularLayout: layoutProvider.useModularLayout,
+      modularConfig: layoutProvider.config,
+      screenSize: screenSize,
+      measuredTimelineTopDy: measuredTop,
+    );
+
+    if (padding == _lastSubtitlePadding) return;
+    _lastSubtitlePadding = padding;
+
+    _videoKey.currentState?.setSubtitleViewPadding(
+      padding,
+      duration: const Duration(milliseconds: 200),
+    );
+
+    // Timeline may not be laid out on the first frame after controls appear.
+    if (_showControls && measuredTop == null) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted) _syncSubtitlePadding(context);
+      });
+    }
+  }
+
+  double? _measureTimelineTop(BuildContext context) {
+    if (!_showControls) return null;
+
+    final box = _timelineAnchorKey.currentContext?.findRenderObject() as RenderBox?;
+    if (box == null || !box.hasSize) return null;
+
+    return box.localToGlobal(Offset.zero).dy;
+  }
+
   void _showTrackSettings() {
     final renderBox = _settingsButtonKey.currentContext?.findRenderObject() as RenderBox?;
     if (renderBox == null) return;
 
     final overlay = Overlay.of(context);
-    final buttonPos = renderBox.localToGlobal(Offset.zero);
-    final buttonSize = renderBox.size;
-    final screenSize = MediaQuery.of(context).size;
+    final buttonRect = renderBox.localToGlobal(Offset.zero) & renderBox.size;
+    final screenSize = MediaQuery.sizeOf(context);
+    final hasChaptersTab = _episodeNav != null;
+    final menuWidth =
+        PlayerSettingsAnchor.sheetWidth(hasChaptersTab: hasChaptersTab);
+    final menuMaxHeight =
+        PlayerSettingsAnchor.sheetMaxHeight(hasChaptersTab: hasChaptersTab);
+    final left = PlayerSettingsAnchor.horizontalLeft(
+      buttonRect: buttonRect,
+      screenSize: screenSize,
+      popupWidth: menuWidth,
+    );
+    final vertical = PlayerSettingsAnchor.verticalPlacement(
+      buttonRect: buttonRect,
+      screenSize: screenSize,
+      popupMaxHeight: menuMaxHeight,
+    );
 
     late final OverlayEntry entry;
     entry = OverlayEntry(
@@ -380,14 +646,17 @@ class _PlayerScreenState extends State<PlayerScreen> {
             child: Stack(
               children: [
                 Positioned(
-                  left: (buttonPos.dx + buttonSize.width / 2 - 150).clamp(8.0, screenSize.width - 308),
-                  bottom: screenSize.height - buttonPos.dy + 8,
+                  left: left,
+                  bottom: vertical.bottom,
+                  top: vertical.top,
                   child: PlayerSettingsSheet(
                     player: _playerController.player,
                     currentFit: _videoFit,
                     onFitChanged: _updateVideoFit,
                     onClose: entry.remove,
                     playerController: _playerController,
+                    episodeNav: _episodeNav,
+                    onSeekToAbsolute: _playerController.seekToAbsoluteSeconds,
                   ),
                 ),
               ],
@@ -400,13 +669,6 @@ class _PlayerScreenState extends State<PlayerScreen> {
     overlay.insert(entry);
   }
 
-  Media get _actualMedia {
-    if (widget.media is HomeMediaItem) {
-      return (widget.media as HomeMediaItem).media;
-    }
-    return widget.media as Media;
-  }
-
   Future<void> _toggleFullscreen() async {
     if (Platform.isWindows || Platform.isMacOS || Platform.isLinux) {
       final isFullScreen = await windowManager.isFullScreen();
@@ -414,13 +676,17 @@ class _PlayerScreenState extends State<PlayerScreen> {
     }
   }
 
-  void _togglePlayPause() {
-    final p = _playerController.player;
-    if (p.state.playing) {
-      p.pause();
-    } else {
-      p.play();
+  Future<void> _exitFullscreenIfActive() async {
+    if (Platform.isWindows || Platform.isMacOS || Platform.isLinux) {
+      final isFullScreen = await windowManager.isFullScreen();
+      if (isFullScreen) {
+        await windowManager.setFullScreen(false);
+      }
     }
+  }
+
+  void _togglePlayPause() {
+    _playerController.togglePlayPause();
     _hideControlsWithDelay();
   }
 
@@ -435,9 +701,16 @@ class _PlayerScreenState extends State<PlayerScreen> {
   @override
   Widget build(BuildContext context) {
     if (!_isInitialized) {
-      return const Scaffold(
-        backgroundColor: Colors.black,
-        body: Center(child: CircularProgressIndicator(color: Color(0xFF00A4DC))),
+      return PopScope(
+        canPop: false,
+        onPopInvokedWithResult: (didPop, _) async {
+          if (didPop) return;
+          await _leavePlayer();
+        },
+        child: const Scaffold(
+          backgroundColor: Colors.black,
+          body: Center(child: CircularProgressIndicator(color: Color(0xFF00A4DC))),
+        ),
       );
     }
 
@@ -447,15 +720,33 @@ class _PlayerScreenState extends State<PlayerScreen> {
     final progressFraction =
         totalSeconds > 0 ? _playerController.position.inSeconds / totalSeconds : 0.0;
 
-    return Scaffold(
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _syncSubtitlePadding(context);
+    });
+
+    return Focus(
+      focusNode: _keyboardFocusNode,
+      autofocus: true,
+      onKeyEvent: _handlePlayerKeyEvent,
+      child: PopScope(
+      canPop: false,
+      onPopInvokedWithResult: (didPop, _) async {
+        if (didPop) return;
+        await _leavePlayer();
+      },
+      child: Scaffold(
       backgroundColor: Colors.black,
       body: MouseRegion(
+        cursor: _shouldHideCursor ? SystemMouseCursors.none : MouseCursor.defer,
         onHover: (event) {
           _showControlsTransient();
           _episodeNav?.onMouseMove();
         },
         child: GestureDetector(
-          onTap: _toggleControls,
+          onTap: () {
+            _keyboardFocusNode.requestFocus();
+            _toggleControls();
+          },
           child: Stack(
             children: [
               SizedBox.expand(
@@ -500,7 +791,8 @@ class _PlayerScreenState extends State<PlayerScreen> {
                 ModularControlsLayer(
                   config: layoutProvider.config,
                   visible: _showControls,
-                  isPlaying: _playerController.player.state.playing,
+                  timelineAnchorKey: _timelineAnchorKey,
+                  isPlaying: _playerController.isPlaying,
                   progress: progressFraction,
                   duration: _playerController.duration,
                   currentSeconds: _playerController.position.inSeconds,
@@ -509,18 +801,23 @@ class _PlayerScreenState extends State<PlayerScreen> {
                   onForward: () => _seekRelative(10),
                   onSeekFraction: _seekToFraction,
                   onToggleFullscreen: _toggleFullscreen,
-                  mediaTitle: _actualMedia.title,
+                  mediaTitle: _playerTitle,
+                  mediaLogoUrl: _mediaLogoUrl,
                   volume: _playerController.player.state.volume,
                   onVolumeChanged: (v) => _playerController.player.setVolume(v),
-                  onBack: () => Navigator.of(context).pop(),
+                  onBack: _leavePlayer,
                   onOpenSettings: _showTrackSettings,
                   settingsButtonKey: _settingsButtonKey,
                 ),
               ] else
                 PlayerHUDOverlay(
                   visible: _showControls,
+                  timelineAnchorKey: _timelineAnchorKey,
                   player: _playerController.player,
                   media: widget.media,
+                  mediaTitle: _playerTitle,
+                  isPlaying: _playerController.isPlaying,
+                  onPlayPause: _togglePlayPause,
                   position: _playerController.position,
                   duration: _playerController.duration,
                   isDraggingSlider: _playerController.isDraggingSlider,
@@ -528,6 +825,7 @@ class _PlayerScreenState extends State<PlayerScreen> {
                   onToggleControls: _toggleControls,
                   onHideControlsWithDelay: _hideControlsWithDelay,
                   onSeekRelative: _seekRelative,
+                  onBack: _leavePlayer,
                   onShowTrackSettings: _showTrackSettings,
                   onSliderChangeStart: (value) async {
                     _playerController.isDraggingSlider = true;
@@ -576,13 +874,15 @@ class _PlayerScreenState extends State<PlayerScreen> {
                   currentFit: _videoFit,
                   onFitChanged: _updateVideoFit,
                   playerController: _playerController,
+                  episodeNav: _episodeNav,
+                  onSeekToAbsolute: _playerController.seekToAbsoluteSeconds,
                 ),
               // Overlays must be AFTER HUD in Stack to render on top
               if (_episodeNav?.showSkipIntro ?? false)
                 SkipIntroButton(
-                  onSkip: () {
+                  onSkip: () async {
                     final end = _episodeNav!.introSkipTarget;
-                    _playerController.player.seek(Duration(seconds: end));
+                    await _playerController.seekToAbsoluteSeconds(end);
                     _episodeNav!.skipIntro();
                   },
                 ),
@@ -612,6 +912,8 @@ class _PlayerScreenState extends State<PlayerScreen> {
             ],
           ),
         ),
+      ),
+      ),
       ),
     );
   }

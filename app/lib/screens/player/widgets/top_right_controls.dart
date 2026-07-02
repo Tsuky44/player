@@ -2,13 +2,17 @@ import 'dart:ui';
 import 'package:flutter/material.dart';
 import 'package:media_kit/media_kit.dart' as mk;
 import '../hooks/use_player_controller.dart';
+import '../hooks/use_episode_navigation.dart';
 import 'settings_menu.dart';
+import 'player_settings_anchor.dart';
 
 class TopRightControls extends StatefulWidget {
   final mk.Player player;
   final BoxFit currentFit;
   final ValueChanged<BoxFit> onFitChanged;
   final PlayerController? playerController;
+  final EpisodeNavigationController? episodeNav;
+  final Future<void> Function(int absoluteSeconds)? onSeekToAbsolute;
 
   const TopRightControls({
     super.key,
@@ -16,6 +20,8 @@ class TopRightControls extends StatefulWidget {
     required this.currentFit,
     required this.onFitChanged,
     this.playerController,
+    this.episodeNav,
+    this.onSeekToAbsolute,
   });
 
   @override
@@ -25,6 +31,7 @@ class TopRightControls extends StatefulWidget {
 class _TopRightControlsState extends State<TopRightControls> {
   bool _isVolumeHovering = false;
   bool _showSettings = false;
+  final GlobalKey _settingsButtonKey = GlobalKey();
 
   void _toggleSettings() {
     setState(() => _showSettings = !_showSettings);
@@ -46,6 +53,7 @@ class _TopRightControlsState extends State<TopRightControls> {
           top: 16,
           right: 72, // 24 (volume right) + 40 (volume width) + 8 (gap)
           child: Material(
+            key: _settingsButtonKey,
             color: Colors.transparent,
             child: InkWell(
               onTap: _toggleSettings,
@@ -162,14 +170,49 @@ class _TopRightControlsState extends State<TopRightControls> {
           ),
         ),
 
-        // Settings menu overlay
+        // Settings menu overlay — anchored to the settings button
         if (_showSettings)
-          SettingsMenu(
-            player: widget.player,
-            onClose: _closeSettings,
-            currentFit: widget.currentFit,
-            onFitChanged: widget.onFitChanged,
-            playerController: widget.playerController,
+          Builder(
+            builder: (context) {
+              final renderBox =
+                  _settingsButtonKey.currentContext?.findRenderObject() as RenderBox?;
+              if (renderBox == null) return const SizedBox.shrink();
+
+              final buttonRect = renderBox.localToGlobal(Offset.zero) & renderBox.size;
+              final screenSize = MediaQuery.sizeOf(context);
+              final hasChaptersTab = widget.episodeNav != null &&
+                  widget.onSeekToAbsolute != null &&
+                  widget.playerController != null;
+              final menuWidth =
+                  PlayerSettingsAnchor.menuWidth(hasChaptersTab: hasChaptersTab);
+              final menuMaxHeight =
+                  PlayerSettingsAnchor.menuMaxHeight(hasChaptersTab: hasChaptersTab);
+              final left = PlayerSettingsAnchor.horizontalLeft(
+                buttonRect: buttonRect,
+                screenSize: screenSize,
+                popupWidth: menuWidth,
+              );
+              final vertical = PlayerSettingsAnchor.verticalPlacement(
+                buttonRect: buttonRect,
+                screenSize: screenSize,
+                popupMaxHeight: menuMaxHeight,
+              );
+
+              return Positioned(
+                left: left,
+                bottom: vertical.bottom,
+                top: vertical.top,
+                child: SettingsMenu(
+                  player: widget.player,
+                  onClose: _closeSettings,
+                  currentFit: widget.currentFit,
+                  onFitChanged: widget.onFitChanged,
+                  playerController: widget.playerController,
+                  episodeNav: widget.episodeNav,
+                  onSeekToAbsolute: widget.onSeekToAbsolute,
+                ),
+              );
+            },
           ),
       ],
     );

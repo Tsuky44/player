@@ -62,29 +62,52 @@ func main() {
 	router.GET("/api/home", handlers.RequireAuth(handlers.Home))
 	router.GET("/api/progress", handlers.RequireAuth(handlers.GetProgress))
 	router.POST("/api/progress", handlers.RequireAuth(handlers.UpdateProgress))
+	router.POST("/api/media/:id/watched", handlers.RequireAuth(handlers.SetMediaWatched))
 
 	// 3. Media Browsing Routes
 	router.GET("/api/movies", handlers.RequireAuth(handlers.GetMovies))
 	router.GET("/api/shows", handlers.RequireAuth(handlers.GetShows))
 	router.GET("/api/shows/:id/seasons", handlers.RequireAuth(handlers.GetShowSeasons))
+	router.GET("/api/shows/:id/resume", handlers.RequireAuth(handlers.GetShowResumeEpisode))
 	router.GET("/api/seasons/:id/episodes", handlers.RequireAuth(handlers.GetSeasonEpisodes))
 	router.GET("/api/episodes/:id/next", handlers.RequireAuth(handlers.GetNextEpisode))
 	router.GET("/api/episodes/:id/timestamps", handlers.RequireAuth(handlers.GetEpisodeTimestamps))
 	router.GET("/api/episodes/:id/chapters", handlers.RequireAuth(handlers.GetEpisodeChapters))
 	router.GET("/api/media/:id/tracks", handlers.RequireAuth(handlers.GetMediaTracks))
+	router.GET("/api/media/:id/details", handlers.RequireAuth(handlers.GetMediaDetails))
+	router.GET("/api/person/:id", handlers.RequireAuth(handlers.GetPersonDetails))
+	router.GET("/api/collection/:id", handlers.RequireAuth(handlers.GetCollectionDetails))
+
+	// External subtitles (sidecar files or OpenSubtitles downloads), served as
+	// WebVTT. Unauthenticated so media_kit/mpv can fetch the track directly.
+	router.GET("/api/v1/media/:id/subtitles", handlers.GetMediaSubtitle)
+	router.OPTIONS("/api/v1/media/:id/subtitles", handlers.GetMediaSubtitle)
+	// Preferred form: URL ends in ".vtt" so libmpv detects the subtitle parser.
+	router.GET("/api/v1/media/:id/subtitles/:file", handlers.GetMediaSubtitle)
+	router.OPTIONS("/api/v1/media/:id/subtitles/:file", handlers.GetMediaSubtitle)
 
 	// 4. Indexer Scan Routes
 	router.POST("/api/indexer/scan", handlers.RequireAuth(handlers.TriggerScan))
+	router.POST("/api/indexer/dedupe", handlers.RequireAuth(handlers.TriggerShowDedupe))
+	router.POST("/api/indexer/metadata/backfill", handlers.RequireAuth(handlers.TriggerMetadataBackfill))
+	router.POST("/api/media/:id/metadata/enrich", handlers.RequireAuth(handlers.EnrichMediaMetadata))
+	router.POST("/api/media/:id/metadata/rematch", handlers.RequireAuth(handlers.RematchMediaMetadata))
+	router.GET("/api/tmdb/search", handlers.RequireAuth(handlers.SearchTMDBMetadata))
+	router.POST("/api/indexer/subtitles/extract", handlers.RequireAuth(handlers.TriggerSubtitleExtract))
 	router.GET("/api/indexer/status", handlers.RequireAuth(handlers.GetScanStatus))
+	router.POST("/api/media/:id/subtitles/extract", handlers.RequireAuth(handlers.ForceMediaSubtitleExtract))
 
 	// 5. Streaming Endpoint (Unauthenticated for video player compatibility)
 	router.GET("/stream", handlers.StreamMedia)
 
-	// 6. HLS Transcoding Endpoints (Unauthenticated for media_kit compatibility)
-	// Single catch-all route — Dispatch parses the path manually to avoid httprouter conflicts.
+	// 6. HLS Transcoding + Subtitle Endpoints (Unauthenticated for media_kit / mpv
+	// compatibility — the player fetches playlists, segments and WebVTT directly).
+	// Dispatch parses the path manually to avoid httprouter wildcard conflicts.
 	hlsHandler := streaming.NewHandler(db)
+	router.POST("/api/v1/stream/*path", hlsHandler.Dispatch)
 	router.GET("/api/v1/stream/*path", hlsHandler.Dispatch)
 	router.DELETE("/api/v1/stream/*path", hlsHandler.Dispatch)
+	router.OPTIONS("/api/v1/stream/*path", hlsHandler.Dispatch)
 
 	// Trigger startup scan if configured
 	if *scanOnStartup {
@@ -92,6 +115,13 @@ func main() {
 		seriesDir := getEnv("SERIES_DIR", "/media/Series")
 		log.Printf("Triggering startup scan on: Movies=%s, Series=%s", moviesDir, seriesDir)
 		indexer.ScanMedia(moviesDir, seriesDir)
+	} else if key := os.Getenv("TMDB_API_KEY"); key != "" && key != "your_tmdb_api_key_here" && key != "votre_cle_api_tmdb_ici" {
+		indexer.BackfillMissingMetadataAsync()
+	}
+
+	if key := os.Getenv("TMDB_API_KEY"); key == "" || key == "your_tmdb_api_key_here" || key == "votre_cle_api_tmdb_ici" {
+		log.Println("WARNING: TMDB_API_KEY is not set — movie/show posters will not be fetched.")
+		log.Println("         Get a free key at https://www.themoviedb.org/settings/api and set it in docker-compose.yml")
 	}
 
 	// Create data directory if it doesn't exist

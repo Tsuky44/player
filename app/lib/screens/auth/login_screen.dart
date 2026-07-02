@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../../providers/auth_provider.dart';
+import '../../services/api_client.dart';
+import '../../theme/app_colors.dart';
 
 class LoginScreen extends StatefulWidget {
   const LoginScreen({super.key});
@@ -11,12 +13,24 @@ class LoginScreen extends StatefulWidget {
 
 class _LoginScreenState extends State<LoginScreen> {
   final _formKey = GlobalKey<FormState>();
-  
-  final _serverController = TextEditingController(text: "http://10.0.2.2:8080");
+  final _serverController = TextEditingController();
   final _usernameController = TextEditingController();
   final _passwordController = TextEditingController();
-
   bool _isRegistering = false;
+  bool _serverPrefilled = false;
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    if (_serverPrefilled) return;
+    _serverPrefilled = true;
+    final apiClient = context.read<ApiClient>();
+    _serverController.text = apiClient.baseUrl;
+    final username = apiClient.savedUsername;
+    if (username != null && username.isNotEmpty) {
+      _usernameController.text = username;
+    }
+  }
 
   @override
   void dispose() {
@@ -26,7 +40,7 @@ class _LoginScreenState extends State<LoginScreen> {
     super.dispose();
   }
 
-  void _submit() async {
+  Future<void> _submit() async {
     if (!_formKey.currentState!.validate()) return;
 
     final authProvider = Provider.of<AuthProvider>(context, listen: false);
@@ -34,239 +48,167 @@ class _LoginScreenState extends State<LoginScreen> {
     final username = _usernameController.text.trim();
     final password = _passwordController.text;
 
-    bool success;
     if (_isRegistering) {
-      success = await authProvider.register(serverUrl, username, password);
+      final success = await authProvider.register(serverUrl, username, password);
       if (success && mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text("Inscription réussie ! Vous pouvez maintenant vous connecter."),
-            backgroundColor: Colors.green,
-          ),
+          const SnackBar(content: Text('Inscription réussie ! Connectez-vous.')),
         );
-        setState(() {
-          _isRegistering = false;
-        });
+        setState(() => _isRegistering = false);
       }
     } else {
-      success = await authProvider.login(serverUrl, username, password);
-      // Auto-navigation is handled in main.dart depending on AuthProvider.isAuthenticated
+      await authProvider.login(serverUrl, username, password);
     }
   }
 
   @override
   Widget build(BuildContext context) {
     final authProvider = Provider.of<AuthProvider>(context);
-    final brandColor = const Color(0xFF00A4DC); // Emby Blue
 
     return Scaffold(
-      backgroundColor: const Color(0xFF141414), // Cinematic Charcoal
-      body: Center(
-        child: SingleChildScrollView(
-          padding: const EdgeInsets.all(24.0),
-          child: Container(
-            constraints: const BoxConstraints(maxWidth: 450),
-            padding: const EdgeInsets.all(32.0),
+      backgroundColor: AppColors.background,
+      body: Stack(
+        fit: StackFit.expand,
+        children: [
+          DecoratedBox(
             decoration: BoxDecoration(
-              color: const Color(0xFF1F1F1F), // Dark Gray Card
-              borderRadius: BorderRadius.circular(16),
-              boxShadow: [
-                BoxShadow(
-                  color: Colors.black.withOpacity(0.5),
-                  blurRadius: 15,
-                  offset: const Offset(0, 8),
-                )
-              ],
-            ),
-            child: Form(
-              key: _formKey,
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                crossAxisAlignment: CrossAxisAlignment.stretch,
-                children: [
-                  // Brand Logo
-                  Row(
-                    mainAxisAlignment: MainAxisAlignment.center,
-                    children: [
-                      Icon(Icons.play_circle_fill, size: 48, color: brandColor),
-                      const SizedBox(width: 12),
-                      const Text(
-                        "PLAYEUR",
-                        style: TextStyle(
-                          fontSize: 32,
-                          fontWeight: FontWeight.bold,
-                          color: Colors.white,
-                          letterSpacing: 2,
-                        ),
-                      ),
-                    ],
-                  ),
-                  const SizedBox(width: 12),
-                  Text(
-                    _isRegistering ? "Créer un profil" : "Sélection de profil / Connexion",
-                    textAlign: TextAlign.center,
-                    style: const TextStyle(color: Colors.grey, fontSize: 16),
-                  ),
-                  const SizedBox(height: 32),
-
-                  // Server URL Field
-                  TextFormField(
-                    controller: _serverController,
-                    style: const TextStyle(color: Colors.white),
-                    decoration: InputDecoration(
-                      labelText: "Adresse du Serveur",
-                      labelStyle: const TextStyle(color: Colors.grey),
-                      hintText: "http://192.168.1.50:8080",
-                      hintStyle: const TextStyle(color: Colors.grey),
-                      prefixIcon: const Icon(Icons.dns, color: Colors.grey),
-                      filled: true,
-                      fillColor: const Color(0xFF2A2A2A),
-                      enabledBorder: OutlineInputBorder(
-                        borderRadius: BorderRadius.circular(8),
-                        borderSide: const BorderSide(color: Colors.transparent),
-                      ),
-                      focusedBorder: OutlineInputBorder(
-                        borderRadius: BorderRadius.circular(8),
-                        borderSide: BorderSide(color: brandColor),
-                      ),
-                    ),
-                    validator: (value) {
-                      if (value == null || value.trim().isEmpty) {
-                        return "L'adresse du serveur est requise";
-                      }
-                      return null;
-                    },
-                  ),
-                  const SizedBox(height: 16),
-
-                  // Username Field
-                  TextFormField(
-                    controller: _usernameController,
-                    style: const TextStyle(color: Colors.white),
-                    decoration: InputDecoration(
-                      labelText: "Nom d'utilisateur",
-                      labelStyle: const TextStyle(color: Colors.grey),
-                      prefixIcon: const Icon(Icons.person, color: Colors.grey),
-                      filled: true,
-                      fillColor: const Color(0xFF2A2A2A),
-                      enabledBorder: OutlineInputBorder(
-                        borderRadius: BorderRadius.circular(8),
-                        borderSide: const BorderSide(color: Colors.transparent),
-                      ),
-                      focusedBorder: OutlineInputBorder(
-                        borderRadius: BorderRadius.circular(8),
-                        borderSide: BorderSide(color: brandColor),
-                      ),
-                    ),
-                    validator: (value) {
-                      if (value == null || value.trim().isEmpty) {
-                        return "Le nom d'utilisateur est requis";
-                      }
-                      return null;
-                    },
-                  ),
-                  const SizedBox(height: 16),
-
-                  // Password Field
-                  TextFormField(
-                    controller: _passwordController,
-                    obscureText: true,
-                    style: const TextStyle(color: Colors.white),
-                    decoration: InputDecoration(
-                      labelText: "Mot de passe",
-                      labelStyle: const TextStyle(color: Colors.grey),
-                      prefixIcon: const Icon(Icons.lock, color: Colors.grey),
-                      filled: true,
-                      fillColor: const Color(0xFF2A2A2A),
-                      enabledBorder: OutlineInputBorder(
-                        borderRadius: BorderRadius.circular(8),
-                        borderSide: const BorderSide(color: Colors.transparent),
-                      ),
-                      focusedBorder: OutlineInputBorder(
-                        borderRadius: BorderRadius.circular(8),
-                        borderSide: BorderSide(color: brandColor),
-                      ),
-                    ),
-                    validator: (value) {
-                      if (value == null || value.isEmpty) {
-                        return "Le mot de passe est requis";
-                      }
-                      if (value.length < 4) {
-                        return "Le mot de passe doit faire au moins 4 caractères";
-                      }
-                      return null;
-                    },
-                  ),
-                  const SizedBox(height: 24),
-
-                  // Error Message
-                  if (authProvider.errorMessage != null) ...[
-                    Container(
-                      padding: const EdgeInsets.symmetric(vertical: 8, horizontal: 12),
-                      decoration: BoxDecoration(
-                        color: Colors.red.withOpacity(0.2),
-                        borderRadius: BorderRadius.circular(8),
-                        border: Border.all(color: Colors.red.withOpacity(0.5)),
-                      ),
-                      child: Text(
-                        authProvider.errorMessage!,
-                        style: const TextStyle(color: Colors.red, fontSize: 14),
-                      ),
-                    ),
-                    const SizedBox(height: 20),
-                  ],
-
-                  // Submit Button
-                  ElevatedButton(
-                    onPressed: authProvider.isLoading ? null : _submit,
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor: brandColor,
-                      padding: const EdgeInsets.symmetric(vertical: 16),
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(8),
-                      ),
-                    ),
-                    child: authProvider.isLoading
-                        ? const SizedBox(
-                            height: 20,
-                            width: 20,
-                            child: CircularProgressIndicator(
-                              strokeWidth: 2,
-                              color: Colors.white,
-                            ),
-                          )
-                        : Text(
-                            _isRegistering ? "S'INSCRIRE" : "SE CONNECTER",
-                            style: const TextStyle(
-                              fontSize: 16,
-                              fontWeight: FontWeight.bold,
-                              color: Colors.white,
-                            ),
-                          ),
-                  ),
-                  const SizedBox(height: 16),
-
-                  // Toggle Login/Register
-                  TextButton(
-                    onPressed: authProvider.isLoading
-                        ? null
-                        : () {
-                            setState(() {
-                              _isRegistering = !_isRegistering;
-                            });
-                          },
-                    child: Text(
-                      _isRegistering
-                          ? "Déjà un compte ? Connectez-vous"
-                          : "Nouveau sur Playeur ? Créez un profil",
-                      style: TextStyle(color: brandColor),
-                    ),
-                  ),
+              gradient: RadialGradient(
+                center: const Alignment(0.3, -0.5),
+                radius: 1.2,
+                colors: [
+                  AppColors.primary.withValues(alpha: 0.15),
+                  AppColors.background,
                 ],
               ),
             ),
           ),
-        ),
+          Center(
+            child: SingleChildScrollView(
+              padding: const EdgeInsets.all(24),
+              child: ConstrainedBox(
+                constraints: const BoxConstraints(maxWidth: 420),
+                child: Form(
+                  key: _formKey,
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: [
+                      Row(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: [
+                          Container(
+                            width: 48,
+                            height: 48,
+                            decoration: BoxDecoration(
+                              color: AppColors.primary,
+                              borderRadius: BorderRadius.circular(10),
+                            ),
+                            child: const Icon(Icons.play_arrow_rounded, size: 32, color: Colors.white),
+                          ),
+                          const SizedBox(width: 14),
+                          Text(
+                            'PLAYEUR',
+                            style: Theme.of(context).textTheme.headlineMedium?.copyWith(
+                                  fontWeight: FontWeight.w800,
+                                  letterSpacing: 3,
+                                ),
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 8),
+                      Text(
+                        _isRegistering ? 'Créer un compte' : 'Connectez-vous à votre serveur',
+                        textAlign: TextAlign.center,
+                        style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                              color: AppColors.textSecondary,
+                            ),
+                      ),
+                      const SizedBox(height: 36),
+                      TextFormField(
+                        controller: _serverController,
+                        style: const TextStyle(color: AppColors.textPrimary),
+                        decoration: const InputDecoration(
+                          labelText: 'Adresse du serveur',
+                          hintText: 'http://192.168.1.50:8080',
+                          prefixIcon: Icon(Icons.dns_rounded, color: AppColors.textMuted),
+                        ),
+                        validator: (v) => v == null || v.trim().isEmpty ? 'Requis' : null,
+                      ),
+                      const SizedBox(height: 16),
+                      TextFormField(
+                        controller: _usernameController,
+                        style: const TextStyle(color: AppColors.textPrimary),
+                        decoration: const InputDecoration(
+                          labelText: 'Nom d\'utilisateur',
+                          prefixIcon: Icon(Icons.person_outline_rounded, color: AppColors.textMuted),
+                        ),
+                        validator: (v) => v == null || v.trim().isEmpty ? 'Requis' : null,
+                      ),
+                      const SizedBox(height: 16),
+                      TextFormField(
+                        controller: _passwordController,
+                        obscureText: true,
+                        style: const TextStyle(color: AppColors.textPrimary),
+                        decoration: const InputDecoration(
+                          labelText: 'Mot de passe',
+                          prefixIcon: Icon(Icons.lock_outline_rounded, color: AppColors.textMuted),
+                        ),
+                        validator: (v) {
+                          if (v == null || v.isEmpty) return 'Requis';
+                          if (v.length < 4) return 'Minimum 4 caractères';
+                          return null;
+                        },
+                      ),
+                      if (authProvider.errorMessage != null) ...[
+                        const SizedBox(height: 16),
+                        Container(
+                          padding: const EdgeInsets.all(12),
+                          decoration: BoxDecoration(
+                            color: AppColors.error.withValues(alpha: 0.15),
+                            borderRadius: BorderRadius.circular(8),
+                            border: Border.all(color: AppColors.error.withValues(alpha: 0.4)),
+                          ),
+                          child: Text(
+                            authProvider.errorMessage!,
+                            style: const TextStyle(color: AppColors.error, fontSize: 13),
+                          ),
+                        ),
+                      ],
+                      const SizedBox(height: 24),
+                      ElevatedButton(
+                        onPressed: authProvider.isLoading ? null : _submit,
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: AppColors.primary,
+                          foregroundColor: Colors.white,
+                          padding: const EdgeInsets.symmetric(vertical: 16),
+                        ),
+                        child: authProvider.isLoading
+                            ? const SizedBox(
+                                width: 22,
+                                height: 22,
+                                child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white),
+                              )
+                            : Text(_isRegistering ? 'S\'INSCRIRE' : 'SE CONNECTER'),
+                      ),
+                      const SizedBox(height: 12),
+                      TextButton(
+                        onPressed: authProvider.isLoading
+                            ? null
+                            : () => setState(() => _isRegistering = !_isRegistering),
+                        child: Text(
+                          _isRegistering
+                              ? 'Déjà un compte ? Connectez-vous'
+                              : 'Nouveau ? Créez un compte',
+                          style: const TextStyle(color: AppColors.textSecondary),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            ),
+          ),
+        ],
       ),
     );
   }

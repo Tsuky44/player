@@ -28,11 +28,17 @@ class ModularControlsLayer extends StatelessWidget {
   /// Key to anchor the settings popup above the settings button.
   final GlobalKey? settingsButtonKey;
 
+  /// Key attached to the lowest progress/timeline control for subtitle positioning.
+  final GlobalKey? timelineAnchorKey;
+
   /// Called with a target fraction (0.0 -> 1.0) when the user seeks.
   final ValueChanged<double> onSeekFraction;
 
   /// Media title for the [mediaTitle] control.
   final String? mediaTitle;
+
+  /// TMDB logo for the [mediaLogo] control.
+  final String? mediaLogoUrl;
 
   /// Current volume 0.0 -> 100.0 (for volumeSlider).
   final double? volume;
@@ -64,7 +70,9 @@ class ModularControlsLayer extends StatelessWidget {
     this.onOpenSettings,
     this.onToggleSubtitles,
     this.settingsButtonKey,
+    this.timelineAnchorKey,
     this.mediaTitle,
+    this.mediaLogoUrl,
     this.volume,
     this.onVolumeChanged,
     this.onBack,
@@ -84,12 +92,14 @@ class ModularControlsLayer extends StatelessWidget {
       PlayerControlType.fullscreen => onToggleFullscreen,
       PlayerControlType.settings => onOpenSettings,
       PlayerControlType.subtitles => onToggleSubtitles,
-      PlayerControlType.mediaTitle || PlayerControlType.volumeSlider => null,
+      PlayerControlType.mediaTitle || PlayerControlType.mediaLogo || PlayerControlType.volumeSlider => null,
     };
   }
 
   @override
   Widget build(BuildContext context) {
+    final timelineAnchorId = _timelineAnchorId();
+
     return Positioned.fill(
       child: IgnorePointer(
         ignoring: !visible,
@@ -103,7 +113,7 @@ class ModularControlsLayer extends StatelessWidget {
               return Stack(
                 children: [
                   for (final placed in config.controls)
-                    _positioned(placed, canvasSize),
+                    _positioned(placed, canvasSize, timelineAnchorId),
                 ],
               );
             },
@@ -113,7 +123,25 @@ class ModularControlsLayer extends StatelessWidget {
     );
   }
 
-  Widget _positioned(PlacedControl placed, Size canvasSize) {
+  String? _timelineAnchorId() {
+    if (timelineAnchorKey == null) return null;
+
+    PlacedControl? bottomTimeline;
+    for (final placed in config.controls) {
+      if (!placed.type.isProgressBar) continue;
+      if (bottomTimeline == null ||
+          placed.config.yPercentage > bottomTimeline.config.yPercentage) {
+        bottomTimeline = placed;
+      }
+    }
+    return bottomTimeline?.id;
+  }
+
+  Widget _positioned(
+    PlacedControl placed,
+    Size canvasSize,
+    String? timelineAnchorId,
+  ) {
     final c = placed.config;
     final chrome = ControlChrome(
       type: placed.type,
@@ -127,10 +155,17 @@ class ModularControlsLayer extends StatelessWidget {
       currentSeconds: placed.type == PlayerControlType.timeline ? currentSeconds : null,
       onSeekFraction: placed.type.isProgressBar ? onSeekFraction : null,
       onToggleFullscreen: placed.type == PlayerControlType.timeline ? onToggleFullscreen : null,
-      mediaTitle: placed.type == PlayerControlType.mediaTitle ? mediaTitle : null,
+      mediaTitle: placed.type == PlayerControlType.mediaTitle ||
+              placed.type == PlayerControlType.mediaLogo
+          ? mediaTitle
+          : null,
+      mediaLogoUrl: placed.type == PlayerControlType.mediaLogo ? mediaLogoUrl : null,
       volume: placed.type == PlayerControlType.volumeSlider ? volume : null,
       onVolumeChanged: placed.type == PlayerControlType.volumeSlider ? onVolumeChanged : null,
       onBack: placed.type == PlayerControlType.back ? onBack : null,
+      blurSigma: config.blurIntensity,
+      glassOpacity: config.glassOpacity,
+      liquidGlass: config.liquidGlass,
     );
 
     final handler = _tapHandler(placed.type);
@@ -147,6 +182,12 @@ class ModularControlsLayer extends StatelessWidget {
 
     if (placed.type == PlayerControlType.settings && settingsButtonKey != null) {
       child = KeyedSubtree(key: settingsButtonKey, child: child);
+    }
+
+    if (timelineAnchorKey != null &&
+        timelineAnchorId != null &&
+        placed.id == timelineAnchorId) {
+      child = KeyedSubtree(key: timelineAnchorKey, child: child);
     }
 
     return Align(

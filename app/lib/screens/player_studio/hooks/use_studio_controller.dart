@@ -56,6 +56,23 @@ class StudioController extends ChangeNotifier {
     notifyListeners();
   }
 
+  /// Update the frosted-glass blur intensity for all controls (draft only).
+  void setBlurIntensity(double value) {
+    _draft = _draft.copyWith(blurIntensity: value);
+    notifyListeners();
+  }
+
+  /// Update the frosted-glass background opacity for all controls (draft only).
+  void setGlassOpacity(double value) {
+    _draft = _draft.copyWith(glassOpacity: value);
+    notifyListeners();
+  }
+
+  void setLiquidGlass(bool value) {
+    _draft = _draft.copyWith(liquidGlass: value);
+    notifyListeners();
+  }
+
   /// Snap a raw percentage to the nearest grid line.
   double _snap(double raw, int segments) {
     final step = 1.0 / segments;
@@ -177,6 +194,14 @@ class StudioController extends ChangeNotifier {
   void resetDraft() {
     _draft = PlayerLayoutConfig.standard();
     _selectedId = null;
+    notifyListeners();
+  }
+
+  /// Replace the draft with a persisted layout (e.g. after async storage load).
+  void loadDraft(PlayerLayoutConfig config) {
+    _draft = config;
+    _selectedId = null;
+    _isDragging = false;
     notifyListeners();
   }
 

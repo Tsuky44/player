@@ -3,13 +3,16 @@ import 'package:flutter/material.dart';
 import 'package:flutter_animate/flutter_animate.dart';
 import 'package:audio_video_progress_bar/audio_video_progress_bar.dart';
 import 'package:media_kit/media_kit.dart' as mk;
-import '../../../models/models.dart';
 import 'player_top_bar.dart';
 
 class PlayerHUDOverlay extends StatelessWidget {
   final bool visible;
+  final GlobalKey? timelineAnchorKey;
   final mk.Player player;
   final dynamic media; // Can be Media or HomeMediaItem
+  final String mediaTitle;
+  final bool isPlaying;
+  final VoidCallback onPlayPause;
   final Duration position;
   final Duration duration;
   final bool isDraggingSlider;
@@ -17,6 +20,7 @@ class PlayerHUDOverlay extends StatelessWidget {
   final VoidCallback onToggleControls;
   final VoidCallback onHideControlsWithDelay;
   final void Function(int) onSeekRelative;
+  final VoidCallback onBack;
   final VoidCallback? onShowTrackSettings;
   final void Function(double) onSliderChangeStart;
   final void Function(double) onSliderChanged;
@@ -26,8 +30,12 @@ class PlayerHUDOverlay extends StatelessWidget {
   const PlayerHUDOverlay({
     super.key,
     required this.visible,
+    this.timelineAnchorKey,
     required this.player,
     required this.media,
+    required this.mediaTitle,
+    required this.isPlaying,
+    required this.onPlayPause,
     required this.position,
     required this.duration,
     required this.isDraggingSlider,
@@ -35,19 +43,13 @@ class PlayerHUDOverlay extends StatelessWidget {
     required this.onToggleControls,
     required this.onHideControlsWithDelay,
     required this.onSeekRelative,
+    required this.onBack,
     this.onShowTrackSettings,
     required this.onSliderChangeStart,
     required this.onSliderChanged,
     required this.onSliderChangeEnd,
     this.onNextEpisode,
   });
-
-  Media get _actualMedia {
-    if (media is HomeMediaItem) {
-      return (media as HomeMediaItem).media;
-    }
-    return media as Media;
-  }
 
   String _formatDuration(Duration d) {
     final hours = d.inHours;
@@ -79,8 +81,8 @@ class PlayerHUDOverlay extends StatelessWidget {
             children: [
               // TOP BAR - Title only
               PlayerTopBar(
-                title: _actualMedia.title,
-                onBack: () => Navigator.of(context).pop(),
+                title: mediaTitle,
+                onBack: onBack,
               ),
 
               const Spacer(),
@@ -106,7 +108,9 @@ class PlayerHUDOverlay extends StatelessWidget {
                       mainAxisSize: MainAxisSize.min,
                       children: [
                         // Progress bar with time
-                        Row(
+                        KeyedSubtree(
+                          key: timelineAnchorKey,
+                          child: Row(
                           children: [
                             Text(
                               _formatDuration(currentPos),
@@ -153,6 +157,7 @@ class PlayerHUDOverlay extends StatelessWidget {
                             ),
                           ],
                         ),
+                        ),
                         const SizedBox(height: 12),
                         // Control buttons row
                         Row(
@@ -167,14 +172,7 @@ class PlayerHUDOverlay extends StatelessWidget {
                             Material(
                               color: Colors.transparent,
                               child: InkWell(
-                                onTap: () {
-                                  if (player.state.playing) {
-                                    player.pause();
-                                  } else {
-                                    player.play();
-                                  }
-                                  onHideControlsWithDelay();
-                                },
+                                onTap: onPlayPause,
                                 borderRadius: BorderRadius.circular(28),
                                 child: Container(
                                   width: 56,
@@ -187,10 +185,18 @@ class PlayerHUDOverlay extends StatelessWidget {
                                       width: 1,
                                     ),
                                   ),
-                                  child: Icon(
-                                    player.state.playing ? Icons.pause : Icons.play_arrow,
-                                    color: Colors.white,
-                                    size: 28,
+                                  child: AnimatedSwitcher(
+                                    duration: const Duration(milliseconds: 120),
+                                    switchInCurve: Curves.easeOut,
+                                    switchOutCurve: Curves.easeIn,
+                                    transitionBuilder: (child, animation) =>
+                                        ScaleTransition(scale: animation, child: child),
+                                    child: Icon(
+                                      isPlaying ? Icons.pause : Icons.play_arrow,
+                                      key: ValueKey(isPlaying),
+                                      color: Colors.white,
+                                      size: 28,
+                                    ),
                                   ),
                                 ),
                               ),

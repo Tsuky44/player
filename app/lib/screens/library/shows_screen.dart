@@ -1,17 +1,26 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
+import '../../models/models.dart';
 import '../../providers/library_provider.dart';
+import '../../theme/app_colors.dart';
+import '../../widgets/global/empty_state.dart';
 import '../../widgets/global/media_card.dart';
-import 'seasons_screen.dart';
+import 'show_detail_screen.dart';
+
+enum _SortOption { title, recent }
 
 class ShowsScreen extends StatefulWidget {
-  const ShowsScreen({super.key});
+  final bool embedded;
+
+  const ShowsScreen({super.key, this.embedded = false});
 
   @override
   State<ShowsScreen> createState() => _ShowsScreenState();
 }
 
 class _ShowsScreenState extends State<ShowsScreen> {
+  _SortOption _sort = _SortOption.recent;
+
   @override
   void initState() {
     super.initState();
@@ -20,102 +29,158 @@ class _ShowsScreenState extends State<ShowsScreen> {
     });
   }
 
+  List<Media> _filteredShows(LibraryProvider lp) {
+    var items = List.of(lp.shows);
+    switch (_sort) {
+      case _SortOption.title:
+        items.sort((a, b) => a.title.compareTo(b.title));
+      case _SortOption.recent:
+        items.sort((a, b) => b.createdAt.compareTo(a.createdAt));
+    }
+    return items;
+  }
+
+  int _crossAxisCount(double width) {
+    if (width >= 1400) return 7;
+    if (width >= 1100) return 6;
+    if (width >= 900) return 5;
+    if (width >= 600) return 4;
+    return 3;
+  }
+
   @override
   Widget build(BuildContext context) {
-    final libraryProvider = Provider.of<LibraryProvider>(context);
+    final lp = Provider.of<LibraryProvider>(context);
+    final width = MediaQuery.sizeOf(context).width;
+    final horizontalPadding = width >= 900 ? 48.0 : 16.0;
+    final filtered = _filteredShows(lp);
 
     return Scaffold(
-      backgroundColor: const Color(0xFF141414),
-      appBar: AppBar(
-        backgroundColor: const Color(0xFF1F1F1F),
-        elevation: 0,
-        title: const Text(
-          "Toutes les Séries",
-          style: TextStyle(fontWeight: FontWeight.bold),
-        ),
-      ),
-      body: libraryProvider.isLoadingShows
-          ? const Center(
-              child: CircularProgressIndicator(color: Color(0xFF00A4DC)),
-            )
-          : libraryProvider.errorMessage != null
-              ? _buildErrorView(libraryProvider.errorMessage!)
-              : libraryProvider.shows.isEmpty
-                  ? _buildEmptyStateView()
-                  : GridView.builder(
-                      padding: const EdgeInsets.all(16),
-                      gridDelegate: const SliverGridDelegateWithMaxCrossAxisExtent(
-                        maxCrossAxisExtent: 140,
-                        mainAxisExtent: 250,
-                        crossAxisSpacing: 14,
-                        mainAxisSpacing: 16,
+      backgroundColor: AppColors.background,
+      body: lp.isLoadingShows
+          ? const LoadingView()
+          : lp.errorMessage != null
+              ? ErrorStateView(
+                  message: lp.errorMessage!,
+                  onRetry: () => lp.loadShows(),
+                )
+              : CustomScrollView(
+                  slivers: [
+                    SliverToBoxAdapter(
+                      child: Padding(
+                        padding: EdgeInsets.fromLTRB(
+                          horizontalPadding,
+                          widget.embedded ? MediaQuery.paddingOf(context).top + 54 : 48,
+                          horizontalPadding,
+                          0,
+                        ),
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              'Séries',
+                              style: Theme.of(context).textTheme.displaySmall?.copyWith(
+                                    fontWeight: FontWeight.w800,
+                                    fontSize: 32,
+                                  ),
+                            ),
+                            const SizedBox(height: 20),
+                            Row(
+                              children: [
+                                const Spacer(),
+                                _SortDropdown(
+                                  value: _sort,
+                                  onChanged: (v) => setState(() => _sort = v),
+                                ),
+                              ],
+                            ),
+                            const SizedBox(height: 8),
+                            Text(
+                              '${filtered.length} série${filtered.length > 1 ? 's' : ''}',
+                              style: const TextStyle(color: AppColors.textMuted, fontSize: 13),
+                            ),
+                          ],
+                        ),
                       ),
-                      itemCount: libraryProvider.shows.length,
-                      itemBuilder: (context, index) {
-                        final item = libraryProvider.shows[index];
-                        return MediaCard(
-                          media: item,
-                          onTap: () {
-                            Navigator.of(context).push(
-                              MaterialPageRoute(
-                                builder: (_) => SeasonsScreen(show: item),
-                              ),
-                            );
-                          },
-                        );
-                      },
                     ),
+                    if (lp.shows.isEmpty)
+                      SliverFillRemaining(
+                        child: EmptyStateView(
+                          icon: Icons.tv_off_rounded,
+                          title: 'Aucune série',
+                          message: 'Ajoutez des dossiers de séries avec des épisodes SxxExx puis synchronisez la bibliothèque.',
+                        ),
+                      )
+                    else if (filtered.isEmpty)
+                      SliverFillRemaining(
+                        child: Center(
+                          child: Text(
+                            'Aucune série trouvée',
+                            style: const TextStyle(color: AppColors.textMuted),
+                          ),
+                        ),
+                      )
+                    else
+                      SliverPadding(
+                        padding: EdgeInsets.fromLTRB(horizontalPadding, 24, horizontalPadding, 48),
+                        sliver: SliverGrid(
+                          gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
+                            crossAxisCount: _crossAxisCount(width),
+                            mainAxisSpacing: 24,
+                            crossAxisSpacing: 12,
+                            childAspectRatio: 0.52,
+                          ),
+                          delegate: SliverChildBuilderDelegate(
+                            (context, index) {
+                              final show = filtered[index];
+                              return MediaCard(
+                                media: show,
+                                onTap: () {
+                                  Navigator.of(context).push(
+                                    MaterialPageRoute(
+                                      builder: (_) => ShowDetailScreen(show: show),
+                                    ),
+                                  );
+                                },
+                              );
+                            },
+                            childCount: filtered.length,
+                          ),
+                        ),
+                      ),
+                  ],
+                ),
     );
   }
+}
 
-  Widget _buildErrorView(String error) {
-    return Center(
-      child: Padding(
-        padding: const EdgeInsets.all(32.0),
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            const Icon(Icons.error_outline, size: 64, color: Colors.red),
-            const SizedBox(height: 16),
-            Text(
-              error,
-              textAlign: TextAlign.center,
-              style: const TextStyle(color: Colors.grey, fontSize: 16),
-            ),
-            const SizedBox(height: 24),
-            ElevatedButton(
-              onPressed: () {
-                Provider.of<LibraryProvider>(context, listen: false).loadShows();
-              },
-              style: ElevatedButton.styleFrom(backgroundColor: const Color(0xFF00A4DC)),
-              child: const Text("RÉESSAYER"),
-            ),
-          ],
-        ),
+class _SortDropdown extends StatelessWidget {
+  final _SortOption value;
+  final ValueChanged<_SortOption> onChanged;
+
+  const _SortDropdown({required this.value, required this.onChanged});
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 12),
+      decoration: BoxDecoration(
+        color: AppColors.surfaceElevated,
+        borderRadius: BorderRadius.circular(8),
+        border: Border.all(color: AppColors.border),
       ),
-    );
-  }
-
-  Widget _buildEmptyStateView() {
-    return const Center(
-      child: Padding(
-        padding: EdgeInsets.all(32.0),
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            Icon(Icons.tv_off, size: 64, color: Colors.grey),
-            const SizedBox(height: 16),
-            Text(
-              "Aucune série indexée",
-              style: TextStyle(color: Colors.white, fontSize: 18, fontWeight: FontWeight.bold),
-            ),
-            const SizedBox(height: 8),
-            Text(
-              "Vérifiez que votre dossier Docker /media/Series contient des dossiers par série et des épisodes nommés SxxExx, puis synchronisez depuis l'accueil.",
-              textAlign: TextAlign.center,
-              style: TextStyle(color: Colors.grey, fontSize: 14),
-            ),
+      child: DropdownButtonHideUnderline(
+        child: DropdownButton<_SortOption>(
+          value: value,
+          dropdownColor: AppColors.surfaceElevated,
+          icon: const Icon(Icons.sort_rounded, color: AppColors.textSecondary, size: 20),
+          items: const [
+            DropdownMenuItem(value: _SortOption.recent, child: Text('Récents')),
+            DropdownMenuItem(value: _SortOption.title, child: Text('A → Z')),
           ],
+          onChanged: (v) {
+            if (v != null) onChanged(v);
+          },
         ),
       ),
     );

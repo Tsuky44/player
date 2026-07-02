@@ -2,8 +2,17 @@ import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:window_manager/window_manager.dart';
 
-/// Controls visibility of the custom desktop caption bar.
-final ValueNotifier<bool> showDesktopCaption = ValueNotifier<bool>(true);
+/// Custom caption bar is Windows-only; macOS keeps native traffic lights.
+bool get useDesktopCaptionBar => Platform.isWindows;
+
+/// Hidden native title bar (custom bar on Windows, traffic lights on macOS).
+bool get useHiddenNativeTitleBar => Platform.isWindows || Platform.isMacOS;
+
+/// Vertical space for macOS traffic lights — UI controls sit just below.
+double get macOSWindowControlsTopInset => Platform.isMacOS ? 40 : 0;
+
+/// Controls visibility of the custom desktop caption bar (Windows only).
+final ValueNotifier<bool> showDesktopCaption = ValueNotifier<bool>(Platform.isWindows);
 
 /// Windows-style caption bar shown at the top of desktop windows when
 /// [showDesktopCaption] is true. Provides minimize, maximize/restore
@@ -25,7 +34,7 @@ class _WindowCaptionBarState extends State<WindowCaptionBar> {
   }
 
   Future<void> _syncMaximized() async {
-    if (!Platform.isWindows && !Platform.isMacOS && !Platform.isLinux) return;
+    if (!useDesktopCaptionBar) return;
     final maximized = await windowManager.isMaximized();
     if (mounted) setState(() => _isMaximized = maximized);
   }
@@ -41,7 +50,7 @@ class _WindowCaptionBarState extends State<WindowCaptionBar> {
 
   @override
   Widget build(BuildContext context) {
-    if (!Platform.isWindows && !Platform.isMacOS && !Platform.isLinux) {
+    if (!useDesktopCaptionBar) {
       return const SizedBox.shrink();
     }
 

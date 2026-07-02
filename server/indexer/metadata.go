@@ -1,0 +1,913 @@
+package indexer
+
+import (
+	"database/sql"
+	"encoding/json"
+	"fmt"
+	"log"
+	"net/http"
+	"net/url"
+	"os"
+	"path/filepath"
+	"strconv"
+	"strings"
+	"sync"
+	"time"
+
+	"project-player/server/database"
+	"project-player/server/models"
+)
+
+var (
+	IsBackfilling bool
+	backfillMutex sync.Mutex
+)
+
+type tmdbDetails struct {
+	ID            int    `json:"id"`
+	Title         string `json:"title"`
+	Name          string `json:"name"`
+	OriginalTitle string `json:"original_title"`
+	OriginalName  string `json:"original_name"`
+	Overview      string `json:"overview"`
+	PosterPath    string `json:"poster_path"`
+	ReleaseDate   string `json:"release_date"`
+	FirstAirDate  string `json:"first_air_date"`
+}
+
+type tmdbTranslationsResponse struct {
+	Translations []struct {
+		ISO6391 string `json:"iso_639_1"`
+		Data    struct {
+			Title    string `json:"title"`
+			Name     string `json:"name"`
+			Overview string `json:"overview"`
+		} `json:"data"`
+	} `json:"translations"`
+}
+
+func tmdbAPIKey() string {
+	key := strings.TrimSpace(os.Getenv("TMDB_API_KEY"))
+	if key == "" || key == "your_tmdb_api_key_here" || key == "votre_cle_api_tmdb_ici" {
+		return ""
+	}
+	return key
+}
+
+// tmdbLanguage returns the TMDB API language (default fr-FR). Override with TMDB_LANGUAGE.
+func tmdbLanguage() string {
+	lang := strings.TrimSpace(os.Getenv("TMDB_LANGUAGE"))
+	if lang == "" {
+		return "fr-FR"
+	}
+	return lang
+}
+
+func tmdbTranslationISO639() string {
+	lang := tmdbLanguage()
+	if idx := strings.Index(lang, "-"); idx > 0 {
+		return strings.ToLower(lang[:idx])
+	}
+	return strings.ToLower(lang)
+}
+
+func posterURLFromPath(path string) string {
+	if path == "" {
+		return ""
+	}
+	return "https://image.tmdb.org/t/p/w500" + path
+}
+
+// humanizeFilenameTitle turns a release filename into a readable local title.
+func humanizeFilenameTitle(raw string) string {
+	return ReleaseDisplayTitle(raw, models.TypeMovie)
+}
+
+type tmdbSearchResult struct {
+	ID           int
+	Title        string
+	Name         string
+	Overview     string
+	PosterPath   string
+	ReleaseDate  string
+	FirstAirDate string
+}
+
+func tmdbResultYear(r tmdbSearchResult, mediaType models.MediaType) int {
+	date := r.ReleaseDate
+	if mediaType == models.TypeShow {
+		date = r.FirstAirDate
+	}
+	if len(date) >= 4 {
+		if y, err := strconv.Atoi(date[:4]); err == nil {
+			return y
+		}
+	}
+	return 0
+}
+
+// pickBestTMDBResult chooses the result that best matches the parsed title and
+// year, rather than blindly trusting TMDB's popularity ordering. This fixes
+// mis-identified titles where a more popular but unrelated film ranked first.
+func pickBestTMDBResult(results []tmdbSearchResult, targetTitle string, targetYear int, mediaType models.MediaType) tmdbSearchResult {
+	if len(results) == 0 {
+		return tmdbSearchResult{}
+	}
+	best := results[0]
+	bestScore := scoreTMDBResult(best, targetTitle, targetYear, mediaType)
+	for _, r := range results[1:] {
+		// Strictly-greater keeps TMDB's popularity order as the tie-breaker.
+		if s := scoreTMDBResult(r, targetTitle, targetYear, mediaType); s > bestScore {
+			best = r
+			bestScore = s
+		}
+	}
+	return best
+}
+
+// scoreTMDBResult ranks a candidate by title similarity (dominant signal) and
+// release-year proximity.
+func scoreTMDBResult(r tmdbSearchResult, targetTitle string, targetYear int, mediaType models.MediaType) float64 {
+	target := normalizeForMatch(targetTitle)
+	titleScore := 0.0
+	for _, cand := range []string{r.Title, r.Name} {
+		if s := titleSimilarity(target, normalizeForMatch(cand)); s > titleScore {
+			titleScore = s
+		}
+	}
+
+	score := titleScore
+	if targetYear > 0 {
+		if ry := tmdbResultYear(r, mediaType); ry > 0 {
+			switch diff := absInt(ry - targetYear); {
+			case diff == 0:
+				score += 0.6
+			case diff == 1:
+				score += 0.25
+			default:
+				score -= 0.4
+			}
+		}
+	}
+	return score
+}
+
+// titleSimilarity returns a 0..1 score between two already-normalized titles.
+func titleSimilarity(a, b string) float64 {
+	if a == "" || b == "" {
+		return 0
+	}
+	if a == b {
+		return 1.0
+	}
+	if strings.Contains(a, b) || strings.Contains(b, a) {
+		return 0.85
+	}
+
+	setB := map[string]bool{}
+	for _, w := range strings.Fields(b) {
+		setB[w] = true
+	}
+	common := 0
+	union := len(setB)
+	for _, w := range strings.Fields(a) {
+		if setB[w] {
+			common++
+		} else {
+			union++
+		}
+	}
+	if union == 0 {
+		return 0
+	}
+	return 0.7 * float64(common) / float64(union)
+}
+
+// normalizeForMatch lowercases, strips accents and punctuation, and collapses
+// whitespace so titles can be compared reliably.
+func normalizeForMatch(s string) string {
+	s = strings.ToLower(strings.TrimSpace(s))
+	s = stripDiacritics(s)
+	var b strings.Builder
+	for _, r := range s {
+		if (r >= 'a' && r <= 'z') || (r >= '0' && r <= '9') {
+			b.WriteRune(r)
+		} else {
+			b.WriteRune(' ')
+		}
+	}
+	return strings.TrimSpace(spaceRe.ReplaceAllString(b.String(), " "))
+}
+
+var diacriticFolds = map[rune]rune{
+	'à': 'a', 'á': 'a', 'â': 'a', 'ä': 'a', 'ã': 'a', 'å': 'a',
+	'ç': 'c',
+	'è': 'e', 'é': 'e', 'ê': 'e', 'ë': 'e',
+	'ì': 'i', 'í': 'i', 'î': 'i', 'ï': 'i',
+	'ñ': 'n',
+	'ò': 'o', 'ó': 'o', 'ô': 'o', 'ö': 'o', 'õ': 'o', 'ø': 'o',
+	'ù': 'u', 'ú': 'u', 'û': 'u', 'ü': 'u',
+	'ý': 'y', 'ÿ': 'y',
+}
+
+func stripDiacritics(s string) string {
+	var b strings.Builder
+	for _, r := range s {
+		if folded, ok := diacriticFolds[r]; ok {
+			b.WriteRune(folded)
+		} else {
+			b.WriteRune(r)
+		}
+	}
+	return b.String()
+}
+
+func absInt(n int) int {
+	if n < 0 {
+		return -n
+	}
+	return n
+}
+
+func tmdbDisplayTitle(title, name string, mediaType models.MediaType) string {
+	if mediaType == models.TypeShow && name != "" {
+		return name
+	}
+	if title != "" {
+		return title
+	}
+	return name
+}
+
+func tmdbOriginalTitle(d tmdbDetails, mediaType models.MediaType) string {
+	if mediaType == models.TypeShow {
+		return d.OriginalName
+	}
+	return d.OriginalTitle
+}
+
+func localizedTitleNeedsTranslation(displayTitle, originalTitle string) bool {
+	displayTitle = strings.TrimSpace(displayTitle)
+	if displayTitle == "" {
+		return true
+	}
+	originalTitle = strings.TrimSpace(originalTitle)
+	if originalTitle == "" {
+		return false
+	}
+	return strings.EqualFold(displayTitle, originalTitle)
+}
+
+func fetchTMDBTranslation(tmdbID int, mediaType models.MediaType) (title, overview string) {
+	apiKey := tmdbAPIKey()
+	if apiKey == "" || tmdbID <= 0 {
+		return "", ""
+	}
+
+	endpoint := "movie"
+	if mediaType == models.TypeShow {
+		endpoint = "tv"
+	}
+
+	u := fmt.Sprintf(
+		"https://api.themoviedb.org/3/%s/%d/translations?api_key=%s",
+		endpoint, tmdbID, apiKey,
+	)
+	resp, err := http.Get(u)
+	if err != nil || resp.StatusCode != http.StatusOK {
+		if resp != nil {
+			resp.Body.Close()
+		}
+		return "", ""
+	}
+	defer resp.Body.Close()
+
+	var out tmdbTranslationsResponse
+	if err := json.NewDecoder(resp.Body).Decode(&out); err != nil {
+		return "", ""
+	}
+
+	wantLang := tmdbTranslationISO639()
+	for _, tr := range out.Translations {
+		if !strings.EqualFold(tr.ISO6391, wantLang) {
+			continue
+		}
+		if mediaType == models.TypeShow {
+			return strings.TrimSpace(tr.Data.Name), strings.TrimSpace(tr.Data.Overview)
+		}
+		return strings.TrimSpace(tr.Data.Title), strings.TrimSpace(tr.Data.Overview)
+	}
+	return "", ""
+}
+
+// fetchTMDBMetadata queries TMDB search API for poster and metadata.
+func fetchTMDBMetadata(title string, mediaType models.MediaType) (posterURL string, overview string, releaseDate string, tmdbID int, displayTitle string) {
+	apiKey := tmdbAPIKey()
+	if apiKey == "" {
+		return "", "", "", 0, ""
+	}
+
+	parsed := ParseReleaseFilename(title, mediaType)
+	queries := BuildTMDBSearchQueries(parsed)
+
+	endpoint := "movie"
+	if mediaType == models.TypeShow {
+		endpoint = "tv"
+	}
+
+	client := &http.Client{Timeout: 12 * time.Second}
+
+	trySearch := func(query, searchYear, lang string) []tmdbSearchResult {
+		if query == "" {
+			return nil
+		}
+		u := fmt.Sprintf(
+			"https://api.themoviedb.org/3/search/%s?api_key=%s&query=%s",
+			endpoint, apiKey, url.QueryEscape(query),
+		)
+		if lang != "" {
+			u += "&language=" + lang
+		}
+		if searchYear != "" {
+			if mediaType == models.TypeShow {
+				u += "&first_air_date_year=" + searchYear
+			} else {
+				u += "&year=" + searchYear
+			}
+		}
+		resp, err := client.Get(u)
+		if err != nil {
+			log.Printf("TMDB: search failed for %q (year=%s): %v", query, searchYear, err)
+			return nil
+		}
+		defer resp.Body.Close()
+		if resp.StatusCode != http.StatusOK {
+			return nil
+		}
+		var out TMDBResponse
+		if err := json.NewDecoder(resp.Body).Decode(&out); err != nil {
+			log.Printf("TMDB: decode failed for %q: %v", query, err)
+			return nil
+		}
+		results := make([]tmdbSearchResult, 0, len(out.Results))
+		for _, r := range out.Results {
+			results = append(results, tmdbSearchResult{
+				ID: r.ID, Title: r.Title, Name: r.Name, Overview: r.Overview,
+				PosterPath: r.PosterPath, ReleaseDate: r.ReleaseDate, FirstAirDate: r.FirstAirDate,
+			})
+		}
+		return results
+	}
+
+	yearStr := ""
+	if parsed.Year > 0 {
+		yearStr = strconv.Itoa(parsed.Year)
+	}
+
+	var best tmdbSearchResult
+	for _, query := range queries {
+		for _, searchYear := range []string{yearStr, ""} {
+			for _, lang := range []string{tmdbLanguage(), ""} {
+				results := trySearch(query, searchYear, lang)
+				if len(results) == 0 {
+					continue
+				}
+				best = pickBestTMDBResult(results, parsed.Title, parsed.Year, mediaType)
+				goto found
+			}
+		}
+	}
+
+found:
+	if best.ID == 0 {
+		return "", "", "", 0, ""
+	}
+
+	tmdbID = best.ID
+	detailPoster, detailOverview, detailDate, detailTitle := fetchTMDBDetailsByID(tmdbID, mediaType)
+
+	posterURL = detailPoster
+	if posterURL == "" {
+		posterURL = posterURLFromPath(best.PosterPath)
+	}
+	overview = detailOverview
+	if overview == "" {
+		overview = best.Overview
+	}
+	displayTitle = detailTitle
+	if displayTitle == "" {
+		displayTitle = tmdbDisplayTitle(best.Title, best.Name, mediaType)
+	}
+	releaseDate = detailDate
+	if releaseDate == "" {
+		if mediaType == models.TypeShow {
+			releaseDate = best.FirstAirDate
+		} else {
+			releaseDate = best.ReleaseDate
+		}
+	}
+
+	return posterURL, overview, releaseDate, tmdbID, displayTitle
+}
+
+func fetchTMDBDetailsByID(tmdbID int, mediaType models.MediaType) (posterURL, overview, releaseDate, displayTitle string) {
+	apiKey := tmdbAPIKey()
+	if apiKey == "" || tmdbID <= 0 {
+		return "", "", "", ""
+	}
+
+	endpoint := "movie"
+	if mediaType == models.TypeShow {
+		endpoint = "tv"
+	}
+
+	client := &http.Client{Timeout: 12 * time.Second}
+	fetch := func(lang string) tmdbDetails {
+		u := fmt.Sprintf("https://api.themoviedb.org/3/%s/%d?api_key=%s", endpoint, tmdbID, apiKey)
+		if lang != "" {
+			u += "&language=" + lang
+		}
+		resp, err := client.Get(u)
+		if err != nil || resp.StatusCode != http.StatusOK {
+			if resp != nil {
+				resp.Body.Close()
+			}
+			return tmdbDetails{}
+		}
+		defer resp.Body.Close()
+		var d tmdbDetails
+		_ = json.NewDecoder(resp.Body).Decode(&d)
+		return d
+	}
+
+	// Keep localized title/overview; only fall back to English for missing artwork/text.
+	loc := fetch(tmdbLanguage())
+	fallback := tmdbDetails{}
+	if loc.PosterPath == "" || loc.Overview == "" {
+		fallback = fetch("")
+	}
+
+	posterPath := loc.PosterPath
+	if posterPath == "" {
+		posterPath = fallback.PosterPath
+	}
+	posterURL = posterURLFromPath(posterPath)
+
+	overview = strings.TrimSpace(loc.Overview)
+	if overview == "" {
+		overview = strings.TrimSpace(fallback.Overview)
+	}
+
+	displayTitle = tmdbDisplayTitle(loc.Title, loc.Name, mediaType)
+	originalTitle := tmdbOriginalTitle(loc, mediaType)
+	if originalTitle == "" {
+		originalTitle = tmdbOriginalTitle(fallback, mediaType)
+	}
+	if localizedTitleNeedsTranslation(displayTitle, originalTitle) {
+		if trTitle, trOverview := fetchTMDBTranslation(tmdbID, mediaType); trTitle != "" {
+			displayTitle = trTitle
+			if trOverview != "" {
+				overview = trOverview
+			}
+		} else if displayTitle == "" {
+			displayTitle = tmdbDisplayTitle(fallback.Title, fallback.Name, mediaType)
+		}
+	}
+
+	if mediaType == models.TypeShow {
+		releaseDate = loc.FirstAirDate
+		if releaseDate == "" {
+			releaseDate = fallback.FirstAirDate
+		}
+	} else {
+		releaseDate = loc.ReleaseDate
+		if releaseDate == "" {
+			releaseDate = fallback.ReleaseDate
+		}
+	}
+	return posterURL, overview, releaseDate, displayTitle
+}
+
+func enrichSearchTitle(storedTitle, filePath string) string {
+	if filePath != "" {
+		base := strings.TrimSuffix(filepath.Base(filePath), filepath.Ext(filePath))
+		if base != "" {
+			return base
+		}
+	}
+	return storedTitle
+}
+
+func enrichMediaRecord(id int, title string, mediaType models.MediaType, existingTMDBID int) bool {
+	var posterURL, overview, releaseDate, displayTitle string
+	var tmdbID int
+
+	if existingTMDBID > 0 {
+		var detailTitle string
+		posterURL, overview, releaseDate, detailTitle = fetchTMDBDetailsByID(existingTMDBID, mediaType)
+		tmdbID = existingTMDBID
+		displayTitle = detailTitle
+	}
+
+	if posterURL == "" || overview == "" || displayTitle == "" {
+		var searchedOverview, searchedDate, searchedTitle string
+		var searchedPoster string
+		var searchedID int
+		searchedPoster, searchedOverview, searchedDate, searchedID, searchedTitle = fetchTMDBMetadata(title, mediaType)
+		if posterURL == "" {
+			posterURL = searchedPoster
+		}
+		if overview == "" {
+			overview = searchedOverview
+		}
+		if releaseDate == "" {
+			releaseDate = searchedDate
+		}
+		if tmdbID == 0 {
+			tmdbID = searchedID
+		}
+		if displayTitle == "" {
+			displayTitle = searchedTitle
+		}
+	}
+
+	if displayTitle == "" {
+		displayTitle = ReleaseDisplayTitle(title, mediaType)
+	}
+
+	if posterURL == "" && overview == "" && tmdbID == 0 {
+		if displayTitle == "" || displayTitle == title {
+			return false
+		}
+	}
+
+	_, err := database.DB.Exec(`
+		UPDATE medias SET
+			title = CASE WHEN ? != '' THEN ? ELSE title END,
+			poster_url = CASE WHEN ? != '' THEN ? ELSE poster_url END,
+			overview = CASE WHEN ? != '' THEN ? ELSE overview END,
+			release_date = CASE WHEN ? != '' AND (release_date IS NULL OR release_date = '') THEN ? ELSE release_date END,
+			tmdb_id = CASE WHEN ? > 0 AND (tmdb_id IS NULL OR tmdb_id = 0) THEN ? ELSE tmdb_id END
+		WHERE id = ?`,
+		displayTitle, displayTitle,
+		posterURL, posterURL,
+		overview, overview,
+		releaseDate, releaseDate,
+		tmdbID, tmdbID,
+		id,
+	)
+	if err != nil {
+		log.Printf("TMDB: failed to update media %d: %v", id, err)
+		return false
+	}
+
+	if posterURL != "" || overview != "" {
+		log.Printf("TMDB: enriched %s %q (id=%d)", mediaType, displayTitle, id)
+	}
+	return posterURL != "" || overview != ""
+}
+
+func getShowPosterForSeason(seasonID int) string {
+	var poster sql.NullString
+	_ = database.DB.QueryRow(`
+		SELECT s.poster_url FROM medias season
+		JOIN medias s ON season.parent_id = s.id AND s.type = 'show'
+		WHERE season.id = ?`, seasonID).Scan(&poster)
+	if poster.Valid {
+		return poster.String
+	}
+	return ""
+}
+
+func backfillEpisodePosters() {
+	res, err := database.DB.Exec(`
+		UPDATE medias AS ep
+		SET poster_url = (
+			SELECT show_m.poster_url FROM medias season
+			JOIN medias show_m ON season.parent_id = show_m.id AND show_m.type = 'show'
+			WHERE season.id = ep.parent_id
+			  AND show_m.poster_url IS NOT NULL AND show_m.poster_url != ''
+			LIMIT 1
+		)
+		WHERE ep.type = 'episode'
+		  AND (ep.poster_url IS NULL OR ep.poster_url = '')
+	`)
+	if err != nil {
+		log.Printf("TMDB: episode poster backfill failed: %v", err)
+		return
+	}
+	if n, _ := res.RowsAffected(); n > 0 {
+		log.Printf("TMDB: copied show posters to %d episodes", n)
+	}
+}
+
+func loadBackfillQueue() []struct {
+	id        int
+	mediaType models.MediaType
+	title     string
+	filePath  string
+	tmdbID    int
+} {
+	rows, err := database.DB.Query(`
+		SELECT id, type, title, COALESCE(file_path, ''), COALESCE(tmdb_id, 0)
+		FROM medias
+		WHERE type IN ('movie', 'show')
+		  AND (
+		    poster_url IS NULL OR poster_url = ''
+		    OR overview IS NULL OR overview = ''
+		    OR tmdb_id IS NULL OR tmdb_id = 0
+		    OR title LIKE '%WEBDL%'
+		    OR title LIKE '%webdl%'
+		    OR title LIKE '%.mkv%'
+		    OR title LIKE '%1080p%'
+		    OR title LIKE '%720p%'
+		  )
+		ORDER BY type, title
+	`)
+	if err != nil {
+		log.Printf("TMDB: backfill query failed: %v", err)
+		return nil
+	}
+	defer rows.Close()
+
+	var items []struct {
+		id        int
+		mediaType models.MediaType
+		title     string
+		filePath  string
+		tmdbID    int
+	}
+	for rows.Next() {
+		var id, tmdbID int
+		var mediaType, title, filePath string
+		if err := rows.Scan(&id, &mediaType, &title, &filePath, &tmdbID); err != nil {
+			continue
+		}
+		items = append(items, struct {
+			id        int
+			mediaType models.MediaType
+			title     string
+			filePath  string
+			tmdbID    int
+		}{id, models.MediaType(mediaType), title, filePath, tmdbID})
+	}
+	return items
+}
+
+// BackfillMissingMetadata fetches TMDB posters for movies/shows missing artwork.
+func BackfillMissingMetadata() {
+	backfillMutex.Lock()
+	if IsBackfilling {
+		backfillMutex.Unlock()
+		return
+	}
+	IsBackfilling = true
+	backfillMutex.Unlock()
+
+	defer func() {
+		backfillMutex.Lock()
+		IsBackfilling = false
+		backfillMutex.Unlock()
+	}()
+
+	if tmdbAPIKey() == "" {
+		log.Println("TMDB: backfill skipped — set TMDB_API_KEY in your environment")
+		backfillEpisodePosters()
+		return
+	}
+
+	log.Println("TMDB: starting metadata backfill…")
+	start := time.Now()
+
+	// Load the full queue first — never hold a rows cursor open during HTTP/UPDATE
+	// (SQLite uses a single connection; open rows + Exec deadlocks forever).
+	queue := loadBackfillQueue()
+	log.Printf("TMDB: %d items need metadata", len(queue))
+
+	updated := 0
+	for i, item := range queue {
+		searchTitle := enrichSearchTitle(item.title, item.filePath)
+		if enrichMediaRecord(item.id, searchTitle, item.mediaType, item.tmdbID) {
+			updated++
+		}
+		if (i+1)%25 == 0 || i+1 == len(queue) {
+			log.Printf("TMDB: backfill progress %d/%d", i+1, len(queue))
+		}
+		time.Sleep(260 * time.Millisecond)
+	}
+
+	backfillEpisodePosters()
+	backfillLocalizedTitles()
+	backfillEpisodeMetadata()
+	log.Printf("TMDB: metadata backfill done in %v (%d updated)", time.Since(start), updated)
+}
+
+func backfillLocalizedTitles() {
+	if tmdbAPIKey() == "" {
+		return
+	}
+
+	rows, err := database.DB.Query(`
+		SELECT id, type, COALESCE(tmdb_id, 0)
+		FROM medias
+		WHERE type IN ('movie', 'show')
+		  AND tmdb_id IS NOT NULL AND tmdb_id > 0
+		ORDER BY type, title`)
+	if err != nil {
+		log.Printf("TMDB: localized title backfill query failed: %v", err)
+		return
+	}
+	defer rows.Close()
+
+	type item struct {
+		id        int
+		mediaType models.MediaType
+		tmdbID    int
+	}
+	var queue []item
+	for rows.Next() {
+		var id, tmdbID int
+		var mediaType string
+		if err := rows.Scan(&id, &mediaType, &tmdbID); err != nil {
+			continue
+		}
+		queue = append(queue, item{id, models.MediaType(mediaType), tmdbID})
+	}
+
+	if len(queue) == 0 {
+		return
+	}
+
+	log.Printf("TMDB: refreshing localized titles for %d items (%s)…", len(queue), tmdbLanguage())
+	updated := 0
+	for i, item := range queue {
+		if refreshLocalizedRecord(item.id, item.tmdbID, item.mediaType) {
+			updated++
+		}
+		if (i+1)%25 == 0 || i+1 == len(queue) {
+			log.Printf("TMDB: localized titles progress %d/%d", i+1, len(queue))
+		}
+		time.Sleep(260 * time.Millisecond)
+	}
+	log.Printf("TMDB: localized titles refreshed (%d updated)", updated)
+}
+
+func refreshLocalizedRecord(id, tmdbID int, mediaType models.MediaType) bool {
+	_, overview, _, displayTitle := fetchTMDBDetailsByID(tmdbID, mediaType)
+	if displayTitle == "" && overview == "" {
+		return false
+	}
+
+	_, err := database.DB.Exec(`
+		UPDATE medias SET
+			title = CASE WHEN ? != '' THEN ? ELSE title END,
+			overview = CASE WHEN ? != '' THEN ? ELSE overview END
+		WHERE id = ?`,
+		displayTitle, displayTitle,
+		overview, overview,
+		id,
+	)
+	if err != nil {
+		log.Printf("TMDB: failed to localize media %d: %v", id, err)
+		return false
+	}
+	return displayTitle != ""
+}
+
+// SearchTMDBCandidates returns up to 20 TMDB matches for a manual query, used
+// by the "fix metadata" poster picker.
+func SearchTMDBCandidates(query string, mediaType models.MediaType) []models.TMDBSearchCandidate {
+	apiKey := tmdbAPIKey()
+	query = strings.TrimSpace(query)
+	if apiKey == "" || query == "" {
+		return nil
+	}
+
+	endpoint := "movie"
+	typeLabel := string(models.TypeMovie)
+	if mediaType == models.TypeShow {
+		endpoint = "tv"
+		typeLabel = string(models.TypeShow)
+	}
+
+	client := &http.Client{Timeout: 12 * time.Second}
+	u := fmt.Sprintf(
+		"https://api.themoviedb.org/3/search/%s?api_key=%s&query=%s&language=%s",
+		endpoint, apiKey, url.QueryEscape(query), tmdbLanguage(),
+	)
+	resp, err := client.Get(u)
+	if err != nil || resp.StatusCode != http.StatusOK {
+		if resp != nil {
+			resp.Body.Close()
+		}
+		return nil
+	}
+	defer resp.Body.Close()
+
+	var out TMDBResponse
+	if err := json.NewDecoder(resp.Body).Decode(&out); err != nil {
+		return nil
+	}
+
+	var candidates []models.TMDBSearchCandidate
+	for _, r := range out.Results {
+		date := r.ReleaseDate
+		if mediaType == models.TypeShow {
+			date = r.FirstAirDate
+		}
+		candidates = append(candidates, models.TMDBSearchCandidate{
+			TMDBID:    r.ID,
+			Title:     tmdbDisplayTitle(r.Title, r.Name, mediaType),
+			Year:      yearFromDate(date),
+			Overview:  strings.TrimSpace(r.Overview),
+			PosterURL: posterURLFromPath(r.PosterPath),
+			MediaType: typeLabel,
+		})
+		if len(candidates) >= 20 {
+			break
+		}
+	}
+	return candidates
+}
+
+// RematchMediaByID re-identifies a movie/show against TMDB, overriding any
+// previously stored (possibly wrong) match. When overrideTMDBID > 0 the exact
+// TMDB entry is used; otherwise a fresh search runs on overrideTitle (or the
+// original release filename when empty). Returns true on a successful update.
+func RematchMediaByID(id int, overrideTitle string, overrideTMDBID int) bool {
+	var title, mediaType, filePath string
+	err := database.DB.QueryRow(
+		`SELECT title, type, COALESCE(file_path, '') FROM medias WHERE id = ? AND type IN ('movie', 'show')`, id,
+	).Scan(&title, &mediaType, &filePath)
+	if err != nil {
+		return false
+	}
+	mt := models.MediaType(mediaType)
+
+	var posterURL, overview, releaseDate, displayTitle string
+	var tmdbID int
+
+	if overrideTMDBID > 0 {
+		posterURL, overview, releaseDate, displayTitle = fetchTMDBDetailsByID(overrideTMDBID, mt)
+		tmdbID = overrideTMDBID
+	} else {
+		searchTitle := strings.TrimSpace(overrideTitle)
+		if searchTitle == "" {
+			searchTitle = enrichSearchTitle(title, filePath)
+		}
+		posterURL, overview, releaseDate, tmdbID, displayTitle = fetchTMDBMetadata(searchTitle, mt)
+	}
+
+	if tmdbID == 0 && displayTitle == "" {
+		return false
+	}
+	if displayTitle == "" {
+		if overrideTitle != "" {
+			displayTitle = strings.TrimSpace(overrideTitle)
+		} else {
+			displayTitle = ReleaseDisplayTitle(enrichSearchTitle(title, filePath), mt)
+		}
+	}
+
+	// Overwrite the stored metadata unconditionally — this is an explicit fix.
+	_, err = database.DB.Exec(`
+		UPDATE medias SET
+			title = CASE WHEN ? != '' THEN ? ELSE title END,
+			poster_url = ?,
+			overview = ?,
+			release_date = ?,
+			tmdb_id = ?
+		WHERE id = ?`,
+		displayTitle, displayTitle,
+		posterURL,
+		overview,
+		releaseDate,
+		tmdbID,
+		id,
+	)
+	if err != nil {
+		log.Printf("TMDB: failed to rematch media %d: %v", id, err)
+		return false
+	}
+	log.Printf("TMDB: rematched %s %q (id=%d, tmdb=%d)", mediaType, displayTitle, id, tmdbID)
+	return true
+}
+
+// EnrichMediaByID fetches TMDB metadata for a single movie/show.
+func EnrichMediaByID(id int) bool {
+	var title, mediaType, filePath string
+	var tmdbID int
+	err := database.DB.QueryRow(`
+		SELECT title, type, COALESCE(file_path, ''), COALESCE(tmdb_id, 0)
+		FROM medias WHERE id = ? AND type IN ('movie', 'show')`, id,
+	).Scan(&title, &mediaType, &filePath, &tmdbID)
+	if err != nil {
+		return false
+	}
+	return enrichMediaRecord(id, enrichSearchTitle(title, filePath), models.MediaType(mediaType), tmdbID)
+}
+
+// BackfillMissingMetadataAsync runs backfill in the background.
+func BackfillMissingMetadataAsync() {
+	go BackfillMissingMetadata()
+}

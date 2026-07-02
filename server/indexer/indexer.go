@@ -2,11 +2,7 @@ package indexer
 
 import (
 	"database/sql"
-	"encoding/json"
-	"fmt"
 	"log"
-	"net/http"
-	"net/url"
 	"os"
 	"path/filepath"
 	"regexp"
@@ -17,6 +13,7 @@ import (
 
 	"project-player/server/database"
 	"project-player/server/models"
+	"project-player/server/subtitles"
 )
 
 var (
@@ -42,88 +39,13 @@ var episodeRegex = regexp.MustCompile(`(?i)s(\d+)e(\d+)`)
 type TMDBResponse struct {
 	Results []struct {
 		ID           int    `json:"id"`
-		Title        string `json:"title"`          // For movies
-		Name         string `json:"name"`           // For TV shows
+		Title        string `json:"title"` // For movies
+		Name         string `json:"name"`  // For TV shows
 		Overview     string `json:"overview"`
 		PosterPath   string `json:"poster_path"`
 		ReleaseDate  string `json:"release_date"`   // For movies
 		FirstAirDate string `json:"first_air_date"` // For TV shows
 	} `json:"results"`
-}
-
-// fetchTMDBMetadata queries TMDB API to get poster, plot, and other metadata
-func fetchTMDBMetadata(title string, mediaType models.MediaType) (posterURL string, overview string, releaseDate string, tmdbID int) {
-	apiKey := os.Getenv("TMDB_API_KEY")
-	if apiKey == "" {
-		return "", "", "", 0 // Skip if no API key is provided
-	}
-
-	endpoint := "movie"
-	if mediaType == models.TypeShow {
-		endpoint = "tv"
-	}
-
-	apiURL := fmt.Sprintf(
-		"https://api.themoviedb.org/3/search/%s?api_key=%s&query=%s&language=fr-FR", // Preferred French metadata
-		endpoint,
-		apiKey,
-		url.QueryEscape(title),
-	)
-
-	// Fallback to English if query is made, but let's default to French
-	client := &http.Client{Timeout: 10 * time.Second}
-	resp, err := client.Get(apiURL)
-	if err != nil {
-		log.Printf("TMDB: Failed to fetch metadata for %s: %v", title, err)
-		return "", "", "", 0
-	}
-	defer resp.Body.Close()
-
-	if resp.StatusCode != http.StatusOK {
-		// Try again in English if French fails or has some error, or just return
-		return "", "", "", 0
-	}
-
-	var tmdbResp TMDBResponse
-	if err := json.NewDecoder(resp.Body).Decode(&tmdbResp); err != nil {
-		log.Printf("TMDB: Failed to decode response for %s: %v", title, err)
-		return "", "", "", 0
-	}
-
-	if len(tmdbResp.Results) == 0 {
-		// Retry without language tag (defaults to English) if no results found
-		apiURL = fmt.Sprintf(
-			"https://api.themoviedb.org/3/search/%s?api_key=%s&query=%s",
-			endpoint,
-			apiKey,
-			url.QueryEscape(title),
-		)
-		resp2, err := client.Get(apiURL)
-		if err == nil {
-			defer resp2.Body.Close()
-			_ = json.NewDecoder(resp2.Body).Decode(&tmdbResp)
-		}
-	}
-
-	if len(tmdbResp.Results) > 0 {
-		result := tmdbResp.Results[0]
-		tmdbID = result.ID
-		overview = result.Overview
-
-		if result.PosterPath != "" {
-			posterURL = "https://image.tmdb.org/t/p/w500" + result.PosterPath
-		}
-
-		if mediaType == models.TypeShow {
-			releaseDate = result.FirstAirDate
-		} else {
-			releaseDate = result.ReleaseDate
-		}
-
-		return posterURL, overview, releaseDate, tmdbID
-	}
-
-	return "", "", "", 0
 }
 
 // ScanMedia starts the indexing process in a background thread if not already running
@@ -147,6 +69,9 @@ func ScanMedia(moviesDir, seriesDir string) {
 		log.Println("Indexer: Starting media scan...")
 		startTime := time.Now()
 
+		// Fix existing duplicate shows immediately (don't wait for a long filesystem walk).
+		dedupeDuplicateShows()
+
 		if err := scanMovies(moviesDir); err != nil {
 			log.Printf("Indexer error scanning movies: %v", err)
 		}
@@ -155,13 +80,19 @@ func ScanMedia(moviesDir, seriesDir string) {
 			log.Printf("Indexer error scanning series: %v", err)
 		}
 
+		dedupeDuplicateShows()
+		dedupeDuplicateMovies()
+
 		// Clean up broken database entries whose physical files have been deleted
 		if err := cleanMissingMedias(); err != nil {
 			log.Printf("Indexer error cleaning up missing medias: %v", err)
 		}
 
-		// Run intro and outro detection
-		DetectIntrosOutros()
+		// Intro/outro detection is expensive (IntroDB + ffprobe) — run in the
+		// background so /api/home and browsing stay responsive during startup.
+		go DetectIntrosOutros()
+
+		BackfillMissingMetadataAsync()
 
 		log.Printf("Indexer: Media scan completed in %v", time.Since(startTime))
 	}()
@@ -198,28 +129,32 @@ func scanMovies(dir string) error {
 			return err
 		}
 		if exists {
-			return nil // Already indexed, skip
-		}
-
-		// Parse movie title from filename (removing extension)
-		title := strings.TrimSuffix(info.Name(), filepath.Ext(info.Name()))
-		// Optional: clean up standard scene tags in names
-		title = cleanTitle(title)
-
-		// Fetch TMDB Metadata
-		posterURL, overview, releaseDate, tmdbID := fetchTMDBMetadata(title, models.TypeMovie)
-
-		// Insert movie with TMDB metadata
-		_, err = database.DB.Exec(
-			"INSERT INTO medias (type, title, file_path, duration, poster_url, overview, release_date, tmdb_id) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
-			models.TypeMovie, title, normalizedPath, 0, posterURL, overview, releaseDate, tmdbID,
-		)
-		if err != nil {
-			log.Printf("Indexer: Failed to index movie %s: %v", title, err)
 			return nil
 		}
 
-		log.Printf("Indexer: Successfully indexed Movie -> %s", title)
+		// Parse movie title from filename (removing extension)
+		rawTitle := strings.TrimSuffix(info.Name(), filepath.Ext(info.Name()))
+		posterURL, overview, releaseDate, tmdbID, tmdbTitle := fetchTMDBMetadata(rawTitle, models.TypeMovie)
+		displayTitle := tmdbTitle
+		if displayTitle == "" {
+			displayTitle = ReleaseDisplayTitle(rawTitle, models.TypeMovie)
+		}
+
+		// Insert movie with TMDB metadata
+		res, err := database.DB.Exec(
+			"INSERT INTO medias (type, title, file_path, duration, poster_url, overview, release_date, tmdb_id) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+			models.TypeMovie, displayTitle, normalizedPath, 0, posterURL, overview, releaseDate, tmdbID,
+		)
+		if err != nil {
+			log.Printf("Indexer: Failed to index movie %s: %v", displayTitle, err)
+			return nil
+		}
+
+		log.Printf("Indexer: Successfully indexed Movie -> %s", displayTitle)
+
+		if id, idErr := res.LastInsertId(); idErr == nil {
+			extractSubtitles(int(id), normalizedPath)
+		}
 		return nil
 	})
 }
@@ -266,7 +201,6 @@ func scanSeries(dir string) error {
 		relPath = filepath.ToSlash(relPath)
 		parts := strings.Split(relPath, "/")
 
-		var showTitle string
 		var seasonNum int
 		var episodeNum int
 
@@ -282,22 +216,8 @@ func scanSeries(dir string) error {
 		seasonNum = sNum
 		episodeNum = eNum
 
-		// Determine Show Title
-		// If nested in folders: /Series/Breaking Bad/Season 1/S01E01.mkv
-		if len(parts) >= 2 {
-			showTitle = parts[0] // "Breaking Bad"
-		} else {
-			// Flat folder: /Series/Breaking Bad S01E01.mkv
-			// Take everything before S01E01
-			loc := episodeRegex.FindStringIndex(info.Name())
-			if loc != nil {
-				showTitle = info.Name()[:loc[0]]
-				showTitle = strings.Trim(showTitle, " -_")
-			} else {
-				showTitle = "Unknown Show"
-			}
-		}
-		showTitle = cleanTitle(showTitle)
+		// Determine show title from folder layout (handles per-episode download folders).
+		showTitle := resolveShowTitleFromPath(parts, info.Name())
 
 		// Find or Create Show
 		showID, err := findOrCreateShow(showTitle)
@@ -313,14 +233,30 @@ func scanSeries(dir string) error {
 			return nil
 		}
 
-		// Build Episode Title: e.g. "S01E03 - Title" or just "Episode 3"
-		epTitle := strings.TrimSuffix(info.Name(), filepath.Ext(info.Name()))
-		epTitle = cleanTitle(epTitle)
+		showTMDBID := lookupShowTMDBID(showID)
+		epTitle := fallbackEpisodeTitle(seasonNum, episodeNum)
+		epOverview := ""
+		epPoster := getShowPosterForSeason(seasonID)
+		epAirDate := ""
+		epTMDBID := 0
 
-		// Create Episode
-		_, err = database.DB.Exec(
-			"INSERT INTO medias (type, title, file_path, duration, parent_id, poster_url) VALUES (?, ?, ?, ?, ?, ?)",
-			models.TypeEpisode, epTitle, normalizedPath, 0, seasonID, "",
+		if showTMDBID > 0 {
+			tmdbTitle, tmdbOverview, tmdbPoster, tmdbAirDate, tmdbEpID := fetchTMDBEpisode(showTMDBID, seasonNum, episodeNum)
+			if tmdbTitle != "" {
+				epTitle = tmdbTitle
+			}
+			epOverview = tmdbOverview
+			if tmdbPoster != "" {
+				epPoster = tmdbPoster
+			}
+			epAirDate = tmdbAirDate
+			epTMDBID = tmdbEpID
+		}
+
+		res, err := database.DB.Exec(
+			`INSERT INTO medias (type, title, file_path, duration, parent_id, poster_url, overview, release_date, tmdb_id, season_number, episode_number)
+			 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+			models.TypeEpisode, epTitle, normalizedPath, 0, seasonID, epPoster, epOverview, epAirDate, epTMDBID, seasonNum, episodeNum,
 		)
 		if err != nil {
 			log.Printf("Indexer: Failed to index episode %s: %v", epTitle, err)
@@ -328,35 +264,12 @@ func scanSeries(dir string) error {
 		}
 
 		log.Printf("Indexer: Successfully indexed Episode -> %s (S%02dE%02d)", showTitle, seasonNum, episodeNum)
+
+		if id, idErr := res.LastInsertId(); idErr == nil {
+			extractSubtitles(int(id), normalizedPath)
+		}
 		return nil
 	})
-}
-
-// findOrCreateShow gets the ID of a show by title or creates it if it doesn't exist
-func findOrCreateShow(title string) (int, error) {
-	var id int
-	err := database.DB.QueryRow("SELECT id FROM medias WHERE type = ? AND title = ?", models.TypeShow, title).Scan(&id)
-	if err == nil {
-		return id, nil
-	}
-	if err != sql.ErrNoRows {
-		return 0, err
-	}
-
-	// Fetch TMDB Metadata for TV Show
-	posterURL, overview, releaseDate, tmdbID := fetchTMDBMetadata(title, models.TypeShow)
-
-	// Insert Show with TMDB metadata
-	res, err := database.DB.Exec(
-		"INSERT INTO medias (type, title, poster_url, overview, release_date, tmdb_id) VALUES (?, ?, ?, ?, ?, ?)",
-		models.TypeShow, title, posterURL, overview, releaseDate, tmdbID,
-	)
-	if err != nil {
-		return 0, err
-	}
-
-	insertID, err := res.LastInsertId()
-	return int(insertID), err
 }
 
 // findOrCreateSeason gets the ID of a season or creates it under a show
@@ -368,6 +281,10 @@ func findOrCreateSeason(showID int, seasonNum int) (int, error) {
 		models.TypeSeason, showID, seasonTitle,
 	).Scan(&id)
 	if err == nil {
+		_, _ = database.DB.Exec(
+			"UPDATE medias SET season_number = ? WHERE id = ? AND (season_number IS NULL OR season_number = 0)",
+			seasonNum, id,
+		)
 		return id, nil
 	}
 	if err != sql.ErrNoRows {
@@ -376,8 +293,8 @@ func findOrCreateSeason(showID int, seasonNum int) (int, error) {
 
 	// Insert Season
 	res, err := database.DB.Exec(
-		"INSERT INTO medias (type, title, parent_id) VALUES (?, ?, ?)",
-		models.TypeSeason, seasonTitle, showID,
+		"INSERT INTO medias (type, title, parent_id, season_number) VALUES (?, ?, ?, ?)",
+		models.TypeSeason, seasonTitle, showID, seasonNum,
 	)
 	if err != nil {
 		return 0, err
@@ -385,6 +302,15 @@ func findOrCreateSeason(showID int, seasonNum int) (int, error) {
 
 	insertID, err := res.LastInsertId()
 	return int(insertID), err
+}
+
+// extractSubtitles pre-extracts every text subtitle track from the freshly
+// indexed file into .vtt sidecars and registers them in the database. Failures
+// are non-fatal: a media without (text) subtitles is perfectly valid.
+func extractSubtitles(mediaID int, filePath string) {
+	if err := subtitles.ExtractAndRegister(mediaID, filePath); err != nil {
+		log.Printf("Indexer: subtitle extraction failed for media %d: %v", mediaID, err)
+	}
 }
 
 // cleanMissingMedias removes items from the DB if their physical files are gone
@@ -396,9 +322,9 @@ func cleanMissingMedias() error {
 	defer rows.Close()
 
 	type item struct {
-		id       int
-		title    string
-		filePath string
+		id        int
+		title     string
+		filePath  string
 		mediaType string
 	}
 
@@ -456,18 +382,3 @@ func cleanEmptySeasonsAndShows() {
 	}
 }
 
-// cleanTitle removes common scene noise, release tags, or extensions from titles
-func cleanTitle(title string) string {
-	// Replaces dots and underscores with spaces
-	title = strings.ReplaceAll(title, ".", " ")
-	title = strings.ReplaceAll(title, "_", " ")
-
-	// Common scene noise patterns to truncate title at
-	noiseRegex := regexp.MustCompile(`(?i)(1080p|720p|2160p|4k|bluray|web-dl|webrip|h264|h265|x264|x265|multi|vostfr|french|dvdrip|mkv)`)
-	loc := noiseRegex.FindStringIndex(title)
-	if loc != nil {
-		title = title[:loc[0]]
-	}
-
-	return strings.TrimSpace(title)
-}

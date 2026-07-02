@@ -1,9 +1,14 @@
-import 'dart:ui';
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_animate/flutter_animate.dart';
 import 'package:media_kit/media_kit.dart' as mk;
+
 import '../../../models/models.dart';
+import '../hooks/use_episode_navigation.dart';
 import '../hooks/use_player_controller.dart';
+import 'chapters_debug_panel.dart';
+import 'player_settings_ui.dart';
 
 /// Bottom-sheet widget that lets the user pick audio / subtitle tracks,
 /// switch the video display mode (fit vs cover), and select transcoding quality.
@@ -13,6 +18,8 @@ class PlayerSettingsSheet extends StatefulWidget {
   final ValueChanged<BoxFit> onFitChanged;
   final VoidCallback? onClose;
   final PlayerController? playerController;
+  final EpisodeNavigationController? episodeNav;
+  final Future<void> Function(int absoluteSeconds)? onSeekToAbsolute;
 
   const PlayerSettingsSheet({
     super.key,
@@ -21,6 +28,8 @@ class PlayerSettingsSheet extends StatefulWidget {
     required this.onFitChanged,
     this.onClose,
     this.playerController,
+    this.episodeNav,
+    this.onSeekToAbsolute,
   });
 
   @override
@@ -29,11 +38,38 @@ class PlayerSettingsSheet extends StatefulWidget {
 
 class _PlayerSettingsSheetState extends State<PlayerSettingsSheet> {
   late BoxFit _fit;
+  bool _isExtractingSubtitles = false;
+  int _tabIndex = 0;
+  StreamSubscription<void>? _tracksSubscription;
+
+  static const _tabs = [
+    PlayerSettingsTab(icon: Icons.audiotrack_rounded, label: 'Audio'),
+    PlayerSettingsTab(icon: Icons.subtitles_outlined, label: 'Sous-titres'),
+    PlayerSettingsTab(icon: Icons.hd_rounded, label: 'Qualité'),
+    PlayerSettingsTab(icon: Icons.aspect_ratio_rounded, label: 'Affichage'),
+  ];
+
+  static const _tabsWithChapters = [
+    PlayerSettingsTab(icon: Icons.audiotrack_rounded, label: 'Audio'),
+    PlayerSettingsTab(icon: Icons.subtitles_outlined, label: 'Sous-titres'),
+    PlayerSettingsTab(icon: Icons.hd_rounded, label: 'Qualité'),
+    PlayerSettingsTab(icon: Icons.aspect_ratio_rounded, label: 'Affichage'),
+    PlayerSettingsTab(icon: Icons.list_alt_rounded, label: 'Chapitres'),
+  ];
 
   @override
   void initState() {
     super.initState();
     _fit = widget.currentFit;
+    _tracksSubscription = widget.playerController?.tracksStream.listen((_) {
+      if (mounted) setState(() {});
+    });
+  }
+
+  @override
+  void dispose() {
+    _tracksSubscription?.cancel();
+    super.dispose();
   }
 
   void _close() {
@@ -58,10 +94,17 @@ class _PlayerSettingsSheetState extends State<PlayerSettingsSheet> {
             : 'Sous-titre ${index + 1}');
   }
 
-  String _mediaAudioTrackName(MediaAudioTrack track, int index) {
-    return track.title ??
-        (track.language != null ? 'Audio (${track.language})' : 'Audio ${index + 1}');
-  }
+  bool get _hasChaptersTab =>
+      widget.episodeNav != null &&
+      widget.onSeekToAbsolute != null &&
+      widget.playerController != null;
+
+  List<PlayerSettingsTab> get _activeTabs =>
+      _hasChaptersTab ? _tabsWithChapters : _tabs;
+
+  double get _panelWidth => _hasChaptersTab ? 400 : 380;
+
+  double get _panelHeight => _hasChaptersTab ? 520 : 480;
 
   @override
   Widget build(BuildContext context) {
@@ -69,130 +112,54 @@ class _PlayerSettingsSheetState extends State<PlayerSettingsSheet> {
     final currentAudio = widget.player.state.track.audio;
     final currentSubtitle = widget.player.state.track.subtitle;
     final controller = widget.playerController;
-    final isTranscoding = controller?.currentQuality != null;
     final mediaTracks = controller?.mediaTracks;
 
-    return ConstrainedBox(
-      constraints: const BoxConstraints(maxWidth: 300, maxHeight: 380),
-      child: ClipRRect(
-        borderRadius: BorderRadius.circular(20),
-        child: BackdropFilter(
-          filter: ImageFilter.blur(sigmaX: 32, sigmaY: 32),
-          child: Container(
-            padding: const EdgeInsets.fromLTRB(14, 14, 14, 14),
-            decoration: BoxDecoration(
-              color: const Color(0xFF1A1A1A).withOpacity(0.9),
-              borderRadius: BorderRadius.circular(20),
-              border: Border.all(
-                color: Colors.white.withOpacity(0.1),
-                width: 1,
+    return PlayerSettingsShell(
+      width: _panelWidth,
+      maxHeight: _panelHeight,
+      onClose: _close,
+      tabs: _activeTabs,
+      selectedTab: _tabIndex.clamp(0, _activeTabs.length - 1),
+      onTabSelected: (i) => setState(() => _tabIndex = i),
+      child: Padding(
+        padding: const EdgeInsets.fromLTRB(14, 0, 14, 8),
+        child: IndexedStack(
+          index: _tabIndex.clamp(0, _activeTabs.length - 1),
+          children: [
+            // Audio
+            (controller != null && mediaTracks != null && mediaTracks.audio.isNotEmpty)
+                ? _buildCanonicalAudioList(mediaTracks.audio, controller)
+                : _buildTrackList(
+                    tracks.audio,
+                    currentAudio,
+                    (track) => _audioTrackName(track, tracks.audio.indexOf(track)),
+                    (track) => widget.player.setAudioTrack(track),
+                  ),
+            // Subtitles
+            (controller != null && mediaTracks != null)
+                ? _buildSubtitleTab(mediaTracks.subtitles, controller)
+                : _buildTrackList(
+                    tracks.subtitle,
+                    currentSubtitle,
+                    (track) =>
+                        _subtitleTrackName(track, tracks.subtitle.indexOf(track)),
+                    (track) => widget.player.setSubtitleTrack(track),
+                  ),
+            _buildQualityOptions(),
+            _buildDisplayOptions(),
+            if (_hasChaptersTab)
+              ChaptersDebugPanel(
+                episodeNav: widget.episodeNav!,
+                playerController: widget.playerController!,
+                onSeekToAbsolute: widget.onSeekToAbsolute!,
               ),
-            ),
-            child: DefaultTabController(
-              length: 4,
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  // Header
-                  Row(
-                    children: [
-                      const Text(
-                        'Paramètres',
-                        style: TextStyle(
-                          color: Colors.white,
-                          fontSize: 14,
-                          fontWeight: FontWeight.w600,
-                          fontFamily: 'Manrope',
-                        ),
-                      ),
-                      const Spacer(),
-                      Material(
-                        color: Colors.transparent,
-                        child: InkWell(
-                          onTap: _close,
-                          borderRadius: BorderRadius.circular(10),
-                          child: Container(
-                            padding: const EdgeInsets.all(4),
-                            decoration: BoxDecoration(
-                              color: Colors.white.withOpacity(0.08),
-                              borderRadius: BorderRadius.circular(10),
-                            ),
-                            child: Icon(
-                              Icons.close,
-                              color: Colors.white.withOpacity(0.7),
-                              size: 16,
-                            ),
-                          ),
-                        ),
-                      ),
-                    ],
-                  ),
-                  const SizedBox(height: 10),
-                  // Tab bar
-                  Container(
-                    decoration: BoxDecoration(
-                      color: Colors.white.withOpacity(0.06),
-                      borderRadius: BorderRadius.circular(10),
-                    ),
-                    child: TabBar(
-                      indicator: BoxDecoration(
-                        color: Colors.white.withOpacity(0.15),
-                        borderRadius: BorderRadius.circular(10),
-                      ),
-                      dividerColor: Colors.transparent,
-                      labelColor: Colors.white,
-                      unselectedLabelColor: Colors.white.withOpacity(0.5),
-                      labelStyle: const TextStyle(
-                        fontSize: 12,
-                        fontWeight: FontWeight.w600,
-                        fontFamily: 'Manrope',
-                      ),
-                      unselectedLabelStyle: const TextStyle(
-                        fontSize: 12,
-                        fontWeight: FontWeight.w500,
-                        fontFamily: 'Manrope',
-                      ),
-                      tabs: const [
-                        Tab(text: 'Audio'),
-                        Tab(text: 'Sous-titres'),
-                        Tab(text: 'Affichage'),
-                        Tab(text: 'Qualité'),
-                      ],
-                    ),
-                  ),
-                  const SizedBox(height: 6),
-                  // Tab content
-                  Flexible(
-                    child: TabBarView(
-                      children: [
-                        // Audio tracks
-                        isTranscoding && mediaTracks != null && mediaTracks.audio.isNotEmpty
-                            ? _buildTranscodingAudioList(mediaTracks.audio, controller!)
-                            : _buildTrackList(
-                                tracks.audio,
-                                currentAudio,
-                                (track) => _audioTrackName(track, tracks.audio.indexOf(track)),
-                                (track) => widget.player.setAudioTrack(track),
-                              ),
-                        // Subtitle tracks (native HLS renditions or direct play)
-                        _buildTrackList(
-                          tracks.subtitle,
-                          currentSubtitle,
-                          (track) => _subtitleTrackName(track, tracks.subtitle.indexOf(track)),
-                          (track) => widget.player.setSubtitleTrack(track),
-                        ),
-                        _buildDisplayOptions(),
-                        _buildQualityOptions(),
-                      ],
-                    ),
-                  ),
-                ],
-              ),
-            ),
-          ),
+          ],
         ),
       ),
-    ).animate().fadeIn(duration: 200.ms, curve: Curves.easeOut);
+    )
+        .animate()
+        .fadeIn(duration: 220.ms, curve: Curves.easeOut)
+        .scaleXY(begin: 0.96, end: 1, duration: 220.ms, curve: Curves.easeOutCubic);
   }
 
   Widget _buildTrackList<T>(
@@ -202,80 +169,26 @@ class _PlayerSettingsSheetState extends State<PlayerSettingsSheet> {
     void Function(T) onSelect,
   ) {
     if (tracks.isEmpty) {
-      return const Center(
-        child: Text(
-          'Aucune piste disponible',
-          style: TextStyle(
-            color: Colors.grey,
-            fontSize: 13,
-            fontFamily: 'Manrope',
-          ),
-        ),
-      );
+      return const _EmptyTracksMessage();
     }
 
     return ListView.builder(
-      shrinkWrap: true,
-      padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 4),
+      padding: const EdgeInsets.only(top: 4),
       itemCount: tracks.length,
       itemBuilder: (context, index) {
         final track = tracks[index];
         final isSelected = track == currentTrack;
+        final name = getName(track);
+        final (title, subtitle) = splitTrackLabel(name);
 
-        return Material(
-          color: Colors.transparent,
-          child: InkWell(
-            onTap: () {
-              onSelect(track);
-              _close();
-            },
-            borderRadius: BorderRadius.circular(10),
-            child: Container(
-              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
-              decoration: BoxDecoration(
-                color: isSelected
-                    ? Colors.white.withOpacity(0.12)
-                    : Colors.transparent,
-                borderRadius: BorderRadius.circular(10),
-              ),
-              child: Row(
-                children: [
-                  if (isSelected)
-                    Container(
-                      width: 6,
-                      height: 6,
-                      decoration: const BoxDecoration(
-                        color: Color(0xFF007AFF),
-                        shape: BoxShape.circle,
-                      ),
-                    )
-                  else
-                    const SizedBox(width: 6),
-                  const SizedBox(width: 10),
-                  Expanded(
-                    child: Text(
-                      getName(track),
-                      style: TextStyle(
-                        color: isSelected
-                            ? Colors.white
-                            : Colors.white.withOpacity(0.7),
-                        fontSize: 13,
-                        fontWeight:
-                            isSelected ? FontWeight.w600 : FontWeight.w400,
-                        fontFamily: 'Manrope',
-                      ),
-                    ),
-                  ),
-                  if (isSelected)
-                    const Icon(
-                      Icons.check,
-                      color: Color(0xFF007AFF),
-                      size: 18,
-                    ),
-                ],
-              ),
-            ),
-          ),
+        return PlayerSettingsTrackRow(
+          label: title,
+          subtitle: subtitle,
+          selected: isSelected,
+          onTap: () {
+            onSelect(track);
+            _close();
+          },
         );
       },
     );
@@ -283,11 +196,10 @@ class _PlayerSettingsSheetState extends State<PlayerSettingsSheet> {
 
   Widget _buildDisplayOptions() {
     return ListView(
-      shrinkWrap: true,
-      padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 8),
+      padding: const EdgeInsets.only(top: 4),
       children: [
-        _DisplayOption(
-          icon: Icons.fit_screen,
+        PlayerSettingsChoiceCard(
+          icon: Icons.fit_screen_rounded,
           label: 'Original',
           subtitle: 'Conserve les proportions, bandes noires possibles',
           selected: _fit == BoxFit.contain,
@@ -296,9 +208,8 @@ class _PlayerSettingsSheetState extends State<PlayerSettingsSheet> {
             widget.onFitChanged(BoxFit.contain);
           },
         ),
-        const SizedBox(height: 8),
-        _DisplayOption(
-          icon: Icons.crop_free,
+        PlayerSettingsChoiceCard(
+          icon: Icons.crop_free_rounded,
           label: 'Adaptatif',
           subtitle: "Remplit l'écran, coupe les bords",
           selected: _fit == BoxFit.cover,
@@ -315,210 +226,205 @@ class _PlayerSettingsSheetState extends State<PlayerSettingsSheet> {
     final controller = widget.playerController;
     final currentQuality = controller?.currentQuality;
 
-    final qualities = [
-      ('Direct', null, Icons.bolt, 'Lecture directe, aucune transcodation'),
-      ('360p', '360p', Icons.sd, '640x360 — Faible consommation'),
-      ('480p', '480p', Icons.sd, '854x480 — Qualité standard'),
-      ('720p', '720p', Icons.hd, '1280x720 — HD'),
-      ('1080p', '1080p', Icons.hd_outlined, '1920x1080 — Full HD'),
+    const qualities = [
+      ('Direct', null, Icons.bolt_rounded, 'Lecture directe, aucune transcodation'),
+      ('360p', '360p', Icons.sd_rounded, '640×360 — faible consommation'),
+      ('480p', '480p', Icons.sd_rounded, '854×480 — qualité standard'),
+      ('720p', '720p', Icons.hd_rounded, '1280×720 — HD'),
+      ('1080p', '1080p', Icons.hd_outlined, '1920×1080 — Full HD'),
     ];
 
     return ListView.builder(
-      shrinkWrap: true,
-      padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 8),
+      padding: const EdgeInsets.only(top: 4),
       itemCount: qualities.length,
       itemBuilder: (context, index) {
         final (label, quality, icon, subtitle) = qualities[index];
         final isSelected = currentQuality == quality;
 
-        return Padding(
-          padding: EdgeInsets.only(bottom: index < qualities.length - 1 ? 8 : 0),
-          child: _DisplayOption(
-            icon: icon,
-            label: label,
-            subtitle: subtitle,
-            selected: isSelected,
-            onTap: () {
-              if (controller == null) return;
-              _close();
-              if (quality == null) {
-                controller.switchToDirectPlay();
-              } else {
-                controller.switchToQuality(quality);
-              }
-            },
-          ),
+        return PlayerSettingsChoiceCard(
+          icon: icon,
+          label: label,
+          subtitle: subtitle,
+          selected: isSelected,
+          onTap: () {
+            if (controller == null) return;
+            _close();
+            if (quality == null) {
+              controller.switchToDirectPlay();
+            } else {
+              controller.switchToQuality(quality);
+            }
+          },
         );
       },
     );
   }
 
-  Widget _buildTranscodingAudioList(
+  Widget _buildCanonicalAudioList(
     List<MediaAudioTrack> audioTracks,
     PlayerController controller,
   ) {
-    final selectedIndex = controller.selectedAudioIndex;
+    if (audioTracks.isEmpty) {
+      return const _EmptyTracksMessage();
+    }
 
     return ListView.builder(
-      shrinkWrap: true,
-      padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 4),
+      padding: const EdgeInsets.only(top: 4),
       itemCount: audioTracks.length,
       itemBuilder: (context, index) {
         final track = audioTracks[index];
-        final isSelected = index == selectedIndex;
+        final isSelected = index == controller.selectedAudioIndex;
+        final (title, subtitle) = splitTrackLabel(track.displayName);
 
-        return Material(
-          color: Colors.transparent,
-          child: InkWell(
-            onTap: () {
-              if (!isSelected) {
-                controller.switchAudioTrack(index);
-              }
-              _close();
-            },
-            borderRadius: BorderRadius.circular(10),
-            child: Container(
-              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
-              decoration: BoxDecoration(
-                color: isSelected
-                    ? Colors.white.withOpacity(0.12)
-                    : Colors.transparent,
-                borderRadius: BorderRadius.circular(10),
-              ),
-              child: Row(
-                children: [
-                  if (isSelected)
-                    Container(
-                      width: 6,
-                      height: 6,
-                      decoration: const BoxDecoration(
-                        color: Color(0xFF007AFF),
-                        shape: BoxShape.circle,
-                      ),
-                    )
-                  else
-                    const SizedBox(width: 6),
-                  const SizedBox(width: 10),
-                  Expanded(
-                    child: Text(
-                      _mediaAudioTrackName(track, index),
-                      style: TextStyle(
-                        color: isSelected
-                            ? Colors.white
-                            : Colors.white.withOpacity(0.7),
-                        fontSize: 13,
-                        fontWeight:
-                            isSelected ? FontWeight.w600 : FontWeight.w400,
-                        fontFamily: 'Manrope',
-                      ),
-                    ),
-                  ),
-                  if (isSelected)
-                    const Icon(
-                      Icons.check,
-                      color: Color(0xFF007AFF),
-                      size: 18,
-                    ),
-                ],
+        return PlayerSettingsTrackRow(
+          label: title,
+          subtitle: subtitle,
+          selected: isSelected,
+          onTap: () {
+            if (!isSelected) controller.switchAudioTrack(index);
+            _close();
+          },
+        );
+      },
+    );
+  }
+
+  Widget _buildSubtitleTab(
+    List<MediaSubtitleTrack> subtitles,
+    PlayerController controller,
+  ) {
+    final useInternal = controller.currentQuality == null;
+
+    return Column(
+      children: [
+        Expanded(
+          child: useInternal
+              ? _buildInternalSubtitleList(controller)
+              : _buildCanonicalSubtitleList(subtitles, controller),
+        ),
+        if (subtitles.any((s) => !s.ready))
+          Padding(
+            padding: const EdgeInsets.only(top: 6),
+            child: SizedBox(
+              width: double.infinity,
+              child: TextButton.icon(
+                onPressed: (_isExtractingSubtitles || controller.isExtractingSubtitles)
+                    ? null
+                    : () => _forceExtractSubtitles(controller),
+                icon: (_isExtractingSubtitles || controller.isExtractingSubtitles)
+                    ? const SizedBox(
+                        width: 14,
+                        height: 14,
+                        child: CircularProgressIndicator(strokeWidth: 2),
+                      )
+                    : const Icon(Icons.download_outlined, size: 16),
+                label: Text(
+                  (_isExtractingSubtitles || controller.isExtractingSubtitles)
+                      ? 'Extraction en cours…'
+                      : 'Extraire les sous-titres',
+                  style: const TextStyle(fontSize: 12, fontFamily: 'Manrope'),
+                ),
+                style: TextButton.styleFrom(
+                  foregroundColor: const Color(0xFF007AFF),
+                  padding: const EdgeInsets.symmetric(vertical: 10),
+                ),
               ),
             ),
           ),
+      ],
+    );
+  }
+
+  Future<void> _forceExtractSubtitles(PlayerController controller) async {
+    setState(() => _isExtractingSubtitles = true);
+    try {
+      final subs = await controller.forceExtractSubtitles();
+      if (!mounted) return;
+      setState(() => _isExtractingSubtitles = false);
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            subs.isEmpty
+                ? 'Aucun sous-titre texte trouvé dans ce fichier'
+                : '${subs.length} piste${subs.length > 1 ? 's' : ''} extraite${subs.length > 1 ? 's' : ''}',
+          ),
+          backgroundColor: subs.isEmpty ? Colors.orange.shade800 : Colors.green.shade800,
+        ),
+      );
+    } catch (e) {
+      if (!mounted) return;
+      setState(() => _isExtractingSubtitles = false);
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Extraction échouée : $e'),
+          backgroundColor: Colors.red.shade800,
+        ),
+      );
+    }
+  }
+
+  Widget _buildInternalSubtitleList(PlayerController controller) {
+    final subs = widget.player.state.tracks.subtitle
+        .where((t) => t.id != 'auto')
+        .toList();
+    final current = widget.player.state.track.subtitle;
+    return _buildTrackList(
+      subs,
+      current,
+      (track) => _subtitleTrackName(track, subs.indexOf(track)),
+      (track) => controller.selectInternalSubtitle(track),
+    );
+  }
+
+  Widget _buildCanonicalSubtitleList(
+    List<MediaSubtitleTrack> subtitles,
+    PlayerController controller,
+  ) {
+    return ListView.builder(
+      padding: const EdgeInsets.only(top: 4),
+      itemCount: subtitles.length + 1,
+      itemBuilder: (context, row) {
+        if (row == 0) {
+          return PlayerSettingsTrackRow(
+            label: 'Désactivés',
+            selected: controller.selectedSubtitleLang == null,
+            onTap: () {
+              controller.setSubtitle(null);
+              _close();
+            },
+          );
+        }
+        final index = row - 1;
+        final track = subtitles[index];
+        final (title, subtitle) = splitTrackLabel(track.displayName);
+
+        return PlayerSettingsTrackRow(
+          label: title,
+          subtitle: subtitle,
+          badge: track.ready ? null : '…',
+          selected: controller.selectedSubtitleLang == track.lang,
+          onTap: () {
+            controller.setSubtitle(track.lang);
+            _close();
+          },
         );
       },
     );
   }
 }
 
-class _DisplayOption extends StatelessWidget {
-  final IconData icon;
-  final String label;
-  final String subtitle;
-  final bool selected;
-  final VoidCallback onTap;
-
-  const _DisplayOption({
-    required this.icon,
-    required this.label,
-    required this.subtitle,
-    required this.selected,
-    required this.onTap,
-  });
+class _EmptyTracksMessage extends StatelessWidget {
+  const _EmptyTracksMessage();
 
   @override
   Widget build(BuildContext context) {
-    return Material(
-      color: Colors.transparent,
-      child: InkWell(
-        onTap: onTap,
-        borderRadius: BorderRadius.circular(12),
-        child: Container(
-          padding: const EdgeInsets.all(14),
-          decoration: BoxDecoration(
-            color: selected
-                ? Colors.white.withOpacity(0.12)
-                : Colors.white.withOpacity(0.04),
-            borderRadius: BorderRadius.circular(12),
-            border: Border.all(
-              color: selected
-                  ? const Color(0xFF007AFF).withOpacity(0.5)
-                  : Colors.white.withOpacity(0.08),
-              width: selected ? 1.5 : 1,
-            ),
-          ),
-          child: Row(
-            children: [
-              Container(
-                width: 40,
-                height: 40,
-                decoration: BoxDecoration(
-                  color: selected
-                      ? const Color(0xFF007AFF).withOpacity(0.2)
-                      : Colors.white.withOpacity(0.06),
-                  borderRadius: BorderRadius.circular(10),
-                ),
-                child: Icon(
-                  icon,
-                  color: selected
-                      ? const Color(0xFF007AFF)
-                      : Colors.white.withOpacity(0.7),
-                  size: 22,
-                ),
-              ),
-              const SizedBox(width: 12),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      label,
-                      style: TextStyle(
-                        color: Colors.white,
-                        fontSize: 14,
-                        fontWeight:
-                            selected ? FontWeight.w600 : FontWeight.w500,
-                        fontFamily: 'Manrope',
-                      ),
-                    ),
-                    const SizedBox(height: 2),
-                    Text(
-                      subtitle,
-                      style: TextStyle(
-                        color: Colors.white.withOpacity(0.5),
-                        fontSize: 12,
-                        fontFamily: 'Manrope',
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-              if (selected)
-                const Icon(
-                  Icons.check_circle,
-                  color: Color(0xFF007AFF),
-                  size: 22,
-                ),
-            ],
-          ),
+    return Center(
+      child: Text(
+        'Aucune piste disponible',
+        style: TextStyle(
+          color: Colors.white.withValues(alpha: 0.45),
+          fontSize: 13,
+          fontFamily: 'Manrope',
         ),
       ),
     );

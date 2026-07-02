@@ -1,6 +1,7 @@
 import 'dart:ui';
 import 'package:flutter/material.dart';
 import '../../models/player_layout.dart';
+import 'media_logo_display.dart';
 
 /// Rendering mode for [ControlChrome].
 ///
@@ -52,6 +53,9 @@ class ControlChrome extends StatelessWidget {
   /// Media title displayed by the [mediaTitle] control.
   final String? mediaTitle;
 
+  /// TMDB title logo URL for the [mediaLogo] control.
+  final String? mediaLogoUrl;
+
   /// Current volume 0.0 -> 100.0 (for volumeSlider).
   final double? volume;
 
@@ -60,6 +64,15 @@ class ControlChrome extends StatelessWidget {
 
   /// Called when the back button is tapped.
   final VoidCallback? onBack;
+
+  /// Frosted-glass blur sigma (0 = no blur, more "liquid").
+  final double blurSigma;
+
+  /// Frosted-glass background opacity (lower = more transparent).
+  final double glassOpacity;
+
+  /// Apple-style liquid glass (heavier). Off = simple blur + flat tint.
+  final bool liquidGlass;
 
   const ControlChrome({
     super.key,
@@ -76,9 +89,13 @@ class ControlChrome extends StatelessWidget {
     this.onSeekFraction,
     this.onToggleFullscreen,
     this.mediaTitle,
+    this.mediaLogoUrl,
     this.volume,
     this.onVolumeChanged,
     this.onBack,
+    this.blurSigma = kDefaultBlurSigma,
+    this.glassOpacity = kDefaultGlassOpacity,
+    this.liquidGlass = kDefaultLiquidGlass,
   });
 
   @override
@@ -87,6 +104,7 @@ class ControlChrome extends StatelessWidget {
       PlayerControlType.progressBar => _buildProgressBar(),
       PlayerControlType.timeline => _buildTimelineBar(),
       PlayerControlType.mediaTitle => _buildMediaTitle(),
+      PlayerControlType.mediaLogo => _buildMediaLogo(),
       PlayerControlType.volumeSlider => _buildVolumeSlider(context),
       _ => _buildIconButton(),
     };
@@ -130,24 +148,33 @@ class ControlChrome extends StatelessWidget {
         return Icons.arrow_back;
       case PlayerControlType.mediaTitle:
         return Icons.title;
+      case PlayerControlType.mediaLogo:
+        return Icons.branding_watermark_outlined;
       case PlayerControlType.volumeSlider:
         return Icons.volume_down;
     }
   }
 
   Widget _glass({required Widget child, required BorderRadius radius}) {
+    if (!liquidGlass) return _simpleGlass(child: child, radius: radius);
+    return _liquidGlass(child: child, radius: radius);
+  }
+
+  /// Lightweight path: blur + flat tint only (one BackdropFilter, no extras).
+  Widget _simpleGlass({required Widget child, required BorderRadius radius}) {
+    final borderOpacity = (glassOpacity * 1.5 + 0.05).clamp(0.05, 0.4);
     return ClipRRect(
       borderRadius: radius,
       child: BackdropFilter(
-        filter: ImageFilter.blur(sigmaX: 18, sigmaY: 18),
+        filter: ImageFilter.blur(sigmaX: blurSigma, sigmaY: blurSigma),
         child: AnimatedContainer(
           duration: const Duration(milliseconds: 180),
           curve: Curves.easeOut,
           decoration: BoxDecoration(
-            color: Colors.white.withOpacity(0.12),
+            color: Colors.white.withOpacity(glassOpacity),
             borderRadius: radius,
             border: Border.all(
-              color: selected ? _kAccent : Colors.white.withOpacity(0.18),
+              color: selected ? _kAccent : Colors.white.withOpacity(borderOpacity),
               width: selected ? 2 : 1,
             ),
             boxShadow: selected
@@ -160,17 +187,132 @@ class ControlChrome extends StatelessWidget {
     );
   }
 
+  /// Heavier Apple-style path: saturation boost, sheen, rim, shadow.
+  Widget _liquidGlass({required Widget child, required BorderRadius radius}) {
+    final double o = glassOpacity;
+
+    // Apple-style "liquid glass": the background is blurred AND its colours are
+    // boosted (saturation + a touch of brightness) so the glass looks alive and
+    // refractive rather than a flat frosted panel.
+    final backdrop = ImageFilter.compose(
+      outer: ColorFilter.matrix(_liquidGlassMatrix(saturation: 1.6, brightness: 1.06)),
+      inner: ImageFilter.blur(sigmaX: blurSigma, sigmaY: blurSigma),
+    );
+
+    // Directional glossy sheen: brighter at the top-left, fading down.
+    final sheen = LinearGradient(
+      begin: Alignment.topLeft,
+      end: Alignment.bottomRight,
+      colors: [
+        Colors.white.withOpacity((o * 2.0 + 0.02).clamp(0.03, 0.55)),
+        Colors.white.withOpacity((o * 0.6).clamp(0.0, 0.25)),
+      ],
+      stops: const [0.0, 1.0],
+    );
+
+    // Top specular highlight — the tell-tale glossy edge of Apple's glass.
+    final specular = LinearGradient(
+      begin: Alignment.topCenter,
+      end: Alignment.center,
+      colors: [
+        Colors.white.withOpacity((o * 2.5 + 0.12).clamp(0.12, 0.5)),
+        Colors.white.withOpacity(0.0),
+      ],
+    );
+
+    // Gradient rim: bright light-catching edge at the top-left, faint elsewhere.
+    final rim = LinearGradient(
+      begin: Alignment.topLeft,
+      end: Alignment.bottomRight,
+      colors: [
+        Colors.white.withOpacity((o * 3 + 0.30).clamp(0.25, 0.75)),
+        Colors.white.withOpacity((o + 0.02).clamp(0.03, 0.2)),
+      ],
+    );
+
+    Widget glass = ClipRRect(
+      borderRadius: radius,
+      child: BackdropFilter(
+        filter: backdrop,
+        child: Container(
+          decoration: BoxDecoration(gradient: sheen, borderRadius: radius),
+          foregroundDecoration:
+              BoxDecoration(gradient: specular, borderRadius: radius),
+          child: child,
+        ),
+      ),
+    );
+
+    return AnimatedContainer(
+      duration: const Duration(milliseconds: 180),
+      curve: Curves.easeOut,
+      padding: const EdgeInsets.all(1.2), // rim thickness
+      decoration: BoxDecoration(
+        borderRadius: radius,
+        gradient: selected ? null : rim,
+        border: selected ? Border.all(color: _kAccent, width: 2) : null,
+        boxShadow: [
+          // Soft drop shadow so the glass floats above the video.
+          BoxShadow(
+            color: Colors.black.withOpacity(0.25),
+            blurRadius: 12,
+            offset: const Offset(0, 4),
+          ),
+          if (selected)
+            BoxShadow(color: _kAccent.withOpacity(0.45), blurRadius: 16),
+        ],
+      ),
+      child: glass,
+    );
+  }
+
+  /// Colour matrix that boosts saturation and brightness of whatever is behind
+  /// the glass, mimicking the light-bending look of Apple's Liquid Glass.
+  static List<double> _liquidGlassMatrix({
+    required double saturation,
+    double brightness = 1.0,
+  }) {
+    const lumR = 0.213, lumG = 0.715, lumB = 0.072;
+    final s = saturation;
+    final sr = (1 - s) * lumR;
+    final sg = (1 - s) * lumG;
+    final sb = (1 - s) * lumB;
+    final b = (brightness - 1.0) * 255.0;
+    return [
+      sr + s, sg, sb, 0, b,
+      sr, sg + s, sb, 0, b,
+      sr, sg, sb + s, 0, b,
+      0, 0, 0, 1, 0,
+    ];
+  }
+
   double get _pixelSize => canvasSize.shortestSide * sizePercentage;
 
   Widget _buildIconButton() {
     final double pixelSize = _pixelSize;
     final double diameter = pixelSize * 1.4; // proportional padding
+    final icon = type == PlayerControlType.playPause
+        ? AnimatedSwitcher(
+            duration: const Duration(milliseconds: 120),
+            switchInCurve: Curves.easeOut,
+            switchOutCurve: Curves.easeIn,
+            transitionBuilder: (child, animation) =>
+                ScaleTransition(scale: animation, child: child),
+            child: Icon(
+              _icon,
+              key: ValueKey(isPlaying),
+              color: Colors.white,
+              size: pixelSize,
+            ),
+          )
+        : Icon(_icon, color: Colors.white, size: pixelSize);
+
     return _glass(
       radius: BorderRadius.circular(diameter / 2),
       child: SizedBox(
         width: diameter,
         height: diameter,
-        child: Icon(_icon, color: Colors.white, size: pixelSize),
+        child: Center(child: icon),
       ),
     );
   }
@@ -361,6 +503,29 @@ class ControlChrome extends StatelessWidget {
     );
   }
 
+  Widget _buildMediaLogo() {
+    final double height = (_pixelSize * 1.4).clamp(36.0, 100.0);
+    final double width = canvasSize.width * widthPercentage.clamp(0.15, 0.55);
+    return SizedBox(
+      width: width,
+      height: height,
+      child: Align(
+        alignment: Alignment.centerLeft,
+        child: MediaLogoDisplay(
+          title: mediaTitle ?? 'Titre du média',
+          logoUrl: mediaLogoUrl,
+          maxHeight: height,
+          maxWidth: width,
+          textStyle: TextStyle(
+            fontSize: (height * 0.38).clamp(14.0, 36.0),
+            fontWeight: FontWeight.w900,
+            height: 1.0,
+          ),
+        ),
+      ),
+    );
+  }
+
   Widget _buildVolumeSlider(BuildContext context) {
     final double height = (_pixelSize * 0.5).clamp(16.0, 40.0);
     final double width = canvasSize.width * widthPercentage.clamp(0.05, 0.5);
@@ -370,6 +535,9 @@ class ControlChrome extends StatelessWidget {
       forceExpanded: variant == ControlChromeVariant.studio,
       volume: volume,
       onVolumeChanged: onVolumeChanged,
+      blurSigma: blurSigma,
+      glassOpacity: glassOpacity,
+      liquidGlass: liquidGlass,
     );
   }
 
@@ -398,6 +566,9 @@ class _VolumeSliderButton extends StatefulWidget {
   final bool forceExpanded;
   final double? volume;
   final ValueChanged<double>? onVolumeChanged;
+  final double blurSigma;
+  final double glassOpacity;
+  final bool liquidGlass;
 
   const _VolumeSliderButton({
     required this.height,
@@ -405,6 +576,9 @@ class _VolumeSliderButton extends StatefulWidget {
     this.forceExpanded = false,
     this.volume,
     this.onVolumeChanged,
+    this.blurSigma = kDefaultBlurSigma,
+    this.glassOpacity = kDefaultGlassOpacity,
+    this.liquidGlass = kDefaultLiquidGlass,
   });
 
   @override
@@ -421,19 +595,90 @@ class _VolumeSliderButtonState extends State<_VolumeSliderButton> {
     final vol = (widget.volume ?? 50.0).clamp(0.0, 100.0);
     final iconSize = (widget.height * 0.55).clamp(14.0, 22.0);
 
+    final radius = BorderRadius.circular(widget.height / 2 + 6);
+    final o = widget.glassOpacity;
+
+    if (!widget.liquidGlass) {
+      final fillOpacity = (o + 0.06).clamp(0.05, 0.55);
+      return MouseRegion(
+        onEnter: (_) => setState(() => _hovering = true),
+        onExit: (_) => setState(() => _hovering = false),
+        child: ClipRRect(
+          borderRadius: radius,
+          child: BackdropFilter(
+            filter: ImageFilter.blur(
+              sigmaX: widget.blurSigma,
+              sigmaY: widget.blurSigma,
+            ),
+            child: AnimatedContainer(
+              duration: const Duration(milliseconds: 200),
+              curve: Curves.easeOut,
+              width: _expanded ? widget.width : widget.height,
+              height: widget.height,
+              decoration: BoxDecoration(
+                color: Colors.white.withOpacity(fillOpacity),
+                borderRadius: radius,
+              ),
+              child: _volumeRow(vol, iconSize),
+            ),
+          ),
+        ),
+      );
+    }
+
+    // Match the liquid look of the other controls.
+    final backdrop = ImageFilter.compose(
+      outer: ColorFilter.matrix(
+        ControlChrome._liquidGlassMatrix(saturation: 1.6, brightness: 1.06),
+      ),
+      inner: ImageFilter.blur(sigmaX: widget.blurSigma, sigmaY: widget.blurSigma),
+    );
+    final sheen = LinearGradient(
+      begin: Alignment.topLeft,
+      end: Alignment.bottomRight,
+      colors: [
+        Colors.white.withOpacity((o * 2.0 + 0.08).clamp(0.08, 0.55)),
+        Colors.white.withOpacity((o + 0.02).clamp(0.03, 0.3)),
+      ],
+    );
+    final rim = LinearGradient(
+      begin: Alignment.topLeft,
+      end: Alignment.bottomRight,
+      colors: [
+        Colors.white.withOpacity((o * 3 + 0.30).clamp(0.25, 0.75)),
+        Colors.white.withOpacity((o + 0.02).clamp(0.03, 0.2)),
+      ],
+    );
+
     return MouseRegion(
       onEnter: (_) => setState(() => _hovering = true),
       onExit: (_) => setState(() => _hovering = false),
-      child: AnimatedContainer(
-        duration: const Duration(milliseconds: 200),
-        curve: Curves.easeOut,
-        width: _expanded ? widget.width : widget.height,
-        height: widget.height,
-        decoration: BoxDecoration(
-          color: const Color(0xFF1A1A1A).withOpacity(0.6),
-          borderRadius: BorderRadius.circular(widget.height / 2 + 6),
+      child: Container(
+        padding: const EdgeInsets.all(1.2),
+        decoration: BoxDecoration(gradient: rim, borderRadius: radius),
+        child: ClipRRect(
+          borderRadius: radius,
+          child: BackdropFilter(
+            filter: backdrop,
+            child: AnimatedContainer(
+              duration: const Duration(milliseconds: 200),
+              curve: Curves.easeOut,
+              width: _expanded ? widget.width : widget.height,
+              height: widget.height,
+              decoration: BoxDecoration(
+                gradient: sheen,
+                borderRadius: radius,
+              ),
+              child: _volumeRow(vol, iconSize),
+            ),
+          ),
         ),
-        child: Row(
+      ),
+    );
+  }
+
+  Widget _volumeRow(double vol, double iconSize) {
+    return Row(
           mainAxisSize: MainAxisSize.min,
           children: [
             SizedBox(
@@ -477,9 +722,7 @@ class _VolumeSliderButtonState extends State<_VolumeSliderButton> {
                   ),
                 ),
               ),
-          ],
-        ),
-      ),
+              ],
     );
   }
 }
