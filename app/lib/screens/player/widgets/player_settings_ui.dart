@@ -16,6 +16,112 @@ class PlayerSettingsTab {
   const PlayerSettingsTab({required this.icon, required this.label});
 }
 
+/// Solid frosted shell for the subtitles-only popup.
+class PlayerSubtitlesShell extends StatelessWidget {
+  final VoidCallback onClose;
+  final Widget child;
+  final double width;
+  final double maxHeight;
+
+  const PlayerSubtitlesShell({
+    super.key,
+    required this.onClose,
+    required this.child,
+    required this.width,
+    required this.maxHeight,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return SizedBox(
+      width: width,
+      height: maxHeight,
+      child: ClipRRect(
+        borderRadius: BorderRadius.circular(20),
+        child: BackdropFilter(
+          filter: ImageFilter.blur(sigmaX: 20, sigmaY: 20),
+          child: DecoratedBox(
+            decoration: BoxDecoration(
+              color: _kPanelBg.withValues(alpha: 0.96),
+              borderRadius: BorderRadius.circular(20),
+              border: Border.all(
+                color: Colors.white.withValues(alpha: 0.08),
+              ),
+              boxShadow: [
+                BoxShadow(
+                  color: Colors.black.withValues(alpha: 0.5),
+                  blurRadius: 24,
+                  offset: const Offset(0, 8),
+                ),
+              ],
+            ),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(18, 16, 12, 0),
+                  child: Row(
+                    children: [
+                      Container(
+                        width: 34,
+                        height: 34,
+                        decoration: BoxDecoration(
+                          color: _kTabBg,
+                          borderRadius: BorderRadius.circular(10),
+                        ),
+                        child: const Icon(
+                          Icons.subtitles_outlined,
+                          color: Colors.white70,
+                          size: 18,
+                        ),
+                      ),
+                      const SizedBox(width: 12),
+                      const Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              'Sous-titres',
+                              style: TextStyle(
+                                color: Colors.white,
+                                fontSize: 16,
+                                fontWeight: FontWeight.w700,
+                                fontFamily: 'Manrope',
+                                letterSpacing: -0.2,
+                              ),
+                            ),
+                            Text(
+                              'Choisir une piste',
+                              style: TextStyle(
+                                color: Colors.white54,
+                                fontSize: 11,
+                                fontFamily: 'Manrope',
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                      _CloseButton(onPressed: onClose),
+                    ],
+                  ),
+                ),
+                const SizedBox(height: 14),
+                Expanded(
+                  child: Padding(
+                    padding: const EdgeInsets.fromLTRB(14, 0, 14, 8),
+                    child: child,
+                  ),
+                ),
+                const SizedBox(height: 6),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
 /// Solid frosted shell for settings popups (no liquid glass — readable over video).
 class PlayerSettingsShell extends StatelessWidget {
   final VoidCallback onClose;

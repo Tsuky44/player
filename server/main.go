@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"time"
 
 	"project-player/server/database"
 	"project-player/server/handlers"
@@ -35,6 +36,10 @@ func main() {
 		log.Fatalf("Failed to initialize database: %v", err)
 	}
 	defer db.Close()
+
+	if err := handlers.InitStream(); err != nil {
+		log.Fatalf("Failed to initialize stream handler: %v", err)
+	}
 
 	// Initialize router
 	router := httprouter.New()
@@ -90,6 +95,7 @@ func main() {
 	router.POST("/api/indexer/scan", handlers.RequireAuth(handlers.TriggerScan))
 	router.POST("/api/indexer/dedupe", handlers.RequireAuth(handlers.TriggerShowDedupe))
 	router.POST("/api/indexer/metadata/backfill", handlers.RequireAuth(handlers.TriggerMetadataBackfill))
+	router.POST("/api/indexer/probe/backfill", handlers.RequireAuth(handlers.TriggerProbeBackfill))
 	router.POST("/api/media/:id/metadata/enrich", handlers.RequireAuth(handlers.EnrichMediaMetadata))
 	router.POST("/api/media/:id/metadata/rematch", handlers.RequireAuth(handlers.RematchMediaMetadata))
 	router.GET("/api/tmdb/search", handlers.RequireAuth(handlers.SearchTMDBMetadata))
@@ -117,6 +123,7 @@ func main() {
 		indexer.ScanMedia(moviesDir, seriesDir)
 	} else if key := os.Getenv("TMDB_API_KEY"); key != "" && key != "your_tmdb_api_key_here" && key != "votre_cle_api_tmdb_ici" {
 		indexer.BackfillMissingMetadataAsync()
+		indexer.BackfillMissingProbesAsync()
 	}
 
 	if key := os.Getenv("TMDB_API_KEY"); key == "" || key == "your_tmdb_api_key_here" || key == "votre_cle_api_tmdb_ici" {
@@ -129,10 +136,17 @@ func main() {
 		log.Printf("Warning: failed to create data directory: %v", err)
 	}
 
-	// Start server
+	// Start server with generous timeouts for large Range responses.
 	addr := ":" + *port
 	log.Printf("Server listening on http://localhost%s", addr)
-	if err := http.ListenAndServe(addr, corsRouter); err != nil {
+	server := &http.Server{
+		Addr:         addr,
+		Handler:      corsRouter,
+		ReadTimeout:  30 * time.Second,
+		WriteTimeout: 0, // no write deadline — long video ranges
+		IdleTimeout:  120 * time.Second,
+	}
+	if err := server.ListenAndServe(); err != nil {
 		log.Fatalf("Server failed to start: %v", err)
 	}
 }

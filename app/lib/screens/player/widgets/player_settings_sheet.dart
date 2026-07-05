@@ -9,6 +9,7 @@ import '../hooks/use_episode_navigation.dart';
 import '../hooks/use_player_controller.dart';
 import 'chapters_debug_panel.dart';
 import 'player_settings_ui.dart';
+import 'player_subtitles_picker.dart';
 
 /// Bottom-sheet widget that lets the user pick audio / subtitle tracks,
 /// switch the video display mode (fit vs cover), and select transcoding quality.
@@ -38,7 +39,6 @@ class PlayerSettingsSheet extends StatefulWidget {
 
 class _PlayerSettingsSheetState extends State<PlayerSettingsSheet> {
   late BoxFit _fit;
-  bool _isExtractingSubtitles = false;
   int _tabIndex = 0;
   StreamSubscription<void>? _tracksSubscription;
 
@@ -137,7 +137,11 @@ class _PlayerSettingsSheetState extends State<PlayerSettingsSheet> {
                   ),
             // Subtitles
             (controller != null && mediaTracks != null)
-                ? _buildSubtitleTab(mediaTracks.subtitles, controller)
+                ? PlayerSubtitlesPicker(
+                    player: widget.player,
+                    playerController: controller,
+                    onSelected: _close,
+                  )
                 : _buildTrackList(
                     tracks.subtitle,
                     currentSubtitle,
@@ -282,129 +286,6 @@ class _PlayerSettingsSheetState extends State<PlayerSettingsSheet> {
           selected: isSelected,
           onTap: () {
             if (!isSelected) controller.switchAudioTrack(index);
-            _close();
-          },
-        );
-      },
-    );
-  }
-
-  Widget _buildSubtitleTab(
-    List<MediaSubtitleTrack> subtitles,
-    PlayerController controller,
-  ) {
-    final useInternal = controller.currentQuality == null;
-
-    return Column(
-      children: [
-        Expanded(
-          child: useInternal
-              ? _buildInternalSubtitleList(controller)
-              : _buildCanonicalSubtitleList(subtitles, controller),
-        ),
-        if (subtitles.any((s) => !s.ready))
-          Padding(
-            padding: const EdgeInsets.only(top: 6),
-            child: SizedBox(
-              width: double.infinity,
-              child: TextButton.icon(
-                onPressed: (_isExtractingSubtitles || controller.isExtractingSubtitles)
-                    ? null
-                    : () => _forceExtractSubtitles(controller),
-                icon: (_isExtractingSubtitles || controller.isExtractingSubtitles)
-                    ? const SizedBox(
-                        width: 14,
-                        height: 14,
-                        child: CircularProgressIndicator(strokeWidth: 2),
-                      )
-                    : const Icon(Icons.download_outlined, size: 16),
-                label: Text(
-                  (_isExtractingSubtitles || controller.isExtractingSubtitles)
-                      ? 'Extraction en cours…'
-                      : 'Extraire les sous-titres',
-                  style: const TextStyle(fontSize: 12, fontFamily: 'Manrope'),
-                ),
-                style: TextButton.styleFrom(
-                  foregroundColor: const Color(0xFF007AFF),
-                  padding: const EdgeInsets.symmetric(vertical: 10),
-                ),
-              ),
-            ),
-          ),
-      ],
-    );
-  }
-
-  Future<void> _forceExtractSubtitles(PlayerController controller) async {
-    setState(() => _isExtractingSubtitles = true);
-    try {
-      final subs = await controller.forceExtractSubtitles();
-      if (!mounted) return;
-      setState(() => _isExtractingSubtitles = false);
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(
-            subs.isEmpty
-                ? 'Aucun sous-titre texte trouvé dans ce fichier'
-                : '${subs.length} piste${subs.length > 1 ? 's' : ''} extraite${subs.length > 1 ? 's' : ''}',
-          ),
-          backgroundColor: subs.isEmpty ? Colors.orange.shade800 : Colors.green.shade800,
-        ),
-      );
-    } catch (e) {
-      if (!mounted) return;
-      setState(() => _isExtractingSubtitles = false);
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text('Extraction échouée : $e'),
-          backgroundColor: Colors.red.shade800,
-        ),
-      );
-    }
-  }
-
-  Widget _buildInternalSubtitleList(PlayerController controller) {
-    final subs = widget.player.state.tracks.subtitle
-        .where((t) => t.id != 'auto')
-        .toList();
-    final current = widget.player.state.track.subtitle;
-    return _buildTrackList(
-      subs,
-      current,
-      (track) => _subtitleTrackName(track, subs.indexOf(track)),
-      (track) => controller.selectInternalSubtitle(track),
-    );
-  }
-
-  Widget _buildCanonicalSubtitleList(
-    List<MediaSubtitleTrack> subtitles,
-    PlayerController controller,
-  ) {
-    return ListView.builder(
-      padding: const EdgeInsets.only(top: 4),
-      itemCount: subtitles.length + 1,
-      itemBuilder: (context, row) {
-        if (row == 0) {
-          return PlayerSettingsTrackRow(
-            label: 'Désactivés',
-            selected: controller.selectedSubtitleLang == null,
-            onTap: () {
-              controller.setSubtitle(null);
-              _close();
-            },
-          );
-        }
-        final index = row - 1;
-        final track = subtitles[index];
-        final (title, subtitle) = splitTrackLabel(track.displayName);
-
-        return PlayerSettingsTrackRow(
-          label: title,
-          subtitle: subtitle,
-          badge: track.ready ? null : '…',
-          selected: controller.selectedSubtitleLang == track.lang,
-          onTap: () {
-            controller.setSubtitle(track.lang);
             _close();
           },
         );

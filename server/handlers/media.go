@@ -819,6 +819,19 @@ func TriggerMetadataBackfill(w http.ResponseWriter, r *http.Request, _ httproute
 	w.Write([]byte(`{"status": "success", "message": "Metadata backfill started in background"}`))
 }
 
+// TriggerProbeBackfill runs ffprobe on indexed files missing tracks_json.
+func TriggerProbeBackfill(w http.ResponseWriter, r *http.Request, _ httprouter.Params, _ int) {
+	w.Header().Set("Content-Type", "application/json")
+
+	if indexer.IsProbingBackfill {
+		http.Error(w, `{"error": "Probe backfill is already in progress"}`, http.StatusConflict)
+		return
+	}
+
+	indexer.BackfillMissingProbesAsync()
+	w.Write([]byte(`{"status": "success", "message": "Probe backfill started in background"}`))
+}
+
 // EnrichMediaMetadata fetches TMDB data for one movie/show (POST /api/media/:id/metadata/enrich).
 func EnrichMediaMetadata(w http.ResponseWriter, r *http.Request, ps httprouter.Params, _ int) {
 	w.Header().Set("Content-Type", "application/json")
@@ -1440,11 +1453,18 @@ func GetMediaTracks(w http.ResponseWriter, r *http.Request, ps httprouter.Params
 		return
 	}
 
-	probe, err := streaming.ProbeTracks(filePath)
-	if err != nil {
-		log.Printf("GetMediaTracks probe error for media %d: %v", mediaID, err)
-		http.Error(w, `{"error": "Failed to probe media tracks"}`, http.StatusInternalServerError)
-		return
+	var probe *streaming.ProbeResult
+	if cached, ok := indexer.LoadCachedProbe(mediaID, filePath); ok {
+		probe = cached
+	} else {
+		var err error
+		probe, err = streaming.ProbeTracks(filePath)
+		if err != nil {
+			log.Printf("GetMediaTracks probe error for media %d: %v", mediaID, err)
+			http.Error(w, `{"error": "Failed to probe media tracks"}`, http.StatusInternalServerError)
+			return
+		}
+		go indexer.PersistProbeAfterLiveProbe(mediaID, filePath, probe)
 	}
 
 	// Audio comes from the file (ffprobe). Subtitles merge ffprobe discovery

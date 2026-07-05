@@ -7,9 +7,11 @@ class LayoutSettingsDrawer extends StatelessWidget {
   final int verticalSegments;
   final bool snapToGrid;
   final bool useModularLayout;
+  final bool tapToTogglePlayback;
   final ValueChanged<int> onGridPresetChanged;
   final ValueChanged<bool> onSnapToGridChanged;
   final ValueChanged<bool> onUseModularLayoutChanged;
+  final ValueChanged<bool> onTapToTogglePlaybackChanged;
 
   const LayoutSettingsDrawer({
     super.key,
@@ -17,9 +19,11 @@ class LayoutSettingsDrawer extends StatelessWidget {
     required this.verticalSegments,
     required this.snapToGrid,
     required this.useModularLayout,
+    required this.tapToTogglePlayback,
     required this.onGridPresetChanged,
     required this.onSnapToGridChanged,
     required this.onUseModularLayoutChanged,
+    required this.onTapToTogglePlaybackChanged,
   });
 
   int get _gridPreset {
@@ -98,6 +102,27 @@ class LayoutSettingsDrawer extends StatelessWidget {
             subtitle: const Text(
               'Désactivé = interface standard du lecteur',
               style: TextStyle(color: Colors.grey, fontSize: 12),
+            ),
+          ),
+          const SizedBox(height: 8),
+          SwitchListTile(
+            contentPadding: EdgeInsets.zero,
+            value: tapToTogglePlayback,
+            onChanged: useModularLayout ? onTapToTogglePlaybackChanged : null,
+            activeColor: const Color(0xFF007AFF),
+            secondary: Icon(
+              tapToTogglePlayback ? Icons.touch_app : Icons.touch_app_outlined,
+              color: tapToTogglePlayback ? const Color(0xFF007AFF) : Colors.grey,
+            ),
+            title: const Text(
+              'Tap sur l’écran = lecture / pause',
+              style: TextStyle(color: Colors.white, fontSize: 14),
+            ),
+            subtitle: Text(
+              useModularLayout
+                  ? 'Permet de retirer le bouton play/pause tout en gardant la pause au clic'
+                  : 'Disponible uniquement avec le lecteur modulaire',
+              style: const TextStyle(color: Colors.grey, fontSize: 12),
             ),
           ),
         ],

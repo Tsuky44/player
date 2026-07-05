@@ -126,8 +126,17 @@ func ForceMediaSubtitleExtract(w http.ResponseWriter, r *http.Request, ps httpro
 	var count int
 	if force {
 		count, err = subtitles.ForceExtractAndRegister(mediaID, filePath)
+	} else if n, _ := subtitles.CountForMedia(mediaID); n > 0 {
+		count = n
 	} else {
-		count, err = subtitles.EnsureExtractedSync(mediaID, filePath)
+		// Background ensure: never block the HTTP stream with a full-file FFmpeg
+		// read while the client is already pulling the same file for Direct Play.
+		go func(id int, path string) {
+			if _, extractErr := subtitles.EnsureExtractedSync(id, path); extractErr != nil {
+				log.Printf("ForceMediaSubtitleExtract background %d: %v", id, extractErr)
+			}
+		}(mediaID, filePath)
+		count = 0
 	}
 	if err != nil {
 		log.Printf("ForceMediaSubtitleExtract %d: %v", mediaID, err)

@@ -9,6 +9,8 @@ class ControlEditDrawer extends StatelessWidget {
   final ValueChanged<double> onSizePercentageChanged;
   final double? widthPercentage;
   final ValueChanged<double>? onWidthPercentageChanged;
+  final TimelineChromeOptions? timelineOptions;
+  final ValueChanged<TimelineChromeOptions>? onTimelineOptionsChanged;
   final VoidCallback? onDelete;
 
   const ControlEditDrawer({
@@ -18,18 +20,24 @@ class ControlEditDrawer extends StatelessWidget {
     required this.onSizePercentageChanged,
     this.widthPercentage,
     this.onWidthPercentageChanged,
+    this.timelineOptions,
+    this.onTimelineOptionsChanged,
     this.onDelete,
   });
 
   @override
   Widget build(BuildContext context) {
     final hasSelection = selectedPlaced != null && sizePercentage != null;
+    final isTimeline = selectedPlaced?.type.isTimelineBar ?? false;
+    final tlOpts = timelineOptions ?? TimelineChromeOptions.legacy();
 
     return StudioDrawerShell(
       title: hasSelection ? selectedPlaced!.type.label : 'Contrôle',
       icon: Icons.straighten,
       subtitle: hasSelection
-          ? 'Ajuste la taille du contrôle sélectionné sur le canvas.'
+          ? isTimeline
+              ? 'Taille, largeur et boutons intégrés à la barre timeline.'
+              : 'Ajuste la taille du contrôle sélectionné sur le canvas.'
           : 'Sélectionne un contrôle sur l’aperçu pour le modifier.',
       child: hasSelection
           ? ListView(
@@ -123,6 +131,108 @@ class ControlEditDrawer extends StatelessWidget {
                     ),
                   ),
                 ],
+                if (isTimeline && onTimelineOptionsChanged != null) ...[
+                  const SizedBox(height: 20),
+                  Text(
+                    switch (selectedPlaced!.type) {
+                      PlayerControlType.timelineEmby =>
+                        'Style Emby — barre fine, sans fond',
+                      PlayerControlType.timelineGlassInline =>
+                        'Style verre fin — une ligne, heures de chaque côté',
+                      _ => 'Style verre — pill floutée, boutons en dessous',
+                    },
+                    style: TextStyle(
+                      color: Colors.white.withOpacity(0.55),
+                      fontSize: 12,
+                    ),
+                  ),
+                  const SizedBox(height: 16),
+                  const Text(
+                    'Transport (gauche)',
+                    style: TextStyle(
+                      color: Colors.white,
+                      fontSize: 13,
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                  const SizedBox(height: 4),
+                  _TimelineToggle(
+                    label: 'Épisode précédent',
+                    value: tlOpts.showSkipPrevious,
+                    onChanged: (v) => onTimelineOptionsChanged!(
+                      tlOpts.copyWith(showSkipPrevious: v),
+                    ),
+                  ),
+                  _TimelineToggle(
+                    label: 'Reculer 10 s',
+                    value: tlOpts.showRewind,
+                    onChanged: (v) => onTimelineOptionsChanged!(
+                      tlOpts.copyWith(showRewind: v),
+                    ),
+                  ),
+                  _TimelineToggle(
+                    label: 'Lecture / Pause',
+                    value: tlOpts.showPlayPause,
+                    onChanged: (v) => onTimelineOptionsChanged!(
+                      tlOpts.copyWith(showPlayPause: v),
+                    ),
+                  ),
+                  _TimelineToggle(
+                    label: 'Avancer 10 s',
+                    value: tlOpts.showForward,
+                    onChanged: (v) => onTimelineOptionsChanged!(
+                      tlOpts.copyWith(showForward: v),
+                    ),
+                  ),
+                  _TimelineToggle(
+                    label: 'Épisode suivant',
+                    value: tlOpts.showSkipNext,
+                    onChanged: (v) => onTimelineOptionsChanged!(
+                      tlOpts.copyWith(showSkipNext: v),
+                    ),
+                  ),
+                  const SizedBox(height: 16),
+                  Text(
+                    selectedPlaced!.type == PlayerControlType.timelineEmby ||
+                            tlOpts.visualStyle == TimelineVisualStyle.emby
+                        ? 'Actions (haut droite)'
+                        : 'Actions (droite)',
+                    style: const TextStyle(
+                      color: Colors.white,
+                      fontSize: 13,
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                  const SizedBox(height: 4),
+                  _TimelineToggle(
+                    label: 'Paramètres',
+                    value: tlOpts.showSettings,
+                    onChanged: (v) => onTimelineOptionsChanged!(
+                      tlOpts.copyWith(showSettings: v),
+                    ),
+                  ),
+                  _TimelineToggle(
+                    label: 'Sous-titres',
+                    value: tlOpts.showSubtitles,
+                    onChanged: (v) => onTimelineOptionsChanged!(
+                      tlOpts.copyWith(showSubtitles: v),
+                    ),
+                  ),
+                  _TimelineToggle(
+                    label: 'Plein écran',
+                    value: tlOpts.showFullscreen,
+                    onChanged: (v) => onTimelineOptionsChanged!(
+                      tlOpts.copyWith(showFullscreen: v),
+                    ),
+                  ),
+                  _TimelineToggle(
+                    label: 'À suivre',
+                    value: tlOpts.showUpNext,
+                    onChanged: (v) => onTimelineOptionsChanged!(
+                      tlOpts.copyWith(showUpNext: v),
+                    ),
+                  ),
+                ],
               ],
             )
           : const Center(
@@ -142,6 +252,32 @@ class ControlEditDrawer extends StatelessWidget {
     final type = selectedPlaced?.type;
     return type != null &&
         (type.isProgressBar || type == PlayerControlType.volumeSlider);
+  }
+}
+
+class _TimelineToggle extends StatelessWidget {
+  final String label;
+  final bool value;
+  final ValueChanged<bool> onChanged;
+
+  const _TimelineToggle({
+    required this.label,
+    required this.value,
+    required this.onChanged,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return SwitchListTile(
+      contentPadding: EdgeInsets.zero,
+      title: Text(
+        label,
+        style: const TextStyle(color: Colors.white70, fontSize: 13),
+      ),
+      value: value,
+      activeThumbColor: const Color(0xFF007AFF),
+      onChanged: onChanged,
+    );
   }
 }
 

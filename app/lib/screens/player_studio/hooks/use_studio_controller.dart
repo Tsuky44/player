@@ -2,6 +2,7 @@ import 'dart:math' show Random;
 import 'dart:ui';
 import 'package:flutter/foundation.dart';
 import '../../../models/player_layout.dart';
+import '../utils/alignment_guides.dart';
 
 /// Editing logic for the Player Studio canvas.
 ///
@@ -23,6 +24,9 @@ class StudioController extends ChangeNotifier {
   /// True while the user is actively dragging (used for real-time UI).
   bool _isDragging = false;
 
+  /// Magenta alignment lines shown while dragging near another control.
+  List<StudioAlignmentGuide> _activeGuides = const [];
+
   StudioController(PlayerLayoutConfig initial) : _draft = initial;
 
   PlayerLayoutConfig get draft => _draft;
@@ -39,6 +43,7 @@ class StudioController extends ChangeNotifier {
   int get horizontalSegments => _horizontalSegments;
   int get verticalSegments => _verticalSegments;
   bool get isDragging => _isDragging;
+  List<StudioAlignmentGuide> get activeGuides => _activeGuides;
 
   void select(String? id) {
     _selectedId = id;
@@ -73,6 +78,11 @@ class StudioController extends ChangeNotifier {
     notifyListeners();
   }
 
+  void setTapToTogglePlayback(bool value) {
+    _draft = _draft.copyWith(tapToTogglePlayback: value);
+    notifyListeners();
+  }
+
   /// Snap a raw percentage to the nearest grid line.
   double _snap(double raw, int segments) {
     final step = 1.0 / segments;
@@ -80,21 +90,46 @@ class StudioController extends ChangeNotifier {
   }
 
   /// Move a control by a pixel [delta] measured inside a [canvas] of known size.
-  void dragBy(String id, Offset delta, Size canvas) {
+  /// Shows center guides; snaps within 1 px when centers nearly align.
+  void dragBy(
+    String id,
+    Offset delta,
+    Size canvas, {
+    Map<String, Rect>? measuredRects,
+  }) {
     if (canvas.width <= 0 || canvas.height <= 0) return;
     final placed = _draft.byId(id);
     if (placed == null) return;
+
+    var totalDelta = delta;
+    if (measuredRects != null && measuredRects.containsKey(id)) {
+      final result = AlignmentGuideEngine.evaluate(
+        draggedId: id,
+        dragDelta: delta,
+        measuredRects: measuredRects,
+        canvas: canvas,
+      );
+      totalDelta = delta + result.snapDeltaPx;
+      _activeGuides = result.guides;
+    } else {
+      _activeGuides = const [];
+    }
+
     final next = placed.config.copyWith(
-      xPercentage: placed.config.xPercentage + delta.dx / canvas.width,
-      yPercentage: placed.config.yPercentage + delta.dy / canvas.height,
+      xPercentage:
+          placed.config.xPercentage + totalDelta.dx / canvas.width,
+      yPercentage:
+          placed.config.yPercentage + totalDelta.dy / canvas.height,
     );
     _draft = _draft.copyWithControl(id, placed.copyWith(config: next));
     _selectedId = id;
     _isDragging = true;
+
     notifyListeners();
   }
 
   void endDrag() {
+    _activeGuides = const [];
     if (_snapToGrid && _selectedId != null) {
       final placed = _draft.byId(_selectedId!);
       if (placed != null) {
@@ -120,11 +155,33 @@ class StudioController extends ChangeNotifier {
       xPercentage: 0.5,
       yPercentage: 0.5,
       sizePercentage: type.isProgressBar ? 0.07 : 0.08,
-      widthPercentage: type.isProgressBar ? 0.85 : 0.85,
+      widthPercentage: type.isTimelineBar ? 1.0 : 0.85,
+      timelineOptions: switch (type) {
+        PlayerControlType.timeline => TimelineChromeOptions.glass(),
+        PlayerControlType.timelineGlassInline => TimelineChromeOptions.glass(),
+        PlayerControlType.timelineEmby => TimelineChromeOptions.emby(),
+        _ => null,
+      },
     );
     final placed = PlacedControl(id: id, type: type, config: defaultConfig);
     _draft = _draft.withAddedControl(placed);
     _selectedId = id;
+    notifyListeners();
+  }
+
+  /// Update embedded timeline button visibility for the selected timeline bar.
+  void setSelectedTimelineOptions(TimelineChromeOptions options) {
+    final id = _selectedId;
+    if (id == null) return;
+    final placed = _draft.byId(id);
+    if (placed == null || !placed.type.isTimelineBar) return;
+
+    _draft = _draft.copyWithControl(
+      id,
+      placed.copyWith(
+        config: placed.config.copyWith(timelineOptions: options),
+      ),
+    );
     notifyListeners();
   }
 
@@ -202,6 +259,7 @@ class StudioController extends ChangeNotifier {
     _draft = config;
     _selectedId = null;
     _isDragging = false;
+    _activeGuides = const [];
     notifyListeners();
   }
 

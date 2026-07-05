@@ -1,16 +1,91 @@
 import 'package:flutter/material.dart';
 import '../hooks/use_studio_controller.dart';
+import '../utils/alignment_guides.dart';
+import 'control_context_menu.dart';
 import 'draggable_control.dart';
 
 /// The 16:9 editing surface. Renders a dummy poster background, a snap grid,
 /// and all the draggable controls positioned via relative percentages.
-class StudioCanvas extends StatelessWidget {
+class StudioCanvas extends StatefulWidget {
   final StudioController controller;
+  final VoidCallback? onOpenFullControlEditor;
 
-  const StudioCanvas({super.key, required this.controller});
+  const StudioCanvas({
+    super.key,
+    required this.controller,
+    this.onOpenFullControlEditor,
+  });
+
+  @override
+  State<StudioCanvas> createState() => _StudioCanvasState();
+}
+
+class _StudioCanvasState extends State<StudioCanvas> {
+  final _stackKey = GlobalKey();
+  final _controlKeys = <String, GlobalKey>{};
+  String? _contextMenuControlId;
+  Offset? _contextMenuPosition;
+
+  GlobalKey _keyFor(String id) => _controlKeys.putIfAbsent(id, GlobalKey.new);
+
+  void _closeContextMenu() {
+    if (_contextMenuControlId == null) return;
+    setState(() {
+      _contextMenuControlId = null;
+      _contextMenuPosition = null;
+    });
+  }
+
+  void _openContextMenu(String controlId, Offset globalPosition) {
+    final canvasBox = _stackKey.currentContext?.findRenderObject() as RenderBox?;
+    final local = canvasBox?.globalToLocal(globalPosition) ??
+        globalPosition - Offset.zero;
+
+    widget.controller.select(controlId);
+    setState(() {
+      _contextMenuControlId = controlId;
+      _contextMenuPosition = local;
+    });
+  }
+
+  void _moveContextMenu(Offset delta, Size canvasSize) {
+    if (_contextMenuPosition == null) return;
+    setState(() {
+      _contextMenuPosition = _clampMenuPosition(
+        _contextMenuPosition! + delta,
+        canvasSize,
+      );
+    });
+  }
+
+  Offset _clampMenuPosition(Offset position, Size canvasSize) {
+    const menuWidth = 268.0;
+    const menuHeight = 320.0;
+    return Offset(
+      position.dx.clamp(8.0, canvasSize.width - menuWidth - 8.0),
+      position.dy.clamp(8.0, canvasSize.height - menuHeight - 8.0),
+    );
+  }
+
+  Map<String, Rect> _measureControlRects() {
+    final canvasBox = _stackKey.currentContext?.findRenderObject() as RenderBox?;
+    if (canvasBox == null) return const {};
+
+    final result = <String, Rect>{};
+    for (final placed in widget.controller.draft.controls) {
+      final key = _controlKeys[placed.id];
+      final box = key?.currentContext?.findRenderObject() as RenderBox?;
+      if (box == null || !box.hasSize) continue;
+      final topLeft = box.localToGlobal(Offset.zero, ancestor: canvasBox);
+      result[placed.id] = topLeft & box.size;
+    }
+    return result;
+  }
 
   @override
   Widget build(BuildContext context) {
+    final controller = widget.controller;
+
     return AspectRatio(
       aspectRatio: 16 / 9,
       child: ClipRRect(
@@ -25,6 +100,7 @@ class StudioCanvas extends StatelessWidget {
                 final selConfig = controller.selectedConfig;
 
                 return Stack(
+                  key: _stackKey,
                   children: [
                     const _DummyPoster(),
 
@@ -37,26 +113,82 @@ class StudioCanvas extends StatelessWidget {
                       ),
                     ),
 
-                    // Tap empty space to deselect.
+                    // Smart alignment guides (visual center-to-center)
+                    if (controller.isDragging && controller.activeGuides.isNotEmpty)
+                      Positioned.fill(
+                        child: IgnorePointer(
+                          child: _AlignmentGuidesOverlay(
+                            guides: controller.activeGuides,
+                          ),
+                        ),
+                      ),
+
+                    // Tap empty space to deselect / close context menu.
                     Positioned.fill(
                       child: GestureDetector(
                         behavior: HitTestBehavior.translucent,
-                        onTap: () => controller.select(null),
+                        onTap: () {
+                          controller.select(null);
+                          _closeContextMenu();
+                        },
                       ),
                     ),
 
                     for (final placed in controller.draft.controls)
                       DraggableControl(
+                        key: ValueKey(placed.id),
+                        boundsKey: _keyFor(placed.id),
                         placed: placed,
                         canvasSize: canvasSize,
                         selected: selected == placed.id,
-                        onTap: () => controller.select(placed.id),
-                        onDrag: (delta) =>
-                            controller.dragBy(placed.id, delta, canvasSize),
+                        isDragging: controller.isDragging && selected == placed.id,
+                        onSelect: () {
+                          controller.select(placed.id);
+                          _closeContextMenu();
+                        },
+                        onSecondaryTapDown: (details) =>
+                            _openContextMenu(placed.id, details.globalPosition),
+                        onDrag: (delta) => controller.dragBy(
+                          placed.id,
+                          delta,
+                          canvasSize,
+                          measuredRects: _measureControlRects(),
+                        ),
                         onDragEnd: controller.endDrag,
                         blurSigma: controller.draft.blurIntensity,
                         glassOpacity: controller.draft.glassOpacity,
                         liquidGlass: controller.draft.liquidGlass,
+                      ),
+
+                    if (_contextMenuControlId != null &&
+                        _contextMenuPosition != null)
+                      Builder(
+                        builder: (context) {
+                          final placed = controller.draft.byId(_contextMenuControlId!);
+                          if (placed == null) return const SizedBox.shrink();
+                          final pos = _clampMenuPosition(
+                            _contextMenuPosition!,
+                            canvasSize,
+                          );
+                          return Positioned(
+                            left: pos.dx,
+                            top: pos.dy,
+                            child: ControlContextMenu(
+                              placed: placed,
+                              controller: controller,
+                              onClose: _closeContextMenu,
+                              onDragDelta: (delta) =>
+                                  _moveContextMenu(delta, canvasSize),
+                              onOpenFullEditor:
+                                  widget.onOpenFullControlEditor == null
+                                      ? null
+                                      : () {
+                                          _closeContextMenu();
+                                          widget.onOpenFullControlEditor!();
+                                        },
+                            ),
+                          );
+                        },
                       ),
 
                     // Real-time coordinate tooltip
@@ -187,6 +319,39 @@ class _GridOverlay extends StatelessWidget {
 
         return Stack(children: children);
       },
+    );
+  }
+}
+
+/// Pink/magenta lines that appear when a dragged control aligns with another.
+class _AlignmentGuidesOverlay extends StatelessWidget {
+  final List<StudioAlignmentGuide> guides;
+
+  const _AlignmentGuidesOverlay({required this.guides});
+
+  static const _guideColor = Color(0xFFFF2D55);
+
+  @override
+  Widget build(BuildContext context) {
+    return Stack(
+      clipBehavior: Clip.none,
+      children: [
+        for (final guide in guides)
+          if (guide.isVertical)
+            Positioned(
+              left: guide.positionPx - 0.5,
+              top: 0,
+              bottom: 0,
+              child: Container(width: 1, color: _guideColor),
+            )
+          else
+            Positioned(
+              top: guide.positionPx - 0.5,
+              left: 0,
+              right: 0,
+              child: Container(height: 1, color: _guideColor),
+            ),
+      ],
     );
   }
 }

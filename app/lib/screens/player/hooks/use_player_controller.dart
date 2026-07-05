@@ -142,6 +142,10 @@ class PlayerController {
   }
 
   Timer? _heartbeatTimer;
+  Timer? _deferredSubtitleExtractTimer;
+  /// Delay subtitle extraction so FFmpeg on the server does not compete with
+  /// the HTTP stream for disk I/O during the first minutes of Direct Play.
+  static const _subtitleExtractDelay = Duration(seconds: 90);
   StreamSubscription? _positionSubscription;
   StreamSubscription? _durationSubscription;
   StreamSubscription? _completedSubscription;
@@ -171,11 +175,7 @@ class PlayerController {
     int knownDurationSeconds = 0,
   }) async {
     try {
-      await (player.platform as dynamic).setProperty('cache-secs', '1');
-      await (player.platform as dynamic).setProperty('demuxer-max-bytes', '52428800');
-      await (player.platform as dynamic).setProperty('demuxer-readahead-secs', '120');
-      await (player.platform as dynamic).setProperty('hwdec', 'auto');
-      await (player.platform as dynamic).setProperty('sub-auto', 'no');
+      await _applyDirectPlayPlayerProperties();
     } catch (e) {
       debugPrint("Player: failed to apply native MPV properties: $e");
     }
@@ -228,8 +228,17 @@ class PlayerController {
     _onQualitySwitchingChanged = onQualitySwitchingChanged;
     _onTracksChanged = onTracksChanged;
 
+    final streamUrl = apiClient.getStreamUrl(media.id);
+
+    MediaTracks? loadedTracks;
     try {
-      mediaTracks = await apiClient.getMediaTracks(media.id);
+      await Future.wait([
+        apiClient.getMediaTracks(media.id).then((tracks) {
+          loadedTracks = tracks;
+        }),
+        player.open(mk.Media(streamUrl), play: false),
+      ]);
+      mediaTracks = loadedTracks;
       if (inheritedPreferences != null) {
         _applyInheritedPreferences(inheritedPreferences);
       } else {
@@ -244,23 +253,46 @@ class PlayerController {
       }
       _pendingPreferenceReapply = true;
     } catch (e) {
-      debugPrint("Player: failed to load media tracks: $e");
+      debugPrint("Player: failed to load media tracks or open stream: $e");
+      if (loadedTracks == null) {
+        try {
+          await player.open(mk.Media(streamUrl), play: false);
+        } catch (openErr) {
+          debugPrint("Player: failed to open stream: $openErr");
+        }
+      }
     }
-
-    final streamUrl = apiClient.getStreamUrl(media.id);
-    await player.open(mk.Media(streamUrl), play: false);
 
     if (inheritedPreferences == null || inheritedPreferences.subtitlesOff) {
       try {
         player.setSubtitleTrack(mk.SubtitleTrack.no());
       } catch (_) {}
     }
+  }
 
-    // Direct Play uses the MKV's own subtitles directly (libmpv reads them from
-    // the file). In parallel — without blocking playback — kick off extraction
-    // of the external .vtt tracks so they're ready when/if the user switches to
-    // transcoding (HLS), where the original file is no longer streamed.
-    _ensureSubtitlesExtracted();
+  Future<void> _applyDirectPlayPlayerProperties() async {
+    final platform = player.platform as dynamic;
+    await platform.setProperty('cache', 'yes');
+    // Large forward buffer for HTTP Direct Play — avoids cache-pause stalls every
+    // ~30s when demuxer-max-bytes is exhausted at typical episode bitrates.
+    await platform.setProperty('cache-secs', '120');
+    await platform.setProperty('demuxer-max-bytes', '536870912');
+    await platform.setProperty('demuxer-readahead-secs', '900');
+    await platform.setProperty('hr-seek', 'yes');
+    await platform.setProperty('hwdec', 'auto');
+    await platform.setProperty('sub-auto', 'no');
+    await platform.setProperty('network-timeout', '60');
+  }
+
+  void _scheduleDeferredSubtitleExtraction() {
+    if (_autoExtractStarted || _disposed) return;
+    if (!_hasPendingSubtitles()) return;
+
+    _deferredSubtitleExtractTimer?.cancel();
+    _deferredSubtitleExtractTimer = Timer(_subtitleExtractDelay, () {
+      if (_disposed) return;
+      _ensureSubtitlesExtracted();
+    });
   }
 
   void _notifyTracksChanged() {
@@ -311,7 +343,7 @@ class PlayerController {
 
   void _startSubtitleWatch() {
     if (_subtitleWatchTimer != null) return;
-    _subtitleWatchTimer = Timer.periodic(const Duration(seconds: 2), (_) {
+    _subtitleWatchTimer = Timer.periodic(const Duration(seconds: 5), (_) {
       if (_disposed) {
         _stopSubtitleWatch();
         return;
@@ -383,12 +415,19 @@ class PlayerController {
     required ApiClient apiClient,
     int resumeAtSeconds = 0,
   }) async {
-    if (resumeAtSeconds > 0) {
-      // Stream must be loading before seek works (same pattern as switchToDirectPlay).
-      await player.play();
-      await _waitUntilSeekable();
-      await seekToAbsoluteSeconds(resumeAtSeconds);
-      await Future.delayed(const Duration(milliseconds: 300));
+    if (resumeAtSeconds > 0 && currentQuality == null && _media != null) {
+      // Single buffering phase: mpv opens directly at the resume offset.
+      try {
+        await (player.platform as dynamic).setProperty('start', '+$resumeAtSeconds');
+      } catch (e) {
+        debugPrint("Player: failed to set mpv start property: $e");
+      }
+      final streamUrl = apiClient.getStreamUrl(mediaId);
+      await player.open(mk.Media(streamUrl), play: true);
+      try {
+        await (player.platform as dynamic).setProperty('start', '0');
+      } catch (_) {}
+      position = Duration(seconds: resumeAtSeconds);
     } else {
       await player.play();
     }
@@ -398,6 +437,7 @@ class PlayerController {
     }
     startHeartbeat(mediaId: mediaId, apiClient: apiClient);
     _setPlaying(player.state.playing);
+    _scheduleDeferredSubtitleExtraction();
   }
 
   void _setPlaying(bool playing) {
@@ -418,7 +458,7 @@ class PlayerController {
 
   void startHeartbeat({required int mediaId, required ApiClient apiClient}) {
     _heartbeatTimer?.cancel();
-    _heartbeatTimer = Timer.periodic(const Duration(seconds: 10), (_) {
+    _heartbeatTimer = Timer.periodic(const Duration(seconds: 15), (_) {
       if (player.state.playing) {
         _sendProgress(mediaId: mediaId, apiClient: apiClient, isFinished: false);
       }
@@ -553,6 +593,7 @@ class PlayerController {
     _hlsStartOffset = 0;
     duration = Duration.zero;
 
+    await _applyDirectPlayPlayerProperties();
     final streamUrl = _apiClient!.getStreamUrl(_media!.id);
     await player.open(mk.Media(streamUrl), play: true);
 
@@ -609,6 +650,31 @@ class PlayerController {
       return;
     }
     _applyAudioSelection();
+  }
+
+  /// Turn subtitles on (first available track) or off.
+  Future<void> toggleSubtitles() async {
+    if (!_subtitlesExplicitlyOff &&
+        (_selectedSubtitleLang != null || _selectedInternalSubId != null)) {
+      await setSubtitle(null);
+      return;
+    }
+
+    if (currentQuality == null) {
+      final tracks = player.state.tracks.subtitle;
+      for (final track in tracks) {
+        if (track.id == 'no' || track.id == 'auto') continue;
+        selectInternalSubtitle(track);
+        return;
+      }
+    }
+
+    final subs = mediaTracks?.subtitles ?? const <MediaSubtitleTrack>[];
+    if (subs.isEmpty) return;
+
+    final ready = subs.where((s) => s.ready).toList();
+    final pick = ready.isNotEmpty ? ready.first : subs.first;
+    await setSubtitle(pick.lang);
   }
 
   /// Select a subtitle by language code, or null to disable. Used by the HLS
@@ -904,6 +970,8 @@ class PlayerController {
 
   void cancelStreams() {
     _disposed = true;
+    _deferredSubtitleExtractTimer?.cancel();
+    _deferredSubtitleExtractTimer = null;
     _stopSubtitleWatch();
     _heartbeatTimer?.cancel();
     _positionSubscription?.cancel();
@@ -926,6 +994,8 @@ class PlayerController {
 
   void dispose() {
     _disposed = true;
+    _deferredSubtitleExtractTimer?.cancel();
+    _deferredSubtitleExtractTimer = null;
     _stopSubtitleWatch();
     _tracksStreamController.close();
     _heartbeatTimer?.cancel();

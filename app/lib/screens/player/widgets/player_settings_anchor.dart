@@ -17,6 +17,9 @@ class PlayerSettingsAnchor {
   static double menuMaxHeight({required bool hasChaptersTab}) =>
       hasChaptersTab ? 520 : 480;
 
+  static const double subtitlesSheetWidth = 320;
+  static const double subtitlesSheetMaxHeight = 400;
+
   /// Keeps the popup readable: anchored to the button, shifted when near edges.
   static double horizontalLeft({
     required Rect buttonRect,

@@ -147,6 +147,27 @@ func ProbeTracks(inputPath string) (*ProbeResult, error) {
 	return result, nil
 }
 
+// MarshalProbeResult serializes a probe result for DB storage.
+func MarshalProbeResult(r *ProbeResult) (string, error) {
+	b, err := json.Marshal(r)
+	if err != nil {
+		return "", err
+	}
+	return string(b), nil
+}
+
+// UnmarshalProbeResult restores a probe result from DB JSON.
+func UnmarshalProbeResult(raw string) (*ProbeResult, error) {
+	if raw == "" {
+		return nil, fmt.Errorf("empty probe json")
+	}
+	var r ProbeResult
+	if err := json.Unmarshal([]byte(raw), &r); err != nil {
+		return nil, err
+	}
+	return &r, nil
+}
+
 // parseDuration parses a string like "123.456" into a float64.
 func parseDuration(s string) float64 {
 	if s == "" {

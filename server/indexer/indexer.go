@@ -88,6 +88,9 @@ func ScanMedia(moviesDir, seriesDir string) {
 			log.Printf("Indexer error cleaning up missing medias: %v", err)
 		}
 
+		InvalidateStreamCaches()
+		BackfillMissingProbesAsync()
+
 		// Intro/outro detection is expensive (IntroDB + ffprobe) — run in the
 		// background so /api/home and browsing stay responsive during startup.
 		go DetectIntrosOutros()
@@ -142,8 +145,8 @@ func scanMovies(dir string) error {
 
 		// Insert movie with TMDB metadata
 		res, err := database.DB.Exec(
-			"INSERT INTO medias (type, title, file_path, duration, poster_url, overview, release_date, tmdb_id) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
-			models.TypeMovie, displayTitle, normalizedPath, 0, posterURL, overview, releaseDate, tmdbID,
+			"INSERT INTO medias (type, title, file_path, duration, file_size, poster_url, overview, release_date, tmdb_id) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
+			models.TypeMovie, displayTitle, normalizedPath, 0, info.Size(), posterURL, overview, releaseDate, tmdbID,
 		)
 		if err != nil {
 			log.Printf("Indexer: Failed to index movie %s: %v", displayTitle, err)
@@ -153,6 +156,7 @@ func scanMovies(dir string) error {
 		log.Printf("Indexer: Successfully indexed Movie -> %s", displayTitle)
 
 		if id, idErr := res.LastInsertId(); idErr == nil {
+			ProbeAndPersist(int(id), displayTitle, normalizedPath, info.Size(), info.ModTime())
 			extractSubtitles(int(id), normalizedPath)
 		}
 		return nil
@@ -254,9 +258,9 @@ func scanSeries(dir string) error {
 		}
 
 		res, err := database.DB.Exec(
-			`INSERT INTO medias (type, title, file_path, duration, parent_id, poster_url, overview, release_date, tmdb_id, season_number, episode_number)
-			 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-			models.TypeEpisode, epTitle, normalizedPath, 0, seasonID, epPoster, epOverview, epAirDate, epTMDBID, seasonNum, episodeNum,
+			`INSERT INTO medias (type, title, file_path, duration, file_size, parent_id, poster_url, overview, release_date, tmdb_id, season_number, episode_number)
+			 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+			models.TypeEpisode, epTitle, normalizedPath, 0, info.Size(), seasonID, epPoster, epOverview, epAirDate, epTMDBID, seasonNum, episodeNum,
 		)
 		if err != nil {
 			log.Printf("Indexer: Failed to index episode %s: %v", epTitle, err)
@@ -266,6 +270,7 @@ func scanSeries(dir string) error {
 		log.Printf("Indexer: Successfully indexed Episode -> %s (S%02dE%02d)", showTitle, seasonNum, episodeNum)
 
 		if id, idErr := res.LastInsertId(); idErr == nil {
+			ProbeAndPersist(int(id), epTitle, normalizedPath, info.Size(), info.ModTime())
 			extractSubtitles(int(id), normalizedPath)
 		}
 		return nil

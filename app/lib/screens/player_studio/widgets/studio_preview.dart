@@ -63,35 +63,62 @@ class StudioPreview extends StatelessWidget {
 
   Widget _positionedControl(PlacedControl placed, Size canvasSize) {
     final c = placed.config;
+    final isFullWidthTimeline =
+        placed.type == PlayerControlType.timelineEmby ||
+        placed.type == PlayerControlType.timelineGlassInline;
+
+    final chrome = ControlChrome(
+      type: placed.type,
+      sizePercentage: c.sizePercentage,
+      canvasSize: canvasSize,
+      widthPercentage: c.widthPercentage,
+      variant: ControlChromeVariant.live,
+      isPlaying: true,
+      progress: 0.35,
+      duration: placed.type.isTimelineBar
+          ? const Duration(hours: 1, minutes: 23, seconds: 45)
+          : null,
+      currentSeconds: placed.type.isTimelineBar ? 521 : null,
+      onSeekFraction: placed.type.isTimelineBar ? (_) {} : null,
+      timelineOptions: placed.type.isTimelineBar
+          ? placed.effectiveTimelineOptions
+          : const TimelineChromeOptions(showFullscreen: true),
+      onToggleFullscreen: placed.type.isTimelineBar ? () {} : null,
+      onPlayPause: placed.type.isTimelineBar ? () {} : null,
+      onRewind: placed.type.isTimelineBar ? () {} : null,
+      onForward: placed.type.isTimelineBar ? () {} : null,
+      onSkipPrevious: placed.type.isTimelineBar ? () {} : null,
+      onSkipNext: placed.type.isTimelineBar ? () {} : null,
+      onOpenSettings: placed.type.isTimelineBar ? () {} : null,
+      onToggleSubtitles: placed.type.isTimelineBar ? () {} : null,
+      mediaTitle: placed.type == PlayerControlType.mediaTitle ||
+              placed.type == PlayerControlType.mediaLogo
+          ? 'Arcane – S01E02'
+          : null,
+      mediaLogoUrl: placed.type == PlayerControlType.mediaLogo ? null : null,
+      volume: placed.type == PlayerControlType.volumeSlider ? 65.0 : null,
+      onVolumeChanged:
+          placed.type == PlayerControlType.volumeSlider ? (_) {} : null,
+      onBack: placed.type == PlayerControlType.back ? () {} : null,
+      blurSigma: config.blurIntensity,
+      glassOpacity: config.glassOpacity,
+      liquidGlass: config.liquidGlass,
+    );
+
+    if (isFullWidthTimeline) {
+      return Align(
+        alignment: Alignment(0, c.yPercentage * 2 - 1),
+        widthFactor: 1.0,
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 16),
+          child: IgnorePointer(child: chrome),
+        ),
+      );
+    }
+
     return Align(
       alignment: Alignment(c.xPercentage * 2 - 1, c.yPercentage * 2 - 1),
-      child: IgnorePointer(
-        child: ControlChrome(
-          type: placed.type,
-          sizePercentage: c.sizePercentage,
-          canvasSize: canvasSize,
-          widthPercentage: c.widthPercentage,
-          variant: ControlChromeVariant.live,
-          isPlaying: true,
-          progress: 0.35,
-          duration: placed.type == PlayerControlType.timeline
-              ? const Duration(hours: 1, minutes: 23, seconds: 45)
-              : null,
-          currentSeconds: placed.type == PlayerControlType.timeline ? 521 : null,
-          onToggleFullscreen: placed.type == PlayerControlType.timeline ? () {} : null,
-          mediaTitle: placed.type == PlayerControlType.mediaTitle ||
-                  placed.type == PlayerControlType.mediaLogo
-              ? 'Arcane – S01E02'
-              : null,
-          mediaLogoUrl: placed.type == PlayerControlType.mediaLogo ? null : null,
-          volume: placed.type == PlayerControlType.volumeSlider ? 65.0 : null,
-          onVolumeChanged: placed.type == PlayerControlType.volumeSlider ? (_) {} : null,
-          onBack: placed.type == PlayerControlType.back ? () {} : null,
-          blurSigma: config.blurIntensity,
-          glassOpacity: config.glassOpacity,
-          liquidGlass: config.liquidGlass,
-        ),
-      ),
+      child: IgnorePointer(child: chrome),
     );
   }
 }

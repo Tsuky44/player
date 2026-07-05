@@ -96,6 +96,12 @@ func createTables() error {
 		// Migration: season/episode numbers for TMDB episode metadata
 		`ALTER TABLE medias ADD COLUMN season_number INTEGER DEFAULT 0;`,
 		`ALTER TABLE medias ADD COLUMN episode_number INTEGER DEFAULT 0;`,
+		// Streaming optimization columns
+		`ALTER TABLE medias ADD COLUMN file_size INTEGER DEFAULT 0;`,
+		`ALTER TABLE medias ADD COLUMN tracks_json TEXT;`,
+		`ALTER TABLE medias ADD COLUMN probed_at TIMESTAMP;`,
+		`ALTER TABLE medias ADD COLUMN file_mod_time INTEGER DEFAULT 0;`,
+		`ALTER TABLE medias ADD COLUMN gop_seconds REAL;`,
 
 		// Progressions Table
 		`CREATE TABLE IF NOT EXISTS progressions (

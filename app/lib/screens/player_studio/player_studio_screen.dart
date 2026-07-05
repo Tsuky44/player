@@ -35,16 +35,9 @@ class _PlayerStudioScreenState extends State<PlayerStudioScreen> {
     });
   }
 
-  String? _lastOpenedControlId;
-
-  void _onControlSelected() {
-    final id = _controller.selectedId;
-    if (id != null && id != _lastOpenedControlId) {
-      _lastOpenedControlId = id;
-      _openDrawer(_StudioDrawerMode.control);
-    } else if (id == null) {
-      _lastOpenedControlId = null;
-    }
+  void _openControlEditDrawer() {
+    if (_controller.selectedId == null) return;
+    _openDrawer(_StudioDrawerMode.control);
   }
 
   void _onLayoutProviderLoaded() {
@@ -65,12 +58,10 @@ class _PlayerStudioScreenState extends State<PlayerStudioScreen> {
     if (!_layoutProvider.isLoaded) {
       _layoutProvider.addListener(_onLayoutProviderLoaded);
     }
-    _controller.addListener(_onControlSelected);
   }
 
   @override
   void dispose() {
-    _controller.removeListener(_onControlSelected);
     _layoutProvider.removeListener(_onLayoutProviderLoaded);
     _controller.dispose();
     super.dispose();
@@ -140,10 +131,12 @@ class _PlayerStudioScreenState extends State<PlayerStudioScreen> {
           verticalSegments: _controller.verticalSegments,
           snapToGrid: _controller.snapToGrid,
           useModularLayout: context.watch<PlayerLayoutProvider>().useModularLayout,
+          tapToTogglePlayback: _controller.draft.tapToTogglePlayback,
           onGridPresetChanged: _onGridPresetChanged,
           onSnapToGridChanged: _controller.setSnapToGrid,
           onUseModularLayoutChanged: (v) =>
               context.read<PlayerLayoutProvider>().setUseModularLayout(v),
+          onTapToTogglePlaybackChanged: _controller.setTapToTogglePlayback,
         );
       case _StudioDrawerMode.glass:
         return GlassStyleDrawer(
@@ -161,6 +154,12 @@ class _PlayerStudioScreenState extends State<PlayerStudioScreen> {
           onSizePercentageChanged: _controller.setSelectedSizePercentage,
           widthPercentage: _controller.selectedConfig?.widthPercentage,
           onWidthPercentageChanged: _controller.setSelectedWidthPercentage,
+          timelineOptions: _controller.selectedPlaced?.type.isTimelineBar == true
+              ? _controller.selectedPlaced?.effectiveTimelineOptions
+              : null,
+          onTimelineOptionsChanged: _controller.selectedPlaced?.type.isTimelineBar == true
+              ? _controller.setSelectedTimelineOptions
+              : null,
           onDelete: _controller.selectedId == null
               ? null
               : () => _controller.removeControl(_controller.selectedId!),
@@ -202,7 +201,7 @@ class _PlayerStudioScreenState extends State<PlayerStudioScreen> {
             ),
             tooltip: 'Taille du contrôle',
             onPressed: _controller.selectedId != null
-                ? () => _openDrawer(_StudioDrawerMode.control)
+                ? _openControlEditDrawer
                 : null,
           ),
           IconButton(
@@ -242,7 +241,10 @@ class _PlayerStudioScreenState extends State<PlayerStudioScreen> {
       body: Padding(
         padding: const EdgeInsets.all(24),
         child: Center(
-          child: StudioCanvas(controller: _controller),
+          child: StudioCanvas(
+            controller: _controller,
+            onOpenFullControlEditor: _openControlEditDrawer,
+          ),
         ),
       ),
         );

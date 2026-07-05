@@ -6,6 +6,8 @@ const _kCategories = <String, List<PlayerControlType>>{
   'Barres de progression': [
     PlayerControlType.progressBar,
     PlayerControlType.timeline,
+    PlayerControlType.timelineGlassInline,
+    PlayerControlType.timelineEmby,
   ],
   'Navigation temporelle': [
     PlayerControlType.rewind,
@@ -17,6 +19,8 @@ const _kCategories = <String, List<PlayerControlType>>{
   'Épisodes': [
     PlayerControlType.skipPrevious,
     PlayerControlType.skipNext,
+    PlayerControlType.upNext,
+    PlayerControlType.upNextEmby,
   ],
   'Volume': [
     PlayerControlType.volumeUp,
@@ -45,6 +49,15 @@ class ShopPanel extends StatelessWidget {
     required this.onAdd,
     required this.placedTypes,
   });
+
+  static bool _isTimelineBar(PlayerControlType type) => type.isTimelineBar;
+
+  static bool _isPlaced(PlayerControlType type, Set<PlayerControlType> placed) {
+    if (_isTimelineBar(type)) {
+      return placed.any(_isTimelineBar);
+    }
+    return placed.contains(type);
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -112,7 +125,7 @@ class ShopPanel extends StatelessWidget {
                           itemCount: types.length,
                           itemBuilder: (context, index) {
                             final type = types[index];
-                            final isPlaced = placedTypes.contains(type);
+                            final isPlaced = _isPlaced(type, placedTypes);
                             return _ShopItem(
                               type: type,
                               isPlaced: isPlaced,

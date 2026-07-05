@@ -28,6 +28,9 @@ class ModularControlsLayer extends StatelessWidget {
   /// Key to anchor the settings popup above the settings button.
   final GlobalKey? settingsButtonKey;
 
+  /// Key to anchor the subtitles popup above the subtitles button.
+  final GlobalKey? subtitlesButtonKey;
+
   /// Key attached to the lowest progress/timeline control for subtitle positioning.
   final GlobalKey? timelineAnchorKey;
 
@@ -48,6 +51,9 @@ class ModularControlsLayer extends StatelessWidget {
 
   /// Called when the back button is tapped.
   final VoidCallback? onBack;
+
+  /// Opens the up-next episode panel (series only).
+  final VoidCallback? onOpenUpNext;
 
   const ModularControlsLayer({
     super.key,
@@ -70,12 +76,14 @@ class ModularControlsLayer extends StatelessWidget {
     this.onOpenSettings,
     this.onToggleSubtitles,
     this.settingsButtonKey,
+    this.subtitlesButtonKey,
     this.timelineAnchorKey,
     this.mediaTitle,
     this.mediaLogoUrl,
     this.volume,
     this.onVolumeChanged,
     this.onBack,
+    this.onOpenUpNext,
   });
 
   VoidCallback? _tapHandler(PlayerControlType type) {
@@ -83,7 +91,11 @@ class ModularControlsLayer extends StatelessWidget {
       PlayerControlType.back => onBack,
       PlayerControlType.rewind => onRewind,
       PlayerControlType.forward => onForward,
-      PlayerControlType.playPause || PlayerControlType.progressBar || PlayerControlType.timeline => onPlayPause,
+      PlayerControlType.playPause || PlayerControlType.progressBar => onPlayPause,
+      PlayerControlType.timeline ||
+          PlayerControlType.timelineEmby ||
+          PlayerControlType.timelineGlassInline =>
+        null,
       PlayerControlType.skipPrevious => onSkipPrevious,
       PlayerControlType.skipNext => onSkipNext,
       PlayerControlType.volumeUp => onVolumeUp,
@@ -92,35 +104,42 @@ class ModularControlsLayer extends StatelessWidget {
       PlayerControlType.fullscreen => onToggleFullscreen,
       PlayerControlType.settings => onOpenSettings,
       PlayerControlType.subtitles => onToggleSubtitles,
+      PlayerControlType.upNext || PlayerControlType.upNextEmby => onOpenUpNext,
       PlayerControlType.mediaTitle || PlayerControlType.mediaLogo || PlayerControlType.volumeSlider => null,
     };
   }
 
   @override
   Widget build(BuildContext context) {
+    if (!visible) return const SizedBox.shrink();
+
     final timelineAnchorId = _timelineAnchorId();
 
     return Positioned.fill(
-      child: IgnorePointer(
-        ignoring: !visible,
-        child: AnimatedOpacity(
-          opacity: visible ? 1.0 : 0.0,
-          duration: const Duration(milliseconds: 200),
-          curve: Curves.easeOut,
-          child: LayoutBuilder(
-            builder: (context, constraints) {
-              final canvasSize = constraints.biggest;
-              return Stack(
-                children: [
-                  for (final placed in config.controls)
-                    _positioned(placed, canvasSize, timelineAnchorId),
-                ],
-              );
-            },
-          ),
-        ),
+      child: LayoutBuilder(
+        builder: (context, constraints) {
+          final canvasSize = constraints.biggest;
+          return Stack(
+            children: [
+              for (final placed in config.controls)
+                _positioned(placed, canvasSize, timelineAnchorId),
+            ],
+          );
+        },
       ),
     );
+  }
+
+  PlacedControl? _primaryTimelineBar() {
+    PlacedControl? bottomTimeline;
+    for (final placed in config.controls) {
+      if (!placed.type.isTimelineBar) continue;
+      if (bottomTimeline == null ||
+          placed.config.yPercentage > bottomTimeline.config.yPercentage) {
+        bottomTimeline = placed;
+      }
+    }
+    return bottomTimeline;
   }
 
   String? _timelineAnchorId() {
@@ -137,12 +156,56 @@ class ModularControlsLayer extends StatelessWidget {
     return bottomTimeline?.id;
   }
 
+  bool _isPrimaryTimeline(PlacedControl placed) =>
+      _primaryTimelineBar()?.id == placed.id;
+
+  bool _timelineHasEmbeddedSettings() {
+    final primary = _primaryTimelineBar();
+    return primary != null &&
+        _resolvedTimelineOptions(primary).showSettings;
+  }
+
+  bool _attachSettingsKeyToTimeline(PlacedControl placed) {
+    return settingsButtonKey != null &&
+        _isPrimaryTimeline(placed) &&
+        _resolvedTimelineOptions(placed).showSettings;
+  }
+
+  bool _attachSettingsKeyToStandalone(PlacedControl placed) {
+    return settingsButtonKey != null &&
+        !_timelineHasEmbeddedSettings() &&
+        placed.type == PlayerControlType.settings;
+  }
+
+  bool _timelineHasEmbeddedSubtitles() {
+    final primary = _primaryTimelineBar();
+    return primary != null &&
+        _resolvedTimelineOptions(primary).showSubtitles;
+  }
+
+  bool _attachSubtitlesKeyToTimeline(PlacedControl placed) {
+    return subtitlesButtonKey != null &&
+        _isPrimaryTimeline(placed) &&
+        _resolvedTimelineOptions(placed).showSubtitles;
+  }
+
+  bool _attachSubtitlesKeyToStandalone(PlacedControl placed) {
+    return subtitlesButtonKey != null &&
+        !_timelineHasEmbeddedSubtitles() &&
+        placed.type == PlayerControlType.subtitles;
+  }
+
+  /// Resolves saved timeline options, or type defaults when none were stored.
+  TimelineChromeOptions _resolvedTimelineOptions(PlacedControl placed) =>
+      placed.effectiveTimelineOptions;
+
   Widget _positioned(
     PlacedControl placed,
     Size canvasSize,
     String? timelineAnchorId,
   ) {
     final c = placed.config;
+    final timelineOpts = _resolvedTimelineOptions(placed);
     final chrome = ControlChrome(
       type: placed.type,
       sizePercentage: c.sizePercentage,
@@ -151,10 +214,27 @@ class ModularControlsLayer extends StatelessWidget {
       variant: ControlChromeVariant.live,
       isPlaying: isPlaying,
       progress: progress,
-      duration: placed.type == PlayerControlType.timeline ? duration : null,
-      currentSeconds: placed.type == PlayerControlType.timeline ? currentSeconds : null,
-      onSeekFraction: placed.type.isProgressBar ? onSeekFraction : null,
-      onToggleFullscreen: placed.type == PlayerControlType.timeline ? onToggleFullscreen : null,
+      duration: placed.type.isTimelineBar ? duration : null,
+      currentSeconds: placed.type.isTimelineBar ? currentSeconds : null,
+      onSeekFraction: placed.type.isProgressBar || placed.type.isTimelineBar
+          ? onSeekFraction
+          : null,
+      timelineOptions: placed.type.isTimelineBar
+          ? timelineOpts
+          : const TimelineChromeOptions(showFullscreen: true),
+      onPlayPause: placed.type.isTimelineBar ? onPlayPause : null,
+      onRewind: placed.type.isTimelineBar ? onRewind : null,
+      onForward: placed.type.isTimelineBar ? onForward : null,
+      onSkipPrevious: placed.type.isTimelineBar ? onSkipPrevious : null,
+      onSkipNext: placed.type.isTimelineBar ? onSkipNext : null,
+      onOpenSettings: placed.type.isTimelineBar ? onOpenSettings : null,
+      onToggleSubtitles: placed.type.isTimelineBar ? onToggleSubtitles : null,
+      onOpenUpNext: placed.type.isTimelineBar ? onOpenUpNext : null,
+      onToggleFullscreen: placed.type.isTimelineBar ? onToggleFullscreen : null,
+      settingsButtonKey:
+          _attachSettingsKeyToTimeline(placed) ? settingsButtonKey : null,
+      subtitlesButtonKey:
+          _attachSubtitlesKeyToTimeline(placed) ? subtitlesButtonKey : null,
       mediaTitle: placed.type == PlayerControlType.mediaTitle ||
               placed.type == PlayerControlType.mediaLogo
           ? mediaTitle
@@ -172,22 +252,40 @@ class ModularControlsLayer extends StatelessWidget {
 
     Widget child = placed.type == PlayerControlType.progressBar
         ? _SeekableBar(onSeekFraction: onSeekFraction, child: chrome)
-        : handler != null
-            ? GestureDetector(
-                behavior: HitTestBehavior.opaque,
-                onTap: handler,
-                child: chrome,
-              )
-            : chrome;
+        : placed.type.isTimelineBar
+            ? chrome
+            : handler != null
+                ? GestureDetector(
+                    behavior: HitTestBehavior.opaque,
+                    onTap: handler,
+                    child: chrome,
+                  )
+                : chrome;
 
-    if (placed.type == PlayerControlType.settings && settingsButtonKey != null) {
+    if (_attachSettingsKeyToStandalone(placed)) {
       child = KeyedSubtree(key: settingsButtonKey, child: child);
+    }
+
+    if (_attachSubtitlesKeyToStandalone(placed)) {
+      child = KeyedSubtree(key: subtitlesButtonKey, child: child);
     }
 
     if (timelineAnchorKey != null &&
         timelineAnchorId != null &&
         placed.id == timelineAnchorId) {
       child = KeyedSubtree(key: timelineAnchorKey, child: child);
+    }
+
+    if (placed.type == PlayerControlType.timelineEmby ||
+        placed.type == PlayerControlType.timelineGlassInline) {
+      return Align(
+        alignment: Alignment(0, c.yPercentage * 2 - 1),
+        widthFactor: 1.0,
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 16),
+          child: child,
+        ),
+      );
     }
 
     return Align(

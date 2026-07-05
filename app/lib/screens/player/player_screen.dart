@@ -22,6 +22,8 @@ import 'widgets/modular_controls_layer.dart';
 import 'widgets/top_right_controls.dart';
 import 'widgets/player_settings_sheet.dart';
 import 'widgets/player_settings_anchor.dart';
+import 'widgets/player_subtitles_sheet.dart';
+import 'widgets/player_episodes_panel.dart';
 import 'player_playback_preferences.dart';
 import '../../desktop_window.dart';
 
@@ -64,6 +66,9 @@ class _PlayerScreenState extends State<PlayerScreen> {
   /// Key attached to the settings button so we can anchor the popup above it.
   final GlobalKey _settingsButtonKey = GlobalKey();
 
+  /// Key attached to the subtitles button so we can anchor the popup above it.
+  final GlobalKey _subtitlesButtonKey = GlobalKey();
+
   /// Key to access VideoState and call update() so fit changes propagate.
   final GlobalKey<VideoState> _videoKey = GlobalKey();
 
@@ -82,7 +87,18 @@ class _PlayerScreenState extends State<PlayerScreen> {
   int _lastMediaSessionSyncPos = -1;
   bool? _lastMediaSessionPlaying;
 
+  /// Throttles timeline/control rebuilds driven by mpv position ticks (~30/s).
+  DateTime? _lastPositionUiRefresh;
+  static const _positionUiRefreshInterval = Duration(milliseconds: 250);
+
   String? _mediaLogoUrl;
+
+  bool _showEpisodesPanel = false;
+  bool _episodesPanelLoading = false;
+  List<Media> _episodesPanelSeasons = [];
+  List<HomeMediaItem> _episodesPanelEpisodes = [];
+  int? _episodesPanelSeasonId;
+  String _episodesPanelShowTitle = '';
 
   String get _playerTitle =>
       playerMediaTitle(widget.media, seasonNumber: widget.seasonNumber);
@@ -118,6 +134,91 @@ class _PlayerScreenState extends State<PlayerScreen> {
       return media.effectiveSeasonNumber;
     }
     return null;
+  }
+
+  Media get _actualMedia {
+    if (widget.media is HomeMediaItem) {
+      return (widget.media as HomeMediaItem).media;
+    }
+    return widget.media as Media;
+  }
+
+  bool get _isEpisode => _actualMedia.type == MediaType.episode;
+
+  int get _currentEpisodeId => _actualMedia.id;
+
+  int? get _currentSeasonId => _actualMedia.parentId;
+
+  int? get _currentShowId {
+    if (widget.media is HomeMediaItem) {
+      return (widget.media as HomeMediaItem).showId;
+    }
+    return null;
+  }
+
+  String get _episodesShowTitle {
+    if (widget.media is HomeMediaItem) {
+      return (widget.media as HomeMediaItem).displayTitle;
+    }
+    final parts = _playerTitle.split(' – ');
+    return parts.isNotEmpty ? parts.first : _playerTitle;
+  }
+
+  Future<void> _openEpisodesPanel() async {
+    if (!_isEpisode || _apiClient == null) return;
+    setState(() {
+      _showEpisodesPanel = true;
+      _showControls = true;
+      _episodesPanelLoading = true;
+      _episodesPanelShowTitle = _episodesShowTitle;
+      _episodesPanelSeasonId = _currentSeasonId;
+      _episodesPanelEpisodes = [];
+    });
+    _controlsTimer?.cancel();
+    await _loadEpisodesPanelData();
+  }
+
+  void _closeEpisodesPanel() {
+    if (!_showEpisodesPanel) return;
+    setState(() => _showEpisodesPanel = false);
+    _hideControlsWithDelay();
+  }
+
+  Future<void> _loadEpisodesPanelData({int? seasonId}) async {
+    final api = _apiClient;
+    if (api == null) return;
+
+    final targetSeasonId = seasonId ?? _currentSeasonId;
+    if (targetSeasonId == null || targetSeasonId <= 0) {
+      if (mounted) setState(() => _episodesPanelLoading = false);
+      return;
+    }
+
+    try {
+      if (_episodesPanelSeasons.isEmpty) {
+        final showId = _currentShowId;
+        if (showId != null && showId > 0) {
+          _episodesPanelSeasons = await api.getShowSeasons(showId);
+        }
+      }
+
+      final episodes = await api.getSeasonEpisodes(targetSeasonId);
+      if (!mounted) return;
+
+      final showTitle = episodes.isNotEmpty &&
+              episodes.first.showTitle?.isNotEmpty == true
+          ? episodes.first.showTitle!
+          : _episodesPanelShowTitle;
+
+      setState(() {
+        _episodesPanelEpisodes = episodes;
+        _episodesPanelSeasonId = targetSeasonId;
+        _episodesPanelShowTitle = showTitle;
+        _episodesPanelLoading = false;
+      });
+    } catch (_) {
+      if (mounted) setState(() => _episodesPanelLoading = false);
+    }
   }
 
   @override
@@ -215,7 +316,7 @@ class _PlayerScreenState extends State<PlayerScreen> {
         onAutoPlay: _goToNextEpisode,
       );
       _episodeNav!.addListener(_episodeNavListener!);
-      await _episodeNav!.load();
+      unawaited(_episodeNav!.load());
     }
 
     if (mounted) setState(() {});
@@ -231,14 +332,36 @@ class _PlayerScreenState extends State<PlayerScreen> {
     }
   }
 
+  bool _needsPositionUiRefresh() =>
+      _showControls || _showEpisodesPanel;
+
+  void _refreshPositionUi({bool force = false}) {
+    if (!_needsPositionUiRefresh()) return;
+
+    final now = DateTime.now();
+    if (!force &&
+        _lastPositionUiRefresh != null &&
+        now.difference(_lastPositionUiRefresh!) < _positionUiRefreshInterval) {
+      return;
+    }
+    _lastPositionUiRefresh = now;
+    _safeSetState(() {});
+  }
+
   void _onPositionChanged() {
     if (_isDisposing || !mounted) return;
-    _safeSetState(() {});
     _episodeNav?.checkPosition(
       _playerController.position.inSeconds,
       mediaDurationSeconds: _playerController.duration.inSeconds,
     );
     unawaited(_syncMediaSession());
+    _refreshPositionUi();
+  }
+
+  void _scheduleSubtitlePaddingSync() {
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) _syncSubtitlePadding(context);
+    });
   }
 
   Future<void> _syncMediaSession({bool force = false}) async {
@@ -249,7 +372,7 @@ class _PlayerScreenState extends State<PlayerScreen> {
     if (!force &&
         _lastMediaSessionPlaying == playing &&
         _lastMediaSessionSyncPos >= 0 &&
-        (positionSeconds - _lastMediaSessionSyncPos).abs() < 5) {
+        (positionSeconds - _lastMediaSessionSyncPos).abs() < 15) {
       return;
     }
 
@@ -326,6 +449,7 @@ class _PlayerScreenState extends State<PlayerScreen> {
     );
     if (!mounted) return;
     setState(() => _isInitialized = true);
+    _scheduleSubtitlePaddingSync();
     unawaited(_mediaKeys.attach(
       title: _playerTitle,
       durationSeconds: _playerController.duration.inSeconds,
@@ -345,7 +469,23 @@ class _PlayerScreenState extends State<PlayerScreen> {
 
   void _toggleControls() {
     setState(() => _showControls = !_showControls);
-    if (_showControls) _hideControlsWithDelay();
+    if (_showControls) {
+      _refreshPositionUi(force: true);
+      _scheduleSubtitlePaddingSync();
+      _hideControlsWithDelay();
+    }
+  }
+
+  void _handleVideoTap() {
+    _keyboardFocusNode.requestFocus();
+    final layoutProvider = Provider.of<PlayerLayoutProvider>(context, listen: false);
+    if (layoutProvider.useModularLayout &&
+        layoutProvider.config.tapToTogglePlayback) {
+      _togglePlayPause();
+      _showControlsTransient();
+      return;
+    }
+    _toggleControls();
   }
 
   void _hideControlsWithDelay() {
@@ -361,6 +501,8 @@ class _PlayerScreenState extends State<PlayerScreen> {
 
   void _showControlsTransient() {
     setState(() => _showControls = true);
+    _refreshPositionUi(force: true);
+    _scheduleSubtitlePaddingSync();
     _hideControlsWithDelay();
   }
 
@@ -428,6 +570,10 @@ class _PlayerScreenState extends State<PlayerScreen> {
     }
 
     if (key == LogicalKeyboardKey.escape) {
+      if (_showEpisodesPanel) {
+        _closeEpisodesPanel();
+        return KeyEventResult.handled;
+      }
       unawaited(_exitFullscreenIfActive());
       return KeyEventResult.handled;
     }
@@ -438,7 +584,20 @@ class _PlayerScreenState extends State<PlayerScreen> {
   void _goToNextEpisode() {
     final next = _episodeNav?.nextEpisode;
     if (next == null) return;
+    _navigateToEpisode(next);
+  }
 
+  void _goToEpisode(HomeMediaItem episode) {
+    _navigateToEpisode(episode);
+  }
+
+  void _navigateToEpisode(HomeMediaItem next) {
+    if (next.media.id == _currentEpisodeId) {
+      _closeEpisodesPanel();
+      return;
+    }
+
+    _closeEpisodesPanel();
     _isEpisodeTransition = true;
     final inheritedPreferences =
         _playerController.exportPreferences();
@@ -669,6 +828,59 @@ class _PlayerScreenState extends State<PlayerScreen> {
     overlay.insert(entry);
   }
 
+  void _showSubtitlesMenu() {
+    final renderBox =
+        _subtitlesButtonKey.currentContext?.findRenderObject() as RenderBox?;
+    if (renderBox == null) return;
+
+    final overlay = Overlay.of(context);
+    final buttonRect = renderBox.localToGlobal(Offset.zero) & renderBox.size;
+    final screenSize = MediaQuery.sizeOf(context);
+    const menuWidth = PlayerSettingsAnchor.subtitlesSheetWidth;
+    const menuMaxHeight = PlayerSettingsAnchor.subtitlesSheetMaxHeight;
+    final left = PlayerSettingsAnchor.horizontalLeft(
+      buttonRect: buttonRect,
+      screenSize: screenSize,
+      popupWidth: menuWidth,
+    );
+    final vertical = PlayerSettingsAnchor.verticalPlacement(
+      buttonRect: buttonRect,
+      screenSize: screenSize,
+      popupMaxHeight: menuMaxHeight,
+    );
+
+    late final OverlayEntry entry;
+    entry = OverlayEntry(
+      builder: (ctx) => GestureDetector(
+        onTap: () => entry.remove(),
+        behavior: HitTestBehavior.translucent,
+        child: Material(
+          type: MaterialType.transparency,
+          child: SizedBox(
+            width: screenSize.width,
+            height: screenSize.height,
+            child: Stack(
+              children: [
+                Positioned(
+                  left: left,
+                  bottom: vertical.bottom,
+                  top: vertical.top,
+                  child: PlayerSubtitlesSheet(
+                    player: _playerController.player,
+                    playerController: _playerController,
+                    onClose: entry.remove,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+
+    overlay.insert(entry);
+  }
+
   Future<void> _toggleFullscreen() async {
     if (Platform.isWindows || Platform.isMacOS || Platform.isLinux) {
       final isFullScreen = await windowManager.isFullScreen();
@@ -720,10 +932,6 @@ class _PlayerScreenState extends State<PlayerScreen> {
     final progressFraction =
         totalSeconds > 0 ? _playerController.position.inSeconds / totalSeconds : 0.0;
 
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      _syncSubtitlePadding(context);
-    });
-
     return Focus(
       focusNode: _keyboardFocusNode,
       autofocus: true,
@@ -743,19 +951,18 @@ class _PlayerScreenState extends State<PlayerScreen> {
           _episodeNav?.onMouseMove();
         },
         child: GestureDetector(
-          onTap: () {
-            _keyboardFocusNode.requestFocus();
-            _toggleControls();
-          },
+          onTap: _handleVideoTap,
           child: Stack(
             children: [
-              SizedBox.expand(
-                child: Video(
-                  key: _videoKey,
-                  controller: _playerController.videoController,
-                  controls: null,
-                  fit: _videoFit,
-                  aspectRatio: _playerController.videoAspectRatio,
+              RepaintBoundary(
+                child: SizedBox.expand(
+                  child: Video(
+                    key: _videoKey,
+                    controller: _playerController.videoController,
+                    controls: null,
+                    fit: _videoFit,
+                    aspectRatio: _playerController.videoAspectRatio,
+                  ),
                 ),
               ),
               Positioned.fill(
@@ -766,14 +973,14 @@ class _PlayerScreenState extends State<PlayerScreen> {
                       child: GestureDetector(
                         behavior: HitTestBehavior.translucent,
                         onDoubleTap: () => _seekRelative(-10),
-                        onTap: _toggleControls,
+                        onTap: _handleVideoTap,
                       ),
                     ),
                     Expanded(
                       flex: 4,
                       child: GestureDetector(
                         behavior: HitTestBehavior.translucent,
-                        onTap: _toggleControls,
+                        onTap: _handleVideoTap,
                       ),
                     ),
                     Expanded(
@@ -781,7 +988,7 @@ class _PlayerScreenState extends State<PlayerScreen> {
                       child: GestureDetector(
                         behavior: HitTestBehavior.translucent,
                         onDoubleTap: () => _seekRelative(10),
-                        onTap: _toggleControls,
+                        onTap: _handleVideoTap,
                       ),
                     ),
                   ],
@@ -799,6 +1006,9 @@ class _PlayerScreenState extends State<PlayerScreen> {
                   onPlayPause: _togglePlayPause,
                   onRewind: () => _seekRelative(-10),
                   onForward: () => _seekRelative(10),
+                  onSkipNext: (_episodeNav?.nextEpisode != null)
+                      ? _goToNextEpisode
+                      : null,
                   onSeekFraction: _seekToFraction,
                   onToggleFullscreen: _toggleFullscreen,
                   mediaTitle: _playerTitle,
@@ -807,7 +1017,10 @@ class _PlayerScreenState extends State<PlayerScreen> {
                   onVolumeChanged: (v) => _playerController.player.setVolume(v),
                   onBack: _leavePlayer,
                   onOpenSettings: _showTrackSettings,
+                  onToggleSubtitles: _showSubtitlesMenu,
+                  onOpenUpNext: _isEpisode ? _openEpisodesPanel : null,
                   settingsButtonKey: _settingsButtonKey,
+                  subtitlesButtonKey: _subtitlesButtonKey,
                 ),
               ] else
                 PlayerHUDOverlay(
@@ -894,6 +1107,25 @@ class _PlayerScreenState extends State<PlayerScreen> {
                   countdownSeconds: _episodeNav!.outroCountdownSeconds,
                   onPlayNext: _goToNextEpisode,
                   onCancel: () => _episodeNav!.cancelAutoPlay(),
+                ),
+              if (_showEpisodesPanel && _isEpisode)
+                PlayerEpisodesPanel(
+                  showTitle: _episodesPanelShowTitle,
+                  currentEpisodeId: _currentEpisodeId,
+                  seasons: _episodesPanelSeasons,
+                  selectedSeasonId:
+                      _episodesPanelSeasonId ?? _currentSeasonId ?? 0,
+                  onSeasonChanged: (seasonId) {
+                    setState(() {
+                      _episodesPanelLoading = true;
+                      _episodesPanelEpisodes = [];
+                    });
+                    unawaited(_loadEpisodesPanelData(seasonId: seasonId));
+                  },
+                  episodes: _episodesPanelEpisodes,
+                  isLoading: _episodesPanelLoading,
+                  onClose: _closeEpisodesPanel,
+                  onEpisodeSelected: _goToEpisode,
                 ),
               if (_playerController.isSwitchingQuality)
                 Positioned.fill(
