@@ -297,6 +297,15 @@ class PlayerController {
     // connection while the demuxer buffer is full (socket idle for minutes).
     await platform.setProperty(
         'stream-lavf-o', 'reconnect=1,reconnect_streamed=1,reconnect_delay_max=5');
+    if (Platform.isMacOS) {
+      // macOS rendering pipeline (mpv → OpenGL → CVPixelBuffer → Metal →
+      // Flutter) can stall periodically, especially on macOS 27 beta. These
+      // properties prevent the video output from blocking when the texture
+      // bridge can't keep up — mpv drops frames instead of freezing.
+      await platform.setProperty('framedrop', 'vo');
+      await platform.setProperty('video-sync', 'display-desync');
+      await platform.setProperty('cache-pause', 'no');
+    }
   }
 
   void _scheduleDeferredSubtitleExtraction() {
@@ -960,6 +969,11 @@ class PlayerController {
       // against transient network blips between segment fetches.
       await p.setProperty(
           'stream-lavf-o', 'reconnect=1,reconnect_streamed=1,reconnect_delay_max=5');
+      if (Platform.isMacOS) {
+        await p.setProperty('framedrop', 'vo');
+        await p.setProperty('video-sync', 'display-desync');
+        await p.setProperty('cache-pause', 'no');
+      }
     } catch (_) {}
   }
 
