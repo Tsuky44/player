@@ -273,15 +273,26 @@ class PlayerController {
   Future<void> _applyDirectPlayPlayerProperties() async {
     final platform = player.platform as dynamic;
     await platform.setProperty('cache', 'yes');
-    // Large forward buffer for HTTP Direct Play — avoids cache-pause stalls every
-    // ~30s when demuxer-max-bytes is exhausted at typical episode bitrates.
-    await platform.setProperty('cache-secs', '120');
-    await platform.setProperty('demuxer-max-bytes', '536870912');
-    await platform.setProperty('demuxer-readahead-secs', '900');
+    // ~4 min forward buffer: large enough to absorb any network jitter without
+    // hoarding hundreds of MB of RAM (memory pressure on 8GB machines causes
+    // periodic decode stalls — video freezes while audio keeps playing).
+    await platform.setProperty('demuxer-max-bytes', '268435456');
+    await platform.setProperty('demuxer-readahead-secs', '240');
     await platform.setProperty('hr-seek', 'yes');
-    await platform.setProperty('hwdec', 'auto');
+    // Whitelisted hardware decoders only (VideoToolbox on macOS, D3D11 on
+    // Windows, MediaCodec on Android). Plain 'auto' may pick flaky paths that
+    // stall the video track while audio continues.
+    await platform.setProperty('hwdec', 'auto-safe');
+    // Direct rendering (decoding straight into GPU-mapped buffers) is a known
+    // source of periodic video freezes with the libmpv render API embedding
+    // used by media_kit; the extra copy is negligible.
+    await platform.setProperty('vd-lavc-dr', 'no');
     await platform.setProperty('sub-auto', 'no');
     await platform.setProperty('network-timeout', '60');
+    // Transparent reconnection if the OS/router drops the long-lived HTTP
+    // connection while the demuxer buffer is full (socket idle for minutes).
+    await platform.setProperty(
+        'stream-lavf-o', 'reconnect=1,reconnect_streamed=1,reconnect_delay_max=5');
   }
 
   void _scheduleDeferredSubtitleExtraction() {
@@ -416,18 +427,29 @@ class PlayerController {
     int resumeAtSeconds = 0,
   }) async {
     if (resumeAtSeconds > 0 && currentQuality == null && _media != null) {
-      // Single buffering phase: mpv opens directly at the resume offset.
+      // The media was already opened (paused) in init(). Start playing, wait
+      // for the first buffering cycle to complete, then seek to the resume
+      // position. The mpv `start` property approach is unreliable with
+      // media_kit 1.2.6 because open() returns before mpv processes the
+      // loadfile command, and the immediate `start=0` reset cancels the
+      // resume offset before mpv applies it.
+      await player.play();
       try {
-        await (player.platform as dynamic).setProperty('start', '+$resumeAtSeconds');
-      } catch (e) {
-        debugPrint("Player: failed to set mpv start property: $e");
+        if (!player.state.buffering) {
+          await player.stream.buffering
+              .firstWhere((b) => b)
+              .timeout(const Duration(seconds: 3));
+        }
+        await player.stream.buffering
+            .firstWhere((b) => !b)
+            .timeout(const Duration(seconds: 8));
+      } catch (_) {
+        await Future.delayed(const Duration(milliseconds: 800));
       }
-      final streamUrl = apiClient.getStreamUrl(mediaId);
-      await player.open(mk.Media(streamUrl), play: true);
-      try {
-        await (player.platform as dynamic).setProperty('start', '0');
-      } catch (_) {}
-      position = Duration(seconds: resumeAtSeconds);
+      if (!_disposed) {
+        await player.seek(Duration(seconds: resumeAtSeconds));
+        position = Duration(seconds: resumeAtSeconds);
+      }
     } else {
       await player.play();
     }
@@ -920,11 +942,20 @@ class PlayerController {
 
   Future<void> _applyHlsPlayerProperties() async {
     try {
-      await (player.platform as dynamic).setProperty('force-seekable', 'yes');
-      await (player.platform as dynamic).setProperty('cache', 'yes');
-      await (player.platform as dynamic).setProperty('demuxer-seekable-cache', 'yes');
-      await (player.platform as dynamic).setProperty('demuxer-max-bytes', '104857600');
-      await (player.platform as dynamic).setProperty('demuxer-readahead-secs', '60');
+      final p = player.platform as dynamic;
+      await p.setProperty('force-seekable', 'yes');
+      await p.setProperty('cache', 'yes');
+      await p.setProperty('demuxer-seekable-cache', 'yes');
+      await p.setProperty('demuxer-max-bytes', '104857600');
+      await p.setProperty('demuxer-readahead-secs', '60');
+      // Same decode-path hardening as Direct Play — prevents video-only
+      // freezes while audio keeps playing.
+      await p.setProperty('hwdec', 'auto-safe');
+      await p.setProperty('vd-lavc-dr', 'no');
+      // HLS segments are short HTTP requests; reconnection is cheap insurance
+      // against transient network blips between segment fetches.
+      await p.setProperty(
+          'stream-lavf-o', 'reconnect=1,reconnect_streamed=1,reconnect_delay_max=5');
     } catch (_) {}
   }
 

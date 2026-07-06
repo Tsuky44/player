@@ -592,6 +592,18 @@ class PlayerLayoutConfig {
     return copyWith(controls: [...controls, placed]);
   }
 
+  /// Move an existing control to the end of the list so it renders on top.
+  PlayerLayoutConfig withControlBroughtToFront(String id) {
+    final placed = byId(id);
+    if (placed == null) return this;
+    return copyWith(
+      controls: [
+        ...controls.where((c) => c.id != id),
+        placed,
+      ],
+    );
+  }
+
   Map<String, dynamic> toJson() => {
         'version': 2,
         'blur_intensity': blurIntensity,

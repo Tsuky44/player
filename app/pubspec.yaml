@@ -28,9 +28,9 @@ dependencies:
   google_fonts: ^6.2.1
   
   # Media Player (Basé sur MPV via media-kit)
-  media_kit: 1.1.10
-  media_kit_video: 1.2.4
-  media_kit_libs_video: 1.0.7
+  media_kit: ^1.2.6
+  media_kit_video: ^2.0.1
+  media_kit_libs_video: ^1.0.7
 
   # Desktop window management
   window_manager: ^0.3.7

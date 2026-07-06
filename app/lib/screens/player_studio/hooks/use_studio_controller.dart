@@ -46,6 +46,9 @@ class StudioController extends ChangeNotifier {
   List<StudioAlignmentGuide> get activeGuides => _activeGuides;
 
   void select(String? id) {
+    if (id != null && _draft.byId(id) != null) {
+      _draft = _draft.withControlBroughtToFront(id);
+    }
     _selectedId = id;
     notifyListeners();
   }
