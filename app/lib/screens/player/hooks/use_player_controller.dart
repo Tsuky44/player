@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:media_kit/media_kit.dart' as mk;
 import 'package:media_kit_video/media_kit_video.dart';
@@ -282,7 +283,10 @@ class PlayerController {
     // Whitelisted hardware decoders only (VideoToolbox on macOS, D3D11 on
     // Windows, MediaCodec on Android). Plain 'auto' may pick flaky paths that
     // stall the video track while audio continues.
-    await platform.setProperty('hwdec', 'auto-safe');
+    // macOS 27 beta: VideoToolbox (hwdec=auto-safe) causes periodic video-only
+    // freezes while audio continues. Force software decoding on macOS until the
+    // OS is stable. Windows/Android keep auto-safe (D3D11/MediaCodec are fine).
+    await platform.setProperty('hwdec', Platform.isMacOS ? 'no' : 'auto-safe');
     // Direct rendering (decoding straight into GPU-mapped buffers) is a known
     // source of periodic video freezes with the libmpv render API embedding
     // used by media_kit; the extra copy is negligible.
@@ -950,7 +954,7 @@ class PlayerController {
       await p.setProperty('demuxer-readahead-secs', '60');
       // Same decode-path hardening as Direct Play — prevents video-only
       // freezes while audio keeps playing.
-      await p.setProperty('hwdec', 'auto-safe');
+      await p.setProperty('hwdec', Platform.isMacOS ? 'no' : 'auto-safe');
       await p.setProperty('vd-lavc-dr', 'no');
       // HLS segments are short HTTP requests; reconnection is cheap insurance
       // against transient network blips between segment fetches.
