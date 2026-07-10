@@ -283,10 +283,11 @@ class PlayerController {
     // Whitelisted hardware decoders only (VideoToolbox on macOS, D3D11 on
     // Windows, MediaCodec on Android). Plain 'auto' may pick flaky paths that
     // stall the video track while audio continues.
-    // macOS 27 beta: VideoToolbox (hwdec=auto-safe) causes periodic video-only
-    // freezes while audio continues. Force software decoding on macOS until the
-    // OS is stable. Windows/Android keep auto-safe (D3D11/MediaCodec are fine).
-    await platform.setProperty('hwdec', Platform.isMacOS ? 'no' : 'auto-safe');
+    // macOS 27 beta: plain VideoToolbox (hwdec=auto-safe) can freeze while
+    // audio continues. videotoolbox-copy decodes in GPU then copies frames to
+    // CPU RAM, which is compatible with mpv's OpenGL/CVPixelBuffer/Metal render
+    // pipeline on macOS. Windows/Android keep auto-safe (D3D11/MediaCodec).
+    await platform.setProperty('hwdec', Platform.isMacOS ? 'videotoolbox-copy' : 'auto-safe');
     // Direct rendering (decoding straight into GPU-mapped buffers) is a known
     // source of periodic video freezes with the libmpv render API embedding
     // used by media_kit; the extra copy is negligible.
@@ -963,7 +964,7 @@ class PlayerController {
       await p.setProperty('demuxer-readahead-secs', '60');
       // Same decode-path hardening as Direct Play — prevents video-only
       // freezes while audio keeps playing.
-      await p.setProperty('hwdec', Platform.isMacOS ? 'no' : 'auto-safe');
+      await p.setProperty('hwdec', Platform.isMacOS ? 'videotoolbox-copy' : 'auto-safe');
       await p.setProperty('vd-lavc-dr', 'no');
       // HLS segments are short HTTP requests; reconnection is cheap insurance
       // against transient network blips between segment fetches.
