@@ -396,6 +396,12 @@ func UpdateProgress(w http.ResponseWriter, r *http.Request, _ httprouter.Params,
 		return
 	}
 
+	var mediaType string
+	_ = database.DB.QueryRow(
+		"SELECT type FROM medias WHERE id = ? LIMIT 1", req.MediaID,
+	).Scan(&mediaType)
+	UnhideContinueWatchingOnProgress(userID, req.MediaID, mediaType, req.CurrentPositionSeconds)
+
 	json.NewEncoder(w).Encode(map[string]interface{}{
 		"status":      "success",
 		"is_finished": isFinished,

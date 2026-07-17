@@ -12,6 +12,8 @@ import '../home/home_screen.dart';
 import '../library/movies_screen.dart';
 import '../library/shows_screen.dart';
 import '../player_studio/player_studio_screen.dart';
+import '../requests/requests_screen.dart';
+import '../settings/playback_preferences_screen.dart';
 
 class MainShell extends StatefulWidget {
   const MainShell({super.key});
@@ -53,6 +55,7 @@ class _MainShellState extends State<MainShell> {
                       ),
                       MoviesScreen(embedded: isWide),
                       ShowsScreen(embedded: isWide),
+                      RequestsScreen(embedded: isWide),
                     ],
                   ),
                 ),
@@ -74,6 +77,18 @@ class _MainShellState extends State<MainShell> {
                 onTabSelected: _selectTab,
                 homeProvider: homeProvider,
                 authProvider: authProvider,
+              ),
+            ),
+          if (!isWide && _selectedIndex != 0)
+            Positioned(
+              top: 0,
+              right: 0,
+              child: SafeArea(
+                bottom: false,
+                child: Padding(
+                  padding: const EdgeInsets.only(right: 12, top: 6),
+                  child: _AccountMenu(authProvider: authProvider),
+                ),
               ),
             ),
         ],
@@ -127,6 +142,11 @@ class _DesktopGlassHeader extends StatelessWidget {
                 selected: selectedIndex == 2,
                 onTap: () => onTabSelected(2),
               ),
+              GlassNavTab(
+                label: 'Demandes',
+                selected: selectedIndex == 3,
+                onTap: () => onTabSelected(3),
+              ),
               const Spacer(),
               const GlassCatalogSearch(
                 collapsedWidth: 200,
@@ -160,7 +180,8 @@ class _MobileBottomNav extends StatelessWidget {
         child: Container(
           decoration: BoxDecoration(
             color: Colors.white.withValues(alpha: 0.05),
-            border: Border(top: BorderSide(color: Colors.white.withValues(alpha: 0.08))),
+            border: Border(
+                top: BorderSide(color: Colors.white.withValues(alpha: 0.08))),
           ),
           child: SafeArea(
             top: false,
@@ -183,6 +204,12 @@ class _MobileBottomNav extends StatelessWidget {
                   label: 'Séries',
                   selected: selectedIndex == 2,
                   onTap: () => onTabSelected(2),
+                ),
+                _BottomNavItem(
+                  icon: Icons.add_circle_outline_rounded,
+                  label: 'Demandes',
+                  selected: selectedIndex == 3,
+                  onTap: () => onTabSelected(3),
                 ),
               ],
             ),
@@ -330,12 +357,17 @@ class _AccountMenu extends StatelessWidget {
         ),
         const PopupMenuDivider(),
         if (!homeProvider.isScanning)
-          const PopupMenuItem(value: 'scan', child: Text('Synchroniser la bibliothèque')),
+          const PopupMenuItem(
+              value: 'scan', child: Text('Synchroniser la bibliothèque')),
         if (!homeProvider.isBackfillingMetadata)
-          const PopupMenuItem(value: 'posters', child: Text('Mettre à jour les affiches')),
+          const PopupMenuItem(
+              value: 'posters', child: Text('Mettre à jour les affiches')),
         if (!homeProvider.isExtractingSubtitles)
-          const PopupMenuItem(value: 'subtitles', child: Text('Extraire les sous-titres')),
+          const PopupMenuItem(
+              value: 'subtitles', child: Text('Extraire les sous-titres')),
         const PopupMenuItem(value: 'studio', child: Text('Player Studio')),
+        const PopupMenuItem(
+            value: 'playback', child: Text('Préférences de lecture')),
         const PopupMenuDivider(),
         const PopupMenuItem(value: 'logout', child: Text('Se déconnecter')),
       ],
@@ -356,13 +388,20 @@ class _AccountMenu extends StatelessWidget {
               await homeProvider.triggerSubtitleExtract();
               if (context.mounted) {
                 ScaffoldMessenger.of(context).showSnackBar(
-                  const SnackBar(content: Text('Extraction des sous-titres lancée…')),
+                  const SnackBar(
+                      content: Text('Extraction des sous-titres lancée…')),
                 );
               }
             } catch (_) {}
           case 'studio':
             Navigator.of(context).push(
               MaterialPageRoute(builder: (_) => const PlayerStudioScreen()),
+            );
+          case 'playback':
+            Navigator.of(context).push(
+              MaterialPageRoute(
+                builder: (_) => const PlaybackPreferencesScreen(),
+              ),
             );
           case 'logout':
             authProvider.logout();

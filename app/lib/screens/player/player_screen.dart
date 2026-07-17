@@ -205,10 +205,10 @@ class _PlayerScreenState extends State<PlayerScreen> {
       final episodes = await api.getSeasonEpisodes(targetSeasonId);
       if (!mounted) return;
 
-      final showTitle = episodes.isNotEmpty &&
-              episodes.first.showTitle?.isNotEmpty == true
-          ? episodes.first.showTitle!
-          : _episodesPanelShowTitle;
+      final showTitle =
+          episodes.isNotEmpty && episodes.first.showTitle?.isNotEmpty == true
+              ? episodes.first.showTitle!
+              : _episodesPanelShowTitle;
 
       setState(() {
         _episodesPanelEpisodes = episodes;
@@ -265,6 +265,8 @@ class _PlayerScreenState extends State<PlayerScreen> {
       knownDuration = item.effectiveDuration;
     }
 
+    final resumePositionFuture = _loadResumePosition(apiClient, actualMedia);
+
     await _playerController.init(
       media: actualMedia,
       apiClient: apiClient,
@@ -320,7 +322,9 @@ class _PlayerScreenState extends State<PlayerScreen> {
     }
 
     if (mounted) setState(() {});
-    _checkAndPromptProgression(apiClient);
+    final resumeAt = await resumePositionFuture;
+    if (!mounted) return;
+    await _startPlayback(resumeAtSeconds: resumeAt);
   }
 
   void _safeSetState(VoidCallback fn) {
@@ -332,8 +336,7 @@ class _PlayerScreenState extends State<PlayerScreen> {
     }
   }
 
-  bool _needsPositionUiRefresh() =>
-      _showControls || _showEpisodesPanel;
+  bool _needsPositionUiRefresh() => _showControls || _showEpisodesPanel;
 
   void _refreshPositionUi({bool force = false}) {
     if (!_needsPositionUiRefresh()) return;
@@ -397,15 +400,10 @@ class _PlayerScreenState extends State<PlayerScreen> {
     }
   }
 
-  Future<void> _checkAndPromptProgression(ApiClient apiClient) async {
-    // Extract the actual Media object (handle both Media and HomeMediaItem)
-    Media actualMedia;
-    if (widget.media is HomeMediaItem) {
-      actualMedia = (widget.media as HomeMediaItem).media;
-    } else {
-      actualMedia = widget.media as Media;
-    }
-
+  Future<int> _loadResumePosition(
+    ApiClient apiClient,
+    Media actualMedia,
+  ) async {
     int savedPositionSeconds = 0;
     if (widget.media is HomeMediaItem) {
       final item = widget.media as HomeMediaItem;
@@ -424,14 +422,12 @@ class _PlayerScreenState extends State<PlayerScreen> {
         savedPositionSeconds = fromApi;
       }
     } catch (e) {
-      print("Player: Failed to query progress: $e");
+      debugPrint("Player: Failed to query progress: $e");
     }
 
-    if (!mounted) return;
-    final resumeAt = (!widget.autoAdvance && savedPositionSeconds >= 3)
+    return (!widget.autoAdvance && savedPositionSeconds >= 3)
         ? savedPositionSeconds
         : 0;
-    await _startPlayback(resumeAtSeconds: resumeAt);
   }
 
   Future<void> _startPlayback({int resumeAtSeconds = 0}) async {
@@ -476,11 +472,13 @@ class _PlayerScreenState extends State<PlayerScreen> {
     }
   }
 
-  void _handleVideoTap() {
+  void _handleVideoTap({bool togglePlayback = false}) {
     _keyboardFocusNode.requestFocus();
-    final layoutProvider = Provider.of<PlayerLayoutProvider>(context, listen: false);
-    if (layoutProvider.useModularLayout &&
-        layoutProvider.config.tapToTogglePlayback) {
+    final layoutProvider =
+        Provider.of<PlayerLayoutProvider>(context, listen: false);
+    if (togglePlayback ||
+        (layoutProvider.useModularLayout &&
+            layoutProvider.config.tapToTogglePlayback)) {
       _togglePlayPause();
       _showControlsTransient();
       return;
@@ -493,7 +491,9 @@ class _PlayerScreenState extends State<PlayerScreen> {
     _controlsTimer = Timer(const Duration(seconds: 4), () {
       if (_isDisposing) return;
       if (!mounted) return;
-      if (_showControls && !_playerController.isDraggingSlider && _playerController.isPlaying) {
+      if (_showControls &&
+          !_playerController.isDraggingSlider &&
+          _playerController.isPlaying) {
         setState(() => _showControls = false);
       }
     });
@@ -599,8 +599,7 @@ class _PlayerScreenState extends State<PlayerScreen> {
 
     _closeEpisodesPanel();
     _isEpisodeTransition = true;
-    final inheritedPreferences =
-        _playerController.exportPreferences();
+    final inheritedPreferences = _playerController.exportPreferences();
     final videoFit = _videoFit;
 
     // Cancel all streams BEFORE navigation
@@ -619,7 +618,8 @@ class _PlayerScreenState extends State<PlayerScreen> {
       if (!mounted) return;
       Navigator.of(context).pushReplacement(
         MaterialPageRoute(
-          settings: const RouteSettings(name: SearchRouteObserver.playerRouteName),
+          settings:
+              const RouteSettings(name: SearchRouteObserver.playerRouteName),
           builder: (_) => PlayerScreen(
             media: next,
             inheritedPreferences: inheritedPreferences,
@@ -733,7 +733,8 @@ class _PlayerScreenState extends State<PlayerScreen> {
   void _syncSubtitlePadding(BuildContext context) {
     if (!mounted || !_isInitialized) return;
 
-    final layoutProvider = Provider.of<PlayerLayoutProvider>(context, listen: false);
+    final layoutProvider =
+        Provider.of<PlayerLayoutProvider>(context, listen: false);
     final screenSize = MediaQuery.sizeOf(context);
     final measuredTop = _measureTimelineTop(context);
     final padding = SubtitlePaddingCalculator.resolve(
@@ -763,14 +764,16 @@ class _PlayerScreenState extends State<PlayerScreen> {
   double? _measureTimelineTop(BuildContext context) {
     if (!_showControls) return null;
 
-    final box = _timelineAnchorKey.currentContext?.findRenderObject() as RenderBox?;
+    final box =
+        _timelineAnchorKey.currentContext?.findRenderObject() as RenderBox?;
     if (box == null || !box.hasSize) return null;
 
     return box.localToGlobal(Offset.zero).dy;
   }
 
   void _showTrackSettings() {
-    final renderBox = _settingsButtonKey.currentContext?.findRenderObject() as RenderBox?;
+    final renderBox =
+        _settingsButtonKey.currentContext?.findRenderObject() as RenderBox?;
     if (renderBox == null) return;
 
     final overlay = Overlay.of(context);
@@ -912,227 +915,228 @@ class _PlayerScreenState extends State<PlayerScreen> {
 
   @override
   Widget build(BuildContext context) {
-    if (!_isInitialized) {
-      return PopScope(
-        canPop: false,
-        onPopInvokedWithResult: (didPop, _) async {
-          if (didPop) return;
-          await _leavePlayer();
-        },
-        child: const Scaffold(
-          backgroundColor: Colors.black,
-          body: Center(child: CircularProgressIndicator(color: Color(0xFF00A4DC))),
-        ),
-      );
-    }
-
     final layoutProvider = Provider.of<PlayerLayoutProvider>(context);
     final useModular = layoutProvider.useModularLayout;
     final totalSeconds = _playerController.duration.inSeconds;
-    final progressFraction =
-        totalSeconds > 0 ? _playerController.position.inSeconds / totalSeconds : 0.0;
+    final progressFraction = totalSeconds > 0
+        ? _playerController.position.inSeconds / totalSeconds
+        : 0.0;
 
     return Focus(
       focusNode: _keyboardFocusNode,
       autofocus: true,
       onKeyEvent: _handlePlayerKeyEvent,
       child: PopScope(
-      canPop: false,
-      onPopInvokedWithResult: (didPop, _) async {
-        if (didPop) return;
-        await _leavePlayer();
-      },
-      child: Scaffold(
-      backgroundColor: Colors.black,
-      body: MouseRegion(
-        cursor: _shouldHideCursor ? SystemMouseCursors.none : MouseCursor.defer,
-        onHover: (event) {
-          _showControlsTransient();
-          _episodeNav?.onMouseMove();
+        canPop: false,
+        onPopInvokedWithResult: (didPop, _) async {
+          if (didPop) return;
+          await _leavePlayer();
         },
-        child: GestureDetector(
-          onTap: _handleVideoTap,
-          child: Stack(
-            children: [
-              RepaintBoundary(
-                child: SizedBox.expand(
-                  child: Video(
-                    key: _videoKey,
-                    controller: _playerController.videoController,
-                    controls: null,
-                    fit: _videoFit,
-                    aspectRatio: _playerController.videoAspectRatio,
+        child: Scaffold(
+          backgroundColor: Colors.black,
+          body: MouseRegion(
+            cursor:
+                _shouldHideCursor ? SystemMouseCursors.none : MouseCursor.defer,
+            onHover: (event) {
+              _showControlsTransient();
+              _episodeNav?.onMouseMove();
+            },
+            child: Stack(
+              children: [
+                RepaintBoundary(
+                  child: SizedBox.expand(
+                    child: Video(
+                      key: _videoKey,
+                      controller: _playerController.videoController,
+                      controls: null,
+                      fit: _videoFit,
+                      aspectRatio: _playerController.videoAspectRatio,
+                    ),
                   ),
                 ),
-              ),
-              Positioned.fill(
-                child: Row(
-                  children: [
-                    Expanded(
-                      flex: 3,
-                      child: GestureDetector(
-                        behavior: HitTestBehavior.translucent,
-                        onDoubleTap: () => _seekRelative(-10),
-                        onTap: _handleVideoTap,
-                      ),
-                    ),
-                    Expanded(
-                      flex: 4,
-                      child: GestureDetector(
-                        behavior: HitTestBehavior.translucent,
-                        onTap: _handleVideoTap,
-                      ),
-                    ),
-                    Expanded(
-                      flex: 3,
-                      child: GestureDetector(
-                        behavior: HitTestBehavior.translucent,
-                        onDoubleTap: () => _seekRelative(10),
-                        onTap: _handleVideoTap,
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-              if (useModular) ...[
-                ModularControlsLayer(
-                  config: layoutProvider.config,
-                  visible: _showControls,
-                  timelineAnchorKey: _timelineAnchorKey,
-                  isPlaying: _playerController.isPlaying,
-                  progress: progressFraction,
-                  duration: _playerController.duration,
-                  currentSeconds: _playerController.position.inSeconds,
-                  onPlayPause: _togglePlayPause,
-                  onRewind: () => _seekRelative(-10),
-                  onForward: () => _seekRelative(10),
-                  onSkipNext: (_episodeNav?.nextEpisode != null)
-                      ? _goToNextEpisode
-                      : null,
-                  onSeekFraction: _seekToFraction,
-                  onToggleFullscreen: _toggleFullscreen,
-                  mediaTitle: _playerTitle,
-                  mediaLogoUrl: _mediaLogoUrl,
-                  volume: _playerController.player.state.volume,
-                  onVolumeChanged: (v) => _playerController.player.setVolume(v),
-                  onBack: _leavePlayer,
-                  onOpenSettings: _showTrackSettings,
-                  onToggleSubtitles: _showSubtitlesMenu,
-                  onOpenUpNext: _isEpisode ? _openEpisodesPanel : null,
-                  settingsButtonKey: _settingsButtonKey,
-                  subtitlesButtonKey: _subtitlesButtonKey,
-                ),
-              ] else
-                PlayerHUDOverlay(
-                  visible: _showControls,
-                  timelineAnchorKey: _timelineAnchorKey,
-                  player: _playerController.player,
-                  media: widget.media,
-                  mediaTitle: _playerTitle,
-                  isPlaying: _playerController.isPlaying,
-                  onPlayPause: _togglePlayPause,
-                  position: _playerController.position,
-                  duration: _playerController.duration,
-                  isDraggingSlider: _playerController.isDraggingSlider,
-                  dragValue: _playerController.dragValue,
-                  onToggleControls: _toggleControls,
-                  onHideControlsWithDelay: _hideControlsWithDelay,
-                  onSeekRelative: _seekRelative,
-                  onBack: _leavePlayer,
-                  onShowTrackSettings: _showTrackSettings,
-                  onSliderChangeStart: (value) async {
-                    _playerController.isDraggingSlider = true;
-                    _playerController.dragValue = value;
-                    _safeSetState(() {});
-                    try {
-                      await (_playerController.player.platform as dynamic).setProperty('hr-seek', 'no');
-                    } catch (_) {}
-                  },
-                  onSliderChanged: (value) {
-                    _playerController.dragValue = value;
-                    if (_playerController.currentQuality != null) {
-                      final relativeSeek = value.toInt() - _playerController.hlsStartOffset;
-                      _playerController.player.seek(Duration(seconds: relativeSeek));
-                    } else {
-                      _playerController.player.seek(Duration(seconds: value.toInt()));
-                    }
-                    _safeSetState(() {});
-                  },
-                  onSliderChangeEnd: (value) async {
-                    _playerController.isDraggingSlider = false;
-                    final targetSeconds = value.toInt();
-                    final currentSeconds = _playerController.position.inSeconds;
-                    final seekDelta = (targetSeconds - currentSeconds).abs();
-
-                    if (_playerController.currentQuality != null && seekDelta > 10) {
-                      // Large seek in HLS mode: reload session at new absolute position
-                      await _playerController.reloadHlsAtPosition(targetSeconds);
-                    } else if (_playerController.currentQuality != null) {
-                      // Small seek in HLS mode: seek relative to HLS stream
-                      final relativeSeek = targetSeconds - _playerController.hlsStartOffset;
-                      await _playerController.player.seek(Duration(seconds: relativeSeek));
-                    } else {
-                      await _playerController.player.seek(Duration(seconds: targetSeconds));
-                      try {
-                        await (_playerController.player.platform as dynamic).setProperty('hr-seek', 'yes');
-                      } catch (_) {}
-                    }
-                    _hideControlsWithDelay();
-                  },
-                  onNextEpisode: (_episodeNav?.nextEpisode != null) ? _goToNextEpisode : null,
-                ),
-              if (_showControls && !useModular)
-                TopRightControls(
-                  player: _playerController.player,
-                  currentFit: _videoFit,
-                  onFitChanged: _updateVideoFit,
-                  playerController: _playerController,
-                  episodeNav: _episodeNav,
-                  onSeekToAbsolute: _playerController.seekToAbsoluteSeconds,
-                ),
-              // Overlays must be AFTER HUD in Stack to render on top
-              if (_episodeNav?.showSkipIntro ?? false)
-                SkipIntroButton(
-                  onSkip: () async {
-                    final end = _episodeNav!.introSkipTarget;
-                    await _playerController.seekToAbsoluteSeconds(end);
-                    _episodeNav!.skipIntro();
-                  },
-                ),
-              if (_episodeNav?.showNextEpisodeOutro ?? false)
-                NextEpisodeOverlay(
-                  nextEpisode: _episodeNav!.nextEpisode,
-                  autoPlayActive: _episodeNav!.outroAutoPlayActive,
-                  frozen: _episodeNav!.outroAutoPlayFrozen,
-                  countdownSeconds: _episodeNav!.outroCountdownSeconds,
-                  onPlayNext: _goToNextEpisode,
-                  onCancel: () => _episodeNav!.cancelAutoPlay(),
-                ),
-              if (_showEpisodesPanel && _isEpisode)
-                PlayerEpisodesPanel(
-                  showTitle: _episodesPanelShowTitle,
-                  currentEpisodeId: _currentEpisodeId,
-                  seasons: _episodesPanelSeasons,
-                  selectedSeasonId:
-                      _episodesPanelSeasonId ?? _currentSeasonId ?? 0,
-                  onSeasonChanged: (seasonId) {
-                    setState(() {
-                      _episodesPanelLoading = true;
-                      _episodesPanelEpisodes = [];
-                    });
-                    unawaited(_loadEpisodesPanelData(seasonId: seasonId));
-                  },
-                  episodes: _episodesPanelEpisodes,
-                  isLoading: _episodesPanelLoading,
-                  onClose: _closeEpisodesPanel,
-                  onEpisodeSelected: _goToEpisode,
-                ),
-              if (_playerController.isSwitchingQuality)
                 Positioned.fill(
-                  child: AbsorbPointer(
-                    child: Container(
-                      color: Colors.black54,
-                      child: const Center(
+                  child: Row(
+                    children: [
+                      Expanded(
+                        flex: 3,
+                        child: GestureDetector(
+                          behavior: HitTestBehavior.opaque,
+                          onDoubleTap: () => _seekRelative(-10),
+                          onTap: _handleVideoTap,
+                          child: Container(color: Colors.transparent),
+                        ),
+                      ),
+                      Expanded(
+                        flex: 4,
+                        child: GestureDetector(
+                          behavior: HitTestBehavior.opaque,
+                          onTap: () => _handleVideoTap(togglePlayback: true),
+                          child: Container(color: Colors.transparent),
+                        ),
+                      ),
+                      Expanded(
+                        flex: 3,
+                        child: GestureDetector(
+                          behavior: HitTestBehavior.opaque,
+                          onDoubleTap: () => _seekRelative(10),
+                          onTap: _handleVideoTap,
+                          child: Container(color: Colors.transparent),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                if (useModular) ...[
+                  ModularControlsLayer(
+                    config: layoutProvider.config,
+                    visible: _showControls,
+                    timelineAnchorKey: _timelineAnchorKey,
+                    isPlaying: _playerController.isPlaying,
+                    progress: progressFraction,
+                    duration: _playerController.duration,
+                    currentSeconds: _playerController.position.inSeconds,
+                    onPlayPause: _togglePlayPause,
+                    onRewind: () => _seekRelative(-10),
+                    onForward: () => _seekRelative(10),
+                    onSkipNext: (_episodeNav?.nextEpisode != null)
+                        ? _goToNextEpisode
+                        : null,
+                    onSeekFraction: _seekToFraction,
+                    onToggleFullscreen: _toggleFullscreen,
+                    mediaTitle: _playerTitle,
+                    mediaLogoUrl: _mediaLogoUrl,
+                    volume: _playerController.player.state.volume,
+                    onVolumeChanged: (v) =>
+                        _playerController.player.setVolume(v),
+                    onBack: _leavePlayer,
+                    onOpenSettings: _showTrackSettings,
+                    onToggleSubtitles: _showSubtitlesMenu,
+                    onOpenUpNext: _isEpisode ? _openEpisodesPanel : null,
+                    settingsButtonKey: _settingsButtonKey,
+                    subtitlesButtonKey: _subtitlesButtonKey,
+                  ),
+                ] else
+                  PlayerHUDOverlay(
+                    visible: _showControls,
+                    timelineAnchorKey: _timelineAnchorKey,
+                    player: _playerController.player,
+                    media: widget.media,
+                    mediaTitle: _playerTitle,
+                    isPlaying: _playerController.isPlaying,
+                    onPlayPause: _togglePlayPause,
+                    position: _playerController.position,
+                    duration: _playerController.duration,
+                    isDraggingSlider: _playerController.isDraggingSlider,
+                    dragValue: _playerController.dragValue,
+                    onToggleControls: _toggleControls,
+                    onHideControlsWithDelay: _hideControlsWithDelay,
+                    onSeekRelative: _seekRelative,
+                    onBack: _leavePlayer,
+                    onShowTrackSettings: _showTrackSettings,
+                    onSliderChangeStart: (value) async {
+                      _playerController.isDraggingSlider = true;
+                      _playerController.dragValue = value;
+                      _safeSetState(() {});
+                      try {
+                        await (_playerController.player.platform as dynamic)
+                            .setProperty('hr-seek', 'no');
+                      } catch (_) {}
+                    },
+                    onSliderChanged: (value) {
+                      _playerController.dragValue = value;
+                      if (_playerController.currentQuality != null) {
+                        final relativeSeek =
+                            value.toInt() - _playerController.hlsStartOffset;
+                        _playerController.player
+                            .seek(Duration(seconds: relativeSeek));
+                      } else {
+                        _playerController.player
+                            .seek(Duration(seconds: value.toInt()));
+                      }
+                      _safeSetState(() {});
+                    },
+                    onSliderChangeEnd: (value) async {
+                      _playerController.isDraggingSlider = false;
+                      final targetSeconds = value.toInt();
+                      final currentSeconds =
+                          _playerController.position.inSeconds;
+                      final seekDelta = (targetSeconds - currentSeconds).abs();
+
+                      if (_playerController.currentQuality != null &&
+                          seekDelta > 10) {
+                        // Large seek in HLS mode: reload session at new absolute position
+                        await _playerController
+                            .reloadHlsAtPosition(targetSeconds);
+                      } else if (_playerController.currentQuality != null) {
+                        // Small seek in HLS mode: seek relative to HLS stream
+                        final relativeSeek =
+                            targetSeconds - _playerController.hlsStartOffset;
+                        await _playerController.player
+                            .seek(Duration(seconds: relativeSeek));
+                      } else {
+                        await _playerController.player
+                            .seek(Duration(seconds: targetSeconds));
+                        try {
+                          await (_playerController.player.platform as dynamic)
+                              .setProperty('hr-seek', 'yes');
+                        } catch (_) {}
+                      }
+                      _hideControlsWithDelay();
+                    },
+                    onNextEpisode: (_episodeNav?.nextEpisode != null)
+                        ? _goToNextEpisode
+                        : null,
+                  ),
+                if (_showControls && !useModular)
+                  TopRightControls(
+                    player: _playerController.player,
+                    currentFit: _videoFit,
+                    onFitChanged: _updateVideoFit,
+                    playerController: _playerController,
+                    episodeNav: _episodeNav,
+                    onSeekToAbsolute: _playerController.seekToAbsoluteSeconds,
+                  ),
+                // Overlays must be AFTER HUD in Stack to render on top
+                if (_episodeNav?.showSkipIntro ?? false)
+                  SkipIntroButton(
+                    onSkip: () async {
+                      final end = _episodeNav!.introSkipTarget;
+                      await _playerController.seekToAbsoluteSeconds(end);
+                      _episodeNav!.skipIntro();
+                    },
+                  ),
+                if (_episodeNav?.showNextEpisodeOutro ?? false)
+                  NextEpisodeOverlay(
+                    nextEpisode: _episodeNav!.nextEpisode,
+                    autoPlayActive: _episodeNav!.outroAutoPlayActive,
+                    frozen: _episodeNav!.outroAutoPlayFrozen,
+                    countdownSeconds: _episodeNav!.outroCountdownSeconds,
+                    onPlayNext: _goToNextEpisode,
+                    onCancel: () => _episodeNav!.cancelAutoPlay(),
+                  ),
+                if (_showEpisodesPanel && _isEpisode)
+                  PlayerEpisodesPanel(
+                    showTitle: _episodesPanelShowTitle,
+                    currentEpisodeId: _currentEpisodeId,
+                    seasons: _episodesPanelSeasons,
+                    selectedSeasonId:
+                        _episodesPanelSeasonId ?? _currentSeasonId ?? 0,
+                    onSeasonChanged: (seasonId) {
+                      setState(() {
+                        _episodesPanelLoading = true;
+                        _episodesPanelEpisodes = [];
+                      });
+                      unawaited(_loadEpisodesPanelData(seasonId: seasonId));
+                    },
+                    episodes: _episodesPanelEpisodes,
+                    isLoading: _episodesPanelLoading,
+                    onClose: _closeEpisodesPanel,
+                    onEpisodeSelected: _goToEpisode,
+                  ),
+                if (!_isInitialized)
+                  const Positioned.fill(
+                    child: AbsorbPointer(
+                      child: Center(
                         child: CircularProgressIndicator(
                           color: Color(0xFF00A4DC),
                           strokeWidth: 3,
@@ -1140,12 +1144,24 @@ class _PlayerScreenState extends State<PlayerScreen> {
                       ),
                     ),
                   ),
-                ),
-            ],
+                if (_playerController.isSwitchingQuality)
+                  Positioned.fill(
+                    child: AbsorbPointer(
+                      child: Container(
+                        color: Colors.black54,
+                        child: const Center(
+                          child: CircularProgressIndicator(
+                            color: Color(0xFF00A4DC),
+                            strokeWidth: 3,
+                          ),
+                        ),
+                      ),
+                    ),
+                  ),
+              ],
+            ),
           ),
         ),
-      ),
-      ),
       ),
     );
   }

@@ -5,6 +5,7 @@ import 'package:media_kit/media_kit.dart' as mk;
 import 'package:media_kit_video/media_kit_video.dart';
 import '../../../models/models.dart';
 import '../../../services/api_client.dart';
+import '../../../services/playback_preferences_storage.dart';
 import '../player_playback_preferences.dart';
 
 /// Orchestrates playback, quality/audio/subtitle switching and the Direct Play
@@ -105,9 +106,8 @@ class PlayerController {
     }
 
     final track = player.state.track.subtitle;
-    final subsActive = track.id != 'no' &&
-        track.id != 'auto' &&
-        track.id.isNotEmpty;
+    final subsActive =
+        track.id != 'no' && track.id != 'auto' && track.id.isNotEmpty;
 
     if (!subsActive) {
       return PlayerPlaybackPreferences(
@@ -144,6 +144,7 @@ class PlayerController {
 
   Timer? _heartbeatTimer;
   Timer? _deferredSubtitleExtractTimer;
+
   /// Delay subtitle extraction so FFmpeg on the server does not compete with
   /// the HTTP stream for disk I/O during the first minutes of Direct Play.
   static const _subtitleExtractDelay = Duration(seconds: 90);
@@ -218,9 +219,8 @@ class PlayerController {
 
     _media = media;
     _apiClient = apiClient;
-    _knownDurationSeconds = knownDurationSeconds > 0
-        ? knownDurationSeconds
-        : media.duration;
+    _knownDurationSeconds =
+        knownDurationSeconds > 0 ? knownDurationSeconds : media.duration;
     if (_knownDurationSeconds > 0 && duration.inSeconds == 0) {
       duration = Duration(seconds: _knownDurationSeconds);
     }
@@ -231,43 +231,64 @@ class PlayerController {
 
     final streamUrl = apiClient.getStreamUrl(media.id);
 
-    MediaTracks? loadedTracks;
-    try {
-      await Future.wait([
-        apiClient.getMediaTracks(media.id).then((tracks) {
-          loadedTracks = tracks;
-        }),
-        player.open(mk.Media(streamUrl), play: false),
-      ]);
-      mediaTracks = loadedTracks;
-      if (inheritedPreferences != null) {
-        _applyInheritedPreferences(inheritedPreferences);
-      } else {
-        _subtitlesExplicitlyOff = true;
-        _selectedSubtitleLang = null;
-        _selectedInternalSubId = null;
-        if (mediaTracks != null && mediaTracks!.audio.isNotEmpty) {
-          // Honor the file's default audio track on first open.
-          final def = mediaTracks!.audio.indexWhere((a) => a.isDefault);
-          _selectedAudioIndex = def >= 0 ? def : 0;
-        }
-      }
-      _pendingPreferenceReapply = true;
-    } catch (e) {
-      debugPrint("Player: failed to load media tracks or open stream: $e");
-      if (loadedTracks == null) {
-        try {
-          await player.open(mk.Media(streamUrl), play: false);
-        } catch (openErr) {
-          debugPrint("Player: failed to open stream: $openErr");
-        }
-      }
+    if (inheritedPreferences != null) {
+      _applyInheritedPreferences(inheritedPreferences);
+    } else {
+      _subtitlesExplicitlyOff = true;
+      _selectedSubtitleLang = null;
+      _selectedInternalSubId = null;
     }
+
+    try {
+      await player.open(mk.Media(streamUrl), play: false);
+    } catch (e) {
+      debugPrint("Player: failed to open stream: $e");
+    }
+
+    unawaited(_loadMediaTracksAndPreferences(
+      apiClient: apiClient,
+      mediaId: media.id,
+      inheritedPreferences: inheritedPreferences,
+    ));
 
     if (inheritedPreferences == null || inheritedPreferences.subtitlesOff) {
       try {
         player.setSubtitleTrack(mk.SubtitleTrack.no());
       } catch (_) {}
+    }
+  }
+
+  Future<void> _loadMediaTracksAndPreferences({
+    required ApiClient apiClient,
+    required int mediaId,
+    required PlayerPlaybackPreferences? inheritedPreferences,
+  }) async {
+    try {
+      final tracks = await apiClient.getMediaTracks(mediaId);
+      if (_disposed) return;
+
+      mediaTracks = tracks;
+      if (inheritedPreferences != null) {
+        _applyInheritedPreferences(inheritedPreferences);
+      } else if (tracks.audio.isNotEmpty) {
+        final defaultLang =
+            await PlaybackPreferencesStorage().loadDefaultAudioLang();
+        if (_disposed) return;
+        _selectedAudioIndex = PlaybackPreferencesStorage.pickAudioIndex(
+          tracks.audio,
+          defaultLang,
+        );
+      }
+
+      _pendingPreferenceReapply = true;
+      _notifyTracksChanged();
+      if (player.state.playing) {
+        _pendingPreferenceReapply = false;
+        _reapplySelectionsAfterLoad();
+        _scheduleDeferredSubtitleExtraction();
+      }
+    } catch (e) {
+      debugPrint("Player: failed to load media tracks: $e");
     }
   }
 
@@ -287,7 +308,8 @@ class PlayerController {
     // audio continues. videotoolbox-copy decodes in GPU then copies frames to
     // CPU RAM, which is compatible with mpv's OpenGL/CVPixelBuffer/Metal render
     // pipeline on macOS. Windows/Android keep auto-safe (D3D11/MediaCodec).
-    await platform.setProperty('hwdec', Platform.isMacOS ? 'videotoolbox-copy' : 'auto-safe');
+    await platform.setProperty(
+        'hwdec', Platform.isMacOS ? 'videotoolbox-copy' : 'auto-safe');
     // Direct rendering (decoding straight into GPU-mapped buffers) is a known
     // source of periodic video freezes with the libmpv render API embedding
     // used by media_kit; the extra copy is negligible.
@@ -296,8 +318,8 @@ class PlayerController {
     await platform.setProperty('network-timeout', '60');
     // Transparent reconnection if the OS/router drops the long-lived HTTP
     // connection while the demuxer buffer is full (socket idle for minutes).
-    await platform.setProperty(
-        'stream-lavf-o', 'reconnect=1,reconnect_streamed=1,reconnect_delay_max=5');
+    await platform.setProperty('stream-lavf-o',
+        'reconnect=1,reconnect_streamed=1,reconnect_delay_max=5');
     if (Platform.isMacOS) {
       // macOS rendering pipeline (mpv → OpenGL → CVPixelBuffer → Metal →
       // Flutter) can stall periodically, especially on macOS 27 beta. These
@@ -448,18 +470,7 @@ class PlayerController {
       // loadfile command, and the immediate `start=0` reset cancels the
       // resume offset before mpv applies it.
       await player.play();
-      try {
-        if (!player.state.buffering) {
-          await player.stream.buffering
-              .firstWhere((b) => b)
-              .timeout(const Duration(seconds: 3));
-        }
-        await player.stream.buffering
-            .firstWhere((b) => !b)
-            .timeout(const Duration(seconds: 8));
-      } catch (_) {
-        await Future.delayed(const Duration(milliseconds: 800));
-      }
+      await _waitUntilSeekable();
       if (!_disposed) {
         await player.seek(Duration(seconds: resumeAtSeconds));
         position = Duration(seconds: resumeAtSeconds);
@@ -496,7 +507,8 @@ class PlayerController {
     _heartbeatTimer?.cancel();
     _heartbeatTimer = Timer.periodic(const Duration(seconds: 15), (_) {
       if (player.state.playing) {
-        _sendProgress(mediaId: mediaId, apiClient: apiClient, isFinished: false);
+        _sendProgress(
+            mediaId: mediaId, apiClient: apiClient, isFinished: false);
       }
     });
   }
@@ -539,10 +551,13 @@ class PlayerController {
     }
     if (posSeconds > 0) {
       var finalIsFinished = isFinished;
-      if (!finalIsFinished && durSeconds > 0 && (posSeconds / durSeconds) * 100 >= 90.0) {
+      if (!finalIsFinished &&
+          durSeconds > 0 &&
+          (posSeconds / durSeconds) * 100 >= 90.0) {
         finalIsFinished = true;
       }
-      await _sendProgress(mediaId: mediaId, apiClient: apiClient, isFinished: finalIsFinished);
+      await _sendProgress(
+          mediaId: mediaId, apiClient: apiClient, isFinished: finalIsFinished);
     }
   }
 
@@ -560,7 +575,8 @@ class PlayerController {
   /// where segments outside the sliding window no longer exist).
   Future<void> reloadHlsAtPosition(int newPositionSeconds) async {
     if (_media == null || _apiClient == null || currentQuality == null) return;
-    await _openHlsSession(quality: currentQuality!, startSeconds: newPositionSeconds);
+    await _openHlsSession(
+        quality: currentQuality!, startSeconds: newPositionSeconds);
   }
 
   /// Core HLS (re)launch: ask the server for a fresh session, open its master
@@ -604,7 +620,8 @@ class PlayerController {
       // Kick off .vtt extraction in the background and poll until ready so a
       // language picked in Direct Play (or in the menu) attaches without reload.
       _ensureSubtitlesExtracted();
-      if (_selectedSubtitleLang != null && !_isSubtitleReady(_selectedSubtitleLang!)) {
+      if (_selectedSubtitleLang != null &&
+          !_isSubtitleReady(_selectedSubtitleLang!)) {
         _startSubtitleWatch();
       }
     } catch (e) {
@@ -829,18 +846,23 @@ class PlayerController {
     final mediaId = _media!.id;
 
     debugPrint("SUB: request #$reqId lang=$lang start=$start hls=$inHls");
-    _apiClient!.fetchSubtitleContent(mediaId, lang, start: start).then((vtt) async {
+    _apiClient!
+        .fetchSubtitleContent(mediaId, lang, start: start)
+        .then((vtt) async {
       // Ignore stale responses (selection changed while we were fetching).
       if (_disposed || reqId != _subtitleRequestId) {
-        debugPrint("SUB: #$reqId stale (current=$_subtitleRequestId), skipping");
+        debugPrint(
+            "SUB: #$reqId stale (current=$_subtitleRequestId), skipping");
         return;
       }
       final cueCount = '-->'.allMatches(vtt).length;
       if (cueCount == 0) {
-        debugPrint("SUB: #$reqId lang=$lang has NO cues (${vtt.length} chars) — nothing to show");
+        debugPrint(
+            "SUB: #$reqId lang=$lang has NO cues (${vtt.length} chars) — nothing to show");
         return;
       }
-      debugPrint("SUB: #$reqId lang=$lang fetched ${vtt.length} chars, $cueCount cues");
+      debugPrint(
+          "SUB: #$reqId lang=$lang fetched ${vtt.length} chars, $cueCount cues");
       try {
         await player.setSubtitleTrack(
           mk.SubtitleTrack.data(vtt, title: title, language: lang),
@@ -912,18 +934,35 @@ class PlayerController {
     var c = code.trim().toLowerCase();
     if (c.isEmpty || c == 'und' || c == 'auto' || c == 'no') return null;
     const map = {
-      'fra': 'fr', 'fre': 'fr', 'french': 'fr',
-      'eng': 'en', 'english': 'en',
-      'spa': 'es', 'esp': 'es', 'spanish': 'es',
-      'ger': 'de', 'deu': 'de', 'german': 'de',
-      'ita': 'it', 'italian': 'it',
-      'por': 'pt', 'portuguese': 'pt',
-      'jpn': 'ja', 'japanese': 'ja',
-      'rus': 'ru', 'russian': 'ru',
-      'chi': 'zh', 'zho': 'zh', 'chinese': 'zh',
-      'ara': 'ar', 'arabic': 'ar',
-      'nld': 'nl', 'dut': 'nl', 'dutch': 'nl',
-      'kor': 'ko', 'korean': 'ko',
+      'fra': 'fr',
+      'fre': 'fr',
+      'french': 'fr',
+      'eng': 'en',
+      'english': 'en',
+      'spa': 'es',
+      'esp': 'es',
+      'spanish': 'es',
+      'ger': 'de',
+      'deu': 'de',
+      'german': 'de',
+      'ita': 'it',
+      'italian': 'it',
+      'por': 'pt',
+      'portuguese': 'pt',
+      'jpn': 'ja',
+      'japanese': 'ja',
+      'rus': 'ru',
+      'russian': 'ru',
+      'chi': 'zh',
+      'zho': 'zh',
+      'chinese': 'zh',
+      'ara': 'ar',
+      'arabic': 'ar',
+      'nld': 'nl',
+      'dut': 'nl',
+      'dutch': 'nl',
+      'kor': 'ko',
+      'korean': 'ko',
     };
     if (map.containsKey(c)) return map[c];
     if (c.length > 2) return c.substring(0, 2);
@@ -964,12 +1003,13 @@ class PlayerController {
       await p.setProperty('demuxer-readahead-secs', '60');
       // Same decode-path hardening as Direct Play — prevents video-only
       // freezes while audio keeps playing.
-      await p.setProperty('hwdec', Platform.isMacOS ? 'videotoolbox-copy' : 'auto-safe');
+      await p.setProperty(
+          'hwdec', Platform.isMacOS ? 'videotoolbox-copy' : 'auto-safe');
       await p.setProperty('vd-lavc-dr', 'no');
       // HLS segments are short HTTP requests; reconnection is cheap insurance
       // against transient network blips between segment fetches.
-      await p.setProperty(
-          'stream-lavf-o', 'reconnect=1,reconnect_streamed=1,reconnect_delay_max=5');
+      await p.setProperty('stream-lavf-o',
+          'reconnect=1,reconnect_streamed=1,reconnect_delay_max=5');
       if (Platform.isMacOS) {
         await p.setProperty('framedrop', 'vo');
         await p.setProperty('video-sync', 'display-desync');
@@ -982,7 +1022,8 @@ class PlayerController {
     if (totalDurationSeconds <= 0) return;
     duration = Duration(seconds: totalDurationSeconds.round());
     try {
-      (player.platform as dynamic).setProperty('length', totalDurationSeconds.toStringAsFixed(3));
+      (player.platform as dynamic)
+          .setProperty('length', totalDurationSeconds.toStringAsFixed(3));
     } catch (_) {}
     _onDurationChanged?.call();
   }

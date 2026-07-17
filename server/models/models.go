@@ -136,8 +136,16 @@ type MediaDetails struct {
 
 	Director string   `json:"director,omitempty"`
 	Writers  []string `json:"writers,omitempty"`
+	Editors  []string `json:"editors,omitempty"`
 
-	Cast []CatalogCastMember `json:"cast,omitempty"`
+	Cast      []CatalogCastMember `json:"cast,omitempty"`
+	Keywords  []string            `json:"keywords,omitempty"`
+	TrailerKey string             `json:"trailer_key,omitempty"` // YouTube video id
+	Budget    int64               `json:"budget,omitempty"`
+	Revenue   int64               `json:"revenue,omitempty"`
+
+	Recommendations []RelatedMedia `json:"recommendations,omitempty"`
+	Similar         []RelatedMedia `json:"similar,omitempty"`
 
 	// Movies-only: the saga/collection this title belongs to (nil when none).
 	Collection *CollectionInfo `json:"collection,omitempty"`
@@ -145,6 +153,18 @@ type MediaDetails struct {
 	// TV-only
 	NumberOfSeasons  int `json:"number_of_seasons,omitempty"`
 	NumberOfEpisodes int `json:"number_of_episodes,omitempty"`
+}
+
+// RelatedMedia is a compact TMDB title used for recommendations / similar.
+type RelatedMedia struct {
+	ID           int       `json:"id"`
+	Type         MediaType `json:"type"`
+	Title        string    `json:"title"`
+	PosterURL    string    `json:"poster_url,omitempty"`
+	BackdropURL  string    `json:"backdrop_url,omitempty"`
+	ReleaseDate  string    `json:"release_date,omitempty"`
+	VoteAverage  float64   `json:"vote_average,omitempty"`
+	Overview     string    `json:"overview,omitempty"`
 }
 
 // Progression represents the user's watch progress on a media (movie/episode)

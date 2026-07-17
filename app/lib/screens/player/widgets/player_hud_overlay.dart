@@ -123,26 +123,29 @@ class PlayerHUDOverlay extends StatelessWidget {
                             ),
                             const SizedBox(width: 12),
                             Expanded(
-                              child: ProgressBar(
-                                progress: currentPos,
-                                buffered: currentPos + const Duration(seconds: 30) > totalDuration
-                                    ? totalDuration
-                                    : currentPos + const Duration(seconds: 30),
-                                total: totalDuration,
-                                progressBarColor: accentBlue,
-                                baseBarColor: Colors.white.withOpacity(0.2),
-                                bufferedBarColor: Colors.white.withOpacity(0.35),
-                                thumbColor: Colors.white,
-                                thumbGlowColor: Colors.white.withOpacity(0.3),
-                                thumbRadius: 6,
-                                barHeight: 4,
-                                timeLabelLocation: TimeLabelLocation.none,
-                                onSeek: (newPos) {
-                                  onSliderChangeStart(newPos.inSeconds.toDouble());
-                                  onSliderChanged(newPos.inSeconds.toDouble());
-                                  onSliderChangeEnd(newPos.inSeconds.toDouble());
-                                  onHideControlsWithDelay();
-                                },
+                              child: MouseRegion(
+                                cursor: SystemMouseCursors.grab,
+                                child: _DragProgressBar(
+                                  progress: currentPos,
+                                  buffered: currentPos + const Duration(seconds: 30) > totalDuration
+                                      ? totalDuration
+                                      : currentPos + const Duration(seconds: 30),
+                                  total: totalDuration,
+                                  progressBarColor: accentBlue,
+                                  baseBarColor: Colors.white.withOpacity(0.2),
+                                  bufferedBarColor: Colors.white.withOpacity(0.35),
+                                  thumbColor: Colors.white,
+                                  thumbGlowColor: Colors.white.withOpacity(0.3),
+                                  thumbRadius: 8,
+                                  barHeight: 5,
+                                  timeLabelLocation: TimeLabelLocation.none,
+                                  isPlaying: isPlaying,
+                                  onPlayPause: onPlayPause,
+                                  onSliderChangeStart: onSliderChangeStart,
+                                  onSliderChanged: onSliderChanged,
+                                  onSliderChangeEnd: onSliderChangeEnd,
+                                  onHideControlsWithDelay: onHideControlsWithDelay,
+                                ),
                               ),
                             ),
                             const SizedBox(width: 12),
@@ -235,6 +238,97 @@ class PlayerHUDOverlay extends StatelessWidget {
           ),
         ),
       ),
+    );
+  }
+}
+
+class _DragProgressBar extends StatefulWidget {
+  final Duration progress;
+  final Duration buffered;
+  final Duration total;
+  final Color? progressBarColor;
+  final Color? baseBarColor;
+  final Color? bufferedBarColor;
+  final Color? thumbColor;
+  final Color? thumbGlowColor;
+  final double thumbRadius;
+  final double barHeight;
+  final TimeLabelLocation? timeLabelLocation;
+  final bool isPlaying;
+  final VoidCallback onPlayPause;
+  final void Function(double) onSliderChangeStart;
+  final void Function(double) onSliderChanged;
+  final void Function(double) onSliderChangeEnd;
+  final VoidCallback onHideControlsWithDelay;
+
+  const _DragProgressBar({
+    required this.progress,
+    required this.buffered,
+    required this.total,
+    required this.isPlaying,
+    required this.onPlayPause,
+    required this.onSliderChangeStart,
+    required this.onSliderChanged,
+    required this.onSliderChangeEnd,
+    required this.onHideControlsWithDelay,
+    this.progressBarColor,
+    this.baseBarColor,
+    this.bufferedBarColor,
+    this.thumbColor,
+    this.thumbGlowColor,
+    this.thumbRadius = 8,
+    this.barHeight = 5,
+    this.timeLabelLocation,
+  });
+
+  @override
+  State<_DragProgressBar> createState() => _DragProgressBarState();
+}
+
+class _DragProgressBarState extends State<_DragProgressBar> {
+  bool _wasPlaying = false;
+  bool _hasMoved = false;
+
+  void _handleStart(ThumbDragDetails details) {
+    _wasPlaying = widget.isPlaying;
+    _hasMoved = false;
+    widget.onSliderChangeStart(details.timeStamp.inSeconds.toDouble());
+  }
+
+  void _handleUpdate(ThumbDragDetails details) {
+    if (!_hasMoved) {
+      _hasMoved = true;
+      if (_wasPlaying) widget.onPlayPause();
+    }
+    widget.onSliderChanged(details.timeStamp.inSeconds.toDouble());
+  }
+
+  void _handleEnd(Duration position) {
+    widget.onSliderChangeEnd(position.inSeconds.toDouble());
+    widget.onHideControlsWithDelay();
+    if (_hasMoved && _wasPlaying) {
+      widget.onPlayPause();
+    }
+    _hasMoved = false;
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return ProgressBar(
+      progress: widget.progress,
+      buffered: widget.buffered,
+      total: widget.total,
+      progressBarColor: widget.progressBarColor,
+      baseBarColor: widget.baseBarColor,
+      bufferedBarColor: widget.bufferedBarColor,
+      thumbColor: widget.thumbColor,
+      thumbGlowColor: widget.thumbGlowColor,
+      thumbRadius: widget.thumbRadius,
+      barHeight: widget.barHeight,
+      timeLabelLocation: widget.timeLabelLocation,
+      onDragStart: _handleStart,
+      onDragUpdate: _handleUpdate,
+      onSeek: _handleEnd,
     );
   }
 }

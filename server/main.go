@@ -67,6 +67,7 @@ func main() {
 	router.GET("/api/home", handlers.RequireAuth(handlers.Home))
 	router.GET("/api/progress", handlers.RequireAuth(handlers.GetProgress))
 	router.POST("/api/progress", handlers.RequireAuth(handlers.UpdateProgress))
+	router.POST("/api/continue-watching/hide", handlers.RequireAuth(handlers.HideFromContinueWatching))
 	router.POST("/api/media/:id/watched", handlers.RequireAuth(handlers.SetMediaWatched))
 
 	// 3. Media Browsing Routes
@@ -82,6 +83,9 @@ func main() {
 	router.GET("/api/media/:id/details", handlers.RequireAuth(handlers.GetMediaDetails))
 	router.GET("/api/person/:id", handlers.RequireAuth(handlers.GetPersonDetails))
 	router.GET("/api/collection/:id", handlers.RequireAuth(handlers.GetCollectionDetails))
+	router.GET("/api/requests/catalog", handlers.RequireAuth(handlers.TmdbRequestCatalog))
+	router.GET("/api/requests/media/:id", handlers.RequireAuth(handlers.TmdbRequestDetails))
+	router.POST("/api/requests", handlers.RequireAuth(handlers.MediaHubRequest))
 
 	// External subtitles (sidecar files or OpenSubtitles downloads), served as
 	// WebVTT. Unauthenticated so media_kit/mpv can fetch the track directly.
@@ -102,6 +106,10 @@ func main() {
 	router.POST("/api/indexer/subtitles/extract", handlers.RequireAuth(handlers.TriggerSubtitleExtract))
 	router.GET("/api/indexer/status", handlers.RequireAuth(handlers.GetScanStatus))
 	router.POST("/api/media/:id/subtitles/extract", handlers.RequireAuth(handlers.ForceMediaSubtitleExtract))
+
+	// Debug: Delete a show and all its data (episodes, subtitles) for re-index testing
+	router.POST("/api/indexer/debug/delete-show", handlers.RequireAuth(handlers.DebugDeleteShow))
+	router.POST("/api/indexer/debug/delete-show/:id", handlers.RequireAuth(handlers.DebugDeleteShow))
 
 	// 5. Streaming Endpoint (Unauthenticated for video player compatibility)
 	router.GET("/stream", handlers.StreamMedia)

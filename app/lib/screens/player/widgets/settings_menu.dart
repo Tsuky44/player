@@ -5,6 +5,8 @@ import 'package:flutter_animate/flutter_animate.dart';
 import 'package:media_kit/media_kit.dart' as mk;
 
 import '../../../models/models.dart';
+import '../../../services/playback_preferences_storage.dart';
+import '../../settings/playback_preferences_screen.dart';
 import '../hooks/use_episode_navigation.dart';
 import '../hooks/use_player_controller.dart';
 import 'chapters_debug_panel.dart';
@@ -38,7 +40,9 @@ class _SettingsMenuState extends State<SettingsMenu> {
   late BoxFit _fit;
   bool _isExtractingSubtitles = false;
   int _tabIndex = 0;
+  String? _defaultAudioLang;
   StreamSubscription<void>? _tracksSubscription;
+  final _prefsStorage = PlaybackPreferencesStorage();
 
   static const _tabs = [
     PlayerSettingsTab(icon: Icons.audiotrack_rounded, label: 'Audio'),
@@ -59,6 +63,9 @@ class _SettingsMenuState extends State<SettingsMenu> {
     _fit = widget.currentFit;
     _tracksSubscription = widget.playerController?.tracksStream.listen((_) {
       if (mounted) setState(() {});
+    });
+    _prefsStorage.loadDefaultAudioLang().then((lang) {
+      if (mounted) setState(() => _defaultAudioLang = lang);
     });
   }
 
@@ -217,24 +224,48 @@ class _SettingsMenuState extends State<SettingsMenu> {
       return const _EmptyTracksMessage();
     }
 
-    return ListView.builder(
-      padding: const EdgeInsets.only(top: 4),
-      itemCount: audioTracks.length,
-      itemBuilder: (context, index) {
-        final track = audioTracks[index];
-        final isSelected = index == controller.selectedAudioIndex;
-        final (title, subtitle) = splitTrackLabel(track.displayName);
+    final defaultLabel = PlaybackPreferencesStorage.audioLanguageOptions
+        .firstWhere(
+          (o) => o.code == _defaultAudioLang,
+          orElse: () => PlaybackPreferencesStorage.audioLanguageOptions.first,
+        )
+        .label;
 
-        return PlayerSettingsTrackRow(
-          label: title,
-          subtitle: subtitle,
-          selected: isSelected,
+    return ListView(
+      padding: const EdgeInsets.only(top: 4),
+      children: [
+        ...List.generate(audioTracks.length, (index) {
+          final track = audioTracks[index];
+          final isSelected = index == controller.selectedAudioIndex;
+          final (title, subtitle) = splitTrackLabel(track.displayName);
+
+          return PlayerSettingsTrackRow(
+            label: title,
+            subtitle: subtitle,
+            selected: isSelected,
+            onTap: () {
+              if (!isSelected) controller.switchAudioTrack(index);
+              widget.onClose();
+            },
+          );
+        }),
+        const SizedBox(height: 8),
+        const Divider(height: 1, color: Color(0x22FFFFFF)),
+        const SizedBox(height: 4),
+        PlayerSettingsTrackRow(
+          label: 'Langue par défaut',
+          subtitle: defaultLabel,
+          selected: false,
           onTap: () {
-            if (!isSelected) controller.switchAudioTrack(index);
             widget.onClose();
+            Navigator.of(context).push(
+              MaterialPageRoute(
+                builder: (_) => const PlaybackPreferencesScreen(),
+              ),
+            );
           },
-        );
-      },
+        ),
+      ],
     );
   }
 

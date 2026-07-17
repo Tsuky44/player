@@ -21,4 +21,8 @@ services:
       # les jaquettes, affiches, résumés de films et séries en français !
       - TMDB_API_KEY=votre_cle_api_tmdb_ici
       - TMDB_LANGUAGE=fr-FR
+      # Nombre maximal d'extractions FFmpeg de sous-titres simultanées
+      - SUBTITLE_EXTRACTION_CONCURRENCY=${SUBTITLE_EXTRACTION_CONCURRENCY:-2}
+      - MEDIAHUB_URL=${MEDIAHUB_URL:-http://mediahub-app:3008}
+      - MEDIAHUB_API_KEY=${MEDIAHUB_API_KEY:-}
     restart: unless-stopped

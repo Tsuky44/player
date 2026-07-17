@@ -4,6 +4,8 @@ import '../models/models.dart';
 import '../services/api_client.dart';
 
 class HomeProvider extends ChangeNotifier {
+  static const double _minContinueWatchingPercent = 10.0;
+
   final ApiClient apiClient;
 
   HomeResponse? _homeData;
@@ -63,6 +65,15 @@ class HomeProvider extends ChangeNotifier {
     }
   }
 
+  bool _meetsContinueWatchingThreshold({
+    required int positionSeconds,
+    required int durationSeconds,
+  }) {
+    if (positionSeconds <= 0) return false;
+    if (durationSeconds <= 0) return true;
+    return (positionSeconds / durationSeconds) * 100 >= _minContinueWatchingPercent;
+  }
+
   /// Instantly updates the continue-watching row after leaving the player.
   void updateContinueWatchingProgress({
     required int mediaId,
@@ -88,8 +99,36 @@ class HomeProvider extends ChangeNotifier {
     }
 
     final index = list.indexWhere((item) => item.media.id == mediaId);
+    final effectiveDuration = durationSeconds > 0
+        ? durationSeconds
+        : (sourceItem?.duration ?? 0);
+
+    if (!isFinished &&
+        !_meetsContinueWatchingThreshold(
+          positionSeconds: positionSeconds,
+          durationSeconds: effectiveDuration,
+        )) {
+      if (index >= 0) {
+        list.removeAt(index);
+        _homeData = HomeResponse(
+          continueWatching: list,
+          recentMovies: _homeData!.recentMovies,
+          recentShows: _homeData!.recentShows,
+          discoveryMovies: _homeData!.discoveryMovies,
+          discoveryShows: _homeData!.discoveryShows,
+        );
+        notifyListeners();
+      }
+      return;
+    }
 
     if (isFinished) {
+      // Séries : le serveur renverra l'épisode suivant après refresh.
+      if (sourceItem?.media.type == MediaType.episode &&
+          sourceItem!.showId != null &&
+          sourceItem.showId! > 0) {
+        return;
+      }
       if (index >= 0) list.removeAt(index);
     } else if (index >= 0) {
       final current = list.removeAt(index);
@@ -124,6 +163,48 @@ class HomeProvider extends ChangeNotifier {
       discoveryShows: _homeData!.discoveryShows,
     );
     notifyListeners();
+  }
+
+  void _removeContinueWatchingItem(HomeMediaItem item) {
+    if (_homeData == null) return;
+    final list = List<HomeMediaItem>.from(_homeData!.continueWatching);
+    list.removeWhere((entry) => _isSameContinueWatchingEntry(entry, item));
+    _homeData = HomeResponse(
+      continueWatching: list,
+      recentMovies: _homeData!.recentMovies,
+      recentShows: _homeData!.recentShows,
+      discoveryMovies: _homeData!.discoveryMovies,
+      discoveryShows: _homeData!.discoveryShows,
+    );
+    notifyListeners();
+  }
+
+  bool _isSameContinueWatchingEntry(HomeMediaItem a, HomeMediaItem b) {
+    if (a.media.type == MediaType.episode &&
+        b.media.type == MediaType.episode &&
+        a.showId != null &&
+        b.showId != null &&
+        a.showId! > 0 &&
+        b.showId! > 0) {
+      return a.showId == b.showId;
+    }
+    return a.media.id == b.media.id;
+  }
+
+  Future<void> hideContinueWatchingItem(HomeMediaItem item) async {
+    if (item.media.type == MediaType.movie) {
+      await apiClient.hideFromContinueWatching(movieId: item.media.id);
+    } else if (item.showId != null && item.showId! > 0) {
+      await apiClient.hideFromContinueWatching(showId: item.showId);
+    } else {
+      return;
+    }
+    _removeContinueWatchingItem(item);
+  }
+
+  Future<void> markContinueWatchingAsWatched(HomeMediaItem item) async {
+    await apiClient.setMediaWatched(item.media.id, true);
+    await loadHome(silent: true);
   }
 
   Future<void> triggerLibraryScan() async {

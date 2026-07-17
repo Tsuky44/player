@@ -126,6 +126,15 @@ func createTables() error {
 		// Index on progressions updated_at for "Continue Watching" ordering
 		`CREATE INDEX IF NOT EXISTS idx_progressions_updated_at ON progressions(updated_at DESC);`,
 
+		// User-dismissed entries hidden from the home "Continue Watching" row only.
+		`CREATE TABLE IF NOT EXISTS continue_watching_hidden (
+			user_id INTEGER NOT NULL,
+			entry_key TEXT NOT NULL,
+			hidden_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+			PRIMARY KEY (user_id, entry_key),
+			FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+		);`,
+
 		// Subtitles Table: pre-extracted external .vtt tracks discovered at scan time.
 		`CREATE TABLE IF NOT EXISTS subtitles (
 			id INTEGER PRIMARY KEY AUTOINCREMENT,

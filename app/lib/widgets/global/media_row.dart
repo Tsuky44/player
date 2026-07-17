@@ -11,6 +11,8 @@ class MediaRow extends StatelessWidget {
   final VoidCallback? onSeeAll;
   final void Function(dynamic item) onItemTap;
   final void Function(HomeMediaItem item)? onContinueWatchingTitleTap;
+  final Future<void> Function(HomeMediaItem item)? onContinueWatchingMarkWatched;
+  final Future<void> Function(HomeMediaItem item)? onContinueWatchingRemove;
   final bool isContinueWatching;
 
   const MediaRow({
@@ -19,6 +21,8 @@ class MediaRow extends StatelessWidget {
     required this.items,
     required this.onItemTap,
     this.onContinueWatchingTitleTap,
+    this.onContinueWatchingMarkWatched,
+    this.onContinueWatchingRemove,
     this.onSeeAll,
     this.isContinueWatching = false,
   });
@@ -85,6 +89,8 @@ class MediaRow extends StatelessWidget {
                         onTitleTap: onContinueWatchingTitleTap != null
                             ? () => onContinueWatchingTitleTap!(item as HomeMediaItem)
                             : null,
+                        onMarkAsWatched: onContinueWatchingMarkWatched,
+                        onRemoveFromRow: onContinueWatchingRemove,
                       )
                     : SizedBox(
                         width: cardWidth,

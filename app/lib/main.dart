@@ -7,6 +7,7 @@ import 'services/api_client.dart';
 import 'providers/auth_provider.dart';
 import 'providers/home_provider.dart';
 import 'providers/library_provider.dart';
+import 'providers/media_requests_provider.dart';
 import 'providers/player_layout_provider.dart';
 import 'services/layout_storage.dart';
 import 'providers/search_provider.dart';
@@ -30,7 +31,8 @@ void main() async {
       center: true,
       backgroundColor: Colors.transparent,
       skipTaskbar: false,
-      titleBarStyle: useHiddenNativeTitleBar ? TitleBarStyle.hidden : TitleBarStyle.normal,
+      titleBarStyle:
+          useHiddenNativeTitleBar ? TitleBarStyle.hidden : TitleBarStyle.normal,
       windowButtonVisibility: Platform.isMacOS,
     );
     await windowManager.waitUntilReadyToShow(windowOptions, () async {
@@ -51,7 +53,9 @@ void main() async {
         ChangeNotifierProvider(create: (_) => AuthProvider(apiClient)),
         ChangeNotifierProvider(create: (_) => HomeProvider(apiClient)),
         ChangeNotifierProvider(create: (_) => LibraryProvider(apiClient)),
-        ChangeNotifierProvider(create: (_) => PlayerLayoutProvider(LayoutStorage())),
+        ChangeNotifierProvider(create: (_) => MediaRequestsProvider(apiClient)),
+        ChangeNotifierProvider(
+            create: (_) => PlayerLayoutProvider(LayoutStorage())),
         ChangeNotifierProvider(create: (_) => SearchProvider()),
       ],
       child: PlayeurApp(searchRouteObserver: searchRouteObserver),
@@ -132,7 +136,8 @@ class SplashScreen extends StatelessWidget {
                 color: AppColors.primary,
                 borderRadius: BorderRadius.circular(16),
               ),
-              child: const Icon(Icons.play_arrow_rounded, size: 44, color: Colors.white),
+              child: const Icon(Icons.play_arrow_rounded,
+                  size: 44, color: Colors.white),
             ),
             const SizedBox(height: 28),
             const CircularProgressIndicator(strokeWidth: 2.5),

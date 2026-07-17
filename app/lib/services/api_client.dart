@@ -3,6 +3,7 @@ import 'dart:io';
 import 'package:dio/dio.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import '../models/media_request.dart';
 import '../models/models.dart';
 
 /// Holds the result of starting an HLS transcoding session.
@@ -84,35 +85,34 @@ class ApiClient {
   }
 
   ApiClient() {
-    _dio.interceptors.add(InterceptorsWrapper(
-      onRequest: (options, handler) async {
-        if (!_configLoaded) {
-          await _loadConfig();
-        }
-        options.baseUrl = _baseUrl ?? _defaultBaseUrl;
-
-        // Inject Authorization Header
-        if (_token != null) {
-          options.headers["Authorization"] = "Bearer $_token";
-        } else {
-          final savedToken = await _readToken();
-          if (savedToken != null) {
-            _token = savedToken;
-            options.headers["Authorization"] = "Bearer $_token";
-          }
-        }
-
-        options.connectTimeout = const Duration(seconds: 10);
-        options.receiveTimeout = const Duration(seconds: 30);
-        
-        return handler.next(options);
-      },
-      onError: (DioException e, handler) {
-        // Global error logging
-        print("API Error [${e.requestOptions.method}] ${e.requestOptions.path}: ${e.message}");
-        return handler.next(e);
+    _dio.interceptors
+        .add(InterceptorsWrapper(onRequest: (options, handler) async {
+      if (!_configLoaded) {
+        await _loadConfig();
       }
-    ));
+      options.baseUrl = _baseUrl ?? _defaultBaseUrl;
+
+      // Inject Authorization Header
+      if (_token != null) {
+        options.headers["Authorization"] = "Bearer $_token";
+      } else {
+        final savedToken = await _readToken();
+        if (savedToken != null) {
+          _token = savedToken;
+          options.headers["Authorization"] = "Bearer $_token";
+        }
+      }
+
+      options.connectTimeout = const Duration(seconds: 10);
+      options.receiveTimeout = const Duration(seconds: 30);
+
+      return handler.next(options);
+    }, onError: (DioException e, handler) {
+      // Global error logging
+      print(
+          "API Error [${e.requestOptions.method}] ${e.requestOptions.path}: ${e.message}");
+      return handler.next(e);
+    }));
   }
 
   // Get current active base URL
@@ -151,7 +151,8 @@ class ApiClient {
   /// Download the raw WebVTT text for a subtitle. Fetching it ourselves and
   /// injecting via SubtitleTrack.data() is far more reliable than asking mpv to
   /// fetch a URL while it is already busy pulling an HLS stream.
-  Future<String> fetchSubtitleContent(int mediaId, String lang, {int start = 0}) async {
+  Future<String> fetchSubtitleContent(int mediaId, String lang,
+      {int start = 0}) async {
     final response = await _dio.get<String>(
       "/api/v1/media/$mediaId/subtitles/$lang.vtt",
       queryParameters: {"start": start},
@@ -198,7 +199,8 @@ class ApiClient {
   Future<void> setConnection(String serverUrl, {String? token}) async {
     // Normalize URL
     String formattedUrl = serverUrl.trim();
-    if (!formattedUrl.startsWith("http://") && !formattedUrl.startsWith("https://")) {
+    if (!formattedUrl.startsWith("http://") &&
+        !formattedUrl.startsWith("https://")) {
       formattedUrl = "http://$formattedUrl";
     }
     if (formattedUrl.endsWith("/")) {
@@ -235,7 +237,8 @@ class ApiClient {
 
   // ==================== AUTH API ====================
 
-  Future<Map<String, dynamic>> register(String username, String password) async {
+  Future<Map<String, dynamic>> register(
+      String username, String password) async {
     final response = await _dio.post("/api/auth/register", data: {
       "username": username,
       "password": password,
@@ -249,7 +252,7 @@ class ApiClient {
       "username": username,
       "password": password,
     });
-    
+
     final token = response.data["token"] as String;
     final userJson = response.data["user"] as Map<String, dynamic>;
     final user = User.fromJson(userJson);
@@ -332,15 +335,23 @@ class ApiClient {
       "duration": duration,
       "is_finished": isFinished,
     });
-    
+
     return response.data["is_finished"] as bool? ?? isFinished;
   }
 
-  Future<Map<String, dynamic>> setMediaWatched(int mediaId, bool watched) async {
+  Future<Map<String, dynamic>> setMediaWatched(
+      int mediaId, bool watched) async {
     final response = await _dio.post("/api/media/$mediaId/watched", data: {
       "watched": watched,
     });
     return response.data as Map<String, dynamic>;
+  }
+
+  Future<void> hideFromContinueWatching({int? movieId, int? showId}) async {
+    final data = <String, dynamic>{};
+    if (movieId != null) data['movie_id'] = movieId;
+    if (showId != null) data['show_id'] = showId;
+    await _dio.post('/api/continue-watching/hide', data: data);
   }
 
   // ==================== EPISODE NAVIGATION ====================
@@ -358,7 +369,9 @@ class ApiClient {
   Future<List<VideoChapter>> getEpisodeChapters(int episodeId) async {
     final response = await _dio.get("/api/episodes/$episodeId/chapters");
     final data = response.data["chapters"] as List? ?? [];
-    return data.map((json) => VideoChapter.fromJson(json as Map<String, dynamic>)).toList();
+    return data
+        .map((json) => VideoChapter.fromJson(json as Map<String, dynamic>))
+        .toList();
   }
 
   /// Fetches rich, Emby-style catalog details (cast, genres, rating, backdrop,
@@ -383,6 +396,41 @@ class ApiClient {
   Future<MediaTracks> getMediaTracks(int mediaId) async {
     final response = await _dio.get("/api/media/$mediaId/tracks");
     return MediaTracks.fromJson(response.data as Map<String, dynamic>);
+  }
+
+  Future<RequestCatalogPage> getRequestCatalog({
+    required int page,
+    required String type,
+    String? query,
+  }) async {
+    final response = await _dio.get('/api/requests/catalog', queryParameters: {
+      'page': page,
+      'type': type,
+      if (query != null && query.trim().isNotEmpty) 'query': query.trim(),
+    });
+    return RequestCatalogPage.fromJson(response.data as Map<String, dynamic>);
+  }
+
+  Future<RequestMediaDetails> getRequestMediaDetails(
+      int tmdbId, RequestMediaType type) async {
+    final response = await _dio.get(
+      '/api/requests/media/$tmdbId',
+      queryParameters: {'type': type.name},
+    );
+    return RequestMediaDetails.fromJson(response.data as Map<String, dynamic>);
+  }
+
+  Future<void> requestMedia(
+    RequestMediaItem media, {
+    List<int>? seasons,
+  }) async {
+    await _dio.post('/api/requests', data: {
+      'tmdbId': media.id,
+      'mediaType': media.mediaType.name,
+      'title': media.title,
+      'posterPath': media.posterPath,
+      if (seasons != null && seasons.isNotEmpty) 'seasons': seasons,
+    });
   }
 
   // ==================== INDEXER API ====================
@@ -495,7 +543,8 @@ class IndexerStatus {
     );
   }
 
-  bool get isBusy => isScanning || isBackfillingMetadata || isExtractingSubtitles;
+  bool get isBusy =>
+      isScanning || isBackfillingMetadata || isExtractingSubtitles;
 }
 
 class SubtitleExtractionStats {

@@ -17,9 +17,18 @@ import (
 )
 
 var (
-	IsScanning bool
-	scanMutex  sync.Mutex
+	IsScanning              bool
+	scanMutex               sync.Mutex
+	subtitleExtractionSlots = make(chan struct{}, subtitleExtractionConcurrency())
 )
+
+func subtitleExtractionConcurrency() int {
+	value, err := strconv.Atoi(strings.TrimSpace(os.Getenv("SUBTITLE_EXTRACTION_CONCURRENCY")))
+	if err != nil || value < 1 {
+		return 2
+	}
+	return value
+}
 
 // Supported video extensions
 var videoExtensions = map[string]bool{
@@ -157,7 +166,7 @@ func scanMovies(dir string) error {
 
 		if id, idErr := res.LastInsertId(); idErr == nil {
 			ProbeAndPersist(int(id), displayTitle, normalizedPath, info.Size(), info.ModTime())
-			extractSubtitles(int(id), normalizedPath)
+			go extractSubtitles(int(id), normalizedPath)
 		}
 		return nil
 	})
@@ -271,7 +280,7 @@ func scanSeries(dir string) error {
 
 		if id, idErr := res.LastInsertId(); idErr == nil {
 			ProbeAndPersist(int(id), epTitle, normalizedPath, info.Size(), info.ModTime())
-			extractSubtitles(int(id), normalizedPath)
+			go extractSubtitles(int(id), normalizedPath)
 		}
 		return nil
 	})
@@ -313,6 +322,9 @@ func findOrCreateSeason(showID int, seasonNum int) (int, error) {
 // indexed file into .vtt sidecars and registers them in the database. Failures
 // are non-fatal: a media without (text) subtitles is perfectly valid.
 func extractSubtitles(mediaID int, filePath string) {
+	subtitleExtractionSlots <- struct{}{}
+	defer func() { <-subtitleExtractionSlots }()
+
 	if err := subtitles.ExtractAndRegister(mediaID, filePath); err != nil {
 		log.Printf("Indexer: subtitle extraction failed for media %d: %v", mediaID, err)
 	}

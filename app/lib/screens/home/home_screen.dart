@@ -13,6 +13,7 @@ import '../library/movie_detail_screen.dart';
 import '../library/show_detail_screen.dart';
 import '../player/player_screen.dart';
 import '../player_studio/player_studio_screen.dart';
+import '../settings/playback_preferences_screen.dart';
 import '../../navigation/search_route_observer.dart';
 
 class HomeScreen extends StatefulWidget {
@@ -216,6 +217,10 @@ class _HomeScreenState extends State<HomeScreen> {
                                   onItemTap: (item) => _playMedia(context, item),
                                   onContinueWatchingTitleTap: (item) =>
                                       _openContinueWatchingDetails(context, item),
+                                  onContinueWatchingMarkWatched: (item) =>
+                                      homeProvider.markContinueWatchingAsWatched(item),
+                                  onContinueWatchingRemove: (item) =>
+                                      homeProvider.hideContinueWatchingItem(item),
                                 ),
                               ),
                             if (data != null && data.recentMovies.isNotEmpty) ...[
@@ -335,6 +340,12 @@ class _HomeOverlayBar extends StatelessWidget {
                       Navigator.of(context).push(
                         MaterialPageRoute(builder: (_) => const PlayerStudioScreen()),
                       );
+                    case 'playback':
+                      Navigator.of(context).push(
+                        MaterialPageRoute(
+                          builder: (_) => const PlaybackPreferencesScreen(),
+                        ),
+                      );
                     case 'logout':
                       authProvider.logout();
                   }
@@ -347,6 +358,7 @@ class _HomeOverlayBar extends StatelessWidget {
                   if (!homeProvider.isExtractingSubtitles)
                     const PopupMenuItem(value: 'subtitles', child: Text('Sous-titres')),
                   const PopupMenuItem(value: 'studio', child: Text('Player Studio')),
+                  const PopupMenuItem(value: 'playback', child: Text('Préférences de lecture')),
                   const PopupMenuItem(value: 'logout', child: Text('Déconnexion')),
                 ],
               ),

@@ -13,12 +13,16 @@ class ContinueWatchingCard extends StatefulWidget {
   final HomeMediaItem item;
   final VoidCallback onTap;
   final VoidCallback? onTitleTap;
+  final Future<void> Function(HomeMediaItem item)? onMarkAsWatched;
+  final Future<void> Function(HomeMediaItem item)? onRemoveFromRow;
 
   const ContinueWatchingCard({
     super.key,
     required this.item,
     required this.onTap,
     this.onTitleTap,
+    this.onMarkAsWatched,
+    this.onRemoveFromRow,
   });
 
   @override
@@ -27,6 +31,49 @@ class ContinueWatchingCard extends StatefulWidget {
 
 class _ContinueWatchingCardState extends State<ContinueWatchingCard> {
   bool _hovered = false;
+
+  Future<void> _showContextMenu(Offset globalPosition) async {
+    if (widget.onMarkAsWatched == null && widget.onRemoveFromRow == null) {
+      return;
+    }
+
+    final action = await showMenu<String>(
+      context: context,
+      position: RelativeRect.fromRect(
+        Rect.fromLTWH(globalPosition.dx, globalPosition.dy, 0, 0),
+        Offset.zero & MediaQuery.sizeOf(context),
+      ),
+      color: AppColors.surfaceElevated,
+      items: [
+        if (widget.onMarkAsWatched != null)
+          const PopupMenuItem(
+            value: 'watched',
+            child: Text('Marquer comme vu'),
+          ),
+        if (widget.onRemoveFromRow != null)
+          const PopupMenuItem(
+            value: 'hide',
+            child: Text('Supprimer de Reprendre'),
+          ),
+      ],
+    );
+
+    if (!mounted || action == null) return;
+
+    try {
+      switch (action) {
+        case 'watched':
+          await widget.onMarkAsWatched?.call(widget.item);
+        case 'hide':
+          await widget.onRemoveFromRow?.call(widget.item);
+      }
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Action impossible : $e')),
+      );
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -38,9 +85,12 @@ class _ContinueWatchingCardState extends State<ContinueWatchingCard> {
     return MouseRegion(
       onEnter: (_) => setState(() => _hovered = true),
       onExit: (_) => setState(() => _hovered = false),
-      child: SizedBox(
-        width: width,
-        child: Column(
+      child: GestureDetector(
+        onSecondaryTapDown: (details) => _showContextMenu(details.globalPosition),
+        onLongPressStart: (details) => _showContextMenu(details.globalPosition),
+        child: SizedBox(
+          width: width,
+          child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           mainAxisSize: MainAxisSize.min,
           children: [
@@ -134,6 +184,7 @@ class _ContinueWatchingCardState extends State<ContinueWatchingCard> {
             ],
           ),
         ),
+      ),
     );
   }
 

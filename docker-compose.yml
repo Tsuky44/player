@@ -22,4 +22,8 @@ services:
       - TMDB_API_KEY=your_tmdb_api_key_here
       # Langue des titres/synopsis TMDB (films et séries)
       - TMDB_LANGUAGE=fr-FR
+      # Nombre maximal d'extractions FFmpeg de sous-titres simultanées
+      - SUBTITLE_EXTRACTION_CONCURRENCY=${SUBTITLE_EXTRACTION_CONCURRENCY:-2}
+      - MEDIAHUB_URL=${MEDIAHUB_URL:-http://host.docker.internal:3008}
+      - MEDIAHUB_API_KEY=${MEDIAHUB_API_KEY:-}
     restart: unless-stopped

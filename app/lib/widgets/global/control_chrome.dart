@@ -452,27 +452,11 @@ class ControlChrome extends StatelessWidget {
 
   Widget _seekableTimelineTrack(Widget track) {
     if (onSeekFraction == null) return track;
-    return Builder(
-      builder: (ctx) => GestureDetector(
-        behavior: HitTestBehavior.translucent,
-        onTapDown: (d) {
-          final box = ctx.findRenderObject() as RenderBox?;
-          if (box != null && box.size.width > 0) {
-            final fraction =
-                (d.localPosition.dx / box.size.width).clamp(0.0, 1.0);
-            onSeekFraction!.call(fraction);
-          }
-        },
-        onHorizontalDragUpdate: (d) {
-          final box = ctx.findRenderObject() as RenderBox?;
-          if (box != null && box.size.width > 0) {
-            final fraction =
-                (d.localPosition.dx / box.size.width).clamp(0.0, 1.0);
-            onSeekFraction!.call(fraction);
-          }
-        },
-        child: track,
-      ),
+    return _TimelineSeekable(
+      onSeekFraction: onSeekFraction!,
+      onPlayPause: onPlayPause,
+      isPlaying: isPlaying,
+      child: track,
     );
   }
 
@@ -873,12 +857,33 @@ class ControlChrome extends StatelessWidget {
                 color: Colors.white,
               ),
             ),
+            Align(
+              alignment: Alignment(frac.clamp(0.0, 1.0) * 2 - 1, 0),
+              child: Container(
+                width: 12,
+                height: 12,
+                decoration: BoxDecoration(
+                  color: Colors.white,
+                  shape: BoxShape.circle,
+                  boxShadow: [
+                    BoxShadow(
+                      color: Colors.black.withOpacity(0.4),
+                      blurRadius: 4,
+                      offset: const Offset(0, 1),
+                    ),
+                  ],
+                ),
+              ),
+            ),
           ],
         ),
       ),
     );
 
-    final bar = _seekableTimelineTrack(barTrack);
+    final bar = MouseRegion(
+      cursor: SystemMouseCursors.grab,
+      child: _seekableTimelineTrack(barTrack),
+    );
 
     void addEmbyBtn(List<Widget> out, IconData icon, bool show, VoidCallback? onTap) {
       if (!show) return;
@@ -1341,6 +1346,61 @@ class _TimelineBarIcon extends StatelessWidget {
           ),
         ),
       ),
+    );
+  }
+}
+
+/// Wraps a timeline track so that:
+/// - a tap seeks to the tapped position
+/// - a horizontal drag seeks continuously
+/// - the player pauses at drag start and resumes at drag end if it was playing.
+class _TimelineSeekable extends StatefulWidget {
+  final Widget child;
+  final ValueChanged<double> onSeekFraction;
+  final VoidCallback? onPlayPause;
+  final bool isPlaying;
+
+  const _TimelineSeekable({
+    required this.child,
+    required this.onSeekFraction,
+    this.onPlayPause,
+    this.isPlaying = false,
+  });
+
+  @override
+  State<_TimelineSeekable> createState() => _TimelineSeekableState();
+}
+
+class _TimelineSeekableState extends State<_TimelineSeekable> {
+  bool _wasPlaying = false;
+
+  void _emit(BuildContext context, Offset localPosition) {
+    final box = context.findRenderObject() as RenderBox?;
+    if (box == null || box.size.width <= 0) return;
+    final fraction = (localPosition.dx / box.size.width).clamp(0.0, 1.0);
+    widget.onSeekFraction(fraction);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return GestureDetector(
+      behavior: HitTestBehavior.translucent,
+      onTapDown: (d) => _emit(context, d.localPosition),
+      onHorizontalDragStart: (d) {
+        _wasPlaying = widget.isPlaying;
+        if (_wasPlaying) widget.onPlayPause?.call();
+        _emit(context, d.localPosition);
+      },
+      onHorizontalDragUpdate: (d) => _emit(context, d.localPosition),
+      onHorizontalDragEnd: (_) {
+        if (_wasPlaying) widget.onPlayPause?.call();
+        _wasPlaying = false;
+      },
+      onHorizontalDragCancel: () {
+        if (_wasPlaying) widget.onPlayPause?.call();
+        _wasPlaying = false;
+      },
+      child: widget.child,
     );
   }
 }

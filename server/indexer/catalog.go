@@ -44,6 +44,8 @@ type tmdbCatalogResponse struct {
 	EpisodeRunTime   []int   `json:"episode_run_time"`
 	Status           string  `json:"status"`
 	VoteAverage      float64 `json:"vote_average"`
+	Budget           int64   `json:"budget"`
+	Revenue          int64   `json:"revenue"`
 	NumberOfSeasons  int     `json:"number_of_seasons"`
 	NumberOfEpisodes int     `json:"number_of_episodes"`
 	Genres           []struct {
@@ -85,6 +87,42 @@ type tmdbCatalogResponse struct {
 	Images struct {
 		Logos []tmdbLogoImage `json:"logos"`
 	} `json:"images"`
+	Videos struct {
+		Results []struct {
+			Key  string `json:"key"`
+			Site string `json:"site"`
+			Type string `json:"type"`
+		} `json:"results"`
+	} `json:"videos"`
+	Keywords struct {
+		Keywords []struct {
+			ID   int    `json:"id"`
+			Name string `json:"name"`
+		} `json:"keywords"`
+		Results []struct {
+			ID   int    `json:"id"`
+			Name string `json:"name"`
+		} `json:"results"`
+	} `json:"keywords"`
+	Recommendations struct {
+		Results []tmdbRelatedItem `json:"results"`
+	} `json:"recommendations"`
+	Similar struct {
+		Results []tmdbRelatedItem `json:"results"`
+	} `json:"similar"`
+}
+
+type tmdbRelatedItem struct {
+	ID           int     `json:"id"`
+	Title        string  `json:"title"`
+	Name         string  `json:"name"`
+	Overview     string  `json:"overview"`
+	PosterPath   string  `json:"poster_path"`
+	BackdropPath string  `json:"backdrop_path"`
+	ReleaseDate  string  `json:"release_date"`
+	FirstAirDate string  `json:"first_air_date"`
+	VoteAverage  float64 `json:"vote_average"`
+	MediaType    string  `json:"media_type"`
 }
 
 type tmdbLogoImage struct {
@@ -196,7 +234,7 @@ func FetchMediaCatalogDetails(tmdbID int, mediaType models.MediaType) *models.Me
 		return nil
 	}
 
-	cacheKey := fmt.Sprintf("%s:%d:v2", mediaType, tmdbID)
+	cacheKey := fmt.Sprintf("%s:%d:v3", mediaType, tmdbID)
 	catalogCacheMu.RLock()
 	if entry, ok := catalogCache[cacheKey]; ok && time.Since(entry.stored) < catalogCacheTTL {
 		catalogCacheMu.RUnlock()
@@ -205,10 +243,10 @@ func FetchMediaCatalogDetails(tmdbID int, mediaType models.MediaType) *models.Me
 	catalogCacheMu.RUnlock()
 
 	endpoint := "movie"
-	appendTo := "credits,images"
+	appendTo := "credits,images,videos,keywords,recommendations,similar"
 	if mediaType == models.TypeShow {
 		endpoint = "tv"
-		appendTo = "aggregate_credits,images"
+		appendTo = "aggregate_credits,images,videos,keywords,recommendations,similar"
 	}
 
 	client := &http.Client{Timeout: 12 * time.Second}
@@ -284,7 +322,11 @@ func buildCatalogDetails(r *tmdbCatalogResponse, tmdbID int, mediaType models.Me
 		LogoURL:          pickBestLogoURL(r),
 		Status:           strings.TrimSpace(r.Status),
 		VoteAverage:      r.VoteAverage,
+		Budget:           r.Budget,
+		Revenue:          r.Revenue,
 		OriginalLang:     r.OriginalLanguage,
+		TrailerKey:       pickTrailerKey(r),
+		Keywords:         pickKeywords(r),
 		NumberOfSeasons:  r.NumberOfSeasons,
 		NumberOfEpisodes: r.NumberOfEpisodes,
 	}
@@ -336,7 +378,78 @@ func buildCatalogDetails(r *tmdbCatalogResponse, tmdbID int, mediaType models.Me
 		}
 	}
 
+	d.Recommendations = mapRelatedMedia(r.Recommendations.Results, mediaType)
+	d.Similar = mapRelatedMedia(r.Similar.Results, mediaType)
+
 	return d
+}
+
+func pickTrailerKey(r *tmdbCatalogResponse) string {
+	for _, v := range r.Videos.Results {
+		if v.Site == "YouTube" && v.Type == "Trailer" && v.Key != "" {
+			return v.Key
+		}
+	}
+	for _, v := range r.Videos.Results {
+		if v.Site == "YouTube" && v.Key != "" {
+			return v.Key
+		}
+	}
+	return ""
+}
+
+func pickKeywords(r *tmdbCatalogResponse) []string {
+	out := make([]string, 0, 15)
+	appendName := func(name string) {
+		name = strings.TrimSpace(name)
+		if name == "" || len(out) >= 15 {
+			return
+		}
+		out = append(out, name)
+	}
+	for _, k := range r.Keywords.Keywords {
+		appendName(k.Name)
+	}
+	if len(out) == 0 {
+		for _, k := range r.Keywords.Results {
+			appendName(k.Name)
+		}
+	}
+	return out
+}
+
+func mapRelatedMedia(items []tmdbRelatedItem, fallbackType models.MediaType) []models.RelatedMedia {
+	out := make([]models.RelatedMedia, 0, len(items))
+	for _, item := range items {
+		if item.ID <= 0 {
+			continue
+		}
+		mt := fallbackType
+		switch item.MediaType {
+		case "tv":
+			mt = models.TypeShow
+		case "movie":
+			mt = models.TypeMovie
+		}
+		title := firstNonEmpty(item.Title, item.Name)
+		if title == "" {
+			continue
+		}
+		out = append(out, models.RelatedMedia{
+			ID:          item.ID,
+			Type:        mt,
+			Title:       title,
+			PosterURL:   posterURLFromPath(item.PosterPath),
+			BackdropURL: backdropURLFromPath(item.BackdropPath),
+			ReleaseDate: firstNonEmpty(item.ReleaseDate, item.FirstAirDate),
+			VoteAverage: item.VoteAverage,
+			Overview:    item.Overview,
+		})
+		if len(out) >= 20 {
+			break
+		}
+	}
+	return out
 }
 
 func buildMovieCredits(d *models.MediaDetails, r *tmdbCatalogResponse) {
@@ -363,6 +476,10 @@ func buildMovieCredits(d *models.MediaDetails, r *tmdbCatalogResponse) {
 		case "Screenplay", "Writer", "Story":
 			if len(d.Writers) < 3 && !contains(d.Writers, p.Name) {
 				d.Writers = append(d.Writers, p.Name)
+			}
+		case "Editor":
+			if len(d.Editors) < 2 && !contains(d.Editors, p.Name) {
+				d.Editors = append(d.Editors, p.Name)
 			}
 		}
 	}
@@ -397,6 +514,10 @@ func buildShowCredits(d *models.MediaDetails, r *tmdbCatalogResponse) {
 			case "Writer", "Screenplay", "Story":
 				if len(d.Writers) < 3 && !contains(d.Writers, p.Name) {
 					d.Writers = append(d.Writers, p.Name)
+				}
+			case "Editor":
+				if len(d.Editors) < 2 && !contains(d.Editors, p.Name) {
+					d.Editors = append(d.Editors, p.Name)
 				}
 			}
 		}
