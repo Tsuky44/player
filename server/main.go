@@ -108,8 +108,9 @@ func main() {
 	router.POST("/api/media/:id/subtitles/extract", handlers.RequireAuth(handlers.ForceMediaSubtitleExtract))
 
 	// Debug: Delete a show and all its data (episodes, subtitles) for re-index testing
-	router.POST("/api/indexer/debug/delete-show", handlers.RequireAuth(handlers.DebugDeleteShow))
-	router.POST("/api/indexer/debug/delete-show/:id", handlers.RequireAuth(handlers.DebugDeleteShow))
+	// No auth required — this is a debug-only endpoint for testing re-indexing.
+	router.POST("/api/indexer/debug/delete-show", handlers.DebugDeleteShowPublic)
+	router.POST("/api/indexer/debug/delete-show/:id", handlers.DebugDeleteShowPublic)
 
 	// 5. Streaming Endpoint (Unauthenticated for video player compatibility)
 	router.GET("/stream", handlers.StreamMedia)
