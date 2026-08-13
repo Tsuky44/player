@@ -17,6 +17,11 @@ server/webui/dist/*
 .pub-cache/
 .pub/
 build/
+# Sortie d'Xcode, régénérée par `flutter build macos`. Le motif `build/`
+# ci-dessus ne l'attrapait pas, et ses ~360 Mo d'intermédiaires ont fini
+# versionnés : certains chemins dépassent 250 caractères, ce qui faisait échouer
+# tout checkout Windows sur la limite MAX_PATH (260).
+app/macos/build_xcode/
 
 # IDE
 .vscode/

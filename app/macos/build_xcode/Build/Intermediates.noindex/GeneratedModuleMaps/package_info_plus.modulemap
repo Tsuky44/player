@@ -1,4 +1,0 @@
-module package_info_plus {
-umbrella "/Users/mathis/Documents/project-mac/player/app/macos/Flutter/ephemeral/Packages/.packages/package_info_plus-9.0.1/Sources/package_info_plus/include"
-export *
-}

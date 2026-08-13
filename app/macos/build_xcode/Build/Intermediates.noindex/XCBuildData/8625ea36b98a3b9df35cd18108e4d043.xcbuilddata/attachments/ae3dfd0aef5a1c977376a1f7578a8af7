@@ -1,4 +1,0 @@
-
-module screen_brightness_macos.__Swift {
-  exclude header "screen_brightness_macos-Swift.h"
-}

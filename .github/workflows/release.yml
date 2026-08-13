@@ -221,6 +221,13 @@ jobs:
       run:
         shell: pwsh
     steps:
+      # Win32 plafonne les chemins a 260 caracteres, et git abandonne le
+      # checkout des qu'un fichier depasse. Les chemins profonds sont faciles a
+      # reintroduire (un plugin Flutter, un dossier de build) et l'echec est
+      # alors total et immediat : ce reglage evite d'y revenir.
+      - name: Autoriser les chemins longs
+        run: git config --global core.longpaths true
+
       - uses: actions/checkout@v4
 
       - uses: subosito/flutter-action@v2
