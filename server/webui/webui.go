@@ -30,16 +30,19 @@ import (
 //go:embed all:dist
 var dist embed.FS
 
-// entryDocuments must never be served from a stale browser cache: they are not
-// content-hashed by Flutter, so a cached copy after a deploy pairs an old app
-// shell with new assets.
-var entryDocuments = map[string]bool{
-	"index.html":                 true,
-	"flutter_service_worker.js":  true,
-	"flutter_bootstrap.js":       true,
-	"version.json":               true,
-	"main.dart.js":               true,
-}
+// cacheControl is "no-cache" for the whole bundle, which asks the browser to
+// revalidate before reusing a stored response rather than to stop storing it.
+//
+// A longer max-age would be wrong here: Flutter puts no content hash in any of
+// the names it emits — index.html, main.dart.js and everything under assets/
+// keep their name from one build to the next. Anything held without
+// revalidation therefore serves the previous deploy under the current name, and
+// mixes an old app shell with new assets.
+//
+// Revalidation is cheap because New() hashes every file at startup: a client
+// that is already up to date gets a 304 with no body, and keeps the bytes it
+// has. Only what actually changed is downloaded again.
+const cacheControl = "no-cache"
 
 // Handler serves the embedded bundle, falling back to index.html so client-side
 // routes (/films, /media/42) survive a reload or a shared link.
@@ -140,11 +143,7 @@ func (h *Handler) serveFile(w http.ResponseWriter, r *http.Request, name string)
 
 	w.Header().Set("Content-Type", contentType)
 	w.Header().Set("ETag", etag)
-	if entryDocuments[name] {
-		w.Header().Set("Cache-Control", "no-cache")
-	} else {
-		w.Header().Set("Cache-Control", "public, max-age=86400")
-	}
+	w.Header().Set("Cache-Control", cacheControl)
 
 	// Revalidation hit: the browser already holds this exact content.
 	if match := r.Header.Get("If-None-Match"); match != "" && match == etag {

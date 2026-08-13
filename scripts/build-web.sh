@@ -27,7 +27,13 @@ echo -e "${YELLOW}1. Build du bundle Flutter Web...${NC}"
 # CanvasKit (son moteur de rendu) sur https://www.gstatic.com. Un serveur media
 # auto-heberge doit s'afficher meme quand le reseau du spectateur bloque Google,
 # et sans signaler chaque visiteur a un tiers.
-(cd "$APP_DIR" && flutter build web --release --no-web-resources-cdn)
+# --pwa-strategy=none supprime le service worker. Celui de Flutter sert l'app
+# offline-first depuis le CacheStorage du navigateur : il court-circuite les
+# en-tetes HTTP, rend l'ancienne version au chargement suivant un deploiement et
+# n'active la nouvelle qu'au chargement d'apres. Un client de serveur media
+# auto-heberge n'a aucun besoin de fonctionner hors ligne. Flutter le declare
+# lui-meme deprecie.
+(cd "$APP_DIR" && flutter build web --release --no-web-resources-cdn --pwa-strategy=none)
 
 echo -e "${YELLOW}2. Copie vers server/webui/dist/...${NC}"
 # Wipe everything but the placeholder, so files removed by a Flutter upgrade
@@ -51,7 +57,36 @@ find "$DIST_DIR" -name '*.symbols' -delete
 find "$DIST_DIR/canvaskit" \( -name 'skwasm*' -o -name 'wimp*' \) -delete
 rm -rf "$DIST_DIR/canvaskit/experimental_webparagraph"
 
-echo -e "${YELLOW}4. Pré-compression gzip des assets texte...${NC}"
+echo -e "${YELLOW}4. Service worker d'auto-désinstallation...${NC}"
+# Ne plus generer de service worker ne desinstalle pas ceux deja enregistres :
+# ils continueraient a servir leur cache indefiniment. Le navigateur reverifie
+# periodiquement le script a son URL d'origine, il faut donc y repondre.
+#
+# Et il faut y repondre par du JavaScript : le handler Go renvoie index.html
+# pour tout chemin inconnu (fallback SPA), donc supprimer le fichier ferait
+# parvenir du HTML au navigateur, la mise a jour du worker echouerait, et
+# l'ancien resterait en place. D'ou ce remplacant minimal, qui vide les caches,
+# se desinscrit, puis recharge les onglets ouverts une fois.
+cat > "$DIST_DIR/flutter_service_worker.js" <<'SW'
+// Remplacant du service worker de Flutter, retire via --pwa-strategy=none.
+// Son seul role est de desinstaller les workers encore enregistres chez les
+// clients qui ont visite une version precedente. A supprimer quand le parc
+// aura tourne.
+self.addEventListener('install', () => self.skipWaiting());
+self.addEventListener('activate', (event) => {
+  event.waitUntil((async () => {
+    for (const key of await caches.keys()) {
+      await caches.delete(key);
+    }
+    await self.registration.unregister();
+    for (const client of await self.clients.matchAll({ type: 'window' })) {
+      client.navigate(client.url);
+    }
+  })());
+});
+SW
+
+echo -e "${YELLOW}5. Pré-compression gzip des assets texte...${NC}"
 # Pre-compresser au build veut dire que le serveur n'y depense aucun CPU, et que
 # le bundle reste petit meme si le reverse proxy devant n'a pas gzip active.
 # -k garde l'original : les clients qui n'envoient pas Accept-Encoding en ont
