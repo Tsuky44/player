@@ -1,0 +1,375 @@
+name: Release
+
+# Publie une version complete d'Onyx : les trois installateurs clients, le
+# bundle web, et l'image Docker qui embarque les deux.
+#
+# Ce workflow remplace publish-image.sh. Le script local doit recuperer les
+# artefacts de l'image precedente parce qu'un Mac ne produit jamais l'EXE
+# Windows ; ici les trois plateformes sont construites en parallele sur leur
+# propre runner, donc chaque publication repart d'artefacts frais.
+#
+# Declenchement :
+#   - `git tag v1.0.1 && git push --tags`
+#   - ou l'onglet Actions -> Release -> Run workflow (saisie de la version)
+
+on:
+  push:
+    tags:
+      - "v*"
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "Version a publier, sans le v (ex: 1.0.1)"
+        required: true
+        type: string
+
+permissions:
+  contents: write # creer la GitHub Release
+  packages: write # pousser sur ghcr.io
+
+env:
+  # Epinglee : une montee de version de Flutter doit etre un changement
+  # deliberat et teste, pas une surprise au milieu d'une publication.
+  FLUTTER_VERSION: "3.44.2"
+  IMAGE_NAME: playeur-server
+
+jobs:
+  # ---------------------------------------------------------------------------
+  # Resout la version une seule fois, pour que les quatre jobs suivants nomment
+  # leurs artefacts de facon identique.
+  # ---------------------------------------------------------------------------
+  prepare:
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.resolve.outputs.version }}
+      version_tag: ${{ steps.resolve.outputs.version_tag }}
+      minor_tag: ${{ steps.resolve.outputs.minor_tag }}
+      image: ${{ steps.resolve.outputs.image }}
+    steps:
+      - id: resolve
+        env:
+          # Passe par l'environnement plutot que par une interpolation dans le
+          # corps du script : une saisie manuelle ne doit jamais pouvoir devenir
+          # du shell.
+          VERSION_INPUT: ${{ inputs.version }}
+          REF_NAME: ${{ github.ref_name }}
+          OWNER: ${{ github.repository_owner }}
+        run: |
+          set -euo pipefail
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            VERSION="$VERSION_INPUT"
+          else
+            VERSION="$REF_NAME"
+          fi
+          VERSION="${VERSION#v}"
+
+          if ! printf '%s' "$VERSION" | grep -Eq '^[0-9]+\.[0-9]+\.[0-9]+$'; then
+            echo "::error::Version invalide : '$VERSION' (format attendu : X.Y.Z)"
+            exit 1
+          fi
+
+          # ghcr.io n'accepte que des minuscules, la casse du proprietaire
+          # GitHub est libre.
+          OWNER_LC="$(printf '%s' "$OWNER" | tr '[:upper:]' '[:lower:]')"
+
+          {
+            echo "version=$VERSION"
+            echo "version_tag=v$VERSION"
+            echo "minor_tag=v$(printf '%s' "$VERSION" | cut -d. -f1,2)"
+            echo "image=ghcr.io/$OWNER_LC/$IMAGE_NAME"
+          } >> "$GITHUB_OUTPUT"
+
+          echo "### Onyx $VERSION" >> "$GITHUB_STEP_SUMMARY"
+
+  # ---------------------------------------------------------------------------
+  # Android — APK
+  # ---------------------------------------------------------------------------
+  build-android:
+    needs: prepare
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+
+      - uses: subosito/flutter-action@v2
+        with:
+          flutter-version: ${{ env.FLUTTER_VERSION }}
+          channel: stable
+          cache: true
+
+      # Sans keystore fourni, Gradle en fabrique un a la volee — et comme le
+      # runner est jetable, il serait different a chaque publication. Android
+      # refuse alors la mise a jour d'un APK par un APK signe d'une autre cle :
+      # les utilisateurs devraient desinstaller avant chaque version.
+      - name: Installer la cle de signature
+        env:
+          KEYSTORE_B64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+          KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+          KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
+        run: |
+          set -euo pipefail
+          if [ -z "${KEYSTORE_B64:-}" ]; then
+            echo "::warning::ANDROID_KEYSTORE_BASE64 absent — APK signe avec la cle de debug. Il s'installe, mais ne pourra pas mettre a jour une version precedente. Voir docs/release-ci.md."
+            exit 0
+          fi
+          printf '%s' "$KEYSTORE_B64" | base64 -d > app/android/onyx-release.jks
+          cat > app/android/key.properties <<EOF
+          storeFile=onyx-release.jks
+          storePassword=$KEYSTORE_PASSWORD
+          keyAlias=$KEY_ALIAS
+          keyPassword=$KEY_PASSWORD
+          EOF
+          echo "Keystore de release installe."
+
+      - name: flutter pub get
+        working-directory: app
+        run: flutter pub get
+
+      - name: Build APK
+        working-directory: app
+        run: |
+          flutter build apk --release \
+            --build-name="${{ needs.prepare.outputs.version }}" \
+            --build-number="${{ github.run_number }}"
+
+      - name: Nommer l'artefact
+        env:
+          VERSION: ${{ needs.prepare.outputs.version }}
+        run: |
+          set -euo pipefail
+          mkdir -p out
+          cp app/build/app/outputs/flutter-apk/app-release.apk \
+             "out/Onyx-${VERSION}-android.apk"
+          ls -lh out
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: installer-android
+          path: out/*.apk
+          retention-days: 7
+          if-no-files-found: error
+
+  # ---------------------------------------------------------------------------
+  # macOS — DMG
+  # ---------------------------------------------------------------------------
+  build-macos:
+    needs: prepare
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: subosito/flutter-action@v2
+        with:
+          flutter-version: ${{ env.FLUTTER_VERSION }}
+          channel: stable
+          cache: true
+
+      - name: flutter pub get
+        working-directory: app
+        run: flutter pub get
+
+      - name: Build macOS
+        working-directory: app
+        run: flutter build macos --release
+
+      # Meme empaquetage que scripts/build-releases.sh : le .app renomme, plus
+      # un lien vers /Applications pour que le glisser-deposer soit evident a
+      # l'ouverture du volume.
+      - name: Packager le DMG
+        env:
+          VERSION: ${{ needs.prepare.outputs.version }}
+        run: |
+          set -euo pipefail
+          APP_BUNDLE="$(find app/build/macos -maxdepth 5 -name '*.app' -type d | head -1)"
+          if [ -z "$APP_BUNDLE" ]; then
+            echo "::error::Bundle .app introuvable apres le build"
+            exit 1
+          fi
+
+          STAGE="$(mktemp -d)"
+          cp -R "$APP_BUNDLE" "$STAGE/Onyx.app"
+          ln -sf /Applications "$STAGE/Applications"
+
+          mkdir -p out
+          hdiutil create \
+            -volname "Onyx ${VERSION}" \
+            -srcfolder "$STAGE" \
+            -ov -format UDZO \
+            "out/Onyx-${VERSION}-macos.dmg"
+          rm -rf "$STAGE"
+          ls -lh out
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: installer-macos
+          path: out/*.dmg
+          retention-days: 7
+          if-no-files-found: error
+
+  # ---------------------------------------------------------------------------
+  # Windows — EXE (installeur Inno Setup) + ZIP portable
+  # ---------------------------------------------------------------------------
+  build-windows:
+    needs: prepare
+    runs-on: windows-latest
+    defaults:
+      run:
+        shell: pwsh
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: subosito/flutter-action@v2
+        with:
+          flutter-version: ${{ env.FLUTTER_VERSION }}
+          channel: stable
+          cache: true
+
+      - name: flutter pub get
+        working-directory: app
+        run: flutter pub get
+
+      - name: Build Windows
+        working-directory: app
+        env:
+          CMAKE_GENERATOR: Ninja
+        run: flutter build windows --release
+
+      - name: Construire l'installeur Inno Setup
+        working-directory: app
+        env:
+          VERSION: ${{ needs.prepare.outputs.version }}
+        run: |
+          $ErrorActionPreference = "Stop"
+          $iscc = "C:\Program Files (x86)\Inno Setup 6\ISCC.exe"
+          if (-not (Test-Path $iscc)) {
+            Write-Host "Inno Setup absent de l'image du runner — installation."
+            choco install innosetup -y --no-progress
+          }
+          # /D alimente le #define de installer.iss, /F impose le nom de sortie.
+          & $iscc "/DAppVersion=$env:VERSION" "/FOnyx-$env:VERSION-windows" "installer.iss"
+          if ($LASTEXITCODE -ne 0) { throw "ISCC a echoue ($LASTEXITCODE)" }
+
+      - name: Rassembler les artefacts
+        env:
+          VERSION: ${{ needs.prepare.outputs.version }}
+        run: |
+          $ErrorActionPreference = "Stop"
+          New-Item -ItemType Directory -Force -Path out | Out-Null
+          Copy-Item "app\Output\Onyx-$env:VERSION-windows.exe" "out\"
+          # Le ZIP portable depanne les postes ou l'installeur ne peut pas
+          # s'executer (droits admin refuses, politique d'entreprise).
+          Compress-Archive `
+            -Path "app\build\windows\x64\runner\Release\*" `
+            -DestinationPath "out\Onyx-$env:VERSION-windows-portable.zip" -Force
+          Get-ChildItem out
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: installer-windows
+          path: |
+            out/*.exe
+            out/*.zip
+          retention-days: 7
+          if-no-files-found: error
+
+  # ---------------------------------------------------------------------------
+  # Bundle web + image Docker + GitHub Release
+  # ---------------------------------------------------------------------------
+  publish:
+    needs: [prepare, build-android, build-macos, build-windows]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: subosito/flutter-action@v2
+        with:
+          flutter-version: ${{ env.FLUTTER_VERSION }}
+          channel: stable
+          cache: true
+
+      # Le Dockerfile fait `COPY downloads/ /app/downloads/`, et le handler Go
+      # scanne ce dossier au runtime pour construire /api/downloads. Deposer les
+      # fichiers ici suffit donc a faire apparaitre les liens dans l'UI : rien a
+      # declarer ailleurs.
+      - name: Recuperer les installateurs
+        uses: actions/download-artifact@v4
+        with:
+          pattern: installer-*
+          merge-multiple: true
+          path: server/downloads
+
+      - name: Inventaire des installateurs
+        run: |
+          set -euo pipefail
+          ls -lh server/downloads
+          {
+            echo "### Installateurs embarques"
+            echo ""
+            echo "| Fichier | Taille |"
+            echo "|---|---|"
+            for f in server/downloads/*; do
+              [ -f "$f" ] || continue
+              case "$f" in *.gitkeep) continue ;; esac
+              echo "| $(basename "$f") | $(du -h "$f" | cut -f1) |"
+            done
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      # Le bundle web est embarque dans le binaire Go via go:embed, il doit donc
+      # exister avant le build Docker. Le script porte les reglages non evidents
+      # (CanvasKit local, purge des .symbols et de skwasm, pre-compression) :
+      # on l'appelle plutot que de les redire ici.
+      - name: Build du client Web
+        run: bash scripts/build-web.sh
+
+      - uses: docker/setup-buildx-action@v3
+
+      # Le GITHUB_TOKEN du run suffit pour ghcr.io grace a `packages: write` —
+      # aucun PAT a creer ni a saisir, contrairement au script local.
+      - uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Build & push de l'image
+        uses: docker/build-push-action@v6
+        with:
+          context: ./server
+          platforms: linux/amd64
+          push: true
+          tags: |
+            ${{ needs.prepare.outputs.image }}:latest
+            ${{ needs.prepare.outputs.image }}:${{ needs.prepare.outputs.version_tag }}
+            ${{ needs.prepare.outputs.image }}:${{ needs.prepare.outputs.minor_tag }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      # Double distribution : l'image sert les installateurs sur /api/downloads
+      # pour qui a deja un serveur, la Release les sert a qui n'en a pas encore.
+      - name: GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ needs.prepare.outputs.version_tag }}
+          name: Onyx ${{ needs.prepare.outputs.version }}
+          generate_release_notes: true
+          files: |
+            server/downloads/*.exe
+            server/downloads/*.zip
+            server/downloads/*.dmg
+            server/downloads/*.apk
+          body: |
+            ## Image Docker
+
+            ```
+            docker pull ${{ needs.prepare.outputs.image }}:${{ needs.prepare.outputs.version_tag }}
+            ```
+
+            Tags publies : `latest`, `${{ needs.prepare.outputs.version_tag }}`, `${{ needs.prepare.outputs.minor_tag }}`
+
+            Les installateurs ci-dessous sont aussi embarques dans l'image et
+            servis par le serveur sur `/api/downloads` (Parametres -> Applications).
