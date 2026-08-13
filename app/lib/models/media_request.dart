@@ -9,6 +9,18 @@ RequestMediaStatus _statusFromJson(String? value) {
   );
 }
 
+/// MediaHub rules: only seasons with status [unknown] can be requested.
+/// Available, partial, pending and processing seasons are excluded.
+extension RequestMediaStatusX on RequestMediaStatus {
+  bool get canRequest => this == RequestMediaStatus.unknown;
+
+  bool get blocksSeasonRequest =>
+      this == RequestMediaStatus.available ||
+      this == RequestMediaStatus.partial ||
+      this == RequestMediaStatus.pending ||
+      this == RequestMediaStatus.processing;
+}
+
 class RequestMediaItem {
   final int id;
   final RequestMediaType mediaType;
@@ -111,6 +123,46 @@ class RequestSeason {
       posterPath == null || posterPath!.isEmpty
           ? null
           : 'https://image.tmdb.org/t/p/w300$posterPath';
+}
+
+class RequestEpisode {
+  final int id;
+  final int number;
+  final String name;
+  final String overview;
+  final String? stillPath;
+  final String? airDate;
+  final int runtime;
+  final double rating;
+
+  const RequestEpisode({
+    required this.id,
+    required this.number,
+    required this.name,
+    required this.overview,
+    required this.stillPath,
+    required this.airDate,
+    required this.runtime,
+    required this.rating,
+  });
+
+  factory RequestEpisode.fromJson(Map<String, dynamic> json) {
+    return RequestEpisode(
+      id: json['id'] as int? ?? 0,
+      number: json['number'] as int? ?? 0,
+      name: json['name'] as String? ?? '',
+      overview: json['overview'] as String? ?? '',
+      stillPath: json['stillPath'] as String?,
+      airDate: json['airDate'] as String?,
+      runtime: json['runtime'] as int? ?? 0,
+      rating: (json['rating'] as num? ?? 0).toDouble(),
+    );
+  }
+
+  String? get stillUrl =>
+      stillPath == null || stillPath!.isEmpty
+          ? null
+          : 'https://image.tmdb.org/t/p/w500$stillPath';
 }
 
 class RequestCastMember {

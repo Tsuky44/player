@@ -18,6 +18,26 @@ import (
 	"github.com/julienschmidt/httprouter"
 )
 
+// segmentDuration is the HLS target segment length in seconds.
+//
+// Time-to-first-playlist is proportional to it: FFmpeg cannot publish the
+// variant playlist before the first segment is fully encoded. Measured 0.31s at
+// 4s vs 0.16s at 2s on a fast host — on the CPU-only production box with a 4K
+// HEVC source that difference is seconds of spinner, so 2s it is.
+const segmentDuration = 2
+
+// segmentWait is how long a request for a not-yet-written segment will wait for
+// the transcoder to produce it before giving up.
+//
+// Deliberately longer than the couple of seconds a segment takes to encode:
+// answering 503 hands the problem to the player's retry backoff, which costs
+// far more than the wait it avoids — a segment that was 2s away can take much
+// longer to be re-requested than to be produced. Holding the request open
+// covers the normal case (the encoder is close behind and about to write it)
+// while still giving up quickly enough on a target that is genuinely minutes
+// away, which the client should have turned into a new session anyway.
+const segmentWait = 12 * time.Second
+
 // Handler wires the HLS transcoding endpoints to their dependencies.
 type Handler struct {
 	manager *SessionManager
@@ -87,6 +107,15 @@ type startResponse struct {
 	Duration    float64 `json:"duration"`
 	StartOffset int     `json:"start_offset"`
 	Quality     string  `json:"quality"`
+	// AudioMap lists the source audio tracks published as renditions, in the
+	// order the player will enumerate them. Position k in the player's audio
+	// track list is source track AudioMap[k], which is how the client switches
+	// language without asking for a new session.
+	AudioMap []int `json:"audio_map"`
+	// BurnedSubtitle echoes the bitmap subtitle stream rendered into the video,
+	// or -1. The client compares it with what it asked for to know whether the
+	// request was honoured.
+	BurnedSubtitle int `json:"burned_subtitle"`
 }
 
 func (h *Handler) handleStart(w http.ResponseWriter, r *http.Request, mediaID int) {
@@ -98,6 +127,7 @@ func (h *Handler) handleStart(w http.ResponseWriter, r *http.Request, mediaID in
 	}
 	startSeconds := atoiDefault(r.URL.Query().Get("start"), 0)
 	audioIndex := atoiDefault(r.URL.Query().Get("audio"), 0)
+	burnSubtitle := atoiDefault(r.URL.Query().Get("burnsub"), NoBurnedSubtitle)
 
 	inputPath, err := h.getMediaFilePath(mediaID)
 	if err != nil {
@@ -106,10 +136,18 @@ func (h *Handler) handleStart(w http.ResponseWriter, r *http.Request, mediaID in
 		return
 	}
 
-	probe, err := ProbeTracks(inputPath)
-	if err != nil {
-		log.Printf("HLS start: probe failed for media %d: %v", mediaID, err)
-		probe = &ProbeResult{}
+	// Prefer the probe persisted at index time. Re-running ffprobe here costs
+	// 0.3–1s on network storage and is paid again on every quality switch,
+	// audio switch and large seek — all of which restart the session.
+	probe, ok := h.loadCachedProbe(mediaID, inputPath)
+	if !ok {
+		probe, err = ProbeTracks(inputPath)
+		if err != nil {
+			log.Printf("HLS start: probe failed for media %d: %v", mediaID, err)
+			probe = &ProbeResult{}
+		} else {
+			h.persistProbe(mediaID, inputPath, probe)
+		}
 	}
 	if audioIndex < 0 || audioIndex >= len(probe.Audio) {
 		audioIndex = 0
@@ -122,14 +160,34 @@ func (h *Handler) handleStart(w http.ResponseWriter, r *http.Request, mediaID in
 		return
 	}
 
+	audioMap := SelectAudioRenditions(probe, audioIndex)
+
+	// Only a real bitmap stream may be burned in. A bogus index would make FFmpeg
+	// fail to build its filter graph and the whole session would die, so an
+	// unusable request degrades to no burn-in rather than to a broken stream.
+	if burnSubtitle >= 0 && !isBurnableSubtitle(probe, burnSubtitle) {
+		log.Printf("HLS start: media %d: subtitle 0:s:%d cannot be burned in, ignoring",
+			mediaID, burnSubtitle)
+		burnSubtitle = NoBurnedSubtitle
+	}
+
+	// Repackage the picture rather than re-encode it whenever that is safe: the
+	// browser only ever needed a different container and a different audio codec,
+	// not different frames.
+	bitrate := h.sourceBitrate(mediaID)
+	copyVideo := CanCopyVideo(probe, quality, burnSubtitle >= 0, bitrate, copyBitrateCeiling())
+
 	args := BuildFFmpegArgs(TranscodeOptions{
-		InputPath:       inputPath,
-		Quality:         quality,
-		StartSeconds:    startSeconds,
-		TmpDir:          tmpDir,
-		Probe:           probe,
-		SegmentDuration: 4,
-		AudioTypedIndex: audioIndex,
+		InputPath:              inputPath,
+		Quality:                quality,
+		StartSeconds:           startSeconds,
+		TmpDir:                 tmpDir,
+		Probe:                  probe,
+		SegmentDuration:        segmentDuration,
+		AudioTypedIndexes:      audioMap,
+		BurnSubtitle:           burnSubtitle >= 0,
+		BurnSubtitleTypedIndex: burnSubtitle,
+		CopyVideo:              copyVideo,
 	})
 
 	ctx, cancel := context.WithCancel(context.Background())
@@ -169,19 +227,27 @@ func (h *Handler) handleStart(w http.ResponseWriter, r *http.Request, mediaID in
 
 	baseURL := getBaseURL(r)
 	resp := startResponse{
-		SessionID:   sessionID,
-		MasterURL:   fmt.Sprintf("%s/api/v1/stream/%d/%s/master.m3u8", baseURL, mediaID, sessionID),
-		Duration:    probe.Duration,
-		StartOffset: startSeconds,
-		Quality:     quality,
+		SessionID:      sessionID,
+		MasterURL:      fmt.Sprintf("%s/api/v1/stream/%d/%s/master.m3u8", baseURL, mediaID, sessionID),
+		Duration:       probe.Duration,
+		StartOffset:    startSeconds,
+		Quality:        quality,
+		AudioMap:       audioMap,
+		BurnedSubtitle: burnSubtitle,
 	}
 
 	w.Header().Set("Content-Type", "application/json")
 	w.Header().Set("Cache-Control", "no-cache")
 	_ = json.NewEncoder(w).Encode(resp)
 
-	log.Printf("HLS: session %s media %d quality=%s start=%ds audio=%d ready in %v",
-		sessionID, mediaID, quality, startSeconds, audioIndex, time.Since(startedAt))
+	videoMode := "encode"
+	if copyVideo {
+		videoMode = "copy"
+	}
+	log.Printf("HLS: session %s media %d quality=%s video=%s (%.1f Mbps) start=%ds audio=%d renditions=%v burnsub=%d ready in %v",
+		sessionID, mediaID, quality, videoMode, float64(bitrate)/1e6,
+		startSeconds, audioIndex, audioMap, burnSubtitle,
+		time.Since(startedAt))
 }
 
 // handleServeFile streams a playlist or segment straight from the session temp
@@ -202,23 +268,217 @@ func (h *Handler) handleServeFile(w http.ResponseWriter, r *http.Request, sessio
 	}
 
 	filePath := filepath.Join(session.TmpDir, filename)
+	ext := strings.ToLower(filepath.Ext(filename))
+
+	// A segment listed in the playlist can legitimately not exist on disk yet:
+	// the JIT throttler SIGSTOPs FFmpeg once it is far enough ahead, and resumes
+	// it on the next tick. Answering 404 there is fatal for the HLS demuxer, so
+	// wait briefly for the file, then ask the client to retry instead.
 	if _, err := os.Stat(filePath); os.IsNotExist(err) {
-		http.Error(w, "file not ready", http.StatusNotFound)
+		if ext == ".ts" && waitForPath(filePath, segmentWait) {
+			// produced while we waited — fall through and serve it
+		} else if ext == ".ts" {
+			w.Header().Set("Retry-After", "1")
+			http.Error(w, "segment not ready", http.StatusServiceUnavailable)
+			return
+		} else {
+			http.Error(w, "file not ready", http.StatusNotFound)
+			return
+		}
+	}
+
+	// The master is rewritten rather than served verbatim — see
+	// filterMasterPlaylist for why FFmpeg's own output cannot be trusted here.
+	if filename == "master.m3u8" {
+		raw, err := os.ReadFile(filePath)
+		if err != nil {
+			http.Error(w, "file not ready", http.StatusNotFound)
+			return
+		}
+		w.Header().Set("Content-Type", "application/vnd.apple.mpegurl")
+		w.Header().Set("Cache-Control", "no-cache")
+		_, _ = w.Write([]byte(filterMasterPlaylist(string(raw))))
 		return
 	}
 
-	switch strings.ToLower(filepath.Ext(filename)) {
+	switch ext {
 	case ".ts":
 		w.Header().Set("Content-Type", "video/mp2t")
+		// Segments are immutable for the lifetime of the session: name them once,
+		// never rewrite them. Revalidating each one costs a round-trip per 2s of
+		// video, which matters most on the re-reads a seek triggers.
+		w.Header().Set("Cache-Control", "private, max-age=31536000, immutable")
 	case ".m3u8":
 		w.Header().Set("Content-Type", "application/vnd.apple.mpegurl")
+		// The variant playlist grows as segments land — never cache it.
+		w.Header().Set("Cache-Control", "no-cache")
 	case ".vtt":
 		w.Header().Set("Content-Type", "text/vtt")
+		w.Header().Set("Cache-Control", "private, max-age=3600")
 	default:
 		w.Header().Set("Content-Type", "application/octet-stream")
+		w.Header().Set("Cache-Control", "no-cache")
 	}
-	w.Header().Set("Cache-Control", "no-cache")
 	http.ServeFile(w, r, filePath)
+}
+
+// filterMasterPlaylist drops the audio-only variants FFmpeg writes into the
+// master playlist alongside the real video variant.
+//
+// When an audio rendition group is used, FFmpeg declares every audio track
+// TWICE: once as #EXT-X-MEDIA — correct, that is how a player reaches a group
+// member — and once more as a standalone #EXT-X-STREAM-INF carrying no
+// RESOLUTION. That second form advertises the track as a complete, playable
+// stream, and because those entries have by far the lowest BANDWIDTH in the
+// master (~150 kbps against several Mbps), an adaptive player picks one and
+// lands on a stream with no video in it at all.
+//
+// ffprobe hides this: it just reports the first program, which is the video one.
+// A real player selecting by bandwidth does not, which is why publishing audio
+// renditions regressed playback while the probe output looked fine.
+func filterMasterPlaylist(content string) string {
+	lines := strings.Split(content, "\n")
+
+	// Only rewrite when a genuine video variant survives the filter, so an
+	// audio-only media can never be served an empty master.
+	hasVideoVariant := false
+	for _, l := range lines {
+		if strings.HasPrefix(l, "#EXT-X-STREAM-INF") && strings.Contains(l, "RESOLUTION=") {
+			hasVideoVariant = true
+			break
+		}
+	}
+	if !hasVideoVariant {
+		return content
+	}
+
+	out := make([]string, 0, len(lines))
+	for i := 0; i < len(lines); i++ {
+		line := lines[i]
+		if !strings.HasPrefix(line, "#EXT-X-STREAM-INF") || strings.Contains(line, "RESOLUTION=") {
+			out = append(out, line)
+			continue
+		}
+		// Drop the tag together with the URI line it introduces.
+		for i+1 < len(lines) && strings.TrimSpace(lines[i+1]) == "" {
+			i++
+		}
+		if i+1 < len(lines) {
+			i++
+		}
+	}
+	return strings.Join(out, "\n")
+}
+
+// waitForPath polls for a file to appear, returning true if it did in time.
+func waitForPath(path string, timeout time.Duration) bool {
+	deadline := time.Now().Add(timeout)
+	for time.Now().Before(deadline) {
+		if _, err := os.Stat(path); err == nil {
+			return true
+		}
+		time.Sleep(25 * time.Millisecond)
+	}
+	return false
+}
+
+// loadCachedProbe returns the probe persisted by the indexer, provided the file
+// has not changed on disk since. Mirrors indexer.LoadCachedProbe, which cannot
+// be imported here (indexer already depends on this package).
+func (h *Handler) loadCachedProbe(mediaID int, filePath string) (*ProbeResult, bool) {
+	var tracksJSON sql.NullString
+	var storedModTime sql.NullInt64
+	err := h.db.QueryRow(
+		"SELECT tracks_json, file_mod_time FROM medias WHERE id = ?",
+		mediaID,
+	).Scan(&tracksJSON, &storedModTime)
+	if err != nil || !tracksJSON.Valid || tracksJSON.String == "" {
+		return nil, false
+	}
+
+	info, err := os.Stat(filePath)
+	if err != nil {
+		return nil, false
+	}
+	if storedModTime.Valid && storedModTime.Int64 != info.ModTime().Unix() {
+		return nil, false
+	}
+
+	probe, err := UnmarshalProbeResult(tracksJSON.String)
+	if err != nil {
+		return nil, false
+	}
+	// Entries written before PixFmt existed carry no pixel format, and the copy
+	// decision cannot tell 8-bit H.264 from High 10 without it — so it refuses,
+	// and an entire pre-existing library stays on the encoding path forever.
+	// Treat those as a miss so they are re-probed once and rewritten.
+	if probe.Video != nil && probe.Video.PixFmt == "" {
+		return nil, false
+	}
+	return probe, true
+}
+
+// persistProbe rewrites the cached probe after a live one, so a media whose
+// entry was stale costs one ffprobe in total rather than one per session start.
+//
+// Deliberately narrow: it touches tracks_json and the mod-time stamp that
+// validates it, and leaves every other column to the indexer.
+func (h *Handler) persistProbe(mediaID int, filePath string, probe *ProbeResult) {
+	tracksJSON, err := MarshalProbeResult(probe)
+	if err != nil {
+		return
+	}
+	var modTime int64
+	if info, statErr := os.Stat(filePath); statErr == nil {
+		modTime = info.ModTime().Unix()
+	}
+	if _, err := h.db.Exec(
+		"UPDATE medias SET tracks_json = ?, file_mod_time = ?, probed_at = CURRENT_TIMESTAMP WHERE id = ?",
+		tracksJSON, modTime, mediaID,
+	); err != nil {
+		log.Printf("HLS: failed to persist refreshed probe for media %d: %v", mediaID, err)
+	}
+}
+
+// defaultCopyBitrateCeiling caps what the server will push out untouched.
+//
+// Copying the picture means sending the file's own bitrate, with no ceiling of
+// its own — a Blu-ray remux at 30 Mbps would leave the CPU idle and stall the
+// viewer instead. 12 Mbps clears ordinary 1080p rips (3–10 Mbps) while keeping
+// remuxes on the transcoding path. Override with COPY_BITRATE_CEILING_MBPS; 0
+// disables the ceiling entirely.
+const defaultCopyBitrateCeiling = 12_000_000
+
+func copyBitrateCeiling() int64 {
+	raw := strings.TrimSpace(os.Getenv("COPY_BITRATE_CEILING_MBPS"))
+	if raw == "" {
+		return defaultCopyBitrateCeiling
+	}
+	mbps, err := strconv.ParseFloat(raw, 64)
+	if err != nil || mbps < 0 {
+		log.Printf("HLS: invalid COPY_BITRATE_CEILING_MBPS %q, using default", raw)
+		return defaultCopyBitrateCeiling
+	}
+	return int64(mbps * 1_000_000)
+}
+
+// sourceBitrate estimates the file's overall bitrate in bits per second from
+// what the indexer already stores, so no extra probe is needed.
+//
+// It counts audio and subtitles along with the picture, which overstates the
+// video slightly — an error in the safe direction: it can only push a borderline
+// file onto the transcoding path, never the reverse.
+func (h *Handler) sourceBitrate(mediaID int) int64 {
+	var fileSize sql.NullInt64
+	var duration sql.NullInt64
+	err := h.db.QueryRow(
+		"SELECT file_size, duration FROM medias WHERE id = ?", mediaID,
+	).Scan(&fileSize, &duration)
+	if err != nil || !fileSize.Valid || !duration.Valid ||
+		fileSize.Int64 <= 0 || duration.Int64 <= 0 {
+		return 0 // unknown — treated as "no ceiling breach"
+	}
+	return fileSize.Int64 * 8 / duration.Int64
 }
 
 func (h *Handler) getMediaFilePath(mediaID int) (string, error) {
@@ -233,6 +493,21 @@ func (h *Handler) getMediaFilePath(mediaID int) (string, error) {
 		return "", fmt.Errorf("physical file not found: %s", filePath)
 	}
 	return filePath, nil
+}
+
+// isBurnableSubtitle reports whether 0:s:index is a bitmap subtitle stream.
+// Text subtitles are never burned in: they are served out of band as WebVTT,
+// which stays toggleable without touching the transcode.
+func isBurnableSubtitle(probe *ProbeResult, index int) bool {
+	if probe == nil {
+		return false
+	}
+	for _, s := range probe.Subtitles {
+		if s.TypedIndex == index {
+			return s.Image
+		}
+	}
+	return false
 }
 
 // parseVideoSegmentIndex extracts N from "stream_0_<N>.ts" (the video rendition).

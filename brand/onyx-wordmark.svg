@@ -1,0 +1,12 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 600 140" width="600" height="140" role="img" aria-labelledby="onyx-wordmark-title">
+  <title id="onyx-wordmark-title">Onyx</title>
+
+  <!-- Wordmark vectorise : tracés purs, aucune dépendance police.
+       Grille interne 475 x 100 (hauteur de capitale = 100, graisse = 16). -->
+  <g transform="translate(50 17.4) scale(1.0526)" fill="#e8e6e4">
+    <path fill-rule="evenodd" d="M46 0 A46 50 0 0 1 46 100 A46 50 0 0 1 46 0 Z M46 16 A30 34 0 0 1 46 84 A30 34 0 0 1 46 16 Z"/>
+    <path d="M137 0 L153 0 L201 72 L201 0 L217 0 L217 100 L201 100 L153 28 L153 100 L137 100 Z"/>
+    <path d="M262 0 L280 0 L304 44 L328 0 L346 0 L312 58 L312 100 L296 100 L296 58 Z"/>
+    <path d="M391 0 L411 0 L433 34 L455 0 L475 0 L443 50 L475 100 L455 100 L433 66 L411 100 L391 100 L423 50 Z"/>
+  </g>
+</svg>

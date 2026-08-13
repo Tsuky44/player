@@ -48,6 +48,13 @@ func normalizeSeparators(name string) string {
 }
 
 func extractYear(name string) int {
+	if y := extractYearBeforeTVEpisode(name); y > 0 {
+		return y
+	}
+	return extractYearFromText(name)
+}
+
+func extractYearFromText(name string) int {
 	match := yearPattern.FindStringSubmatch(name)
 	if len(match) < 2 {
 		return 0
@@ -61,6 +68,19 @@ func extractYear(name string) int {
 		return year
 	}
 	return 0
+}
+
+// extractYearBeforeTVEpisode prefers the release/air year in TV filenames
+// (e.g. "Show.Name.2022.S01E01") instead of a year that appears only after SxxExx.
+func extractYearBeforeTVEpisode(name string) int {
+	head := name
+	for _, re := range tvEpisodeCutPatterns {
+		if loc := re.FindStringIndex(name); loc != nil {
+			head = name[:loc[0]]
+			break
+		}
+	}
+	return extractYearFromText(head)
 }
 
 func cutBeforeTVPattern(title string) string {
@@ -116,6 +136,7 @@ func extractTitle(name string, mediaType models.MediaType) string {
 // ParseReleaseFilename extracts a clean title and year from a release filename.
 func ParseReleaseFilename(raw string, mediaType models.MediaType) ParsedReleaseName {
 	raw = strings.TrimSpace(raw)
+	raw = StripProviderIDs(raw)
 	return ParsedReleaseName{
 		Title:    extractTitle(raw, mediaType),
 		Year:     extractYear(raw),

@@ -1,14 +1,18 @@
-import 'dart:io';
+import '../../utils/external_url.dart';
 
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../../models/media_request.dart';
 import '../../providers/media_requests_provider.dart';
+import '../../theme/app_colors.dart';
 import '../../widgets/global/empty_state.dart';
 import 'widgets/request_cast_list.dart';
 import 'widgets/request_info_table.dart';
 import 'widgets/request_related_slider.dart';
+import 'widgets/request_season_list.dart';
+import 'widgets/request_status_badge.dart';
+import 'widgets/season_selector_dialog.dart';
 
 class RequestDetailScreen extends StatefulWidget {
   final RequestMediaItem item;
@@ -21,7 +25,6 @@ class RequestDetailScreen extends StatefulWidget {
 
 class _RequestDetailScreenState extends State<RequestDetailScreen> {
   late Future<RequestMediaDetails> _details;
-  final Set<int> _selectedSeasons = {};
   bool _submitting = false;
 
   @override
@@ -37,18 +40,22 @@ class _RequestDetailScreenState extends State<RequestDetailScreen> {
   }
 
   Future<void> _request(RequestMediaDetails details) async {
-    if (details.mediaType == RequestMediaType.tv && _selectedSeasons.isEmpty) {
-      ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Sélectionnez au moins une saison.')));
-      return;
+    List<int>? seasons;
+    if (details.mediaType == RequestMediaType.tv) {
+      seasons = await SeasonSelectorDialog.show(
+        context,
+        title: details.title,
+        seasons: details.seasons,
+      );
+      if (seasons == null || seasons.isEmpty) return;
     }
+
+    if (!mounted) return;
     setState(() => _submitting = true);
     try {
       await context.read<MediaRequestsProvider>().request(
             details,
-            seasons: details.mediaType == RequestMediaType.tv
-                ? (_selectedSeasons.toList()..sort())
-                : null,
+            seasons: seasons,
           );
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
@@ -65,22 +72,10 @@ class _RequestDetailScreenState extends State<RequestDetailScreen> {
 
   Future<void> _openTrailer(String key) async {
     final url = 'https://www.youtube.com/watch?v=$key';
-    try {
-      if (Platform.isWindows) {
-        await Process.start('cmd', ['/c', 'start', '', url]);
-      } else if (Platform.isMacOS) {
-        await Process.start('open', [url]);
-      } else if (Platform.isLinux) {
-        await Process.start('xdg-open', [url]);
-      } else if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(content: Text('Ouvrez la bande-annonce : $url')));
-      }
-    } catch (_) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
-            content: Text('Impossible d’ouvrir la bande-annonce.')));
-      }
+    if (await openExternalUrl(url)) return;
+    if (mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Ouvrez la bande-annonce : $url')));
     }
   }
 
@@ -93,7 +88,7 @@ class _RequestDetailScreenState extends State<RequestDetailScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: const Color(0xFF0F172A),
+      backgroundColor: AppColors.background,
       body: FutureBuilder<RequestMediaDetails>(
         future: _details,
         builder: (context, snapshot) {
@@ -111,10 +106,11 @@ class _RequestDetailScreenState extends State<RequestDetailScreen> {
   }
 
   Widget _content(RequestMediaDetails details) {
-    final canRequest = details.status == RequestMediaStatus.unknown ||
-        (details.mediaType == RequestMediaType.tv &&
-            details.seasons
-                .any((season) => season.status == RequestMediaStatus.unknown));
+    final hasUnrequestedSeasons =
+        details.seasons.any((season) => season.status.canRequest);
+    final canRequest = details.mediaType == RequestMediaType.tv
+        ? hasUnrequestedSeasons
+        : details.status.canRequest;
     final width = MediaQuery.sizeOf(context).width;
     final wide = width >= 1100;
     final horizontal = width >= 900 ? 48.0 : 20.0;
@@ -134,7 +130,7 @@ class _RequestDetailScreenState extends State<RequestDetailScreen> {
                     children: [
                       _backButton(),
                       SizedBox(height: width >= 800 ? 120 : 72),
-                      _heroHeader(details, canRequest),
+                      _heroHeader(details, canRequest, hasUnrequestedSeasons),
                       const SizedBox(height: 36),
                     ],
                   ),
@@ -162,9 +158,14 @@ class _RequestDetailScreenState extends State<RequestDetailScreen> {
                 const SizedBox(height: 28),
                 RequestInfoTable(details: details),
               ],
-              if (details.mediaType == RequestMediaType.tv) ...[
+              if (details.mediaType == RequestMediaType.tv &&
+                  details.seasons.isNotEmpty) ...[
                 const SizedBox(height: 40),
-                _seasonsSection(details),
+                RequestSeasonList(
+                  tmdbId: details.id,
+                  showItem: widget.item,
+                  seasons: details.seasons,
+                ),
               ],
               if (details.cast.isNotEmpty) ...[
                 const SizedBox(height: 40),
@@ -213,16 +214,16 @@ class _RequestDetailScreenState extends State<RequestDetailScreen> {
               alignment: Alignment.topCenter,
             )
           else
-            const ColoredBox(color: Color(0xFF0F172A)),
+            const ColoredBox(color: AppColors.background),
           DecoratedBox(
             decoration: BoxDecoration(
               gradient: LinearGradient(
                 begin: Alignment.centerLeft,
                 end: Alignment.centerRight,
                 colors: [
-                  const Color(0xFF0F172A).withValues(alpha: 0.92),
-                  const Color(0xFF0F172A).withValues(alpha: 0.55),
-                  const Color(0xFF0F172A).withValues(alpha: 0.2),
+                  AppColors.background.withValues(alpha: 0.92),
+                  AppColors.background.withValues(alpha: 0.55),
+                  AppColors.background.withValues(alpha: 0.2),
                 ],
               ),
             ),
@@ -234,7 +235,7 @@ class _RequestDetailScreenState extends State<RequestDetailScreen> {
                 end: Alignment.bottomCenter,
                 colors: [
                   Colors.transparent,
-                  Color(0xFF0F172A),
+                  AppColors.background,
                 ],
                 stops: [0.35, 1],
               ),
@@ -260,7 +261,11 @@ class _RequestDetailScreenState extends State<RequestDetailScreen> {
     );
   }
 
-  Widget _heroHeader(RequestMediaDetails details, bool canRequest) {
+  Widget _heroHeader(
+    RequestMediaDetails details,
+    bool canRequest,
+    bool hasUnrequestedSeasons,
+  ) {
     final runtime = details.formattedRuntime;
     final hasLogo = details.logoUrl != null;
     final metaParts = <Widget>[
@@ -294,6 +299,10 @@ class _RequestDetailScreenState extends State<RequestDetailScreen> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
+          if (details.status != RequestMediaStatus.unknown) ...[
+            RequestAvailabilityBadge(status: details.status),
+            const SizedBox(height: 14),
+          ],
           if (details.logoUrl != null)
             ConstrainedBox(
               constraints: const BoxConstraints(maxWidth: 420, maxHeight: 150),
@@ -319,15 +328,9 @@ class _RequestDetailScreenState extends State<RequestDetailScreen> {
           Wrap(
             spacing: 12,
             runSpacing: 12,
+            crossAxisAlignment: WrapCrossAlignment.center,
             children: [
-              _primaryButton(
-                label: canRequest ? 'Demander' : 'Déjà demandé',
-                icon: Icons.download_rounded,
-                filled: true,
-                enabled: canRequest && !_submitting,
-                loading: _submitting,
-                onPressed: () => _request(details),
-              ),
+              ..._requestActions(details, canRequest, hasUnrequestedSeasons),
               if (details.trailerKey != null && details.trailerKey!.isNotEmpty)
                 _primaryButton(
                   label: 'Bande-annonce',
@@ -337,6 +340,121 @@ class _RequestDetailScreenState extends State<RequestDetailScreen> {
                   onPressed: () => _openTrailer(details.trailerKey!),
                 ),
             ],
+          ),
+        ],
+      ),
+    );
+  }
+
+  /// Action buttons mirroring MediaHub RequestStatusButton.
+  List<Widget> _requestActions(
+    RequestMediaDetails details,
+    bool canRequest,
+    bool hasUnrequestedSeasons,
+  ) {
+    final status = details.status;
+    final isTv = details.mediaType == RequestMediaType.tv;
+
+    if (status == RequestMediaStatus.partial) {
+      return [
+        _statusActionButton(
+          label: 'Partiellement disponible',
+          icon: Icons.check_rounded,
+          foreground: AppColors.warning,
+          background: AppColors.warning,
+        ),
+        if (canRequest && isTv && hasUnrequestedSeasons)
+          _primaryButton(
+            label: 'Compléter',
+            icon: Icons.add_rounded,
+            filled: true,
+            enabled: !_submitting,
+            loading: _submitting,
+            onPressed: () => _request(details),
+          ),
+      ];
+    }
+
+    if (status == RequestMediaStatus.available) {
+      return [
+        _statusActionButton(
+          label: 'Disponible',
+          icon: Icons.check_rounded,
+          foreground: AppColors.success,
+          background: AppColors.success,
+        ),
+        if (canRequest && hasUnrequestedSeasons && isTv)
+          _primaryButton(
+            label: 'Demander plus',
+            icon: Icons.add_rounded,
+            filled: true,
+            enabled: !_submitting,
+            loading: _submitting,
+            onPressed: () => _request(details),
+          ),
+      ];
+    }
+
+    if (status == RequestMediaStatus.pending ||
+        status == RequestMediaStatus.processing) {
+      return [
+        _statusActionButton(
+          label: 'En cours de traitement...',
+          icon: Icons.hourglass_top_rounded,
+          foreground: AppColors.accentMuted,
+          background: AppColors.primary,
+        ),
+        if (canRequest && hasUnrequestedSeasons && isTv)
+          _primaryButton(
+            label: 'Demander plus',
+            icon: Icons.add_rounded,
+            filled: true,
+            enabled: !_submitting,
+            loading: _submitting,
+            onPressed: () => _request(details),
+          ),
+      ];
+    }
+
+    if (!canRequest) return const [];
+
+    return [
+      _primaryButton(
+        label: 'Demander',
+        icon: Icons.download_rounded,
+        filled: true,
+        enabled: !_submitting,
+        loading: _submitting,
+        onPressed: () => _request(details),
+      ),
+    ];
+  }
+
+  Widget _statusActionButton({
+    required String label,
+    required IconData icon,
+    required Color foreground,
+    required Color background,
+  }) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 12),
+      decoration: BoxDecoration(
+        color: background.withValues(alpha: 0.2),
+        borderRadius: BorderRadius.circular(10),
+        border: Border.all(color: background.withValues(alpha: 0.3)),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(icon, size: 20, color: foreground),
+          const SizedBox(width: 10),
+          Text(
+            label,
+            style: TextStyle(
+              color: foreground,
+              fontWeight: FontWeight.w700,
+              fontSize: 14,
+            ),
           ),
         ],
       ),
@@ -379,34 +497,35 @@ class _RequestDetailScreenState extends State<RequestDetailScreen> {
     required VoidCallback onPressed,
     bool loading = false,
   }) {
-    final bg =
-        filled ? const Color(0xFF3B82F6) : Colors.white.withValues(alpha: 0.06);
+    final bg = filled
+        ? AppColors.textPrimary
+        : Colors.white.withValues(alpha: 0.06);
     final border = filled
         ? Colors.transparent
-        : const Color(0xFFEF4444).withValues(alpha: 0.55);
-    final fg = enabled ? Colors.white : Colors.white.withValues(alpha: 0.4);
+        : Colors.white.withValues(alpha: 0.12);
+    final baseFg = filled ? AppColors.background : AppColors.textPrimary;
+    final fg = enabled ? baseFg : baseFg.withValues(alpha: 0.4);
 
     return Material(
       color: enabled ? bg : bg.withValues(alpha: 0.35),
-      borderRadius: BorderRadius.circular(10),
+      borderRadius: BorderRadius.circular(12),
       child: InkWell(
         onTap: enabled ? onPressed : null,
-        borderRadius: BorderRadius.circular(10),
+        borderRadius: BorderRadius.circular(12),
         child: Container(
           padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 12),
           decoration: BoxDecoration(
-            borderRadius: BorderRadius.circular(10),
+            borderRadius: BorderRadius.circular(12),
             border: Border.all(color: border),
           ),
           child: Row(
             mainAxisSize: MainAxisSize.min,
             children: [
               if (loading)
-                const SizedBox(
+                SizedBox(
                   width: 18,
                   height: 18,
-                  child: CircularProgressIndicator(
-                      strokeWidth: 2, color: Colors.white),
+                  child: CircularProgressIndicator(strokeWidth: 2, color: fg),
                 )
               else
                 Icon(icon, size: 20, color: fg),
@@ -533,41 +652,4 @@ class _RequestDetailScreenState extends State<RequestDetailScreen> {
     );
   }
 
-  Widget _seasonsSection(RequestMediaDetails details) {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        const Text('Saisons à demander',
-            style: TextStyle(
-                fontSize: 22,
-                fontWeight: FontWeight.w700,
-                color: Colors.white)),
-        const SizedBox(height: 12),
-        ...details.seasons.map((season) {
-          final selectable = season.status == RequestMediaStatus.unknown;
-          return CheckboxListTile(
-            value: _selectedSeasons.contains(season.number),
-            onChanged: !selectable
-                ? null
-                : (selected) => setState(() {
-                      if (selected == true) {
-                        _selectedSeasons.add(season.number);
-                      } else {
-                        _selectedSeasons.remove(season.number);
-                      }
-                    }),
-            title: Text(season.name,
-                style: const TextStyle(color: Colors.white)),
-            subtitle: Text(
-                selectable
-                    ? '${season.episodeCount} épisodes'
-                    : 'Déjà disponible ou demandée',
-                style: TextStyle(color: Colors.white.withValues(alpha: 0.45))),
-            activeColor: const Color(0xFF3B82F6),
-            contentPadding: EdgeInsets.zero,
-          );
-        }),
-      ],
-    );
-  }
 }

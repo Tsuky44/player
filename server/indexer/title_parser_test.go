@@ -23,6 +23,16 @@ func TestParseReleaseFilename_Show(t *testing.T) {
 	}
 }
 
+func TestParseReleaseFilename_ShowWithYear(t *testing.T) {
+	parsed := ParseReleaseFilename("Mercredi.2022.S01E01.1080p.WEB-DL.mkv", models.TypeShow)
+	if parsed.Year != 2022 {
+		t.Fatalf("year = %d, want 2022", parsed.Year)
+	}
+	if parsed.Title != "Mercredi" {
+		t.Fatalf("title = %q, want %q", parsed.Title, "Mercredi")
+	}
+}
+
 func TestBuildTMDBSearchQueries(t *testing.T) {
 	parsed := ParsedReleaseName{Title: "The Lord of the Rings The Fellowship of the Ring"}
 	queries := BuildTMDBSearchQueries(parsed)

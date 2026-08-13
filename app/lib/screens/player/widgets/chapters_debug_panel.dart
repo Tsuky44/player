@@ -338,7 +338,7 @@ class _ChapterRow extends StatelessWidget {
             borderRadius: BorderRadius.circular(8),
             border: Border.all(
               color: isCurrent
-                  ? const Color(0xFF007AFF).withOpacity(0.4)
+                  ? const Color(0xFF0A84FF).withOpacity(0.4)
                   : Colors.white.withOpacity(0.06),
             ),
           ),
@@ -379,7 +379,7 @@ class _ChapterRow extends StatelessWidget {
                   ],
                 ),
               ),
-              if (isIntro) _Badge('INTRO', const Color(0xFF007AFF)),
+              if (isIntro) _Badge('INTRO', const Color(0xFF0A84FF)),
               if (isOutro) _Badge('OUTRO', Colors.orangeAccent),
               if (isCurrent) _Badge('ACTUEL', Colors.greenAccent),
             ],

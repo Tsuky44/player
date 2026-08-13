@@ -6,6 +6,7 @@ import '../../models/models.dart';
 import '../../navigation/catalog_navigation.dart';
 import '../../providers/auth_provider.dart';
 import '../../theme/app_colors.dart';
+import '../../utils/responsive.dart';
 import '../../widgets/global/media_detail_widgets.dart';
 import '../../widgets/global/overlay_back_button.dart';
 
@@ -94,17 +95,17 @@ class _CollectionScreenState extends State<CollectionScreen> {
             )
           else
             SliverPadding(
-              padding: const EdgeInsets.fromLTRB(48, 28, 48, 48),
+              padding: AppLayout.pageInsets(context, top: 28, bottom: 48),
               sliver: SliverLayoutBuilder(
                 builder: (context, constraints) {
                   final width = constraints.crossAxisExtent;
-                  final columns = (width / 170).floor().clamp(2, 8);
+                  final columns = AppLayout.posterGridCount(width);
                   return SliverGrid(
                     gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
                       crossAxisCount: columns,
-                      crossAxisSpacing: 16,
-                      mainAxisSpacing: 20,
-                      childAspectRatio: 0.52,
+                      crossAxisSpacing: AppLayout.posterGridCrossSpacing,
+                      mainAxisSpacing: AppLayout.posterGridMainSpacing,
+                      childAspectRatio: AppLayout.posterGridAspectRatio,
                     ),
                     delegate: SliverChildBuilderDelegate(
                       (context, index) {
@@ -185,8 +186,8 @@ class _CollectionHeader extends StatelessWidget {
           ),
 
           Positioned(
-            left: 48,
-            right: 48,
+            left: AppLayout.pagePadding(context),
+            right: AppLayout.pagePadding(context),
             bottom: 32,
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,

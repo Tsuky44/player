@@ -1,0 +1,29 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 900 450" width="900" height="450" role="img" aria-labelledby="onyx-lockup-title">
+  <title id="onyx-lockup-title">Onyx</title>
+  <defs>
+    <linearGradient id="onyxBeam" x1="0" y1="0" x2="1" y2="0">
+      <stop offset="0" stop-color="#e8e6e4" stop-opacity="0.9"/>
+      <stop offset="1" stop-color="#e8e6e4" stop-opacity="0"/>
+    </linearGradient>
+  </defs>
+
+  <rect width="900" height="450" rx="18" fill="#121414"/>
+
+  <!-- faisceau : large a la lentille, se resserre vers la droite -->
+  <path d="M 419 70 L 605 128 L 605 168 L 419 226 Z" fill="url(#onyxBeam)" opacity="0.35"/>
+
+  <!-- lentille -->
+  <circle cx="392" cy="148" r="88" fill="#0e1010"/>
+  <circle cx="392" cy="148" r="88" fill="none" stroke="#e8e6e4" stroke-width="6"/>
+
+  <!-- play -->
+  <path d="M 365 104 L 365 192 L 418 148 Z" fill="#e8e6e4"/>
+
+  <!-- wordmark vectorise : grille interne 475 x 100, hauteur de capitale 68 -->
+  <g transform="translate(230.5 310) scale(0.68)" fill="#e8e6e4">
+    <path fill-rule="evenodd" d="M46 0 A46 50 0 0 1 46 100 A46 50 0 0 1 46 0 Z M46 16 A30 34 0 0 1 46 84 A30 34 0 0 1 46 16 Z"/>
+    <path d="M137 0 L153 0 L201 72 L201 0 L217 0 L217 100 L201 100 L153 28 L153 100 L137 100 Z"/>
+    <path d="M262 0 L280 0 L304 44 L328 0 L346 0 L312 58 L312 100 L296 100 L296 58 Z"/>
+    <path d="M391 0 L411 0 L433 34 L455 0 L475 0 L443 50 L475 100 L455 100 L433 66 L411 100 L391 100 L423 50 Z"/>
+  </g>
+</svg>

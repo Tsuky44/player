@@ -16,6 +16,10 @@ class DraggableControl extends StatelessWidget {
   final double blurSigma;
   final double glassOpacity;
   final bool liquidGlass;
+  final ControlSkinStyle skin;
+  final Color flatAccentColor;
+  final FlatElevation flatElevation;
+  final double neumorphicIntensity;
 
   const DraggableControl({
     super.key,
@@ -31,6 +35,10 @@ class DraggableControl extends StatelessWidget {
     this.blurSigma = kDefaultBlurSigma,
     this.glassOpacity = kDefaultGlassOpacity,
     this.liquidGlass = kDefaultLiquidGlass,
+    this.skin = ControlSkinStyle.glass,
+    this.flatAccentColor = kDefaultFlatAccentColor,
+    this.flatElevation = kDefaultFlatElevation,
+    this.neumorphicIntensity = kDefaultNeumorphicIntensity,
   });
 
   @override
@@ -70,11 +78,14 @@ class DraggableControl extends StatelessWidget {
               timelineOptions: placed.type.isTimelineBar
                   ? placed.effectiveTimelineOptions
                   : const TimelineChromeOptions(showFullscreen: true),
-              duration: placed.type.isTimelineBar
+              duration: placed.type.isTimelineBar ||
+                      placed.type == PlayerControlType.timeRemaining
                   ? const Duration(hours: 1, minutes: 23, seconds: 45)
                   : null,
-              currentSeconds:
-                  placed.type.isTimelineBar ? 521 : null,
+              currentSeconds: placed.type.isTimelineBar ||
+                      placed.type == PlayerControlType.timeRemaining
+                  ? 521
+                  : null,
               onToggleFullscreen: placed.type.isTimelineBar
                   ? () {}
                   : null,
@@ -90,8 +101,12 @@ class DraggableControl extends StatelessWidget {
               onToggleSubtitles:
                   placed.type.isTimelineBar ? () {} : null,
               mediaTitle: placed.type == PlayerControlType.mediaTitle ||
-                      placed.type == PlayerControlType.mediaLogo
+                      placed.type == PlayerControlType.mediaLogo ||
+                      placed.type == PlayerControlType.episodeTitleBlock
                   ? 'Arcane – S01E02'
+                  : null,
+              episodeInfoLine: placed.type == PlayerControlType.episodeTitleBlock
+                  ? 'S1:E2 - Arcane - Some Mysteries WEBDL-2160p'
                   : null,
               mediaLogoUrl:
                   placed.type == PlayerControlType.mediaLogo ? null : null,
@@ -100,9 +115,19 @@ class DraggableControl extends StatelessWidget {
                   ? (_) {}
                   : null,
               onBack: placed.type == PlayerControlType.back ? () {} : null,
+              playbackRate:
+                  placed.type == PlayerControlType.playbackSpeed ? 1.25 : null,
+              videoFit: placed.type == PlayerControlType.aspectFit
+                  ? BoxFit.contain
+                  : null,
               blurSigma: blurSigma,
               glassOpacity: glassOpacity,
               liquidGlass: liquidGlass,
+              skin: skin,
+              flatAccentColor: flatAccentColor,
+              flatElevation: flatElevation,
+              neumorphicIntensity: neumorphicIntensity,
+              alwaysExpanded: placed.config.alwaysExpanded,
             ),
           ),
         ),

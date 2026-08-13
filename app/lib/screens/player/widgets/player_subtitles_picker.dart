@@ -74,7 +74,7 @@ class _PlayerSubtitlesPickerState extends State<PlayerSubtitlesPicker> {
                   style: const TextStyle(fontSize: 12, fontFamily: 'Manrope'),
                 ),
                 style: TextButton.styleFrom(
-                  foregroundColor: const Color(0xFF007AFF),
+                  foregroundColor: const Color(0xFF0A84FF),
                   padding: const EdgeInsets.symmetric(vertical: 10),
                 ),
               ),
@@ -123,6 +123,7 @@ class _PlayerSubtitlesPickerState extends State<PlayerSubtitlesPicker> {
     }
 
     return ListView.builder(
+      shrinkWrap: true,
       padding: const EdgeInsets.only(top: 4),
       itemCount: subs.length,
       itemBuilder: (context, index) {
@@ -146,6 +147,7 @@ class _PlayerSubtitlesPickerState extends State<PlayerSubtitlesPicker> {
 
   Widget _buildCanonicalSubtitleList(List<MediaSubtitleTrack> subtitles) {
     return ListView.builder(
+      shrinkWrap: true,
       padding: const EdgeInsets.only(top: 4),
       itemCount: subtitles.length + 1,
       itemBuilder: (context, row) {
@@ -166,7 +168,15 @@ class _PlayerSubtitlesPickerState extends State<PlayerSubtitlesPicker> {
         return PlayerSettingsTrackRow(
           label: title,
           subtitle: subtitle,
-          badge: track.ready ? null : '…',
+          // A bitmap track has nothing to extract, but while transcoding it can
+          // only be shown by being painted into the video — so picking it costs
+          // a short reload. Flag it so that pause is expected rather than read
+          // as a stall.
+          badge: !track.ready
+              ? '…'
+              : (track.image && _controller.currentQuality != null)
+                  ? 'image'
+                  : null,
           selected: _controller.selectedSubtitleLang == track.lang,
           onTap: () {
             _controller.setSubtitle(track.lang);

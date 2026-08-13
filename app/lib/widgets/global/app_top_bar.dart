@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import '../../theme/app_colors.dart';
+import 'onyx_mark.dart';
 
 class AppTopBar extends StatelessWidget implements PreferredSizeWidget {
   final bool showLogo;
@@ -33,21 +34,13 @@ class AppTopBar extends StatelessWidget implements PreferredSizeWidget {
               child: Row(
                 mainAxisSize: MainAxisSize.min,
                 children: [
-                  Container(
-                    width: 32,
-                    height: 32,
-                    decoration: BoxDecoration(
-                      color: AppColors.primary,
-                      borderRadius: BorderRadius.circular(6),
-                    ),
-                    child: const Icon(Icons.play_arrow_rounded, color: Colors.white, size: 22),
-                  ),
+                  const OnyxMark(size: 32),
                   const SizedBox(width: 10),
                   Text(
-                    'PLAYEUR',
+                    'Onyx',
                     style: Theme.of(context).textTheme.titleLarge?.copyWith(
-                          fontWeight: FontWeight.w800,
-                          letterSpacing: 2,
+                          fontWeight: FontWeight.w700,
+                          letterSpacing: -0.3,
                           fontSize: 18,
                         ),
                   ),
@@ -91,21 +84,13 @@ class ScrollAwareNavBar extends StatelessWidget {
           padding: const EdgeInsets.symmetric(horizontal: 48, vertical: 8),
           child: Row(
             children: [
-              Container(
-                width: 32,
-                height: 32,
-                decoration: BoxDecoration(
-                  color: AppColors.primary,
-                  borderRadius: BorderRadius.circular(6),
-                ),
-                child: const Icon(Icons.play_arrow_rounded, color: Colors.white, size: 22),
-              ),
+              const OnyxMark(size: 32),
               const SizedBox(width: 10),
               Text(
-                'PLAYEUR',
+                'Onyx',
                 style: Theme.of(context).textTheme.titleLarge?.copyWith(
-                      fontWeight: FontWeight.w800,
-                      letterSpacing: 2,
+                      fontWeight: FontWeight.w700,
+                      letterSpacing: -0.3,
                       fontSize: 18,
                     ),
               ),

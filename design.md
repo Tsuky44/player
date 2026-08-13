@@ -1,5 +1,5 @@
 ---
-name: Cinematic Glass
+name: Quiet Premium
 colors:
   surface: '#121414'
   surface-dim: '#121414'
@@ -28,7 +28,7 @@ colors:
   tertiary: '#adc6ff'
   on-tertiary: '#002e69'
   tertiary-container: '#00091f'
-  on-tertiary-container: '#0075f4'
+  on-tertiary-container: '#0A84FF'
   error: '#ffb4ab'
   on-error: '#690005'
   error-container: '#93000a'
@@ -104,23 +104,19 @@ spacing:
 
 ## Brand & Style
 
-The design system is built upon a philosophy of "Atmospheric Immersion." It targets a discerning audience that values cinematic quality and premium hardware integration. The UI is designed to recede into the background, allowing the content to remain the protagonist while providing a tactile, high-end feel through material physics.
-
-The aesthetic is a sophisticated blend of **Minimalism** and **Glassmorphism**. It utilizes deep, layered translucency to create a sense of physical space. Every element feels like a polished pane of obsidian or frosted glass, catching light at the edges. The emotional response is one of calm, luxury, and effortless control, mirroring the polished experience of high-end home theater hardware.
+**Quiet Premium** — OLED charcoal stage, content-first posters, frosted chrome only where it earns its keep (nav, menus, player HUD). Calm restraint over theatrical concepts. No Netflix-red branding; the mark is a light play tile on dark.
 
 ## Colors
 
-The palette is engineered for high-dynamic-range (HDR) environments. 
-
-- **Primary Deep Charcoal (#0A0A0A):** Used for base surfaces and deep background layers to maximize contrast with content.
-- **Secondary Slate (#1A1A1A):** Applied to elevated glass containers and secondary UI elements to provide subtle separation from the base.
-- **Accent Blue (#007AFF):** Used sparingly for focus states, progress indicators, and active selections to provide a clear "Apple-inspired" signal.
-- **Translucent Overlays:** A series of varying opacities (from 10% to 60%) of the Secondary Slate are used for backdrop blurs.
-- **White Text:** Pure white is reserved for primary headers, while a 70% opacity white is used for secondary body text to reduce eye strain in dark environments.
+- **Background (#0A0A0A)** / **Surface (#141414)** / **Elevated (#1C1C1C)**
+- **Accent / progress / focus (#0A84FF)** — sparingly
+- **Text** primary `#F5F5F7`, secondary `#A1A1A6`, muted `#6E6E73`
+- **Semantic** success `#30D158`, warning `#FF9F0A`, error `#FF453A`
+- Glass hairlines ~8% white; no purple/neon washes
 
 ## Typography
 
-This design system utilizes **Manrope** for its balanced, modern geometric qualities, ensuring legibility across large TV screens and mobile devices. For technical metadata and labels, **Geist** provides a precise, monospaced-influenced feel that communicates high-tech sophistication.
+**Manrope** for UI and display (tight tracking on titles). Labels use Manrope Medium with slight tracking rather than a second face until Geist is packaged.
 
 - **Scale:** Use tight tracking on large display text to maintain a premium "editorial" look. 
 - **Hierarchy:** Primary information (Movie Titles) uses Semi-Bold; secondary information (Metadata, Year, Rating) uses Medium weight with reduced opacity rather than a lighter color.
@@ -165,7 +161,7 @@ The shape language is defined by large, generous radii that feel soft and organi
 
 ### Progress Bar (Video Scrubber)
 - **Track:** 4px height, Secondary Slate at 30% opacity.
-- **Progress:** Accent Blue (#007AFF) with a subtle outer glow.
+- **Progress:** Accent Blue (#0A84FF), no glow.
 - **Handle:** White circle, visible only on hover/scrub.
 
 ### Cards (Media)

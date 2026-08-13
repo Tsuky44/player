@@ -20,7 +20,7 @@ class MediaPoster extends StatelessWidget {
     required this.media,
     required this.width,
     required this.height,
-    this.borderRadius = 6,
+    this.borderRadius = 12,
     this.fit = BoxFit.cover,
     this.alignment = Alignment.center,
     this.posterUrlOverride,
@@ -42,6 +42,7 @@ class MediaPoster extends StatelessWidget {
         child: resolvedUrl != null
             ? CachedNetworkImage(
                 imageUrl: resolvedUrl,
+                cacheKey: '${media.id}_${resolvedUrl}',
                 fit: fit,
                 alignment: alignment,
                 fadeInDuration: const Duration(milliseconds: 200),

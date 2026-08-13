@@ -1,5 +1,5 @@
-name: project_player_app
-description: A lightweight Emby-like media player app focusing on Direct Play.
+name: onyx
+description: Onyx — client Direct Play pour un serveur média privé auto-hébergé.
 version: 1.0.0+1
 
 environment:
@@ -27,13 +27,16 @@ dependencies:
   flutter_animate: ^4.5.0
   google_fonts: ^6.2.1
   
-  # Media Player (Basé sur MPV via media-kit)
+  # Media Player (BasÃ© sur MPV via media-kit)
   media_kit: ^1.2.6
   media_kit_video: ^2.0.1
   media_kit_libs_video: ^1.0.7
 
   # Desktop window management
   window_manager: ^0.3.7
+
+  # Browser APIs, used only by the web-side conditional imports in lib/utils/
+  web: ^1.1.0
 dev_dependencies:
   flutter_test:
     sdk: flutter

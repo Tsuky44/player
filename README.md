@@ -1,4 +1,4 @@
-# 🚀 Project Player Media Server (Back-End Go)
+# 🚀 Onyx — Serveur Média (Back-End Go)
 
 Un serveur multimédia ultra-léger (alternative moderne à Emby/Plex) écrit en Go, conçu exclusivement pour du **Direct Play pur à 100 %**, avec une consommation de RAM minimale (inférieure à 20 Mo) et des performances exceptionnelles.
 
@@ -167,3 +167,23 @@ Toutes les routes API (sauf l'inscription/connexion et le stream) requièrent l'
 * **Route :** `GET /stream?media_id=12`
 * **Note importante :** Cette route est publique et ne nécessite pas d'en-tête de session pour garantir une compatibilité maximale à 100 % avec les lecteurs vidéo de tous les OS (Flutter, ExoPlayer, VLC, mpv) qui peinent parfois à injecter des en-têtes d'autorisation HTTP personnalisés lors de la diffusion en continu.
 * **Comportement :** Émet des Range Requests. Supporte le streaming par morceaux, le multi-pistes, le chargement des sous-titres intégrés et les seeks fluides.
+
+---
+
+### 📥 6. Téléchargement des applications clientes
+
+* **Routes :** `GET /api/downloads` · `GET /api/downloads/:fichier`
+* **Comportement :** Publie les applications installables (APK Android, DMG macOS, EXE Windows) embarquées dans l'image Docker sous `/app/downloads`. La liste est construite en scannant le dossier, il n'y a donc aucun manifeste à maintenir. Le fichier est servi en `attachment` avec support des Range Requests (une reprise après coupure ne repart pas de zéro).
+* **Publiques (sans authentification) :** c'est par là qu'un nouvel utilisateur récupère l'app avant d'avoir un compte, et un téléchargement navigateur ne peut pas porter d'en-tête `Authorization`.
+* **Réponse (JSON) :** `{"artifacts": [{"platform": "macos", "label": "macOS", "file": "Onyx-1.0.0-macos.dmg", "url": "/api/downloads/Onyx-1.0.0-macos.dmg", "version": "1.0.0", "size": 43374616, "built_at": "2026-08-12T10:08:14Z"}]}`
+* **Côté client :** la section « Applications » de l'écran Paramètres liste ce que le serveur propose. Elle disparaît d'elle-même si aucun artefact n'est embarqué.
+
+#### Comment les fichiers arrivent dans l'image
+
+Flutter ne cross-compile pas les cibles desktop : **un Mac produit le DMG et l'APK, une machine Windows produit l'EXE et l'APK, aucune machine ne produit les trois**. `publish-image.sh` (et `publish-image.ps1`) contournent ça en trois temps :
+
+1. récupération des artefacts déjà publiés depuis l'image `:latest` (`docker create` + `docker cp`) — l'image précédente sert de stockage entre les machines de build ;
+2. build local optionnel (`scripts/build-releases.sh`, mode auto selon l'OS) puis staging via `scripts/stage-downloads.sh`, qui renomme en `Onyx-<version>-<plateforme>.<ext>` et remplace l'artefact précédent de cette plateforme ;
+3. `docker buildx build --push`, le `COPY downloads/` du Dockerfile embarquant le tout.
+
+Conséquence : publier depuis le Mac met à jour le DMG et l'APK **sans perdre** l'EXE publié depuis Windows, et inversement. Répondre `n` à la question du build conserve simplement les artefacts de la publication précédente.

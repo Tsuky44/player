@@ -13,6 +13,7 @@ import (
 	"strconv"
 	"strings"
 
+	"project-player/server/config"
 	"project-player/server/database"
 	"project-player/server/indexer"
 	"project-player/server/models"
@@ -210,6 +211,7 @@ func Home(w http.ResponseWriter, r *http.Request, _ httprouter.Params, userID in
 
 		recentShows = append(recentShows, s)
 	}
+	recentShows = indexer.DedupeShowMediaListForDisplay(recentShows)
 
 	discoveryMovies, err := queryRandomMovies(40)
 	if err != nil {
@@ -224,6 +226,7 @@ func Home(w http.ResponseWriter, r *http.Request, _ httprouter.Params, userID in
 		http.Error(w, `{"error": "Internal database error"}`, http.StatusInternalServerError)
 		return
 	}
+	discoveryShows = indexer.DedupeShowMediaListForDisplay(discoveryShows)
 
 	// Respond
 	json.NewEncoder(w).Encode(models.HomeResponse{
@@ -655,41 +658,7 @@ func GetShows(w http.ResponseWriter, r *http.Request, _ httprouter.Params, _ int
 		results = append(results, s)
 	}
 
-	json.NewEncoder(w).Encode(results)
-}
-
-// GetShowSeasons returns all seasons for a TV Show (GET /api/shows/:id/seasons)
-func GetShowSeasons(w http.ResponseWriter, r *http.Request, ps httprouter.Params, _ int) {
-	w.Header().Set("Content-Type", "application/json")
-
-	showID, err := strconv.Atoi(ps.ByName("id"))
-	if err != nil {
-		http.Error(w, `{"error": "Invalid show ID"}`, http.StatusBadRequest)
-		return
-	}
-
-	rows, err := database.DB.Query("SELECT id, type, title, parent_id, created_at FROM medias WHERE type = 'season' AND parent_id = ? ORDER BY title ASC", showID)
-	if err != nil {
-		log.Printf("Seasons error: failed to query: %v", err)
-		http.Error(w, `{"error": "Internal database error"}`, http.StatusInternalServerError)
-		return
-	}
-	defer rows.Close()
-
-	results := []models.Media{}
-	for rows.Next() {
-		var m models.Media
-		var parentID int
-
-		if err := rows.Scan(&m.ID, &m.Type, &m.Title, &parentID, &m.CreatedAt); err != nil {
-			log.Printf("Seasons scan error: %v", err)
-			continue
-		}
-		m.ParentID = &parentID
-
-		results = append(results, m)
-	}
-
+	results = indexer.DedupeShowMediaListForDisplay(results)
 	json.NewEncoder(w).Encode(results)
 }
 
@@ -787,10 +756,8 @@ func GetSeasonEpisodes(w http.ResponseWriter, r *http.Request, ps httprouter.Par
 func TriggerScan(w http.ResponseWriter, r *http.Request, _ httprouter.Params, _ int) {
 	w.Header().Set("Content-Type", "application/json")
 
-	// In Docker, let's map media directories
-	// We'll read these from environment variables with sensible defaults
-	moviesDir := getEnv("MOVIES_DIR", "/media/Films")
-	seriesDir := getEnv("SERIES_DIR", "/media/Series")
+	moviesDir := config.MoviesDir()
+	seriesDir := config.SeriesDir()
 
 	if indexer.IsScanning {
 		http.Error(w, `{"error": "Scan is already in progress"}`, http.StatusConflict)
@@ -823,6 +790,20 @@ func TriggerMetadataBackfill(w http.ResponseWriter, r *http.Request, _ httproute
 
 	indexer.BackfillMissingMetadataAsync()
 	w.Write([]byte(`{"status": "success", "message": "Metadata backfill started in background"}`))
+}
+
+// TriggerRedetectAll re-runs TMDB identification for every movie and show
+// (POST /api/indexer/metadata/redetect-all).
+func TriggerRedetectAll(w http.ResponseWriter, r *http.Request, _ httprouter.Params, _ int) {
+	w.Header().Set("Content-Type", "application/json")
+
+	if indexer.IsRedetectingAll {
+		http.Error(w, `{"error": "Bulk redetect is already in progress"}`, http.StatusConflict)
+		return
+	}
+
+	indexer.RedetectAllMediaAsync()
+	w.Write([]byte(`{"status": "success", "message": "Bulk metadata redetect started in background"}`))
 }
 
 // TriggerProbeBackfill runs ffprobe on indexed files missing tracks_json.
@@ -902,6 +883,22 @@ func GetMediaDetails(w http.ResponseWriter, r *http.Request, ps httprouter.Param
 	}
 
 	var mediaType string
+	err = database.DB.QueryRow(`SELECT type FROM medias WHERE id = ?`, mediaID).Scan(&mediaType)
+	if err == sql.ErrNoRows {
+		http.Error(w, `{"error": "Media not found"}`, http.StatusNotFound)
+		return
+	}
+	if err != nil {
+		http.Error(w, `{"error": "Internal database error"}`, http.StatusInternalServerError)
+		return
+	}
+	mt := models.MediaType(mediaType)
+	if mt == models.TypeShow {
+		mediaID = indexer.ResolveCanonicalShowID(mediaID)
+	} else if mt == models.TypeMovie {
+		mediaID = indexer.ResolveCanonicalMovieID(mediaID)
+	}
+
 	var title string
 	var filePath, posterURL, overview, releaseDate sql.NullString
 	var tmdbID sql.NullInt64
@@ -920,9 +917,9 @@ func GetMediaDetails(w http.ResponseWriter, r *http.Request, ps httprouter.Param
 		return
 	}
 
-	mt := models.MediaType(mediaType)
+	mt = models.MediaType(mediaType)
 
-	// Make sure we have a TMDB id to query the live catalog. Enrich on the fly
+	// Make sure we have a TMDB id to query the live catalog.
 	// when missing (e.g. freshly indexed titles).
 	if !tmdbID.Valid || tmdbID.Int64 <= 0 {
 		if indexer.EnrichMediaByID(mediaID) {
@@ -944,6 +941,15 @@ func GetMediaDetails(w http.ResponseWriter, r *http.Request, ps httprouter.Param
 	}
 	if filePath.Valid && filePath.String != "" {
 		details.FileName = filepath.Base(filePath.String)
+	} else if mt == models.TypeShow {
+		folder, epFile := indexer.ShowLocalLibraryHint(mediaID)
+		details.LocalFolder = folder
+		details.LocalEpisodeFile = epFile
+		if folder != "" {
+			details.FileName = folder
+		} else if epFile != "" {
+			details.FileName = epFile
+		}
 	}
 	if tmdbID.Valid {
 		details.TMDBID = int(tmdbID.Int64)
@@ -967,7 +973,8 @@ func mergeCatalogDetails(dst *models.MediaDetails, src *models.MediaDetails) {
 	if src.Overview != "" {
 		dst.Overview = src.Overview
 	}
-	if src.PosterURL != "" && dst.PosterURL == "" {
+	// Keep the library poster when set — avoids stale TMDB artwork on wrong duplicate rows.
+	if dst.PosterURL == "" && src.PosterURL != "" {
 		dst.PosterURL = src.PosterURL
 	}
 	dst.BackdropURL = src.BackdropURL
@@ -990,6 +997,56 @@ func mergeCatalogDetails(dst *models.MediaDetails, src *models.MediaDetails) {
 	dst.Collection = src.Collection
 	dst.NumberOfSeasons = src.NumberOfSeasons
 	dst.NumberOfEpisodes = src.NumberOfEpisodes
+}
+
+// RedetectMediaMetadata re-runs automatic TMDB matching from local paths
+// (POST /api/media/:id/metadata/redetect).
+func RedetectMediaMetadata(w http.ResponseWriter, r *http.Request, ps httprouter.Params, _ int) {
+	w.Header().Set("Content-Type", "application/json")
+
+	mediaID, err := strconv.Atoi(ps.ByName("id"))
+	if err != nil || mediaID <= 0 {
+		http.Error(w, `{"error": "Invalid media ID"}`, http.StatusBadRequest)
+		return
+	}
+
+	if !indexer.RedetectMediaByID(mediaID) {
+		http.Error(w, `{"error": "No matching title found on TMDB"}`, http.StatusNotFound)
+		return
+	}
+
+	var m models.Media
+	var filePath, posterURL, overview, releaseDate sql.NullString
+	var parentID, tmdbID sql.NullInt64
+	err = database.DB.QueryRow(`
+		SELECT id, type, title, file_path, duration, parent_id, poster_url, overview, release_date, tmdb_id, created_at
+		FROM medias WHERE id = ?`, mediaID,
+	).Scan(&m.ID, &m.Type, &m.Title, &filePath, &m.Duration, &parentID, &posterURL, &overview, &releaseDate, &tmdbID, &m.CreatedAt)
+	if err != nil {
+		http.Error(w, `{"error": "Media not found"}`, http.StatusNotFound)
+		return
+	}
+	if filePath.Valid {
+		m.FilePath = filePath.String
+	}
+	if parentID.Valid {
+		pid := int(parentID.Int64)
+		m.ParentID = &pid
+	}
+	if posterURL.Valid {
+		m.PosterURL = posterURL.String
+	}
+	if overview.Valid {
+		m.Overview = overview.String
+	}
+	if releaseDate.Valid {
+		m.ReleaseDate = releaseDate.String
+	}
+	if tmdbID.Valid {
+		m.TMDBID = int(tmdbID.Int64)
+	}
+
+	json.NewEncoder(w).Encode(m)
 }
 
 // GetPersonDetails returns an actor/crew profile with filmography
@@ -1178,110 +1235,13 @@ func GetScanStatus(w http.ResponseWriter, r *http.Request, _ httprouter.Params, 
 	json.NewEncoder(w).Encode(map[string]interface{}{
 		"is_scanning":             indexer.IsScanning,
 		"is_backfilling_metadata": indexer.IsBackfilling,
+		"is_redetecting_all":      indexer.IsRedetectingAll,
+		"redetect_all":            indexer.RedetectAllProgressSnapshot(),
 		"is_extracting_subtitles": subtitles.IsExtracting,
 		"subtitle_extraction":     subtitles.LastExtractStats(),
 	})
 }
 
-// GetNextEpisode returns the next episode in the same season (GET /api/episodes/:id/next)
-func GetNextEpisode(w http.ResponseWriter, r *http.Request, ps httprouter.Params, userID int) {
-	w.Header().Set("Content-Type", "application/json")
-
-	episodeID, err := strconv.Atoi(ps.ByName("id"))
-	if err != nil {
-		http.Error(w, `{"error": "Invalid episode ID"}`, http.StatusBadRequest)
-		return
-	}
-
-	// Get current episode's season and episode number
-	var seasonID, currentEpisodeNum int
-	err = database.DB.QueryRow(
-		"SELECT parent_id, COALESCE(episode_number, 0) FROM medias WHERE id = ? AND type = 'episode'",
-		episodeID,
-	).Scan(&seasonID, &currentEpisodeNum)
-	if err != nil {
-		if err == sql.ErrNoRows {
-			http.Error(w, `{"error": "Episode not found"}`, http.StatusNotFound)
-		} else {
-			log.Printf("NextEpisode error: %v", err)
-			http.Error(w, `{"error": "Internal database error"}`, http.StatusInternalServerError)
-		}
-		return
-	}
-
-	// Find the next episode in the same season
-	query := `
-		SELECT m.id, m.type, m.title, m.file_path, m.duration, m.parent_id, m.poster_url, m.overview, m.release_date, m.tmdb_id, m.created_at,
-		       COALESCE(p.current_position_seconds, 0) as current_position,
-		       COALESCE(p.is_finished, 0) as is_finished,
-		       m.intro_start, m.intro_end, m.outro_start, m.outro_end,
-		       COALESCE(NULLIF(m.season_number, 0), season.season_number, 0),
-		       COALESCE(m.episode_number, 0),
-		       COALESCE(season.title, ''),
-		       COALESCE(show_m.title, '')
-		FROM medias m
-		LEFT JOIN medias season ON m.parent_id = season.id AND season.type = 'season'
-		LEFT JOIN medias show_m ON season.parent_id = show_m.id AND show_m.type = 'show'
-		LEFT JOIN progressions p ON p.media_id = m.id AND p.user_id = ?
-		WHERE m.type = 'episode' AND m.parent_id = ?
-		  AND COALESCE(m.episode_number, 0) > ?
-		ORDER BY COALESCE(NULLIF(m.episode_number, 0), 9999), m.id ASC
-		LIMIT 1
-	`
-	var item models.HomeMediaItem
-	var filePath sql.NullString
-	var posterURL sql.NullString
-	var overview sql.NullString
-	var releaseDate sql.NullString
-	var tmdbID sql.NullInt64
-	var parentID int
-	var seasonNumber, episodeNumber int
-	var seasonTitle string
-	var showTitle sql.NullString
-
-	err = database.DB.QueryRow(query, userID, seasonID, currentEpisodeNum).Scan(
-		&item.ID, &item.Type, &item.Title, &filePath, &item.Duration, &parentID, &posterURL, &overview, &releaseDate, &tmdbID, &item.CreatedAt,
-		&item.CurrentPositionSeconds, &item.IsFinished,
-		&item.IntroStart, &item.IntroEnd, &item.OutroStart, &item.OutroEnd,
-		&seasonNumber, &episodeNumber, &seasonTitle, &showTitle,
-	)
-	if err != nil {
-		if err == sql.ErrNoRows {
-			json.NewEncoder(w).Encode(map[string]interface{}{"has_next": false})
-			return
-		}
-		log.Printf("NextEpisode error: %v", err)
-		http.Error(w, `{"error": "Internal database error"}`, http.StatusInternalServerError)
-		return
-	}
-
-	item.ParentID = &parentID
-	if filePath.Valid {
-		item.FilePath = filePath.String
-	}
-	if posterURL.Valid {
-		item.PosterURL = posterURL.String
-	}
-	if overview.Valid {
-		item.Overview = overview.String
-	}
-	if releaseDate.Valid {
-		item.ReleaseDate = releaseDate.String
-	}
-	if tmdbID.Valid {
-		item.TMDBID = int(tmdbID.Int64)
-	}
-	item.SeasonNumber = resolveSeasonNumber(seasonTitle, item.FilePath, seasonNumber)
-	item.EpisodeNumber = parseEpisodeNumber(item.Title, episodeNumber)
-	if showTitle.Valid && showTitle.String != "" {
-		item.ShowTitle = showTitle.String
-	}
-
-	json.NewEncoder(w).Encode(map[string]interface{}{
-		"has_next": true,
-		"episode":  item,
-	})
-}
 
 // GetEpisodeTimestamps returns the intro/outro timestamps for an episode (GET /api/episodes/:id/timestamps)
 func GetEpisodeTimestamps(w http.ResponseWriter, r *http.Request, ps httprouter.Params, _ int) {
@@ -1482,15 +1442,8 @@ func GetMediaTracks(w http.ResponseWriter, r *http.Request, ps httprouter.Params
 	}
 
 	json.NewEncoder(w).Encode(map[string]interface{}{
+		"video":     probe.Video,
 		"audio":     probe.Audio,
 		"subtitles": subs,
 	})
-}
-
-// Helper to get environment variables with default values
-func getEnv(key, defaultValue string) string {
-	if value, exists := os.LookupEnv(key); exists {
-		return value
-	}
-	return defaultValue
 }

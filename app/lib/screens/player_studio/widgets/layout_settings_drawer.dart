@@ -65,7 +65,7 @@ class LayoutSettingsDrawer extends StatelessWidget {
               backgroundColor: const Color(0xFF252525),
               foregroundColor: Colors.grey,
               selectedForegroundColor: Colors.white,
-              selectedBackgroundColor: const Color(0xFF007AFF),
+              selectedBackgroundColor: const Color(0xFF0A84FF),
             ),
           ),
           const SizedBox(height: 24),
@@ -73,10 +73,10 @@ class LayoutSettingsDrawer extends StatelessWidget {
             contentPadding: EdgeInsets.zero,
             value: snapToGrid,
             onChanged: onSnapToGridChanged,
-            activeColor: const Color(0xFF007AFF),
+            activeColor: const Color(0xFF0A84FF),
             secondary: Icon(
               snapToGrid ? Icons.auto_fix_normal : Icons.auto_fix_off,
-              color: snapToGrid ? const Color(0xFF007AFF) : Colors.grey,
+              color: snapToGrid ? const Color(0xFF0A84FF) : Colors.grey,
             ),
             title: const Text(
               'Alignement automatique',
@@ -94,7 +94,7 @@ class LayoutSettingsDrawer extends StatelessWidget {
             contentPadding: EdgeInsets.zero,
             value: useModularLayout,
             onChanged: onUseModularLayoutChanged,
-            activeColor: const Color(0xFF007AFF),
+            activeColor: const Color(0xFF0A84FF),
             title: const Text(
               'Utiliser cette disposition dans le lecteur',
               style: TextStyle(color: Colors.white, fontSize: 14),
@@ -109,10 +109,10 @@ class LayoutSettingsDrawer extends StatelessWidget {
             contentPadding: EdgeInsets.zero,
             value: tapToTogglePlayback,
             onChanged: useModularLayout ? onTapToTogglePlaybackChanged : null,
-            activeColor: const Color(0xFF007AFF),
+            activeColor: const Color(0xFF0A84FF),
             secondary: Icon(
               tapToTogglePlayback ? Icons.touch_app : Icons.touch_app_outlined,
-              color: tapToTogglePlayback ? const Color(0xFF007AFF) : Colors.grey,
+              color: tapToTogglePlayback ? const Color(0xFF0A84FF) : Colors.grey,
             ),
             title: const Text(
               'Tap sur l’écran = lecture / pause',

@@ -12,6 +12,9 @@ class MetadataFixSheet extends StatefulWidget {
   final ApiClient api;
   final String initialQuery;
   final String? fileName;
+  final String? fileHintLabel;
+  final String? localFolder;
+  final String? localEpisodeFile;
   final MediaType type;
 
   const MetadataFixSheet({
@@ -20,6 +23,9 @@ class MetadataFixSheet extends StatefulWidget {
     required this.initialQuery,
     required this.type,
     this.fileName,
+    this.fileHintLabel,
+    this.localFolder,
+    this.localEpisodeFile,
   });
 
   static Future<TmdbCandidate?> show(
@@ -28,6 +34,9 @@ class MetadataFixSheet extends StatefulWidget {
     required String initialQuery,
     required MediaType type,
     String? fileName,
+    String? fileHintLabel,
+    String? localFolder,
+    String? localEpisodeFile,
   }) {
     return showModalBottomSheet<TmdbCandidate>(
       context: context,
@@ -38,6 +47,9 @@ class MetadataFixSheet extends StatefulWidget {
         initialQuery: initialQuery,
         type: type,
         fileName: fileName,
+        fileHintLabel: fileHintLabel,
+        localFolder: localFolder,
+        localEpisodeFile: localEpisodeFile,
       ),
     );
   }
@@ -128,10 +140,19 @@ class _MetadataFixSheetState extends State<MetadataFixSheet> {
                           fontWeight: FontWeight.w700,
                         ),
                       ),
-                      if (widget.fileName != null &&
+                      if (widget.type == MediaType.show) ...[
+                        const SizedBox(height: 10),
+                        _LocalShowContextCard(
+                          folder: widget.localFolder,
+                          episodeFile: widget.localEpisodeFile,
+                        ),
+                      ] else if (widget.fileName != null &&
                           widget.fileName!.isNotEmpty) ...[
                         const SizedBox(height: 8),
-                        _FileNameChip(fileName: widget.fileName!),
+                        _FileNameChip(
+                          fileName: widget.fileName!,
+                          label: widget.fileHintLabel ?? 'Fichier local',
+                        ),
                       ],
                       const SizedBox(height: 14),
                       TextField(
@@ -202,35 +223,161 @@ class _MetadataFixSheetState extends State<MetadataFixSheet> {
   }
 }
 
-class _FileNameChip extends StatelessWidget {
-  final String fileName;
-  const _FileNameChip({required this.fileName});
+class _LocalShowContextCard extends StatelessWidget {
+  final String? folder;
+  final String? episodeFile;
+
+  const _LocalShowContextCard({
+    this.folder,
+    this.episodeFile,
+  });
 
   @override
   Widget build(BuildContext context) {
+    final hasFolder = folder != null && folder!.trim().isNotEmpty;
+    final hasEpisode = episodeFile != null && episodeFile!.trim().isNotEmpty;
+
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+      width: double.infinity,
+      padding: const EdgeInsets.all(12),
       decoration: BoxDecoration(
         color: AppColors.surface,
         borderRadius: BorderRadius.circular(10),
         border: Border.all(color: AppColors.textSecondary.withValues(alpha: 0.15)),
       ),
-      child: Row(
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          const Icon(Icons.insert_drive_file_outlined,
-              size: 16, color: AppColors.textSecondary),
-          const SizedBox(width: 8),
-          Expanded(
-            child: Text(
-              fileName,
-              style: const TextStyle(
-                color: AppColors.textSecondary,
-                fontSize: 12.5,
-                fontFamily: 'monospace',
-              ),
-              maxLines: 2,
-              overflow: TextOverflow.ellipsis,
+          const Text(
+            'Sur le serveur',
+            style: TextStyle(
+              color: AppColors.textSecondary,
+              fontSize: 11,
+              fontWeight: FontWeight.w600,
+              letterSpacing: 0.2,
             ),
+          ),
+          const SizedBox(height: 8),
+          _LocalRow(
+            icon: Icons.folder_outlined,
+            label: 'Dossier série',
+            value: hasFolder ? folder! : '— aucun chemin indexé —',
+            muted: !hasFolder,
+          ),
+          if (hasEpisode) ...[
+            const SizedBox(height: 8),
+            _LocalRow(
+              icon: Icons.movie_outlined,
+              label: 'Fichier épisode',
+              value: episodeFile!,
+            ),
+          ],
+        ],
+      ),
+    );
+  }
+}
+
+class _LocalRow extends StatelessWidget {
+  final IconData icon;
+  final String label;
+  final String value;
+  final bool muted;
+
+  const _LocalRow({
+    required this.icon,
+    required this.label,
+    required this.value,
+    this.muted = false,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Row(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Icon(icon, size: 16, color: AppColors.textSecondary),
+        const SizedBox(width: 8),
+        Expanded(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                label,
+                style: TextStyle(
+                  color: AppColors.textSecondary.withValues(alpha: 0.9),
+                  fontSize: 11,
+                ),
+              ),
+              Text(
+                value,
+                style: TextStyle(
+                  color: muted
+                      ? AppColors.textMuted
+                      : AppColors.textPrimary,
+                  fontSize: 13,
+                  fontFamily: 'monospace',
+                  height: 1.35,
+                ),
+              ),
+            ],
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+class _FileNameChip extends StatelessWidget {
+  final String fileName;
+  final String label;
+
+  const _FileNameChip({
+    required this.fileName,
+    required this.label,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+      decoration: BoxDecoration(
+        color: AppColors.surface,
+        borderRadius: BorderRadius.circular(10),
+        border: Border.all(color: AppColors.textSecondary.withValues(alpha: 0.15)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            label,
+            style: TextStyle(
+              color: AppColors.textSecondary.withValues(alpha: 0.85),
+              fontSize: 11,
+              fontWeight: FontWeight.w600,
+              letterSpacing: 0.2,
+            ),
+          ),
+          const SizedBox(height: 4),
+          Row(
+            children: [
+              const Icon(Icons.insert_drive_file_outlined,
+                  size: 16, color: AppColors.textSecondary),
+              const SizedBox(width: 8),
+              Expanded(
+                child: Text(
+                  fileName,
+                  style: const TextStyle(
+                    color: AppColors.textPrimary,
+                    fontSize: 13,
+                    fontFamily: 'monospace',
+                    height: 1.3,
+                  ),
+                  maxLines: 3,
+                  overflow: TextOverflow.ellipsis,
+                ),
+              ),
+            ],
           ),
         ],
       ),

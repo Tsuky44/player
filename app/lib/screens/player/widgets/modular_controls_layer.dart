@@ -16,6 +16,8 @@ class ModularControlsLayer extends StatelessWidget {
   final VoidCallback onPlayPause;
   final VoidCallback onRewind;
   final VoidCallback onForward;
+  final VoidCallback? onRewind30;
+  final VoidCallback? onForward30;
   final VoidCallback? onSkipPrevious;
   final VoidCallback? onSkipNext;
   final VoidCallback? onVolumeUp;
@@ -25,11 +27,23 @@ class ModularControlsLayer extends StatelessWidget {
   final VoidCallback? onOpenSettings;
   final VoidCallback? onToggleSubtitles;
 
+  /// Pack Cinéma Essentiel
+  final VoidCallback? onSkipIntro;
+  final VoidCallback? onCycleSpeed;
+  final VoidCallback? onToggleAspectFit;
+  final VoidCallback? onOpenAudio;
+  final VoidCallback? onOpenChapters;
+  final double? playbackRate;
+  final BoxFit? videoFit;
+
   /// Key to anchor the settings popup above the settings button.
   final GlobalKey? settingsButtonKey;
 
   /// Key to anchor the subtitles popup above the subtitles button.
   final GlobalKey? subtitlesButtonKey;
+
+  /// Key to anchor the info panel above the [PlayerControlType.mediaInfo] button.
+  final GlobalKey? mediaInfoButtonKey;
 
   /// Key attached to the lowest progress/timeline control for subtitle positioning.
   final GlobalKey? timelineAnchorKey;
@@ -55,6 +69,17 @@ class ModularControlsLayer extends StatelessWidget {
   /// Opens the up-next episode panel (series only).
   final VoidCallback? onOpenUpNext;
 
+  /// Opens the media info panel ([PlayerControlType.mediaInfo]).
+  final VoidCallback? onOpenInfo;
+
+  /// Small muted line shown by [PlayerControlType.episodeTitleBlock].
+  final String? episodeInfoLine;
+
+  /// Bold show/movie title (no season/episode suffix) for the
+  /// [PlayerControlType.episodeTitleBlock] control — distinct from [mediaTitle],
+  /// which combines show name and episode code for the single-line controls.
+  final String? episodeShowTitle;
+
   const ModularControlsLayer({
     super.key,
     required this.config,
@@ -67,6 +92,8 @@ class ModularControlsLayer extends StatelessWidget {
     required this.onSeekFraction,
     this.duration,
     this.currentSeconds,
+    this.onRewind30,
+    this.onForward30,
     this.onSkipPrevious,
     this.onSkipNext,
     this.onVolumeUp,
@@ -75,8 +102,16 @@ class ModularControlsLayer extends StatelessWidget {
     this.onToggleFullscreen,
     this.onOpenSettings,
     this.onToggleSubtitles,
+    this.onSkipIntro,
+    this.onCycleSpeed,
+    this.onToggleAspectFit,
+    this.onOpenAudio,
+    this.onOpenChapters,
+    this.playbackRate,
+    this.videoFit,
     this.settingsButtonKey,
     this.subtitlesButtonKey,
+    this.mediaInfoButtonKey,
     this.timelineAnchorKey,
     this.mediaTitle,
     this.mediaLogoUrl,
@@ -84,6 +119,9 @@ class ModularControlsLayer extends StatelessWidget {
     this.onVolumeChanged,
     this.onBack,
     this.onOpenUpNext,
+    this.onOpenInfo,
+    this.episodeInfoLine,
+    this.episodeShowTitle,
   });
 
   VoidCallback? _tapHandler(PlayerControlType type) {
@@ -91,6 +129,8 @@ class ModularControlsLayer extends StatelessWidget {
       PlayerControlType.back => onBack,
       PlayerControlType.rewind => onRewind,
       PlayerControlType.forward => onForward,
+      PlayerControlType.rewind30 => onRewind30,
+      PlayerControlType.forward30 => onForward30,
       PlayerControlType.playPause || PlayerControlType.progressBar => onPlayPause,
       PlayerControlType.timeline ||
           PlayerControlType.timelineEmby ||
@@ -105,7 +145,18 @@ class ModularControlsLayer extends StatelessWidget {
       PlayerControlType.settings => onOpenSettings,
       PlayerControlType.subtitles => onToggleSubtitles,
       PlayerControlType.upNext || PlayerControlType.upNextEmby => onOpenUpNext,
-      PlayerControlType.mediaTitle || PlayerControlType.mediaLogo || PlayerControlType.volumeSlider => null,
+      PlayerControlType.skipIntro => onSkipIntro,
+      PlayerControlType.playbackSpeed => onCycleSpeed,
+      PlayerControlType.aspectFit => onToggleAspectFit,
+      PlayerControlType.audioTracks => onOpenAudio,
+      PlayerControlType.chapters || PlayerControlType.chaptersEmby => onOpenChapters,
+      PlayerControlType.mediaInfo => onOpenInfo,
+      PlayerControlType.mediaTitle ||
+          PlayerControlType.mediaLogo ||
+          PlayerControlType.episodeTitleBlock ||
+          PlayerControlType.volumeSlider ||
+          PlayerControlType.timeRemaining =>
+        null,
     };
   }
 
@@ -195,6 +246,11 @@ class ModularControlsLayer extends StatelessWidget {
         placed.type == PlayerControlType.subtitles;
   }
 
+  bool _attachMediaInfoKey(PlacedControl placed) {
+    return mediaInfoButtonKey != null &&
+        placed.type == PlayerControlType.mediaInfo;
+  }
+
   /// Resolves saved timeline options, or type defaults when none were stored.
   TimelineChromeOptions _resolvedTimelineOptions(PlacedControl placed) =>
       placed.effectiveTimelineOptions;
@@ -206,6 +262,8 @@ class ModularControlsLayer extends StatelessWidget {
   ) {
     final c = placed.config;
     final timelineOpts = _resolvedTimelineOptions(placed);
+    final needsClock = placed.type.isTimelineBar ||
+        placed.type == PlayerControlType.timeRemaining;
     final chrome = ControlChrome(
       type: placed.type,
       sizePercentage: c.sizePercentage,
@@ -214,8 +272,8 @@ class ModularControlsLayer extends StatelessWidget {
       variant: ControlChromeVariant.live,
       isPlaying: isPlaying,
       progress: progress,
-      duration: placed.type.isTimelineBar ? duration : null,
-      currentSeconds: placed.type.isTimelineBar ? currentSeconds : null,
+      duration: needsClock ? duration : null,
+      currentSeconds: needsClock ? currentSeconds : null,
       onSeekFraction: placed.type.isProgressBar || placed.type.isTimelineBar
           ? onSeekFraction
           : null,
@@ -238,14 +296,30 @@ class ModularControlsLayer extends StatelessWidget {
       mediaTitle: placed.type == PlayerControlType.mediaTitle ||
               placed.type == PlayerControlType.mediaLogo
           ? mediaTitle
-          : null,
-      mediaLogoUrl: placed.type == PlayerControlType.mediaLogo ? mediaLogoUrl : null,
+          : placed.type == PlayerControlType.episodeTitleBlock
+              ? episodeShowTitle
+              : null,
+      mediaLogoUrl:
+          placed.type == PlayerControlType.mediaLogo ? mediaLogoUrl : null,
       volume: placed.type == PlayerControlType.volumeSlider ? volume : null,
-      onVolumeChanged: placed.type == PlayerControlType.volumeSlider ? onVolumeChanged : null,
+      onVolumeChanged:
+          placed.type == PlayerControlType.volumeSlider ? onVolumeChanged : null,
       onBack: placed.type == PlayerControlType.back ? onBack : null,
+      playbackRate: placed.type == PlayerControlType.playbackSpeed
+          ? playbackRate
+          : null,
+      videoFit:
+          placed.type == PlayerControlType.aspectFit ? videoFit : null,
       blurSigma: config.blurIntensity,
       glassOpacity: config.glassOpacity,
       liquidGlass: config.liquidGlass,
+      skin: config.skin,
+      flatAccentColor: config.flatAccentColor,
+      flatElevation: config.flatElevation,
+      neumorphicIntensity: config.neumorphicIntensity,
+      episodeInfoLine:
+          placed.type == PlayerControlType.episodeTitleBlock ? episodeInfoLine : null,
+      alwaysExpanded: c.alwaysExpanded,
     );
 
     final handler = _tapHandler(placed.type);
@@ -268,6 +342,10 @@ class ModularControlsLayer extends StatelessWidget {
 
     if (_attachSubtitlesKeyToStandalone(placed)) {
       child = KeyedSubtree(key: subtitlesButtonKey, child: child);
+    }
+
+    if (_attachMediaInfoKey(placed)) {
+      child = KeyedSubtree(key: mediaInfoButtonKey, child: child);
     }
 
     if (timelineAnchorKey != null &&

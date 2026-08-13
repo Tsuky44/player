@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import '../../models/models.dart';
 import '../../theme/app_colors.dart';
 import '../../utils/poster_url.dart';
+import '../../utils/responsive.dart';
 import 'continue_watching_card.dart';
 import 'media_card.dart';
 
@@ -31,8 +32,9 @@ class MediaRow extends StatelessWidget {
   Widget build(BuildContext context) {
     if (items.isEmpty) return const SizedBox.shrink();
 
-    final horizontalPadding = MediaQuery.sizeOf(context).width >= 900 ? 48.0 : 16.0;
-    const cardWidth = 150.0;
+    final horizontalPadding = AppLayout.pagePadding(context);
+    final cardWidth = AppLayout.mediaRowCardWidth(context);
+    final compact = AppLayout.isCompact(context);
     final rowHeight = isContinueWatching
         ? ContinueWatchingCard.rowHeight
         : mediaCardHeight(cardWidth, compact: true) + 4;
@@ -44,15 +46,17 @@ class MediaRow extends StatelessWidget {
           padding: EdgeInsets.symmetric(horizontal: horizontalPadding),
           child: Row(
             children: [
-              Text(
-                title,
-                style: Theme.of(context).textTheme.titleLarge?.copyWith(
-                      fontWeight: FontWeight.w700,
-                      fontSize: 20,
-                    ),
+              Expanded(
+                child: Text(
+                  title,
+                  style: Theme.of(context).textTheme.titleLarge?.copyWith(
+                        fontWeight: FontWeight.w600,
+                        fontSize: compact ? 17 : 20,
+                        letterSpacing: -0.3,
+                      ),
+                ),
               ),
-              if (onSeeAll != null) ...[
-                const Spacer(),
+              if (onSeeAll != null)
                 TextButton(
                   onPressed: onSeeAll,
                   child: const Row(
@@ -62,16 +66,16 @@ class MediaRow extends StatelessWidget {
                         'Tout voir',
                         style: TextStyle(color: AppColors.textSecondary),
                       ),
-                      SizedBox(width: 4),
-                      Icon(Icons.chevron_right_rounded, size: 20, color: AppColors.textSecondary),
+                      SizedBox(width: 2),
+                      Icon(Icons.chevron_right_rounded,
+                          size: 20, color: AppColors.textSecondary),
                     ],
                   ),
                 ),
-              ],
             ],
           ),
         ),
-        const SizedBox(height: 12),
+        const SizedBox(height: 14),
         SizedBox(
           height: rowHeight,
           child: ListView.builder(
@@ -87,7 +91,7 @@ class MediaRow extends StatelessWidget {
                         item: item as HomeMediaItem,
                         onTap: () => onItemTap(item),
                         onTitleTap: onContinueWatchingTitleTap != null
-                            ? () => onContinueWatchingTitleTap!(item as HomeMediaItem)
+                            ? () => onContinueWatchingTitleTap!(item)
                             : null,
                         onMarkAsWatched: onContinueWatchingMarkWatched,
                         onRemoveFromRow: onContinueWatchingRemove,

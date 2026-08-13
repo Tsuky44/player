@@ -24,10 +24,29 @@ func Catalog(mediaID int, probe *streaming.ProbeResult) []Track {
 	seen := map[string]int{}
 	var out []Track
 	for _, s := range probe.Subtitles {
+		code := normalizeLang(s.Language)
+
 		if s.Image {
+			// Bitmap subtitles (PGS/VOBSUB) cannot become WebVTT, so they are
+			// delivered by burning them into the video while transcoding. They
+			// need no extraction, hence Ready.
+			//
+			// Their key lives in a separate namespace: text keys name .vtt files
+			// on disk and are derived by advancing `seen`, so letting a bitmap
+			// track take part would rename every text track that follows it and
+			// break the pairing with planTextSubtitles.
+			out = append(out, Track{
+				Lang:       fmt.Sprintf("img%d", s.TypedIndex),
+				Name:       subtitleTitle(code, s),
+				Ready:      true,
+				TypedIndex: s.TypedIndex,
+				Image:      true,
+				Forced:     s.Forced,
+				Default:    s.Default,
+			})
 			continue
 		}
-		code := normalizeLang(s.Language)
+
 		key := code
 		if seen[code] > 0 {
 			key = fmt.Sprintf("%s%d", code, seen[code]+1)
@@ -35,13 +54,25 @@ func Catalog(mediaID int, probe *streaming.ProbeResult) []Track {
 		seen[code]++
 
 		if rt, ok := readyByLang[key]; ok {
+			// Ready and Partial come from the DB row; everything describing the
+			// stream itself comes from the probe, which is the only source that
+			// knows about positions and dispositions.
+			rt.TypedIndex = s.TypedIndex
+			rt.Forced = s.Forced
+			rt.Default = s.Default
 			out = append(out, rt)
 			continue
 		}
+		// Discovered by the probe but not extracted yet: listed so the language
+		// shows up in the UI immediately, with ready=false driving the client's
+		// "extraction en cours" state.
 		out = append(out, Track{
-			Lang:  key,
-			Name:  subtitleTitle(code, s),
-			Ready: false,
+			Lang:       key,
+			Name:       subtitleTitle(code, s),
+			Ready:      false,
+			TypedIndex: s.TypedIndex,
+			Forced:     s.Forced,
+			Default:    s.Default,
 		})
 	}
 	return out

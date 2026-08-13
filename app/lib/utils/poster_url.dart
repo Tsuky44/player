@@ -18,6 +18,15 @@ String upgradeTmdbImageUrl(String url, {bool hero = false}) {
   return url.replaceFirst(RegExp(r'/t/p/w\d+'), '/t/p/$size');
 }
 
+/// Poster for a grid/row card: TMDB is normalised to w500 — the server stores
+/// some artwork as w300, which is visibly soft on a desktop grid.
+String? cardPosterUrl(String? posterUrl, {String? serverBaseUrl}) {
+  final resolved = resolvePosterUrl(posterUrl, serverBaseUrl: serverBaseUrl);
+  if (resolved == null) return null;
+  if (!resolved.contains('image.tmdb.org/t/p/')) return resolved;
+  return resolved.replaceFirst(RegExp(r'/t/p/w\d+'), '/t/p/w500');
+}
+
 String? resolveHeroImageUrl(String? posterUrl, {String? serverBaseUrl}) {
   final resolved = resolvePosterUrl(posterUrl, serverBaseUrl: serverBaseUrl);
   if (resolved == null) return null;
@@ -37,9 +46,10 @@ String? heroBackgroundUrl(HomeMediaItem item, {String? serverBaseUrl}) {
   return resolveHeroImageUrl(item.displayPosterUrl, serverBaseUrl: serverBaseUrl);
 }
 
-/// Estimated card height for layout (poster 2:3 + metadata).
+/// Estimated card height for layout (poster 2:3 + title line + subtitle line).
 double mediaCardHeight(double width, {bool compact = false}) {
   final posterH = width * (compact ? 1.45 : 1.5);
-  final metaH = compact ? 36.0 : 52.0;
-  return posterH + 8 + metaH;
+  final gap = compact ? 7.0 : 9.0;
+  final metaH = compact ? 34.0 : 38.0;
+  return posterH + gap + metaH;
 }

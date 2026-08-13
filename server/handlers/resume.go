@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"project-player/server/database"
+	"project-player/server/indexer"
 	"project-player/server/models"
 
 	"github.com/julienschmidt/httprouter"
@@ -199,6 +200,7 @@ func GetShowResumeEpisode(w http.ResponseWriter, r *http.Request, ps httprouter.
 		http.Error(w, `{"error": "Invalid show ID"}`, http.StatusBadRequest)
 		return
 	}
+	showID = indexer.ResolveCanonicalShowID(showID)
 
 	episodes, err := loadShowEpisodesWithProgress(showID, userID)
 	if err != nil {

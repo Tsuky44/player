@@ -1,9 +1,9 @@
 [Setup]
-AppName=Project Player
+AppName=Onyx
 AppVersion=1.0.0
-DefaultDirName={commonpf}\Project Player
-DefaultGroupName=Project Player
-OutputBaseFilename=ProjectPlayer-Setup
+DefaultDirName={commonpf}\Onyx
+DefaultGroupName=Onyx
+OutputBaseFilename=Onyx-Setup
 Compression=lzma
 SolidCompression=yes
 WizardStyle=modern
@@ -14,8 +14,8 @@ UninstallDisplayIcon={app}\app.exe
 Source: "build\windows\x64\runner\Release\*"; DestDir: "{app}"; Flags: ignoreversion recursesubdirs createallsubdirs
 
 [Icons]
-Name: "{group}\Project Player"; Filename: "{app}\app.exe"
-Name: "{commondesktop}\Project Player"; Filename: "{app}\app.exe"
+Name: "{group}\Onyx"; Filename: "{app}\app.exe"
+Name: "{commondesktop}\Onyx"; Filename: "{app}\app.exe"
 
 [Run]
-Filename: "{app}\app.exe"; Description: "Launch Project Player"; Flags: nowait postinstall skipifsilent
+Filename: "{app}\app.exe"; Description: "Launch Onyx"; Flags: nowait postinstall skipifsilent

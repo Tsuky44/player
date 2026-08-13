@@ -4,11 +4,14 @@ import 'package:provider/provider.dart';
 
 import '../../models/models.dart';
 import '../../services/api_client.dart';
+import '../../services/media_logo_cache.dart';
 import '../../theme/app_colors.dart';
 import '../../utils/format.dart';
 import '../../utils/poster_url.dart';
+import '../../utils/responsive.dart';
 import 'hero_banner.dart' show MetadataChip;
 import 'media_logo_display.dart';
+import 'poster_card.dart';
 import 'overlay_back_button.dart';
 
 /// Emby-style hero header for movie/show detail pages: a wide backdrop with
@@ -32,12 +35,18 @@ class DetailBackdropHeader extends StatelessWidget {
     this.actions,
   });
 
-  static const double height = 540;
+  static const double heightDesktop = 540;
 
   @override
   Widget build(BuildContext context) {
     final apiClient = Provider.of<ApiClient>(context, listen: false);
     final baseUrl = apiClient.baseUrl;
+    final compact = AppLayout.isCompact(context);
+    final pad = AppLayout.pagePadding(context);
+    final screenH = MediaQuery.sizeOf(context).height;
+    final headerHeight = compact
+        ? (screenH * 0.62).clamp(420.0, 520.0)
+        : heightDesktop;
 
     final posterUrl = resolvePosterUrl(
       details?.posterUrl ?? fallback.posterUrl,
@@ -51,8 +60,84 @@ class DetailBackdropHeader extends StatelessWidget {
     final tagline = details?.tagline;
     final overview = details?.overview ?? fallback.overview;
 
+    // The player chrome shows this same logo. Handing it over here means the
+    // player renders it on the first frame instead of re-fetching the details.
+    if (details != null) {
+      MediaLogoCache.remember(details!.id, details!.logoUrl);
+    }
+
+    final infoColumn = Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Text(
+          mediaTypeLabel(fallback.type),
+          style: const TextStyle(
+            color: AppColors.accentMuted,
+            fontWeight: FontWeight.w600,
+            fontSize: 12,
+            letterSpacing: 0.2,
+          ),
+        ),
+        const SizedBox(height: 8),
+        MediaLogoDisplay(
+          title: title,
+          logoUrl: details?.logoUrl,
+          maxHeight: compact ? 72 : 160,
+          maxWidth: compact ? double.infinity : 420,
+          textStyle: Theme.of(context).textTheme.headlineMedium?.copyWith(
+                fontWeight: FontWeight.w800,
+                height: 1.05,
+                fontSize: compact ? 26 : null,
+              ),
+        ),
+        if (tagline != null && tagline.isNotEmpty) ...[
+          const SizedBox(height: 8),
+          Text(
+            tagline,
+            maxLines: compact ? 2 : 3,
+            overflow: TextOverflow.ellipsis,
+            style: const TextStyle(
+              color: AppColors.textSecondary,
+              fontSize: 14,
+              fontStyle: FontStyle.italic,
+            ),
+          ),
+        ],
+        if (metadata.isNotEmpty) ...[
+          const SizedBox(height: 14),
+          Wrap(
+            spacing: 8,
+            runSpacing: 8,
+            crossAxisAlignment: WrapCrossAlignment.center,
+            children: metadata,
+          ),
+        ],
+        if (overview != null && overview.isNotEmpty) ...[
+          const SizedBox(height: 16),
+          ConstrainedBox(
+            constraints: BoxConstraints(maxWidth: compact ? double.infinity : 720),
+            child: Text(
+              overview,
+              maxLines: compact ? 4 : 3,
+              overflow: TextOverflow.ellipsis,
+              style: const TextStyle(
+                color: AppColors.textSecondary,
+                fontSize: 14,
+                height: 1.55,
+              ),
+            ),
+          ),
+        ],
+        if (actions != null) ...[
+          const SizedBox(height: 22),
+          actions!,
+        ],
+      ],
+    );
+
     return SizedBox(
-      height: height,
+      height: headerHeight,
       width: double.infinity,
       child: Stack(
         fit: StackFit.expand,
@@ -67,7 +152,6 @@ class DetailBackdropHeader extends StatelessWidget {
           else
             Container(color: AppColors.surfaceElevated),
 
-          // Bottom fade into the page background.
           const DecoratedBox(
             decoration: BoxDecoration(
               gradient: LinearGradient(
@@ -78,105 +162,55 @@ class DetailBackdropHeader extends StatelessWidget {
                   Colors.transparent,
                   AppColors.background,
                 ],
-                stops: [0.0, 0.5, 1.0],
+                stops: [0.0, 0.45, 1.0],
               ),
             ),
           ),
-          // Left-to-right scrim for text legibility.
-          DecoratedBox(
-            decoration: BoxDecoration(
-              gradient: LinearGradient(
-                begin: Alignment.centerLeft,
-                end: Alignment.centerRight,
-                colors: [
-                  AppColors.background.withValues(alpha: 0.95),
-                  AppColors.background.withValues(alpha: 0.55),
-                  Colors.transparent,
-                ],
-                stops: const [0.0, 0.45, 0.85],
+          if (!compact)
+            DecoratedBox(
+              decoration: BoxDecoration(
+                gradient: LinearGradient(
+                  begin: Alignment.centerLeft,
+                  end: Alignment.centerRight,
+                  colors: [
+                    AppColors.background.withValues(alpha: 0.95),
+                    AppColors.background.withValues(alpha: 0.55),
+                    Colors.transparent,
+                  ],
+                  stops: const [0.0, 0.45, 0.85],
+                ),
+              ),
+            )
+          else
+            DecoratedBox(
+              decoration: BoxDecoration(
+                gradient: LinearGradient(
+                  begin: Alignment.topCenter,
+                  end: Alignment.bottomCenter,
+                  colors: [
+                    Colors.black.withValues(alpha: 0.25),
+                    AppColors.background.withValues(alpha: 0.75),
+                    AppColors.background,
+                  ],
+                  stops: const [0.0, 0.55, 1.0],
+                ),
               ),
             ),
-          ),
 
           Positioned(
-            left: 48,
-            right: 48,
-            bottom: 36,
-            child: Row(
-              crossAxisAlignment: CrossAxisAlignment.end,
-              children: [
-                _Poster(url: posterUrl),
-                const SizedBox(width: 36),
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    mainAxisSize: MainAxisSize.min,
+            left: pad,
+            right: pad,
+            bottom: compact ? 20 : 36,
+            child: compact
+                ? infoColumn
+                : Row(
+                    crossAxisAlignment: CrossAxisAlignment.end,
                     children: [
-                      Text(
-                        mediaTypeLabel(fallback.type).toUpperCase(),
-                        style: const TextStyle(
-                          color: AppColors.accent,
-                          fontWeight: FontWeight.w700,
-                          fontSize: 12,
-                          letterSpacing: 1.6,
-                        ),
-                      ),
-                      const SizedBox(height: 8),
-                      MediaLogoDisplay(
-                        title: title,
-                        logoUrl: details?.logoUrl,
-                        maxHeight: 160,
-                        maxWidth: 420,
-                        textStyle: Theme.of(context).textTheme.headlineMedium?.copyWith(
-                              fontWeight: FontWeight.w800,
-                              height: 1.05,
-                            ),
-                      ),
-                      if (tagline != null && tagline.isNotEmpty) ...[
-                        const SizedBox(height: 8),
-                        Text(
-                          tagline,
-                          style: const TextStyle(
-                            color: AppColors.textSecondary,
-                            fontSize: 14,
-                            fontStyle: FontStyle.italic,
-                          ),
-                        ),
-                      ],
-                      if (metadata.isNotEmpty) ...[
-                        const SizedBox(height: 14),
-                        Wrap(
-                          spacing: 8,
-                          runSpacing: 8,
-                          crossAxisAlignment: WrapCrossAlignment.center,
-                          children: metadata,
-                        ),
-                      ],
-                      if (overview != null && overview.isNotEmpty) ...[
-                        const SizedBox(height: 16),
-                        ConstrainedBox(
-                          constraints: const BoxConstraints(maxWidth: 720),
-                          child: Text(
-                            overview,
-                            maxLines: 3,
-                            overflow: TextOverflow.ellipsis,
-                            style: const TextStyle(
-                              color: AppColors.textSecondary,
-                              fontSize: 14,
-                              height: 1.55,
-                            ),
-                          ),
-                        ),
-                      ],
-                      if (actions != null) ...[
-                        const SizedBox(height: 22),
-                        actions!,
-                      ],
+                      _Poster(url: posterUrl),
+                      const SizedBox(width: 36),
+                      Expanded(child: infoColumn),
                     ],
                   ),
-                ),
-              ],
-            ),
           ),
 
           Positioned(
@@ -333,12 +367,16 @@ class CastSection extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     if (cast.isEmpty) return const SizedBox.shrink();
+    final pad = AppLayout.pagePadding(context);
+    final compact = AppLayout.isCompact(context);
+    final cardW = compact ? 96.0 : 120.0;
+    final cardH = compact ? 120.0 : 150.0;
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         Padding(
-          padding: const EdgeInsets.fromLTRB(48, 8, 48, 16),
+          padding: EdgeInsets.fromLTRB(pad, 8, pad, 16),
           child: Text(
             "Têtes d'affiche",
             style: Theme.of(context).textTheme.titleLarge?.copyWith(
@@ -347,14 +385,16 @@ class CastSection extends StatelessWidget {
           ),
         ),
         SizedBox(
-          height: 214,
+          height: compact ? 178 : 214,
           child: ListView.separated(
             scrollDirection: Axis.horizontal,
-            padding: const EdgeInsets.symmetric(horizontal: 48),
+            padding: EdgeInsets.symmetric(horizontal: pad),
             itemCount: cast.length,
             separatorBuilder: (_, __) => const SizedBox(width: 14),
             itemBuilder: (context, index) => _CastCard(
               member: cast[index],
+              width: cardW,
+              imageHeight: cardH,
               onTap: onTapMember == null ? null : () => onTapMember!(cast[index]),
             ),
           ),
@@ -367,13 +407,20 @@ class CastSection extends StatelessWidget {
 class _CastCard extends StatelessWidget {
   final CastMember member;
   final VoidCallback? onTap;
+  final double width;
+  final double imageHeight;
 
-  const _CastCard({required this.member, this.onTap});
+  const _CastCard({
+    required this.member,
+    this.onTap,
+    this.width = 120,
+    this.imageHeight = 150,
+  });
 
   @override
   Widget build(BuildContext context) {
     return SizedBox(
-      width: 120,
+      width: width,
       child: MouseRegion(
         cursor: onTap != null ? SystemMouseCursors.click : MouseCursor.defer,
         child: GestureDetector(
@@ -384,8 +431,8 @@ class _CastCard extends StatelessWidget {
               ClipRRect(
                 borderRadius: BorderRadius.circular(10),
                 child: SizedBox(
-                  width: 120,
-                  height: 150,
+                  width: width,
+                  height: imageHeight,
                   child: member.profileUrl != null && member.profileUrl!.isNotEmpty
                       ? CachedNetworkImage(
                           imageUrl: member.profileUrl!,
@@ -438,8 +485,11 @@ class CollectionSection extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final pad = AppLayout.pagePadding(context);
+    final compact = AppLayout.isCompact(context);
+
     return Padding(
-      padding: const EdgeInsets.fromLTRB(48, 24, 48, 8),
+      padding: EdgeInsets.fromLTRB(pad, 24, pad, 8),
       child: ClipRRect(
         borderRadius: BorderRadius.circular(14),
         child: Stack(
@@ -472,7 +522,10 @@ class CollectionSection extends StatelessWidget {
               child: InkWell(
                 onTap: onTap,
                 child: Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 22),
+                  padding: EdgeInsets.symmetric(
+                    horizontal: compact ? 16 : 20,
+                    vertical: compact ? 18 : 22,
+                  ),
                   child: Row(
                     children: [
                       const Icon(Icons.collections_bookmark_rounded,
@@ -495,34 +548,42 @@ class CollectionSection extends StatelessWidget {
                             const SizedBox(height: 4),
                             Text(
                               collection.name,
-                              maxLines: 1,
+                              maxLines: compact ? 2 : 1,
                               overflow: TextOverflow.ellipsis,
-                              style: const TextStyle(
+                              style: TextStyle(
                                 color: AppColors.textPrimary,
-                                fontSize: 18,
+                                fontSize: compact ? 16 : 18,
                                 fontWeight: FontWeight.w700,
                               ),
                             ),
                           ],
                         ),
                       ),
-                      const SizedBox(width: 12),
-                      Container(
-                        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-                        decoration: BoxDecoration(
-                          color: AppColors.surfaceElevated.withValues(alpha: 0.9),
-                          borderRadius: BorderRadius.circular(20),
-                          border: Border.all(color: AppColors.border),
-                        ),
-                        child: const Text(
-                          'Voir la saga',
-                          style: TextStyle(
-                            color: AppColors.textPrimary,
-                            fontSize: 13,
-                            fontWeight: FontWeight.w600,
+                      if (!compact) ...[
+                        const SizedBox(width: 12),
+                        Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                          decoration: BoxDecoration(
+                            color: AppColors.surfaceElevated.withValues(alpha: 0.9),
+                            borderRadius: BorderRadius.circular(20),
+                            border: Border.all(color: AppColors.border),
+                          ),
+                          child: const Text(
+                            'Voir la saga',
+                            style: TextStyle(
+                              color: AppColors.textPrimary,
+                              fontSize: 13,
+                              fontWeight: FontWeight.w600,
+                            ),
                           ),
                         ),
-                      ),
+                      ] else ...[
+                        const SizedBox(width: 8),
+                        Icon(
+                          Icons.chevron_right_rounded,
+                          color: AppColors.textPrimary.withValues(alpha: 0.85),
+                        ),
+                      ],
                     ],
                   ),
                 ),
@@ -545,93 +606,54 @@ class CatalogPosterCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return GestureDetector(
+    final character = item.character;
+    final year = item.year;
+    // Filmography cards lead with the role; everywhere else, the request
+    // catalog's "année • ★ note" line.
+    final subtitle = character != null && character.isNotEmpty
+        ? character
+        : [
+            if (year != null && year.isNotEmpty) year,
+            if (item.rating > 0) '★ ${item.rating.toStringAsFixed(1)}',
+          ].join('  •  ');
+
+    return PosterCard(
+      posterUrl: cardPosterUrl(item.posterUrl),
+      title: item.title,
+      subtitle: subtitle,
       onTap: onTap,
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          AspectRatio(
-            aspectRatio: 2 / 3,
-            child: ClipRRect(
-              borderRadius: BorderRadius.circular(8),
-              child: Stack(
-                fit: StackFit.expand,
-                children: [
-                  if (item.posterUrl != null && item.posterUrl!.isNotEmpty)
-                    CachedNetworkImage(
-                      imageUrl: item.posterUrl!,
-                      fit: BoxFit.cover,
-                      color: item.isOwned ? null : Colors.black.withValues(alpha: 0.45),
-                      colorBlendMode: item.isOwned ? null : BlendMode.darken,
-                      placeholder: (_, __) => Container(color: AppColors.surfaceElevated),
-                      errorWidget: (_, __, ___) => const _CatalogPosterPlaceholder(),
-                    )
-                  else
-                    const _CatalogPosterPlaceholder(),
-                  if (!item.isOwned)
-                    Positioned(
-                      top: 6,
-                      right: 6,
-                      child: Container(
-                        padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-                        decoration: BoxDecoration(
-                          color: Colors.black.withValues(alpha: 0.65),
-                          borderRadius: BorderRadius.circular(4),
-                        ),
-                        child: const Text(
-                          'Indispo',
-                          style: TextStyle(
-                            color: AppColors.textSecondary,
-                            fontSize: 10,
-                            fontWeight: FontWeight.w600,
-                          ),
-                        ),
-                      ),
-                    ),
-                ],
-              ),
-            ),
-          ),
-          const SizedBox(height: 6),
-          Text(
-            item.title,
-            maxLines: 2,
-            overflow: TextOverflow.ellipsis,
-            style: TextStyle(
-              color: item.isOwned ? AppColors.textPrimary : AppColors.textSecondary,
-              fontWeight: FontWeight.w600,
-              fontSize: 13,
-              height: 1.2,
-            ),
-          ),
-          if (item.character != null && item.character!.isNotEmpty)
-            Text(
-              item.character!,
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
-              style: const TextStyle(color: AppColors.textMuted, fontSize: 11),
-            )
-          else if (item.year != null && item.year!.isNotEmpty)
-            Text(
-              item.year!,
-              style: const TextStyle(color: AppColors.textMuted, fontSize: 11),
-            ),
-        ],
-      ),
+      dimmed: !item.isOwned,
+      overlays: [
+        if (!item.isOwned)
+          const Positioned(top: 8, right: 8, child: _UnavailableBadge()),
+      ],
     );
   }
 }
 
-class _CatalogPosterPlaceholder extends StatelessWidget {
-  const _CatalogPosterPlaceholder();
+/// Glass pill for titles absent from the library — same language as the
+/// request catalog badges.
+class _UnavailableBadge extends StatelessWidget {
+  const _UnavailableBadge();
 
   @override
   Widget build(BuildContext context) {
     return Container(
-      color: AppColors.surfaceElevated,
-      alignment: Alignment.center,
-      child: const Icon(Icons.movie_rounded, size: 40, color: AppColors.textMuted),
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+      decoration: BoxDecoration(
+        color: Colors.black.withValues(alpha: 0.45),
+        borderRadius: BorderRadius.circular(999),
+        border: Border.all(color: Colors.white.withValues(alpha: 0.12)),
+      ),
+      child: Text(
+        'Indispo',
+        style: TextStyle(
+          fontSize: 10,
+          fontWeight: FontWeight.w600,
+          letterSpacing: 0.4,
+          color: Colors.white.withValues(alpha: 0.85),
+        ),
+      ),
     );
   }
 }
@@ -670,8 +692,11 @@ class DetailInfoSection extends StatelessWidget {
     final writers = details?.writers ?? const <String>[];
     final studios = details?.studios ?? const <String>[];
 
+    final pad = AppLayout.pagePadding(context);
+    final compact = AppLayout.isCompact(context);
+
     return Padding(
-      padding: const EdgeInsets.fromLTRB(48, 28, 48, 12),
+      padding: EdgeInsets.fromLTRB(pad, 28, pad, 12),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
@@ -705,7 +730,7 @@ class DetailInfoSection extends StatelessWidget {
               studios.isNotEmpty) ...[
             const SizedBox(height: 24),
             Wrap(
-              spacing: 48,
+              spacing: compact ? 24 : 48,
               runSpacing: 16,
               children: [
                 if (director != null && director.isNotEmpty)

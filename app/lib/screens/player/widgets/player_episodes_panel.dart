@@ -3,11 +3,12 @@ import 'dart:ui';
 import 'package:flutter/material.dart';
 import 'package:flutter_animate/flutter_animate.dart';
 import '../../../models/models.dart';
+import '../../../theme/app_colors.dart';
 import '../../../utils/format.dart';
 import '../../../widgets/global/media_poster.dart';
 
-const Color _kAccent = Color(0xFF007AFF);
-const Color _kPanelBg = Color(0xFF141414);
+const Color _kAccent = AppColors.primary;
+const Color _kPanelBg = AppColors.surface;
 const double _kEpisodeCardRowHeight = 182.0;
 
 /// Bottom episode browser (Netflix / Emby style) shown while watching a series.
@@ -133,7 +134,7 @@ class _PlayerEpisodesPanelState extends State<PlayerEpisodesPanel> {
 
   Widget _buildHeader() {
     return Padding(
-      padding: const EdgeInsets.fromLTRB(24, 18, 12, 8),
+      padding: const EdgeInsets.fromLTRB(24, 18, 12, 10),
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
@@ -146,17 +147,17 @@ class _PlayerEpisodesPanelState extends State<PlayerEpisodesPanel> {
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
                   style: const TextStyle(
-                    color: Colors.white,
+                    color: AppColors.textPrimary,
                     fontSize: 20,
                     fontWeight: FontWeight.w700,
-                    letterSpacing: -0.2,
+                    letterSpacing: -0.4,
                   ),
                 ),
                 const SizedBox(height: 4),
-                Text(
+                const Text(
                   'Épisodes',
                   style: TextStyle(
-                    color: Colors.white.withValues(alpha: 0.55),
+                    color: AppColors.textMuted,
                     fontSize: 13,
                     fontWeight: FontWeight.w500,
                   ),
@@ -166,7 +167,7 @@ class _PlayerEpisodesPanelState extends State<PlayerEpisodesPanel> {
           ),
           IconButton(
             onPressed: widget.onClose,
-            icon: Icon(Icons.close, color: Colors.white.withValues(alpha: 0.7)),
+            icon: const Icon(Icons.close_rounded, color: AppColors.textSecondary),
           ),
         ],
       ),
@@ -193,25 +194,27 @@ class _PlayerEpisodesPanelState extends State<PlayerEpisodesPanel> {
             color: Colors.transparent,
             child: InkWell(
               onTap: selected ? null : () => widget.onSeasonChanged(season.id),
-              borderRadius: BorderRadius.circular(20),
+              borderRadius: BorderRadius.circular(12),
               child: AnimatedContainer(
                 duration: const Duration(milliseconds: 180),
-                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
                 decoration: BoxDecoration(
                   color: selected
-                      ? Colors.white.withValues(alpha: 0.14)
-                      : Colors.white.withValues(alpha: 0.06),
-                  borderRadius: BorderRadius.circular(20),
+                      ? AppColors.primary.withValues(alpha: 0.16)
+                      : AppColors.surfaceElevated.withValues(alpha: 0.8),
+                  borderRadius: BorderRadius.circular(12),
                   border: Border.all(
                     color: selected
-                        ? Colors.white.withValues(alpha: 0.35)
-                        : Colors.white.withValues(alpha: 0.08),
+                        ? AppColors.primary.withValues(alpha: 0.45)
+                        : AppColors.glassBorder,
                   ),
                 ),
                 child: Text(
                   label,
                   style: TextStyle(
-                    color: selected ? Colors.white : Colors.white.withValues(alpha: 0.65),
+                    color: selected
+                        ? AppColors.textPrimary
+                        : AppColors.textSecondary,
                     fontSize: 13,
                     fontWeight: selected ? FontWeight.w600 : FontWeight.w500,
                   ),

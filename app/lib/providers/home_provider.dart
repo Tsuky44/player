@@ -12,6 +12,8 @@ class HomeProvider extends ChangeNotifier {
   bool _isLoading = false;
   bool _isScanning = false;
   bool _isBackfillingMetadata = false;
+  bool _isRedetectingAll = false;
+  RedetectAllProgress _redetectAllProgress = RedetectAllProgress();
   bool _isExtractingSubtitles = false;
   SubtitleExtractionStats _subtitleStats = SubtitleExtractionStats();
   String? _errorMessage;
@@ -24,6 +26,8 @@ class HomeProvider extends ChangeNotifier {
   bool get isLoading => _isLoading;
   bool get isScanning => _isScanning;
   bool get isBackfillingMetadata => _isBackfillingMetadata;
+  bool get isRedetectingAll => _isRedetectingAll;
+  RedetectAllProgress get redetectAllProgress => _redetectAllProgress;
   bool get isExtractingSubtitles => _isExtractingSubtitles;
   SubtitleExtractionStats get subtitleStats => _subtitleStats;
   String? get errorMessage => _errorMessage;
@@ -250,9 +254,27 @@ class HomeProvider extends ChangeNotifier {
     }
   }
 
+  Future<void> triggerRedetectAllMatches() async {
+    if (_isRedetectingAll) return;
+
+    try {
+      await apiClient.triggerRedetectAllMatches();
+      _isRedetectingAll = true;
+      notifyListeners();
+      _startStatusPolling();
+    } catch (e) {
+      _errorMessage =
+          "Erreur lors de la re-détection des matchs : ${e.toString()}";
+      notifyListeners();
+      rethrow;
+    }
+  }
+
   void _applyIndexerStatus(IndexerStatus status) {
     _isScanning = status.isScanning;
     _isBackfillingMetadata = status.isBackfillingMetadata;
+    _isRedetectingAll = status.isRedetectingAll;
+    _redetectAllProgress = status.redetectAll;
     _isExtractingSubtitles = status.isExtractingSubtitles;
     _subtitleStats = status.subtitleExtraction;
   }
@@ -261,13 +283,17 @@ class HomeProvider extends ChangeNotifier {
     _statusPollTimer?.cancel();
     var wasScanning = _isScanning;
     var wasBackfilling = _isBackfillingMetadata;
+    var wasRedetecting = _isRedetectingAll;
     var wasExtracting = _isExtractingSubtitles;
 
     _statusPollTimer = Timer.periodic(const Duration(seconds: 3), (timer) async {
       try {
         final status = await apiClient.getIndexerStatus();
         final scanJustFinished = wasScanning && !status.isScanning;
-        final backfillJustFinished = wasBackfilling && !status.isBackfillingMetadata;
+        final backfillJustFinished =
+            wasBackfilling && !status.isBackfillingMetadata;
+        final redetectJustFinished =
+            wasRedetecting && !status.isRedetectingAll;
         final extractJustFinished = wasExtracting && !status.isExtractingSubtitles;
 
         _applyIndexerStatus(status);
@@ -278,24 +304,30 @@ class HomeProvider extends ChangeNotifier {
               "Sous-titres extraits : ${s.succeeded}/${s.total} médias (${s.tracks} pistes)";
         } else if (backfillJustFinished) {
           _completionMessage = "Affiches mises à jour depuis TMDB";
+        } else if (redetectJustFinished) {
+          final r = status.redetectAll;
+          _completionMessage =
+              "Re-détection terminée : ${r.updated} mis à jour, ${r.skipped} sans changement (${r.total} titres)";
         }
 
         notifyListeners();
 
         wasScanning = status.isScanning;
         wasBackfilling = status.isBackfillingMetadata;
+        wasRedetecting = status.isRedetectingAll;
         wasExtracting = status.isExtractingSubtitles;
 
         if (!status.isBusy) {
           timer.cancel();
           _statusPollTimer = null;
-          if (scanJustFinished || backfillJustFinished) {
+          if (scanJustFinished || backfillJustFinished || redetectJustFinished) {
             await loadHome(silent: true);
           }
         }
       } catch (_) {
         _isScanning = false;
         _isBackfillingMetadata = false;
+        _isRedetectingAll = false;
         _isExtractingSubtitles = false;
         timer.cancel();
         _statusPollTimer = null;

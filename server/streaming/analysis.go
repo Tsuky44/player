@@ -73,13 +73,19 @@ func mp4LikelyFastStart(path string) bool {
 }
 
 // estimateMaxGOPSeconds reads keyframe timestamps in the first 60s of video.
+//
+// This inspects PACKETS, not frames: keyframe positions are carried by the
+// container's packet flags, so ffprobe only has to demux — never decode. The
+// previous `-show_frames` form decoded 60s of video (~20s of CPU on a 1080p
+// file) and asked for `pkt_pts_time`, a field removed from ffprobe in 5.x, so
+// it always parsed to nothing. Packet flags are ~290x cheaper and actually work.
 func estimateMaxGOPSeconds(path string) (float64, error) {
 	cmd := exec.Command("ffprobe",
 		"-v", "error",
 		"-select_streams", "v:0",
 		"-read_intervals", "0%+60",
-		"-show_frames",
-		"-show_entries", "frame=key_frame,pkt_pts_time",
+		"-show_packets",
+		"-show_entries", "packet=pts_time,flags",
 		"-of", "csv=p=0",
 		path,
 	)
@@ -94,14 +100,15 @@ func estimateMaxGOPSeconds(path string) (float64, error) {
 		if line == "" {
 			continue
 		}
+		// Rows look like "10.417000,K__" — flags carry 'K' on keyframe packets.
 		parts := strings.Split(line, ",")
 		if len(parts) < 2 {
 			continue
 		}
-		if strings.TrimSpace(parts[0]) != "1" {
+		if !strings.Contains(parts[len(parts)-1], "K") {
 			continue
 		}
-		t, err := strconv.ParseFloat(strings.TrimSpace(parts[1]), 64)
+		t, err := strconv.ParseFloat(strings.TrimSpace(parts[0]), 64)
 		if err != nil {
 			continue
 		}

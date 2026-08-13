@@ -1,10 +1,10 @@
 import 'dart:async';
-import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
 import 'package:media_kit_video/media_kit_video.dart';
-import 'package:window_manager/window_manager.dart';
+import '../../utils/app_platform.dart';
+import '../../utils/window_controls.dart';
 import '../../models/models.dart';
 import '../../models/player_layout.dart';
 import '../../providers/auth_provider.dart';
@@ -12,20 +12,27 @@ import '../../providers/home_provider.dart';
 import '../../providers/player_layout_provider.dart';
 import '../../navigation/search_route_observer.dart';
 import '../../services/api_client.dart';
+import '../../services/media_logo_cache.dart';
 import 'hooks/use_player_controller.dart';
 import 'hooks/use_episode_navigation.dart';
 import 'hooks/use_player_media_keys.dart';
 import 'widgets/skip_intro_button.dart';
 import 'widgets/next_episode_overlay.dart';
+import 'widgets/next_season_overlay.dart';
 import 'widgets/player_hud_overlay.dart';
 import 'widgets/modular_controls_layer.dart';
+import 'widgets/emby/emby_controls_layer.dart';
+import 'widgets/emby/emby_settings_menu.dart';
 import 'widgets/top_right_controls.dart';
 import 'widgets/player_settings_sheet.dart';
 import 'widgets/player_settings_anchor.dart';
 import 'widgets/player_subtitles_sheet.dart';
+import 'widgets/player_info_sheet.dart';
 import 'widgets/player_episodes_panel.dart';
 import 'player_playback_preferences.dart';
 import '../../desktop_window.dart';
+import '../../utils/release_tag.dart';
+import '../../utils/format.dart';
 
 class PlayerScreen extends StatefulWidget {
   final dynamic media; // Can be Media or HomeMediaItem
@@ -63,11 +70,18 @@ class _PlayerScreenState extends State<PlayerScreen> {
   /// [BoxFit.cover]   = adaptive (fills screen, may crop edges).
   BoxFit _videoFit = BoxFit.contain;
 
+  /// Pack Cinéma — playback rate cycle for studio control.
+  double _playbackRate = 1.0;
+  static const _playbackRates = [0.75, 1.0, 1.25, 1.5, 2.0];
+
   /// Key attached to the settings button so we can anchor the popup above it.
   final GlobalKey _settingsButtonKey = GlobalKey();
 
   /// Key attached to the subtitles button so we can anchor the popup above it.
   final GlobalKey _subtitlesButtonKey = GlobalKey();
+
+  /// Key attached to the media-info button so we can anchor the info card above it.
+  final GlobalKey _mediaInfoButtonKey = GlobalKey();
 
   /// Key to access VideoState and call update() so fit changes propagate.
   final GlobalKey<VideoState> _videoKey = GlobalKey();
@@ -94,6 +108,7 @@ class _PlayerScreenState extends State<PlayerScreen> {
   String? _mediaLogoUrl;
 
   bool _showEpisodesPanel = false;
+  bool _requestingNextSeason = false;
   bool _episodesPanelLoading = false;
   List<Media> _episodesPanelSeasons = [];
   List<HomeMediaItem> _episodesPanelEpisodes = [];
@@ -110,17 +125,29 @@ class _PlayerScreenState extends State<PlayerScreen> {
     int? detailsId;
     if (media.type == MediaType.movie || media.type == MediaType.show) {
       detailsId = media.id;
-    } else if (media.type == MediaType.episode &&
-        widget.media is HomeMediaItem) {
-      detailsId = (widget.media as HomeMediaItem).showId;
+    } else if (media.type == MediaType.episode) {
+      // The logo belongs to the show, so an episode has to resolve its parent.
+      // showId is only present when the player was opened from a home row;
+      // parentId covers the episode-list route, which otherwise got no logo.
+      if (widget.media is HomeMediaItem) {
+        detailsId = (widget.media as HomeMediaItem).showId;
+      }
+      if (detailsId == null || detailsId <= 0) {
+        detailsId = media.parentId;
+      }
     }
     if (detailsId == null || detailsId <= 0) return;
 
-    try {
-      final details = await api.getMediaDetails(detailsId);
-      if (!mounted) return;
-      setState(() => _mediaLogoUrl = details.logoUrl);
-    } catch (_) {}
+    // Already resolved this session (detail page, or a previous playback):
+    // set it synchronously so the chrome opens on the logo, not on the title.
+    if (MediaLogoCache.isCached(detailsId)) {
+      setState(() => _mediaLogoUrl = MediaLogoCache.peek(detailsId!));
+      return;
+    }
+
+    final url = await MediaLogoCache.resolve(api, detailsId);
+    if (!mounted) return;
+    setState(() => _mediaLogoUrl = url);
   }
 
   int? _seasonNumberFor(dynamic media) {
@@ -231,7 +258,7 @@ class _PlayerScreenState extends State<PlayerScreen> {
       DeviceOrientation.landscapeRight,
     ]);
     SystemChrome.setEnabledSystemUIMode(SystemUiMode.immersiveSticky);
-    if (Platform.isWindows) {
+    if (AppPlatform.isWindows) {
       WidgetsBinding.instance.addPostFrameCallback((_) {
         showDesktopCaption.value = false;
       });
@@ -272,6 +299,10 @@ class _PlayerScreenState extends State<PlayerScreen> {
       apiClient: apiClient,
       knownDurationSeconds: knownDuration,
       inheritedPreferences: widget.inheritedPreferences,
+      // Handed over rather than awaited here: the controller needs the resume
+      // point at the exact moment it opens the stream, so mpv can start at that
+      // second instead of starting at 0 and seeking afterwards.
+      resumePositionFuture: resumePositionFuture,
       onCompleted: _onPlaybackCompleted,
       onPositionChanged: _onPositionChanged,
       onPlayingChanged: () {
@@ -284,6 +315,19 @@ class _PlayerScreenState extends State<PlayerScreen> {
       },
       onQualitySwitchingChanged: () {
         _safeSetState(() {});
+      },
+      onBufferingChanged: () {
+        _safeSetState(() {});
+      },
+      onFirstFrame: () {
+        // Lifts the start-up cover: the texture now holds this media.
+        _safeSetState(() {});
+        // Restart the auto-hide countdown here rather than leave the one armed
+        // when play() was issued. On a slow open — a transcode taking several
+        // seconds to produce a frame — that first countdown expired while the
+        // screen was still covered, so the chrome was already gone by the time
+        // the picture appeared and the player looked broken on arrival.
+        _showControlsTransient();
       },
       onTracksChanged: () {
         // Background subtitle extraction finished: rebuild so the settings
@@ -393,17 +437,31 @@ class _PlayerScreenState extends State<PlayerScreen> {
   void _onPlaybackCompleted() {
     if (_isDisposing || !mounted) return;
     _safeSetState(() {});
-    if (_episodeNav?.nextEpisode != null) {
+    // The early season offer wins over auto-advance: leaving would answer the
+    // question by walking away from it. The card carries its own "next episode".
+    if (_episodeNav?.nextEpisode != null &&
+        !(_episodeNav?.showNextSeasonCard ?? false)) {
       _goToNextEpisode();
-    } else {
-      unawaited(_leavePlayer());
+      return;
     }
+    if (_episodeNav?.nextSeason != null) {
+      // Leaving here would wipe the card at the exact moment the user is about
+      // to act on it. Stay on the last frame and let them decide.
+      _episodeNav!.revealNextSeasonCard();
+      return;
+    }
+    unawaited(_leavePlayer());
   }
 
   Future<int> _loadResumePosition(
     ApiClient apiClient,
     Media actualMedia,
   ) async {
+    // An episode reached by auto-advance always starts at zero, and the answer
+    // below is discarded — so asking at all would just put an HTTP round-trip
+    // in front of the picture, now that the open waits on this.
+    if (widget.autoAdvance) return 0;
+
     int savedPositionSeconds = 0;
     if (widget.media is HomeMediaItem) {
       final item = widget.media as HomeMediaItem;
@@ -499,28 +557,62 @@ class _PlayerScreenState extends State<PlayerScreen> {
     });
   }
 
+  /// Mouse moved over the video.
+  ///
+  /// Hover fires on every pointer sample — 60 to 120 times a second — and
+  /// [_showControlsTransient] rebuilds the whole player tree, refreshes the
+  /// timeline and re-measures the subtitle padding. Paying that per sample made
+  /// the chrome stutter under the very gesture meant to summon it. When the
+  /// chrome is already up there is nothing to show, so re-arming the countdown
+  /// is the entire job.
+  void _handlePointerHover() {
+    _episodeNav?.onMouseMove();
+    if (_showControls) {
+      _hideControlsWithDelay();
+      return;
+    }
+    _showControlsTransient();
+  }
+
   void _showControlsTransient() {
+    // The end-of-season page owns the screen: waking the HUD on every mouse
+    // move would stack a progress bar and a play button over it.
+    if (_episodeNav?.showNextSeasonCard ?? false) return;
     setState(() => _showControls = true);
     _refreshPositionUi(force: true);
     _scheduleSubtitlePaddingSync();
     _hideControlsWithDelay();
   }
 
+  /// Whether the player chrome — timeline, transport, top-right menus — may be
+  /// on screen. Single decision point so nothing slips through while the
+  /// end-of-season page is up; only the back button survives it.
+  bool get _controlsVisible =>
+      _showControls && !(_episodeNav?.showNextSeasonCard ?? false);
+
   /// Netflix-style: hide the cursor while controls are hidden during playback.
+  /// Never on the end-of-season page, which has buttons to aim at.
   bool get _shouldHideCursor =>
       !_showControls &&
+      !(_episodeNav?.showNextSeasonCard ?? false) &&
       _playerController.isPlaying &&
+      // Never during start-up. `isPlaying` goes true when play() is issued,
+      // which on a slow open is seconds before there is any picture — hiding
+      // the pointer over a black screen looks like the app froze.
+      _playerController.hasFirstFrame &&
       !_playerController.isDraggingSlider;
 
   void _seekRelative(int seconds) {
-    final currentPos = _playerController.player.state.position;
-    final newPos = currentPos + Duration(seconds: seconds);
-    final targetPos = newPos.isNegative
-        ? Duration.zero
-        : newPos > _playerController.duration
-            ? _playerController.duration
-            : newPos;
-    _playerController.player.seek(targetPos);
+    // The controller's position is absolute in both modes (HLS adds the
+    // session's start offset), unlike mpv's own, which is relative to the
+    // stream. Using the absolute one is what makes clamping against the full
+    // duration correct, and lets the controller decide whether the target needs
+    // a new HLS session.
+    final maxSeconds = _playerController.duration.inSeconds;
+    var target = _playerController.position.inSeconds + seconds;
+    if (target < 0) target = 0;
+    if (maxSeconds > 0 && target > maxSeconds) target = maxSeconds;
+    _playerController.seekToAbsoluteSeconds(target);
     _showControlsTransient();
   }
 
@@ -585,6 +677,43 @@ class _PlayerScreenState extends State<PlayerScreen> {
     final next = _episodeNav?.nextEpisode;
     if (next == null) return;
     _navigateToEpisode(next);
+  }
+
+  /// How much of the screen the video keeps. It gives way to the end-of-season
+  /// card without ever being hidden: the credits stay visible and playing.
+  double get _videoScale =>
+      (_episodeNav?.showNextSeasonCard ?? false) ? 0.34 : 1.0;
+
+  /// Corner radius of the shrunk video, pre-divided by the scale so it looks
+  /// like 16pt on screen. Zero at full size, where rounding would just crop.
+  double get _videoCornerRadius => _videoScale < 1 ? 16 / _videoScale : 0;
+
+  Future<void> _requestNextSeason() async {
+    final season = _episodeNav?.nextSeason;
+    if (season == null || _requestingNextSeason || !season.canRequest) return;
+    if (season.showTmdbId <= 0) return;
+
+    setState(() => _requestingNextSeason = true);
+    try {
+      await _apiClient!.requestTmdbMedia(
+        tmdbId: season.showTmdbId,
+        mediaType: 'tv',
+        title: season.showTitle,
+        seasons: [season.number],
+      );
+      // Confirm in place (the card switches to its requested state) rather than
+      // leaving the player: the credits are still running and the user chose
+      // when to go.
+      _episodeNav?.markNextSeasonRequested();
+    } catch (_) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Impossible d’envoyer la demande.')),
+        );
+      }
+    } finally {
+      if (mounted) setState(() => _requestingNextSeason = false);
+    }
   }
 
   void _goToEpisode(HomeMediaItem episode) {
@@ -698,7 +827,7 @@ class _PlayerScreenState extends State<PlayerScreen> {
     if (!_progressFlushed && _apiClient != null) {
       unawaited(_syncProgressOnExit(popAfter: false));
     }
-    if (Platform.isWindows) {
+    if (AppPlatform.isWindows) {
       if (!_isEpisodeTransition) {
         WidgetsBinding.instance.addPostFrameCallback((_) {
           showDesktopCaption.value = true;
@@ -771,29 +900,46 @@ class _PlayerScreenState extends State<PlayerScreen> {
     return box.localToGlobal(Offset.zero).dy;
   }
 
-  void _showTrackSettings() {
+  void _showTrackSettings({int initialTabIndex = 0}) {
     final renderBox =
         _settingsButtonKey.currentContext?.findRenderObject() as RenderBox?;
-    if (renderBox == null) return;
-
+    // Fallback: center the panel when the settings button isn't on-canvas.
     final overlay = Overlay.of(context);
-    final buttonRect = renderBox.localToGlobal(Offset.zero) & renderBox.size;
     final screenSize = MediaQuery.sizeOf(context);
     final hasChaptersTab = _episodeNav != null;
     final menuWidth =
         PlayerSettingsAnchor.sheetWidth(hasChaptersTab: hasChaptersTab);
     final menuMaxHeight =
         PlayerSettingsAnchor.sheetMaxHeight(hasChaptersTab: hasChaptersTab);
-    final left = PlayerSettingsAnchor.horizontalLeft(
-      buttonRect: buttonRect,
-      screenSize: screenSize,
-      popupWidth: menuWidth,
-    );
-    final vertical = PlayerSettingsAnchor.verticalPlacement(
-      buttonRect: buttonRect,
-      screenSize: screenSize,
-      popupMaxHeight: menuMaxHeight,
-    );
+
+    late final double left;
+    late final double? bottom;
+    late final double? top;
+    late final double maxHeight;
+    if (renderBox != null) {
+      final buttonRect = renderBox.localToGlobal(Offset.zero) & renderBox.size;
+      left = PlayerSettingsAnchor.horizontalLeft(
+        buttonRect: buttonRect,
+        screenSize: screenSize,
+        popupWidth: menuWidth,
+      );
+      final vertical = PlayerSettingsAnchor.verticalPlacement(
+        buttonRect: buttonRect,
+        screenSize: screenSize,
+        popupMaxHeight: menuMaxHeight,
+      );
+      bottom = vertical.bottom;
+      top = vertical.top;
+      maxHeight = vertical.maxHeight;
+    } else {
+      left = (screenSize.width - menuWidth) / 2;
+      top = (screenSize.height - menuMaxHeight) / 2;
+      bottom = null;
+      maxHeight = menuMaxHeight;
+    }
+
+    final maxTab = hasChaptersTab ? 4 : 3;
+    final tab = initialTabIndex.clamp(0, maxTab);
 
     late final OverlayEntry entry;
     entry = OverlayEntry(
@@ -809,16 +955,20 @@ class _PlayerScreenState extends State<PlayerScreen> {
               children: [
                 Positioned(
                   left: left,
-                  bottom: vertical.bottom,
-                  top: vertical.top,
-                  child: PlayerSettingsSheet(
-                    player: _playerController.player,
-                    currentFit: _videoFit,
-                    onFitChanged: _updateVideoFit,
-                    onClose: entry.remove,
-                    playerController: _playerController,
-                    episodeNav: _episodeNav,
-                    onSeekToAbsolute: _playerController.seekToAbsoluteSeconds,
+                  bottom: bottom,
+                  top: top,
+                  child: ConstrainedBox(
+                    constraints: BoxConstraints(maxHeight: maxHeight),
+                    child: PlayerSettingsSheet(
+                      player: _playerController.player,
+                      currentFit: _videoFit,
+                      onFitChanged: _updateVideoFit,
+                      onClose: entry.remove,
+                      playerController: _playerController,
+                      episodeNav: _episodeNav,
+                      onSeekToAbsolute: _playerController.seekToAbsoluteSeconds,
+                      initialTabIndex: tab,
+                    ),
                   ),
                 ),
               ],
@@ -829,6 +979,120 @@ class _PlayerScreenState extends State<PlayerScreen> {
     );
 
     overlay.insert(entry);
+  }
+
+  /// Emby-chrome settings menu, anchored to the button that opened it.
+  void _showEmbySettingsMenu({
+    EmbyMenuSection section = EmbyMenuSection.root,
+    required GlobalKey anchorKey,
+  }) {
+    final overlay = Overlay.of(context);
+    final screenSize = MediaQuery.sizeOf(context);
+    final renderBox = anchorKey.currentContext?.findRenderObject() as RenderBox?;
+
+    const menuWidth = EmbySettingsMenu.width;
+    const menuMaxHeight = EmbySettingsMenu.maxHeight;
+
+    late final double left;
+    late final double? bottom;
+    late final double? top;
+    late final double maxHeight;
+    if (renderBox != null) {
+      final buttonRect = renderBox.localToGlobal(Offset.zero) & renderBox.size;
+      left = PlayerSettingsAnchor.horizontalLeft(
+        buttonRect: buttonRect,
+        screenSize: screenSize,
+        popupWidth: menuWidth,
+      );
+      final vertical = PlayerSettingsAnchor.verticalPlacement(
+        buttonRect: buttonRect,
+        screenSize: screenSize,
+        popupMaxHeight: menuMaxHeight,
+      );
+      bottom = vertical.bottom;
+      top = vertical.top;
+      maxHeight = vertical.maxHeight;
+    } else {
+      left = (screenSize.width - menuWidth) / 2;
+      top = (screenSize.height - menuMaxHeight) / 2;
+      bottom = null;
+      maxHeight = menuMaxHeight;
+    }
+
+    late final OverlayEntry entry;
+    entry = OverlayEntry(
+      builder: (ctx) => GestureDetector(
+        onTap: () => entry.remove(),
+        behavior: HitTestBehavior.translucent,
+        child: Material(
+          type: MaterialType.transparency,
+          child: SizedBox(
+            width: screenSize.width,
+            height: screenSize.height,
+            child: Stack(
+              children: [
+                Positioned(
+                  left: left,
+                  bottom: bottom,
+                  top: top,
+                  child: ConstrainedBox(
+                    constraints: BoxConstraints(maxHeight: maxHeight),
+                    child: EmbySettingsMenu(
+                      player: _playerController.player,
+                      playerController: _playerController,
+                      episodeNav: _episodeNav,
+                      currentFit: _videoFit,
+                      onFitChanged: _updateVideoFit,
+                      playbackRate: _playbackRate,
+                      playbackRates: _playbackRates,
+                      onRateChanged: _setPlaybackRate,
+                      onSeekToAbsolute:
+                          _playerController.seekToAbsoluteSeconds,
+                      initialSection: section,
+                      onClose: entry.remove,
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+
+    overlay.insert(entry);
+  }
+
+  Future<void> _setPlaybackRate(double rate) async {
+    await _playerController.player.setRate(rate);
+    if (!mounted) return;
+    setState(() => _playbackRate = rate);
+    _showControlsTransient();
+  }
+
+  Future<void> _cyclePlaybackRate() async {
+    final idx = _playbackRates.indexOf(_playbackRate);
+    final next = _playbackRates[(idx < 0 ? 0 : idx + 1) % _playbackRates.length];
+    await _playerController.player.setRate(next);
+    if (!mounted) return;
+    setState(() => _playbackRate = next);
+    _showControlsTransient();
+  }
+
+  void _toggleAspectFitControl() {
+    final next =
+        _videoFit == BoxFit.contain ? BoxFit.cover : BoxFit.contain;
+    _updateVideoFit(next);
+    _showControlsTransient();
+  }
+
+  Future<void> _skipIntroFromControl() async {
+    final nav = _episodeNav;
+    if (nav == null || !nav.showSkipIntro) return;
+    final end = nav.introSkipTarget;
+    await _playerController.seekToAbsoluteSeconds(end);
+    nav.skipIntro();
+    _showControlsTransient();
   }
 
   void _showSubtitlesMenu() {
@@ -868,10 +1132,148 @@ class _PlayerScreenState extends State<PlayerScreen> {
                   left: left,
                   bottom: vertical.bottom,
                   top: vertical.top,
-                  child: PlayerSubtitlesSheet(
-                    player: _playerController.player,
-                    playerController: _playerController,
-                    onClose: entry.remove,
+                  child: ConstrainedBox(
+                    constraints: BoxConstraints(maxHeight: vertical.maxHeight),
+                    child: PlayerSubtitlesSheet(
+                      player: _playerController.player,
+                      playerController: _playerController,
+                      onClose: entry.remove,
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+
+    overlay.insert(entry);
+  }
+
+  /// The episode's own title (TV) or the media title (movies) — as opposed
+  /// to [_episodesShowTitle], which is the show name. `_playerTitle` combines
+  /// show name + code and must not be used here or the code/title repeat.
+  String get _episodeOrMovieTitle {
+    final media = widget.media;
+    if (media is HomeMediaItem && media.media.type == MediaType.episode) {
+      return media.episodeTitle ?? media.media.title;
+    }
+    return _episodesShowTitle;
+  }
+
+  /// Composes the small muted line shown by [PlayerControlType.episodeTitleBlock]
+  /// and reused as the header line of the info panel.
+  String get _episodeInfoLine => composeEpisodeInfoLine(
+        seasonEpisodeCode: _actualMedia.seasonEpisodeCode,
+        title: _episodeOrMovieTitle,
+        filePath: _actualMedia.filePath,
+      );
+
+  /// Same line without the release tag parsed from the filename. The chrome
+  /// over the video names the episode; the quality/source belongs to the info
+  /// panel, which is where someone goes looking for it.
+  String get _episodeOverline => composeEpisodeInfoLine(
+        seasonEpisodeCode: _actualMedia.seasonEpisodeCode,
+        title: _episodeOrMovieTitle,
+      );
+
+  /// Bold line of the Emby title block: the show name on an episode, the film
+  /// title on a movie.
+  String get _embyTitleLine => _episodesShowTitle;
+
+  /// Muted line above it: `S1:E3 - …` on an episode, the release year on a
+  /// movie — which is what Emby shows there.
+  String? get _embyOverline {
+    if (_isEpisode) return _episodeOverline;
+    return extractYear(_actualMedia.releaseDate);
+  }
+
+  /// Downloaded-ahead fraction for the Emby scrubber.
+  double get _bufferedFraction {
+    final total = _playerController.duration.inSeconds;
+    if (total <= 0) return 0;
+    return (_playerController.player.state.buffer.inSeconds / total)
+        .clamp(0.0, 1.0);
+  }
+
+  /// Chapter starts as fractions, for the Emby scrubber ticks. Empty when the
+  /// backend found no chapters — the bar then reads as a plain timeline.
+  List<double> get _chapterMarks {
+    final chapters = _episodeNav?.chapters ?? const [];
+    final total = _playerController.duration.inSeconds;
+    if (chapters.isEmpty || total <= 0) return const [];
+    return [
+      for (final chapter in chapters)
+        (chapter.startTime / total).clamp(0.0, 1.0),
+    ];
+  }
+
+  void _showInfoPanel() {
+    final renderBox =
+        _mediaInfoButtonKey.currentContext?.findRenderObject() as RenderBox?;
+
+    final overlay = Overlay.of(context);
+    final screenSize = MediaQuery.sizeOf(context);
+    const cardWidth = 560.0;
+    const cardMaxHeight = 220.0;
+
+    late final double left;
+    late final double? bottom;
+    late final double? top;
+    late final double maxHeight;
+    if (renderBox != null) {
+      final buttonRect = renderBox.localToGlobal(Offset.zero) & renderBox.size;
+      left = PlayerSettingsAnchor.horizontalLeft(
+        buttonRect: buttonRect,
+        screenSize: screenSize,
+        popupWidth: cardWidth,
+      );
+      final vertical = PlayerSettingsAnchor.verticalPlacement(
+        buttonRect: buttonRect,
+        screenSize: screenSize,
+        popupMaxHeight: cardMaxHeight,
+      );
+      bottom = vertical.bottom;
+      top = vertical.top;
+      maxHeight = vertical.maxHeight;
+    } else {
+      left = (screenSize.width - cardWidth) / 2;
+      top = (screenSize.height - cardMaxHeight) / 2;
+      bottom = null;
+      maxHeight = cardMaxHeight;
+    }
+
+    late final OverlayEntry entry;
+    entry = OverlayEntry(
+      builder: (ctx) => GestureDetector(
+        onTap: () => entry.remove(),
+        behavior: HitTestBehavior.translucent,
+        child: Material(
+          type: MaterialType.transparency,
+          child: SizedBox(
+            width: screenSize.width,
+            height: screenSize.height,
+            child: Stack(
+              children: [
+                Positioned(
+                  left: left,
+                  bottom: bottom,
+                  top: top,
+                  child: ConstrainedBox(
+                    constraints: BoxConstraints(maxHeight: maxHeight),
+                    child: PlayerInfoSheet(
+                      media: _actualMedia,
+                      showTitle: _episodesShowTitle,
+                      episodeInfoLine: _episodeInfoLine,
+                      tracks: _playerController.mediaTracks,
+                      duration: _playerController.duration,
+                      onRestart: () {
+                        entry.remove();
+                        _playerController.seekToAbsoluteSeconds(0);
+                      },
+                      onClose: entry.remove,
+                    ),
                   ),
                 ),
               ],
@@ -885,18 +1287,13 @@ class _PlayerScreenState extends State<PlayerScreen> {
   }
 
   Future<void> _toggleFullscreen() async {
-    if (Platform.isWindows || Platform.isMacOS || Platform.isLinux) {
-      final isFullScreen = await windowManager.isFullScreen();
-      await windowManager.setFullScreen(!isFullScreen);
-    }
+    final isFullScreen = await WindowControls.isFullScreen();
+    await WindowControls.setFullScreen(!isFullScreen);
   }
 
   Future<void> _exitFullscreenIfActive() async {
-    if (Platform.isWindows || Platform.isMacOS || Platform.isLinux) {
-      final isFullScreen = await windowManager.isFullScreen();
-      if (isFullScreen) {
-        await windowManager.setFullScreen(false);
-      }
+    if (await WindowControls.isFullScreen()) {
+      await WindowControls.setFullScreen(false);
     }
   }
 
@@ -905,18 +1302,33 @@ class _PlayerScreenState extends State<PlayerScreen> {
     _hideControlsWithDelay();
   }
 
+  /// Seek from a progress-bar fraction — the modular (Player Studio) layout's
+  /// only seek path.
+  ///
+  /// It used to call player.seek() directly with `fraction * duration`, which is
+  /// an ABSOLUTE position, while mpv expects a position on the HLS stream
+  /// timeline — and that timeline restarts at 0 at the session's start offset.
+  /// Seeking to an absolute value therefore overshot by the whole offset, mpv
+  /// clamped it to the end of what had been encoded so far, and the player
+  /// parked there waiting on segments that did not exist yet. Going through the
+  /// controller applies the offset and, just as importantly, lets it decide
+  /// whether the target needs a fresh session instead of an in-session seek.
   void _seekToFraction(double fraction) {
     final totalSeconds = _playerController.duration.inSeconds;
     if (totalSeconds <= 0) return;
-    _playerController.player
-        .seek(Duration(seconds: (fraction * totalSeconds).round()));
+    _playerController
+        .seekToAbsoluteSeconds((fraction * totalSeconds).round());
     _showControlsTransient();
   }
 
   @override
   Widget build(BuildContext context) {
     final layoutProvider = Provider.of<PlayerLayoutProvider>(context);
-    final useModular = layoutProvider.useModularLayout;
+    // A fixed chrome is its own thing: it is neither the default HUD nor the
+    // modular layer, and it ignores the layout config entirely.
+    final fixedChrome = layoutProvider.fixedChrome;
+    final useModular = fixedChrome == null && layoutProvider.useModularLayout;
+    final useDefaultHud = fixedChrome == null && !useModular;
     final totalSeconds = _playerController.duration.inSeconds;
     final progressFraction = totalSeconds > 0
         ? _playerController.position.inSeconds / totalSeconds
@@ -937,23 +1349,76 @@ class _PlayerScreenState extends State<PlayerScreen> {
           body: MouseRegion(
             cursor:
                 _shouldHideCursor ? SystemMouseCursors.none : MouseCursor.defer,
-            onHover: (event) {
-              _showControlsTransient();
-              _episodeNav?.onMouseMove();
-            },
+            onHover: (event) => _handlePointerHover(),
             child: Stack(
               children: [
+                // The video shrinks into a corner while the end-of-season card
+                // is up, so the credits stay watchable — the card never hides
+                // what is still playing. Scaling instead of resizing keeps the
+                // media_kit texture at one size, which avoids a reallocation
+                // hitch mid-animation.
                 RepaintBoundary(
-                  child: SizedBox.expand(
-                    child: Video(
-                      key: _videoKey,
-                      controller: _playerController.videoController,
-                      controls: null,
-                      fit: _videoFit,
-                      aspectRatio: _playerController.videoAspectRatio,
+                  child: AnimatedScale(
+                    scale: _videoScale,
+                    alignment: Alignment.centerLeft,
+                    duration: const Duration(milliseconds: 320),
+                    curve: Curves.easeOutCubic,
+                    child: AnimatedPadding(
+                      padding: EdgeInsets.all(_videoScale < 1 ? 26 : 0),
+                      duration: const Duration(milliseconds: 320),
+                      curve: Curves.easeOutCubic,
+                      // Radius and shadow are divided by the scale so they read
+                      // at their intended size once shrunk, instead of being
+                      // squashed along with the picture.
+                      child: AnimatedPhysicalModel(
+                        duration: const Duration(milliseconds: 320),
+                        curve: Curves.easeOutCubic,
+                        color: Colors.black,
+                        shadowColor: Colors.black,
+                        elevation: _videoScale < 1 ? 24 / _videoScale : 0,
+                        borderRadius:
+                            BorderRadius.circular(_videoCornerRadius),
+                        clipBehavior: Clip.antiAlias,
+                        animateColor: false,
+                        child: SizedBox.expand(
+                          child: Video(
+                            key: _videoKey,
+                            controller: _playerController.videoController,
+                            controls: null,
+                            fit: _videoFit,
+                            aspectRatio: _playerController.videoAspectRatio,
+                          ),
+                        ),
+                      ),
                     ),
                   ),
                 ),
+                // Dimming scrim for a session rebuild. It sits here — directly
+                // above the video and BELOW the controls — so it veils the
+                // stale frame without also greying out the buttons the user
+                // needs while loading. The spinner itself stays at the top of
+                // the stack.
+                if (_playerController.isSwitchingQuality)
+                  const Positioned.fill(
+                    child: IgnorePointer(
+                      child: ColoredBox(color: Colors.black54),
+                    ),
+                  ),
+                // Start-up cover. Same place as the scrim above — over the
+                // video, under the controls — so the back button and the title
+                // stay usable while the stream opens.
+                //
+                // It is held until the decoder has produced a frame of *this*
+                // media, not until startPlayback() returns. The engine texture
+                // is pooled and still shows the previous title until then, and
+                // between the two the picture was either that stale frame or
+                // black with nothing on it.
+                if (!_playerController.hasFirstFrame)
+                  const Positioned.fill(
+                    child: IgnorePointer(
+                      child: ColoredBox(color: Colors.black),
+                    ),
+                  ),
                 Positioned.fill(
                   child: Row(
                     children: [
@@ -986,10 +1451,70 @@ class _PlayerScreenState extends State<PlayerScreen> {
                     ],
                   ),
                 ),
-                if (useModular) ...[
+                // Switched on rather than compared, so adding a chrome to
+                // [FixedChromeId] fails to compile here instead of silently
+                // rendering a player with no controls at all.
+                if (fixedChrome != null)
+                  switch (fixedChrome) {
+                    FixedChromeId.emby => EmbyControlsLayer(
+                    visible: _controlsVisible,
+                    timelineAnchorKey: _timelineAnchorKey,
+                    isPlaying: _playerController.isPlaying,
+                    position: _playerController.position,
+                    duration: _playerController.duration,
+                    buffered: _bufferedFraction,
+                    onPlayPause: _togglePlayPause,
+                    onRewind: () => _seekRelative(-10),
+                    onForward: () => _seekRelative(10),
+                    onSeekFraction: _seekToFraction,
+                    onScrubbingChanged: (scrubbing) {
+                      // Hold the chrome open for the whole drag, then start
+                      // the hide countdown again on release.
+                      if (scrubbing) {
+                        _controlsTimer?.cancel();
+                        _safeSetState(() => _showControls = true);
+                      } else {
+                        _hideControlsWithDelay();
+                      }
+                    },
+                    title: _embyTitleLine,
+                    overline: _embyOverline,
+                    logoUrl: _mediaLogoUrl,
+                    volume: _playerController.player.state.volume,
+                    onVolumeChanged: (v) =>
+                        _playerController.player.setVolume(v),
+                    onBack: _leavePlayer,
+                    // This chrome gets the Emby-shaped menu, not the tabbed
+                    // panel the modular and default layouts use.
+                    onToggleSubtitles: () => _showEmbySettingsMenu(
+                      section: EmbyMenuSection.subtitles,
+                      anchorKey: _subtitlesButtonKey,
+                    ),
+                    onOpenAudio: () => _showEmbySettingsMenu(
+                      section: EmbyMenuSection.audio,
+                      anchorKey: _subtitlesButtonKey,
+                    ),
+                    onCycleSpeed: _cyclePlaybackRate,
+                    onOpenSettings: () => _showEmbySettingsMenu(
+                      anchorKey: _settingsButtonKey,
+                    ),
+                    onToggleFullscreen: _toggleFullscreen,
+                    playbackRate: _playbackRate,
+                    onSkipNext: (_episodeNav?.nextEpisode != null)
+                        ? _goToNextEpisode
+                        : null,
+                    onSkipIntro: (_episodeNav?.showSkipIntro ?? false)
+                        ? _skipIntroFromControl
+                        : null,
+                    chapterMarks: _chapterMarks,
+                    settingsButtonKey: _settingsButtonKey,
+                    subtitlesButtonKey: _subtitlesButtonKey,
+                  ),
+                  }
+                else if (useModular) ...[
                   ModularControlsLayer(
                     config: layoutProvider.config,
-                    visible: _showControls,
+                    visible: _controlsVisible,
                     timelineAnchorKey: _timelineAnchorKey,
                     isPlaying: _playerController.isPlaying,
                     progress: progressFraction,
@@ -998,6 +1523,8 @@ class _PlayerScreenState extends State<PlayerScreen> {
                     onPlayPause: _togglePlayPause,
                     onRewind: () => _seekRelative(-10),
                     onForward: () => _seekRelative(10),
+                    onRewind30: () => _seekRelative(-30),
+                    onForward30: () => _seekRelative(30),
                     onSkipNext: (_episodeNav?.nextEpisode != null)
                         ? _goToNextEpisode
                         : null,
@@ -1009,15 +1536,30 @@ class _PlayerScreenState extends State<PlayerScreen> {
                     onVolumeChanged: (v) =>
                         _playerController.player.setVolume(v),
                     onBack: _leavePlayer,
-                    onOpenSettings: _showTrackSettings,
+                    onOpenSettings: () => _showTrackSettings(),
                     onToggleSubtitles: _showSubtitlesMenu,
                     onOpenUpNext: _isEpisode ? _openEpisodesPanel : null,
+                    onSkipIntro: (_episodeNav?.showSkipIntro ?? false)
+                        ? _skipIntroFromControl
+                        : null,
+                    onCycleSpeed: _cyclePlaybackRate,
+                    onToggleAspectFit: _toggleAspectFitControl,
+                    onOpenAudio: () => _showTrackSettings(initialTabIndex: 0),
+                    onOpenChapters: _episodeNav != null
+                        ? () => _showTrackSettings(initialTabIndex: 4)
+                        : null,
+                    onOpenInfo: _showInfoPanel,
+                    episodeInfoLine: _episodeOverline,
+                    episodeShowTitle: _episodesShowTitle,
+                    playbackRate: _playbackRate,
+                    videoFit: _videoFit,
                     settingsButtonKey: _settingsButtonKey,
                     subtitlesButtonKey: _subtitlesButtonKey,
+                    mediaInfoButtonKey: _mediaInfoButtonKey,
                   ),
                 ] else
                   PlayerHUDOverlay(
-                    visible: _showControls,
+                    visible: _controlsVisible,
                     timelineAnchorKey: _timelineAnchorKey,
                     player: _playerController.player,
                     media: widget.media,
@@ -1044,38 +1586,25 @@ class _PlayerScreenState extends State<PlayerScreen> {
                     },
                     onSliderChanged: (value) {
                       _playerController.dragValue = value;
-                      if (_playerController.currentQuality != null) {
-                        final relativeSeek =
-                            value.toInt() - _playerController.hlsStartOffset;
-                        _playerController.player
-                            .seek(Duration(seconds: relativeSeek));
-                      } else {
-                        _playerController.player
-                            .seek(Duration(seconds: value.toInt()));
+                      // Scrub live only where the session can already serve the
+                      // frame; dragging past that would stall mpv on segments
+                      // that do not exist yet. The final position is committed
+                      // in onSliderChangeEnd.
+                      if (_playerController.canSeekWithinSession(value.toInt())) {
+                        _playerController.player.seek(Duration(
+                            seconds: value.toInt() -
+                                _playerController.hlsStartOffset));
                       }
                       _safeSetState(() {});
                     },
                     onSliderChangeEnd: (value) async {
                       _playerController.isDraggingSlider = false;
-                      final targetSeconds = value.toInt();
-                      final currentSeconds =
-                          _playerController.position.inSeconds;
-                      final seekDelta = (targetSeconds - currentSeconds).abs();
-
-                      if (_playerController.currentQuality != null &&
-                          seekDelta > 10) {
-                        // Large seek in HLS mode: reload session at new absolute position
-                        await _playerController
-                            .reloadHlsAtPosition(targetSeconds);
-                      } else if (_playerController.currentQuality != null) {
-                        // Small seek in HLS mode: seek relative to HLS stream
-                        final relativeSeek =
-                            targetSeconds - _playerController.hlsStartOffset;
-                        await _playerController.player
-                            .seek(Duration(seconds: relativeSeek));
-                      } else {
-                        await _playerController.player
-                            .seek(Duration(seconds: targetSeconds));
+                      // One decision point: this rebuilds the HLS session only
+                      // if the target is outside what it can serve. Rewinding
+                      // stays a plain seek.
+                      await _playerController
+                          .seekToAbsoluteSeconds(value.toInt());
+                      if (_playerController.currentQuality == null) {
                         try {
                           await (_playerController.player.platform as dynamic)
                               .setProperty('hr-seek', 'yes');
@@ -1087,7 +1616,7 @@ class _PlayerScreenState extends State<PlayerScreen> {
                         ? _goToNextEpisode
                         : null,
                   ),
-                if (_showControls && !useModular)
+                if (_controlsVisible && useDefaultHud)
                   TopRightControls(
                     player: _playerController.player,
                     currentFit: _videoFit,
@@ -1096,8 +1625,15 @@ class _PlayerScreenState extends State<PlayerScreen> {
                     episodeNav: _episodeNav,
                     onSeekToAbsolute: _playerController.seekToAbsoluteSeconds,
                   ),
-                // Overlays must be AFTER HUD in Stack to render on top
-                if (_episodeNav?.showSkipIntro ?? false)
+                // Overlays must be AFTER HUD in Stack to render on top.
+                // If the Studio layout already places a skip-intro control —
+                // or the fixed chrome draws its own — hide the built-in
+                // overlay to avoid a duplicate CTA.
+                if ((_episodeNav?.showSkipIntro ?? false) &&
+                    fixedChrome == null &&
+                    !(useModular &&
+                        layoutProvider.config
+                            .hasControl(PlayerControlType.skipIntro)))
                   SkipIntroButton(
                     onSkip: () async {
                       final end = _episodeNav!.introSkipTarget;
@@ -1105,7 +1641,11 @@ class _PlayerScreenState extends State<PlayerScreen> {
                       _episodeNav!.skipIntro();
                     },
                   ),
-                if (_episodeNav?.showNextEpisodeOutro ?? false)
+                // Requires an actual next episode: at the end of a season the
+                // pill would otherwise sit there doing nothing when tapped.
+                if ((_episodeNav?.showNextEpisodeOutro ?? false) &&
+                    _episodeNav?.nextEpisode != null &&
+                    !(_episodeNav?.showNextSeasonCard ?? false))
                   NextEpisodeOverlay(
                     nextEpisode: _episodeNav!.nextEpisode,
                     autoPlayActive: _episodeNav!.outroAutoPlayActive,
@@ -1113,6 +1653,45 @@ class _PlayerScreenState extends State<PlayerScreen> {
                     countdownSeconds: _episodeNav!.outroCountdownSeconds,
                     onPlayNext: _goToNextEpisode,
                     onCancel: () => _episodeNav!.cancelAutoPlay(),
+                  ),
+                // Tapping the shrunk video is a second way to say "no thanks":
+                // it dismisses the page and gives the picture and the controls
+                // back. Placed before the back button so that button, which
+                // sits inside this same strip, still gets the tap.
+                if (_episodeNav?.showNextSeasonCard ?? false)
+                  Positioned(
+                    top: 0,
+                    bottom: 0,
+                    left: 0,
+                    width: MediaQuery.of(context).size.width * _videoScale,
+                    child: MouseRegion(
+                      cursor: SystemMouseCursors.click,
+                      child: GestureDetector(
+                        behavior: HitTestBehavior.opaque,
+                        onTap: () => _episodeNav!.dismissNextSeasonCard(),
+                      ),
+                    ),
+                  ),
+                // The only chrome that survives the end-of-season page: without
+                // it the page would be a dead end, since every other way out is
+                // hidden.
+                if (_episodeNav?.showNextSeasonCard ?? false)
+                  Positioned(
+                    top: macOSWindowControlsTopInset + 12,
+                    left: 20,
+                    child: _PlayerBackButton(onTap: _leavePlayer),
+                  ),
+                if (_episodeNav?.showNextSeasonCard ?? false)
+                  NextSeasonOverlay(
+                    season: _episodeNav!.nextSeason!,
+                    submitting: _requestingNextSeason,
+                    onRequest: _requestNextSeason,
+                    onDismiss: () => _episodeNav!.dismissNextSeasonCard(),
+                    onPlayNext: (_episodeNav?.isSeasonLookahead ?? false)
+                        ? _goToNextEpisode
+                        : null,
+                    videoInset:
+                        MediaQuery.of(context).size.width * _videoScale,
                   ),
                 if (_showEpisodesPanel && _isEpisode)
                   PlayerEpisodesPanel(
@@ -1133,9 +1712,12 @@ class _PlayerScreenState extends State<PlayerScreen> {
                     onClose: _closeEpisodesPanel,
                     onEpisodeSelected: _goToEpisode,
                   ),
-                if (!_isInitialized)
+                // Start-up spinner. IgnorePointer like the two below: loading is
+                // exactly when the user may want to go back, so the cover must
+                // never eat taps meant for the chrome.
+                if (!_playerController.hasFirstFrame)
                   const Positioned.fill(
-                    child: AbsorbPointer(
+                    child: IgnorePointer(
                       child: Center(
                         child: CircularProgressIndicator(
                           color: Color(0xFF00A4DC),
@@ -1144,22 +1726,72 @@ class _PlayerScreenState extends State<PlayerScreen> {
                       ),
                     ),
                   ),
-                if (_playerController.isSwitchingQuality)
-                  Positioned.fill(
-                    child: AbsorbPointer(
-                      child: Container(
-                        color: Colors.black54,
-                        child: const Center(
-                          child: CircularProgressIndicator(
-                            color: Color(0xFF00A4DC),
-                            strokeWidth: 3,
-                          ),
+                // Both spinners below are IgnorePointer, not AbsorbPointer: they
+                // cover the whole screen and sit above the controls, so
+                // absorbing taps made every player button dead for as long as a
+                // seek took to load. Loading is exactly when the user is most
+                // likely to want to pause, seek again or go back, so the
+                // spinner has to be purely decorative.
+                if (_playerController.isSwitchingQuality ||
+                    (_playerController.isBuffering && _isInitialized))
+                  const Positioned.fill(
+                    child: IgnorePointer(
+                      child: Center(
+                        child: CircularProgressIndicator(
+                          color: Color(0xFF00A4DC),
+                          strokeWidth: 3,
                         ),
                       ),
                     ),
                   ),
               ],
             ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+
+/// Standalone back control, shown while the end-of-season page hides the rest
+/// of the player chrome. Kept independent of the HUD so it cannot be swept away
+/// with it.
+class _PlayerBackButton extends StatefulWidget {
+  final VoidCallback onTap;
+
+  const _PlayerBackButton({required this.onTap});
+
+  @override
+  State<_PlayerBackButton> createState() => _PlayerBackButtonState();
+}
+
+class _PlayerBackButtonState extends State<_PlayerBackButton> {
+  bool _hovered = false;
+
+  @override
+  Widget build(BuildContext context) {
+    return MouseRegion(
+      cursor: SystemMouseCursors.click,
+      onEnter: (_) => setState(() => _hovered = true),
+      onExit: (_) => setState(() => _hovered = false),
+      child: GestureDetector(
+        onTap: widget.onTap,
+        child: AnimatedContainer(
+          duration: const Duration(milliseconds: 140),
+          width: 40,
+          height: 40,
+          decoration: BoxDecoration(
+            shape: BoxShape.circle,
+            color: Colors.black.withValues(alpha: _hovered ? 0.62 : 0.38),
+            border: Border.all(
+              color: _hovered ? Colors.white24 : Colors.white10,
+            ),
+          ),
+          child: Icon(
+            Icons.arrow_back_rounded,
+            size: 20,
+            color: _hovered ? Colors.white : Colors.white70,
           ),
         ),
       ),

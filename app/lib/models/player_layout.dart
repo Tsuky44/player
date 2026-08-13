@@ -21,6 +21,64 @@ const double kDefaultGlassOpacity = 0.07;
 /// When false, controls use a lightweight flat glass (blur + tint only).
 const bool kDefaultLiquidGlass = false;
 
+/// Accent colour swatches offered for the Flat skin (restricted palette,
+/// no free colour picker).
+const List<Color> kFlatAccentPalette = [
+  Color(0xFF0A84FF), // blue (matches the glass accent)
+  Color(0xFFFF453A), // red
+  Color(0xFFFF9F0A), // orange
+  Color(0xFF30D158), // green
+  Color(0xFFBF5AF2), // purple
+  Color(0xFFFFD60A), // yellow
+];
+
+const Color kDefaultFlatAccentColor = Color(0xFF0A84FF);
+const FlatElevation kDefaultFlatElevation = FlatElevation.light;
+
+/// Shadow depth for the Neumorphic skin (0 = flat, 1 = deeply extruded).
+const double kMinNeumorphicIntensity = 0.0;
+const double kMaxNeumorphicIntensity = 1.0;
+const double kDefaultNeumorphicIntensity = 0.5;
+
+/// Circle diameter = icon px × this (was 1.4 — too puffy on large canvases).
+const double kControlChromePaddingFactor = 1.22;
+
+/// Converts layout [sizePercentage] into icon pixels with phone / desktop / TV
+/// clamps so controls stay tappable without becoming dinner plates.
+///
+/// Uses [Size.longestSide] as well as shortest so landscape desktop windows
+/// (e.g. 1280×720) are not treated like oversized phones.
+double modularControlPixelSize(
+  Size canvasSize,
+  double sizePercentage, {
+  double emphasis = 1.0,
+}) {
+  final raw = canvasSize.shortestSide * sizePercentage * emphasis;
+  final short = canvasSize.shortestSide;
+  final long = canvasSize.longestSide;
+  late final double floor;
+  late final double ceiling;
+  if (long >= 1600 || short >= 1000) {
+    // Large desktop / TV (10-foot)
+    floor = 40;
+    ceiling = 52;
+  } else if (long >= 900) {
+    // Desktop / tablet player window (incl. 1280×720 landscape)
+    floor = 34;
+    ceiling = 44;
+  } else if (short < 480) {
+    // Phone portrait / compact
+    floor = 36;
+    ceiling = 50;
+  } else {
+    // Phone landscape / small tablet
+    floor = 34;
+    ceiling = 46;
+  }
+  final maxAllowed = emphasis > 1.0 ? ceiling * 1.12 : ceiling;
+  return raw.clamp(floor, maxAllowed);
+}
+
 /// The set of button variants available in the Player Studio shop.
 enum PlayerControlType {
   back,
@@ -44,6 +102,19 @@ enum PlayerControlType {
   subtitles,
   upNext,
   upNextEmby,
+  // Pack Cinéma Essentiel (Player Studio shop)
+  skipIntro,
+  playbackSpeed,
+  aspectFit,
+  audioTracks,
+  chapters,
+  timeRemaining,
+  rewind30,
+  forward30,
+  // Emby template extras
+  episodeTitleBlock,
+  chaptersEmby,
+  mediaInfo,
 }
 
 extension PlayerControlTypeX on PlayerControlType {
@@ -94,53 +165,97 @@ extension PlayerControlTypeX on PlayerControlType {
         return 'À suivre';
       case PlayerControlType.upNextEmby:
         return 'À suivre Emby';
+      case PlayerControlType.skipIntro:
+        return 'Passer l\'intro';
+      case PlayerControlType.playbackSpeed:
+        return 'Vitesse';
+      case PlayerControlType.aspectFit:
+        return 'Affichage';
+      case PlayerControlType.audioTracks:
+        return 'Piste audio';
+      case PlayerControlType.chapters:
+        return 'Chapitres';
+      case PlayerControlType.timeRemaining:
+        return 'Temps restant';
+      case PlayerControlType.rewind30:
+        return 'Reculer 30s';
+      case PlayerControlType.forward30:
+        return 'Avancer 30s';
+      case PlayerControlType.episodeTitleBlock:
+        return 'Bloc titre (Emby)';
+      case PlayerControlType.chaptersEmby:
+        return 'Chapitres (lien texte)';
+      case PlayerControlType.mediaInfo:
+        return 'Infos média';
     }
   }
 
   IconData get icon {
     switch (this) {
       case PlayerControlType.back:
-        return Icons.arrow_back;
+        return Icons.arrow_back_rounded;
       case PlayerControlType.mediaTitle:
-        return Icons.title;
+        return Icons.title_rounded;
       case PlayerControlType.mediaLogo:
         return Icons.branding_watermark_outlined;
       case PlayerControlType.rewind:
-        return Icons.replay_10;
+        return Icons.replay_10_rounded;
       case PlayerControlType.playPause:
-        return Icons.play_arrow;
+        return Icons.play_arrow_rounded;
       case PlayerControlType.forward:
-        return Icons.forward_10;
+        return Icons.forward_10_rounded;
       case PlayerControlType.progressBar:
-        return Icons.linear_scale;
+        return Icons.linear_scale_rounded;
       case PlayerControlType.timeline:
-        return Icons.timeline;
+        return Icons.timeline_rounded;
       case PlayerControlType.timelineEmby:
         return Icons.view_timeline_outlined;
       case PlayerControlType.timelineGlassInline:
         return Icons.view_agenda_outlined;
       case PlayerControlType.skipPrevious:
-        return Icons.skip_previous;
+        return Icons.skip_previous_rounded;
       case PlayerControlType.skipNext:
-        return Icons.skip_next;
+        return Icons.skip_next_rounded;
       case PlayerControlType.volumeUp:
-        return Icons.volume_up;
+        return Icons.volume_up_rounded;
       case PlayerControlType.volumeDown:
-        return Icons.volume_down;
+        return Icons.volume_down_rounded;
       case PlayerControlType.mute:
-        return Icons.volume_off;
+        return Icons.volume_off_rounded;
       case PlayerControlType.volumeSlider:
-        return Icons.volume_down;
+        return Icons.volume_down_rounded;
       case PlayerControlType.fullscreen:
-        return Icons.fullscreen;
+        return Icons.fullscreen_rounded;
       case PlayerControlType.settings:
-        return Icons.settings;
+        return Icons.settings_rounded;
       case PlayerControlType.subtitles:
-        return Icons.subtitles;
+        return Icons.subtitles_outlined;
       case PlayerControlType.upNext:
         return Icons.playlist_play_rounded;
       case PlayerControlType.upNextEmby:
         return Icons.view_list_rounded;
+      case PlayerControlType.skipIntro:
+        return Icons.fast_forward_rounded;
+      case PlayerControlType.playbackSpeed:
+        return Icons.speed_rounded;
+      case PlayerControlType.aspectFit:
+        return Icons.aspect_ratio_rounded;
+      case PlayerControlType.audioTracks:
+        return Icons.audiotrack_rounded;
+      case PlayerControlType.chapters:
+        return Icons.list_alt_rounded;
+      case PlayerControlType.timeRemaining:
+        return Icons.timer_outlined;
+      case PlayerControlType.rewind30:
+        return Icons.replay_30_rounded;
+      case PlayerControlType.forward30:
+        return Icons.forward_30_rounded;
+      case PlayerControlType.episodeTitleBlock:
+        return Icons.subtitles_outlined;
+      case PlayerControlType.chaptersEmby:
+        return Icons.list_alt_rounded;
+      case PlayerControlType.mediaInfo:
+        return Icons.info_outline_rounded;
     }
   }
 
@@ -158,7 +273,27 @@ extension PlayerControlTypeX on PlayerControlType {
       this == PlayerControlType.mediaLogo ||
       this == PlayerControlType.volumeSlider ||
       this == PlayerControlType.upNext ||
-      this == PlayerControlType.upNextEmby;
+      this == PlayerControlType.upNextEmby ||
+      this == PlayerControlType.skipIntro ||
+      this == PlayerControlType.playbackSpeed ||
+      this == PlayerControlType.aspectFit ||
+      this == PlayerControlType.audioTracks ||
+      this == PlayerControlType.chapters ||
+      this == PlayerControlType.timeRemaining ||
+      this == PlayerControlType.episodeTitleBlock ||
+      this == PlayerControlType.chaptersEmby ||
+      this == PlayerControlType.mediaInfo;
+
+  /// Pack Cinéma Essentiel — new shop section.
+  bool get isCinemaPack =>
+      this == PlayerControlType.skipIntro ||
+      this == PlayerControlType.playbackSpeed ||
+      this == PlayerControlType.aspectFit ||
+      this == PlayerControlType.audioTracks ||
+      this == PlayerControlType.chapters ||
+      this == PlayerControlType.timeRemaining ||
+      this == PlayerControlType.rewind30 ||
+      this == PlayerControlType.forward30;
 
   /// Whether this control is a progress/timeline bar (has width slider).
   bool get isProgressBar =>
@@ -172,24 +307,116 @@ extension PlayerControlTypeX on PlayerControlType {
   }
 }
 
+/// A hand-written, non-editable player chrome.
+///
+/// A preset carrying one of these renders that chrome verbatim instead of the
+/// modular layer: [PlayerLayoutConfig.controls], [PlayerLayoutConfig.skin] and
+/// every other appearance field are ignored. Player Studio shows such a preset
+/// as a frozen preview — there is nothing in it to move.
+enum FixedChromeId {
+  /// Clone of the Emby web player chrome.
+  emby;
+
+  String get id => name;
+
+  String get label => switch (this) {
+        FixedChromeId.emby => 'Emby',
+      };
+
+  /// Unknown ids decode to null so a preset written by a newer client
+  /// degrades to its modular layout instead of failing to load.
+  static FixedChromeId? fromId(String? value) {
+    return switch (value) {
+      'emby' => FixedChromeId.emby,
+      _ => null,
+    };
+  }
+}
+
+/// Visual language applied to every control's chrome for a given preset.
+///
+/// One skin per preset (not per control) — chosen alongside a layout so the
+/// whole playeur reads as a single, coherent design.
+enum ControlSkinStyle {
+  /// Frosted, translucent chrome (the original — and only — look).
+  glass,
+
+  /// Opaque flat surfaces, no blur, accent colour + elevation.
+  flat,
+
+  /// Soft extruded surfaces with dual light/dark shadows, no blur.
+  neumorphic;
+
+  String get id => name;
+
+  String get label => switch (this) {
+        ControlSkinStyle.glass => 'Verre',
+        ControlSkinStyle.flat => 'Net',
+        ControlSkinStyle.neumorphic => 'Doux',
+      };
+
+  static ControlSkinStyle fromId(String? value) {
+    return switch (value) {
+      'flat' => ControlSkinStyle.flat,
+      'neumorphic' => ControlSkinStyle.neumorphic,
+      _ => ControlSkinStyle.glass,
+    };
+  }
+}
+
+/// Drop-shadow strength for the Flat skin.
+enum FlatElevation {
+  none,
+  light,
+  marked;
+
+  String get id => name;
+
+  String get label => switch (this) {
+        FlatElevation.none => 'Aucune',
+        FlatElevation.light => 'Légère',
+        FlatElevation.marked => 'Marquée',
+      };
+
+  static FlatElevation fromId(String? value) {
+    return switch (value) {
+      'none' => FlatElevation.none,
+      'marked' => FlatElevation.marked,
+      _ => FlatElevation.light,
+    };
+  }
+}
+
 /// Visual presentation of the [PlayerControlType.timeline] control.
 enum TimelineVisualStyle {
   /// Frosted pill with accent-colour progress (default legacy look).
   glass,
 
   /// Minimal Emby-style overlay: no background, thin white bar, flat icons.
-  emby;
+  emby,
+
+  /// Opaque flat pill matching the Flat control skin.
+  flat,
+
+  /// Soft extruded pill matching the Neumorphic control skin.
+  neumorphic;
 
   String get id => name;
 
   String get label => switch (this) {
         TimelineVisualStyle.glass => 'Verre',
         TimelineVisualStyle.emby => 'Emby',
+        TimelineVisualStyle.flat => 'Net',
+        TimelineVisualStyle.neumorphic => 'Doux',
       };
 
   static TimelineVisualStyle fromId(String? value) {
-    if (value == 'emby') return TimelineVisualStyle.emby;
-    return TimelineVisualStyle.glass;
+    return switch (value) {
+      'emby' => TimelineVisualStyle.emby,
+      'flat' => TimelineVisualStyle.flat,
+      'neumorphic' => TimelineVisualStyle.neumorphic,
+      _ => TimelineVisualStyle.glass,
+    };
   }
 }
 
@@ -239,6 +466,32 @@ class TimelineChromeOptions {
   /// Emby-style defaults for [PlayerControlType.timelineEmby].
   factory TimelineChromeOptions.emby() => const TimelineChromeOptions(
         visualStyle: TimelineVisualStyle.emby,
+        showSkipPrevious: true,
+        showRewind: true,
+        showPlayPause: true,
+        showForward: true,
+        showSkipNext: true,
+        showSettings: true,
+        showSubtitles: true,
+        showFullscreen: true,
+      );
+
+  /// Flat-skin defaults for [PlayerControlType.timeline] under the Flat skin.
+  factory TimelineChromeOptions.flat() => const TimelineChromeOptions(
+        visualStyle: TimelineVisualStyle.flat,
+        showSkipPrevious: true,
+        showRewind: true,
+        showPlayPause: true,
+        showForward: true,
+        showSkipNext: true,
+        showSettings: true,
+        showSubtitles: true,
+        showFullscreen: true,
+      );
+
+  /// Neumorphic-skin defaults for [PlayerControlType.timeline].
+  factory TimelineChromeOptions.neumorphic() => const TimelineChromeOptions(
+        visualStyle: TimelineVisualStyle.neumorphic,
         showSkipPrevious: true,
         showRewind: true,
         showPlayPause: true,
@@ -372,12 +625,17 @@ class ControlConfig {
   /// Embedded button visibility for [PlayerControlType.timeline] only.
   final TimelineChromeOptions? timelineOptions;
 
+  /// Keeps [PlayerControlType.volumeSlider] permanently expanded instead of
+  /// only on hover (Emby-style always-visible slider).
+  final bool alwaysExpanded;
+
   const ControlConfig({
     required this.xPercentage,
     required this.yPercentage,
     required this.sizePercentage,
     this.widthPercentage = 0.85,
     this.timelineOptions,
+    this.alwaysExpanded = false,
   });
 
   TimelineChromeOptions get resolvedTimelineOptions =>
@@ -389,6 +647,7 @@ class ControlConfig {
     double? sizePercentage,
     double? widthPercentage,
     TimelineChromeOptions? timelineOptions,
+    bool? alwaysExpanded,
   }) {
     return ControlConfig(
       xPercentage: (xPercentage ?? this.xPercentage).clamp(0.0, 1.0),
@@ -398,6 +657,7 @@ class ControlConfig {
       widthPercentage: (widthPercentage ?? this.widthPercentage)
           .clamp(kMinProgressWidthPct, 1.0),
       timelineOptions: timelineOptions ?? this.timelineOptions,
+      alwaysExpanded: alwaysExpanded ?? this.alwaysExpanded,
     );
   }
 
@@ -408,6 +668,7 @@ class ControlConfig {
         'width_percentage': widthPercentage,
         if (timelineOptions != null)
           'timeline_options': timelineOptions!.toJson(),
+        'always_expanded': alwaysExpanded,
       };
 
   factory ControlConfig.fromJson(
@@ -423,6 +684,7 @@ class ControlConfig {
           .clamp(kMinSizePct, kMaxSizePct),
       widthPercentage: ((json['width_percentage'] as num?)?.toDouble() ?? 0.85)
           .clamp(kMinProgressWidthPct, 1.0),
+      alwaysExpanded: json['always_expanded'] as bool? ?? false,
       timelineOptions: json['timeline_options'] is Map<String, dynamic>
           ? TimelineChromeOptions.fromJson(
               json['timeline_options'] as Map<String, dynamic>,
@@ -500,15 +762,46 @@ class PlayerLayoutConfig {
   /// Apple-style liquid glass (saturation boost, rim, sheen). Off = flat glass.
   final bool liquidGlass;
 
+  /// Visual language applied to every control's chrome (one per preset).
+  final ControlSkinStyle skin;
+
+  /// Accent colour for the Flat skin (ignored by Glass/Neumorphic).
+  final Color flatAccentColor;
+
+  /// Drop-shadow strength for the Flat skin (ignored by Glass/Neumorphic).
+  final FlatElevation flatElevation;
+
+  /// Shadow/extrusion depth for the Neumorphic skin, 0.0 -> 1.0.
+  final double neumorphicIntensity;
+
   /// When true, tapping the video toggles play/pause (modular layout only).
   final bool tapToTogglePlayback;
+
+  /// Non-null when this preset is a hand-written, non-editable chrome.
+  ///
+  /// It wins over every other field here: [controls] and the appearance
+  /// settings are kept only so an older client — which does not know this key
+  /// — still has a usable layout to fall back on.
+  final FixedChromeId? fixedChrome;
+
+  /// Whether this preset renders a fixed chrome instead of the modular layer.
+  bool get isFixedChrome => fixedChrome != null;
+
+  /// Whether the layout already places a control of this type.
+  bool hasControl(PlayerControlType type) =>
+      controls.any((c) => c.type == type);
 
   const PlayerLayoutConfig({
     required this.controls,
     this.blurIntensity = kDefaultBlurSigma,
     this.glassOpacity = kDefaultGlassOpacity,
     this.liquidGlass = kDefaultLiquidGlass,
+    this.skin = ControlSkinStyle.glass,
+    this.flatAccentColor = kDefaultFlatAccentColor,
+    this.flatElevation = kDefaultFlatElevation,
+    this.neumorphicIntensity = kDefaultNeumorphicIntensity,
     this.tapToTogglePlayback = false,
+    this.fixedChrome,
   });
 
   PlayerLayoutConfig copyWith({
@@ -516,7 +809,15 @@ class PlayerLayoutConfig {
     double? blurIntensity,
     double? glassOpacity,
     bool? liquidGlass,
+    ControlSkinStyle? skin,
+    Color? flatAccentColor,
+    FlatElevation? flatElevation,
+    double? neumorphicIntensity,
     bool? tapToTogglePlayback,
+    FixedChromeId? fixedChrome,
+    // `fixedChrome: null` means "leave as is" like every other field here, so
+    // dropping back to a modular playeur needs its own explicit flag.
+    bool clearFixedChrome = false,
   }) {
     return PlayerLayoutConfig(
       controls: controls ?? this.controls,
@@ -525,11 +826,20 @@ class PlayerLayoutConfig {
       glassOpacity: (glassOpacity ?? this.glassOpacity)
           .clamp(kMinGlassOpacity, kMaxGlassOpacity),
       liquidGlass: liquidGlass ?? this.liquidGlass,
+      skin: skin ?? this.skin,
+      flatAccentColor: flatAccentColor ?? this.flatAccentColor,
+      flatElevation: flatElevation ?? this.flatElevation,
+      neumorphicIntensity: (neumorphicIntensity ?? this.neumorphicIntensity)
+          .clamp(kMinNeumorphicIntensity, kMaxNeumorphicIntensity),
       tapToTogglePlayback: tapToTogglePlayback ?? this.tapToTogglePlayback,
+      fixedChrome:
+          clearFixedChrome ? null : (fixedChrome ?? this.fixedChrome),
     );
   }
 
   /// Default layout that mirrors the standard player look.
+  ///
+  /// Prefer [PlayerLayoutTemplates] prefabs when creating a full playeur.
   factory PlayerLayoutConfig.standard() {
     return const PlayerLayoutConfig(controls: [
       PlacedControl(
@@ -560,6 +870,16 @@ class PlayerLayoutConfig {
             widthPercentage: 0.85),
       ),
     ]);
+  }
+
+  /// A preset that renders the hand-written [chrome] instead of the modular
+  /// layer.
+  ///
+  /// It still carries the standard control list: a client too old to know
+  /// `fixed_chrome` ignores the key and falls back to that layout rather than
+  /// showing an empty player.
+  factory PlayerLayoutConfig.fixed(FixedChromeId chrome) {
+    return PlayerLayoutConfig.standard().copyWith(fixedChrome: chrome);
   }
 
   /// Find a placed control by its unique [id].
@@ -609,7 +929,12 @@ class PlayerLayoutConfig {
         'blur_intensity': blurIntensity,
         'glass_opacity': glassOpacity,
         'liquid_glass': liquidGlass,
+        'skin': skin.id,
+        'flat_accent_color': flatAccentColor.toARGB32(),
+        'flat_elevation': flatElevation.id,
+        'neumorphic_intensity': neumorphicIntensity,
         'tap_to_toggle_playback': tapToTogglePlayback,
+        if (fixedChrome != null) 'fixed_chrome': fixedChrome!.id,
         'controls': controls.map((c) => c.toJson()).toList(),
       };
 
@@ -621,7 +946,17 @@ class PlayerLayoutConfig {
             kDefaultGlassOpacity)
         .clamp(kMinGlassOpacity, kMaxGlassOpacity);
     final liquid = json['liquid_glass'] as bool? ?? kDefaultLiquidGlass;
+    final skin = ControlSkinStyle.fromId(json['skin'] as String?);
+    final flatAccent = json['flat_accent_color'] is int
+        ? Color(json['flat_accent_color'] as int)
+        : kDefaultFlatAccentColor;
+    final flatElevation = FlatElevation.fromId(json['flat_elevation'] as String?);
+    final neumorphicIntensity =
+        ((json['neumorphic_intensity'] as num?)?.toDouble() ??
+                kDefaultNeumorphicIntensity)
+            .clamp(kMinNeumorphicIntensity, kMaxNeumorphicIntensity);
     final tapPlayback = json['tap_to_toggle_playback'] as bool? ?? false;
+    final fixedChrome = FixedChromeId.fromId(json['fixed_chrome'] as String?);
 
     // New format (v2)
     if (json['controls'] is List) {
@@ -631,7 +966,12 @@ class PlayerLayoutConfig {
         blurIntensity: blur,
         glassOpacity: opacity,
         liquidGlass: liquid,
+        skin: skin,
+        flatAccentColor: flatAccent,
+        flatElevation: flatElevation,
+        neumorphicIntensity: neumorphicIntensity,
         tapToTogglePlayback: tapPlayback,
+        fixedChrome: fixedChrome,
       );
     }
     // Migrate from old v1 format (Map<typeId, config>)
@@ -639,6 +979,10 @@ class PlayerLayoutConfig {
       blurIntensity: blur,
       glassOpacity: opacity,
       liquidGlass: liquid,
+      skin: skin,
+      flatAccentColor: flatAccent,
+      flatElevation: flatElevation,
+      neumorphicIntensity: neumorphicIntensity,
       tapToTogglePlayback: tapPlayback,
     );
   }
@@ -759,7 +1103,13 @@ extension PlayerLayoutSubtitleLayout on PlayerLayoutConfig {
   /// Mirrors [ControlChrome] sizing so subtitle lift matches the real layout.
   Size estimatePlacedControlSize(PlacedControl placed, Size screenSize) {
     final config = placed.config;
-    final pixelSize = screenSize.shortestSide * config.sizePercentage;
+    final emphasis =
+        placed.type == PlayerControlType.playPause ? 1.15 : 1.0;
+    final pixelSize = modularControlPixelSize(
+      screenSize,
+      config.sizePercentage,
+      emphasis: emphasis,
+    );
 
     switch (placed.type) {
       case PlayerControlType.progressBar:
@@ -801,7 +1151,8 @@ extension PlayerLayoutSubtitleLayout on PlayerLayoutConfig {
         final height = (pixelSize * 0.8).clamp(24.0, 48.0);
         return Size(screenSize.width * 0.5, height);
       case PlayerControlType.mediaLogo:
-        final height = (pixelSize * 1.4).clamp(36.0, 100.0);
+        final height =
+            (pixelSize * kControlChromePaddingFactor).clamp(36.0, 100.0);
         return Size(screenSize.width * 0.38, height);
       case PlayerControlType.volumeSlider:
         final height = (pixelSize * 0.5).clamp(16.0, 40.0);
@@ -810,13 +1161,28 @@ extension PlayerLayoutSubtitleLayout on PlayerLayoutConfig {
           height,
         );
       case PlayerControlType.upNext:
-        final height = (pixelSize * 1.4).clamp(36.0, 52.0);
+        final height =
+            (pixelSize * kControlChromePaddingFactor).clamp(36.0, 52.0);
         return Size(height * 2.75, height);
       case PlayerControlType.upNextEmby:
         final height = (pixelSize * 1.2).clamp(28.0, 40.0);
         return Size(height * 2.5, height);
+      case PlayerControlType.skipIntro:
+        final height = (pixelSize * 1.15).clamp(32.0, 44.0);
+        return Size(height * 3.2, height);
+      case PlayerControlType.playbackSpeed:
+      case PlayerControlType.timeRemaining:
+        final height = (pixelSize * 1.15).clamp(30.0, 42.0);
+        return Size(height * 2.4, height);
+      case PlayerControlType.aspectFit:
+      case PlayerControlType.audioTracks:
+      case PlayerControlType.chapters:
+      case PlayerControlType.rewind30:
+      case PlayerControlType.forward30:
+        final diameter = pixelSize * kControlChromePaddingFactor;
+        return Size(diameter, diameter);
       default:
-        final diameter = pixelSize * 1.4;
+        final diameter = pixelSize * kControlChromePaddingFactor;
         return Size(diameter, diameter);
     }
   }

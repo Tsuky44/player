@@ -1,8 +1,9 @@
 import 'dart:async';
-import 'dart:io';
 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+
+import '../../../utils/app_platform.dart';
 
 import '../../../services/macos_now_playing.dart';
 
@@ -24,7 +25,7 @@ class PlayerMediaKeysBinding {
   });
 
   static bool get isSupported =>
-      Platform.isMacOS || Platform.isWindows || Platform.isLinux;
+      AppPlatform.isMacOS || AppPlatform.isWindows || AppPlatform.isLinux;
 
   Future<void> attach({
     required String title,
@@ -35,7 +36,7 @@ class PlayerMediaKeysBinding {
     if (!isSupported || _attached) return;
     _attached = true;
 
-    if (Platform.isMacOS) {
+    if (AppPlatform.isMacOS) {
       _macosSubscription ??= MacosNowPlaying.actions.listen(_onMacosAction);
       await MacosNowPlaying.activate(
         title: title,
@@ -51,7 +52,7 @@ class PlayerMediaKeysBinding {
     if (!_attached) return;
     _attached = false;
 
-    if (Platform.isMacOS) {
+    if (AppPlatform.isMacOS) {
       await _macosSubscription?.cancel();
       _macosSubscription = null;
       await MacosNowPlaying.deactivate();
@@ -67,7 +68,7 @@ class PlayerMediaKeysBinding {
   }) async {
     if (!_attached) return;
 
-    if (Platform.isMacOS) {
+    if (AppPlatform.isMacOS) {
       await MacosNowPlaying.update(
         title: title,
         artist: artist,
@@ -95,7 +96,7 @@ class PlayerMediaKeysBinding {
 
   /// Handles media keys that reach Flutter focus (Windows/Linux).
   KeyEventResult? handleKeyboardEvent(KeyEvent event) {
-    if (Platform.isMacOS) return null;
+    if (AppPlatform.isMacOS) return null;
     if (event is! KeyDownEvent) return null;
 
     final key = event.logicalKey;

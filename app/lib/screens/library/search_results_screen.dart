@@ -3,6 +3,7 @@ import 'package:provider/provider.dart';
 import '../../models/models.dart';
 import '../../providers/library_provider.dart';
 import '../../theme/app_colors.dart';
+import '../../utils/responsive.dart';
 import '../../widgets/global/empty_state.dart';
 import '../../widgets/global/media_card.dart';
 import 'movie_detail_screen.dart';
@@ -15,13 +16,7 @@ class SearchResultsScreen extends StatelessWidget {
 
   const SearchResultsScreen({super.key, required this.query});
 
-  int _crossAxisCount(double width) {
-    if (width >= 1400) return 7;
-    if (width >= 1100) return 6;
-    if (width >= 900) return 5;
-    if (width >= 600) return 4;
-    return 3;
-  }
+  int _crossAxisCount(double width) => AppLayout.posterGridCount(width);
 
   void _openMedia(BuildContext context, Media media, LibraryProvider lp) {
     if (media.type == MediaType.movie) {
@@ -81,9 +76,9 @@ class SearchResultsScreen extends StatelessWidget {
                   sliver: SliverGrid(
                     gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
                       crossAxisCount: _crossAxisCount(width),
-                      mainAxisSpacing: 24,
-                      crossAxisSpacing: 12,
-                      childAspectRatio: 0.52,
+                      mainAxisSpacing: AppLayout.posterGridMainSpacing,
+                      crossAxisSpacing: AppLayout.posterGridCrossSpacing,
+                      childAspectRatio: AppLayout.posterGridAspectRatio,
                     ),
                     delegate: SliverChildBuilderDelegate(
                       (context, index) {

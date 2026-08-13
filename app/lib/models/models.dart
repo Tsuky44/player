@@ -56,6 +56,21 @@ class Media {
   final int? tmdbId;
   final int? seasonNumber;
   final int? episodeNumber;
+  final bool isAvailable;
+
+  /// MediaHub status of a season the server does not hold: `unknown`,
+  /// `pending`, `processing`, `partial`, `available`, or `unavailable` when
+  /// MediaHub itself could not be consulted. Null for anything else.
+  final String? requestStatus;
+
+  /// Whether a request can be sent for this season. Decided by the server —
+  /// never recomputed from [requestStatus], so an unreachable MediaHub can
+  /// never be mistaken for "free to request".
+  final bool canRequest;
+
+  /// Episode count announced by TMDB for a missing season.
+  final int? episodeCount;
+
   final DateTime createdAt;
 
   Media({
@@ -71,15 +86,64 @@ class Media {
     this.tmdbId,
     this.seasonNumber,
     this.episodeNumber,
+    this.isAvailable = true,
+    this.requestStatus,
+    this.canRequest = false,
+    this.episodeCount,
     required this.createdAt,
   });
 
-  factory Media.fromJson(Map<String, dynamic> json) {
+  /// True once a request has been sent but the season is not downloaded yet.
+  bool get isRequested =>
+      requestStatus == 'pending' || requestStatus == 'processing';
+
+  Media copyWith({
+    bool? isAvailable,
+    String? requestStatus,
+    bool? canRequest,
+  }) {
     return Media(
-      id: json['id'] as int,
-      type: parseMediaType(json['type'] as String),
-      title: json['title'] as String,
-      filePath: json['file_path'] as String?,
+      id: id,
+      type: type,
+      title: title,
+      filePath: filePath,
+      duration: duration,
+      parentId: parentId,
+      posterUrl: posterUrl,
+      overview: overview,
+      releaseDate: releaseDate,
+      tmdbId: tmdbId,
+      seasonNumber: seasonNumber,
+      episodeNumber: episodeNumber,
+      isAvailable: isAvailable ?? this.isAvailable,
+      requestStatus: requestStatus ?? this.requestStatus,
+      canRequest: canRequest ?? this.canRequest,
+      episodeCount: episodeCount,
+      createdAt: createdAt,
+    );
+  }
+
+  factory Media.fromJson(Map<String, dynamic> json) {
+    final id = json['id'] as int? ?? 0;
+    final filePath = json['file_path'] as String?;
+    final type = parseMediaType(json['type'] as String);
+    final rawAvailable = json['is_available'];
+    final bool isAvailable;
+    if (rawAvailable is bool) {
+      isAvailable = rawAvailable;
+    } else if (type == MediaType.episode) {
+      // Legacy payloads without is_available: present iff a file is indexed.
+      isAvailable = id > 0 && filePath != null && filePath.isNotEmpty;
+    } else {
+      // Movies / shows / local seasons default to available.
+      isAvailable = true;
+    }
+
+    return Media(
+      id: id,
+      type: type,
+      title: json['title'] as String? ?? '',
+      filePath: filePath,
       duration: json['duration'] as int? ?? 0,
       parentId: json['parent_id'] as int?,
       posterUrl: json['poster_url'] as String?,
@@ -88,7 +152,11 @@ class Media {
       tmdbId: json['tmdb_id'] as int?,
       seasonNumber: json['season_number'] as int?,
       episodeNumber: json['episode_number'] as int?,
-      createdAt: DateTime.parse(json['created_at'] as String),
+      isAvailable: isAvailable,
+      requestStatus: json['request_status'] as String?,
+      canRequest: json['can_request'] as bool? ?? false,
+      episodeCount: json['episode_count'] as int?,
+      createdAt: _parseOptionalDateTime(json['created_at']) ?? DateTime.now(),
     );
   }
 
@@ -106,6 +174,10 @@ class Media {
       'tmdb_id': tmdbId,
       'season_number': seasonNumber,
       'episode_number': episodeNumber,
+      'is_available': isAvailable,
+      'request_status': requestStatus,
+      'can_request': canRequest,
+      'episode_count': episodeCount,
       'created_at': createdAt.toIso8601String(),
     };
   }
@@ -224,6 +296,9 @@ class HomeMediaItem {
     this.showId,
     this.episodeTitle,
   });
+
+  /// Whether this item can be played from the local library.
+  bool get isAvailable => media.isAvailable;
 
   factory HomeMediaItem.fromJson(Map<String, dynamic> json) {
     final rawFinished = json['is_finished'];
@@ -390,6 +465,9 @@ class CatalogItem {
   final MediaType mediaType;
   final String? character;
 
+  /// TMDB vote average, 0 when the server did not provide one.
+  final double rating;
+
   CatalogItem({
     required this.tmdbId,
     this.localId,
@@ -399,6 +477,7 @@ class CatalogItem {
     this.year,
     required this.mediaType,
     this.character,
+    this.rating = 0,
   });
 
   bool get isOwned => (localId ?? 0) > 0;
@@ -414,6 +493,7 @@ class CatalogItem {
       year: json['year'] as String?,
       mediaType: typeStr == 'show' ? MediaType.show : MediaType.movie,
       character: json['character'] as String?,
+      rating: (json['rating'] as num? ?? 0).toDouble(),
     );
   }
 
@@ -576,7 +656,9 @@ class MediaDetails {
   final String? posterUrl;
   final String? backdropUrl;
   final String? logoUrl;
-  final String? fileName; // basename of the local file (movies)
+  final String? fileName;
+  final String? localFolder;
+  final String? localEpisodeFile;
   final String? releaseDate;
   final int runtime; // minutes (TMDB)
   final int duration; // seconds (local file)
@@ -605,6 +687,8 @@ class MediaDetails {
     this.backdropUrl,
     this.logoUrl,
     this.fileName,
+    this.localFolder,
+    this.localEpisodeFile,
     this.releaseDate,
     this.runtime = 0,
     this.duration = 0,
@@ -642,6 +726,8 @@ class MediaDetails {
       backdropUrl: json['backdrop_url'] as String?,
       logoUrl: json['logo_url'] as String?,
       fileName: json['file_name'] as String?,
+      localFolder: json['local_folder'] as String?,
+      localEpisodeFile: json['local_episode_file'] as String?,
       releaseDate: json['release_date'] as String?,
       runtime: json['runtime'] as int? ?? 0,
       duration: json['duration'] as int? ?? 0,
@@ -736,20 +822,87 @@ class EpisodeTimestamps {
   }
 }
 
+/// The season that follows the one being watched, when the server does not
+/// hold it. Absent from the payload whenever nothing can be offered — MediaHub
+/// unreachable, or the show has no TMDB match.
+class NextSeason {
+  final int showId;
+  final int showTmdbId;
+  final String showTitle;
+  final int number;
+  final String name;
+  final String? overview;
+  final String? posterUrl;
+  final int episodeCount;
+  final String requestStatus;
+  final bool canRequest;
+
+  const NextSeason({
+    required this.showId,
+    required this.showTmdbId,
+    required this.showTitle,
+    required this.number,
+    required this.name,
+    this.overview,
+    this.posterUrl,
+    this.episodeCount = 0,
+    required this.requestStatus,
+    required this.canRequest,
+  });
+
+  /// True once a request has been sent but the season is not downloaded yet.
+  bool get isRequested =>
+      requestStatus == 'pending' || requestStatus == 'processing';
+
+  factory NextSeason.fromJson(Map<String, dynamic> json) {
+    return NextSeason(
+      showId: json['show_id'] as int? ?? 0,
+      showTmdbId: json['show_tmdb_id'] as int? ?? 0,
+      showTitle: json['show_title'] as String? ?? '',
+      number: json['number'] as int? ?? 0,
+      name: json['name'] as String? ?? '',
+      overview: json['overview'] as String?,
+      posterUrl: json['poster_url'] as String?,
+      episodeCount: json['episode_count'] as int? ?? 0,
+      requestStatus: json['request_status'] as String? ?? 'unavailable',
+      canRequest: json['can_request'] as bool? ?? false,
+    );
+  }
+
+  NextSeason copyWith({String? requestStatus, bool? canRequest}) {
+    return NextSeason(
+      showId: showId,
+      showTmdbId: showTmdbId,
+      showTitle: showTitle,
+      number: number,
+      name: name,
+      overview: overview,
+      posterUrl: posterUrl,
+      episodeCount: episodeCount,
+      requestStatus: requestStatus ?? this.requestStatus,
+      canRequest: canRequest ?? this.canRequest,
+    );
+  }
+}
+
 class NextEpisodeResponse {
   final bool hasNext;
   final HomeMediaItem? episode;
+  final NextSeason? nextSeason;
 
   NextEpisodeResponse({
     required this.hasNext,
     this.episode,
+    this.nextSeason,
   });
 
   factory NextEpisodeResponse.fromJson(Map<String, dynamic> json) {
     final episodeJson = json['episode'] as Map<String, dynamic>?;
+    final seasonJson = json['next_season'] as Map<String, dynamic>?;
     return NextEpisodeResponse(
       hasNext: json['has_next'] as bool? ?? false,
       episode: episodeJson != null ? HomeMediaItem.fromJson(episodeJson) : null,
+      nextSeason: seasonJson != null ? NextSeason.fromJson(seasonJson) : null,
     );
   }
 }
@@ -951,10 +1104,39 @@ class MediaSubtitleTrack {
   // server will fetch it on first request, which may take a moment.
   final bool ready;
 
+  /// True while the server has only extracted the beginning of this track. It is
+  /// usable immediately, but the complete version is still being produced and
+  /// will need re-attaching once it lands.
+  final bool partial;
+
+  /// Position among the file's subtitle streams (the N in ffmpeg's 0:s:N), or
+  /// -1 when unknown. This is what pairs an embedded track seen in Direct Play
+  /// with its canonical entry here, so the client never has to derive a language
+  /// code itself.
+  final int typedIndex;
+
+  /// True for a track that only subtitles foreign dialogue rather than the whole
+  /// film. A file commonly ships both a full and a forced track for the same
+  /// language, and picking the forced one by mistake looks like broken subtitles.
+  final bool forced;
+
+  /// True when the container flags this track as its preferred one.
+  final bool isDefault;
+
+  /// True for a bitmap track (PGS/VOBSUB). It has no .vtt: Direct Play renders it
+  /// natively, while transcoding has to paint it into the picture — which makes
+  /// it the one subtitle choice that costs a new HLS session.
+  final bool image;
+
   MediaSubtitleTrack({
     required this.lang,
     required this.name,
     this.ready = false,
+    this.partial = false,
+    this.typedIndex = -1,
+    this.forced = false,
+    this.isDefault = false,
+    this.image = false,
   });
 
   factory MediaSubtitleTrack.fromJson(Map<String, dynamic> json) {
@@ -964,24 +1146,71 @@ class MediaSubtitleTrack {
       lang: lang,
       name: name.isNotEmpty ? name : languageName(lang),
       ready: json['ready'] as bool? ?? false,
+      partial: json['partial'] as bool? ?? false,
+      typedIndex: (json['typed_index'] as num?)?.toInt() ?? -1,
+      forced: json['forced'] as bool? ?? false,
+      isDefault: json['default'] as bool? ?? false,
+      image: json['image'] as bool? ?? false,
     );
   }
 
   String get displayName => name.isNotEmpty ? name : languageName(lang);
 }
 
-/// Combined audio/subtitle tracks returned by the tracks API.
+/// Primary video stream metadata (codec, pixel dimensions).
+class MediaVideoTrack {
+  final String codec;
+  final int width;
+  final int height;
+
+  MediaVideoTrack({
+    required this.codec,
+    required this.width,
+    required this.height,
+  });
+
+  factory MediaVideoTrack.fromJson(Map<String, dynamic> json) {
+    return MediaVideoTrack(
+      codec: json['codec_name'] as String? ?? '',
+      width: json['width'] as int? ?? 0,
+      height: json['height'] as int? ?? 0,
+    );
+  }
+
+  /// Emby-style resolution label, e.g. "4K", "1080p", "720p".
+  String get resolutionLabel {
+    if (height >= 2000) return '4K';
+    if (height <= 0) return '';
+    return '${height}p';
+  }
+
+  /// e.g. "4K HEVC" — no HDR/Dolby Vision detection yet (not probed server-side).
+  String get displayName {
+    final parts = <String>[
+      if (resolutionLabel.isNotEmpty) resolutionLabel,
+      if (codec.isNotEmpty) codec.toUpperCase(),
+    ];
+    return parts.join(' ');
+  }
+}
+
+/// Combined video/audio/subtitle tracks returned by the tracks API.
 class MediaTracks {
+  final MediaVideoTrack? video;
   final List<MediaAudioTrack> audio;
   final List<MediaSubtitleTrack> subtitles;
 
   MediaTracks({
+    this.video,
     required this.audio,
     required this.subtitles,
   });
 
   factory MediaTracks.fromJson(Map<String, dynamic> json) {
     return MediaTracks(
+      video: json['video'] is Map<String, dynamic>
+          ? MediaVideoTrack.fromJson(json['video'] as Map<String, dynamic>)
+          : null,
       audio: (json['audio'] as List<dynamic>?)
               ?.map((e) => MediaAudioTrack.fromJson(e as Map<String, dynamic>))
               .toList() ??

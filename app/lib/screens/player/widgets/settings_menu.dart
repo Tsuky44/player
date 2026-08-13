@@ -6,6 +6,7 @@ import 'package:media_kit/media_kit.dart' as mk;
 
 import '../../../models/models.dart';
 import '../../../services/playback_preferences_storage.dart';
+import '../../../theme/app_colors.dart';
 import '../../settings/playback_preferences_screen.dart';
 import '../hooks/use_episode_navigation.dart';
 import '../hooks/use_player_controller.dart';
@@ -305,7 +306,7 @@ class _SettingsMenuState extends State<SettingsMenu> {
                   style: const TextStyle(fontSize: 12, fontFamily: 'Manrope'),
                 ),
                 style: TextButton.styleFrom(
-                  foregroundColor: const Color(0xFF007AFF),
+                  foregroundColor: const Color(0xFF0A84FF),
                   padding: const EdgeInsets.symmetric(vertical: 10),
                 ),
               ),
@@ -328,7 +329,8 @@ class _SettingsMenuState extends State<SettingsMenu> {
                 ? 'Aucun sous-titre texte trouvé dans ce fichier'
                 : '${subs.length} piste${subs.length > 1 ? 's' : ''} extraite${subs.length > 1 ? 's' : ''}',
           ),
-          backgroundColor: subs.isEmpty ? Colors.orange.shade800 : Colors.green.shade800,
+          backgroundColor:
+              subs.isEmpty ? AppColors.warning : AppColors.success,
         ),
       );
     } catch (e) {
@@ -337,7 +339,7 @@ class _SettingsMenuState extends State<SettingsMenu> {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           content: Text('Extraction échouée : $e'),
-          backgroundColor: Colors.red.shade800,
+          backgroundColor: AppColors.error,
         ),
       );
     }

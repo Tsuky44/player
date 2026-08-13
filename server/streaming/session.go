@@ -4,19 +4,22 @@ import (
 	"bytes"
 	"context"
 	"errors"
+	"fmt"
 	"log"
 	"os"
 	"os/exec"
-	"strings"
+	"path/filepath"
 	"sync"
 	"syscall"
 	"time"
 )
 
 var (
-	errFFmpegDied   = errors.New("ffmpeg process died before producing output")
-	errWaitTimeout  = errors.New("timeout waiting for transcoder output")
-	segmentsAhead   = 8 // ~32s of buffer with 4s segments
+	errFFmpegDied  = errors.New("ffmpeg process died before producing output")
+	errWaitTimeout = errors.New("timeout waiting for transcoder output")
+	// segmentsAhead is expressed in segments, so it must track segmentDuration
+	// to keep the same ~32s just-in-time buffer.
+	segmentsAhead   = 32 / segmentDuration
 	throttleEnabled = true
 )
 
@@ -40,6 +43,7 @@ type TranscodeSession struct {
 	paused               bool
 	lastAccess           time.Time
 	lastRequestedSegment int
+	producedSegments     int
 }
 
 // Start launches FFmpeg and the JIT throttling watchdog.
@@ -139,20 +143,33 @@ func (s *TranscodeSession) throttle() {
 	}
 }
 
-// countVideoSegments counts produced .ts segments of the video rendition.
+// countVideoSegments returns how many .ts segments of the video rendition have
+// been produced.
+//
+// Segments are numbered sequentially and never removed, so this walks forward
+// from the last known count instead of re-reading the whole directory. The old
+// full ReadDir ran once per second per session over a directory that reaches
+// thousands of entries on a feature-length film.
 func (s *TranscodeSession) countVideoSegments() int {
-	entries, err := os.ReadDir(s.TmpDir)
-	if err != nil {
-		return 0
-	}
-	count := 0
-	for _, e := range entries {
-		name := e.Name()
-		if strings.HasPrefix(name, "stream_0_") && strings.HasSuffix(name, ".ts") {
-			count++
+	s.mu.Lock()
+	n := s.producedSegments
+	s.mu.Unlock()
+
+	for {
+		path := filepath.Join(s.TmpDir, fmt.Sprintf("stream_0_%03d.ts", n))
+		if _, err := os.Stat(path); err != nil {
+			break
 		}
+		n++
 	}
-	return count
+
+	s.mu.Lock()
+	if n > s.producedSegments {
+		s.producedSegments = n
+	}
+	n = s.producedSegments
+	s.mu.Unlock()
+	return n
 }
 
 func (s *TranscodeSession) signal(sig syscall.Signal) {

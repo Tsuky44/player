@@ -23,9 +23,20 @@ if ! command -v docker &> /dev/null; then
     exit 1
 fi
 
+# Le demon, pas seulement le CLI : `docker login` reussit sans lui (le CLI gere
+# l'authentification cote client), et sans cette verification l'echec n'arrive
+# qu'a la derniere etape, apres le build des apps et du bundle web.
+if ! docker info &> /dev/null; then
+    echo -e "${RED}ERREUR : le démon Docker n'est pas joignable.${NC}"
+    echo "Démarrez Docker Desktop, attendez qu'il soit prêt, puis relancez :"
+    echo "  open -a Docker"
+    exit 1
+fi
+
 # Répertoire du script et chemin du serveur
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" &> /dev/null && pwd)"
 SERVER_PATH="$SCRIPT_DIR/server"
+DOWNLOADS_DIR="$SERVER_PATH/downloads"
 
 # Demander la version à publier
 read -p "Entrez la version à publier (Appuyez sur Entrée pour '$DEFAULT_VERSION') : " TARGET_VERSION
@@ -68,8 +79,60 @@ if [ $? -ne 0 ]; then
     exit 1
 fi
 
+# Les applications installables (APK / DMG / EXE) sont embarquees dans l'image
+# et servies sur /api/downloads. Flutter ne cross-compile pas le desktop : ce
+# Mac produit l'APK et le DMG, jamais l'EXE Windows. Les artefacts des autres
+# plateformes sont donc recuperes depuis l'image publiee precedemment, qui sert
+# de stockage entre les machines de build.
+echo -e "${YELLOW}2. Récupération des applications déjà publiées...${NC}"
+if docker pull --platform linux/amd64 "ghcr.io/$GITHUB_USER/$IMAGE_NAME:latest" >/dev/null 2>&1; then
+    PREV_CID=$(docker create --platform linux/amd64 "ghcr.io/$GITHUB_USER/$IMAGE_NAME:latest" 2>/dev/null)
+    if [ -n "$PREV_CID" ]; then
+        mkdir -p "$DOWNLOADS_DIR"
+        docker cp "$PREV_CID:/app/downloads/." "$DOWNLOADS_DIR/" >/dev/null 2>&1 \
+            && echo -e "${GREEN}   Artefacts récupérés depuis l'image :latest${NC}" \
+            || echo "   (aucun artefact dans l'image précédente)"
+        docker rm "$PREV_CID" >/dev/null 2>&1
+    fi
+else
+    echo "   (image :latest introuvable — première publication ?)"
+fi
+
+echo ""
+read -p "Builder les applications (APK/DMG sur ce Mac) ? [o/N] : " BUILD_APPS
+echo ""
+if [[ "$BUILD_APPS" =~ ^[oOyY]$ ]]; then
+    echo -e "${YELLOW}2b. Build des applications clientes...${NC}"
+    # Mode auto : APK + DMG sur macOS, APK + EXE sur Windows. Le code de sortie
+    # 2 signale qu'une cible a echoue alors que d'autres ont reussi — on
+    # continue avec ce qui a ete produit.
+    "$SCRIPT_DIR/scripts/build-releases.sh"
+    BUILD_STATUS=$?
+    if [ "$BUILD_STATUS" -ne 0 ] && [ "$BUILD_STATUS" -ne 2 ]; then
+        echo -e "${RED}ERREUR : Échec du build des applications.${NC}"
+        exit 1
+    fi
+    "$SCRIPT_DIR/scripts/stage-downloads.sh"
+    if [ $? -ne 0 ]; then
+        echo -e "${RED}ERREUR : Échec du staging des applications.${NC}"
+        exit 1
+    fi
+else
+    echo "   Build des applications ignoré — l'image conservera les artefacts précédents."
+fi
+
+# Le bundle Flutter Web est embarque dans le binaire Go (go:embed), il doit donc
+# etre construit AVANT le build Docker : le contexte du build est server/, et
+# webui.go lit server/webui/dist/ au moment de la compilation.
+echo -e "${YELLOW}3. Build du client Web...${NC}"
+"$SCRIPT_DIR/scripts/build-web.sh"
+if [ $? -ne 0 ]; then
+    echo -e "${RED}ERREUR : Échec du build du client Web.${NC}"
+    exit 1
+fi
+
 # Build & Push
-echo -e "${YELLOW}2. Build & Push de l'image Go Server (amd64)...${NC}"
+echo -e "${YELLOW}4. Build & Push de l'image Go Server (amd64)...${NC}"
 
 # Utilisation de buildx avec --platform linux/amd64 pour forcer la
 # compilation d'une image amd64, meme depuis un Mac ARM64.
@@ -94,4 +157,13 @@ echo "L'image est disponible sur :"
 echo "- ghcr.io/$GITHUB_USER/$IMAGE_NAME:latest"
 echo "- ghcr.io/$GITHUB_USER/$IMAGE_NAME:$VERSION_TAG"
 echo "- ghcr.io/$GITHUB_USER/$IMAGE_NAME:$MINOR_VERSION_TAG"
+echo ""
+echo "Applications embarquées (visibles dans Paramètres → Applications) :"
+if ls "$DOWNLOADS_DIR"/*.{apk,dmg,exe,zip} >/dev/null 2>&1; then
+    for f in "$DOWNLOADS_DIR"/*.apk "$DOWNLOADS_DIR"/*.dmg "$DOWNLOADS_DIR"/*.exe "$DOWNLOADS_DIR"/*.zip; do
+        [ -f "$f" ] && echo "- $(basename "$f") ($(du -h "$f" | cut -f1))"
+    done
+else
+    echo "- aucune (relancez en répondant 'o' au build des applications)"
+fi
 echo ""

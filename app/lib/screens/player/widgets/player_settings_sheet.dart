@@ -5,6 +5,7 @@ import 'package:flutter_animate/flutter_animate.dart';
 import 'package:media_kit/media_kit.dart' as mk;
 
 import '../../../models/models.dart';
+import '../../../utils/app_platform.dart';
 import '../hooks/use_episode_navigation.dart';
 import '../hooks/use_player_controller.dart';
 import 'chapters_debug_panel.dart';
@@ -22,6 +23,9 @@ class PlayerSettingsSheet extends StatefulWidget {
   final EpisodeNavigationController? episodeNav;
   final Future<void> Function(int absoluteSeconds)? onSeekToAbsolute;
 
+  /// Opens on this tab index (0 audio, 1 subs, 2 quality, 3 display, 4 chapters).
+  final int initialTabIndex;
+
   const PlayerSettingsSheet({
     super.key,
     required this.player,
@@ -31,6 +35,7 @@ class PlayerSettingsSheet extends StatefulWidget {
     this.playerController,
     this.episodeNav,
     this.onSeekToAbsolute,
+    this.initialTabIndex = 0,
   });
 
   @override
@@ -61,6 +66,7 @@ class _PlayerSettingsSheetState extends State<PlayerSettingsSheet> {
   void initState() {
     super.initState();
     _fit = widget.currentFit;
+    _tabIndex = widget.initialTabIndex;
     _tracksSubscription = widget.playerController?.tracksStream.listen((_) {
       if (mounted) setState(() {});
     });
@@ -177,6 +183,7 @@ class _PlayerSettingsSheetState extends State<PlayerSettingsSheet> {
     }
 
     return ListView.builder(
+      shrinkWrap: true,
       padding: const EdgeInsets.only(top: 4),
       itemCount: tracks.length,
       itemBuilder: (context, index) {
@@ -200,6 +207,7 @@ class _PlayerSettingsSheetState extends State<PlayerSettingsSheet> {
 
   Widget _buildDisplayOptions() {
     return ListView(
+      shrinkWrap: true,
       padding: const EdgeInsets.only(top: 4),
       children: [
         PlayerSettingsChoiceCard(
@@ -230,15 +238,26 @@ class _PlayerSettingsSheetState extends State<PlayerSettingsSheet> {
     final controller = widget.playerController;
     final currentQuality = controller?.currentQuality;
 
-    const qualities = [
-      ('Direct', null, Icons.bolt_rounded, 'Lecture directe, aucune transcodation'),
+    // Direct Play is native-only: it hands the player the file itself, which a
+    // browser cannot open. Listing it on the web would offer a mode that plays
+    // the picture without any sound and says nothing about why.
+    final qualities = <(String, String?, IconData, String)>[
+      if (!AppPlatform.isWeb)
+        (
+          'Direct',
+          null,
+          Icons.bolt_rounded,
+          'Lecture directe, aucune transcodation'
+        ),
       ('360p', '360p', Icons.sd_rounded, '640×360 — faible consommation'),
       ('480p', '480p', Icons.sd_rounded, '854×480 — qualité standard'),
       ('720p', '720p', Icons.hd_rounded, '1280×720 — HD'),
       ('1080p', '1080p', Icons.hd_outlined, '1920×1080 — Full HD'),
+      ('4K', '2160p', Icons.four_k_rounded, '3840×2160 — débit réduit (~8 Mb/s)'),
     ];
 
     return ListView.builder(
+      shrinkWrap: true,
       padding: const EdgeInsets.only(top: 4),
       itemCount: qualities.length,
       itemBuilder: (context, index) {
@@ -273,6 +292,7 @@ class _PlayerSettingsSheetState extends State<PlayerSettingsSheet> {
     }
 
     return ListView.builder(
+      shrinkWrap: true,
       padding: const EdgeInsets.only(top: 4),
       itemCount: audioTracks.length,
       itemBuilder: (context, index) {

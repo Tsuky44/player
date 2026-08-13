@@ -1,10 +1,13 @@
-# Build directories
-app/macos/build_xcode/
-app/macos/build/
-app/ios/build/
-app/android/build/
-app/windows/build/
-app/linux/build/
+# Release artifacts
+/dist/
+app/Output/
+
+# Flutter Web bundle, copied in by publish-image.sh and embedded into the Go
+# binary. Only the placeholder is tracked, so `go build` works on a clean
+# checkout without Flutter installed.
+server/webui/dist/*
+!server/webui/dist/.gitkeep
+
 
 # Flutter/Dart
 .dart_tool/
@@ -23,3 +26,9 @@ build/
 # OS
 .DS_Store
 Thumbs.db
+
+# Client apps (APK/DMG/EXE) staged by publish-image.sh and copied into the
+# Docker image. Never committed — they are hundreds of MB and rebuilt per
+# release; the previously published image is what carries them between hosts.
+server/downloads/*
+!server/downloads/.gitkeep

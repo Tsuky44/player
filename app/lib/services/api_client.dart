@@ -1,10 +1,13 @@
-import 'dart:io';
-
 import 'package:dio/dio.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import '../models/app_download.dart';
 import '../models/media_request.dart';
+import '../utils/app_platform.dart';
+import '../models/request_catalog_filters.dart';
 import '../models/models.dart';
+import '../models/player_layout.dart';
+import '../models/player_layout_preset.dart';
 
 /// Holds the result of starting an HLS transcoding session.
 ///
@@ -16,11 +19,24 @@ class HlsSession {
   final double totalDuration; // full media duration in seconds
   final int startOffset; // seconds into the original media
 
+  /// Source audio tracks published as HLS renditions, in the order the player
+  /// enumerates them: position k in the player's audio track list is source
+  /// track `audioMap[k]`. This is what lets a language change be an mpv track
+  /// switch instead of a whole new transcoding session.
+  final List<int> audioMap;
+
+  /// Bitmap subtitle stream the server actually rendered into the video, or -1.
+  /// It can differ from what was requested when the track turned out not to be
+  /// burnable, so the client should trust this rather than its own request.
+  final int burnedSubtitle;
+
   HlsSession({
     required this.sessionId,
     required this.masterUrl,
     required this.totalDuration,
     required this.startOffset,
+    this.audioMap = const [],
+    this.burnedSubtitle = -1,
   });
 
   factory HlsSession.fromJson(Map<String, dynamic> json) {
@@ -29,13 +45,25 @@ class HlsSession {
       masterUrl: json['master_url'] as String? ?? '',
       totalDuration: (json['duration'] as num? ?? 0).toDouble(),
       startOffset: json['start_offset'] as int? ?? 0,
+      audioMap: (json['audio_map'] as List?)
+              ?.map((e) => (e as num).toInt())
+              .toList() ??
+          const [],
+      burnedSubtitle: (json['burned_subtitle'] as num?)?.toInt() ?? -1,
     );
   }
 }
 
 class ApiClient {
-  static String get _defaultBaseUrl =>
-      Platform.isAndroid ? 'http://10.0.2.2:8080' : 'http://127.0.0.1:8080';
+  static String get _defaultBaseUrl {
+    // On web the Go server serves this very bundle, so the page origin is
+    // already the API root. Hardcoding a host here would turn every call into a
+    // cross-origin request against whatever machine the user is browsing from.
+    if (AppPlatform.isWeb) return Uri.base.origin;
+    return AppPlatform.isAndroid
+        ? 'http://10.0.2.2:8080'
+        : 'http://127.0.0.1:8080';
+  }
 
   final Dio _dio = Dio();
   final _secureStorage = const FlutterSecureStorage();
@@ -169,6 +197,7 @@ class ApiClient {
     String quality, {
     int startSeconds = 0,
     int audioIndex = 0,
+    int burnSubtitleIndex = -1,
   }) async {
     final stopwatch = Stopwatch()..start();
     final response = await _dio.post(
@@ -177,12 +206,22 @@ class ApiClient {
         "quality": quality,
         "start": startSeconds,
         "audio": audioIndex,
+        // Bitmap subtitles have no out-of-band form, so the transcoder paints
+        // the chosen one into the video. -1 means none.
+        "burnsub": burnSubtitleIndex,
       },
     );
     stopwatch.stop();
+    final session = HlsSession.fromJson(response.data as Map<String, dynamic>);
+    // Logs both what was ASKED (startSeconds) and what the server CONFIRMS
+    // (session.startOffset) side by side — the fastest way to tell whether a
+    // seek landing at the wrong position is a client bug (mismatch here) or
+    // something downstream (the two agree, but playback still drifts).
     print("ApiClient: startHlsSession took ${stopwatch.elapsedMilliseconds}ms "
-        "for media $mediaId quality $quality audio $audioIndex");
-    return HlsSession.fromJson(response.data as Map<String, dynamic>);
+        "for media $mediaId quality $quality audio $audioIndex "
+        "requestedStart=${startSeconds}s confirmedStart=${session.startOffset}s "
+        "session=${session.sessionId}");
+    return session;
   }
 
   // Notify server to destroy an HLS transcoding session (kills FFmpeg + temp files)
@@ -276,6 +315,21 @@ class ApiClient {
 
   // ==================== MEDIA API ====================
 
+  /// Client apps (APK / DMG / EXE) embedded in the server image. Unauthenticated
+  /// server-side, so this also works from the login screen.
+  Future<List<AppDownload>> getAppDownloads() async {
+    final response = await _dio.get("/api/downloads");
+    final data = response.data as Map<String, dynamic>;
+    return (data['artifacts'] as List<dynamic>? ?? const [])
+        .map((e) => AppDownload.fromJson(e as Map<String, dynamic>))
+        .toList();
+  }
+
+  /// Absolute URL for an artifact, ready to hand to the browser or the shell.
+  String getAppDownloadUrl(AppDownload download) {
+    return "$baseUrl${download.url}";
+  }
+
   Future<HomeResponse> getHome() async {
     final response = await _dio.get("/api/home");
     return HomeResponse.fromJson(response.data as Map<String, dynamic>);
@@ -304,6 +358,14 @@ class ApiClient {
 
   Future<List<HomeMediaItem>> getSeasonEpisodes(int seasonId) async {
     final response = await _dio.get("/api/seasons/$seasonId/episodes");
+    return (response.data as List<dynamic>)
+        .map((e) => HomeMediaItem.fromJson(e as Map<String, dynamic>))
+        .toList();
+  }
+
+  Future<List<HomeMediaItem>> getShowSeasonEpisodes(int showId, int seasonNumber) async {
+    final response =
+        await _dio.get("/api/shows/$showId/seasons/$seasonNumber/episodes");
     return (response.data as List<dynamic>)
         .map((e) => HomeMediaItem.fromJson(e as Map<String, dynamic>))
         .toList();
@@ -402,13 +464,42 @@ class ApiClient {
     required int page,
     required String type,
     String? query,
+    RequestCatalogFilters filters = RequestCatalogFilters.defaults,
   }) async {
     final response = await _dio.get('/api/requests/catalog', queryParameters: {
       'page': page,
       'type': type,
       if (query != null && query.trim().isNotEmpty) 'query': query.trim(),
+      if (filters.hasDiscoverParams) ...filters.toQueryParams(),
     });
     return RequestCatalogPage.fromJson(response.data as Map<String, dynamic>);
+  }
+
+  Future<List<RequestGenre>> getRequestFilterGenres(String type) async {
+    final response =
+        await _dio.get('/api/requests/filter-options', queryParameters: {
+      'type': type,
+    });
+    final genres = response.data['genres'] as List<dynamic>? ?? const [];
+    return genres
+        .map((e) => RequestGenre.fromJson(e as Map<String, dynamic>))
+        .toList();
+  }
+
+  Future<List<RequestWatchProvider>> getRequestWatchProviders({
+    required String type,
+    required String region,
+  }) async {
+    final response =
+        await _dio.get('/api/requests/watch-providers', queryParameters: {
+      'type': type,
+      'region': region,
+    });
+    final providers =
+        response.data['providers'] as List<dynamic>? ?? const [];
+    return providers
+        .map((e) => RequestWatchProvider.fromJson(e as Map<String, dynamic>))
+        .toList();
   }
 
   Future<RequestMediaDetails> getRequestMediaDetails(
@@ -420,15 +511,44 @@ class ApiClient {
     return RequestMediaDetails.fromJson(response.data as Map<String, dynamic>);
   }
 
+  Future<List<RequestEpisode>> getRequestSeasonEpisodes(
+      int tmdbId, int seasonNumber) async {
+    final response = await _dio.get(
+      '/api/requests/media/$tmdbId/seasons/$seasonNumber/episodes',
+    );
+    final episodes = response.data['episodes'] as List<dynamic>? ?? const [];
+    return episodes
+        .map((item) => RequestEpisode.fromJson(item as Map<String, dynamic>))
+        .toList();
+  }
+
   Future<void> requestMedia(
     RequestMediaItem media, {
     List<int>? seasons,
+  }) {
+    return requestTmdbMedia(
+      tmdbId: media.id,
+      mediaType: media.mediaType.name,
+      title: media.title,
+      posterPath: media.posterPath,
+      seasons: seasons,
+    );
+  }
+
+  /// Sends a MediaHub request from anywhere a TMDB id is known — the requests
+  /// catalog, the library show page, or the player's end-of-season card.
+  Future<void> requestTmdbMedia({
+    required int tmdbId,
+    required String mediaType,
+    required String title,
+    String? posterPath,
+    List<int>? seasons,
   }) async {
     await _dio.post('/api/requests', data: {
-      'tmdbId': media.id,
-      'mediaType': media.mediaType.name,
-      'title': media.title,
-      'posterPath': media.posterPath,
+      'tmdbId': tmdbId,
+      'mediaType': mediaType,
+      'title': title,
+      'posterPath': posterPath,
       if (seasons != null && seasons.isNotEmpty) 'seasons': seasons,
     });
   }
@@ -443,9 +563,18 @@ class ApiClient {
     await _dio.post("/api/indexer/metadata/backfill");
   }
 
+  Future<void> triggerRedetectAllMatches() async {
+    await _dio.post("/api/indexer/metadata/redetect-all");
+  }
+
   /// Fetches TMDB poster/overview for a single movie or show.
   Future<Media> enrichMediaMetadata(int mediaId) async {
     final response = await _dio.post("/api/media/$mediaId/metadata/enrich");
+    return Media.fromJson(response.data as Map<String, dynamic>);
+  }
+
+  Future<Media> redetectMediaMetadata(int mediaId) async {
+    final response = await _dio.post("/api/media/$mediaId/metadata/redetect");
     return Media.fromJson(response.data as Map<String, dynamic>);
   }
 
@@ -516,18 +645,136 @@ class ApiClient {
     final status = await getIndexerStatus();
     return status.isScanning;
   }
+
+  // ==================== SERVER SETTINGS ====================
+
+  Future<ServerSettings> getServerSettings() async {
+    final response = await _dio.get('/api/settings');
+    return ServerSettings.fromJson(response.data as Map<String, dynamic>);
+  }
+
+  Future<ServerSettings> updateServerSettings({
+    String? mediaHubUrl,
+    String? mediaHubApiKey,
+    bool clearMediaHubApiKey = false,
+    String? tmdbApiKey,
+    bool clearTmdbApiKey = false,
+    String? tmdbLanguage,
+    String? moviesDir,
+    String? seriesDir,
+  }) async {
+    final response = await _dio.put('/api/settings', data: {
+      if (mediaHubUrl != null) 'mediahub_url': mediaHubUrl,
+      if (mediaHubApiKey != null) 'mediahub_api_key': mediaHubApiKey,
+      if (clearMediaHubApiKey) 'clear_mediahub_api_key': true,
+      if (tmdbApiKey != null) 'tmdb_api_key': tmdbApiKey,
+      if (clearTmdbApiKey) 'clear_tmdb_api_key': true,
+      if (tmdbLanguage != null) 'tmdb_language': tmdbLanguage,
+      if (moviesDir != null) 'movies_dir': moviesDir,
+      if (seriesDir != null) 'series_dir': seriesDir,
+    });
+    return ServerSettings.fromJson(response.data as Map<String, dynamic>);
+  }
+
+  // ==================== PLAYER STUDIO LAYOUTS ====================
+
+  Future<List<PlayerLayoutPreset>> listPlayerLayouts() async {
+    final response = await _dio.get('/api/me/player-layouts');
+    final data = response.data;
+    final list = data is Map ? data['layouts'] as List? ?? const [] : const [];
+    return list
+        .whereType<Map>()
+        .map((e) => PlayerLayoutPreset.fromJson(Map<String, dynamic>.from(e)))
+        .where((p) => p.id.isNotEmpty)
+        .toList();
+  }
+
+  Future<PlayerLayoutPreset> createPlayerLayout({
+    required String name,
+    required PlayerLayoutConfig config,
+    required bool useModular,
+  }) async {
+    final response = await _dio.post('/api/me/player-layouts', data: {
+      'name': name,
+      'config': config.toJson(),
+      'use_modular': useModular,
+    });
+    return PlayerLayoutPreset.fromJson(
+      Map<String, dynamic>.from(response.data as Map),
+    );
+  }
+
+  Future<PlayerLayoutPreset> updatePlayerLayout({
+    required String id,
+    String? name,
+    PlayerLayoutConfig? config,
+    bool? useModular,
+  }) async {
+    final response = await _dio.put('/api/me/player-layouts/$id', data: {
+      if (name != null) 'name': name,
+      if (config != null) 'config': config.toJson(),
+      if (useModular != null) 'use_modular': useModular,
+    });
+    return PlayerLayoutPreset.fromJson(
+      Map<String, dynamic>.from(response.data as Map),
+    );
+  }
+
+  Future<void> deletePlayerLayout(String id) async {
+    await _dio.delete('/api/me/player-layouts/$id');
+  }
+}
+
+/// Public server settings from GET/PUT /api/settings (secrets are never cleartext).
+class ServerSettings {
+  final String mediaHubUrl;
+  final bool mediaHubApiKeySet;
+  final String? mediaHubApiKeyHint;
+  final bool tmdbApiKeySet;
+  final String? tmdbApiKeyHint;
+  final String tmdbLanguage;
+  final String moviesDir;
+  final String seriesDir;
+
+  ServerSettings({
+    required this.mediaHubUrl,
+    required this.mediaHubApiKeySet,
+    this.mediaHubApiKeyHint,
+    required this.tmdbApiKeySet,
+    this.tmdbApiKeyHint,
+    required this.tmdbLanguage,
+    required this.moviesDir,
+    required this.seriesDir,
+  });
+
+  factory ServerSettings.fromJson(Map<String, dynamic> json) {
+    return ServerSettings(
+      mediaHubUrl: json['mediahub_url'] as String? ?? '',
+      mediaHubApiKeySet: json['mediahub_api_key_set'] as bool? ?? false,
+      mediaHubApiKeyHint: json['mediahub_api_key_hint'] as String?,
+      tmdbApiKeySet: json['tmdb_api_key_set'] as bool? ?? false,
+      tmdbApiKeyHint: json['tmdb_api_key_hint'] as String?,
+      tmdbLanguage: json['tmdb_language'] as String? ?? 'fr-FR',
+      moviesDir: json['movies_dir'] as String? ?? '',
+      seriesDir: json['series_dir'] as String? ?? '',
+    );
+  }
 }
 
 /// Combined indexer / subtitle-extraction status from the server.
 class IndexerStatus {
   final bool isScanning;
   final bool isBackfillingMetadata;
+  final bool isRedetectingAll;
+  final RedetectAllProgress redetectAll;
   final bool isExtractingSubtitles;
   final SubtitleExtractionStats subtitleExtraction;
 
   IndexerStatus({
     required this.isScanning,
     required this.isBackfillingMetadata,
+    required this.isRedetectingAll,
+    required this.redetectAll,
     required this.isExtractingSubtitles,
     required this.subtitleExtraction,
   });
@@ -536,6 +783,10 @@ class IndexerStatus {
     return IndexerStatus(
       isScanning: json["is_scanning"] as bool? ?? false,
       isBackfillingMetadata: json["is_backfilling_metadata"] as bool? ?? false,
+      isRedetectingAll: json["is_redetecting_all"] as bool? ?? false,
+      redetectAll: RedetectAllProgress.fromJson(
+        json["redetect_all"] as Map<String, dynamic>? ?? {},
+      ),
       isExtractingSubtitles: json["is_extracting_subtitles"] as bool? ?? false,
       subtitleExtraction: SubtitleExtractionStats.fromJson(
         json["subtitle_extraction"] as Map<String, dynamic>? ?? {},
@@ -544,7 +795,33 @@ class IndexerStatus {
   }
 
   bool get isBusy =>
-      isScanning || isBackfillingMetadata || isExtractingSubtitles;
+      isScanning ||
+      isBackfillingMetadata ||
+      isRedetectingAll ||
+      isExtractingSubtitles;
+}
+
+class RedetectAllProgress {
+  final int total;
+  final int processed;
+  final int updated;
+  final int skipped;
+
+  RedetectAllProgress({
+    this.total = 0,
+    this.processed = 0,
+    this.updated = 0,
+    this.skipped = 0,
+  });
+
+  factory RedetectAllProgress.fromJson(Map<String, dynamic> json) {
+    return RedetectAllProgress(
+      total: json["total"] as int? ?? 0,
+      processed: json["processed"] as int? ?? 0,
+      updated: json["updated"] as int? ?? 0,
+      skipped: json["skipped"] as int? ?? 0,
+    );
+  }
 }
 
 class SubtitleExtractionStats {

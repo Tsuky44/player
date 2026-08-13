@@ -1,0 +1,26 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="512" height="512" role="img" aria-labelledby="onyx-icon-macos-title">
+  <title id="onyx-icon-macos-title">Onyx</title>
+  <defs>
+    <linearGradient id="onyxBeam" x1="0" y1="0" x2="1" y2="0">
+      <stop offset="0" stop-color="#e8e6e4" stop-opacity="0.9"/>
+      <stop offset="1" stop-color="#e8e6e4" stop-opacity="0"/>
+    </linearGradient>
+    <clipPath id="onyxTile">
+      <rect x="50" y="50" width="412" height="412" rx="92"/>
+    </clipPath>
+  </defs>
+
+  <!-- Variante macOS : fond transparent, squircle inséré dans le cadre selon
+       la grille d'icônes d'Apple (la tuile occupe ~80% du canvas). -->
+  <g clip-path="url(#onyxTile)">
+    <rect x="50" y="50" width="412" height="412" fill="#121414"/>
+    <g transform="translate(50 50) scale(0.8047)">
+      <g transform="translate(77.7 37.4) scale(0.854)">
+        <path d="M 202 141 L 477 226 L 477 286 L 202 371 Z" fill="url(#onyxBeam)" opacity="0.35"/>
+        <circle cx="162" cy="256" r="130" fill="#0e1010"/>
+        <circle cx="162" cy="256" r="130" fill="none" stroke="#e8e6e4" stroke-width="10"/>
+        <path d="M 122 191 L 122 321 L 227 256 Z" fill="#e8e6e4"/>
+      </g>
+    </g>
+  </g>
+</svg>

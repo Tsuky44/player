@@ -1,0 +1,14 @@
+---
+description: Application automatique des skills UI/UX (UI UX Pro Max, Impeccable, Taste)
+globs: lib/**/*.dart
+---
+
+# Directives UI/UX Globales
+
+Pour tout développement d'interface utilisateur (UI), vous devez obligatoirement suivre les directives et règles définies dans le dossier `.agents/skills/` de ce projet :
+
+1. **UI UX Pro Max** (`.agents/skills/ui-ux-pro-max-skill`) : Pour la génération de palettes, le choix des typographies et la structure Material 3 / Flutter.
+2. **Impeccable** (`.agents/skills/impeccable`) : Pour l'audit UI, le fignolage (polish) et l'élimination des détails visuels bas de gamme / cheap (ombres, bordures, espacements).
+3. **Taste Skill** (`.agents/skills/tasteful-ui-skill`) : Pour la direction artistique et la sobriété visuelle.
+
+Appliquez systématiquement ces principes lors de la génération de code Flutter (Dart).

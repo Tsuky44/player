@@ -51,6 +51,16 @@ func TestResolveShowTitleFromPath_PerEpisodeFolders(t *testing.T) {
 	}
 }
 
+func TestResolveShowTMDBSearchKeyFromPath_PreservesYear(t *testing.T) {
+	key := resolveShowTMDBSearchKeyFromPath(
+		[]string{"Mercredi.2022", "Saison 1", "Mercredi.2022.S01E01.mkv"},
+		"Mercredi.2022.S01E01.mkv",
+	)
+	if key != "Mercredi.2022" {
+		t.Fatalf("search key = %q, want %q", key, "Mercredi.2022")
+	}
+}
+
 func TestLooksLikeEpisodeReleaseFolder(t *testing.T) {
 	if !looksLikeEpisodeReleaseFolder("Mercredi S01E01") {
 		t.Fatal("expected episode folder detection")

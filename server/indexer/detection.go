@@ -7,7 +7,6 @@ import (
 	"fmt"
 	"log"
 	"net/http"
-	"os"
 	"os/exec"
 	"path/filepath"
 	"strconv"
@@ -179,7 +178,7 @@ type TMDBExternalIDs struct {
 
 // GetIMDbIDFromTMDB converts a TMDB ID to IMDb ID using TMDB API
 func GetIMDbIDFromTMDB(tmdbID int) (string, error) {
-	apiKey := os.Getenv("TMDB_API_KEY")
+	apiKey := tmdbAPIKey()
 	if apiKey == "" {
 		return "", fmt.Errorf("TMDB_API_KEY not set")
 	}

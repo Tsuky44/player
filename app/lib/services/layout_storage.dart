@@ -1,13 +1,20 @@
+import 'dart:convert';
+
 import 'package:shared_preferences/shared_preferences.dart';
 import '../models/player_layout.dart';
+import '../models/player_layout_preset.dart';
 
-/// Local persistence for the modular player layout.
+/// Local persistence for Player Studio layouts.
 ///
-/// The layout is stored as a JSON string under a single key so it can be
-/// extended later (e.g. multiple named presets) without schema migrations.
+/// The active layout is cached for offline playback. The list of named presets
+/// is also cached so switching playeurs stays snappy between syncs.
+/// The active preset id is **device-local** so phone and desktop can pick
+/// different playeurs from the same account.
 class LayoutStorage {
   static const String _key = 'player_layout_config_v1';
   static const String _useModularKey = 'player_use_modular_v1';
+  static const String _activeIdKey = 'player_layout_active_id_v1';
+  static const String _presetsCacheKey = 'player_layout_presets_v1';
 
   Future<PlayerLayoutConfig> load() async {
     final prefs = await SharedPreferences.getInstance();
@@ -43,5 +50,52 @@ class LayoutStorage {
   Future<void> saveUseModular(bool value) async {
     final prefs = await SharedPreferences.getInstance();
     await prefs.setBool(_useModularKey, value);
+  }
+
+  Future<String?> loadActivePresetId() async {
+    final prefs = await SharedPreferences.getInstance();
+    final id = prefs.getString(_activeIdKey);
+    if (id == null || id.isEmpty) return null;
+    return id;
+  }
+
+  Future<void> saveActivePresetId(String? id) async {
+    final prefs = await SharedPreferences.getInstance();
+    if (id == null || id.isEmpty) {
+      await prefs.remove(_activeIdKey);
+    } else {
+      await prefs.setString(_activeIdKey, id);
+    }
+  }
+
+  Future<List<PlayerLayoutPreset>> loadPresetsCache() async {
+    final prefs = await SharedPreferences.getInstance();
+    final raw = prefs.getString(_presetsCacheKey);
+    if (raw == null || raw.isEmpty) return const [];
+    try {
+      final decoded = jsonDecode(raw);
+      if (decoded is! List) return const [];
+      return decoded
+          .whereType<Map>()
+          .map((e) => PlayerLayoutPreset.fromJson(
+                Map<String, dynamic>.from(e),
+              ))
+          .where((p) => p.id.isNotEmpty)
+          .toList();
+    } catch (_) {
+      return const [];
+    }
+  }
+
+  Future<void> savePresetsCache(List<PlayerLayoutPreset> presets) async {
+    final prefs = await SharedPreferences.getInstance();
+    final payload = jsonEncode(presets.map((p) => p.toJson()).toList());
+    await prefs.setString(_presetsCacheKey, payload);
+  }
+
+  Future<void> clearAccountCache() async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.remove(_presetsCacheKey);
+    await prefs.remove(_activeIdKey);
   }
 }

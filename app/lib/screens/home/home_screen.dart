@@ -6,15 +6,16 @@ import '../../providers/home_provider.dart';
 import '../../providers/library_provider.dart';
 import '../../theme/app_colors.dart';
 import '../../utils/hero_slides.dart';
+import '../../navigation/search_route_observer.dart';
+import '../../widgets/global/account_menu.dart';
 import '../../widgets/global/empty_state.dart';
+import '../../widgets/global/glass_chrome.dart';
 import '../../widgets/global/hero_carousel.dart';
 import '../../widgets/global/media_row.dart';
+import '../../widgets/global/sticky_glass_search.dart';
 import '../library/movie_detail_screen.dart';
 import '../library/show_detail_screen.dart';
 import '../player/player_screen.dart';
-import '../player_studio/player_studio_screen.dart';
-import '../settings/playback_preferences_screen.dart';
-import '../../navigation/search_route_observer.dart';
 
 class HomeScreen extends StatefulWidget {
   final bool embedded;
@@ -65,6 +66,11 @@ class _HomeScreenState extends State<HomeScreen> {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(content: Text(msg)),
       );
+      if (msg.startsWith('Re-détection') || msg.startsWith('Scan')) {
+        final library = Provider.of<LibraryProvider>(context, listen: false);
+        library.loadShows();
+        library.loadMovies();
+      }
     }
   }
 
@@ -75,8 +81,10 @@ class _HomeScreenState extends State<HomeScreen> {
         MaterialPageRoute(builder: (_) => MovieDetailScreen(movie: media)),
       );
     } else if (media.type == MediaType.show) {
+      final library = Provider.of<LibraryProvider>(context, listen: false);
+      final resolved = library.resolveCanonicalShow(media);
       Navigator.of(context).push(
-        MaterialPageRoute(builder: (_) => ShowDetailScreen(show: media)),
+        MaterialPageRoute(builder: (_) => ShowDetailScreen(show: resolved)),
       );
     }
   }
@@ -98,8 +106,10 @@ class _HomeScreenState extends State<HomeScreen> {
     }
 
     if (target.type == MediaType.show) {
+      final library = Provider.of<LibraryProvider>(context, listen: false);
+      final resolved = library.resolveCanonicalShow(target);
       Navigator.of(context).push(
-        MaterialPageRoute(builder: (_) => ShowDetailScreen(show: target)),
+        MaterialPageRoute(builder: (_) => ShowDetailScreen(show: resolved)),
       );
     }
   }
@@ -183,7 +193,7 @@ class _HomeScreenState extends State<HomeScreen> {
                                 height: widget.embedded ? 120 : 200,
                                 child: Center(
                                   child: Text(
-                                    'Bienvenue sur Playeur',
+                                    'Bienvenue sur Onyx',
                                     style: Theme.of(context).textTheme.headlineSmall,
                                   ),
                                 ),
@@ -294,21 +304,16 @@ class _HomeOverlayBar extends StatelessWidget {
       child: SafeArea(
         bottom: false,
         child: Padding(
-          padding: const EdgeInsets.fromLTRB(16, 4, 16, 8),
+          padding: const EdgeInsets.fromLTRB(16, 4, 12, 8),
           child: Row(
             children: [
-              Container(
-                width: 32,
-                height: 32,
-                decoration: BoxDecoration(
-                  color: AppColors.primary,
-                  borderRadius: BorderRadius.circular(6),
-                ),
-                child: const Icon(Icons.play_arrow_rounded, color: Colors.white, size: 22),
-              ),
-              const Spacer(),
+              const GlassBrand(),
+              const SizedBox(width: 10),
+              const Expanded(child: InlineCatalogSearch()),
+              const SizedBox(width: 8),
               if (homeProvider.isScanning ||
                   homeProvider.isBackfillingMetadata ||
+                  homeProvider.isRedetectingAll ||
                   homeProvider.isExtractingSubtitles)
                 const Padding(
                   padding: EdgeInsets.only(right: 8),
@@ -318,50 +323,7 @@ class _HomeOverlayBar extends StatelessWidget {
                     child: CircularProgressIndicator(strokeWidth: 2),
                   ),
                 ),
-              PopupMenuButton<String>(
-                icon: CircleAvatar(
-                  radius: 16,
-                  backgroundColor: AppColors.surfaceElevated.withValues(alpha: 0.8),
-                  child: Text(
-                    (authProvider.currentUser?.username ?? '?')[0].toUpperCase(),
-                    style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 14),
-                  ),
-                ),
-                color: AppColors.surfaceElevated,
-                onSelected: (value) async {
-                  switch (value) {
-                    case 'scan':
-                      homeProvider.triggerLibraryScan();
-                    case 'posters':
-                      homeProvider.triggerMetadataBackfill();
-                    case 'subtitles':
-                      await homeProvider.triggerSubtitleExtract();
-                    case 'studio':
-                      Navigator.of(context).push(
-                        MaterialPageRoute(builder: (_) => const PlayerStudioScreen()),
-                      );
-                    case 'playback':
-                      Navigator.of(context).push(
-                        MaterialPageRoute(
-                          builder: (_) => const PlaybackPreferencesScreen(),
-                        ),
-                      );
-                    case 'logout':
-                      authProvider.logout();
-                  }
-                },
-                itemBuilder: (_) => [
-                  if (!homeProvider.isScanning)
-                    const PopupMenuItem(value: 'scan', child: Text('Synchroniser')),
-                  if (!homeProvider.isBackfillingMetadata)
-                    const PopupMenuItem(value: 'posters', child: Text('Mettre à jour les affiches')),
-                  if (!homeProvider.isExtractingSubtitles)
-                    const PopupMenuItem(value: 'subtitles', child: Text('Sous-titres')),
-                  const PopupMenuItem(value: 'studio', child: Text('Player Studio')),
-                  const PopupMenuItem(value: 'playback', child: Text('Préférences de lecture')),
-                  const PopupMenuItem(value: 'logout', child: Text('Déconnexion')),
-                ],
-              ),
+              AccountMenu(authProvider: authProvider),
             ],
           ),
         ),

@@ -3,6 +3,7 @@ import 'package:provider/provider.dart';
 import '../../providers/auth_provider.dart';
 import '../../services/api_client.dart';
 import '../../theme/app_colors.dart';
+import '../../widgets/global/onyx_mark.dart';
 
 class LoginScreen extends StatefulWidget {
   const LoginScreen({super.key});
@@ -49,10 +50,12 @@ class _LoginScreenState extends State<LoginScreen> {
     final password = _passwordController.text;
 
     if (_isRegistering) {
-      final success = await authProvider.register(serverUrl, username, password);
+      final success =
+          await authProvider.register(serverUrl, username, password);
       if (success && mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Inscription réussie ! Connectez-vous.')),
+          const SnackBar(
+              content: Text('Inscription réussie ! Connectez-vous.')),
         );
         setState(() => _isRegistering = false);
       }
@@ -64,30 +67,34 @@ class _LoginScreenState extends State<LoginScreen> {
   @override
   Widget build(BuildContext context) {
     final authProvider = Provider.of<AuthProvider>(context);
+    final textTheme = Theme.of(context).textTheme;
 
     return Scaffold(
       backgroundColor: AppColors.background,
-      body: Stack(
-        fit: StackFit.expand,
-        children: [
-          DecoratedBox(
-            decoration: BoxDecoration(
-              gradient: RadialGradient(
-                center: const Alignment(0.3, -0.5),
-                radius: 1.2,
-                colors: [
-                  AppColors.primary.withValues(alpha: 0.15),
-                  AppColors.background,
-                ],
+      body: SafeArea(
+        child: Stack(
+          fit: StackFit.expand,
+          children: [
+            DecoratedBox(
+              decoration: BoxDecoration(
+                gradient: RadialGradient(
+                  center: const Alignment(0, -0.55),
+                  radius: 1.15,
+                  colors: [
+                    AppColors.surfaceElevated.withValues(alpha: 0.9),
+                    AppColors.background,
+                  ],
+                ),
               ),
             ),
-          ),
-          Center(
-            child: SingleChildScrollView(
-              padding: const EdgeInsets.all(24),
-              child: ConstrainedBox(
-                constraints: const BoxConstraints(maxWidth: 420),
-                child: Form(
+            Center(
+              child: SingleChildScrollView(
+                padding: const EdgeInsets.all(24),
+                keyboardDismissBehavior:
+                    ScrollViewKeyboardDismissBehavior.onDrag,
+                child: ConstrainedBox(
+                  constraints: const BoxConstraints(maxWidth: 420),
+                  child: Form(
                   key: _formKey,
                   child: Column(
                     mainAxisSize: MainAxisSize.min,
@@ -96,32 +103,26 @@ class _LoginScreenState extends State<LoginScreen> {
                       Row(
                         mainAxisAlignment: MainAxisAlignment.center,
                         children: [
-                          Container(
-                            width: 48,
-                            height: 48,
-                            decoration: BoxDecoration(
-                              color: AppColors.primary,
-                              borderRadius: BorderRadius.circular(10),
-                            ),
-                            child: const Icon(Icons.play_arrow_rounded, size: 32, color: Colors.white),
-                          ),
+                          const OnyxMark(size: 48, showBeam: true),
                           const SizedBox(width: 14),
                           Text(
-                            'PLAYEUR',
-                            style: Theme.of(context).textTheme.headlineMedium?.copyWith(
-                                  fontWeight: FontWeight.w800,
-                                  letterSpacing: 3,
-                                ),
+                            'Onyx',
+                            style: textTheme.headlineMedium?.copyWith(
+                              fontWeight: FontWeight.w700,
+                              letterSpacing: -0.5,
+                            ),
                           ),
                         ],
                       ),
-                      const SizedBox(height: 8),
+                      const SizedBox(height: 10),
                       Text(
-                        _isRegistering ? 'Créer un compte' : 'Connectez-vous à votre serveur',
+                        _isRegistering
+                            ? 'Créer un compte'
+                            : 'Connectez-vous à votre serveur',
                         textAlign: TextAlign.center,
-                        style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                              color: AppColors.textSecondary,
-                            ),
+                        style: textTheme.bodyMedium?.copyWith(
+                          color: AppColors.textSecondary,
+                        ),
                       ),
                       const SizedBox(height: 36),
                       TextFormField(
@@ -130,9 +131,11 @@ class _LoginScreenState extends State<LoginScreen> {
                         decoration: const InputDecoration(
                           labelText: 'Adresse du serveur',
                           hintText: 'http://192.168.1.50:8080',
-                          prefixIcon: Icon(Icons.dns_rounded, color: AppColors.textMuted),
+                          prefixIcon: Icon(Icons.dns_rounded,
+                              color: AppColors.textMuted),
                         ),
-                        validator: (v) => v == null || v.trim().isEmpty ? 'Requis' : null,
+                        validator: (v) =>
+                            v == null || v.trim().isEmpty ? 'Requis' : null,
                       ),
                       const SizedBox(height: 16),
                       TextFormField(
@@ -140,9 +143,11 @@ class _LoginScreenState extends State<LoginScreen> {
                         style: const TextStyle(color: AppColors.textPrimary),
                         decoration: const InputDecoration(
                           labelText: 'Nom d\'utilisateur',
-                          prefixIcon: Icon(Icons.person_outline_rounded, color: AppColors.textMuted),
+                          prefixIcon: Icon(Icons.person_outline_rounded,
+                              color: AppColors.textMuted),
                         ),
-                        validator: (v) => v == null || v.trim().isEmpty ? 'Requis' : null,
+                        validator: (v) =>
+                            v == null || v.trim().isEmpty ? 'Requis' : null,
                       ),
                       const SizedBox(height: 16),
                       TextFormField(
@@ -151,7 +156,8 @@ class _LoginScreenState extends State<LoginScreen> {
                         style: const TextStyle(color: AppColors.textPrimary),
                         decoration: const InputDecoration(
                           labelText: 'Mot de passe',
-                          prefixIcon: Icon(Icons.lock_outline_rounded, color: AppColors.textMuted),
+                          prefixIcon: Icon(Icons.lock_outline_rounded,
+                              color: AppColors.textMuted),
                         ),
                         validator: (v) {
                           if (v == null || v.isEmpty) return 'Requis';
@@ -164,13 +170,16 @@ class _LoginScreenState extends State<LoginScreen> {
                         Container(
                           padding: const EdgeInsets.all(12),
                           decoration: BoxDecoration(
-                            color: AppColors.error.withValues(alpha: 0.15),
-                            borderRadius: BorderRadius.circular(8),
-                            border: Border.all(color: AppColors.error.withValues(alpha: 0.4)),
+                            color: AppColors.error.withValues(alpha: 0.12),
+                            borderRadius: BorderRadius.circular(12),
+                            border: Border.all(
+                                color:
+                                    AppColors.error.withValues(alpha: 0.35)),
                           ),
                           child: Text(
                             authProvider.errorMessage!,
-                            style: const TextStyle(color: AppColors.error, fontSize: 13),
+                            style: const TextStyle(
+                                color: AppColors.error, fontSize: 13),
                           ),
                         ),
                       ],
@@ -178,28 +187,31 @@ class _LoginScreenState extends State<LoginScreen> {
                       ElevatedButton(
                         onPressed: authProvider.isLoading ? null : _submit,
                         style: ElevatedButton.styleFrom(
-                          backgroundColor: AppColors.primary,
-                          foregroundColor: Colors.white,
                           padding: const EdgeInsets.symmetric(vertical: 16),
                         ),
                         child: authProvider.isLoading
                             ? const SizedBox(
                                 width: 22,
                                 height: 22,
-                                child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white),
+                                child: CircularProgressIndicator(
+                                  strokeWidth: 2,
+                                  color: AppColors.background,
+                                ),
                               )
-                            : Text(_isRegistering ? 'S\'INSCRIRE' : 'SE CONNECTER'),
+                            : Text(_isRegistering
+                                ? 'S\'inscrire'
+                                : 'Se connecter'),
                       ),
                       const SizedBox(height: 12),
                       TextButton(
                         onPressed: authProvider.isLoading
                             ? null
-                            : () => setState(() => _isRegistering = !_isRegistering),
+                            : () => setState(
+                                () => _isRegistering = !_isRegistering),
                         child: Text(
                           _isRegistering
                               ? 'Déjà un compte ? Connectez-vous'
                               : 'Nouveau ? Créez un compte',
-                          style: const TextStyle(color: AppColors.textSecondary),
                         ),
                       ),
                     ],
@@ -207,8 +219,9 @@ class _LoginScreenState extends State<LoginScreen> {
                 ),
               ),
             ),
-          ),
-        ],
+            ),
+          ],
+        ),
       ),
     );
   }

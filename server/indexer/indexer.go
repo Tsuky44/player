@@ -13,22 +13,12 @@ import (
 
 	"project-player/server/database"
 	"project-player/server/models"
-	"project-player/server/subtitles"
 )
 
 var (
-	IsScanning              bool
-	scanMutex               sync.Mutex
-	subtitleExtractionSlots = make(chan struct{}, subtitleExtractionConcurrency())
+	IsScanning bool
+	scanMutex  sync.Mutex
 )
-
-func subtitleExtractionConcurrency() int {
-	value, err := strconv.Atoi(strings.TrimSpace(os.Getenv("SUBTITLE_EXTRACTION_CONCURRENCY")))
-	if err != nil || value < 1 {
-		return 2
-	}
-	return value
-}
 
 // Supported video extensions
 var videoExtensions = map[string]bool{
@@ -110,6 +100,14 @@ func ScanMedia(moviesDir, seriesDir string) {
 	}()
 }
 
+func nullIfEmpty(s string) interface{} {
+	s = strings.TrimSpace(s)
+	if s == "" {
+		return nil
+	}
+	return s
+}
+
 // scanMovies indexes all video files in the movies directory
 func scanMovies(dir string) error {
 	if _, err := os.Stat(dir); os.IsNotExist(err) {
@@ -144,29 +142,34 @@ func scanMovies(dir string) error {
 			return nil
 		}
 
-		// Parse movie title from filename (removing extension)
-		rawTitle := strings.TrimSuffix(info.Name(), filepath.Ext(info.Name()))
-		posterURL, overview, releaseDate, tmdbID, tmdbTitle := fetchTMDBMetadata(rawTitle, models.TypeMovie)
-		displayTitle := tmdbTitle
+		// Emby-style identity: folder/NFO/provider IDs first, then confident TMDB match.
+		identity := IdentifyMovie(path, dir)
+		displayTitle := identity.Title
 		if displayTitle == "" {
-			displayTitle = ReleaseDisplayTitle(rawTitle, models.TypeMovie)
+			displayTitle = ReleaseDisplayTitle(ResolveMovieLookupName(path, dir), models.TypeMovie)
+		}
+		tmdbID := 0
+		if identity.Matched {
+			tmdbID = identity.TMDBID
 		}
 
-		// Insert movie with TMDB metadata
 		res, err := database.DB.Exec(
-			"INSERT INTO medias (type, title, file_path, duration, file_size, poster_url, overview, release_date, tmdb_id) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
-			models.TypeMovie, displayTitle, normalizedPath, 0, info.Size(), posterURL, overview, releaseDate, tmdbID,
+			"INSERT INTO medias (type, title, file_path, duration, file_size, poster_url, overview, release_date, tmdb_id, imdb_id) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+			models.TypeMovie, displayTitle, normalizedPath, 0, info.Size(), identity.PosterURL, identity.Overview, identity.ReleaseDate, tmdbID, nullIfEmpty(identity.IMDbID),
 		)
 		if err != nil {
 			log.Printf("Indexer: Failed to index movie %s: %v", displayTitle, err)
 			return nil
 		}
 
-		log.Printf("Indexer: Successfully indexed Movie -> %s", displayTitle)
+		if identity.Matched {
+			log.Printf("Indexer: Indexed Movie -> %s (tmdb=%d via %s, conf=%.2f)", displayTitle, tmdbID, identity.Source, identity.Confidence)
+		} else {
+			log.Printf("Indexer: Indexed Movie -> %s (unmatched — needs review)", displayTitle)
+		}
 
 		if id, idErr := res.LastInsertId(); idErr == nil {
 			ProbeAndPersist(int(id), displayTitle, normalizedPath, info.Size(), info.ModTime())
-			go extractSubtitles(int(id), normalizedPath)
 		}
 		return nil
 	})
@@ -217,23 +220,21 @@ func scanSeries(dir string) error {
 		var seasonNum int
 		var episodeNum int
 
-		// Match standard episode regex S01E01
-		matches := episodeRegex.FindStringSubmatch(info.Name())
-		if len(matches) < 3 {
-			// Skip files that do not have SxxExx in their name
+		// Emby-compatible episode patterns (SxxExx, 1x02, Season/Episode, …)
+		sNum, eNum, ok := ParseEpisodeNumbers(info.Name())
+		if !ok {
 			return nil
 		}
-
-		sNum, _ := strconv.Atoi(matches[1])
-		eNum, _ := strconv.Atoi(matches[2])
 		seasonNum = sNum
 		episodeNum = eNum
 
 		// Determine show title from folder layout (handles per-episode download folders).
 		showTitle := resolveShowTitleFromPath(parts, info.Name())
+		tmdbSearchKey := resolveShowTMDBSearchKeyFromPath(parts, info.Name())
+		showFolderPath := resolveShowFolderPath(dir, parts)
 
-		// Find or Create Show
-		showID, err := findOrCreateShow(showTitle)
+		// Find or Create Show (local IDs/NFO before TMDB search)
+		showID, err := findOrCreateShow(showTitle, tmdbSearchKey, showFolderPath)
 		if err != nil {
 			log.Printf("Indexer error: failed to resolve show %s: %v", showTitle, err)
 			return nil
@@ -280,7 +281,6 @@ func scanSeries(dir string) error {
 
 		if id, idErr := res.LastInsertId(); idErr == nil {
 			ProbeAndPersist(int(id), epTitle, normalizedPath, info.Size(), info.ModTime())
-			go extractSubtitles(int(id), normalizedPath)
 		}
 		return nil
 	})
@@ -318,17 +318,14 @@ func findOrCreateSeason(showID int, seasonNum int) (int, error) {
 	return int(insertID), err
 }
 
-// extractSubtitles pre-extracts every text subtitle track from the freshly
-// indexed file into .vtt sidecars and registers them in the database. Failures
-// are non-fatal: a media without (text) subtitles is perfectly valid.
-func extractSubtitles(mediaID int, filePath string) {
-	subtitleExtractionSlots <- struct{}{}
-	defer func() { <-subtitleExtractionSlots }()
-
-	if err := subtitles.ExtractAndRegister(mediaID, filePath); err != nil {
-		log.Printf("Indexer: subtitle extraction failed for media %d: %v", mediaID, err)
-	}
-}
+// Subtitles are deliberately NOT extracted here. Extracting one is a full
+// sequential read of the container, so doing it for every file during a scan
+// dominates the scan's cost — on a library of large remuxes it is hours of I/O.
+//
+// Nothing is lost by skipping it: ProbeAndPersist already records every subtitle
+// stream in tracks_json, so subtitles.Catalog lists all languages in the UI
+// straight away. The .vtt itself is produced on demand at first playback by
+// subtitles.EnsureExtractedSync, which reads the file once for all tracks.
 
 // cleanMissingMedias removes items from the DB if their physical files are gone
 func cleanMissingMedias() error {

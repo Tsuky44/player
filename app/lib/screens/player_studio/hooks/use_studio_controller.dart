@@ -81,6 +81,46 @@ class StudioController extends ChangeNotifier {
     notifyListeners();
   }
 
+  /// Switch the whole preset's control skin (draft only). Any placed
+  /// [PlayerControlType.timeline] bar is kept in sync so the transport pill
+  /// always matches the buttons around it.
+  void setSkin(ControlSkinStyle value) {
+    final matchingVisualStyle = switch (value) {
+      ControlSkinStyle.glass => TimelineVisualStyle.glass,
+      ControlSkinStyle.flat => TimelineVisualStyle.flat,
+      ControlSkinStyle.neumorphic => TimelineVisualStyle.neumorphic,
+    };
+    final syncedControls = [
+      for (final c in _draft.controls)
+        if (c.type == PlayerControlType.timeline)
+          c.copyWith(
+            config: c.config.copyWith(
+              timelineOptions: c.effectiveTimelineOptions
+                  .copyWith(visualStyle: matchingVisualStyle),
+            ),
+          )
+        else
+          c,
+    ];
+    _draft = _draft.copyWith(controls: syncedControls, skin: value);
+    notifyListeners();
+  }
+
+  void setFlatAccentColor(Color value) {
+    _draft = _draft.copyWith(flatAccentColor: value);
+    notifyListeners();
+  }
+
+  void setFlatElevation(FlatElevation value) {
+    _draft = _draft.copyWith(flatElevation: value);
+    notifyListeners();
+  }
+
+  void setNeumorphicIntensity(double value) {
+    _draft = _draft.copyWith(neumorphicIntensity: value);
+    notifyListeners();
+  }
+
   void setTapToTogglePlayback(bool value) {
     _draft = _draft.copyWith(tapToTogglePlayback: value);
     notifyListeners();
@@ -160,7 +200,11 @@ class StudioController extends ChangeNotifier {
       sizePercentage: type.isProgressBar ? 0.07 : 0.08,
       widthPercentage: type.isTimelineBar ? 1.0 : 0.85,
       timelineOptions: switch (type) {
-        PlayerControlType.timeline => TimelineChromeOptions.glass(),
+        PlayerControlType.timeline => switch (_draft.skin) {
+            ControlSkinStyle.flat => TimelineChromeOptions.flat(),
+            ControlSkinStyle.neumorphic => TimelineChromeOptions.neumorphic(),
+            ControlSkinStyle.glass => TimelineChromeOptions.glass(),
+          },
         PlayerControlType.timelineGlassInline => TimelineChromeOptions.glass(),
         PlayerControlType.timelineEmby => TimelineChromeOptions.emby(),
         _ => null,

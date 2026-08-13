@@ -178,7 +178,7 @@ class ControlContextMenu extends StatelessWidget {
                             icon: const Icon(Icons.tune, size: 16),
                             label: const Text('Tous les réglages'),
                             style: TextButton.styleFrom(
-                              foregroundColor: const Color(0xFF007AFF),
+                              foregroundColor: const Color(0xFF0A84FF),
                               padding: const EdgeInsets.symmetric(vertical: 4),
                               visualDensity: VisualDensity.compact,
                             ),
@@ -269,10 +269,10 @@ class _CompactSlider extends StatelessWidget {
         SliderTheme(
           data: SliderTheme.of(context).copyWith(
             trackHeight: 3,
-            activeTrackColor: const Color(0xFF007AFF),
+            activeTrackColor: const Color(0xFF0A84FF),
             inactiveTrackColor: Colors.white.withOpacity(0.12),
             thumbColor: Colors.white,
-            overlayColor: const Color(0xFF007AFF).withOpacity(0.15),
+            overlayColor: const Color(0xFF0A84FF).withOpacity(0.15),
             thumbShape: const RoundSliderThumbShape(enabledThumbRadius: 6),
             overlayShape: const RoundSliderOverlayShape(overlayRadius: 12),
           ),
@@ -317,7 +317,7 @@ class _CompactToggle extends StatelessWidget {
           Switch.adaptive(
             value: value,
             onChanged: onChanged,
-            activeThumbColor: const Color(0xFF007AFF),
+            activeThumbColor: const Color(0xFF0A84FF),
             materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
           ),
         ],

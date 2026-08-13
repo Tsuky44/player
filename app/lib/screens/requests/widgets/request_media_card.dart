@@ -1,78 +1,42 @@
-import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
 import '../../../models/media_request.dart';
 import '../../../theme/app_colors.dart';
+import '../../../utils/poster_url.dart';
+import '../../../widgets/global/poster_card.dart';
 
 class RequestMediaCard extends StatelessWidget {
   final RequestMediaItem item;
   final VoidCallback onTap;
+  final bool showTypeBadge;
 
-  const RequestMediaCard({super.key, required this.item, required this.onTap});
+  const RequestMediaCard({
+    super.key,
+    required this.item,
+    required this.onTap,
+    this.showTypeBadge = true,
+  });
 
   @override
   Widget build(BuildContext context) {
-    return InkWell(
+    return PosterCard(
+      posterUrl: cardPosterUrl(item.posterUrl),
+      title: item.title,
+      subtitle: [
+        if (item.year != null) item.year!,
+        if (item.rating > 0) '★ ${item.rating.toStringAsFixed(1)}',
+      ].join('  •  '),
       onTap: onTap,
-      borderRadius: BorderRadius.circular(12),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Expanded(
-            child: Stack(
-              fit: StackFit.expand,
-              children: [
-                ClipRRect(
-                  borderRadius: BorderRadius.circular(12),
-                  child: item.posterUrl == null
-                      ? const ColoredBox(
-                          color: AppColors.surfaceElevated,
-                          child: Icon(Icons.movie_outlined,
-                              color: AppColors.textMuted, size: 42),
-                        )
-                      : CachedNetworkImage(
-                          imageUrl: item.posterUrl!,
-                          fit: BoxFit.cover,
-                          placeholder: (_, __) => const ColoredBox(
-                              color: AppColors.surfaceElevated),
-                          errorWidget: (_, __, ___) => const ColoredBox(
-                            color: AppColors.surfaceElevated,
-                            child: Icon(Icons.broken_image_outlined,
-                                color: AppColors.textMuted),
-                          ),
-                        ),
-                ),
-                Positioned(
-                    top: 8, left: 8, child: _TypeBadge(type: item.mediaType)),
-                if (item.status != RequestMediaStatus.unknown)
-                  Positioned(
-                      top: 8,
-                      right: 8,
-                      child: _StatusBadge(status: item.status)),
-              ],
-            ),
-          ),
-          const SizedBox(height: 9),
-          Text(
-            item.title,
-            maxLines: 1,
-            overflow: TextOverflow.ellipsis,
-            style: const TextStyle(
-                fontWeight: FontWeight.w600, color: AppColors.textPrimary),
-          ),
-          const SizedBox(height: 3),
-          Text(
-            [
-              if (item.year != null) item.year!,
-              if (item.rating > 0) '★ ${item.rating.toStringAsFixed(1)}'
-            ].join('  •  '),
-            style: const TextStyle(fontSize: 12, color: AppColors.textMuted),
-          ),
-        ],
-      ),
+      overlays: [
+        if (showTypeBadge)
+          Positioned(top: 8, left: 8, child: _TypeBadge(type: item.mediaType)),
+        if (item.status != RequestMediaStatus.unknown)
+          Positioned(top: 8, right: 8, child: _StatusDot(status: item.status)),
+      ],
     );
   }
 }
 
+/// Subtle glass pill — MediaHub MediaCardOverlay style.
 class _TypeBadge extends StatelessWidget {
   final RequestMediaType type;
 
@@ -80,44 +44,72 @@ class _TypeBadge extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return _Badge(
-        label: type == RequestMediaType.movie ? 'FILM' : 'SÉRIE',
-        color: AppColors.accent);
-  }
-}
-
-class _StatusBadge extends StatelessWidget {
-  final RequestMediaStatus status;
-
-  const _StatusBadge({required this.status});
-
-  @override
-  Widget build(BuildContext context) {
-    final available = status == RequestMediaStatus.available ||
-        status == RequestMediaStatus.partial;
-    return _Badge(
-      label: available ? 'DISPONIBLE' : 'DEMANDÉ',
-      color: available ? AppColors.success : AppColors.primary,
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+      decoration: BoxDecoration(
+        color: Colors.black.withValues(alpha: 0.45),
+        borderRadius: BorderRadius.circular(999),
+        border: Border.all(color: Colors.white.withValues(alpha: 0.12)),
+      ),
+      child: Text(
+        type == RequestMediaType.movie ? 'Film' : 'Série',
+        style: TextStyle(
+          fontSize: 10,
+          fontWeight: FontWeight.w600,
+          letterSpacing: 0.4,
+          color: Colors.white.withValues(alpha: 0.85),
+        ),
+      ),
     );
   }
 }
 
-class _Badge extends StatelessWidget {
-  final String label;
-  final Color color;
+/// Colored status bubble — MediaHub MediaCardStatus style.
+class _StatusDot extends StatelessWidget {
+  final RequestMediaStatus status;
 
-  const _Badge({required this.label, required this.color});
+  const _StatusDot({required this.status});
 
   @override
   Widget build(BuildContext context) {
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 4),
-      decoration: BoxDecoration(
-          color: color.withValues(alpha: 0.9),
-          borderRadius: BorderRadius.circular(6)),
-      child: Text(label,
-          style: const TextStyle(
-              fontSize: 9, fontWeight: FontWeight.w800, color: Colors.white)),
+    final Color color;
+    final String tooltip;
+    switch (status) {
+      case RequestMediaStatus.available:
+        color = AppColors.success;
+        tooltip = 'Disponible';
+      case RequestMediaStatus.partial:
+        color = AppColors.warning;
+        tooltip = 'Partiellement disponible';
+      case RequestMediaStatus.pending:
+      case RequestMediaStatus.processing:
+        color = AppColors.accentMuted;
+        tooltip = 'En attente';
+      case RequestMediaStatus.unknown:
+        return const SizedBox.shrink();
+    }
+
+    return Tooltip(
+      message: tooltip,
+      child: Container(
+        width: 12,
+        height: 12,
+        decoration: BoxDecoration(
+          color: color,
+          shape: BoxShape.circle,
+          boxShadow: [
+            BoxShadow(
+              color: color.withValues(alpha: 0.6),
+              blurRadius: 8,
+              spreadRadius: 0.5,
+            ),
+          ],
+          border: Border.all(
+            color: Colors.black.withValues(alpha: 0.35),
+            width: 1,
+          ),
+        ),
+      ),
     );
   }
 }

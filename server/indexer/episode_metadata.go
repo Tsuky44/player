@@ -57,20 +57,6 @@ func EpisodeNeedsTMDBRefresh(title string) bool {
 	return false
 }
 
-// ParseEpisodeNumbers extracts season and episode numbers from a release filename.
-func ParseEpisodeNumbers(filename string) (seasonNum, episodeNum int, ok bool) {
-	matches := episodeRegex.FindStringSubmatch(filename)
-	if len(matches) < 3 {
-		return 0, 0, false
-	}
-	sNum, err1 := strconv.Atoi(matches[1])
-	eNum, err2 := strconv.Atoi(matches[2])
-	if err1 != nil || err2 != nil {
-		return 0, 0, false
-	}
-	return sNum, eNum, true
-}
-
 func parseSeasonNumberFromTitle(title string) int {
 	m := seasonTitleNumRe.FindStringSubmatch(strings.TrimSpace(title))
 	if len(m) < 2 {
@@ -270,7 +256,7 @@ func ensureShowHasTMDBID(showID int) {
 	if tmdbID.Valid && tmdbID.Int64 > 0 {
 		return
 	}
-	enrichMediaRecord(showID, title, models.TypeShow, 0)
+	enrichMediaRecord(showID, enrichSearchTitle(title, "", models.TypeShow, showID), models.TypeShow, 0)
 }
 
 // RefreshSeasonEpisodesFromTMDB updates episode titles from TMDB when they still look like filenames.

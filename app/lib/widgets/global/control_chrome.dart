@@ -1,6 +1,7 @@
 import 'dart:ui';
 import 'package:flutter/material.dart';
 import '../../models/player_layout.dart';
+import '../../theme/app_colors.dart';
 import 'media_logo_display.dart';
 
 /// Rendering mode for [ControlChrome].
@@ -9,7 +10,7 @@ import 'media_logo_display.dart';
 /// - [live]: real, interactive control rendered over the video.
 enum ControlChromeVariant { studio, live }
 
-const Color _kAccent = Color(0xFF007AFF);
+const Color _kAccent = Color(0xFF0A84FF);
 
 /// Single source of truth for how a modular control LOOKS, shared by the
 /// Player Studio (preview) and the real player (live). Behaviour is injected
@@ -82,6 +83,12 @@ class ControlChrome extends StatelessWidget {
   /// Called when the back button is tapped.
   final VoidCallback? onBack;
 
+  /// Playback rate for [PlayerControlType.playbackSpeed] (e.g. 1.0, 1.5).
+  final double? playbackRate;
+
+  /// Current video fit for [PlayerControlType.aspectFit].
+  final BoxFit? videoFit;
+
   /// Frosted-glass blur sigma (0 = no blur, more "liquid").
   final double blurSigma;
 
@@ -90,6 +97,28 @@ class ControlChrome extends StatelessWidget {
 
   /// Apple-style liquid glass (heavier). Off = simple blur + flat tint.
   final bool liquidGlass;
+
+  /// Visual language for this control's chrome. Glass ignores the fields
+  /// below; Flat uses [flatAccentColor]/[flatElevation]; Neumorphic uses
+  /// [neumorphicIntensity].
+  final ControlSkinStyle skin;
+
+  /// Accent colour for the Flat skin.
+  final Color flatAccentColor;
+
+  /// Drop-shadow strength for the Flat skin.
+  final FlatElevation flatElevation;
+
+  /// Shadow/extrusion depth for the Neumorphic skin, 0.0 -> 1.0.
+  final double neumorphicIntensity;
+
+  /// Small muted line shown above [mediaTitle] by [PlayerControlType.episodeTitleBlock]
+  /// (e.g. "S2:E1 - Silo - S02E01 - The Engineer WEBDL-2160p Proper").
+  final String? episodeInfoLine;
+
+  /// Keeps [PlayerControlType.volumeSlider] permanently expanded instead of
+  /// only on hover.
+  final bool alwaysExpanded;
 
   const ControlChrome({
     super.key,
@@ -121,9 +150,17 @@ class ControlChrome extends StatelessWidget {
     this.volume,
     this.onVolumeChanged,
     this.onBack,
+    this.playbackRate,
+    this.videoFit,
     this.blurSigma = kDefaultBlurSigma,
     this.glassOpacity = kDefaultGlassOpacity,
     this.liquidGlass = kDefaultLiquidGlass,
+    this.skin = ControlSkinStyle.glass,
+    this.flatAccentColor = kDefaultFlatAccentColor,
+    this.flatElevation = kDefaultFlatElevation,
+    this.neumorphicIntensity = kDefaultNeumorphicIntensity,
+    this.episodeInfoLine,
+    this.alwaysExpanded = false,
   });
 
   @override
@@ -135,9 +172,19 @@ class ControlChrome extends StatelessWidget {
       PlayerControlType.timelineGlassInline => _buildTimelineBar(),
       PlayerControlType.mediaTitle => _buildMediaTitle(),
       PlayerControlType.mediaLogo => _buildMediaLogo(),
+      PlayerControlType.episodeTitleBlock => _buildEpisodeTitleBlock(),
+      PlayerControlType.chaptersEmby => _buildChaptersEmbyButton(),
+      PlayerControlType.mediaInfo => _buildMediaInfoEmbyButton(),
       PlayerControlType.upNext => _buildUpNextButton(),
       PlayerControlType.upNextEmby => _buildUpNextEmbyButton(),
       PlayerControlType.volumeSlider => _buildVolumeSlider(context),
+      PlayerControlType.skipIntro => _buildLabeledPill(
+          icon: Icons.fast_forward_rounded,
+          label: 'Passer l\'intro',
+        ),
+      PlayerControlType.playbackSpeed => _buildSpeedPill(),
+      PlayerControlType.timeRemaining => _buildTimeRemainingPill(),
+      PlayerControlType.aspectFit => _buildAspectFitButton(),
       _ => _buildIconButton(),
     };
 
@@ -149,51 +196,30 @@ class ControlChrome extends StatelessWidget {
   }
 
   IconData get _icon {
-    switch (type) {
-      case PlayerControlType.rewind:
-        return Icons.replay_10;
-      case PlayerControlType.forward:
-        return Icons.forward_10;
-      case PlayerControlType.playPause:
-        return isPlaying ? Icons.pause : Icons.play_arrow;
-      case PlayerControlType.progressBar:
-        return Icons.linear_scale;
-      case PlayerControlType.skipPrevious:
-        return Icons.skip_previous;
-      case PlayerControlType.skipNext:
-        return Icons.skip_next;
-      case PlayerControlType.volumeUp:
-        return Icons.volume_up;
-      case PlayerControlType.volumeDown:
-        return Icons.volume_down;
-      case PlayerControlType.mute:
-        return Icons.volume_off;
-      case PlayerControlType.fullscreen:
-        return Icons.fullscreen;
-      case PlayerControlType.settings:
-        return Icons.settings;
-      case PlayerControlType.subtitles:
-        return Icons.subtitles;
-      case PlayerControlType.timeline:
-      case PlayerControlType.timelineEmby:
-      case PlayerControlType.timelineGlassInline:
-        return Icons.timeline;
-      case PlayerControlType.back:
-        return Icons.arrow_back;
-      case PlayerControlType.mediaTitle:
-        return Icons.title;
-      case PlayerControlType.mediaLogo:
-        return Icons.branding_watermark_outlined;
-      case PlayerControlType.volumeSlider:
-        return Icons.volume_down;
-      case PlayerControlType.upNext:
-        return Icons.playlist_play_rounded;
-      case PlayerControlType.upNextEmby:
-        return Icons.view_list_rounded;
+    if (type == PlayerControlType.playPause) {
+      return isPlaying ? Icons.pause_rounded : Icons.play_arrow_rounded;
     }
+    if (type == PlayerControlType.aspectFit) {
+      return videoFit == BoxFit.cover
+          ? Icons.fit_screen_rounded
+          : Icons.crop_free_rounded;
+    }
+    return type.icon;
   }
 
-  double get _pixelSize => canvasSize.shortestSide * sizePercentage;
+  /// Progress-fill colour: the user's chosen accent for Flat, the fixed
+  /// system accent otherwise (Neumorphic keeps colour out of the picture).
+  Color get _accentColor =>
+      skin == ControlSkinStyle.flat ? flatAccentColor : _kAccent;
+
+  double get _pixelSize {
+    final emphasis = type == PlayerControlType.playPause ? 1.15 : 1.0;
+    return modularControlPixelSize(
+      canvasSize,
+      sizePercentage,
+      emphasis: emphasis,
+    );
+  }
 
   void _addTimelineActionBtn(
     List<Widget> out, {
@@ -217,8 +243,113 @@ class ControlChrome extends StatelessWidget {
   bool get _liveSelected => variant == ControlChromeVariant.live && selected;
 
   Widget _glass({required Widget child, required BorderRadius radius}) {
-    if (!liquidGlass) return _simpleGlass(child: child, radius: radius);
-    return _liquidGlass(child: child, radius: radius);
+    switch (skin) {
+      case ControlSkinStyle.flat:
+        return _flatChrome(child: child, radius: radius);
+      case ControlSkinStyle.neumorphic:
+        return _neumorphicChrome(child: child, radius: radius);
+      case ControlSkinStyle.glass:
+        if (!liquidGlass) return _simpleGlass(child: child, radius: radius);
+        return _liquidGlass(child: child, radius: radius);
+    }
+  }
+
+  /// Opaque flat surface — no blur, no transparency. Elevation controls the
+  /// drop shadow; the accent colour only shows up on the selection ring.
+  Widget _flatChrome({required Widget child, required BorderRadius radius}) {
+    final selected = _studioSelected || _liveSelected;
+    return AnimatedContainer(
+      duration: variant == ControlChromeVariant.studio
+          ? Duration.zero
+          : const Duration(milliseconds: 180),
+      curve: Curves.easeOut,
+      decoration: BoxDecoration(
+        color: const Color(0xFF1C1C1E),
+        borderRadius: radius,
+        border: Border.all(
+          color: selected
+              ? flatAccentColor.withValues(alpha: 0.9)
+              : Colors.white.withOpacity(0.08),
+          width: selected ? 1.5 : 1,
+        ),
+        boxShadow: _flatShadow(flatElevation),
+      ),
+      child: child,
+    );
+  }
+
+  /// Soft-extruded surface — dual light/dark shadows, no blur, no user
+  /// colour (the tint is derived from the app background so it reads the
+  /// same regardless of what's playing behind it).
+  Widget _neumorphicChrome({
+    required Widget child,
+    required BorderRadius radius,
+  }) {
+    final selected = _studioSelected || _liveSelected;
+    return AnimatedContainer(
+      duration: variant == ControlChromeVariant.studio
+          ? Duration.zero
+          : const Duration(milliseconds: 180),
+      curve: Curves.easeOut,
+      decoration: BoxDecoration(
+        color: _neumorphicBase,
+        borderRadius: radius,
+        border: selected
+            ? Border.all(color: _kAccent.withValues(alpha: 0.85), width: 1.5)
+            : null,
+        boxShadow: _neumorphicShadows(neumorphicIntensity),
+      ),
+      child: child,
+    );
+  }
+
+  /// Drop shadow for the Flat skin, shared with [_VolumeSliderButtonState]
+  /// so the elevation table only lives in one place.
+  static List<BoxShadow> _flatShadow(FlatElevation elevation) {
+    return switch (elevation) {
+      FlatElevation.none => const <BoxShadow>[],
+      FlatElevation.light => [
+          BoxShadow(
+            color: Colors.black.withOpacity(0.25),
+            blurRadius: 6,
+            offset: const Offset(0, 2),
+          ),
+        ],
+      FlatElevation.marked => [
+          BoxShadow(
+            color: Colors.black.withOpacity(0.35),
+            blurRadius: 14,
+            offset: const Offset(0, 5),
+          ),
+        ],
+    };
+  }
+
+  /// Neutral surface the Neumorphic skin extrudes from — a lightened tint of
+  /// the app's own background, not a user-selectable colour.
+  static Color get _neumorphicBase =>
+      Color.lerp(AppColors.background, Colors.white, 0.14)!;
+
+  /// Dual light/dark extrusion shadows for the Neumorphic skin, shared with
+  /// [_VolumeSliderButtonState].
+  static List<BoxShadow> _neumorphicShadows(double intensity) {
+    final depth =
+        intensity.clamp(kMinNeumorphicIntensity, kMaxNeumorphicIntensity);
+    if (depth <= 0) return const [];
+    final offset = 2 + depth * 4;
+    final blur = 4 + depth * 10;
+    return [
+      BoxShadow(
+        color: Colors.white.withOpacity(0.06 + depth * 0.05),
+        blurRadius: blur,
+        offset: Offset(-offset, -offset),
+      ),
+      BoxShadow(
+        color: Colors.black.withOpacity(0.35 + depth * 0.2),
+        blurRadius: blur,
+        offset: Offset(offset, offset),
+      ),
+    ];
   }
 
   /// Lightweight path: blur + flat tint only (one BackdropFilter, no extras).
@@ -238,13 +369,10 @@ class ControlChrome extends StatelessWidget {
             borderRadius: radius,
             border: Border.all(
               color: (_studioSelected || _liveSelected)
-                  ? _kAccent
+                  ? _kAccent.withValues(alpha: 0.85)
                   : Colors.white.withOpacity(borderOpacity),
-              width: _liveSelected ? 2 : 1,
+              width: (_studioSelected || _liveSelected) ? 1.5 : 1,
             ),
-            boxShadow: _liveSelected
-                ? [BoxShadow(color: _kAccent.withOpacity(0.45), blurRadius: 16)]
-                : null,
           ),
           child: child,
         ),
@@ -322,16 +450,15 @@ class ControlChrome extends StatelessWidget {
       decoration: BoxDecoration(
         borderRadius: radius,
         gradient: _liveSelected ? null : rim,
-        border: _liveSelected ? Border.all(color: _kAccent, width: 2) : null,
+        border: _liveSelected
+            ? Border.all(color: _kAccent.withValues(alpha: 0.85), width: 1.5)
+            : null,
         boxShadow: [
-          // Soft drop shadow so the glass floats above the video.
           BoxShadow(
-            color: Colors.black.withOpacity(0.25),
-            blurRadius: 12,
-            offset: const Offset(0, 4),
+            color: Colors.black.withOpacity(0.28),
+            blurRadius: 14,
+            offset: const Offset(0, 5),
           ),
-          if (_liveSelected)
-            BoxShadow(color: _kAccent.withOpacity(0.45), blurRadius: 16),
         ],
       ),
       child: glass,
@@ -360,7 +487,7 @@ class ControlChrome extends StatelessWidget {
 
   Widget _buildIconButton() {
     final double pixelSize = _pixelSize;
-    final double diameter = pixelSize * 1.4; // proportional padding
+    final double diameter = pixelSize * kControlChromePaddingFactor;
     final icon = type == PlayerControlType.playPause
         ? AnimatedSwitcher(
             duration: const Duration(milliseconds: 120),
@@ -415,7 +542,7 @@ class ControlChrome extends StatelessWidget {
                   child: Container(
                     height: 4,
                     decoration: BoxDecoration(
-                      color: _kAccent,
+                      color: _accentColor,
                       borderRadius: BorderRadius.circular(2),
                     ),
                   ),
@@ -447,7 +574,15 @@ class ControlChrome extends StatelessWidget {
     if (type == PlayerControlType.timelineGlassInline) {
       return _buildGlassInlineTimelineBar();
     }
-    return _buildGlassTimelineBar();
+    switch (timelineOptions.visualStyle) {
+      case TimelineVisualStyle.flat:
+        return _buildFlatTimelineBar();
+      case TimelineVisualStyle.neumorphic:
+        return _buildNeumorphicTimelineBar();
+      case TimelineVisualStyle.glass:
+      case TimelineVisualStyle.emby:
+        return _buildGlassTimelineBar();
+    }
   }
 
   Widget _seekableTimelineTrack(Widget track) {
@@ -460,7 +595,20 @@ class ControlChrome extends StatelessWidget {
     );
   }
 
-  Widget _buildGlassTimelineBar() {
+  Widget _buildGlassTimelineBar() => _buildPillTimelineBar(wrap: _glass);
+
+  Widget _buildFlatTimelineBar() => _buildPillTimelineBar(wrap: _flatChrome);
+
+  Widget _buildNeumorphicTimelineBar() =>
+      _buildPillTimelineBar(wrap: _neumorphicChrome);
+
+  /// Shared layout for the "pill" timeline shape (time labels above the
+  /// track, transport + action buttons below) — only the chrome [wrap]
+  /// differs between the Glass, Flat and Neumorphic variants.
+  Widget _buildPillTimelineBar({
+    required Widget Function({required Widget child, required BorderRadius radius})
+        wrap,
+  }) {
     final opts = timelineOptions;
     final double height = (_pixelSize * 0.5).clamp(14.0, 40.0);
     final totalSec = duration?.inSeconds ?? 3600;
@@ -494,7 +642,7 @@ class ControlChrome extends StatelessWidget {
             child: Container(
               height: 4,
               decoration: BoxDecoration(
-                color: _kAccent,
+                color: _accentColor,
                 borderRadius: BorderRadius.circular(2),
               ),
             ),
@@ -580,7 +728,7 @@ class ControlChrome extends StatelessWidget {
     final bottomBlockHeight = hasBottomRow ? rowGap + iconSize + 4 : 0.0;
     final estimatedHeight = topBlockHeight + bottomBlockHeight + vPad * 2;
 
-    return _glass(
+    return wrap(
       radius: BorderRadius.circular(estimatedHeight / 2 + 6),
       child: SizedBox(
         width: canvasSize.width * widthPercentage.clamp(0.3, 1.0),
@@ -1026,8 +1174,195 @@ class ControlChrome extends StatelessWidget {
     );
   }
 
+  /// Two-line Emby-style title block: a small muted episode/release line
+  /// above a bold show-title line. No chrome background, like [_buildMediaTitle].
+  Widget _buildEpisodeTitleBlock() {
+    final double height = (_pixelSize * 1.7).clamp(40.0, 76.0);
+    final infoLine = episodeInfoLine;
+    return SizedBox(
+      height: height,
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        mainAxisAlignment: MainAxisAlignment.center,
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          if (infoLine != null && infoLine.isNotEmpty) ...[
+            Text(
+              infoLine,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: TextStyle(
+                color: Colors.white.withOpacity(0.7),
+                fontSize: (height * 0.22).clamp(11.0, 15.0),
+                fontWeight: FontWeight.w400,
+              ),
+            ),
+            SizedBox(height: height * 0.06),
+          ],
+          Text(
+            mediaTitle ?? 'Titre du média',
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: TextStyle(
+              color: Colors.white,
+              fontSize: (height * 0.34).clamp(16.0, 26.0),
+              fontWeight: FontWeight.w700,
+              letterSpacing: -0.2,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  /// Emby-style plain text link (icon + label, no chrome background).
+  Widget _buildEmbyTextLink({required IconData icon, required String label}) {
+    final double height = (_pixelSize * 1.2).clamp(28.0, 40.0);
+    final double iconSize = (_pixelSize * 0.75).clamp(18.0, 24.0);
+    final double fontSize = (_pixelSize * 0.36).clamp(12.0, 15.0);
+
+    return SizedBox(
+      height: height,
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.center,
+        children: [
+          Icon(icon, color: Colors.white.withOpacity(0.92), size: iconSize),
+          SizedBox(width: height * 0.22),
+          Text(
+            label,
+            style: TextStyle(
+              color: Colors.white.withOpacity(0.92),
+              fontSize: fontSize,
+              fontWeight: FontWeight.w400,
+              letterSpacing: 0.1,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildChaptersEmbyButton() =>
+      _buildEmbyTextLink(icon: Icons.list_alt_rounded, label: 'Chapitres');
+
+  Widget _buildMediaInfoEmbyButton() =>
+      _buildEmbyTextLink(icon: Icons.info_outline_rounded, label: 'Info');
+
+  Widget _buildLabeledPill({required IconData icon, required String label}) {
+    final double height = (_pixelSize * 1.15).clamp(32.0, 44.0);
+    final double iconSize = (_pixelSize * 0.75).clamp(16.0, 20.0);
+    final double fontSize = (_pixelSize * 0.36).clamp(11.0, 13.5);
+    return _glass(
+      radius: BorderRadius.circular(12),
+      child: Padding(
+        padding: EdgeInsets.symmetric(horizontal: height * 0.35),
+        child: SizedBox(
+          height: height,
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Icon(icon, color: Colors.white, size: iconSize),
+              SizedBox(width: height * 0.16),
+              Text(
+                label,
+                style: TextStyle(
+                  color: Colors.white.withValues(alpha: 0.95),
+                  fontSize: fontSize,
+                  fontWeight: FontWeight.w600,
+                  letterSpacing: -0.2,
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildSpeedPill() {
+    final rate = playbackRate ?? 1.0;
+    final label = rate % 1 == 0 ? '${rate.toInt()}×' : '${rate}×';
+    final double height = (_pixelSize * 1.15).clamp(30.0, 42.0);
+    final double fontSize = (_pixelSize * 0.4).clamp(12.0, 15.0);
+    return _glass(
+      radius: BorderRadius.circular(12),
+      child: SizedBox(
+        height: height,
+        width: height * 2.2,
+        child: Center(
+          child: Text(
+            label,
+            style: TextStyle(
+              color: Colors.white.withValues(alpha: 0.95),
+              fontSize: fontSize,
+              fontWeight: FontWeight.w700,
+              letterSpacing: -0.2,
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildTimeRemainingPill() {
+    final total = duration?.inSeconds ?? 0;
+    final current = (currentSeconds ?? 0).clamp(0, total > 0 ? total : 0);
+    final remaining = total > 0 ? (total - current).clamp(0, total) : 0;
+    final label = total > 0 ? '-${_formatClock(remaining)}' : '--:--';
+    final double height = (_pixelSize * 1.15).clamp(30.0, 42.0);
+    final double fontSize = (_pixelSize * 0.38).clamp(11.0, 14.0);
+    return _glass(
+      radius: BorderRadius.circular(12),
+      child: Padding(
+        padding: EdgeInsets.symmetric(horizontal: height * 0.32),
+        child: SizedBox(
+          height: height,
+          child: Center(
+            child: Text(
+              label,
+              style: TextStyle(
+                color: Colors.white.withValues(alpha: 0.92),
+                fontSize: fontSize,
+                fontWeight: FontWeight.w600,
+                fontFeatures: const [FontFeature.tabularFigures()],
+                letterSpacing: -0.1,
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildAspectFitButton() {
+    final double pixelSize = _pixelSize;
+    final double diameter = pixelSize * kControlChromePaddingFactor;
+    return _glass(
+      radius: BorderRadius.circular(diameter / 2),
+      child: SizedBox(
+        width: diameter,
+        height: diameter,
+        child: Center(
+          child: Icon(_icon, color: Colors.white, size: pixelSize),
+        ),
+      ),
+    );
+  }
+
+  String _formatClock(int totalSeconds) {
+    final h = totalSeconds ~/ 3600;
+    final m = (totalSeconds % 3600) ~/ 60;
+    final s = totalSeconds % 60;
+    if (h > 0) {
+      return '$h:${m.toString().padLeft(2, '0')}:${s.toString().padLeft(2, '0')}';
+    }
+    return '${m.toString().padLeft(2, '0')}:${s.toString().padLeft(2, '0')}';
+  }
+
   Widget _buildUpNextButton() {
-    final double height = (_pixelSize * 1.4).clamp(36.0, 52.0);
+    final double height =
+        (_pixelSize * kControlChromePaddingFactor).clamp(36.0, 52.0);
     final double iconSize = (_pixelSize * 0.85).clamp(16.0, 22.0);
     final double fontSize = (_pixelSize * 0.38).clamp(11.0, 14.0);
     final radius = BorderRadius.circular(height / 2);
@@ -1059,39 +1394,12 @@ class ControlChrome extends StatelessWidget {
     );
   }
 
-  Widget _buildUpNextEmbyButton() {
-    final double height = (_pixelSize * 1.2).clamp(28.0, 40.0);
-    final double iconSize = (_pixelSize * 0.75).clamp(18.0, 24.0);
-    final double fontSize = (_pixelSize * 0.36).clamp(12.0, 15.0);
-
-    return SizedBox(
-      height: height,
-      child: Row(
-        mainAxisSize: MainAxisSize.min,
-        crossAxisAlignment: CrossAxisAlignment.center,
-        children: [
-          Icon(
-            Icons.view_list_rounded,
-            color: Colors.white.withOpacity(0.92),
-            size: iconSize,
-          ),
-          SizedBox(width: height * 0.22),
-          Text(
-            'À suivre',
-            style: TextStyle(
-              color: Colors.white.withOpacity(0.92),
-              fontSize: fontSize,
-              fontWeight: FontWeight.w400,
-              letterSpacing: 0.1,
-            ),
-          ),
-        ],
-      ),
-    );
-  }
+  Widget _buildUpNextEmbyButton() =>
+      _buildEmbyTextLink(icon: Icons.view_list_rounded, label: 'À suivre');
 
   Widget _buildMediaLogo() {
-    final double height = (_pixelSize * 1.4).clamp(36.0, 100.0);
+    final double height =
+        (_pixelSize * kControlChromePaddingFactor).clamp(36.0, 100.0);
     final double width = canvasSize.width * widthPercentage.clamp(0.15, 0.55);
     return SizedBox(
       width: width,
@@ -1119,12 +1427,16 @@ class ControlChrome extends StatelessWidget {
     return _VolumeSliderButton(
       height: height,
       width: width,
-      forceExpanded: variant == ControlChromeVariant.studio,
+      forceExpanded: variant == ControlChromeVariant.studio || alwaysExpanded,
       volume: volume,
       onVolumeChanged: onVolumeChanged,
       blurSigma: blurSigma,
       glassOpacity: glassOpacity,
       liquidGlass: liquidGlass,
+      skin: skin,
+      flatAccentColor: flatAccentColor,
+      flatElevation: flatElevation,
+      neumorphicIntensity: neumorphicIntensity,
     );
   }
 
@@ -1156,6 +1468,10 @@ class _VolumeSliderButton extends StatefulWidget {
   final double blurSigma;
   final double glassOpacity;
   final bool liquidGlass;
+  final ControlSkinStyle skin;
+  final Color flatAccentColor;
+  final FlatElevation flatElevation;
+  final double neumorphicIntensity;
 
   const _VolumeSliderButton({
     required this.height,
@@ -1166,6 +1482,10 @@ class _VolumeSliderButton extends StatefulWidget {
     this.blurSigma = kDefaultBlurSigma,
     this.glassOpacity = kDefaultGlassOpacity,
     this.liquidGlass = kDefaultLiquidGlass,
+    this.skin = ControlSkinStyle.glass,
+    this.flatAccentColor = kDefaultFlatAccentColor,
+    this.flatElevation = kDefaultFlatElevation,
+    this.neumorphicIntensity = kDefaultNeumorphicIntensity,
   });
 
   @override
@@ -1184,6 +1504,46 @@ class _VolumeSliderButtonState extends State<_VolumeSliderButton> {
 
     final radius = BorderRadius.circular(widget.height / 2 + 6);
     final o = widget.glassOpacity;
+
+    if (widget.skin == ControlSkinStyle.flat) {
+      return MouseRegion(
+        onEnter: (_) => setState(() => _hovering = true),
+        onExit: (_) => setState(() => _hovering = false),
+        child: AnimatedContainer(
+          duration: const Duration(milliseconds: 200),
+          curve: Curves.easeOut,
+          width: _expanded ? widget.width : widget.height,
+          height: widget.height,
+          decoration: BoxDecoration(
+            color: const Color(0xFF1C1C1E),
+            borderRadius: radius,
+            border: Border.all(color: Colors.white.withOpacity(0.08)),
+            boxShadow: ControlChrome._flatShadow(widget.flatElevation),
+          ),
+          child: _volumeRow(vol, iconSize),
+        ),
+      );
+    }
+
+    if (widget.skin == ControlSkinStyle.neumorphic) {
+      return MouseRegion(
+        onEnter: (_) => setState(() => _hovering = true),
+        onExit: (_) => setState(() => _hovering = false),
+        child: AnimatedContainer(
+          duration: const Duration(milliseconds: 200),
+          curve: Curves.easeOut,
+          width: _expanded ? widget.width : widget.height,
+          height: widget.height,
+          decoration: BoxDecoration(
+            color: ControlChrome._neumorphicBase,
+            borderRadius: radius,
+            boxShadow:
+                ControlChrome._neumorphicShadows(widget.neumorphicIntensity),
+          ),
+          child: _volumeRow(vol, iconSize),
+        ),
+      );
+    }
 
     if (!widget.liquidGlass) {
       final fillOpacity = (o + 0.06).clamp(0.05, 0.55);
@@ -1296,7 +1656,7 @@ class _VolumeSliderButtonState extends State<_VolumeSliderButton> {
                       trackHeight: 3,
                       thumbShape: const RoundSliderThumbShape(enabledThumbRadius: 5, elevation: 0, pressedElevation: 0),
                       overlayShape: const RoundSliderOverlayShape(overlayRadius: 0),
-                      activeTrackColor: const Color(0xFF007AFF),
+                      activeTrackColor: const Color(0xFF0A84FF),
                       inactiveTrackColor: Colors.white.withOpacity(0.25),
                       thumbColor: Colors.white,
                     ),

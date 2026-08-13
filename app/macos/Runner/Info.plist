@@ -33,5 +33,11 @@
 		<key>NSAllowsArbitraryLoads</key>
 		<true/>
 	</dict>
+	<!-- Opts out of Flutter's experimental merged UI/platform thread on macOS,
+	     which the engine announces at launch as "Running with merged UI and
+	     platform thread. Experimental." Trackpad scrolling arrives as pan/zoom
+	     events routed through the platform thread and stops working under it. -->
+	<key>FLTEnableMergedPlatformUIThread</key>
+	<false/>
 </dict>
 </plist>

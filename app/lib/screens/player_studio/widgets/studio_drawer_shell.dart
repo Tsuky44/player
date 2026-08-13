@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 
+import '../../../theme/app_colors.dart';
+
 /// Shared chrome for Player Studio side drawers (header + scroll body).
 class StudioDrawerShell extends StatelessWidget {
   final String title;
@@ -18,17 +20,18 @@ class StudioDrawerShell extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Material(
-      color: const Color(0xFF1A1A1A),
+      color: AppColors.surface,
       child: SafeArea(
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
             Padding(
-              padding: const EdgeInsets.fromLTRB(8, 8, 16, 0),
+              padding: const EdgeInsets.fromLTRB(8, 10, 16, 0),
               child: Row(
                 children: [
                   IconButton(
-                    icon: const Icon(Icons.close, color: Colors.white70),
+                    icon: const Icon(Icons.close_rounded,
+                        color: AppColors.textSecondary),
                     tooltip: 'Fermer',
                     onPressed: () => Navigator.of(context).pop(),
                   ),
@@ -36,29 +39,41 @@ class StudioDrawerShell extends StatelessWidget {
                     child: Text(
                       title,
                       style: const TextStyle(
-                        color: Colors.white,
-                        fontSize: 18,
-                        fontWeight: FontWeight.w600,
+                        color: AppColors.textPrimary,
+                        fontSize: 17,
+                        fontWeight: FontWeight.w700,
+                        letterSpacing: -0.3,
                       ),
                     ),
                   ),
-                  Icon(icon, color: const Color(0xFF007AFF), size: 22),
+                  Container(
+                    width: 34,
+                    height: 34,
+                    decoration: BoxDecoration(
+                      color: AppColors.surfaceElevated,
+                      borderRadius: BorderRadius.circular(10),
+                      border: Border.all(color: AppColors.glassBorder),
+                    ),
+                    child: Icon(icon, color: AppColors.textSecondary, size: 18),
+                  ),
                 ],
               ),
             ),
             if (subtitle != null)
               Padding(
-                padding: const EdgeInsets.fromLTRB(24, 4, 24, 16),
+                padding: const EdgeInsets.fromLTRB(24, 6, 24, 14),
                 child: Text(
                   subtitle!,
                   style: const TextStyle(
-                    color: Colors.grey,
-                    fontSize: 12,
+                    color: AppColors.textMuted,
+                    fontSize: 12.5,
                     height: 1.4,
                   ),
                 ),
-              ),
-            const Divider(color: Color(0xFF2A2A2A), height: 1),
+              )
+            else
+              const SizedBox(height: 10),
+            Divider(color: AppColors.glassBorder, height: 1),
             Expanded(child: child),
           ],
         ),

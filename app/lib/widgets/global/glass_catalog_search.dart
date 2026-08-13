@@ -21,11 +21,15 @@ class GlassCatalogSearch extends StatefulWidget {
   final double collapsedWidth;
   final double expandedWidth;
 
+  /// When true, the idle state is a circular search icon instead of a field.
+  final bool compactTrigger;
+
   const GlassCatalogSearch({
     super.key,
     this.expandInline = true,
     this.collapsedWidth = 180,
     this.expandedWidth = 300,
+    this.compactTrigger = false,
   });
 
   @override
@@ -165,12 +169,32 @@ class _GlassCatalogSearchState extends State<GlassCatalogSearch> {
     final search = context.watch<SearchProvider>();
     final expanded =
         widget.expandInline && (search.isExpanded || search.isActive);
-    final width = expanded ? widget.expandedWidth : widget.collapsedWidth;
+    final showField = !widget.compactTrigger || expanded;
+    final width = showField
+        ? (expanded ? widget.expandedWidth : widget.collapsedWidth)
+        : 40.0;
 
     // Keep the overlay entry alive; its builder decides what to render.
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (mounted) _ensureOverlay();
     });
+
+    if (widget.compactTrigger && !showField) {
+      return GlassIconButton(
+        size: 40,
+        onTap: () {
+          context.read<SearchProvider>().setExpanded(true);
+          WidgetsBinding.instance.addPostFrameCallback((_) {
+            if (mounted) _focusNode.requestFocus();
+          });
+        },
+        child: Icon(
+          Icons.search_rounded,
+          size: 20,
+          color: AppColors.textPrimary.withValues(alpha: 0.92),
+        ),
+      );
+    }
 
     return TapRegion(
       groupId: _tapGroupId,

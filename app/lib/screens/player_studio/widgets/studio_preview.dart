@@ -75,10 +75,14 @@ class StudioPreview extends StatelessWidget {
       variant: ControlChromeVariant.live,
       isPlaying: true,
       progress: 0.35,
-      duration: placed.type.isTimelineBar
+      duration: placed.type.isTimelineBar ||
+              placed.type == PlayerControlType.timeRemaining
           ? const Duration(hours: 1, minutes: 23, seconds: 45)
           : null,
-      currentSeconds: placed.type.isTimelineBar ? 521 : null,
+      currentSeconds: placed.type.isTimelineBar ||
+              placed.type == PlayerControlType.timeRemaining
+          ? 521
+          : null,
       onSeekFraction: placed.type.isTimelineBar ? (_) {} : null,
       timelineOptions: placed.type.isTimelineBar
           ? placed.effectiveTimelineOptions
@@ -92,17 +96,28 @@ class StudioPreview extends StatelessWidget {
       onOpenSettings: placed.type.isTimelineBar ? () {} : null,
       onToggleSubtitles: placed.type.isTimelineBar ? () {} : null,
       mediaTitle: placed.type == PlayerControlType.mediaTitle ||
-              placed.type == PlayerControlType.mediaLogo
+              placed.type == PlayerControlType.mediaLogo ||
+              placed.type == PlayerControlType.episodeTitleBlock
           ? 'Arcane – S01E02'
+          : null,
+      episodeInfoLine: placed.type == PlayerControlType.episodeTitleBlock
+          ? 'S1:E2 - Arcane - Some Mysteries WEBDL-2160p'
           : null,
       mediaLogoUrl: placed.type == PlayerControlType.mediaLogo ? null : null,
       volume: placed.type == PlayerControlType.volumeSlider ? 65.0 : null,
       onVolumeChanged:
           placed.type == PlayerControlType.volumeSlider ? (_) {} : null,
       onBack: placed.type == PlayerControlType.back ? () {} : null,
+      playbackRate: placed.type == PlayerControlType.playbackSpeed ? 1.25 : null,
+      videoFit: placed.type == PlayerControlType.aspectFit ? BoxFit.contain : null,
       blurSigma: config.blurIntensity,
       glassOpacity: config.glassOpacity,
       liquidGlass: config.liquidGlass,
+      skin: config.skin,
+      flatAccentColor: config.flatAccentColor,
+      flatElevation: config.flatElevation,
+      neumorphicIntensity: config.neumorphicIntensity,
+      alwaysExpanded: c.alwaysExpanded,
     );
 
     if (isFullWidthTimeline) {

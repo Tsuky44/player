@@ -2,6 +2,7 @@ import 'dart:ui';
 
 import 'package:flutter/material.dart';
 import '../../theme/app_colors.dart';
+import 'onyx_mark.dart';
 
 /// Full-width frosted strip — must float above scrolling content to blur it.
 class GlassHeaderStrip extends StatelessWidget {
@@ -183,22 +184,10 @@ class GlassBrand extends StatelessWidget {
       child: Row(
         mainAxisSize: MainAxisSize.min,
         children: [
-          Container(
-            width: 28,
-            height: 28,
-            decoration: BoxDecoration(
-              gradient: const LinearGradient(
-                begin: Alignment.topLeft,
-                end: Alignment.bottomRight,
-                colors: [Color(0xFFE50914), Color(0xFFB20710)],
-              ),
-              borderRadius: BorderRadius.circular(8),
-            ),
-            child: const Icon(Icons.play_arrow_rounded, color: Colors.white, size: 18),
-          ),
+          const OnyxMark(size: 28),
           const SizedBox(width: 8),
           Text(
-            'PLAYEUR',
+            'ONYX',
             style: Theme.of(context).textTheme.titleMedium?.copyWith(
                   fontWeight: FontWeight.w800,
                   letterSpacing: 1.6,

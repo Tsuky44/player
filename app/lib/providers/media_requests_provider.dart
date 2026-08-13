@@ -1,6 +1,7 @@
 ﻿import 'package:dio/dio.dart';
 import 'package:flutter/foundation.dart';
 import '../models/media_request.dart';
+import '../models/request_catalog_filters.dart';
 import '../services/api_client.dart';
 
 class MediaRequestsProvider extends ChangeNotifier {
@@ -11,6 +12,7 @@ class MediaRequestsProvider extends ChangeNotifier {
   List<RequestMediaItem> _items = const [];
   String _type = 'all';
   String _query = '';
+  RequestCatalogFilters _filters = RequestCatalogFilters.defaults;
   int _page = 0;
   int _totalPages = 1;
   int _loadGeneration = 0;
@@ -21,14 +23,22 @@ class MediaRequestsProvider extends ChangeNotifier {
   List<RequestMediaItem> get items => _items;
   String get type => _type;
   String get query => _query;
+  RequestCatalogFilters get filters => _filters;
   bool get isLoading => _isLoading;
   bool get isLoadingMore => _isLoadingMore;
   bool get hasMore => _page < _totalPages;
   String? get errorMessage => _errorMessage;
 
-  Future<void> load({String? type, String? query}) async {
+  Future<void> load({
+    String? type,
+    String? query,
+    RequestCatalogFilters? filters,
+  }) async {
     _type = type ?? _type;
     _query = query?.trim() ?? _query;
+    if (filters != null) {
+      _filters = filters;
+    }
     _page = 0;
     _totalPages = 1;
     _items = const [];
@@ -39,7 +49,11 @@ class MediaRequestsProvider extends ChangeNotifier {
 
     try {
       final result = await apiClient.getRequestCatalog(
-          page: 1, type: _type, query: _query);
+        page: 1,
+        type: _type,
+        query: _query,
+        filters: _filters,
+      );
       if (generation != _loadGeneration) return;
       _items = result.results;
       _page = result.page;
@@ -63,7 +77,11 @@ class MediaRequestsProvider extends ChangeNotifier {
 
     try {
       final result = await apiClient.getRequestCatalog(
-          page: _page + 1, type: _type, query: _query);
+        page: _page + 1,
+        type: _type,
+        query: _query,
+        filters: _filters,
+      );
       if (generation != _loadGeneration) return;
       final known =
           _items.map((item) => '${item.mediaType.name}:${item.id}').toSet();
@@ -86,6 +104,11 @@ class MediaRequestsProvider extends ChangeNotifier {
 
   Future<RequestMediaDetails> loadDetails(RequestMediaItem item) {
     return apiClient.getRequestMediaDetails(item.id, item.mediaType);
+  }
+
+  Future<List<RequestEpisode>> loadSeasonEpisodes(
+      int tmdbId, int seasonNumber) {
+    return apiClient.getRequestSeasonEpisodes(tmdbId, seasonNumber);
   }
 
   Future<void> request(RequestMediaItem item, {List<int>? seasons}) async {

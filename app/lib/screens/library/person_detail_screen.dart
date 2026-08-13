@@ -8,6 +8,7 @@ import '../../models/models.dart';
 import '../../navigation/catalog_navigation.dart';
 import '../../providers/auth_provider.dart';
 import '../../theme/app_colors.dart';
+import '../../utils/responsive.dart';
 import '../../widgets/global/media_detail_widgets.dart';
 import '../../widgets/global/overlay_back_button.dart';
 
@@ -92,7 +93,7 @@ class _PersonDetailScreenState extends State<PersonDetailScreen> {
             if (person.biography != null && person.biography!.isNotEmpty)
               SliverToBoxAdapter(
                 child: Padding(
-                  padding: const EdgeInsets.fromLTRB(48, 28, 48, 8),
+                  padding: AppLayout.pageInsets(context, top: 28, bottom: 8),
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
@@ -118,7 +119,7 @@ class _PersonDetailScreenState extends State<PersonDetailScreen> {
             if (person.filmography.isNotEmpty) ...[
               SliverToBoxAdapter(
                 child: Padding(
-                  padding: const EdgeInsets.fromLTRB(48, 32, 48, 16),
+                  padding: AppLayout.pageInsets(context, top: 32, bottom: 16),
                   child: Text(
                     'Filmographie',
                     style: Theme.of(context).textTheme.titleLarge?.copyWith(
@@ -128,17 +129,17 @@ class _PersonDetailScreenState extends State<PersonDetailScreen> {
                 ),
               ),
               SliverPadding(
-                padding: const EdgeInsets.fromLTRB(48, 0, 48, 48),
+                padding: AppLayout.pageInsets(context, bottom: 48),
                 sliver: SliverLayoutBuilder(
                   builder: (context, constraints) {
                     final width = constraints.crossAxisExtent;
-                    final columns = (width / 160).floor().clamp(2, 8);
+                    final columns = AppLayout.posterGridCount(width);
                     return SliverGrid(
                       gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
                         crossAxisCount: columns,
-                        crossAxisSpacing: 16,
-                        mainAxisSpacing: 20,
-                        childAspectRatio: 0.52,
+                        crossAxisSpacing: AppLayout.posterGridCrossSpacing,
+                        mainAxisSpacing: AppLayout.posterGridMainSpacing,
+                        childAspectRatio: AppLayout.posterGridAspectRatio,
                       ),
                       delegate: SliverChildBuilderDelegate(
                         (context, index) {
@@ -210,8 +211,8 @@ class _PersonHeader extends StatelessWidget {
           ),
 
           Positioned(
-            left: 48,
-            right: 48,
+            left: AppLayout.pagePadding(context),
+            right: AppLayout.pagePadding(context),
             bottom: 32,
             child: Row(
               crossAxisAlignment: CrossAxisAlignment.end,

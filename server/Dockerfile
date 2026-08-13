@@ -30,6 +30,12 @@ COPY --from=builder /app/media-server .
 # Create the data directory (where the database lives)
 RUN mkdir -p /app/data
 
+# Installable client apps (APK / DMG / EXE) served on /api/downloads. Staged by
+# publish-image.sh, which mixes what this host could build with what it pulled
+# out of the previously published image — Flutter cannot cross-compile desktop
+# targets, so no single machine produces all three.
+COPY downloads/ /app/downloads/
+
 # Default port
 EXPOSE 8080
 

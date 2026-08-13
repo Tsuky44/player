@@ -5,7 +5,7 @@ services:
     build:
       context: ./server
       dockerfile: Dockerfile
-    container_name: project-player-backend
+    container_name: onyx-backend
     ports:
       - "8080:8080"
     volumes:

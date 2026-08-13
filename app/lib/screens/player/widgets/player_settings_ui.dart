@@ -2,11 +2,7 @@ import 'dart:ui';
 
 import 'package:flutter/material.dart';
 
-const Color _kAccent = Color(0xFF007AFF);
-const Color _kPanelBg = Color(0xFF1A1A1A);
-const Color _kRowBg = Color(0xFF242424);
-const Color _kRowSelectedBg = Color(0xFF2A3142);
-const Color _kTabBg = Color(0xFF2A2A2A);
+import '../../../theme/app_colors.dart';
 
 /// One tab entry in the player settings panel.
 class PlayerSettingsTab {
@@ -16,7 +12,22 @@ class PlayerSettingsTab {
   const PlayerSettingsTab({required this.icon, required this.label});
 }
 
-/// Solid frosted shell for the subtitles-only popup.
+BoxDecoration _panelDecoration({required BorderRadius radius}) {
+  return BoxDecoration(
+    color: AppColors.surface.withValues(alpha: 0.94),
+    borderRadius: radius,
+    border: Border.all(color: AppColors.glassBorder),
+    boxShadow: [
+      BoxShadow(
+        color: Colors.black.withValues(alpha: 0.55),
+        blurRadius: 40,
+        offset: const Offset(0, 18),
+      ),
+    ],
+  );
+}
+
+/// Frosted shell for the subtitles-only popup.
 class PlayerSubtitlesShell extends StatelessWidget {
   final VoidCallback onClose;
   final Widget child;
@@ -33,96 +44,24 @@ class PlayerSubtitlesShell extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return SizedBox(
+    return _PlayerPanelFrame(
       width: width,
-      height: maxHeight,
-      child: ClipRRect(
-        borderRadius: BorderRadius.circular(20),
-        child: BackdropFilter(
-          filter: ImageFilter.blur(sigmaX: 20, sigmaY: 20),
-          child: DecoratedBox(
-            decoration: BoxDecoration(
-              color: _kPanelBg.withValues(alpha: 0.96),
-              borderRadius: BorderRadius.circular(20),
-              border: Border.all(
-                color: Colors.white.withValues(alpha: 0.08),
-              ),
-              boxShadow: [
-                BoxShadow(
-                  color: Colors.black.withValues(alpha: 0.5),
-                  blurRadius: 24,
-                  offset: const Offset(0, 8),
-                ),
-              ],
-            ),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.stretch,
-              children: [
-                Padding(
-                  padding: const EdgeInsets.fromLTRB(18, 16, 12, 0),
-                  child: Row(
-                    children: [
-                      Container(
-                        width: 34,
-                        height: 34,
-                        decoration: BoxDecoration(
-                          color: _kTabBg,
-                          borderRadius: BorderRadius.circular(10),
-                        ),
-                        child: const Icon(
-                          Icons.subtitles_outlined,
-                          color: Colors.white70,
-                          size: 18,
-                        ),
-                      ),
-                      const SizedBox(width: 12),
-                      const Expanded(
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Text(
-                              'Sous-titres',
-                              style: TextStyle(
-                                color: Colors.white,
-                                fontSize: 16,
-                                fontWeight: FontWeight.w700,
-                                fontFamily: 'Manrope',
-                                letterSpacing: -0.2,
-                              ),
-                            ),
-                            Text(
-                              'Choisir une piste',
-                              style: TextStyle(
-                                color: Colors.white54,
-                                fontSize: 11,
-                                fontFamily: 'Manrope',
-                              ),
-                            ),
-                          ],
-                        ),
-                      ),
-                      _CloseButton(onPressed: onClose),
-                    ],
-                  ),
-                ),
-                const SizedBox(height: 14),
-                Expanded(
-                  child: Padding(
-                    padding: const EdgeInsets.fromLTRB(14, 0, 14, 8),
-                    child: child,
-                  ),
-                ),
-                const SizedBox(height: 6),
-              ],
-            ),
-          ),
-        ),
+      maxHeight: maxHeight,
+      header: _PanelHeader(
+        icon: Icons.subtitles_outlined,
+        title: 'Sous-titres',
+        subtitle: 'Choisir une piste',
+        onClose: onClose,
+      ),
+      body: Padding(
+        padding: const EdgeInsets.fromLTRB(14, 0, 14, 12),
+        child: child,
       ),
     );
   }
 }
 
-/// Solid frosted shell for settings popups (no liquid glass — readable over video).
+/// Frosted shell for settings popups (readable over video).
 class PlayerSettingsShell extends StatelessWidget {
   final VoidCallback onClose;
   final List<PlayerSettingsTab> tabs;
@@ -145,94 +84,148 @@ class PlayerSettingsShell extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return SizedBox(
+    return _PlayerPanelFrame(
       width: width,
-      height: maxHeight,
-      child: ClipRRect(
-        borderRadius: BorderRadius.circular(20),
-        child: BackdropFilter(
-          filter: ImageFilter.blur(sigmaX: 20, sigmaY: 20),
-          child: DecoratedBox(
-            decoration: BoxDecoration(
-              color: _kPanelBg.withValues(alpha: 0.96),
-              borderRadius: BorderRadius.circular(20),
-              border: Border.all(
-                color: Colors.white.withValues(alpha: 0.08),
+      maxHeight: maxHeight,
+      header: _PanelHeader(
+        icon: Icons.tune_rounded,
+        title: 'Paramètres',
+        subtitle: 'Audio, sous-titres et affichage',
+        onClose: onClose,
+      ),
+      belowHeader: Padding(
+        padding: const EdgeInsets.fromLTRB(14, 0, 14, 12),
+        child: _SettingsSegmentedTabs(
+          tabs: tabs,
+          selectedIndex: selectedTab,
+          onSelected: onTabSelected,
+        ),
+      ),
+      body: child,
+    );
+  }
+}
+
+class _PlayerPanelFrame extends StatelessWidget {
+  final double width;
+  final double maxHeight;
+  final Widget header;
+  final Widget? belowHeader;
+  final Widget body;
+
+  const _PlayerPanelFrame({
+    required this.width,
+    required this.maxHeight,
+    required this.header,
+    required this.body,
+    this.belowHeader,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final radius = BorderRadius.circular(18);
+    // Height follows the content and only stops at maxHeight — a fixed height
+    // left a two-track audio list floating in an empty half-screen panel.
+    return ConstrainedBox(
+      constraints: BoxConstraints(maxWidth: width, maxHeight: maxHeight),
+      child: SizedBox(
+        width: width,
+        child: ClipRRect(
+          borderRadius: radius,
+          child: BackdropFilter(
+            filter: ImageFilter.blur(sigmaX: 28, sigmaY: 28),
+            child: DecoratedBox(
+              decoration: _panelDecoration(radius: radius),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  // Soft top highlight — glass edge, not decoration noise.
+                  Container(
+                    height: 1,
+                    decoration: BoxDecoration(
+                      gradient: LinearGradient(
+                        colors: [
+                          Colors.white.withValues(alpha: 0.0),
+                          Colors.white.withValues(alpha: 0.16),
+                          Colors.white.withValues(alpha: 0.0),
+                        ],
+                      ),
+                    ),
+                  ),
+                  header,
+                  if (belowHeader != null) belowHeader!,
+                  Flexible(child: body),
+                  const SizedBox(height: 8),
+                ],
               ),
-              boxShadow: [
-                BoxShadow(
-                  color: Colors.black.withValues(alpha: 0.5),
-                  blurRadius: 24,
-                  offset: const Offset(0, 8),
-                ),
-              ],
-            ),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.stretch,
-              children: [
-                Padding(
-                  padding: const EdgeInsets.fromLTRB(18, 16, 12, 0),
-                  child: Row(
-                    children: [
-                      Container(
-                        width: 34,
-                        height: 34,
-                        decoration: BoxDecoration(
-                          color: _kTabBg,
-                          borderRadius: BorderRadius.circular(10),
-                        ),
-                        child: const Icon(
-                          Icons.tune_rounded,
-                          color: Colors.white70,
-                          size: 18,
-                        ),
-                      ),
-                      const SizedBox(width: 12),
-                      const Expanded(
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Text(
-                              'Paramètres',
-                              style: TextStyle(
-                                color: Colors.white,
-                                fontSize: 16,
-                                fontWeight: FontWeight.w700,
-                                fontFamily: 'Manrope',
-                                letterSpacing: -0.2,
-                              ),
-                            ),
-                            Text(
-                              'Audio, sous-titres et affichage',
-                              style: TextStyle(
-                                color: Colors.white54,
-                                fontSize: 11,
-                                fontFamily: 'Manrope',
-                              ),
-                            ),
-                          ],
-                        ),
-                      ),
-                      _CloseButton(onPressed: onClose),
-                    ],
-                  ),
-                ),
-                const SizedBox(height: 14),
-                Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: 14),
-                  child: _SettingsTabStrip(
-                    tabs: tabs,
-                    selectedIndex: selectedTab,
-                    onSelected: onTabSelected,
-                  ),
-                ),
-                const SizedBox(height: 10),
-                Expanded(child: child),
-                const SizedBox(height: 6),
-              ],
             ),
           ),
         ),
+      ),
+    );
+  }
+}
+
+class _PanelHeader extends StatelessWidget {
+  final IconData icon;
+  final String title;
+  final String subtitle;
+  final VoidCallback onClose;
+
+  const _PanelHeader({
+    required this.icon,
+    required this.title,
+    required this.subtitle,
+    required this.onClose,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(16, 16, 12, 14),
+      child: Row(
+        children: [
+          Container(
+            width: 36,
+            height: 36,
+            decoration: BoxDecoration(
+              color: AppColors.surfaceElevated,
+              borderRadius: BorderRadius.circular(11),
+              border: Border.all(color: AppColors.glassBorder),
+            ),
+            child: Icon(icon, color: AppColors.textSecondary, size: 18),
+          ),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  title,
+                  style: const TextStyle(
+                    color: AppColors.textPrimary,
+                    fontSize: 16,
+                    fontWeight: FontWeight.w700,
+                    letterSpacing: -0.3,
+                    height: 1.15,
+                  ),
+                ),
+                const SizedBox(height: 2),
+                Text(
+                  subtitle,
+                  style: const TextStyle(
+                    color: AppColors.textMuted,
+                    fontSize: 12,
+                    fontWeight: FontWeight.w500,
+                    height: 1.2,
+                  ),
+                ),
+              ],
+            ),
+          ),
+          _CloseButton(onPressed: onClose),
+        ],
       ),
     );
   }
@@ -251,25 +244,30 @@ class _CloseButton extends StatelessWidget {
         onTap: onPressed,
         borderRadius: BorderRadius.circular(10),
         child: Ink(
-          width: 34,
-          height: 34,
+          width: 36,
+          height: 36,
           decoration: BoxDecoration(
-            color: _kTabBg,
+            color: AppColors.surfaceElevated,
             borderRadius: BorderRadius.circular(10),
+            border: Border.all(color: AppColors.glassBorder),
           ),
-          child: const Icon(Icons.close_rounded, color: Colors.white70, size: 18),
+          child: const Icon(
+            Icons.close_rounded,
+            color: AppColors.textSecondary,
+            size: 18,
+          ),
         ),
       ),
     );
   }
 }
 
-class _SettingsTabStrip extends StatelessWidget {
+class _SettingsSegmentedTabs extends StatelessWidget {
   final List<PlayerSettingsTab> tabs;
   final int selectedIndex;
   final ValueChanged<int> onSelected;
 
-  const _SettingsTabStrip({
+  const _SettingsSegmentedTabs({
     required this.tabs,
     required this.selectedIndex,
     required this.onSelected,
@@ -277,76 +275,113 @@ class _SettingsTabStrip extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return SingleChildScrollView(
-      scrollDirection: Axis.horizontal,
-      child: Row(
-        children: [
-          for (var i = 0; i < tabs.length; i++) ...[
-            if (i > 0) const SizedBox(width: 8),
-            _TabChip(
-              tab: tabs[i],
-              selected: i == selectedIndex,
-              onTap: () => onSelected(i),
-            ),
-          ],
-        ],
+    return Container(
+      padding: const EdgeInsets.all(3),
+      decoration: BoxDecoration(
+        color: AppColors.background.withValues(alpha: 0.55),
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: AppColors.glassBorder),
+      ),
+      child: LayoutBuilder(
+        builder: (context, constraints) {
+          // Horizontal scroll when many tabs (chapters).
+          final useScroll = tabs.length > 4;
+          final row = Row(
+            children: [
+              for (var i = 0; i < tabs.length; i++)
+                useScroll
+                    ? Padding(
+                        padding: EdgeInsets.only(
+                            right: i == tabs.length - 1 ? 0 : 4),
+                        child: _SegmentTab(
+                          tab: tabs[i],
+                          selected: i == selectedIndex,
+                          onTap: () => onSelected(i),
+                          expanded: false,
+                        ),
+                      )
+                    : Expanded(
+                        child: _SegmentTab(
+                          tab: tabs[i],
+                          selected: i == selectedIndex,
+                          onTap: () => onSelected(i),
+                          expanded: true,
+                        ),
+                      ),
+            ],
+          );
+          if (!useScroll) return row;
+          return SingleChildScrollView(
+            scrollDirection: Axis.horizontal,
+            child: row,
+          );
+        },
       ),
     );
   }
 }
 
-class _TabChip extends StatelessWidget {
+class _SegmentTab extends StatelessWidget {
   final PlayerSettingsTab tab;
   final bool selected;
   final VoidCallback onTap;
+  final bool expanded;
 
-  const _TabChip({
+  const _SegmentTab({
     required this.tab,
     required this.selected,
     required this.onTap,
+    required this.expanded,
   });
 
   @override
   Widget build(BuildContext context) {
+    final content = AnimatedContainer(
+      duration: const Duration(milliseconds: 180),
+      curve: Curves.easeOut,
+      padding: EdgeInsets.symmetric(
+        horizontal: expanded ? 6 : 12,
+        vertical: 8,
+      ),
+      decoration: BoxDecoration(
+        color: selected
+            ? Colors.white.withValues(alpha: 0.12)
+            : Colors.transparent,
+        borderRadius: BorderRadius.circular(9),
+      ),
+      child: Row(
+        mainAxisAlignment: MainAxisAlignment.center,
+        mainAxisSize: expanded ? MainAxisSize.max : MainAxisSize.min,
+        children: [
+          Icon(
+            tab.icon,
+            size: 14,
+            color: selected ? AppColors.textPrimary : AppColors.textMuted,
+          ),
+          const SizedBox(width: 5),
+          Flexible(
+            child: Text(
+              tab.label,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: TextStyle(
+                color: selected ? AppColors.textPrimary : AppColors.textMuted,
+                fontSize: 11.5,
+                fontWeight: selected ? FontWeight.w600 : FontWeight.w500,
+                letterSpacing: -0.1,
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+
     return Material(
       color: Colors.transparent,
       child: InkWell(
         onTap: onTap,
-        borderRadius: BorderRadius.circular(14),
-        child: AnimatedContainer(
-          duration: const Duration(milliseconds: 180),
-          curve: Curves.easeOut,
-          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-          decoration: BoxDecoration(
-            color: selected ? _kAccent.withValues(alpha: 0.18) : _kTabBg,
-            borderRadius: BorderRadius.circular(12),
-            border: Border.all(
-              color: selected
-                  ? _kAccent.withValues(alpha: 0.5)
-                  : Colors.white.withValues(alpha: 0.06),
-            ),
-          ),
-          child: Row(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Icon(
-                tab.icon,
-                size: 15,
-                color: selected ? Colors.white : Colors.white60,
-              ),
-              const SizedBox(width: 6),
-              Text(
-                tab.label,
-                style: TextStyle(
-                  color: selected ? Colors.white : Colors.white60,
-                  fontSize: 12,
-                  fontWeight: selected ? FontWeight.w700 : FontWeight.w500,
-                  fontFamily: 'Manrope',
-                ),
-              ),
-            ],
-          ),
-        ),
+        borderRadius: BorderRadius.circular(9),
+        child: content,
       ),
     );
   }
@@ -377,31 +412,23 @@ class PlayerSettingsTrackRow extends StatelessWidget {
         color: Colors.transparent,
         child: InkWell(
           onTap: onTap,
-          borderRadius: BorderRadius.circular(14),
+          borderRadius: BorderRadius.circular(12),
           child: AnimatedContainer(
             duration: const Duration(milliseconds: 160),
-            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 11),
+            padding: const EdgeInsets.fromLTRB(12, 11, 12, 11),
             decoration: BoxDecoration(
-              color: selected ? _kRowSelectedBg : _kRowBg,
+              color: selected
+                  ? AppColors.primary.withValues(alpha: 0.12)
+                  : AppColors.surfaceElevated.withValues(alpha: 0.85),
               borderRadius: BorderRadius.circular(12),
               border: Border.all(
                 color: selected
-                    ? _kAccent.withValues(alpha: 0.4)
-                    : Colors.white.withValues(alpha: 0.05),
+                    ? AppColors.primary.withValues(alpha: 0.45)
+                    : AppColors.glassBorder,
               ),
             ),
             child: Row(
-              crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Container(
-                  width: 3,
-                  height: 32,
-                  margin: const EdgeInsets.only(top: 2, right: 10),
-                  decoration: BoxDecoration(
-                    color: selected ? _kAccent : Colors.transparent,
-                    borderRadius: BorderRadius.circular(2),
-                  ),
-                ),
                 Expanded(
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
@@ -411,54 +438,75 @@ class PlayerSettingsTrackRow extends StatelessWidget {
                         maxLines: 2,
                         overflow: TextOverflow.ellipsis,
                         style: TextStyle(
-                          color: selected ? Colors.white : Colors.white70,
+                          color: selected
+                              ? AppColors.textPrimary
+                              : AppColors.textSecondary,
                           fontSize: 13,
                           fontWeight:
                               selected ? FontWeight.w600 : FontWeight.w500,
-                          fontFamily: 'Manrope',
                           height: 1.25,
+                          letterSpacing: -0.1,
                         ),
                       ),
                       if (subtitle != null) ...[
-                        const SizedBox(height: 2),
+                        const SizedBox(height: 3),
                         Text(
                           subtitle!,
                           maxLines: 1,
                           overflow: TextOverflow.ellipsis,
-                          style: TextStyle(
-                            color: Colors.white.withValues(alpha: 0.45),
+                          style: const TextStyle(
+                            color: AppColors.textMuted,
                             fontSize: 11,
-                            fontFamily: 'Manrope',
+                            height: 1.2,
                           ),
                         ),
                       ],
                     ],
                   ),
                 ),
-                if (badge != null)
+                if (badge != null) ...[
+                  const SizedBox(width: 8),
                   Container(
-                    margin: const EdgeInsets.only(left: 8, top: 2),
                     padding:
-                        const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                        const EdgeInsets.symmetric(horizontal: 7, vertical: 3),
                     decoration: BoxDecoration(
-                      color: Colors.white.withValues(alpha: 0.08),
+                      color: Colors.white.withValues(alpha: 0.06),
                       borderRadius: BorderRadius.circular(6),
+                      border: Border.all(color: AppColors.glassBorder),
                     ),
                     child: Text(
                       badge!,
                       style: const TextStyle(
-                        color: Colors.white54,
-                        fontSize: 9,
+                        color: AppColors.textMuted,
+                        fontSize: 10,
                         fontWeight: FontWeight.w600,
-                        fontFamily: 'Geist',
                       ),
                     ),
                   ),
-                if (selected)
-                  const Padding(
-                    padding: EdgeInsets.only(left: 8, top: 4),
-                    child: Icon(Icons.check_rounded, color: _kAccent, size: 18),
+                ],
+                const SizedBox(width: 8),
+                AnimatedContainer(
+                  duration: const Duration(milliseconds: 160),
+                  width: 20,
+                  height: 20,
+                  decoration: BoxDecoration(
+                    shape: BoxShape.circle,
+                    color: selected ? AppColors.primary : Colors.transparent,
+                    border: Border.all(
+                      color: selected
+                          ? AppColors.primary
+                          : AppColors.textMuted.withValues(alpha: 0.55),
+                      width: 1.5,
+                    ),
                   ),
+                  child: selected
+                      ? const Icon(
+                          Icons.check_rounded,
+                          size: 13,
+                          color: Colors.white,
+                        )
+                      : null,
+                ),
               ],
             ),
           ),
@@ -493,17 +541,19 @@ class PlayerSettingsChoiceCard extends StatelessWidget {
         color: Colors.transparent,
         child: InkWell(
           onTap: onTap,
-          borderRadius: BorderRadius.circular(16),
+          borderRadius: BorderRadius.circular(14),
           child: AnimatedContainer(
             duration: const Duration(milliseconds: 160),
-            padding: const EdgeInsets.all(14),
+            padding: const EdgeInsets.all(13),
             decoration: BoxDecoration(
-              color: selected ? _kRowSelectedBg : _kRowBg,
+              color: selected
+                  ? AppColors.primary.withValues(alpha: 0.12)
+                  : AppColors.surfaceElevated.withValues(alpha: 0.85),
               borderRadius: BorderRadius.circular(14),
               border: Border.all(
                 color: selected
-                    ? _kAccent.withValues(alpha: 0.45)
-                    : Colors.white.withValues(alpha: 0.06),
+                    ? AppColors.primary.withValues(alpha: 0.45)
+                    : AppColors.glassBorder,
               ),
             ),
             child: Row(
@@ -513,14 +563,17 @@ class PlayerSettingsChoiceCard extends StatelessWidget {
                   height: 42,
                   decoration: BoxDecoration(
                     color: selected
-                        ? _kAccent.withValues(alpha: 0.2)
-                        : _kTabBg,
+                        ? AppColors.primary.withValues(alpha: 0.18)
+                        : AppColors.background.withValues(alpha: 0.55),
                     borderRadius: BorderRadius.circular(12),
+                    border: Border.all(color: AppColors.glassBorder),
                   ),
                   child: Icon(
                     icon,
-                    color: selected ? Colors.white : Colors.white70,
-                    size: 21,
+                    color: selected
+                        ? AppColors.textPrimary
+                        : AppColors.textSecondary,
+                    size: 20,
                   ),
                 ),
                 const SizedBox(width: 12),
@@ -531,20 +584,19 @@ class PlayerSettingsChoiceCard extends StatelessWidget {
                       Text(
                         label,
                         style: TextStyle(
-                          color: Colors.white,
+                          color: AppColors.textPrimary,
                           fontSize: 14,
                           fontWeight:
                               selected ? FontWeight.w700 : FontWeight.w600,
-                          fontFamily: 'Manrope',
+                          letterSpacing: -0.2,
                         ),
                       ),
-                      const SizedBox(height: 2),
+                      const SizedBox(height: 3),
                       Text(
                         subtitle,
-                        style: TextStyle(
-                          color: Colors.white.withValues(alpha: 0.5),
-                          fontSize: 11,
-                          fontFamily: 'Manrope',
+                        style: const TextStyle(
+                          color: AppColors.textMuted,
+                          fontSize: 11.5,
                           height: 1.3,
                         ),
                       ),
@@ -552,8 +604,11 @@ class PlayerSettingsChoiceCard extends StatelessWidget {
                   ),
                 ),
                 if (selected)
-                  const Icon(Icons.check_circle_rounded,
-                      color: _kAccent, size: 20),
+                  const Icon(
+                    Icons.check_circle_rounded,
+                    color: AppColors.primary,
+                    size: 20,
+                  ),
               ],
             ),
           ),

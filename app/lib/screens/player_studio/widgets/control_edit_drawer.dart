@@ -58,8 +58,8 @@ class ControlEditDrawer extends StatelessWidget {
                     if (onDelete != null)
                       IconButton(
                         icon: const Icon(
-                          Icons.delete_outline,
-                          color: Colors.red,
+                          Icons.delete_outline_rounded,
+                          color: Color(0xFFFF453A),
                           size: 20,
                         ),
                         onPressed: onDelete,
@@ -80,10 +80,10 @@ class ControlEditDrawer extends StatelessWidget {
                 ),
                 SliderTheme(
                   data: SliderTheme.of(context).copyWith(
-                    activeTrackColor: const Color(0xFF007AFF),
+                    activeTrackColor: const Color(0xFF0A84FF),
                     inactiveTrackColor: Colors.white.withOpacity(0.15),
                     thumbColor: Colors.white,
-                    overlayColor: const Color(0xFF007AFF).withOpacity(0.2),
+                    overlayColor: const Color(0xFF0A84FF).withOpacity(0.2),
                   ),
                   child: Slider(
                     min: kMinSizePct,
@@ -118,10 +118,10 @@ class ControlEditDrawer extends StatelessWidget {
                   ),
                   SliderTheme(
                     data: SliderTheme.of(context).copyWith(
-                      activeTrackColor: const Color(0xFF007AFF),
+                      activeTrackColor: const Color(0xFF0A84FF),
                       inactiveTrackColor: Colors.white.withOpacity(0.15),
                       thumbColor: Colors.white,
-                      overlayColor: const Color(0xFF007AFF).withOpacity(0.2),
+                      overlayColor: const Color(0xFF0A84FF).withOpacity(0.2),
                     ),
                     child: Slider(
                       min: 0.1,
@@ -139,7 +139,13 @@ class ControlEditDrawer extends StatelessWidget {
                         'Style Emby — barre fine, sans fond',
                       PlayerControlType.timelineGlassInline =>
                         'Style verre fin — une ligne, heures de chaque côté',
-                      _ => 'Style verre — pill floutée, boutons en dessous',
+                      _ => switch (tlOpts.visualStyle) {
+                          TimelineVisualStyle.flat =>
+                            'Style Net — pill opaque, boutons en dessous',
+                          TimelineVisualStyle.neumorphic =>
+                            'Style Doux — pill extrudée, boutons en dessous',
+                          _ => 'Style verre — pill floutée, boutons en dessous',
+                        },
                     },
                     style: TextStyle(
                       color: Colors.white.withOpacity(0.55),
@@ -275,7 +281,7 @@ class _TimelineToggle extends StatelessWidget {
         style: const TextStyle(color: Colors.white70, fontSize: 13),
       ),
       value: value,
-      activeThumbColor: const Color(0xFF007AFF),
+      activeThumbColor: const Color(0xFF0A84FF),
       onChanged: onChanged,
     );
   }
@@ -374,7 +380,7 @@ class _PercentageFieldState extends State<_PercentageField> {
           ),
           focusedBorder: OutlineInputBorder(
             borderRadius: BorderRadius.all(Radius.circular(6)),
-            borderSide: BorderSide(color: Color(0xFF007AFF)),
+            borderSide: BorderSide(color: Color(0xFF0A84FF)),
           ),
           suffixText: '%',
           suffixStyle: TextStyle(color: Colors.grey, fontSize: 13),

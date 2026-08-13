@@ -1,7 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
+import '../../desktop_window.dart';
 import '../../providers/library_provider.dart';
 import '../../theme/app_colors.dart';
+import '../../utils/responsive.dart';
 import '../../widgets/global/empty_state.dart';
 import '../../widgets/global/media_card.dart';
 import 'movie_detail_screen.dart';
@@ -45,20 +47,15 @@ class _MoviesScreenState extends State<MoviesScreen> {
     return items;
   }
 
-  int _crossAxisCount(double width) {
-    if (width >= 1400) return 7;
-    if (width >= 1100) return 6;
-    if (width >= 900) return 5;
-    if (width >= 600) return 4;
-    return 3;
-  }
+  int _crossAxisCount(double width) => AppLayout.posterGridCount(width);
 
   @override
   Widget build(BuildContext context) {
     final lp = Provider.of<LibraryProvider>(context);
     final width = MediaQuery.sizeOf(context).width;
-    final horizontalPadding = width >= 900 ? 48.0 : 16.0;
+    final horizontalPadding = AppLayout.pagePadding(context);
     final filtered = _filteredMovies(lp);
+    final compact = AppLayout.isCompact(context);
 
     return Scaffold(
       backgroundColor: AppColors.background,
@@ -75,7 +72,11 @@ class _MoviesScreenState extends State<MoviesScreen> {
                       child: Padding(
                         padding: EdgeInsets.fromLTRB(
                           horizontalPadding,
-                          widget.embedded ? MediaQuery.paddingOf(context).top + 54 : 48,
+                          widget.embedded
+                              ? embeddedShellContentTopInset(context)
+                              : (compact
+                                  ? MediaQuery.paddingOf(context).top + 56
+                                  : 48),
                           horizontalPadding,
                           0,
                         ),
@@ -86,7 +87,7 @@ class _MoviesScreenState extends State<MoviesScreen> {
                               'Films',
                               style: Theme.of(context).textTheme.displaySmall?.copyWith(
                                     fontWeight: FontWeight.w800,
-                                    fontSize: 32,
+                                    fontSize: compact ? 26 : 32,
                                   ),
                             ),
                             const SizedBox(height: 20),
@@ -127,13 +128,22 @@ class _MoviesScreenState extends State<MoviesScreen> {
                       )
                     else
                       SliverPadding(
-                        padding: EdgeInsets.fromLTRB(horizontalPadding, 24, horizontalPadding, 48),
+                        padding: EdgeInsets.fromLTRB(
+                          horizontalPadding,
+                          24,
+                          horizontalPadding,
+                          MediaQuery.paddingOf(context).bottom + 48,
+                        ),
                         sliver: SliverGrid(
                           gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
                             crossAxisCount: _crossAxisCount(width),
-                            mainAxisSpacing: 24,
-                            crossAxisSpacing: 12,
-                            childAspectRatio: 0.52,
+                            mainAxisSpacing: compact
+                                ? 16
+                                : AppLayout.posterGridMainSpacing,
+                            crossAxisSpacing: compact
+                                ? 10
+                                : AppLayout.posterGridCrossSpacing,
+                            childAspectRatio: AppLayout.posterGridAspectRatio,
                           ),
                           delegate: SliverChildBuilderDelegate(
                             (context, index) {

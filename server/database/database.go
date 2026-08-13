@@ -147,6 +147,30 @@ func createTables() error {
 			FOREIGN KEY (media_id) REFERENCES medias(id) ON DELETE CASCADE
 		);`,
 		`CREATE INDEX IF NOT EXISTS idx_subtitles_media_id ON subtitles(media_id);`,
+		// partial=1 means the .vtt only covers the beginning of the media: it is
+		// written by the fast head pass so subtitles are usable within seconds on
+		// a large remux, and replaced by the complete pass shortly after.
+		`ALTER TABLE subtitles ADD COLUMN partial INTEGER NOT NULL DEFAULT 0;`,
+
+		// App-wide settings (MediaHub, TMDB, library paths) — overrides env when set.
+		`CREATE TABLE IF NOT EXISTS app_settings (
+			key TEXT PRIMARY KEY,
+			value TEXT NOT NULL,
+			updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+		);`,
+
+		// Named Player Studio layouts owned by a user (synced across devices).
+		`CREATE TABLE IF NOT EXISTS user_player_layouts (
+			id TEXT PRIMARY KEY,
+			user_id INTEGER NOT NULL,
+			name TEXT NOT NULL,
+			config_json TEXT NOT NULL,
+			use_modular BOOLEAN NOT NULL DEFAULT 0,
+			updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+			FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+		);`,
+		`CREATE INDEX IF NOT EXISTS idx_user_player_layouts_user_id
+			ON user_player_layouts(user_id);`,
 	}
 
 	for _, query := range queries {

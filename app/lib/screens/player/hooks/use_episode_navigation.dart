@@ -11,6 +11,20 @@ class EpisodeNavigationController extends ChangeNotifier {
 
   EpisodeTimestamps? timestamps;
   HomeMediaItem? nextEpisode;
+
+  /// Set when the season that follows is missing from the server.
+  ///
+  /// It comes with a [nextEpisode] when that episode is the last one available:
+  /// the offer is then made one episode early, so the download can run while
+  /// the finale plays. See [isSeasonLookahead].
+  NextSeason? nextSeason;
+
+  /// A "no thanks" only silences the card for this playback, never for good —
+  /// the user may well change their mind on the next run.
+  bool _nextSeasonDismissed = false;
+  bool _nextSeasonForced = false;
+  bool _seasonLookahead = false;
+
   bool isLoading = true;
 
   // Dynamic chapters parsed via backend ffprobe
@@ -156,6 +170,11 @@ class EpisodeNavigationController extends ChangeNotifier {
       if (response.hasNext) {
         nextEpisode = response.episode;
       }
+      nextSeason = response.nextSeason;
+      // Offered early only while it can still be acted on: a season already
+      // requested would just interrupt the finale for nothing.
+      _seasonLookahead =
+          nextEpisode != null && (nextSeason?.canRequest ?? false);
     } catch (e) {
       print("EpisodeNav: Failed to load next episode: $e");
     }
@@ -336,7 +355,14 @@ class EpisodeNavigationController extends ChangeNotifier {
 
     if (inOutro != showNextEpisodeOutro) {
       showNextEpisodeOutro = inOutro;
-      if (inOutro && nextEpisode != null) {
+      // The season card takes the outro over when it is up: auto-advancing out
+      // of a page that asks a question would answer it for the user.
+      // Once the early offer is up it stays up until answered: an outro
+      // followed by a teaser would otherwise pull it away mid-decision.
+      if (inOutro && isSeasonLookahead && !_nextSeasonDismissed) {
+        _nextSeasonForced = true;
+      }
+      if (inOutro && nextEpisode != null && !showNextSeasonCard) {
         _startOutroAutoPlay();
       } else {
         _cancelOutroAutoPlay();
@@ -360,6 +386,53 @@ class EpisodeNavigationController extends ChangeNotifier {
       }
       notifyListeners();
     });
+  }
+
+  /// True when the missing season is offered one episode early: a next episode
+  /// exists, and it is the last one the server holds.
+  ///
+  /// Decided once, when the episode loads, so sending the request — which turns
+  /// [NextSeason.canRequest] off — does not yank the card away mid-confirmation.
+  bool get isSeasonLookahead => _seasonLookahead;
+
+  /// Whether the end-of-season card should be on screen. It has no countdown
+  /// and never acts on its own — requesting a season is always a deliberate tap.
+  bool get showNextSeasonCard =>
+      (showNextEpisodeOutro || _nextSeasonForced) &&
+      nextSeason != null &&
+      (nextEpisode == null || isSeasonLookahead) &&
+      !_nextSeasonDismissed;
+
+  /// Forces the card up when playback reached the very end without the outro
+  /// ever being detected, so a missing chapter marker cannot swallow the offer.
+  ///
+  /// Kept separate from [showNextEpisodeOutro], which the position loop owns
+  /// and rewrites on every tick.
+  void revealNextSeasonCard() {
+    if (nextSeason == null || _nextSeasonDismissed) return;
+    if (nextEpisode != null && !isSeasonLookahead) return;
+    if (!_nextSeasonForced) {
+      _nextSeasonForced = true;
+      notifyListeners();
+    }
+  }
+
+  void dismissNextSeasonCard() {
+    _nextSeasonDismissed = true;
+    // Putting the card away mid-outro hands the outro back to the next-episode
+    // pill, countdown included — the behaviour of any other episode.
+    if (showNextEpisodeOutro && nextEpisode != null) {
+      _startOutroAutoPlay();
+    }
+    notifyListeners();
+  }
+
+  /// Flips the card to its confirmed state after a request went through.
+  void markNextSeasonRequested() {
+    final season = nextSeason;
+    if (season == null) return;
+    nextSeason = season.copyWith(requestStatus: 'pending', canRequest: false);
+    notifyListeners();
   }
 
   void _cancelOutroAutoPlay() {

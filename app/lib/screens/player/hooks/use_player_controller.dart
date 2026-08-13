@@ -1,9 +1,12 @@
 import 'dart:async';
-import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:media_kit/media_kit.dart' as mk;
 import 'package:media_kit_video/media_kit_video.dart';
 import '../../../models/models.dart';
+import '../../../utils/app_platform.dart';
+import '../player_engine.dart';
+import '../web/web_playback.dart';
+import '../web_quality.dart';
 import '../../../services/api_client.dart';
 import '../../../services/playback_preferences_storage.dart';
 import '../player_playback_preferences.dart';
@@ -37,6 +40,44 @@ class PlayerController {
   /// True while switching quality / rebuilding the HLS session (drives the UI spinner).
   bool isSwitchingQuality = false;
 
+  /// True while mpv is waiting for the demuxer cache to refill (network underrun).
+  bool isBuffering = false;
+
+  /// True once this session has decoded a frame of *this* media.
+  ///
+  /// The libmpv instance and its texture come from [PlayerEnginePool] and are
+  /// reused across playbacks, so between `open()` and the first decoded frame
+  /// the texture still holds the last frame of whatever played before. Opening
+  /// a second title therefore flashed the previous one. Callers cover the video
+  /// until this turns true; it is the only signal that the picture on screen
+  /// belongs to the media that was asked for.
+  bool hasFirstFrame = false;
+
+  /// mpv has read this file's dimensions — it knows what it is about to draw,
+  /// but has not necessarily drawn it yet.
+  bool _videoParamsReady = false;
+
+  /// The playback clock has ticked at least once while playing, which mpv only
+  /// does once it is presenting frames.
+  bool _clockRunning = false;
+
+  /// [hasFirstFrame] needs both, and one frame more.
+  ///
+  /// Neither signal alone is late enough. `videoParams` fires on load, well
+  /// before anything is drawn. The clock can tick on the very frame the new
+  /// picture reaches the texture. Since the engine texture is pooled and still
+  /// holds the previous title, lifting the cover one frame early is exactly the
+  /// flash this guards against — so the last hop waits for the next frame,
+  /// which costs about 16ms and cannot be seen.
+  void _maybeMarkFirstFrame() {
+    if (hasFirstFrame || !_videoParamsReady || !_clockRunning) return;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (_disposed || hasFirstFrame) return;
+      hasFirstFrame = true;
+      _onFirstFrame?.call();
+    });
+  }
+
   /// In HLS mode the stream timeline resets to 0 at this offset (seconds) into
   /// the original media. Used to display the absolute position and to compute
   /// seek targets. 0 in Direct Play.
@@ -47,11 +88,30 @@ class PlayerController {
   String? currentQuality;
   String? _hlsSessionId;
 
+  /// Source audio tracks the current HLS session publishes as renditions, in
+  /// player enumeration order. Empty in Direct Play, where the player sees the
+  /// file's own tracks directly.
+  List<int> _hlsAudioMap = const [];
+
+  /// Bitmap subtitle stream (0:s:N) currently painted into the transcoded video,
+  /// or -1. Carried across quality switches and seek reloads so the choice is not
+  /// silently lost, since every one of those rebuilds the session.
+  int _hlsBurnedSubTypedIndex = -1;
+
+  /// True while one HLS session is being replaced by another. Position and
+  /// duration events are ignored during that window: they may still describe
+  /// the outgoing stream while the offsets they are combined with already
+  /// describe the incoming one.
+  bool _hlsSwapInFlight = false;
+
   Media? _media;
   ApiClient? _apiClient;
   int _knownDurationSeconds = 0;
   VoidCallback? _onDurationChanged;
+  VoidCallback? _onPositionChanged;
   VoidCallback? _onQualitySwitchingChanged;
+  VoidCallback? _onBufferingChanged;
+  VoidCallback? _onFirstFrame;
   VoidCallback? _onTracksChanged;
   VoidCallback? _onPlayingChanged;
 
@@ -97,10 +157,23 @@ class PlayerController {
   /// Set when opening with inherited audio/subtitle choices (auto-advance).
   bool _pendingPreferenceReapply = false;
 
+  /// Language tag of the audio track currently selected, when the canonical
+  /// list knows it. Carried to the next episode so mpv can pick the equivalent
+  /// track at load time.
+  String? get _selectedAudioLang {
+    final audio = mediaTracks?.audio ?? const <MediaAudioTrack>[];
+    if (_selectedAudioIndex < 0 || _selectedAudioIndex >= audio.length) {
+      return null;
+    }
+    return PlaybackPreferencesStorage.normalizeLangCode(
+        audio[_selectedAudioIndex].language);
+  }
+
   PlayerPlaybackPreferences exportPreferences() {
     if (_subtitlesExplicitlyOff) {
       return PlayerPlaybackPreferences(
         audioIndex: _selectedAudioIndex,
+        audioLang: _selectedAudioLang,
         subtitlesOff: true,
       );
     }
@@ -112,13 +185,15 @@ class PlayerController {
     if (!subsActive) {
       return PlayerPlaybackPreferences(
         audioIndex: _selectedAudioIndex,
+        audioLang: _selectedAudioLang,
         subtitlesOff: true,
       );
     }
 
     return PlayerPlaybackPreferences(
       audioIndex: _selectedAudioIndex,
-      subtitleLang: _selectedSubtitleLang ?? _normalizeLang(track.language),
+      audioLang: _selectedAudioLang,
+      subtitleLang: _selectedSubtitleLang ?? _canonicalLangForEmbedded(track),
       internalSubId: _selectedInternalSubId ?? track.id,
       subtitlesOff: false,
     );
@@ -137,9 +212,42 @@ class PlayerController {
       _selectedSubtitleLang = null;
       _selectedInternalSubId = null;
     } else {
-      _selectedSubtitleLang = prefs.subtitleLang;
-      _selectedInternalSubId = prefs.internalSubId;
+      _selectedSubtitleLang = _resolveCarriedSubtitleLang(prefs.subtitleLang);
+      // The mpv id only means anything within the media it came from.
+      _selectedInternalSubId =
+          _selectedSubtitleLang == prefs.subtitleLang ? prefs.internalSubId : null;
     }
+  }
+
+  /// Re-resolve a subtitle key carried over from another media (auto-advance to
+  /// the next episode).
+  ///
+  /// Keys are assigned in container order — `fr`, then `fr2` for a second French
+  /// track — so the same key can mean the full track in one episode and the
+  /// forced one in the next, depending on how each file was muxed. A forced
+  /// track only subtitles foreign dialogue, so inheriting it as "French" looks
+  /// exactly like subtitles being broken. Prefer a full track of the same base
+  /// language whenever the episode has one.
+  String? _resolveCarriedSubtitleLang(String? lang) {
+    if (lang == null || lang.isEmpty) return lang;
+    final subs = mediaTracks?.subtitles ?? const <MediaSubtitleTrack>[];
+    if (subs.isEmpty) return lang;
+
+    final base = lang.replaceAll(RegExp(r'\d+$'), '');
+    MediaSubtitleTrack? exact;
+    MediaSubtitleTrack? fullSameLanguage;
+    for (final s in subs) {
+      if (s.lang == lang) exact = s;
+      if (s.lang.replaceAll(RegExp(r'\d+$'), '') == base &&
+          !s.forced &&
+          fullSameLanguage == null) {
+        fullSameLanguage = s;
+      }
+    }
+
+    if (exact != null && !exact.forced) return exact.lang;
+    if (fullSameLanguage != null) return fullSameLanguage.lang;
+    return lang;
   }
 
   Timer? _heartbeatTimer;
@@ -147,21 +255,66 @@ class PlayerController {
 
   /// Delay subtitle extraction so FFmpeg on the server does not compete with
   /// the HTTP stream for disk I/O during the first minutes of Direct Play.
-  static const _subtitleExtractDelay = Duration(seconds: 90);
+  /// Delay before kicking off background subtitle extraction in Direct Play.
+  ///
+  /// Subtitles are no longer extracted at scan time, so this is the only thing
+  /// that produces them — it can't wait long. It still waits out the initial
+  /// demuxer burst (mpv prefetches ~240s up front) so the extraction's own
+  /// sequential read doesn't fight the buffer that is filling right now.
+  static const _subtitleExtractDelay = Duration(seconds: 20);
   StreamSubscription? _positionSubscription;
   StreamSubscription? _durationSubscription;
   StreamSubscription? _completedSubscription;
   StreamSubscription? _playingSubscription;
   StreamSubscription? _videoParamsSubscription;
+  StreamSubscription? _bufferingSubscription;
   StreamSubscription? _reapplySubscription;
   bool _disposed = false;
 
   /// Aspect ratio of the current video (width / height).
   double videoAspectRatio = 16 / 9;
 
+  /// Absolute second the Direct Play stream was handed to mpv at, or -1 when it
+  /// was opened from the beginning. Set when [init] resolves the resume point in
+  /// time to pass it to `Media.start`, which lets mpv open the HTTP stream
+  /// directly at the right byte offset instead of playing from 0 and seeking.
+  int _openedAtSeconds = -1;
+
+  /// Milestones of the current start-up, printed once playback is rolling.
+  ///
+  /// "It takes a while to start" is otherwise unattributable: the wait is split
+  /// between the resume lookup, mpv opening the stream, the first frame being
+  /// decoded and the first frame being painted, and only the breakdown says
+  /// which one to attack.
+  final Stopwatch _startupWatch = Stopwatch();
+  final List<String> _startupMarks = [];
+  bool _startupReported = false;
+
+  /// Records the first occurrence of [label]; later ones are ignored, so a
+  /// milestone driven by a stream (the first decoded frame) can be marked from
+  /// inside a listener that fires many times.
+  void _mark(String label) {
+    if (!_startupWatch.isRunning || _startupReported) return;
+    if (_startupMarks.any((m) => m.startsWith('$label='))) return;
+    _startupMarks.add('$label=${_startupWatch.elapsedMilliseconds}ms');
+  }
+
+  void _reportStartup() {
+    if (_startupReported || !_startupWatch.isRunning) return;
+    _startupReported = true;
+    _mark('playing');
+    _startupWatch.stop();
+    debugPrint('PLAYER STARTUP: ${_startupMarks.join(' ')}');
+  }
+
+  /// The pooled libmpv instance this controller drives. Held so it can be given
+  /// back on dispose instead of destroyed.
+  late final PlayerEngine _engine;
+
   PlayerController() {
-    player = mk.Player();
-    videoController = VideoController(player);
+    _engine = PlayerEnginePool.acquire();
+    player = _engine.player;
+    videoController = _engine.videoController;
   }
 
   Future<void> init({
@@ -172,10 +325,18 @@ class PlayerController {
     required VoidCallback onDurationChanged,
     VoidCallback? onPlayingChanged,
     VoidCallback? onQualitySwitchingChanged,
+    VoidCallback? onBufferingChanged,
+    VoidCallback? onFirstFrame,
     VoidCallback? onTracksChanged,
     PlayerPlaybackPreferences? inheritedPreferences,
     int knownDurationSeconds = 0,
+    Future<int>? resumePositionFuture,
   }) async {
+    _startupWatch.start();
+    // Must run before media_kit injects hls.js: the bridge intercepts the
+    // assignment of `window.Hls` so it can reclaim abandoned instances later.
+    WebPlayback.install();
+
     try {
       await _applyDirectPlayPlayerProperties();
     } catch (e) {
@@ -184,9 +345,21 @@ class PlayerController {
 
     _positionSubscription = player.stream.position.listen((pos) {
       if (_disposed) return;
+      // A session swap retires one stream and starts another. Until the new one
+      // is fully wired, mpv can still emit positions belonging to the old
+      // stream, and combining those with the new start offset yields an
+      // absolute position that belongs to neither — large enough, on a big
+      // seek, to exceed the media duration and blow up the progress bar.
+      if (_hlsSwapInFlight) return;
       position = (currentQuality != null && _hlsStartOffset > 0)
           ? pos + Duration(seconds: _hlsStartOffset)
           : pos;
+      // The clock advancing is the first moment the user is genuinely watching.
+      if (isPlaying) {
+        _reportStartup();
+        _clockRunning = true;
+        _maybeMarkFirstFrame();
+      }
       onPositionChanged();
     });
 
@@ -195,13 +368,22 @@ class PlayerController {
       _setPlaying(playing);
     });
 
+    _bufferingSubscription = player.stream.buffering.listen((buffering) {
+      if (_disposed) return;
+      _setBuffering(buffering);
+    });
+    isBuffering = player.state.buffering;
+
     isPlaying = player.state.playing;
 
     _durationSubscription = player.stream.duration.listen((dur) {
       if (_disposed) return;
       // While transcoding we force the full media duration (MPV's reported
-      // duration only covers the segments produced so far).
-      if (currentQuality != null) return;
+      // duration only covers the segments produced so far). During a swap
+      // currentQuality may momentarily still read as Direct Play, so the swap
+      // guard has to stand in for it — otherwise the growing HLS duration
+      // overwrites the real one and every later position looks out of range.
+      if (_hlsSwapInFlight || currentQuality != null) return;
       duration = dur;
       onDurationChanged();
     });
@@ -214,7 +396,12 @@ class PlayerController {
     _videoParamsSubscription = player.stream.videoParams.listen((params) {
       if (_disposed) return;
       final aspect = params.aspect;
-      if (aspect != null && aspect > 0) videoAspectRatio = aspect;
+      if (aspect != null && aspect > 0) {
+        _mark('firstFrame');
+        videoAspectRatio = aspect;
+        _videoParamsReady = true;
+        _maybeMarkFirstFrame();
+      }
     });
 
     _media = media;
@@ -225,8 +412,11 @@ class PlayerController {
       duration = Duration(seconds: _knownDurationSeconds);
     }
     _onDurationChanged = onDurationChanged;
+    _onPositionChanged = onPositionChanged;
     _onPlayingChanged = onPlayingChanged;
     _onQualitySwitchingChanged = onQualitySwitchingChanged;
+    _onBufferingChanged = onBufferingChanged;
+    _onFirstFrame = onFirstFrame;
     _onTracksChanged = onTracksChanged;
 
     final streamUrl = apiClient.getStreamUrl(media.id);
@@ -239,10 +429,66 @@ class PlayerController {
       _selectedInternalSubId = null;
     }
 
-    try {
-      await player.open(mk.Media(streamUrl), play: false);
-    } catch (e) {
-      debugPrint("Player: failed to open stream: $e");
+    // Direct Play is a native-only path. A browser cannot open the containers
+    // and audio codecs a private library is actually made of, and the failure is
+    // silent — picture, no sound, no message. Rather than open the file and back
+    // out of it a moment later, the web waits for the track list and starts
+    // straight in HLS, at the source's own resolution.
+    if (!AppPlatform.isWeb) {
+      // Which audio track to load with. The episode being carried over from
+      // knows best; otherwise it is the user's standing preference, which lives
+      // on this machine and costs nothing to read.
+      var preferredAudioLang = inheritedPreferences?.audioLang;
+      if (preferredAudioLang == null) {
+        try {
+          preferredAudioLang =
+              await PlaybackPreferencesStorage().loadDefaultAudioLang();
+        } catch (_) {
+          preferredAudioLang = null;
+        }
+      }
+      await _applyPreferredAudioLanguage(preferredAudioLang);
+
+      _mark('prepared');
+      // Resolve the resume point BEFORE opening, so mpv can be handed the offset
+      // as part of the load itself. Playing from 0 and seeking afterwards meant
+      // connecting, probing and buffering at the head of the file, then throwing
+      // all of it away for a second connection at the real position — the whole
+      // start-up cost paid twice, plus an audible blip from the first seconds.
+      //
+      // The lookup is already in flight (it starts before init), so this
+      // normally costs nothing. If the server is slow to answer, give up on the
+      // fast path rather than hold the picture hostage: -1 falls back to the
+      // legacy open-then-seek in [startPlayback].
+      var startAt = -1;
+      if (resumePositionFuture != null) {
+        try {
+          startAt = await resumePositionFuture
+              .timeout(const Duration(milliseconds: 1500));
+        } catch (_) {
+          startAt = -1;
+        }
+      } else {
+        startAt = 0;
+      }
+      _mark('resume');
+
+      try {
+        await player.open(
+          mk.Media(
+            streamUrl,
+            start: startAt > 0 ? Duration(seconds: startAt) : null,
+          ),
+          play: false,
+        );
+        if (startAt >= 0) {
+          _openedAtSeconds = startAt;
+          if (startAt > 0) position = Duration(seconds: startAt);
+        }
+      } catch (e) {
+        debugPrint("Player: failed to open stream: $e");
+      }
+      _mark('opened');
     }
 
     unawaited(_loadMediaTracksAndPreferences(
@@ -268,6 +514,12 @@ class PlayerController {
       if (_disposed) return;
 
       mediaTracks = tracks;
+
+      // The track list is what carries the source resolution, so this is the
+      // first moment the web can pick a quality. Nothing is playing yet on that
+      // platform — init deliberately opened nothing.
+      if (await _startWebTranscode()) return;
+
       if (inheritedPreferences != null) {
         _applyInheritedPreferences(inheritedPreferences);
       } else if (tracks.audio.isNotEmpty) {
@@ -292,15 +544,111 @@ class PlayerController {
     }
   }
 
-  Future<void> _applyDirectPlayPlayerProperties() async {
+  /// Starts playback on the web, which is always a transcoding session.
+  ///
+  /// Returns true when a session was started, so the caller stops configuring a
+  /// player that is about to be handed a different source.
+  Future<bool> _startWebTranscode() async {
+    if (!AppPlatform.isWeb) return false;
+    if (currentQuality != null) return false; // already running
+    final tracks = mediaTracks;
+    if (tracks == null) return false;
+
+    final height = tracks.video?.height ?? 0;
+    final quality = qualityForSourceHeight(height);
+    debugPrint("Player: web session — source height ${height}px, "
+        "asking $quality (video=${tracks.video?.codec})");
+    await switchToQuality(quality);
+    return true;
+  }
+
+  /// Tells mpv which audio language to select when it loads the next file.
+  ///
+  /// Without this, the track list has to come back from the server before the
+  /// choice can be made, so playback starts on whatever the container marked as
+  /// default and switches a second later — and switching audio mid-playback
+  /// makes mpv refill the demuxer for the new stream, which is audible.
+  ///
+  /// [code] is a normalized two-letter code, or null to let the file decide.
+  /// Passing null must still write the property: on a reused engine, silence
+  /// here would mean inheriting the previous media's preference.
+  Future<void> _applyPreferredAudioLanguage(String? code) async {
+    if (AppPlatform.isWeb) return;
     final platform = player.platform as dynamic;
-    await platform.setProperty('cache', 'yes');
+    await _setMpvProperty(platform, 'alang', _alangPriorityList(code));
+  }
+
+  /// Expands a two-letter code into the tags real files actually carry.
+  ///
+  /// A Matroska track is usually tagged with an ISO 639-2 code (`fre`, `ger`)
+  /// and sometimes with a plain English name, none of which match the two-letter
+  /// form on their own. mpv takes a priority list, so every spelling is offered
+  /// at once rather than guessed at.
+  static String _alangPriorityList(String? code) {
+    if (code == null || code.isEmpty) return '';
+    const alternates = {
+      'fr': ['fre', 'fra', 'french'],
+      'en': ['eng', 'english'],
+      'es': ['spa', 'esp', 'spanish'],
+      'de': ['ger', 'deu', 'german'],
+      'it': ['ita', 'italian'],
+      'pt': ['por', 'portuguese'],
+      'ja': ['jpn', 'japanese'],
+      'ru': ['rus', 'russian'],
+      'zh': ['chi', 'zho', 'chinese'],
+      'ar': ['ara', 'arabic'],
+      'nl': ['nld', 'dut', 'dutch'],
+      'ko': ['kor', 'korean'],
+    };
+    return [code, ...?alternates[code]].join(',');
+  }
+
+  /// Sets one mpv option, isolating its failure.
+  ///
+  /// The block below used to be a single `await` chain: one option mpv did not
+  /// recognise threw, and every option after it was silently skipped — the
+  /// hardware decoder or the reconnect settings could be missing with nothing
+  /// in the logs to say so.
+  Future<void> _setMpvProperty(dynamic platform, String name, String value) async {
+    try {
+      await platform.setProperty(name, value);
+    } catch (e) {
+      debugPrint("Player: mpv option $name=$value rejected: $e");
+    }
+  }
+
+  Future<void> _applyDirectPlayPlayerProperties() async {
+    // Every property below is an mpv option. On web the backend is an
+    // HTMLVideoElement with no `setProperty` at all, so this would throw on the
+    // very first line — and unlike its HLS counterpart this method has no
+    // try/catch to swallow it.
+    if (AppPlatform.isWeb) return;
+
+    final platform = player.platform as dynamic;
+    await _setMpvProperty(platform, 'cache', 'yes');
     // ~4 min forward buffer: large enough to absorb any network jitter without
     // hoarding hundreds of MB of RAM (memory pressure on 8GB machines causes
     // periodic decode stalls — video freezes while audio keeps playing).
-    await platform.setProperty('demuxer-max-bytes', '268435456');
-    await platform.setProperty('demuxer-readahead-secs', '240');
-    await platform.setProperty('hr-seek', 'yes');
+    await _setMpvProperty(platform, 'demuxer-max-bytes', '268435456');
+    await _setMpvProperty(platform, 'demuxer-readahead-secs', '240');
+    // Seek inside the buffer instead of re-fetching over HTTP. The default
+    // (`auto`) does not commit to using the cache when the underlying stream is
+    // itself seekable — which an HTTP range server is — so a rewind of a few
+    // seconds could open a fresh request and re-probe, while the frames it
+    // wanted were already sitting in those 4 minutes of RAM. The HLS path has
+    // always set this explicitly; Direct Play only inherited it by accident,
+    // when a session happened to have passed through transcoding first.
+    await _setMpvProperty(platform, 'demuxer-seekable-cache', 'yes');
+    // Keep a real rewind window behind the playhead. mpv's default (48 MiB) is
+    // about twelve seconds on a 30 Mbps remux — less than the back-10s button
+    // asks for, which made the most common seek in the player the one most
+    // likely to hit the network. Raised to 64 MiB rather than something
+    // generous on purpose: the forward buffer above is already 256 MB, and the
+    // periodic decode stalls this player was fixed for were memory pressure on
+    // 8 GB machines. +16 MiB over mpv's own default buys the seek back; another
+    // hundred would risk buying the freeze back with it.
+    await _setMpvProperty(platform, 'demuxer-max-back-bytes', '67108864');
+    await _setMpvProperty(platform, 'hr-seek', 'yes');
     // Whitelisted hardware decoders only (VideoToolbox on macOS, D3D11 on
     // Windows, MediaCodec on Android). Plain 'auto' may pick flaky paths that
     // stall the video track while audio continues.
@@ -308,26 +656,47 @@ class PlayerController {
     // audio continues. videotoolbox-copy decodes in GPU then copies frames to
     // CPU RAM, which is compatible with mpv's OpenGL/CVPixelBuffer/Metal render
     // pipeline on macOS. Windows/Android keep auto-safe (D3D11/MediaCodec).
-    await platform.setProperty(
-        'hwdec', Platform.isMacOS ? 'videotoolbox-copy' : 'auto-safe');
+    await _setMpvProperty(
+        platform, 'hwdec', AppPlatform.isMacOS ? 'videotoolbox-copy' : 'auto-safe');
     // Direct rendering (decoding straight into GPU-mapped buffers) is a known
     // source of periodic video freezes with the libmpv render API embedding
     // used by media_kit; the extra copy is negligible.
-    await platform.setProperty('vd-lavc-dr', 'no');
-    await platform.setProperty('sub-auto', 'no');
-    await platform.setProperty('network-timeout', '60');
+    await _setMpvProperty(platform, 'vd-lavc-dr', 'no');
+    await _setMpvProperty(platform, 'sub-auto', 'no');
+    await _setMpvProperty(platform, 'network-timeout', '60');
     // Transparent reconnection if the OS/router drops the long-lived HTTP
     // connection while the demuxer buffer is full (socket idle for minutes).
-    await platform.setProperty('stream-lavf-o',
+    await _setMpvProperty(platform, 'stream-lavf-o',
         'reconnect=1,reconnect_streamed=1,reconnect_delay_max=5');
-    if (Platform.isMacOS) {
+    // When the network can't keep up, pause and refill ~3 s of cache instead of
+    // freezing on a stuck frame with audio still moving.
+    await _setMpvProperty(platform, 'cache-pause', 'yes');
+    await _setMpvProperty(platform, 'cache-pause-wait', '3');
+    // ...but NOT at startup. `cache-pause-initial` holds the very first frame
+    // back until `cache-pause-wait` seconds of media are buffered, so opening a
+    // file cost a fixed 3 s of buffering before anything appeared — the single
+    // largest self-inflicted part of the wait when starting a Direct Play. The
+    // underrun protection above still applies once playback is running.
+    await _setMpvProperty(platform, 'cache-pause-initial', 'no');
+    // Never block the start of playback on the readahead target being met: mpv
+    // plays as soon as the first frames are decoded and keeps filling the 4 min
+    // buffer in the background. (Default, pinned because the value decides
+    // whether `demuxer-readahead-secs` above is a buffer or a startup delay.)
+    await _setMpvProperty(platform, 'demuxer-cache-wait', 'no');
+    // Cap the container probe. FFmpeg analyses up to 5 s of media before it
+    // declares the stream list, and over the network every one of those bytes
+    // is latency in front of the first frame. 2 s is still several times what a
+    // library remux needs — its codecs are declared in the container header —
+    // while the probe-size ceiling is left at FFmpeg's default so an unusual
+    // file keeps enough room to have all of its tracks recognised.
+    await _setMpvProperty(platform, 'demuxer-lavf-analyzeduration', '2');
+    if (AppPlatform.isMacOS) {
       // macOS rendering pipeline (mpv → OpenGL → CVPixelBuffer → Metal →
       // Flutter) can stall periodically, especially on macOS 27 beta. These
       // properties prevent the video output from blocking when the texture
       // bridge can't keep up — mpv drops frames instead of freezing.
-      await platform.setProperty('framedrop', 'vo');
-      await platform.setProperty('video-sync', 'display-desync');
-      await platform.setProperty('cache-pause', 'no');
+      await _setMpvProperty(platform, 'framedrop', 'vo');
+      await _setMpvProperty(platform, 'video-sync', 'display-desync');
     }
   }
 
@@ -349,17 +718,38 @@ class PlayerController {
     }
   }
 
-  bool _isSubtitleReady(String lang) {
-    final subs = mediaTracks?.subtitles ?? const <MediaSubtitleTrack>[];
-    for (final s in subs) {
-      if (s.lang == lang) return s.ready;
+  /// Canonical track for a language key, or null when the media has no such key.
+  MediaSubtitleTrack? _trackForLang(String lang) {
+    for (final s in mediaTracks?.subtitles ?? const <MediaSubtitleTrack>[]) {
+      if (s.lang == lang) return s;
     }
-    return false;
+    return null;
+  }
+
+  bool _isSubtitleReady(String lang) {
+    final track = _trackForLang(lang);
+    if (track == null) return false;
+    // Bitmap tracks are never extracted — they are burned in on demand — so they
+    // are usable the moment the media is known.
+    if (track.image) return true;
+    return track.ready;
   }
 
   bool _hasPendingSubtitles() {
     final subs = mediaTracks?.subtitles ?? const <MediaSubtitleTrack>[];
-    return subs.any((s) => !s.ready);
+    // A partial track still has work outstanding: the server is completing it.
+    return subs.any((s) => !s.ready || s.partial);
+  }
+
+  /// True when [lang] is currently served from a head-only extraction. The cues
+  /// stop partway through the media, so the track must be re-attached once the
+  /// server finishes the complete pass.
+  bool _isSubtitlePartial(String lang) {
+    final subs = mediaTracks?.subtitles ?? const <MediaSubtitleTrack>[];
+    for (final s in subs) {
+      if (s.lang == lang) return s.partial;
+    }
+    return false;
   }
 
   Future<void> _refreshMediaTracks() async {
@@ -372,6 +762,15 @@ class PlayerController {
     }
   }
 
+  /// Signature of the external subtitle currently attached in HLS mode. The poll
+  /// loop re-attaches only when this changes — first availability, or a
+  /// head-only track being replaced by the complete one — instead of re-fetching
+  /// and flickering the track on every tick.
+  String? _attachedSubtitleSignature;
+
+  String _subtitleSignature(String lang) =>
+      '$lang|${_isSubtitlePartial(lang) ? 'head' : 'full'}|$_hlsStartOffset';
+
   /// Refreshes the canonical track list and, when a subtitle language is already
   /// chosen, attaches it as soon as its .vtt becomes ready — no HLS reload.
   Future<void> _onSubtitlesUpdated({bool applyIfSelected = true}) async {
@@ -381,7 +780,10 @@ class PlayerController {
         _selectedSubtitleLang != null &&
         currentQuality != null &&
         _isSubtitleReady(_selectedSubtitleLang!)) {
-      _applySubtitleSelection();
+      final signature = _subtitleSignature(_selectedSubtitleLang!);
+      if (signature != _attachedSubtitleSignature) {
+        _applySubtitleSelection();
+      }
     }
     if (!_hasPendingSubtitles()) {
       _stopSubtitleWatch();
@@ -462,13 +864,19 @@ class PlayerController {
     required ApiClient apiClient,
     int resumeAtSeconds = 0,
   }) async {
-    if (resumeAtSeconds > 0 && currentQuality == null && _media != null) {
-      // The media was already opened (paused) in init(). Start playing, wait
-      // for the first buffering cycle to complete, then seek to the resume
-      // position. The mpv `start` property approach is unreliable with
-      // media_kit 1.2.6 because open() returns before mpv processes the
-      // loadfile command, and the immediate `start=0` reset cancels the
-      // resume offset before mpv applies it.
+    if (_openedAtSeconds == resumeAtSeconds && currentQuality == null) {
+      // Already positioned: init() opened the stream at this exact second via
+      // `Media.start`, which media_kit applies inside mpv's `on_load` hook —
+      // i.e. before the file is loaded, so the offset is part of the load
+      // instead of a seek that undoes it. Nothing left to do but play.
+      await player.play();
+    } else if (resumeAtSeconds > 0 && currentQuality == null && _media != null) {
+      // Fallback when the resume point arrived too late to be part of the open
+      // (slow /progress response). Start playing, wait for the first buffering
+      // cycle to complete, then seek. Setting the mpv `start` property by hand
+      // at this stage does not work with media_kit 1.2.6: open() returns before
+      // mpv processes the loadfile command, and the immediate `start=0` reset
+      // cancels the resume offset before mpv applies it.
       await player.play();
       await _waitUntilSeekable();
       if (!_disposed) {
@@ -478,6 +886,7 @@ class PlayerController {
     } else {
       await player.play();
     }
+    _mark('play');
     if (_pendingPreferenceReapply) {
       _pendingPreferenceReapply = false;
       _reapplySelectionsAfterLoad();
@@ -491,6 +900,12 @@ class PlayerController {
     if (isPlaying == playing) return;
     isPlaying = playing;
     _onPlayingChanged?.call();
+  }
+
+  void _setBuffering(bool buffering) {
+    if (isBuffering == buffering) return;
+    isBuffering = buffering;
+    _onBufferingChanged?.call();
   }
 
   void togglePlayPause() {
@@ -568,6 +983,14 @@ class PlayerController {
   Future<void> switchToQuality(String quality) async {
     if (_media == null || _apiClient == null) return;
     if (currentQuality == quality) return;
+
+    if (currentQuality == null) {
+      // Leaving Direct Play: a bitmap track the user picked there was being
+      // rendered natively by mpv from the original file. That file is no longer
+      // streamed once we transcode, so the choice only survives as a burn-in.
+      _hlsBurnedSubTypedIndex =
+          _subtitlesExplicitlyOff ? -1 : _burnIndexFor(_selectedSubtitleLang);
+    }
     await _openHlsSession(quality: quality, startSeconds: position.inSeconds);
   }
 
@@ -589,6 +1012,14 @@ class PlayerController {
     if (_media == null || _apiClient == null) return;
 
     isSwitchingQuality = true;
+    _hlsSwapInFlight = true;
+    // Move the reported position to the target straight away. The rebuild takes
+    // a few seconds, during which the swap guard (rightly) suppresses mpv's
+    // position events — so without this the timeline would keep showing where
+    // playback was BEFORE the seek, and the user cannot see what they clicked
+    // until the video finally starts.
+    position = Duration(seconds: startSeconds);
+    _onPositionChanged?.call();
     _onQualitySwitchingChanged?.call();
 
     final mediaId = _media!.id;
@@ -600,6 +1031,7 @@ class PlayerController {
         quality,
         startSeconds: startSeconds,
         audioIndex: _selectedAudioIndex,
+        burnSubtitleIndex: _hlsBurnedSubTypedIndex,
       );
 
       // Tear down the previous session only once the new one is ready.
@@ -607,13 +1039,45 @@ class PlayerController {
         _apiClient!.destroyHlsSession(mediaId, oldSessionId);
       }
 
+      await _applyHlsPlayerProperties();
+      // The session publishes exactly the renditions the server was asked for,
+      // and the selection among them is made by index through _hlsAudioMap. A
+      // language preference left over from Direct Play would only give mpv a
+      // second, disagreeing opinion about which one to play.
+      await _applyPreferredAudioLanguage(null);
+      // No longer a Direct Play stream opened at a known second.
+      _openedAtSeconds = -1;
+      await player.open(mk.Media(hls.masterUrl), play: true);
+      // Two defects to undo on web. media_kit trusts `canPlayType` to decide
+      // whether the browser speaks HLS — Chromium says "maybe" and cannot — so
+      // hls.js has to be put back in charge. And it builds a fresh hls.js per
+      // open() without ever destroying the last, so abandoned instances pile up
+      // on the same <video>, each still running its loaders.
+      WebPlayback.adoptHlsSession(hls.masterUrl);
+
+      // _hlsStartOffset feeds directly into the position listener
+      // (`pos + Duration(seconds: _hlsStartOffset)`). Setting it BEFORE
+      // player.open() resolves left a window where a straggler position event
+      // from the OLD stream (still in flight from mpv/media_kit's async
+      // native side) got combined with the NEW target offset — producing an
+      // absolute position that belongs to neither stream. On a big seek this
+      // is not a one-frame flicker: it can read as "landed minutes away from
+      // where I clicked". Every field the position/seek math depends on is
+      // assigned only once we know player.open() has actually taken effect.
       _hlsSessionId = hls.sessionId;
       currentQuality = quality;
       _hlsStartOffset = startSeconds;
+      _hlsAudioMap = hls.audioMap;
+      // Trust the server: a track it could not burn in comes back as -1.
+      _hlsBurnedSubTypedIndex = hls.burnedSubtitle;
 
-      await _applyHlsPlayerProperties();
-      await player.open(mk.Media(hls.masterUrl), play: true);
+      // Duration first, then reopen the gate: position events resume against a
+      // coherent (offset, duration) pair rather than a half-updated one.
       _forceDuration(hls.totalDuration);
+      position = Duration(seconds: startSeconds);
+      _hlsSwapInFlight = false;
+      _onPositionChanged?.call();
+
       _reapplySelectionsAfterLoad();
       _hideLoadingAfterBuffer();
 
@@ -627,6 +1091,9 @@ class PlayerController {
     } catch (e) {
       debugPrint("Player: failed to open HLS session: $e");
       isSwitchingQuality = false;
+      // Must reopen even on failure: leaving the gate shut would freeze the
+      // reported position for the rest of the session.
+      _hlsSwapInFlight = false;
       _onQualitySwitchingChanged?.call();
     }
   }
@@ -644,29 +1111,31 @@ class PlayerController {
 
     currentQuality = null;
     _hlsStartOffset = 0;
+    _hlsAudioMap = const [];
+    // Direct Play renders bitmap subtitles natively; nothing is burned in.
+    _hlsBurnedSubTypedIndex = -1;
     duration = Duration.zero;
 
     await _applyDirectPlayPlayerProperties();
+    // Back to the file's own tracks: load straight onto the language the user
+    // was listening to, instead of the container default followed by a switch.
+    await _applyPreferredAudioLanguage(_selectedAudioLang);
     final streamUrl = _apiClient!.getStreamUrl(_media!.id);
-    await player.open(mk.Media(streamUrl), play: true);
-
-    // Wait for a full buffering cycle so the stream is connected and seekable.
-    try {
-      if (!player.state.buffering) {
-        await player.stream.buffering
-            .firstWhere((b) => b)
-            .timeout(const Duration(seconds: 3));
-      }
-      await player.stream.buffering
-          .firstWhere((b) => !b)
-          .timeout(const Duration(seconds: 7));
-    } catch (_) {
-      await Future.delayed(const Duration(milliseconds: 1200));
-    }
-
-    if (savedSeconds > 0 && !_disposed) {
-      await player.seek(Duration(seconds: savedSeconds));
-      await Future.delayed(const Duration(milliseconds: 400));
+    // Open straight at the position the HLS session was left at. The previous
+    // shape — open at 0, wait out a full buffering cycle, seek, wait again —
+    // buffered the head of the file for nothing and made every switch back to
+    // Direct Play take several seconds of spinner.
+    _openedAtSeconds = savedSeconds > 0 ? savedSeconds : 0;
+    await player.open(
+      mk.Media(
+        streamUrl,
+        start: savedSeconds > 0 ? Duration(seconds: savedSeconds) : null,
+      ),
+      play: true,
+    );
+    if (savedSeconds > 0) {
+      position = Duration(seconds: savedSeconds);
+      _onPositionChanged?.call();
     }
 
     _reapplySelectionsAfterLoad();
@@ -675,14 +1144,110 @@ class PlayerController {
     _onQualitySwitchingChanged?.call();
   }
 
-  /// Seek to an absolute position in the media (handles HLS stream offset).
+  /// Small tolerance for forward seeks, used only as a floor under the player's
+  /// own buffered position so a one-second rounding difference does not force a
+  /// full session rebuild.
+  static const _hlsForwardSeekTolerance = 2;
+
+  /// Hard ceiling on how far ahead an in-session forward seek may land.
+  ///
+  /// Sized against the server's just-in-time window (32s), because that is the
+  /// most the encoder is ever allowed to run ahead — anything past it provably
+  /// does not exist yet. Rebuilding instead costs a measured 3-6s, so this
+  /// caps the worst case at "briefly wait for content already being written"
+  /// rather than "wait for two minutes of video to be encoded in order".
+  static const _maxForwardCatchUpSeconds = 30;
+
+  /// Whether [absoluteSeconds] can be reached by seeking inside the running HLS
+  /// session, without transcoding anything new.
+  ///
+  /// Backwards is decided structurally, forwards is decided by measurement —
+  /// and the difference matters:
+  ///
+  ///   - Backwards, down to the session's own start offset, is always safe. The
+  ///     playlist is append-only (EXT-X-PLAYLIST-TYPE:EVENT) and segments are
+  ///     never deleted, so anything the playhead has already passed is still on
+  ///     disk. This is the case worth optimising: rewinding used to throw away
+  ///     the whole transcode and start over.
+  ///
+  ///   - Forwards is capped by what the player has ACTUALLY buffered. It is
+  ///     tempting to assume the server's just-in-time window (~32s ahead) is
+  ///     always filled, but that only holds while the encoder outruns playback.
+  ///     A CPU-bound 4K transcode sits at roughly real-time or below, so that
+  ///     buffer frequently does not exist — and seeking into it lands on
+  ///     segments that were never produced, leaving the player waiting forever
+  ///     on files that will not arrive until the encoder eventually catches up.
+  ///     Asking the player how far it has really buffered removes the guess.
+  ///
+  /// When the buffer reading is unavailable or zero, forward seeks simply fall
+  /// back to rebuilding the session — the conservative behaviour.
+  bool canSeekWithinSession(int absoluteSeconds) {
+    if (currentQuality == null) return true;
+    // Before this session's timeline begins: unreachable without a new session.
+    if (absoluteSeconds < _hlsStartOffset) return false;
+
+    if (absoluteSeconds <= position.inSeconds) return true;
+
+    // Two independent limits, and the seek must satisfy BOTH.
+    //
+    // The encoder writes segments strictly in order, so an in-session forward
+    // seek is only instant if the target is already on disk. Overshoot it and
+    // the player waits for everything in between to be encoded — for a jump of
+    // a couple of minutes that is far worse than the 3-6s a fresh session costs,
+    // and it is what "I have to wait for it to do it all" describes.
+    //
+    //   - the player's own cache end, which is what is genuinely downloaded;
+    //   - a hard ceiling, so a cache reading that is optimistic or stale can
+    //     never authorise a jump into content nobody has encoded yet.
+    final ceiling = position.inSeconds + _maxForwardCatchUpSeconds;
+    final buffered = _bufferedAbsoluteSeconds();
+    final reachable = buffered < ceiling ? buffered : ceiling;
+    return absoluteSeconds <= reachable + _hlsForwardSeekTolerance;
+  }
+
+  /// Absolute second up to which the player currently holds buffered media.
+  int _bufferedAbsoluteSeconds() {
+    try {
+      final buffered = player.state.buffer.inSeconds;
+      if (buffered <= 0) return position.inSeconds;
+      return buffered + _hlsStartOffset;
+    } catch (_) {
+      return position.inSeconds;
+    }
+  }
+
+  /// Seek to an absolute position in the media.
+  ///
+  /// In HLS this rebuilds the session only when the target is outside what the
+  /// current one can serve. Rewinding — the common case, and previously a full
+  /// re-transcode with a spinner — is now a plain seek through already-produced
+  /// segments.
   Future<void> seekToAbsoluteSeconds(int absoluteSeconds) async {
     final target = absoluteSeconds < 0 ? 0 : absoluteSeconds;
-    if (currentQuality != null && _hlsStartOffset > 0) {
-      await player.seek(Duration(seconds: target - _hlsStartOffset));
-    } else {
+
+    if (currentQuality == null) {
       await player.seek(Duration(seconds: target));
+      return;
     }
+
+    final within = canSeekWithinSession(target);
+    // Logs the whole decision, because "seek does nothing" and "seek rebuilds
+    // the session" look identical from the outside: it shows whether a stall is
+    // a seek that stayed inside a session it should have left, or a rebuild
+    // that is simply slow.
+    debugPrint("SEEK: target=${target}s pos=${position.inSeconds}s "
+        "offset=${_hlsStartOffset}s buffered=${_bufferedAbsoluteSeconds()}s "
+        "-> ${within ? 'seek in session' : 'rebuild session'}");
+
+    if (!within) {
+      await reloadHlsAtPosition(target);
+      return;
+    }
+    // Reflect the target before awaiting mpv, so the bar tracks the click even
+    // when the seek itself takes a moment to settle.
+    position = Duration(seconds: target);
+    _onPositionChanged?.call();
+    await player.seek(Duration(seconds: target - _hlsStartOffset));
   }
 
   // ==================== Audio / subtitle selection ====================
@@ -690,15 +1255,31 @@ class PlayerController {
   /// Select an audio track by canonical index.
   ///
   ///   - Direct Play: switch natively and instantly (all tracks are present).
-  ///   - HLS: the stream only carries the single requested track to keep CPU
-  ///     low, so we restart the session at the same second with the new track.
+  ///   - HLS: the session publishes every audio track as a rendition of one
+  ///     group, so this is also just an mpv track switch — instant, no spinner,
+  ///     no re-transcode. Only a track the session did not publish (a file with
+  ///     more languages than the rendition cap) needs a fresh session.
   Future<void> switchAudioTrack(int index) async {
     if (mediaTracks == null) return;
     if (index < 0 || index >= mediaTracks!.audio.length) return;
     if (index == _selectedAudioIndex) return;
     _selectedAudioIndex = index;
 
-    if (currentQuality != null) {
+    // A browser offers no audio-track API over a media stream, and media_kit's
+    // web setAudioTrack only accepts a URI — the rendition switch that is free
+    // on desktop simply does nothing here. The server already takes the wanted
+    // track as `?audio=N` at session start, so the switch is a new session:
+    // ~2s of spinner instead of instant, but it actually changes the language.
+    if (AppPlatform.isWeb) {
+      if (currentQuality == null) {
+        await _startWebTranscode();
+      } else {
+        await reloadHlsAtPosition(position.inSeconds);
+      }
+      return;
+    }
+
+    if (currentQuality != null && _playerAudioPosition(index) == null) {
       await reloadHlsAtPosition(position.inSeconds);
       return;
     }
@@ -736,11 +1317,33 @@ class PlayerController {
   ///
   /// If the .vtt is not ready yet, extraction is triggered and the track is
   /// attached automatically as soon as it becomes available — no HLS reload.
+  /// Bitmap stream the transcoder must paint into the video to show [lang], or
+  /// -1 when the language needs no burn-in (text track, or subtitles off).
+  int _burnIndexFor(String? lang) {
+    if (lang == null || lang.isEmpty) return -1;
+    final track = _trackForLang(lang);
+    if (track == null || !track.image) return -1;
+    return track.typedIndex;
+  }
+
   Future<void> setSubtitle(String? lang) async {
     if (_media == null || _apiClient == null) return;
     _selectedSubtitleLang = lang;
     _selectedInternalSubId = null;
     _subtitlesExplicitlyOff = lang == null || lang.isEmpty;
+
+    // While transcoding, a bitmap track lives in the picture itself, so turning
+    // one on — or off, or swapping it for another — changes what has to be
+    // encoded. That is the only subtitle change that costs a new session; text
+    // tracks stay out of band and switch instantly.
+    if (currentQuality != null) {
+      final wanted = _burnIndexFor(lang);
+      if (wanted != _hlsBurnedSubTypedIndex) {
+        _hlsBurnedSubTypedIndex = wanted;
+        await reloadHlsAtPosition(position.inSeconds);
+        return;
+      }
+    }
 
     if (lang == null || lang.isEmpty) {
       _applySubtitleSelection();
@@ -757,12 +1360,13 @@ class PlayerController {
   }
 
   /// Direct Play: select one of the MKV's embedded subtitle tracks natively and
-  /// remember it (id + normalized language) so the choice survives a reload and
-  /// carries over to HLS without the user ever seeing the source change.
+  /// remember it (mpv id + the server's canonical language key) so the choice
+  /// survives a reload and carries over to HLS without the user ever seeing the
+  /// source change.
   void selectInternalSubtitle(mk.SubtitleTrack track) {
     final isOff = track.id == 'no';
     _selectedInternalSubId = isOff ? null : track.id;
-    _selectedSubtitleLang = isOff ? null : _normalizeLang(track.language);
+    _selectedSubtitleLang = isOff ? null : _canonicalLangForEmbedded(track);
     _subtitlesExplicitlyOff = isOff;
     try {
       player.setSubtitleTrack(track);
@@ -791,10 +1395,24 @@ class PlayerController {
       .where((t) => t.id != 'auto' && t.id != 'no')
       .toList();
 
+  /// Position of a canonical audio index in the player's track list.
+  ///
+  /// Direct Play enumerates the file's own tracks, so the canonical index is the
+  /// position. HLS enumerates only the renditions the session published, so the
+  /// server's audio map translates between the two. Returns null when the track
+  /// is not part of the current session.
+  int? _playerAudioPosition(int canonicalIndex) {
+    if (currentQuality == null) return canonicalIndex;
+    final pos = _hlsAudioMap.indexOf(canonicalIndex);
+    return pos < 0 ? null : pos;
+  }
+
   void _applyAudioSelection() {
     final real = _realAudioTracks();
     if (real.isEmpty) return;
-    final i = _selectedAudioIndex.clamp(0, real.length - 1);
+    final pos = _playerAudioPosition(_selectedAudioIndex);
+    if (pos == null) return; // not published by this session
+    final i = pos.clamp(0, real.length - 1);
     try {
       player.setAudioTrack(real[i]);
     } catch (_) {}
@@ -809,7 +1427,11 @@ class PlayerController {
     // inject external WebVTT here, so the user never sees a switch between the
     // internal and external sources. The external .vtt only drives HLS, where
     // the original file is no longer streamed.
-    if (currentQuality == null) {
+    //
+    // Except in a browser, which cannot see a file's embedded subtitle tracks at
+    // all — a <video> knows only <track> elements. There the external WebVTT is
+    // the only source there has ever been, Direct Play included.
+    if (currentQuality == null && !AppPlatform.isWeb) {
       _applyInternalSubtitleSelection();
       return;
     }
@@ -821,12 +1443,28 @@ class PlayerController {
     // does NOT reliably switch the active selection when another external track
     // is already loaded (the second language would never show). Going through
     // `no()` first forces a clean re-selection. This also handles "off".
-    try {
-      player.setSubtitleTrack(mk.SubtitleTrack.no());
-      debugPrint("SUB: cleared current subtitle before applying selection");
-    } catch (_) {}
+    if (AppPlatform.isWeb) {
+      WebPlayback.clearSubtitles();
+    } else {
+      try {
+        player.setSubtitleTrack(mk.SubtitleTrack.no());
+        debugPrint("SUB: cleared current subtitle before applying selection");
+      } catch (_) {}
+    }
 
-    if (lang == null || lang.isEmpty) return;
+    if (lang == null || lang.isEmpty) {
+      _attachedSubtitleSignature = null;
+      return;
+    }
+
+    // A bitmap track is already painted into the video by the transcoder, so
+    // there is no external file to attach — and mpv must stay on "no" or it
+    // would render nothing on top of an already-subtitled picture.
+    if (_trackForLang(lang)?.image ?? false) {
+      _attachedSubtitleSignature = null;
+      return;
+    }
+    _attachedSubtitleSignature = _subtitleSignature(lang);
 
     String? title;
     final subs = mediaTracks?.subtitles ?? const <MediaSubtitleTrack>[];
@@ -864,6 +1502,16 @@ class PlayerController {
       debugPrint(
           "SUB: #$reqId lang=$lang fetched ${vtt.length} chars, $cueCount cues");
       try {
+        if (AppPlatform.isWeb) {
+          // Never media_kit's setSubtitleTrack here: it installs an oncuechange
+          // handler that throws on every cue and prints a stack trace with it,
+          // which starves the main thread and freezes the picture while the
+          // sound carries on. Handing the cues to the browser also keeps them
+          // visible in native full screen.
+          WebPlayback.showSubtitleVtt(vtt, language: lang, label: title);
+          debugPrint("SUB: #$reqId applied via browser text track (lang=$lang)");
+          return;
+        }
         await player.setSubtitleTrack(
           mk.SubtitleTrack.data(vtt, title: title, language: lang),
         );
@@ -915,7 +1563,7 @@ class PlayerController {
     }
     if (match == null && _selectedSubtitleLang != null) {
       for (final t in tracks) {
-        if (_normalizeLang(t.language) == _selectedSubtitleLang) {
+        if (_canonicalLangForEmbedded(t) == _selectedSubtitleLang) {
           match = t;
           break;
         }
@@ -926,47 +1574,28 @@ class PlayerController {
     } catch (_) {}
   }
 
-  /// Normalize a subtitle language tag to a 2-letter code so embedded (MKV) and
-  /// external (.vtt) tracks can be matched across a mode switch. Returns null
-  /// for undefined / "off" tags.
-  String? _normalizeLang(String? code) {
-    if (code == null) return null;
-    var c = code.trim().toLowerCase();
-    if (c.isEmpty || c == 'und' || c == 'auto' || c == 'no') return null;
-    const map = {
-      'fra': 'fr',
-      'fre': 'fr',
-      'french': 'fr',
-      'eng': 'en',
-      'english': 'en',
-      'spa': 'es',
-      'esp': 'es',
-      'spanish': 'es',
-      'ger': 'de',
-      'deu': 'de',
-      'german': 'de',
-      'ita': 'it',
-      'italian': 'it',
-      'por': 'pt',
-      'portuguese': 'pt',
-      'jpn': 'ja',
-      'japanese': 'ja',
-      'rus': 'ru',
-      'russian': 'ru',
-      'chi': 'zh',
-      'zho': 'zh',
-      'chinese': 'zh',
-      'ara': 'ar',
-      'arabic': 'ar',
-      'nld': 'nl',
-      'dut': 'nl',
-      'dutch': 'nl',
-      'kor': 'ko',
-      'korean': 'ko',
-    };
-    if (map.containsKey(c)) return map[c];
-    if (c.length > 2) return c.substring(0, 2);
-    return c;
+  /// Canonical language key of an embedded subtitle track, read from the
+  /// server's list instead of derived here.
+  ///
+  /// mpv numbers a file's subtitle tracks 1..N in container order — the same
+  /// order ffprobe reports them — so `id - 1` is the typed index (0:s:N) the
+  /// server keys its canonical entries by.
+  ///
+  /// This used to be a local mapping table, which is what broke the Direct Play
+  /// → HLS carry-over: it disagreed with the server's for `pol` (po vs pl),
+  /// `tur` (tu vs tr), `swe` (sw vs sv), `ces`/`cze` (ce/cz vs cs), and it
+  /// truncated every 3-letter code the server left untouched (`heb` → `he`).
+  /// Picking a subtitle in Direct Play then switching to HLS silently lost it.
+  /// There is now exactly one place where a language code is decided: the server.
+  String? _canonicalLangForEmbedded(mk.SubtitleTrack? track) {
+    if (track == null) return null;
+    final sid = int.tryParse(track.id);
+    if (sid == null) return null; // "no" / "auto" / a track we attached ourselves
+    final typedIndex = sid - 1;
+    for (final s in mediaTracks?.subtitles ?? const <MediaSubtitleTrack>[]) {
+      if (s.typedIndex == typedIndex) return s.lang;
+    }
+    return null;
   }
 
   /// Re-apply audio + subtitle selection once the freshly opened media has
@@ -1004,16 +1633,19 @@ class PlayerController {
       // Same decode-path hardening as Direct Play — prevents video-only
       // freezes while audio keeps playing.
       await p.setProperty(
-          'hwdec', Platform.isMacOS ? 'videotoolbox-copy' : 'auto-safe');
+          'hwdec', AppPlatform.isMacOS ? 'videotoolbox-copy' : 'auto-safe');
       await p.setProperty('vd-lavc-dr', 'no');
       // HLS segments are short HTTP requests; reconnection is cheap insurance
       // against transient network blips between segment fetches.
       await p.setProperty('stream-lavf-o',
           'reconnect=1,reconnect_streamed=1,reconnect_delay_max=5');
-      if (Platform.isMacOS) {
+      // Same underrun policy as Direct Play: pause + refill instead of freeze.
+      await p.setProperty('cache-pause', 'yes');
+      await p.setProperty('cache-pause-wait', '3');
+      await p.setProperty('cache-pause-initial', 'yes');
+      if (AppPlatform.isMacOS) {
         await p.setProperty('framedrop', 'vo');
         await p.setProperty('video-sync', 'display-desync');
-        await p.setProperty('cache-pause', 'no');
       }
     } catch (_) {}
   }
@@ -1070,12 +1702,14 @@ class PlayerController {
     _completedSubscription?.cancel();
     _playingSubscription?.cancel();
     _videoParamsSubscription?.cancel();
+    _bufferingSubscription?.cancel();
     _reapplySubscription?.cancel();
     _positionSubscription = null;
     _durationSubscription = null;
     _completedSubscription = null;
     _playingSubscription = null;
     _videoParamsSubscription = null;
+    _bufferingSubscription = null;
     _reapplySubscription = null;
     if (_hlsSessionId != null && _media != null && _apiClient != null) {
       _apiClient!.destroyHlsSession(_media!.id, _hlsSessionId!);
@@ -1093,12 +1727,22 @@ class PlayerController {
     _positionSubscription?.cancel();
     _durationSubscription?.cancel();
     _completedSubscription?.cancel();
+    // The engine outlives this controller now, so a subscription left behind
+    // here would keep calling into a dead one for the whole next playback.
+    _playingSubscription?.cancel();
     _videoParamsSubscription?.cancel();
+    _bufferingSubscription?.cancel();
     _reapplySubscription?.cancel();
     if (_hlsSessionId != null && _media != null && _apiClient != null) {
       _apiClient!.destroyHlsSession(_media!.id, _hlsSessionId!);
     }
     _hlsSessionId = null;
-    player.dispose();
+    // Leaving the player screen must not leave hls.js segment loaders running
+    // against a <video> that is about to disappear.
+    WebPlayback.clearSubtitles();
+    WebPlayback.releaseAllHlsSessions();
+    // Handed back rather than destroyed: the next playback reuses this libmpv
+    // instance and its texture instead of paying to build them again.
+    PlayerEnginePool.release(_engine);
   }
 }

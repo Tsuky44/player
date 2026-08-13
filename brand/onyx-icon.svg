@@ -1,0 +1,26 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="512" height="512" role="img" aria-labelledby="onyx-icon-title">
+  <title id="onyx-icon-title">Onyx</title>
+  <defs>
+    <linearGradient id="onyxBeam" x1="0" y1="0" x2="1" y2="0">
+      <stop offset="0" stop-color="#e8e6e4" stop-opacity="0.9"/>
+      <stop offset="1" stop-color="#e8e6e4" stop-opacity="0"/>
+    </linearGradient>
+  </defs>
+
+  <rect width="512" height="512" rx="112" fill="#121414"/>
+
+  <!-- Centrage optique : c'est la lentille qui porte le poids visuel, le
+       faisceau ne compte quasiment pas, donc on cale le cercle un peu à
+       gauche du centre plutôt que la boîte englobante. -->
+  <g transform="translate(77.7 37.4) scale(0.854)">
+    <!-- faisceau : large a la lentille, se resserre vers la droite -->
+    <path d="M 202 141 L 477 226 L 477 286 L 202 371 Z" fill="url(#onyxBeam)" opacity="0.35"/>
+
+    <!-- lentille -->
+    <circle cx="162" cy="256" r="130" fill="#0e1010"/>
+    <circle cx="162" cy="256" r="130" fill="none" stroke="#e8e6e4" stroke-width="10"/>
+
+    <!-- play -->
+    <path d="M 122 191 L 122 321 L 227 256 Z" fill="#e8e6e4"/>
+  </g>
+</svg>

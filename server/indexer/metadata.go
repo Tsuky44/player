@@ -7,13 +7,13 @@ import (
 	"log"
 	"net/http"
 	"net/url"
-	"os"
 	"path/filepath"
 	"strconv"
 	"strings"
 	"sync"
 	"time"
 
+	"project-player/server/config"
 	"project-player/server/database"
 	"project-player/server/models"
 )
@@ -47,20 +47,12 @@ type tmdbTranslationsResponse struct {
 }
 
 func tmdbAPIKey() string {
-	key := strings.TrimSpace(os.Getenv("TMDB_API_KEY"))
-	if key == "" || key == "your_tmdb_api_key_here" || key == "votre_cle_api_tmdb_ici" {
-		return ""
-	}
-	return key
+	return config.TMDBAPIKey()
 }
 
-// tmdbLanguage returns the TMDB API language (default fr-FR). Override with TMDB_LANGUAGE.
+// tmdbLanguage returns the TMDB API language (default fr-FR).
 func tmdbLanguage() string {
-	lang := strings.TrimSpace(os.Getenv("TMDB_LANGUAGE"))
-	if lang == "" {
-		return "fr-FR"
-	}
-	return lang
+	return config.TMDBLanguage()
 }
 
 func tmdbTranslationISO639() string {
@@ -112,6 +104,18 @@ func tmdbResultYear(r tmdbSearchResult, mediaType models.MediaType) int {
 func pickBestTMDBResult(results []tmdbSearchResult, targetTitle string, targetYear int, mediaType models.MediaType) tmdbSearchResult {
 	if len(results) == 0 {
 		return tmdbSearchResult{}
+	}
+	if targetYear > 0 {
+		var filtered []tmdbSearchResult
+		for _, r := range results {
+			ry := tmdbResultYear(r, mediaType)
+			if ry == 0 || absInt(ry-targetYear) <= 1 {
+				filtered = append(filtered, r)
+			}
+		}
+		if len(filtered) > 0 {
+			results = filtered
+		}
 	}
 	best := results[0]
 	bestScore := scoreTMDBResult(best, targetTitle, targetYear, mediaType)
@@ -300,114 +304,15 @@ func fetchTMDBTranslation(tmdbID int, mediaType models.MediaType) (title, overvi
 	return "", ""
 }
 
-// fetchTMDBMetadata queries TMDB search API for poster and metadata.
+// fetchTMDBMetadata queries TMDB with Emby-style confidence gating.
+// Weak popularity hits are rejected (tmdbID stays 0) so the library is not poisoned.
 func fetchTMDBMetadata(title string, mediaType models.MediaType) (posterURL string, overview string, releaseDate string, tmdbID int, displayTitle string) {
-	apiKey := tmdbAPIKey()
-	if apiKey == "" {
-		return "", "", "", 0, ""
+	identity := IdentifyFromRawName(title, mediaType)
+	displayTitle = identity.Title
+	if !identity.Matched {
+		return "", "", "", 0, displayTitle
 	}
-
-	parsed := ParseReleaseFilename(title, mediaType)
-	queries := BuildTMDBSearchQueries(parsed)
-
-	endpoint := "movie"
-	if mediaType == models.TypeShow {
-		endpoint = "tv"
-	}
-
-	client := &http.Client{Timeout: 12 * time.Second}
-
-	trySearch := func(query, searchYear, lang string) []tmdbSearchResult {
-		if query == "" {
-			return nil
-		}
-		u := fmt.Sprintf(
-			"https://api.themoviedb.org/3/search/%s?api_key=%s&query=%s",
-			endpoint, apiKey, url.QueryEscape(query),
-		)
-		if lang != "" {
-			u += "&language=" + lang
-		}
-		if searchYear != "" {
-			if mediaType == models.TypeShow {
-				u += "&first_air_date_year=" + searchYear
-			} else {
-				u += "&year=" + searchYear
-			}
-		}
-		resp, err := client.Get(u)
-		if err != nil {
-			log.Printf("TMDB: search failed for %q (year=%s): %v", query, searchYear, err)
-			return nil
-		}
-		defer resp.Body.Close()
-		if resp.StatusCode != http.StatusOK {
-			return nil
-		}
-		var out TMDBResponse
-		if err := json.NewDecoder(resp.Body).Decode(&out); err != nil {
-			log.Printf("TMDB: decode failed for %q: %v", query, err)
-			return nil
-		}
-		results := make([]tmdbSearchResult, 0, len(out.Results))
-		for _, r := range out.Results {
-			results = append(results, tmdbSearchResult{
-				ID: r.ID, Title: r.Title, Name: r.Name, Overview: r.Overview,
-				PosterPath: r.PosterPath, ReleaseDate: r.ReleaseDate, FirstAirDate: r.FirstAirDate,
-			})
-		}
-		return results
-	}
-
-	yearStr := ""
-	if parsed.Year > 0 {
-		yearStr = strconv.Itoa(parsed.Year)
-	}
-
-	var best tmdbSearchResult
-	for _, query := range queries {
-		for _, searchYear := range []string{yearStr, ""} {
-			for _, lang := range []string{tmdbLanguage(), ""} {
-				results := trySearch(query, searchYear, lang)
-				if len(results) == 0 {
-					continue
-				}
-				best = pickBestTMDBResult(results, parsed.Title, parsed.Year, mediaType)
-				goto found
-			}
-		}
-	}
-
-found:
-	if best.ID == 0 {
-		return "", "", "", 0, ""
-	}
-
-	tmdbID = best.ID
-	detailPoster, detailOverview, detailDate, detailTitle := fetchTMDBDetailsByID(tmdbID, mediaType)
-
-	posterURL = detailPoster
-	if posterURL == "" {
-		posterURL = posterURLFromPath(best.PosterPath)
-	}
-	overview = detailOverview
-	if overview == "" {
-		overview = best.Overview
-	}
-	displayTitle = detailTitle
-	if displayTitle == "" {
-		displayTitle = tmdbDisplayTitle(best.Title, best.Name, mediaType)
-	}
-	releaseDate = detailDate
-	if releaseDate == "" {
-		if mediaType == models.TypeShow {
-			releaseDate = best.FirstAirDate
-		} else {
-			releaseDate = best.ReleaseDate
-		}
-	}
-
-	return posterURL, overview, releaseDate, tmdbID, displayTitle
+	return identity.PosterURL, identity.Overview, identity.ReleaseDate, identity.TMDBID, identity.Title
 }
 
 func fetchTMDBDetailsByID(tmdbID int, mediaType models.MediaType) (posterURL, overview, releaseDate, displayTitle string) {
@@ -488,14 +393,27 @@ func fetchTMDBDetailsByID(tmdbID int, mediaType models.MediaType) (posterURL, ov
 	return posterURL, overview, releaseDate, displayTitle
 }
 
-func enrichSearchTitle(storedTitle, filePath string) string {
+func enrichSearchTitle(storedTitle, filePath string, mediaType models.MediaType, mediaID int) string {
 	if filePath != "" {
 		base := strings.TrimSuffix(filepath.Base(filePath), filepath.Ext(filePath))
 		if base != "" {
 			return base
 		}
 	}
+	if mediaType == models.TypeShow && mediaID > 0 {
+		if raw := sampleShowReleaseName(mediaID); raw != "" {
+			return raw
+		}
+	}
 	return storedTitle
+}
+
+func sampleShowReleaseName(showID int) string {
+	folder, epFile := ShowLocalLibraryHint(showID)
+	if folder != "" {
+		return folder
+	}
+	return epFile
 }
 
 func enrichMediaRecord(id int, title string, mediaType models.MediaType, existingTMDBID int) bool {
@@ -686,7 +604,7 @@ func BackfillMissingMetadata() {
 
 	updated := 0
 	for i, item := range queue {
-		searchTitle := enrichSearchTitle(item.title, item.filePath)
+		searchTitle := enrichSearchTitle(item.title, item.filePath, item.mediaType, item.id)
 		if enrichMediaRecord(item.id, searchTitle, item.mediaType, item.tmdbID) {
 			updated++
 		}
@@ -844,28 +762,43 @@ func RematchMediaByID(id int, overrideTitle string, overrideTMDBID int) bool {
 	}
 	mt := models.MediaType(mediaType)
 
-	var posterURL, overview, releaseDate, displayTitle string
+	var posterURL, overview, releaseDate, displayTitle, imdbID string
 	var tmdbID int
 
 	if overrideTMDBID > 0 {
 		posterURL, overview, releaseDate, displayTitle = fetchTMDBDetailsByID(overrideTMDBID, mt)
 		tmdbID = overrideTMDBID
-	} else {
-		searchTitle := strings.TrimSpace(overrideTitle)
-		if searchTitle == "" {
-			searchTitle = enrichSearchTitle(title, filePath)
+	} else if strings.TrimSpace(overrideTitle) != "" {
+		identity := IdentifyFromRawName(overrideTitle, mt)
+		posterURL, overview, releaseDate = identity.PosterURL, identity.Overview, identity.ReleaseDate
+		displayTitle = identity.Title
+		imdbID = identity.IMDbID
+		if identity.Matched {
+			tmdbID = identity.TMDBID
 		}
-		posterURL, overview, releaseDate, tmdbID, displayTitle = fetchTMDBMetadata(searchTitle, mt)
+	} else {
+		identity := redetectIdentity(id, mt, filePath, title)
+		posterURL, overview, releaseDate = identity.PosterURL, identity.Overview, identity.ReleaseDate
+		displayTitle = identity.Title
+		imdbID = identity.IMDbID
+		if identity.Matched {
+			tmdbID = identity.TMDBID
+		}
 	}
 
 	if tmdbID == 0 && displayTitle == "" {
+		return false
+	}
+	// Auto redetect/rematch must not wipe a previous good match with an unmatched result.
+	if overrideTMDBID == 0 && strings.TrimSpace(overrideTitle) == "" && tmdbID == 0 {
+		log.Printf("TMDB: rematch skipped for media %d — no confident identity", id)
 		return false
 	}
 	if displayTitle == "" {
 		if overrideTitle != "" {
 			displayTitle = strings.TrimSpace(overrideTitle)
 		} else {
-			displayTitle = ReleaseDisplayTitle(enrichSearchTitle(title, filePath), mt)
+			displayTitle = ReleaseDisplayTitle(enrichSearchTitle(title, filePath, mt, id), mt)
 		}
 	}
 
@@ -876,13 +809,15 @@ func RematchMediaByID(id int, overrideTitle string, overrideTMDBID int) bool {
 			poster_url = ?,
 			overview = ?,
 			release_date = ?,
-			tmdb_id = ?
+			tmdb_id = ?,
+			imdb_id = COALESCE(NULLIF(?, ''), imdb_id)
 		WHERE id = ?`,
 		displayTitle, displayTitle,
 		posterURL,
 		overview,
 		releaseDate,
 		tmdbID,
+		imdbID,
 		id,
 	)
 	if err != nil {
@@ -890,6 +825,58 @@ func RematchMediaByID(id int, overrideTitle string, overrideTMDBID int) bool {
 		return false
 	}
 	log.Printf("TMDB: rematched %s %q (id=%d, tmdb=%d)", mediaType, displayTitle, id, tmdbID)
+	return true
+}
+
+func redetectIdentity(id int, mt models.MediaType, filePath, storedTitle string) IdentityMatch {
+	filePath = strings.TrimSpace(filePath)
+	switch mt {
+	case models.TypeMovie:
+		if filePath != "" {
+			// Parent of the file is used as library root fallback; folder-first still applies
+			// when the movie sits in its own Emby-style directory.
+			return IdentifyMovie(filePath, filepath.Dir(filepath.Dir(filePath)))
+		}
+	case models.TypeShow:
+		folder, _ := ShowLocalLibraryHint(id)
+		if folder != "" {
+			showFolder := ""
+			if sample := sampleShowEpisodePath(id); sample != "" {
+				cur := filepath.Dir(sample)
+				for i := 0; i < 5; i++ {
+					base := filepath.Base(cur)
+					lower := strings.ToLower(base)
+					if !strings.HasPrefix(lower, "season ") && !strings.HasPrefix(lower, "saison ") && !looksLikeEpisodeReleaseFolder(base) {
+						showFolder = cur
+						break
+					}
+					parent := filepath.Dir(cur)
+					if parent == cur {
+						break
+					}
+					cur = parent
+				}
+			}
+			return IdentifyShow(showFolder, folder)
+		}
+	}
+	return IdentifyFromRawName(enrichSearchTitle(storedTitle, filePath, mt, id), mt)
+}
+
+// RedetectMediaByID re-runs TMDB identification from local file/folder names and
+// overwrites the stored match (same as rematch without manual pick). For shows,
+// episode metadata is refreshed from the new TMDB id.
+func RedetectMediaByID(id int) bool {
+	if !RematchMediaByID(id, "", 0) {
+		return false
+	}
+	var mediaType string
+	if err := database.DB.QueryRow(`SELECT type FROM medias WHERE id = ?`, id).Scan(&mediaType); err != nil {
+		return true
+	}
+	if mediaType == string(models.TypeShow) {
+		RefreshAllSeasonsEpisodesFromTMDB(id)
+	}
 	return true
 }
 
@@ -904,10 +891,103 @@ func EnrichMediaByID(id int) bool {
 	if err != nil {
 		return false
 	}
-	return enrichMediaRecord(id, enrichSearchTitle(title, filePath), models.MediaType(mediaType), tmdbID)
+	return enrichMediaRecord(id, enrichSearchTitle(title, filePath, models.MediaType(mediaType), id), models.MediaType(mediaType), tmdbID)
 }
 
 // BackfillMissingMetadataAsync runs backfill in the background.
 func BackfillMissingMetadataAsync() {
 	go BackfillMissingMetadata()
+}
+
+// RedetectAllProgress tracks bulk re-identification for GET /api/indexer/status.
+type RedetectAllProgress struct {
+	Total     int `json:"total"`
+	Processed int `json:"processed"`
+	Updated   int `json:"updated"`
+	Skipped   int `json:"skipped"`
+}
+
+var (
+	IsRedetectingAll    bool
+	redetectAllMutex    sync.Mutex
+	redetectAllProgress RedetectAllProgress
+)
+
+// RedetectAllProgressSnapshot returns a copy of the current bulk redetect counters.
+func RedetectAllProgressSnapshot() RedetectAllProgress {
+	redetectAllMutex.Lock()
+	defer redetectAllMutex.Unlock()
+	return redetectAllProgress
+}
+
+// RedetectAllMediaAsync re-runs Emby-style identification on every movie and show.
+func RedetectAllMediaAsync() {
+	go RedetectAllMedia()
+}
+
+// RedetectAllMedia walks all library movies/shows and applies RedetectMediaByID.
+func RedetectAllMedia() {
+	redetectAllMutex.Lock()
+	if IsRedetectingAll {
+		redetectAllMutex.Unlock()
+		log.Println("Identify: bulk redetect already in progress")
+		return
+	}
+	IsRedetectingAll = true
+	redetectAllProgress = RedetectAllProgress{}
+	redetectAllMutex.Unlock()
+
+	defer func() {
+		redetectAllMutex.Lock()
+		IsRedetectingAll = false
+		redetectAllMutex.Unlock()
+	}()
+
+	start := time.Now()
+	rows, err := database.DB.Query(`
+		SELECT id FROM medias WHERE type IN ('movie', 'show') ORDER BY type, id`)
+	if err != nil {
+		log.Printf("Identify: bulk redetect query failed: %v", err)
+		return
+	}
+	defer rows.Close()
+
+	var ids []int
+	for rows.Next() {
+		var id int
+		if err := rows.Scan(&id); err != nil {
+			continue
+		}
+		ids = append(ids, id)
+	}
+
+	redetectAllMutex.Lock()
+	redetectAllProgress.Total = len(ids)
+	redetectAllMutex.Unlock()
+
+	log.Printf("Identify: bulk redetect starting for %d movie(s)/show(s)", len(ids))
+
+	for _, id := range ids {
+		ok := RedetectMediaByID(id)
+		redetectAllMutex.Lock()
+		redetectAllProgress.Processed++
+		if ok {
+			redetectAllProgress.Updated++
+		} else {
+			redetectAllProgress.Skipped++
+		}
+		redetectAllMutex.Unlock()
+	}
+
+	dedupeDuplicateShows()
+	dedupeDuplicateMovies()
+	InvalidateStreamCaches()
+
+	redetectAllMutex.Lock()
+	snap := redetectAllProgress
+	redetectAllMutex.Unlock()
+	log.Printf(
+		"Identify: bulk redetect done in %v — updated %d, skipped %d, total %d",
+		time.Since(start), snap.Updated, snap.Skipped, snap.Total,
+	)
 }

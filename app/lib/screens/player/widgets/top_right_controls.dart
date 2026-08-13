@@ -139,7 +139,7 @@ class _TopRightControlsState extends State<TopRightControls> {
                             padding: const EdgeInsets.only(right: 16),
                             child: SliderTheme(
                               data: SliderTheme.of(context).copyWith(
-                                activeTrackColor: const Color(0xFF007AFF),
+                                activeTrackColor: const Color(0xFF0A84FF),
                                 inactiveTrackColor: Colors.white.withOpacity(0.2),
                                 thumbColor: Colors.white,
                                 trackHeight: 3,

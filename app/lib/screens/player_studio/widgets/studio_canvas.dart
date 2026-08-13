@@ -6,6 +6,8 @@ import 'draggable_control.dart';
 
 /// The 16:9 editing surface. Renders a dummy poster background, a snap grid,
 /// and all the draggable controls positioned via relative percentages.
+///
+/// Fits itself inside the available space (important on phone portrait).
 class StudioCanvas extends StatefulWidget {
   final StudioController controller;
   final VoidCallback? onOpenFullControlEditor;
@@ -62,8 +64,8 @@ class _StudioCanvasState extends State<StudioCanvas> {
     const menuWidth = 268.0;
     const menuHeight = 320.0;
     return Offset(
-      position.dx.clamp(8.0, canvasSize.width - menuWidth - 8.0),
-      position.dy.clamp(8.0, canvasSize.height - menuHeight - 8.0),
+      position.dx.clamp(8.0, (canvasSize.width - menuWidth - 8.0).clamp(8.0, canvasSize.width)),
+      position.dy.clamp(8.0, (canvasSize.height - menuHeight - 8.0).clamp(8.0, canvasSize.height)),
     );
   }
 
@@ -86,143 +88,174 @@ class _StudioCanvasState extends State<StudioCanvas> {
   Widget build(BuildContext context) {
     final controller = widget.controller;
 
-    return AspectRatio(
-      aspectRatio: 16 / 9,
-      child: ClipRRect(
-        borderRadius: BorderRadius.circular(12),
-        child: LayoutBuilder(
-          builder: (context, constraints) {
-            final canvasSize = Size(constraints.maxWidth, constraints.maxHeight);
-            return AnimatedBuilder(
-              animation: controller,
-              builder: (context, _) {
-                final selected = controller.selectedId;
-                final selConfig = controller.selectedConfig;
+    return LayoutBuilder(
+      builder: (context, outer) {
+        final maxW = outer.maxWidth.isFinite && outer.maxWidth > 0
+            ? outer.maxWidth
+            : 640.0;
+        final maxH = outer.maxHeight.isFinite && outer.maxHeight > 0
+            ? outer.maxHeight
+            : maxW * 9 / 16;
+        var width = maxW;
+        var height = width * 9 / 16;
+        if (height > maxH) {
+          height = maxH;
+          width = height * 16 / 9;
+        }
 
-                return Stack(
-                  key: _stackKey,
-                  children: [
-                    const _DummyPoster(),
+        return Align(
+          alignment: Alignment.center,
+          child: SizedBox(
+            width: width,
+            height: height,
+            child: ClipRRect(
+              borderRadius: BorderRadius.circular(12),
+              child: LayoutBuilder(
+                builder: (context, constraints) {
+                  final canvasSize =
+                      Size(constraints.maxWidth, constraints.maxHeight);
+                  return AnimatedBuilder(
+                    animation: controller,
+                    builder: (context, _) {
+                      final selected = controller.selectedId;
+                      final selConfig = controller.selectedConfig;
 
-                    // Snap grid (subtle when dragging, barely visible otherwise)
-                    IgnorePointer(
-                      child: _GridOverlay(
-                        hSegments: controller.horizontalSegments,
-                        vSegments: controller.verticalSegments,
-                        dim: !controller.isDragging,
-                      ),
-                    ),
+                      return Stack(
+                        key: _stackKey,
+                        children: [
+                          const _DummyPoster(),
 
-                    // Smart alignment guides (visual center-to-center)
-                    if (controller.isDragging && controller.activeGuides.isNotEmpty)
-                      Positioned.fill(
-                        child: IgnorePointer(
-                          child: _AlignmentGuidesOverlay(
-                            guides: controller.activeGuides,
+                          IgnorePointer(
+                            child: _GridOverlay(
+                              hSegments: controller.horizontalSegments,
+                              vSegments: controller.verticalSegments,
+                              dim: !controller.isDragging,
+                            ),
                           ),
-                        ),
-                      ),
 
-                    // Tap empty space to deselect / close context menu.
-                    Positioned.fill(
-                      child: GestureDetector(
-                        behavior: HitTestBehavior.translucent,
-                        onTap: () {
-                          controller.select(null);
-                          _closeContextMenu();
-                        },
-                      ),
-                    ),
+                          if (controller.isDragging &&
+                              controller.activeGuides.isNotEmpty)
+                            Positioned.fill(
+                              child: IgnorePointer(
+                                child: _AlignmentGuidesOverlay(
+                                  guides: controller.activeGuides,
+                                ),
+                              ),
+                            ),
 
-                    for (final placed in controller.draft.controls)
-                      DraggableControl(
-                        key: ValueKey(placed.id),
-                        boundsKey: _keyFor(placed.id),
-                        placed: placed,
-                        canvasSize: canvasSize,
-                        selected: selected == placed.id,
-                        isDragging: controller.isDragging && selected == placed.id,
-                        onSelect: () {
-                          controller.select(placed.id);
-                          _closeContextMenu();
-                        },
-                        onSecondaryTapDown: (details) =>
-                            _openContextMenu(placed.id, details.globalPosition),
-                        onDrag: (delta) => controller.dragBy(
-                          placed.id,
-                          delta,
-                          canvasSize,
-                          measuredRects: _measureControlRects(),
-                        ),
-                        onDragEnd: controller.endDrag,
-                        blurSigma: controller.draft.blurIntensity,
-                        glassOpacity: controller.draft.glassOpacity,
-                        liquidGlass: controller.draft.liquidGlass,
-                      ),
+                          Positioned.fill(
+                            child: GestureDetector(
+                              behavior: HitTestBehavior.translucent,
+                              onTap: () {
+                                controller.select(null);
+                                _closeContextMenu();
+                              },
+                            ),
+                          ),
 
-                    if (_contextMenuControlId != null &&
-                        _contextMenuPosition != null)
-                      Builder(
-                        builder: (context) {
-                          final placed = controller.draft.byId(_contextMenuControlId!);
-                          if (placed == null) return const SizedBox.shrink();
-                          final pos = _clampMenuPosition(
-                            _contextMenuPosition!,
-                            canvasSize,
-                          );
-                          return Positioned(
-                            left: pos.dx,
-                            top: pos.dy,
-                            child: ControlContextMenu(
+                          for (final placed in controller.draft.controls)
+                            DraggableControl(
+                              key: ValueKey(placed.id),
+                              boundsKey: _keyFor(placed.id),
                               placed: placed,
-                              controller: controller,
-                              onClose: _closeContextMenu,
-                              onDragDelta: (delta) =>
-                                  _moveContextMenu(delta, canvasSize),
-                              onOpenFullEditor:
-                                  widget.onOpenFullControlEditor == null
-                                      ? null
-                                      : () {
-                                          _closeContextMenu();
-                                          widget.onOpenFullControlEditor!();
-                                        },
+                              canvasSize: canvasSize,
+                              selected: selected == placed.id,
+                              isDragging: controller.isDragging &&
+                                  selected == placed.id,
+                              onSelect: () {
+                                controller.select(placed.id);
+                                _closeContextMenu();
+                              },
+                              onSecondaryTapDown: (details) => _openContextMenu(
+                                placed.id,
+                                details.globalPosition,
+                              ),
+                              onDrag: (delta) => controller.dragBy(
+                                placed.id,
+                                delta,
+                                canvasSize,
+                                measuredRects: _measureControlRects(),
+                              ),
+                              onDragEnd: controller.endDrag,
+                              blurSigma: controller.draft.blurIntensity,
+                              glassOpacity: controller.draft.glassOpacity,
+                              liquidGlass: controller.draft.liquidGlass,
+                              skin: controller.draft.skin,
+                              flatAccentColor: controller.draft.flatAccentColor,
+                              flatElevation: controller.draft.flatElevation,
+                              neumorphicIntensity:
+                                  controller.draft.neumorphicIntensity,
                             ),
-                          );
-                        },
-                      ),
 
-                    // Real-time coordinate tooltip
-                    if (selConfig != null && controller.isDragging)
-                      Positioned(
-                        bottom: 8,
-                        right: 8,
-                        child: Container(
-                          padding: const EdgeInsets.symmetric(
-                            horizontal: 10,
-                            vertical: 4,
-                          ),
-                          decoration: BoxDecoration(
-                            color: const Color(0xFF007AFF),
-                            borderRadius: BorderRadius.circular(6),
-                          ),
-                          child: Text(
-                            'X: ${(selConfig.xPercentage * 100).round()}%  '
-                            'Y: ${(selConfig.yPercentage * 100).round()}%',
-                            style: const TextStyle(
-                              color: Colors.white,
-                              fontSize: 12,
-                              fontWeight: FontWeight.w600,
+                          if (_contextMenuControlId != null &&
+                              _contextMenuPosition != null)
+                            Builder(
+                              builder: (context) {
+                                final placed = controller.draft
+                                    .byId(_contextMenuControlId!);
+                                if (placed == null) {
+                                  return const SizedBox.shrink();
+                                }
+                                final pos = _clampMenuPosition(
+                                  _contextMenuPosition!,
+                                  canvasSize,
+                                );
+                                return Positioned(
+                                  left: pos.dx,
+                                  top: pos.dy,
+                                  child: ControlContextMenu(
+                                    placed: placed,
+                                    controller: controller,
+                                    onClose: _closeContextMenu,
+                                    onDragDelta: (delta) =>
+                                        _moveContextMenu(delta, canvasSize),
+                                    onOpenFullEditor:
+                                        widget.onOpenFullControlEditor == null
+                                            ? null
+                                            : () {
+                                                _closeContextMenu();
+                                                widget
+                                                    .onOpenFullControlEditor!();
+                                              },
+                                  ),
+                                );
+                              },
                             ),
-                          ),
-                        ),
-                      ),
-                  ],
-                );
-              },
-            );
-          },
-        ),
-      ),
+
+                          if (selConfig != null && controller.isDragging)
+                            Positioned(
+                              bottom: 8,
+                              right: 8,
+                              child: Container(
+                                padding: const EdgeInsets.symmetric(
+                                  horizontal: 10,
+                                  vertical: 4,
+                                ),
+                                decoration: BoxDecoration(
+                                  color: const Color(0xFF0A84FF),
+                                  borderRadius: BorderRadius.circular(6),
+                                ),
+                                child: Text(
+                                  'X: ${(selConfig.xPercentage * 100).round()}%  '
+                                  'Y: ${(selConfig.yPercentage * 100).round()}%',
+                                  style: const TextStyle(
+                                    color: Colors.white,
+                                    fontSize: 12,
+                                    fontWeight: FontWeight.w600,
+                                  ),
+                                ),
+                              ),
+                            ),
+                        ],
+                      );
+                    },
+                  );
+                },
+              ),
+            ),
+          ),
+        );
+      },
     );
   }
 }
@@ -245,12 +278,12 @@ class _DummyPoster extends StatelessWidget {
           mainAxisSize: MainAxisSize.min,
           children: [
             Icon(Icons.movie_creation_outlined,
-                size: 48, color: Colors.white.withOpacity(0.15)),
+                size: 48, color: Colors.white.withValues(alpha: 0.15)),
             const SizedBox(height: 8),
             Text(
               'APERÇU',
               style: TextStyle(
-                color: Colors.white.withOpacity(0.15),
+                color: Colors.white.withValues(alpha: 0.15),
                 fontSize: 14,
                 letterSpacing: 4,
                 fontWeight: FontWeight.bold,
@@ -263,7 +296,6 @@ class _DummyPoster extends StatelessWidget {
   }
 }
 
-/// Subtle dotted grid overlay that brightens while the user is dragging.
 class _GridOverlay extends StatelessWidget {
   final int hSegments;
   final int vSegments;
@@ -282,10 +314,8 @@ class _GridOverlay extends StatelessWidget {
       builder: (context, constraints) {
         final w = constraints.maxWidth;
         final h = constraints.maxHeight;
-
         final children = <Widget>[];
 
-        // Vertical lines
         for (var i = 1; i < hSegments; i++) {
           final x = w * (i / hSegments);
           children.add(
@@ -295,13 +325,12 @@ class _GridOverlay extends StatelessWidget {
               bottom: 0,
               child: Container(
                 width: 1,
-                color: Colors.white.withOpacity(opacity),
+                color: Colors.white.withValues(alpha: opacity),
               ),
             ),
           );
         }
 
-        // Horizontal lines
         for (var i = 1; i < vSegments; i++) {
           final y = h * (i / vSegments);
           children.add(
@@ -311,7 +340,7 @@ class _GridOverlay extends StatelessWidget {
               right: 0,
               child: Container(
                 height: 1,
-                color: Colors.white.withOpacity(opacity),
+                color: Colors.white.withValues(alpha: opacity),
               ),
             ),
           );
@@ -323,7 +352,6 @@ class _GridOverlay extends StatelessWidget {
   }
 }
 
-/// Pink/magenta lines that appear when a dragged control aligns with another.
 class _AlignmentGuidesOverlay extends StatelessWidget {
   final List<StudioAlignmentGuide> guides;
 

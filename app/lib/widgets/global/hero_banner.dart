@@ -101,21 +101,22 @@ class HeroBanner extends StatelessWidget {
                 mainAxisSize: MainAxisSize.min,
                 children: [
                   Text(
-                    mediaTypeLabel(media.type).toUpperCase(),
+                    mediaTypeLabel(media.type),
                     style: const TextStyle(
-                      color: AppColors.accent,
-                      fontWeight: FontWeight.w700,
+                      color: AppColors.accentMuted,
+                      fontWeight: FontWeight.w600,
                       fontSize: 13,
-                      letterSpacing: 1.5,
+                      letterSpacing: 0.2,
                     ),
                   ),
                   const SizedBox(height: 8),
                   Text(
                     title,
                     style: Theme.of(context).textTheme.displaySmall?.copyWith(
-                          fontWeight: FontWeight.w800,
+                          fontWeight: FontWeight.w700,
                           fontSize: isCompact ? 28 : 42,
                           height: 1.05,
+                          letterSpacing: -0.8,
                           shadows: [
                             Shadow(
                               color: Colors.black.withValues(alpha: 0.8),
@@ -150,13 +151,16 @@ class HeroBanner extends StatelessWidget {
                     ),
                   ],
                   const SizedBox(height: 24),
-                  Row(
+                  Wrap(
+                    spacing: 12,
+                    runSpacing: 12,
                     children: [
                       _PlayButton(label: playLabel, onPressed: onPlay),
-                      if (onInfo != null) ...[
-                        const SizedBox(width: 12),
-                        _InfoButton(onPressed: onInfo!),
-                      ],
+                      if (onInfo != null)
+                        _InfoButton(
+                          onPressed: onInfo!,
+                          compact: isCompact,
+                        ),
                     ],
                   ),
                 ],
@@ -182,6 +186,7 @@ class _PlayButton extends StatelessWidget {
       icon: const Icon(Icons.play_arrow_rounded, size: 28),
       label: Text(label),
       style: ElevatedButton.styleFrom(
+        minimumSize: const Size(48, 48),
         padding: const EdgeInsets.symmetric(horizontal: 28, vertical: 14),
       ),
     );
@@ -190,19 +195,24 @@ class _PlayButton extends StatelessWidget {
 
 class _InfoButton extends StatelessWidget {
   final VoidCallback onPressed;
+  final bool compact;
 
-  const _InfoButton({required this.onPressed});
+  const _InfoButton({required this.onPressed, this.compact = false});
 
   @override
   Widget build(BuildContext context) {
     return OutlinedButton.icon(
       onPressed: onPressed,
       icon: const Icon(Icons.info_outline_rounded, size: 22),
-      label: const Text('PLUS D\'INFOS'),
+      label: Text(compact ? 'INFOS' : 'PLUS D\'INFOS'),
       style: OutlinedButton.styleFrom(
         backgroundColor: Colors.white.withValues(alpha: 0.15),
         side: BorderSide.none,
-        padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 14),
+        minimumSize: const Size(48, 48),
+        padding: EdgeInsets.symmetric(
+          horizontal: compact ? 16 : 24,
+          vertical: 14,
+        ),
       ),
     );
   }
@@ -302,20 +312,21 @@ class DetailHero extends StatelessWidget {
                     mainAxisSize: MainAxisSize.min,
                     children: [
                       Text(
-                        mediaTypeLabel(media.type).toUpperCase(),
+                        mediaTypeLabel(media.type),
                         style: const TextStyle(
-                          color: AppColors.accent,
-                          fontWeight: FontWeight.w700,
+                          color: AppColors.accentMuted,
+                          fontWeight: FontWeight.w600,
                           fontSize: 12,
-                          letterSpacing: 1.5,
+                          letterSpacing: 0.2,
                         ),
                       ),
                       const SizedBox(height: 6),
                       Text(
                         media.title,
                         style: Theme.of(context).textTheme.headlineMedium?.copyWith(
-                              fontWeight: FontWeight.w800,
+                              fontWeight: FontWeight.w700,
                               height: 1.1,
+                              letterSpacing: -0.4,
                             ),
                       ),
                       if (metadata != null && metadata!.isNotEmpty) ...[

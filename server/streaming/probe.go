@@ -14,6 +14,29 @@ type VideoStreamInfo struct {
 	Codec  string `json:"codec_name"`
 	Width  int    `json:"width"`
 	Height int    `json:"height"`
+	// FrameRate is the average frame rate in fps (0 when unknown). Used to size
+	// the encoder GOP so a 60fps source doesn't get 2.5x more keyframes than
+	// the segment layout needs.
+	FrameRate float64 `json:"frame_rate"`
+	// PixFmt is FFmpeg's pixel format, e.g. "yuv420p" or "yuv420p10le".
+	//
+	// It is what separates a stream the browser can be handed untouched from one
+	// that must be re-encoded: no browser decodes 10-bit H.264 (High 10), and
+	// passing it through produces a black picture with no error. Empty on media
+	// probed before this field existed, which the copy decision treats as "do
+	// not risk it".
+	PixFmt string `json:"pix_fmt"`
+}
+
+// EightBit reports whether the stream is plain 8-bit, the only depth every
+// target browser decodes.
+func (v *VideoStreamInfo) EightBit() bool {
+	switch strings.ToLower(v.PixFmt) {
+	case "yuv420p", "yuvj420p", "yuv422p", "yuvj422p", "nv12":
+		return true
+	default:
+		return false
+	}
 }
 
 // AudioStreamInfo holds metadata about an audio stream.
@@ -74,13 +97,16 @@ func ProbeTracks(inputPath string) (*ProbeResult, error) {
 
 	var ffResponse struct {
 		Streams []struct {
-			Index       int    `json:"index"`
-			CodecType   string `json:"codec_type"`
-			CodecName   string `json:"codec_name"`
-			Width       int    `json:"width"`
-			Height      int    `json:"height"`
-			Channels    int    `json:"channels"`
-			Disposition struct {
+			Index        int    `json:"index"`
+			CodecType    string `json:"codec_type"`
+			CodecName    string `json:"codec_name"`
+			Width        int    `json:"width"`
+			Height       int    `json:"height"`
+			PixFmt       string `json:"pix_fmt"`
+			Channels     int    `json:"channels"`
+			AvgFrameRate string `json:"avg_frame_rate"`
+			RFrameRate   string `json:"r_frame_rate"`
+			Disposition  struct {
 				Default int `json:"default"`
 				Forced  int `json:"forced"`
 			} `json:"disposition"`
@@ -107,11 +133,26 @@ func ProbeTracks(inputPath string) (*ProbeResult, error) {
 		case "video":
 			// Skip cover-art / thumbnail streams (mjpeg/png attached pictures).
 			if result.Video == nil && !isAttachedPicture(s.CodecName) {
+				fps := parseFrameRate(s.AvgFrameRate)
+				if fps <= 0 {
+					fps = parseFrameRate(s.RFrameRate)
+				}
+				// An empty PixFmt has to mean "probed before this field existed",
+				// because that is what invalidates a cached entry. A stream ffprobe
+				// genuinely reports no pixel format for gets an explicit sentinel
+				// instead, so it is never mistaken for stale data and re-probed on
+				// every single session start.
+				pixFmt := s.PixFmt
+				if pixFmt == "" {
+					pixFmt = "unknown"
+				}
 				result.Video = &VideoStreamInfo{
-					Index:  s.Index,
-					Codec:  s.CodecName,
-					Width:  s.Width,
-					Height: s.Height,
+					Index:     s.Index,
+					Codec:     s.CodecName,
+					Width:     s.Width,
+					Height:    s.Height,
+					FrameRate: fps,
+					PixFmt:    pixFmt,
 				}
 			}
 		case "audio":
@@ -178,6 +219,27 @@ func parseDuration(s string) float64 {
 		return 0
 	}
 	return d
+}
+
+// parseFrameRate turns an ffprobe rational ("24000/1001") into fps.
+func parseFrameRate(s string) float64 {
+	if s == "" || s == "0/0" {
+		return 0
+	}
+	num, den, ok := strings.Cut(s, "/")
+	if !ok {
+		v, err := strconv.ParseFloat(s, 64)
+		if err != nil {
+			return 0
+		}
+		return v
+	}
+	n, err1 := strconv.ParseFloat(num, 64)
+	d, err2 := strconv.ParseFloat(den, 64)
+	if err1 != nil || err2 != nil || d == 0 {
+		return 0
+	}
+	return n / d
 }
 
 func isTextSubtitle(codec string) bool {

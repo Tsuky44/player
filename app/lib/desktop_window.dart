@@ -1,18 +1,33 @@
-import 'dart:io';
 import 'package:flutter/material.dart';
-import 'package:window_manager/window_manager.dart';
+
+import 'utils/app_platform.dart';
+import 'utils/window_controls.dart';
 
 /// Custom caption bar is Windows-only; macOS keeps native traffic lights.
-bool get useDesktopCaptionBar => Platform.isWindows;
+bool get useDesktopCaptionBar => AppPlatform.isWindows;
 
 /// Hidden native title bar (custom bar on Windows, traffic lights on macOS).
-bool get useHiddenNativeTitleBar => Platform.isWindows || Platform.isMacOS;
+bool get useHiddenNativeTitleBar =>
+    AppPlatform.isWindows || AppPlatform.isMacOS;
 
 /// Vertical space for macOS traffic lights — UI controls sit just below.
-double get macOSWindowControlsTopInset => Platform.isMacOS ? 40 : 0;
+double get macOSWindowControlsTopInset => AppPlatform.isMacOS ? 40 : 0;
+
+/// Top padding for tab bodies when the desktop glass nav overlaps content (≥900px).
+double embeddedShellContentTopInset(BuildContext context) {
+  const headerVerticalPadding = 16.0; // matches _DesktopGlassHeader (6 + 10)
+  const navRowHeight = 44.0;
+  const gapBelowHeader = 12.0;
+  return MediaQuery.paddingOf(context).top +
+      macOSWindowControlsTopInset +
+      headerVerticalPadding +
+      navRowHeight +
+      gapBelowHeader;
+}
 
 /// Controls visibility of the custom desktop caption bar (Windows only).
-final ValueNotifier<bool> showDesktopCaption = ValueNotifier<bool>(Platform.isWindows);
+final ValueNotifier<bool> showDesktopCaption =
+    ValueNotifier<bool>(AppPlatform.isWindows);
 
 /// Windows-style caption bar shown at the top of desktop windows when
 /// [showDesktopCaption] is true. Provides minimize, maximize/restore
@@ -35,15 +50,15 @@ class _WindowCaptionBarState extends State<WindowCaptionBar> {
 
   Future<void> _syncMaximized() async {
     if (!useDesktopCaptionBar) return;
-    final maximized = await windowManager.isMaximized();
+    final maximized = await WindowControls.isMaximized();
     if (mounted) setState(() => _isMaximized = maximized);
   }
 
   Future<void> _toggleMaximize() async {
     if (_isMaximized) {
-      await windowManager.unmaximize();
+      await WindowControls.unmaximize();
     } else {
-      await windowManager.maximize();
+      await WindowControls.maximize();
     }
     await _syncMaximized();
   }
@@ -63,7 +78,7 @@ class _WindowCaptionBarState extends State<WindowCaptionBar> {
           Expanded(
             child: GestureDetector(
               behavior: HitTestBehavior.opaque,
-              onPanStart: (_) => windowManager.startDragging(),
+              onPanStart: (_) => WindowControls.startDragging(),
               onDoubleTap: _toggleMaximize,
               child: const SizedBox.expand(),
             ),
@@ -71,7 +86,7 @@ class _WindowCaptionBarState extends State<WindowCaptionBar> {
           _CaptionButton(
             icon: Icons.remove,
             tooltip: 'Réduire',
-            onPressed: () => windowManager.minimize(),
+            onPressed: () => WindowControls.minimize(),
           ),
           _CaptionButton(
             icon: _isMaximized ? Icons.filter_none : Icons.crop_square,
@@ -81,7 +96,7 @@ class _WindowCaptionBarState extends State<WindowCaptionBar> {
           _CaptionButton(
             icon: Icons.close,
             tooltip: 'Fermer',
-            onPressed: () => windowManager.close(),
+            onPressed: () => WindowControls.close(),
             hoverColor: Colors.redAccent,
             iconColor: Colors.white,
           ),

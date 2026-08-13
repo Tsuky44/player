@@ -66,10 +66,17 @@ class PlayerHUDOverlay extends StatelessWidget {
     if (!visible) return const SizedBox.shrink();
 
     const accentBlue = Color(0xFF007AFF);
-    final currentPos = isDraggingSlider
+    final rawPos = isDraggingSlider
         ? Duration(seconds: dragValue.toInt())
         : position;
-    final totalDuration = duration.inSeconds > 0 ? duration : const Duration(seconds: 1);
+    final totalDuration =
+        duration.inSeconds > 0 ? duration : const Duration(seconds: 1);
+    // ProgressBar asserts progress <= total and throws otherwise. A transient
+    // disagreement between the two — a stale position arriving against a
+    // freshly changed duration during an HLS session swap — would then raise on
+    // every frame, and the resulting exception storm wedges the whole overlay.
+    // Clamping keeps a momentary inconsistency cosmetic instead of fatal.
+    final currentPos = rawPos > totalDuration ? totalDuration : rawPos;
 
     return Positioned.fill(
       child: GestureDetector(

@@ -1,5 +1,9 @@
+import 'dart:ui';
+
 import 'package:flutter/material.dart';
+
 import '../../../models/models.dart';
+import '../../../theme/app_colors.dart';
 
 class NextEpisodeOverlay extends StatefulWidget {
   final HomeMediaItem? nextEpisode;
@@ -41,7 +45,9 @@ class _NextEpisodeOverlayState extends State<NextEpisodeOverlay>
 
     if (widget.autoPlayActive && !oldWidget.autoPlayActive) {
       _startAnimation();
-    } else if (!widget.autoPlayActive && oldWidget.autoPlayActive && !widget.frozen) {
+    } else if (!widget.autoPlayActive &&
+        oldWidget.autoPlayActive &&
+        !widget.frozen) {
       _stopAnimation();
     }
 
@@ -49,7 +55,6 @@ class _NextEpisodeOverlayState extends State<NextEpisodeOverlay>
       _animationController?.stop(canceled: false);
       setState(() {});
     } else if (!widget.frozen && oldWidget.frozen && widget.autoPlayActive) {
-      // Relancer l'animation quand on sort du freeze
       _startAnimation();
     }
   }
@@ -90,87 +95,90 @@ class _NextEpisodeOverlayState extends State<NextEpisodeOverlay>
         color: Colors.transparent,
         child: GestureDetector(
           onTap: widget.onPlayNext,
-          child: Container(
-            height: 48,
-            constraints: const BoxConstraints(minWidth: 180),
-            decoration: BoxDecoration(
-              borderRadius: BorderRadius.circular(24),
-              color: Colors.transparent,
-              border: Border.all(
-                color: Colors.white.withOpacity(0.3),
-                width: 1,
-              ),
-            ),
-            child: ClipRRect(
-              borderRadius: BorderRadius.circular(24),
-              child: Stack(
-                alignment: Alignment.center,
-                children: [
-                  // Progressive fill from left to right
-                  if (widget.autoPlayActive && !widget.frozen && _animationController != null)
-                    AnimatedBuilder(
-                      animation: _animationController!,
-                      builder: (context, child) {
-                        return Positioned.fill(
-                          child: Align(
-                            alignment: Alignment.centerLeft,
-                            child: FractionallySizedBox(
-                              widthFactor: _animationController!.value,
-                              child: Container(
-                                color: const Color(0xFF333333),
+          child: ClipRRect(
+            borderRadius: BorderRadius.circular(14),
+            child: BackdropFilter(
+              filter: ImageFilter.blur(sigmaX: 20, sigmaY: 20),
+              child: Container(
+                height: 48,
+                constraints: const BoxConstraints(minWidth: 188),
+                decoration: BoxDecoration(
+                  borderRadius: BorderRadius.circular(14),
+                  color: AppColors.surface.withValues(alpha: 0.78),
+                  border: Border.all(color: AppColors.glassBorder),
+                ),
+                child: Stack(
+                  alignment: Alignment.center,
+                  children: [
+                    if (widget.autoPlayActive &&
+                        !widget.frozen &&
+                        _animationController != null)
+                      AnimatedBuilder(
+                        animation: _animationController!,
+                        builder: (context, child) {
+                          return Positioned.fill(
+                            child: Align(
+                              alignment: Alignment.centerLeft,
+                              child: FractionallySizedBox(
+                                widthFactor: _animationController!.value,
+                                child: Container(
+                                  color:
+                                      AppColors.primary.withValues(alpha: 0.22),
+                                ),
                               ),
                             ),
+                          );
+                        },
+                      ),
+                    Padding(
+                      padding: const EdgeInsets.symmetric(horizontal: 16),
+                      child: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Icon(
+                            widget.frozen
+                                ? Icons.pause_rounded
+                                : Icons.play_arrow_rounded,
+                            color: AppColors.textPrimary,
+                            size: 20,
                           ),
-                        );
-                      },
-                    ),
-                  // Content
-                  Padding(
-                    padding: const EdgeInsets.symmetric(horizontal: 20),
-                    child: Row(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        Icon(
-                          widget.frozen ? Icons.pause : Icons.play_arrow,
-                          color: Colors.white,
-                          size: 20,
-                        ),
-                        const SizedBox(width: 10),
-                        Text(
-                          widget.frozen
-                              ? "Lecture auto."
-                              : "Épisode suivant",
-                          style: const TextStyle(
-                            color: Colors.white,
-                            fontSize: 14,
-                            fontWeight: FontWeight.w600,
-                            letterSpacing: 0.3,
-                          ),
-                        ),
-                        if (widget.autoPlayActive && !widget.frozen) ...[
                           const SizedBox(width: 10),
                           Text(
-                            "${widget.countdownSeconds}s",
-                            style: TextStyle(
-                              color: Colors.white.withOpacity(0.85),
-                              fontSize: 13,
-                              fontWeight: FontWeight.w500,
+                            widget.frozen
+                                ? 'Lecture auto.'
+                                : 'Épisode suivant',
+                            style: const TextStyle(
+                              color: AppColors.textPrimary,
+                              fontSize: 14,
+                              fontWeight: FontWeight.w600,
+                              letterSpacing: -0.2,
+                            ),
+                          ),
+                          if (widget.autoPlayActive && !widget.frozen) ...[
+                            const SizedBox(width: 10),
+                            Text(
+                              '${widget.countdownSeconds}s',
+                              style: const TextStyle(
+                                color: AppColors.textSecondary,
+                                fontSize: 13,
+                                fontWeight: FontWeight.w500,
+                              ),
+                            ),
+                          ],
+                          const SizedBox(width: 10),
+                          GestureDetector(
+                            onTap: widget.onCancel,
+                            child: const Icon(
+                              Icons.close_rounded,
+                              color: AppColors.textSecondary,
+                              size: 18,
                             ),
                           ),
                         ],
-                        const SizedBox(width: 10),
-                        GestureDetector(
-                          onTap: widget.onCancel,
-                          child: Icon(
-                            Icons.close,
-                            color: Colors.white.withOpacity(0.8),
-                            size: 18,
-                          ),
-                        ),
-                      ],
+                      ),
                     ),
-                  ),
-                ],
+                  ],
+                ),
               ),
             ),
           ),

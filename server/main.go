@@ -8,10 +8,12 @@ import (
 	"path/filepath"
 	"time"
 
+	"project-player/server/config"
 	"project-player/server/database"
 	"project-player/server/handlers"
 	"project-player/server/indexer"
 	"project-player/server/streaming"
+	"project-player/server/webui"
 
 	"github.com/julienschmidt/httprouter"
 )
@@ -36,6 +38,7 @@ func main() {
 		log.Fatalf("Failed to initialize database: %v", err)
 	}
 	defer db.Close()
+	config.LoadCache()
 
 	if err := handlers.InitStream(); err != nil {
 		log.Fatalf("Failed to initialize stream handler: %v", err)
@@ -63,6 +66,16 @@ func main() {
 	router.POST("/api/auth/logout", handlers.Logout)
 	router.GET("/api/auth/me", handlers.RequireAuth(handlers.Me))
 
+	// Settings (MediaHub, TMDB, library paths)
+	router.GET("/api/settings", handlers.RequireAuth(handlers.GetSettings))
+	router.PUT("/api/settings", handlers.RequireAuth(handlers.UpdateSettings))
+
+	// Player Studio layouts (per-user, synced across devices)
+	router.GET("/api/me/player-layouts", handlers.RequireAuth(handlers.ListPlayerLayouts))
+	router.POST("/api/me/player-layouts", handlers.RequireAuth(handlers.CreatePlayerLayout))
+	router.PUT("/api/me/player-layouts/:id", handlers.RequireAuth(handlers.UpdatePlayerLayout))
+	router.DELETE("/api/me/player-layouts/:id", handlers.RequireAuth(handlers.DeletePlayerLayout))
+
 	// 2. Dashboard & Progress Routes
 	router.GET("/api/home", handlers.RequireAuth(handlers.Home))
 	router.GET("/api/progress", handlers.RequireAuth(handlers.GetProgress))
@@ -74,6 +87,7 @@ func main() {
 	router.GET("/api/movies", handlers.RequireAuth(handlers.GetMovies))
 	router.GET("/api/shows", handlers.RequireAuth(handlers.GetShows))
 	router.GET("/api/shows/:id/seasons", handlers.RequireAuth(handlers.GetShowSeasons))
+	router.GET("/api/shows/:id/seasons/:num/episodes", handlers.RequireAuth(handlers.GetShowSeasonEpisodes))
 	router.GET("/api/shows/:id/resume", handlers.RequireAuth(handlers.GetShowResumeEpisode))
 	router.GET("/api/seasons/:id/episodes", handlers.RequireAuth(handlers.GetSeasonEpisodes))
 	router.GET("/api/episodes/:id/next", handlers.RequireAuth(handlers.GetNextEpisode))
@@ -84,6 +98,9 @@ func main() {
 	router.GET("/api/person/:id", handlers.RequireAuth(handlers.GetPersonDetails))
 	router.GET("/api/collection/:id", handlers.RequireAuth(handlers.GetCollectionDetails))
 	router.GET("/api/requests/catalog", handlers.RequireAuth(handlers.TmdbRequestCatalog))
+	router.GET("/api/requests/filter-options", handlers.RequireAuth(handlers.TmdbRequestFilterOptions))
+	router.GET("/api/requests/watch-providers", handlers.RequireAuth(handlers.TmdbRequestWatchProviders))
+	router.GET("/api/requests/media/:id/seasons/:num/episodes", handlers.RequireAuth(handlers.TmdbRequestSeasonEpisodes))
 	router.GET("/api/requests/media/:id", handlers.RequireAuth(handlers.TmdbRequestDetails))
 	router.POST("/api/requests", handlers.RequireAuth(handlers.MediaHubRequest))
 
@@ -99,8 +116,10 @@ func main() {
 	router.POST("/api/indexer/scan", handlers.RequireAuth(handlers.TriggerScan))
 	router.POST("/api/indexer/dedupe", handlers.RequireAuth(handlers.TriggerShowDedupe))
 	router.POST("/api/indexer/metadata/backfill", handlers.RequireAuth(handlers.TriggerMetadataBackfill))
+	router.POST("/api/indexer/metadata/redetect-all", handlers.RequireAuth(handlers.TriggerRedetectAll))
 	router.POST("/api/indexer/probe/backfill", handlers.RequireAuth(handlers.TriggerProbeBackfill))
 	router.POST("/api/media/:id/metadata/enrich", handlers.RequireAuth(handlers.EnrichMediaMetadata))
+	router.POST("/api/media/:id/metadata/redetect", handlers.RequireAuth(handlers.RedetectMediaMetadata))
 	router.POST("/api/media/:id/metadata/rematch", handlers.RequireAuth(handlers.RematchMediaMetadata))
 	router.GET("/api/tmdb/search", handlers.RequireAuth(handlers.SearchTMDBMetadata))
 	router.POST("/api/indexer/subtitles/extract", handlers.RequireAuth(handlers.TriggerSubtitleExtract))
@@ -111,6 +130,14 @@ func main() {
 	// No auth required — this is a debug-only endpoint for testing re-indexing.
 	router.POST("/api/indexer/debug/delete-show", handlers.DebugDeleteShowPublic)
 	router.POST("/api/indexer/debug/delete-show/:id", handlers.DebugDeleteShowPublic)
+
+	// Client apps (APK / DMG / EXE) baked into the image by publish-image.sh.
+	// Unauthenticated: this is how a new user gets the app before they have an
+	// account, and a browser download cannot carry an Authorization header.
+	router.GET("/api/downloads", handlers.ListDownloads)
+	router.GET("/api/downloads/:file", handlers.ServeDownload)
+	// Download managers probe with HEAD before starting a 100 MB transfer.
+	router.HEAD("/api/downloads/:file", handlers.ServeDownload)
 
 	// 5. Streaming Endpoint (Unauthenticated for video player compatibility)
 	router.GET("/stream", handlers.StreamMedia)
@@ -124,20 +151,33 @@ func main() {
 	router.DELETE("/api/v1/stream/*path", hlsHandler.Dispatch)
 	router.OPTIONS("/api/v1/stream/*path", hlsHandler.Dispatch)
 
+	// 7. Web UI — the Flutter bundle embedded in the binary. Registered as the
+	// router's NotFound handler so it picks up every path the API did not claim,
+	// which is what lets client-side routes survive a reload or a shared link.
+	if webui.Available() {
+		webHandler, err := webui.New()
+		if err != nil {
+			log.Fatalf("Failed to initialize web UI: %v", err)
+		}
+		router.NotFound = webHandler
+	} else {
+		log.Println("WebUI: no bundle embedded — run scripts/build-web.sh before building to serve the web client.")
+	}
+
 	// Trigger startup scan if configured
 	if *scanOnStartup {
-		moviesDir := getEnv("MOVIES_DIR", "/media/Films")
-		seriesDir := getEnv("SERIES_DIR", "/media/Series")
+		moviesDir := config.MoviesDir()
+		seriesDir := config.SeriesDir()
 		log.Printf("Triggering startup scan on: Movies=%s, Series=%s", moviesDir, seriesDir)
 		indexer.ScanMedia(moviesDir, seriesDir)
-	} else if key := os.Getenv("TMDB_API_KEY"); key != "" && key != "your_tmdb_api_key_here" && key != "votre_cle_api_tmdb_ici" {
+	} else if config.TMDBAPIKey() != "" {
 		indexer.BackfillMissingMetadataAsync()
 		indexer.BackfillMissingProbesAsync()
 	}
 
-	if key := os.Getenv("TMDB_API_KEY"); key == "" || key == "your_tmdb_api_key_here" || key == "votre_cle_api_tmdb_ici" {
-		log.Println("WARNING: TMDB_API_KEY is not set — movie/show posters will not be fetched.")
-		log.Println("         Get a free key at https://www.themoviedb.org/settings/api and set it in docker-compose.yml")
+	if config.TMDBAPIKey() == "" {
+		log.Println("WARNING: TMDB API key is not set — movie/show posters will not be fetched.")
+		log.Println("         Configure it in Paramètres, or set TMDB_API_KEY in the environment.")
 	}
 
 	// Create data directory if it doesn't exist
@@ -175,12 +215,4 @@ func setupCORS(router *httprouter.Router) http.Handler {
 
 		router.ServeHTTP(w, r)
 	})
-}
-
-// Helper to get environment variables with default values
-func getEnv(key, defaultValue string) string {
-	if value, exists := os.LookupEnv(key); exists {
-		return value
-	}
-	return defaultValue
 }

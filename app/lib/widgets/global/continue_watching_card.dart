@@ -103,22 +103,22 @@ class _ContinueWatchingCardState extends State<ContinueWatchingCard> {
                   fit: StackFit.expand,
                   clipBehavior: Clip.hardEdge,
                   children: [
-                    ClipRRect(
-                      borderRadius: BorderRadius.circular(6),
-                      child: MediaPoster(
-                        media: widget.item.media,
-                        posterUrlOverride: widget.item.displayPosterUrl,
-                        width: width,
-                        height: height,
-                        borderRadius: 0,
-                        fit: BoxFit.cover,
-                        alignment: Alignment.center,
-                      ),
+                    MediaPoster(
+                      media: widget.item.media,
+                      posterUrlOverride: widget.item.displayPosterUrl,
+                      width: width,
+                      height: height,
+                      fit: BoxFit.cover,
+                      alignment: Alignment.center,
                     ),
                     if (_hovered)
                       Container(
                         decoration: BoxDecoration(
-                          borderRadius: BorderRadius.circular(6),
+                          borderRadius: BorderRadius.circular(12),
+                          border: Border.all(
+                            color: Colors.white.withValues(alpha: 0.16),
+                            width: 1,
+                          ),
                           color: Colors.black.withValues(alpha: 0.4),
                         ),
                         child: const Center(
@@ -135,7 +135,7 @@ class _ContinueWatchingCardState extends State<ContinueWatchingCard> {
                       bottom: 0,
                       child: ClipRRect(
                         borderRadius: const BorderRadius.vertical(
-                          bottom: Radius.circular(6),
+                          bottom: Radius.circular(12),
                         ),
                         child: LinearProgressIndicator(
                           value: progress.clamp(0.01, 1.0),

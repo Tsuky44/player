@@ -534,8 +534,9 @@ type tmdbCreditItem struct {
 	BackdropPath string `json:"backdrop_path"`
 	ReleaseDate  string `json:"release_date"`
 	FirstAirDate string `json:"first_air_date"`
-	MediaType    string `json:"media_type"`
-	Character    string `json:"character"`
+	MediaType    string  `json:"media_type"`
+	Character    string  `json:"character"`
+	VoteAverage  float64 `json:"vote_average"`
 }
 
 type tmdbPersonResponse struct {
@@ -636,6 +637,7 @@ func FetchPersonDetails(personID int) *models.PersonDetails {
 			Year:      yearFromDate(date),
 			MediaType: mediaType,
 			Character: strings.TrimSpace(c.Character),
+			Rating:    c.VoteAverage,
 		})
 	}
 
@@ -650,11 +652,12 @@ type tmdbCollectionResponse struct {
 	Overview     string `json:"overview"`
 	BackdropPath string `json:"backdrop_path"`
 	Parts        []struct {
-		ID          int    `json:"id"`
-		Title       string `json:"title"`
-		Name        string `json:"name"`
-		PosterPath  string `json:"poster_path"`
-		ReleaseDate string `json:"release_date"`
+		ID          int     `json:"id"`
+		Title       string  `json:"title"`
+		Name        string  `json:"name"`
+		PosterPath  string  `json:"poster_path"`
+		ReleaseDate string  `json:"release_date"`
+		VoteAverage float64 `json:"vote_average"`
 	} `json:"parts"`
 }
 
@@ -712,6 +715,7 @@ func FetchCollectionDetails(collectionID int) *models.CollectionDetails {
 			PosterURL: posterURLFromPath(p.PosterPath),
 			Year:      yearFromDate(p.ReleaseDate),
 			MediaType: string(models.TypeMovie),
+			Rating:    p.VoteAverage,
 		})
 	}
 	return d

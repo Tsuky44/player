@@ -75,6 +75,24 @@ class LibraryProvider extends ChangeNotifier {
     return item.percentWatched;
   }
 
+  Media resolveCanonicalShow(Media show) {
+    if (_shows.isEmpty) return show;
+    final byId = _shows.where((s) => s.id == show.id).toList();
+    if (byId.isNotEmpty) return byId.first;
+
+    if (show.tmdbId != null && show.tmdbId! > 0) {
+      for (final s in _shows) {
+        if (s.tmdbId == show.tmdbId) return s;
+      }
+    }
+
+    final key = show.title.trim().toLowerCase();
+    for (final s in _shows) {
+      if (s.title.trim().toLowerCase() == key) return s;
+    }
+    return show;
+  }
+
   // Clear sub-tier data (prevents old season/episode flash when clicking another show)
   void clearSeasonsAndEpisodes() {
     _seasons = [];
@@ -131,21 +149,72 @@ class LibraryProvider extends ChangeNotifier {
     }
   }
 
-  // Load episodes of a season
-  Future<void> loadEpisodes(int seasonId) async {
+  // Load episodes of a season (local row or TMDB-only virtual season).
+  Future<void> loadEpisodes({required int showId, required Media season}) async {
     _isLoadingEpisodes = true;
-    _episodes = []; // Reset first
+    _episodes = [];
     _errorMessage = null;
     notifyListeners();
 
     try {
-      _episodes = await apiClient.getSeasonEpisodes(seasonId);
+      if (season.id > 0) {
+        _episodes = await apiClient.getSeasonEpisodes(season.id);
+      } else {
+        final seasonNum = season.effectiveSeasonNumber ?? season.seasonNumber;
+        if (seasonNum == null || seasonNum <= 0) {
+          _episodes = [];
+        } else {
+          _episodes = await apiClient.getShowSeasonEpisodes(showId, seasonNum);
+        }
+      }
     } catch (e) {
       _errorMessage = "Erreur lors du chargement des épisodes : ${e.toString()}";
     } finally {
       _isLoadingEpisodes = false;
       notifyListeners();
     }
+  }
+
+  /// Sends a MediaHub request for seasons missing from the server.
+  ///
+  /// On success the seasons flip to "requested" locally instead of being
+  /// refetched: MediaHub takes a moment to expose a fresh request, and a refetch
+  /// could hand back "requestable" right after the user asked for it.
+  Future<void> requestSeasons({
+    required Media show,
+    required List<int> seasonNumbers,
+  }) async {
+    final tmdbId = show.tmdbId;
+    if (tmdbId == null || tmdbId <= 0 || seasonNumbers.isEmpty) return;
+
+    await apiClient.requestTmdbMedia(
+      tmdbId: tmdbId,
+      mediaType: 'tv',
+      title: show.title,
+      posterPath: _tmdbPosterPath(show.posterUrl),
+      seasons: seasonNumbers,
+    );
+
+    final requested = seasonNumbers.toSet();
+    _seasons = [
+      for (final season in _seasons)
+        if (!season.isAvailable &&
+                season.effectiveSeasonNumber != null &&
+                requested.contains(season.effectiveSeasonNumber))
+            season.copyWith(requestStatus: 'pending', canRequest: false)
+        else
+          season,
+    ];
+    notifyListeners();
+  }
+
+  /// MediaHub stores TMDB poster *paths* ("/abc.jpg"), while the library holds
+  /// full image URLs. Anything else is dropped rather than sent as-is.
+  static String? _tmdbPosterPath(String? posterUrl) {
+    if (posterUrl == null || posterUrl.isEmpty) return null;
+    if (posterUrl.startsWith('/')) return posterUrl;
+    final marker = RegExp(r'image\.tmdb\.org/t/p/[^/]+(/.+)$');
+    return marker.firstMatch(posterUrl)?.group(1);
   }
 
   Future<bool> setMediaWatched(int mediaId, bool watched) async {

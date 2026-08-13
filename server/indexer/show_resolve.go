@@ -2,6 +2,7 @@ package indexer
 
 import (
 	"log"
+	"path/filepath"
 	"strconv"
 	"strings"
 
@@ -9,8 +10,29 @@ import (
 	"project-player/server/models"
 )
 
-// looksLikeEpisodeReleaseFolder detects per-episode download folders (e.g. "Mercredi.S01E01.1080p").
+// resolveShowTMDBSearchKeyFromPath returns a raw release string (year preserved)
+// for TMDB lookup. Display titles are normalized separately for deduplication.
+func resolveShowTMDBSearchKeyFromPath(parts []string, fileName string) string {
+	if len(parts) >= 2 {
+		for i := 0; i < len(parts)-1; i++ {
+			part := strings.TrimSpace(parts[i])
+			if part == "" || looksLikeEpisodeReleaseFolder(part) {
+				continue
+			}
+			return part
+		}
+	}
+
+	loc := episodeRegex.FindStringIndex(fileName)
+	if loc != nil {
+		return strings.Trim(fileName[:loc[0]], " -_.")
+	}
+	return strings.TrimSuffix(fileName, filepath.Ext(fileName))
+}
 func looksLikeEpisodeReleaseFolder(name string) bool {
+	if _, _, ok := ParseEpisodeNumbers(name); ok {
+		return true
+	}
 	if episodeRegex.MatchString(name) {
 		return true
 	}
@@ -30,7 +52,7 @@ func resolveShowTitleFromPath(parts []string, fileName string) string {
 			if part == "" || looksLikeEpisodeReleaseFolder(part) {
 				continue
 			}
-			if title := ReleaseDisplayTitle(part, models.TypeShow); title != "" {
+			if title := ReleaseDisplayTitle(StripProviderIDs(part), models.TypeShow); title != "" {
 				return title
 			}
 		}
@@ -76,32 +98,35 @@ func lookupShowIDByTMDBID(tmdbID int) (int, bool) {
 	return id, err == nil
 }
 
-// findOrCreateShow resolves a show by normalized title and TMDB id before creating a row.
-func findOrCreateShow(searchTitle string) (int, error) {
-	searchTitle = strings.TrimSpace(searchTitle)
-	if searchTitle == "" {
-		searchTitle = "Unknown Show"
-	}
-
-	normalizedSearch := ReleaseDisplayTitle(searchTitle, models.TypeShow)
-	if normalizedSearch == "" {
-		normalizedSearch = searchTitle
-	}
-
-	if id, ok := lookupShowIDByTitle(normalizedSearch); ok {
-		ensureShowHasTMDBID(id)
-		return id, nil
-	}
-
-	posterURL, overview, releaseDate, tmdbID, tmdbTitle := fetchTMDBMetadata(normalizedSearch, models.TypeShow)
-	displayTitle := tmdbTitle
+// findOrCreateShow resolves a show by local provider IDs / NFO first (Emby-style),
+// then TMDB id, then normalized title. tmdbSearchKey should preserve years when available.
+func findOrCreateShow(displayTitle, tmdbSearchKey, showFolderPath string) (int, error) {
+	displayTitle = strings.TrimSpace(displayTitle)
 	if displayTitle == "" {
-		displayTitle = normalizedSearch
+		displayTitle = "Unknown Show"
+	}
+	tmdbSearchKey = strings.TrimSpace(tmdbSearchKey)
+	if tmdbSearchKey == "" {
+		tmdbSearchKey = displayTitle
 	}
 
-	if tmdbID > 0 {
-		if id, ok := lookupShowIDByTMDBID(tmdbID); ok {
+	identity := IdentifyShow(showFolderPath, tmdbSearchKey)
+	if identity.Matched && identity.Title != "" {
+		displayTitle = identity.Title
+	} else {
+		normalizedSearch := ReleaseDisplayTitle(StripProviderIDs(displayTitle), models.TypeShow)
+		if normalizedSearch != "" {
+			displayTitle = normalizedSearch
+		}
+	}
+
+	// Prefer TMDB id binding over title-only, to avoid attaching to a wrong early match.
+	if identity.Matched && identity.TMDBID > 0 {
+		if id, ok := lookupShowIDByTMDBID(identity.TMDBID); ok {
 			ensureShowHasTMDBID(id)
+			if identity.IMDbID != "" {
+				_, _ = database.DB.Exec(`UPDATE medias SET imdb_id = COALESCE(NULLIF(imdb_id, ''), ?) WHERE id = ?`, identity.IMDbID, id)
+			}
 			return id, nil
 		}
 	}
@@ -111,15 +136,32 @@ func findOrCreateShow(searchTitle string) (int, error) {
 		return id, nil
 	}
 
+	tmdbID := 0
+	posterURL, overview, releaseDate := "", "", ""
+	imdbID := identity.IMDbID
+	if identity.Matched {
+		tmdbID = identity.TMDBID
+		posterURL = identity.PosterURL
+		overview = identity.Overview
+		releaseDate = identity.ReleaseDate
+	}
+
 	res, err := database.DB.Exec(
-		"INSERT INTO medias (type, title, poster_url, overview, release_date, tmdb_id) VALUES (?, ?, ?, ?, ?, ?)",
-		models.TypeShow, displayTitle, posterURL, overview, releaseDate, tmdbID,
+		"INSERT INTO medias (type, title, poster_url, overview, release_date, tmdb_id, imdb_id) VALUES (?, ?, ?, ?, ?, ?, ?)",
+		models.TypeShow, displayTitle, posterURL, overview, releaseDate, tmdbID, nullIfEmpty(imdbID),
 	)
 	if err != nil {
 		return 0, err
 	}
 
 	insertID, err := res.LastInsertId()
+	if err == nil {
+		if identity.Matched {
+			log.Printf("Indexer: created show %q (tmdb=%d via %s, conf=%.2f)", displayTitle, tmdbID, identity.Source, identity.Confidence)
+		} else {
+			log.Printf("Indexer: created show %q (unmatched — needs review)", displayTitle)
+		}
+	}
 	return int(insertID), err
 }
 

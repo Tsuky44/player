@@ -44,8 +44,15 @@ class PlayerSettingsAnchor {
     return left.clamp(minMargin, maxLeft);
   }
 
-  /// Prefer opening above the button; fall back below when there is not enough room.
-  static ({double? bottom, double? top}) verticalPlacement({
+  /// Prefer opening above the button — every anchor sits in the bottom control
+  /// row, so above is where the room is.
+  ///
+  /// Requiring the popup's *full* height to fit above would flip it downward on
+  /// a short window and push it off-screen, since below the button there is
+  /// only the control row. So the side is chosen by whichever has more room,
+  /// and [maxHeight] reports what actually fits there: the caller constrains
+  /// the popup to it and the popup's own list scrolls the overflow.
+  static ({double? bottom, double? top, double maxHeight}) verticalPlacement({
     required Rect buttonRect,
     required Size screenSize,
     required double popupMaxHeight,
@@ -53,9 +60,20 @@ class PlayerSettingsAnchor {
     double minMargin = minViewportMargin,
   }) {
     final spaceAbove = buttonRect.top - gap - minMargin;
-    if (spaceAbove >= popupMaxHeight) {
-      return (bottom: screenSize.height - buttonRect.top + gap, top: null);
+    final spaceBelow =
+        screenSize.height - buttonRect.bottom - gap - minMargin;
+
+    if (spaceAbove >= spaceBelow) {
+      return (
+        bottom: screenSize.height - buttonRect.top + gap,
+        top: null,
+        maxHeight: spaceAbove.clamp(0.0, popupMaxHeight),
+      );
     }
-    return (bottom: null, top: buttonRect.bottom + gap);
+    return (
+      bottom: null,
+      top: buttonRect.bottom + gap,
+      maxHeight: spaceBelow.clamp(0.0, popupMaxHeight),
+    );
   }
 }

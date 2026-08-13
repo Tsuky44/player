@@ -1,7 +1,8 @@
 import 'dart:async';
-import 'dart:io';
 
 import 'package:flutter/services.dart';
+
+import '../utils/app_platform.dart';
 
 enum MacosMediaAction {
   playPause,
@@ -35,7 +36,7 @@ class MacosNowPlaying {
 
   static Stream<MacosMediaAction>? _actionsStream;
 
-  static bool get isSupported => Platform.isMacOS;
+  static bool get isSupported => AppPlatform.isMacOS;
 
   static Stream<MacosMediaAction> get actions {
     _actionsStream ??= _events.receiveBroadcastStream().map((event) {

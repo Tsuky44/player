@@ -149,6 +149,13 @@ func LoadCachedProbe(mediaID int, filePath string) (*streaming.ProbeResult, bool
 	if err != nil {
 		return nil, false
 	}
+	// Same rule as streaming.Handler.loadCachedProbe: an entry predating PixFmt
+	// cannot answer the copy-or-encode question, so it is re-probed rather than
+	// trusted. Kept in sync deliberately — the two caches must not disagree on
+	// what counts as usable.
+	if probe.Video != nil && probe.Video.PixFmt == "" {
+		return nil, false
+	}
 	return probe, true
 }
 

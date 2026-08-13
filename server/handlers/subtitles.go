@@ -126,7 +126,9 @@ func ForceMediaSubtitleExtract(w http.ResponseWriter, r *http.Request, ps httpro
 	var count int
 	if force {
 		count, err = subtitles.ForceExtractAndRegister(mediaID, filePath)
-	} else if n, _ := subtitles.CountForMedia(mediaID); n > 0 {
+	} else if n, _ := subtitles.CountCompleteForMedia(mediaID); n > 0 {
+		// Only a COMPLETE extraction counts as done. Rows left by a head pass
+		// still need finishing, so they must not short-circuit the ensure path.
 		count = n
 	} else {
 		// Background ensure: never block the HTTP stream with a full-file FFmpeg

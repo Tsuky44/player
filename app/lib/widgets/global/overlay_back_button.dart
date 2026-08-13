@@ -1,7 +1,9 @@
 import 'package:flutter/material.dart';
 import '../../desktop_window.dart';
+import '../../utils/app_platform.dart';
 
-/// Floating back control for detail screens — sits below macOS traffic lights.
+/// Floating back control for detail screens — sits below macOS traffic lights
+/// or below the status bar / notch on mobile.
 class OverlayBackButton extends StatelessWidget {
   final VoidCallback? onPressed;
 
@@ -11,20 +13,35 @@ class OverlayBackButton extends StatelessWidget {
 
   static double get leadingWidth => _buttonSize;
 
-  static double get toolbarHeight => kToolbarHeight + macOSWindowControlsTopInset;
+  static double toolbarHeightFor(BuildContext context) {
+    final top = AppPlatform.isMacOS
+        ? macOSWindowControlsTopInset
+        : MediaQuery.paddingOf(context).top;
+    return kToolbarHeight + top;
+  }
+
+  static double get toolbarHeight =>
+      kToolbarHeight + macOSWindowControlsTopInset;
 
   @override
   Widget build(BuildContext context) {
+    final topInset = AppPlatform.isMacOS
+        ? macOSWindowControlsTopInset
+        : MediaQuery.paddingOf(context).top;
+
     return SizedBox(
       width: _buttonSize,
-      height: toolbarHeight,
+      height: kToolbarHeight + topInset,
       child: Padding(
-        padding: EdgeInsets.only(top: macOSWindowControlsTopInset),
+        padding: EdgeInsets.only(top: topInset),
         child: Align(
           alignment: Alignment.topLeft,
           child: IconButton(
             padding: EdgeInsets.zero,
-            constraints: const BoxConstraints.tightFor(width: _buttonSize, height: _buttonSize),
+            constraints: const BoxConstraints.tightFor(
+              width: _buttonSize,
+              height: _buttonSize,
+            ),
             icon: Container(
               padding: const EdgeInsets.all(8),
               decoration: BoxDecoration(

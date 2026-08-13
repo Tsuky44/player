@@ -1,8 +1,10 @@
-import 'dart:io';
+import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
 import 'package:media_kit/media_kit.dart';
-import 'package:window_manager/window_manager.dart';
+import 'utils/app_platform.dart';
+import 'utils/window_controls.dart';
 import 'services/api_client.dart';
 import 'providers/auth_provider.dart';
 import 'providers/home_provider.dart';
@@ -13,33 +15,49 @@ import 'services/layout_storage.dart';
 import 'providers/search_provider.dart';
 import 'navigation/search_route_observer.dart';
 import 'screens/auth/login_screen.dart';
+import 'screens/player/player_engine.dart';
 import 'screens/shell/main_shell.dart';
 import 'theme/app_colors.dart';
 import 'theme/app_theme.dart';
 import 'desktop_window.dart';
 
+/// Enables trackpad / mouse drag scrolling on desktop (required on macOS).
+class AppScrollBehavior extends MaterialScrollBehavior {
+  @override
+  Set<PointerDeviceKind> get dragDevices => {
+        PointerDeviceKind.touch,
+        PointerDeviceKind.mouse,
+        PointerDeviceKind.trackpad,
+        PointerDeviceKind.stylus,
+      };
+}
+
 final GlobalKey<NavigatorState> rootNavigatorKey = GlobalKey<NavigatorState>();
+
+Future<void> _configureSystemUi() async {
+  if (!AppPlatform.isMobile) return;
+
+  await SystemChrome.setEnabledSystemUIMode(SystemUiMode.edgeToEdge);
+  SystemChrome.setSystemUIOverlayStyle(
+    const SystemUiOverlayStyle(
+      statusBarColor: Colors.transparent,
+      statusBarIconBrightness: Brightness.light,
+      systemNavigationBarColor: Colors.transparent,
+      systemNavigationBarIconBrightness: Brightness.light,
+      systemNavigationBarContrastEnforced: false,
+    ),
+  );
+}
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
   MediaKit.ensureInitialized();
+  await _configureSystemUi();
 
-  if (Platform.isWindows || Platform.isMacOS || Platform.isLinux) {
-    await windowManager.ensureInitialized();
-    final windowOptions = WindowOptions(
-      size: const Size(1280, 720),
-      center: true,
-      backgroundColor: Colors.transparent,
-      skipTaskbar: false,
-      titleBarStyle:
-          useHiddenNativeTitleBar ? TitleBarStyle.hidden : TitleBarStyle.normal,
-      windowButtonVisibility: Platform.isMacOS,
-    );
-    await windowManager.waitUntilReadyToShow(windowOptions, () async {
-      await windowManager.show();
-      await windowManager.focus();
-    });
-  }
+  await WindowControls.initializeDesktopWindow(
+    hiddenTitleBar: useHiddenNativeTitleBar,
+    showWindowButtons: AppPlatform.isMacOS,
+  );
 
   final apiClient = ApiClient();
   await apiClient.initialize();
@@ -54,19 +72,35 @@ void main() async {
         ChangeNotifierProvider(create: (_) => HomeProvider(apiClient)),
         ChangeNotifierProvider(create: (_) => LibraryProvider(apiClient)),
         ChangeNotifierProvider(create: (_) => MediaRequestsProvider(apiClient)),
-        ChangeNotifierProvider(
-            create: (_) => PlayerLayoutProvider(LayoutStorage())),
+        ChangeNotifierProxyProvider<AuthProvider, PlayerLayoutProvider>(
+          create: (_) => PlayerLayoutProvider(LayoutStorage(), apiClient),
+          update: (_, auth, previous) {
+            final provider =
+                previous ?? PlayerLayoutProvider(LayoutStorage(), apiClient);
+            provider.onAuthChanged(auth);
+            return provider;
+          },
+        ),
         ChangeNotifierProvider(create: (_) => SearchProvider()),
       ],
-      child: PlayeurApp(searchRouteObserver: searchRouteObserver),
+      child: OnyxApp(searchRouteObserver: searchRouteObserver),
     ),
   );
+
+  // Build the playback engine while the user is still browsing. Creating the
+  // libmpv context and its video texture costs the same whether it happens here
+  // or in front of a spinner the moment a media is launched — so it happens
+  // here. Deferred past the first frame, and past the home screen's own load,
+  // because the point is to use idle time, not to compete for it.
+  WidgetsBinding.instance.addPostFrameCallback((_) {
+    Future.delayed(const Duration(seconds: 3), PlayerEnginePool.prewarm);
+  });
 }
 
-class PlayeurApp extends StatelessWidget {
+class OnyxApp extends StatelessWidget {
   final SearchRouteObserver searchRouteObserver;
 
-  const PlayeurApp({super.key, required this.searchRouteObserver});
+  const OnyxApp({super.key, required this.searchRouteObserver});
 
   @override
   Widget build(BuildContext context) {
@@ -75,9 +109,10 @@ class PlayeurApp extends StatelessWidget {
       navigatorKey: rootNavigatorKey,
       child: MaterialApp(
         navigatorKey: rootNavigatorKey,
-        title: 'Playeur',
+        title: 'Onyx',
         debugShowCheckedModeBanner: false,
         theme: AppTheme.dark,
+        scrollBehavior: AppScrollBehavior(),
         navigatorObservers: [searchRouteObserver],
         builder: (context, child) {
           return Column(
@@ -133,17 +168,20 @@ class SplashScreen extends StatelessWidget {
               width: 72,
               height: 72,
               decoration: BoxDecoration(
-                color: AppColors.primary,
-                borderRadius: BorderRadius.circular(16),
+                color: AppColors.textPrimary.withValues(alpha: 0.94),
+                borderRadius: BorderRadius.circular(18),
               ),
-              child: const Icon(Icons.play_arrow_rounded,
-                  size: 44, color: Colors.white),
+              child: const Icon(
+                Icons.play_arrow_rounded,
+                size: 44,
+                color: AppColors.background,
+              ),
             ),
             const SizedBox(height: 28),
             const CircularProgressIndicator(strokeWidth: 2.5),
             const SizedBox(height: 20),
             Text(
-              'Connexion à Playeur…',
+              'Connexion à Onyx…',
               style: Theme.of(context).textTheme.bodyLarge?.copyWith(
                     color: AppColors.textMuted,
                     letterSpacing: 0.5,

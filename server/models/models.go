@@ -59,6 +59,8 @@ type CatalogItem struct {
 	Year        string `json:"year,omitempty"`
 	MediaType   string `json:"media_type"` // "movie" | "show"
 	Character   string `json:"character,omitempty"`
+	// TMDB vote average (0 when unknown), shown as ★ on catalog poster cards.
+	Rating float64 `json:"rating,omitempty"`
 }
 
 // TMDBSearchCandidate is a single result offered when manually re-matching a
@@ -123,7 +125,9 @@ type MediaDetails struct {
 	PosterURL     string    `json:"poster_url,omitempty"`
 	BackdropURL   string    `json:"backdrop_url,omitempty"`
 	LogoURL       string    `json:"logo_url,omitempty"`
-	FileName      string    `json:"file_name,omitempty"` // basename of the local file (movies)
+	FileName         string    `json:"file_name,omitempty"`          // movies: local file basename
+	LocalFolder      string    `json:"local_folder,omitempty"`       // shows: series folder on disk
+	LocalEpisodeFile string    `json:"local_episode_file,omitempty"` // shows: sample episode filename
 	ReleaseDate   string    `json:"release_date,omitempty"`
 	Runtime       int       `json:"runtime,omitempty"`  // minutes (from TMDB)
 	Duration      int       `json:"duration,omitempty"` // seconds (from local file)
