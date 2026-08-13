@@ -17,8 +17,13 @@ class _LoginScreenState extends State<LoginScreen> {
   final _serverController = TextEditingController();
   final _usernameController = TextEditingController();
   final _passwordController = TextEditingController();
+  final _inviteController = TextEditingController();
   bool _isRegistering = false;
   bool _serverPrefilled = false;
+
+  /// True while the server has no account at all. That is the only case where
+  /// an account can be created without an invitation, and it produces the owner.
+  bool _setupRequired = false;
 
   @override
   void didChangeDependencies() {
@@ -31,6 +36,30 @@ class _LoginScreenState extends State<LoginScreen> {
     if (username != null && username.isNotEmpty) {
       _usernameController.text = username;
     }
+
+    // A link opened in the web build carries its token in the query string.
+    // On the native apps Uri.base is not a http URL, hence the guard: there the
+    // code is typed by hand, which is the only path a link cannot serve anyway.
+    final invite = Uri.base.queryParameters['invite'];
+    if (invite != null && invite.isNotEmpty) {
+      _inviteController.text = invite;
+      _isRegistering = true;
+    }
+
+    _probeSetupState();
+  }
+
+  /// Asks the server whether it is still pristine. Unauthenticated and cheap;
+  /// on failure we simply keep the sign-up form hidden.
+  Future<void> _probeSetupState() async {
+    final apiClient = context.read<ApiClient>();
+    try {
+      await apiClient.setConnection(_serverController.text.trim());
+      final required = await apiClient.getSetupRequired();
+      if (mounted) setState(() => _setupRequired = required);
+    } catch (_) {
+      if (mounted) setState(() => _setupRequired = false);
+    }
   }
 
   @override
@@ -38,7 +67,17 @@ class _LoginScreenState extends State<LoginScreen> {
     _serverController.dispose();
     _usernameController.dispose();
     _passwordController.dispose();
+    _inviteController.dispose();
     super.dispose();
+  }
+
+  /// Accepts either the raw code or the whole link pasted from a message — the
+  /// two are shown side by side when a link is generated, and people paste
+  /// whichever they happened to copy.
+  String _inviteToken() {
+    final raw = _inviteController.text.trim();
+    if (!raw.contains('invite=')) return raw;
+    return Uri.tryParse(raw)?.queryParameters['invite'] ?? raw;
   }
 
   Future<void> _submit() async {
@@ -50,14 +89,22 @@ class _LoginScreenState extends State<LoginScreen> {
     final password = _passwordController.text;
 
     if (_isRegistering) {
-      final success =
-          await authProvider.register(serverUrl, username, password);
+      final success = await authProvider.register(
+        serverUrl,
+        username,
+        password,
+        inviteToken: _inviteToken(),
+      );
       if (success && mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(
               content: Text('Inscription réussie ! Connectez-vous.')),
         );
-        setState(() => _isRegistering = false);
+        setState(() {
+          _isRegistering = false;
+          _inviteController.clear();
+          _setupRequired = false;
+        });
       }
     } else {
       await authProvider.login(serverUrl, username, password);
@@ -117,7 +164,9 @@ class _LoginScreenState extends State<LoginScreen> {
                       const SizedBox(height: 10),
                       Text(
                         _isRegistering
-                            ? 'Créer un compte'
+                            ? (_setupRequired
+                                ? 'Créer le compte propriétaire'
+                                : 'Créer un compte avec une invitation')
                             : 'Connectez-vous à votre serveur',
                         textAlign: TextAlign.center,
                         style: textTheme.bodyMedium?.copyWith(
@@ -136,7 +185,27 @@ class _LoginScreenState extends State<LoginScreen> {
                         ),
                         validator: (v) =>
                             v == null || v.trim().isEmpty ? 'Requis' : null,
+                        // Re-check whether that server is pristine when the
+                        // address changes: the answer belongs to the server.
+                        onEditingComplete: _probeSetupState,
                       ),
+                      if (_isRegistering && !_setupRequired) ...[
+                        const SizedBox(height: 16),
+                        TextFormField(
+                          controller: _inviteController,
+                          style:
+                              const TextStyle(color: AppColors.textPrimary),
+                          decoration: const InputDecoration(
+                            labelText: 'Code d\'invitation',
+                            hintText: 'Collez le lien reçu ou son code',
+                            prefixIcon: Icon(Icons.mail_outline_rounded,
+                                color: AppColors.textMuted),
+                          ),
+                          validator: (v) => v == null || v.trim().isEmpty
+                              ? 'Une invitation est requise'
+                              : null,
+                        ),
+                      ],
                       const SizedBox(height: 16),
                       TextFormField(
                         controller: _usernameController,
@@ -211,7 +280,11 @@ class _LoginScreenState extends State<LoginScreen> {
                         child: Text(
                           _isRegistering
                               ? 'Déjà un compte ? Connectez-vous'
-                              : 'Nouveau ? Créez un compte',
+                              : (_setupRequired
+                                  // Nobody exists yet: this account takes the
+                                  // server over.
+                                  ? 'Premier lancement : créer le compte propriétaire'
+                                  : 'J\'ai un code d\'invitation'),
                         ),
                       ),
                     ],

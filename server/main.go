@@ -12,6 +12,7 @@ import (
 	"project-player/server/database"
 	"project-player/server/handlers"
 	"project-player/server/indexer"
+	"project-player/server/models"
 	"project-player/server/streaming"
 	"project-player/server/webui"
 
@@ -61,14 +62,36 @@ func main() {
 	router.POST("/api/debug/detect-show/:id", handlers.DetectShowIntroOutro)
 
 	// 1. Authentication Routes
+	// Register is not open sign-up: it only succeeds on a pristine server (that
+	// account becomes the owner) or with a valid invitation token.
 	router.POST("/api/auth/register", handlers.Register)
+	router.GET("/api/auth/state", handlers.GetAuthState)
 	router.POST("/api/auth/login", handlers.Login)
 	router.POST("/api/auth/logout", handlers.Logout)
 	router.GET("/api/auth/me", handlers.RequireAuth(handlers.Me))
+	router.POST("/api/auth/password", handlers.RequireAuth(handlers.ChangePassword))
 
-	// Settings (MediaHub, TMDB, library paths)
-	router.GET("/api/settings", handlers.RequireAuth(handlers.GetSettings))
-	router.PUT("/api/settings", handlers.RequireAuth(handlers.UpdateSettings))
+	// User administration & invitations (lot A).
+	router.GET("/api/users", handlers.RequirePermission(models.PermManageUsers, handlers.ListUsers))
+	router.PUT("/api/users/:id/permissions", handlers.RequirePermission(models.PermManageUsers, handlers.UpdateUserPermissions))
+	router.POST("/api/users/:id/password", handlers.RequirePermission(models.PermManageUsers, handlers.ResetUserPassword))
+	router.DELETE("/api/users/:id", handlers.RequirePermission(models.PermManageUsers, handlers.DeleteUser))
+	// Ownership transfer is owner-only; the handler checks that itself.
+	router.POST("/api/users/:id/transfer-ownership", handlers.RequirePermission(models.PermManageUsers, handlers.TransferOwnership))
+
+	// Invitations: invite_users is enough. Holding manage_users widens the list
+	// from "my links" to "every link", inside the handlers.
+	invitePerms := []models.Permission{models.PermInviteUsers, models.PermManageUsers}
+	router.GET("/api/invitations", handlers.RequireAnyPermission(invitePerms, handlers.ListInvitations))
+	router.POST("/api/invitations", handlers.RequireAnyPermission(invitePerms, handlers.CreateInvitation))
+	router.DELETE("/api/invitations/:token", handlers.RequireAnyPermission(invitePerms, handlers.RevokeInvitation))
+
+	// Settings (MediaHub, TMDB, library paths). Reading is fine for any account;
+	// writing rewrites API keys and library paths, so it needs manage_settings.
+	// GET is gated too: the snapshot exposes MoviesDir/SeriesDir, i.e. the
+	// server's disk layout, and no other screen consumes it.
+	router.GET("/api/settings", handlers.RequirePermission(models.PermManageSettings, handlers.GetSettings))
+	router.PUT("/api/settings", handlers.RequirePermission(models.PermManageSettings, handlers.UpdateSettings))
 
 	// Player Studio layouts (per-user, synced across devices)
 	router.GET("/api/me/player-layouts", handlers.RequireAuth(handlers.ListPlayerLayouts))
@@ -97,12 +120,14 @@ func main() {
 	router.GET("/api/media/:id/details", handlers.RequireAuth(handlers.GetMediaDetails))
 	router.GET("/api/person/:id", handlers.RequireAuth(handlers.GetPersonDetails))
 	router.GET("/api/collection/:id", handlers.RequireAuth(handlers.GetCollectionDetails))
-	router.GET("/api/requests/catalog", handlers.RequireAuth(handlers.TmdbRequestCatalog))
-	router.GET("/api/requests/filter-options", handlers.RequireAuth(handlers.TmdbRequestFilterOptions))
-	router.GET("/api/requests/watch-providers", handlers.RequireAuth(handlers.TmdbRequestWatchProviders))
-	router.GET("/api/requests/media/:id/seasons/:num/episodes", handlers.RequireAuth(handlers.TmdbRequestSeasonEpisodes))
-	router.GET("/api/requests/media/:id", handlers.RequireAuth(handlers.TmdbRequestDetails))
-	router.POST("/api/requests", handlers.RequireAuth(handlers.MediaHubRequest))
+	// Browsing the request catalog is part of request_media: an account that may
+	// not ask for a title has no use for the catalog either.
+	router.GET("/api/requests/catalog", handlers.RequirePermission(models.PermRequestMedia, handlers.TmdbRequestCatalog))
+	router.GET("/api/requests/filter-options", handlers.RequirePermission(models.PermRequestMedia, handlers.TmdbRequestFilterOptions))
+	router.GET("/api/requests/watch-providers", handlers.RequirePermission(models.PermRequestMedia, handlers.TmdbRequestWatchProviders))
+	router.GET("/api/requests/media/:id/seasons/:num/episodes", handlers.RequirePermission(models.PermRequestMedia, handlers.TmdbRequestSeasonEpisodes))
+	router.GET("/api/requests/media/:id", handlers.RequirePermission(models.PermRequestMedia, handlers.TmdbRequestDetails))
+	router.POST("/api/requests", handlers.RequirePermission(models.PermRequestMedia, handlers.MediaHubRequest))
 
 	// External subtitles (sidecar files or OpenSubtitles downloads), served as
 	// WebVTT. Unauthenticated so media_kit/mpv can fetch the track directly.
@@ -112,24 +137,26 @@ func main() {
 	router.GET("/api/v1/media/:id/subtitles/:file", handlers.GetMediaSubtitle)
 	router.OPTIONS("/api/v1/media/:id/subtitles/:file", handlers.GetMediaSubtitle)
 
-	// 4. Indexer Scan Routes
-	router.POST("/api/indexer/scan", handlers.RequireAuth(handlers.TriggerScan))
-	router.POST("/api/indexer/dedupe", handlers.RequireAuth(handlers.TriggerShowDedupe))
-	router.POST("/api/indexer/metadata/backfill", handlers.RequireAuth(handlers.TriggerMetadataBackfill))
-	router.POST("/api/indexer/metadata/redetect-all", handlers.RequireAuth(handlers.TriggerRedetectAll))
-	router.POST("/api/indexer/probe/backfill", handlers.RequireAuth(handlers.TriggerProbeBackfill))
-	router.POST("/api/media/:id/metadata/enrich", handlers.RequireAuth(handlers.EnrichMediaMetadata))
-	router.POST("/api/media/:id/metadata/redetect", handlers.RequireAuth(handlers.RedetectMediaMetadata))
-	router.POST("/api/media/:id/metadata/rematch", handlers.RequireAuth(handlers.RematchMediaMetadata))
-	router.GET("/api/tmdb/search", handlers.RequireAuth(handlers.SearchTMDBMetadata))
-	router.POST("/api/indexer/subtitles/extract", handlers.RequireAuth(handlers.TriggerSubtitleExtract))
+	// 4. Indexer Scan Routes — all behind manage_library.
+	router.POST("/api/indexer/scan", handlers.RequirePermission(models.PermManageLibrary, handlers.TriggerScan))
+	router.POST("/api/indexer/dedupe", handlers.RequirePermission(models.PermManageLibrary, handlers.TriggerShowDedupe))
+	router.POST("/api/indexer/metadata/backfill", handlers.RequirePermission(models.PermManageLibrary, handlers.TriggerMetadataBackfill))
+	router.POST("/api/indexer/metadata/redetect-all", handlers.RequirePermission(models.PermManageLibrary, handlers.TriggerRedetectAll))
+	router.POST("/api/indexer/probe/backfill", handlers.RequirePermission(models.PermManageLibrary, handlers.TriggerProbeBackfill))
+	router.POST("/api/media/:id/metadata/enrich", handlers.RequirePermission(models.PermManageLibrary, handlers.EnrichMediaMetadata))
+	router.POST("/api/media/:id/metadata/redetect", handlers.RequirePermission(models.PermManageLibrary, handlers.RedetectMediaMetadata))
+	router.POST("/api/media/:id/metadata/rematch", handlers.RequirePermission(models.PermManageLibrary, handlers.RematchMediaMetadata))
+	router.GET("/api/tmdb/search", handlers.RequirePermission(models.PermManageLibrary, handlers.SearchTMDBMetadata))
+	router.POST("/api/indexer/subtitles/extract", handlers.RequirePermission(models.PermManageLibrary, handlers.TriggerSubtitleExtract))
+	// Scan status is read-only progress, shown wherever a scan can be watched.
 	router.GET("/api/indexer/status", handlers.RequireAuth(handlers.GetScanStatus))
-	router.POST("/api/media/:id/subtitles/extract", handlers.RequireAuth(handlers.ForceMediaSubtitleExtract))
+	router.POST("/api/media/:id/subtitles/extract", handlers.RequirePermission(models.PermManageLibrary, handlers.ForceMediaSubtitleExtract))
 
-	// Debug: Delete a show and all its data (episodes, subtitles) for re-index testing
-	// No auth required — this is a debug-only endpoint for testing re-indexing.
-	router.POST("/api/indexer/debug/delete-show", handlers.DebugDeleteShowPublic)
-	router.POST("/api/indexer/debug/delete-show/:id", handlers.DebugDeleteShowPublic)
+	// Delete a show and all its data (episodes, subtitles). Formerly unauthenticated
+	// as a re-index debug helper: it is the most destructive route on the server,
+	// so it now sits behind delete_media like any other deletion.
+	router.POST("/api/indexer/debug/delete-show", handlers.RequirePermission(models.PermDeleteMedia, handlers.DebugDeleteShow))
+	router.POST("/api/indexer/debug/delete-show/:id", handlers.RequirePermission(models.PermDeleteMedia, handlers.DebugDeleteShow))
 
 	// Client apps (APK / DMG / EXE) baked into the image by publish-image.sh.
 	// Unauthenticated: this is how a new user gets the app before they have an

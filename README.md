@@ -63,31 +63,78 @@ Toutes les routes API (sauf l'inscription/connexion et le stream) requièrent l'
 
 #### ➡️ Inscription
 * **Route :** `POST /api/auth/register`
+* **L'inscription libre est fermée.** Elle n'aboutit que dans deux cas : la base n'a encore aucun
+  compte (ce premier compte devient le **propriétaire** et reçoit tous les droits), ou un token
+  d'invitation valide est fourni.
 * **Corps (JSON) :**
   ```json
   {
     "username": "mon_pseudo",
-    "password": "mon_super_mot_de_passe"
+    "password": "mon_super_mot_de_passe",
+    "invite_token": "a7f3…"
   }
   ```
 
+#### ➡️ État du serveur
+* **Route :** `GET /api/auth/state` — publique, n'expose qu'un booléen.
+* **Réponse (JSON) :** `{ "setup_required": true }` tant qu'aucun compte n'existe.
+
 #### ➡️ Connexion
 * **Route :** `POST /api/auth/login`
-* **Corps (JSON) :** identique à l'inscription.
+* **Corps (JSON) :** `username` + `password`.
 * **Réponse (JSON) :**
   ```json
   {
     "token": "45d17ff25988ba97b819...",
-    "user": { "id": 1, "username": "mon_pseudo" }
+    "user": {
+      "id": 1,
+      "username": "mon_pseudo",
+      "is_owner": true,
+      "permissions": { "manage_settings": true, "manage_library": true, "manage_users": true,
+                       "delete_media": true, "invite_users": true, "request_media": true },
+      "invite_grants": { "request_media": true }
+    }
   }
   ```
 
 #### ➡️ Profil connecté
-* **Route :** `GET /api/auth/me`
-* **Réponse (JSON) :**
-  ```json
-  { "id": 1, "username": "mon_pseudo" }
-  ```
+* **Route :** `GET /api/auth/me` — même charge utile que `user` ci-dessus.
+
+#### ➡️ Changer son mot de passe
+* **Route :** `POST /api/auth/password`
+* **Corps (JSON) :** `{ "current_password": "…", "new_password": "…" }`
+
+---
+
+### 👥 1 bis. Droits, utilisateurs & invitations
+
+Six permissions indépendantes par compte : `manage_settings`, `manage_library`, `manage_users`,
+`delete_media`, `invite_users`, `request_media` (seule accordée par défaut). « Administrateur »
+n'est qu'un raccourci d'interface qui les coche toutes.
+
+Le **propriétaire** (premier compte) est asymétrique : il peut retirer ses droits à n'importe quel
+administrateur, personne ne peut lui retirer les siens. Il peut transférer son statut. Le serveur
+refuse par ailleurs toute opération qui ne laisserait plus aucun compte avec `manage_users`.
+
+Décisions détaillées : `docs/adr/0001-user-permissions-and-invitations.md`.
+
+* `GET /api/users` — liste des comptes et de leurs droits (`manage_users`).
+* `PUT /api/users/:id/permissions` — corps `{ "permissions": {…}, "invite_grants": {…} }`.
+* `POST /api/users/:id/password` — réinitialisation ; ferme toutes les sessions du compte visé.
+* `DELETE /api/users/:id` — suppression dure, en cascade. Ni le propriétaire, ni soi-même.
+* `POST /api/users/:id/transfer-ownership` — réservé au propriétaire.
+
+Invitations (`invite_users` ou `manage_users`) : liens **à usage unique**, valables **7 jours**,
+révocables. Les droits accordés sont figés à la création et proviennent du **gabarit**
+(`invite_grants`) fixé par un administrateur — celui qui invite ne les choisit pas, ce qui empêche
+le droit d'inviter de devenir un chemin vers l'administration.
+
+* `GET /api/invitations` — ses propres liens ; tous les liens avec `manage_users`.
+* `POST /api/invitations` — génère un lien.
+* `DELETE /api/invitations/:token` — révoque un lien en attente.
+
+Retirer `invite_users` à un compte révoque en cascade ses liens en attente ; modifier son gabarit
+n'affecte que les liens futurs.
 
 ---
 

@@ -17,6 +17,11 @@ class AuthProvider extends ChangeNotifier {
   }
 
   User? get currentUser => _currentUser;
+
+  /// Rights of the signed-in account. An unknown user gets nothing, so a screen
+  /// that renders before the profile lands stays closed rather than open.
+  Permissions get permissions => _currentUser?.permissions ?? const Permissions();
+  bool get isOwner => _currentUser?.isOwner ?? false;
   bool get isAuthenticated => _isAuthenticated;
   bool get isInitializing => _isInitializing;
   bool get isLoading => _isLoading;
@@ -79,16 +84,22 @@ class AuthProvider extends ChangeNotifier {
     }
   }
 
-  // Register user
-  Future<bool> register(String serverUrl, String username, String password) async {
+  // Register user. Only succeeds on a pristine server (that account becomes the
+  // owner) or with a valid invitation token.
+  Future<bool> register(
+    String serverUrl,
+    String username,
+    String password, {
+    String? inviteToken,
+  }) async {
     _isLoading = true;
     _errorMessage = null;
     notifyListeners();
 
     try {
       await apiClient.setConnection(serverUrl);
-      await apiClient.register(username, password);
-      
+      await apiClient.register(username, password, inviteToken: inviteToken);
+
       _isLoading = false;
       _errorMessage = null;
       notifyListeners();
@@ -98,6 +109,19 @@ class AuthProvider extends ChangeNotifier {
       _isLoading = false;
       notifyListeners();
       return false;
+    }
+  }
+
+  /// Re-reads the profile from the server. Called after a 403, so a user whose
+  /// rights changed under them sees the UI catch up without signing out.
+  Future<void> refreshProfile() async {
+    if (!_isAuthenticated) return;
+    try {
+      _currentUser = await apiClient.getMe();
+      notifyListeners();
+    } catch (_) {
+      // A failed refresh leaves the previous profile in place: the server still
+      // decides on every call, so a stale view costs nothing.
     }
   }
 

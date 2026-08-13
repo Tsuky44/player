@@ -8,6 +8,7 @@ import '../../theme/app_colors.dart';
 import '../../utils/hero_slides.dart';
 import '../../navigation/search_route_observer.dart';
 import '../../widgets/global/account_menu.dart';
+import '../../widgets/global/app_download_button.dart';
 import '../../widgets/global/empty_state.dart';
 import '../../widgets/global/glass_chrome.dart';
 import '../../widgets/global/hero_carousel.dart';
@@ -323,6 +324,7 @@ class _HomeOverlayBar extends StatelessWidget {
                     child: CircularProgressIndicator(strokeWidth: 2),
                   ),
                 ),
+              const AppDownloadButton(),
               AccountMenu(authProvider: authProvider),
             ],
           ),

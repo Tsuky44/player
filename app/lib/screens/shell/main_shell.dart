@@ -9,6 +9,7 @@ import '../../providers/home_provider.dart';
 import '../../theme/app_colors.dart';
 import '../../utils/responsive.dart';
 import '../../widgets/global/account_menu.dart';
+import '../../widgets/global/app_download_button.dart';
 import '../../widgets/global/glass_catalog_search.dart';
 import '../../widgets/global/glass_chrome.dart';
 import '../../widgets/global/sticky_glass_search.dart';
@@ -66,6 +67,7 @@ class _MainShellState extends State<MainShell> {
                   _MobileBottomNav(
                     selectedIndex: _selectedIndex,
                     onTabSelected: _selectTab,
+                    canRequestMedia: authProvider.permissions.requestMedia,
                   ),
               ],
             ),
@@ -99,6 +101,7 @@ class _MainShellState extends State<MainShell> {
                         child: const InlineCatalogSearch(),
                       ),
                       const SizedBox(width: 8),
+                      const AppDownloadButton(),
                       AccountMenu(authProvider: authProvider),
                     ],
                   ),
@@ -155,11 +158,14 @@ class _DesktopGlassHeader extends StatelessWidget {
               selected: selectedIndex == 2,
               onTap: () => onTabSelected(2),
             ),
-            GlassNavTab(
-              label: 'Demandes',
-              selected: selectedIndex == 3,
-              onTap: () => onTabSelected(3),
-            ),
+            // The whole request catalog sits behind request_media server-side,
+            // so an account without it gets no entry point either.
+            if (authProvider.permissions.requestMedia)
+              GlassNavTab(
+                label: 'Demandes',
+                selected: selectedIndex == 3,
+                onTap: () => onTabSelected(3),
+              ),
             const Spacer(),
             const GlassCatalogSearch(
               collapsedWidth: 200,
@@ -167,6 +173,7 @@ class _DesktopGlassHeader extends StatelessWidget {
             ),
             const SizedBox(width: 12),
             _IndexerActions(homeProvider: homeProvider),
+            const AppDownloadButton(),
             AccountMenu(authProvider: authProvider),
           ],
         ),
@@ -194,9 +201,12 @@ class _MobileBottomNav extends StatelessWidget {
   final int selectedIndex;
   final ValueChanged<int> onTabSelected;
 
+  final bool canRequestMedia;
+
   const _MobileBottomNav({
     required this.selectedIndex,
     required this.onTabSelected,
+    required this.canRequestMedia,
   });
 
   @override
@@ -234,12 +244,13 @@ class _MobileBottomNav extends StatelessWidget {
                     selected: selectedIndex == 2,
                     onTap: () => onTabSelected(2),
                   ),
-                  _BottomNavItem(
-                    icon: Icons.add_circle_outline_rounded,
-                    label: 'Demandes',
-                    selected: selectedIndex == 3,
-                    onTap: () => onTabSelected(3),
-                  ),
+                  if (canRequestMedia)
+                    _BottomNavItem(
+                      icon: Icons.add_circle_outline_rounded,
+                      label: 'Demandes',
+                      selected: selectedIndex == 3,
+                      onTap: () => onTabSelected(3),
+                    ),
                 ],
               ),
             ),

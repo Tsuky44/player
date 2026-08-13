@@ -1,6 +1,9 @@
 package models
 
-import "time"
+import (
+	"strings"
+	"time"
+)
 
 type MediaType string
 
@@ -11,11 +14,125 @@ const (
 	TypeEpisode MediaType = "episode"
 )
 
+// Permissions is the fixed set of administration rights carried by a user
+// (lot A). Content access — which libraries a user may see, downloads, parental
+// controls — is deliberately out of scope here and lands in lot B.
+type Permissions struct {
+	ManageSettings bool `json:"manage_settings"`
+	ManageLibrary  bool `json:"manage_library"`
+	ManageUsers    bool `json:"manage_users"`
+	DeleteMedia    bool `json:"delete_media"`
+	InviteUsers    bool `json:"invite_users"`
+	RequestMedia   bool `json:"request_media"`
+}
+
+// DefaultPermissions is what a freshly created account gets: it may ask for
+// media, nothing else.
+func DefaultPermissions() Permissions {
+	return Permissions{RequestMedia: true}
+}
+
+// AllPermissions is the "admin" shortcut — the UI checkbox that ticks
+// everything. Ownership itself is not a permission.
+func AllPermissions() Permissions {
+	return Permissions{
+		ManageSettings: true,
+		ManageLibrary:  true,
+		ManageUsers:    true,
+		DeleteMedia:    true,
+		InviteUsers:    true,
+		RequestMedia:   true,
+	}
+}
+
+// IsAdmin reports whether the user holds every administration right. It is a
+// display convenience only — every guard checks a specific permission.
+func (p Permissions) IsAdmin() bool {
+	return p == AllPermissions()
+}
+
+// Permission names a single right, used by the RequirePermission middleware and
+// as the wire format for invitation templates.
+type Permission string
+
+const (
+	PermManageSettings Permission = "manage_settings"
+	PermManageLibrary  Permission = "manage_library"
+	PermManageUsers    Permission = "manage_users"
+	PermDeleteMedia    Permission = "delete_media"
+	PermInviteUsers    Permission = "invite_users"
+	PermRequestMedia   Permission = "request_media"
+)
+
+// Has reports whether the set grants perm. An unknown name is never granted.
+func (p Permissions) Has(perm Permission) bool {
+	switch perm {
+	case PermManageSettings:
+		return p.ManageSettings
+	case PermManageLibrary:
+		return p.ManageLibrary
+	case PermManageUsers:
+		return p.ManageUsers
+	case PermDeleteMedia:
+		return p.DeleteMedia
+	case PermInviteUsers:
+		return p.InviteUsers
+	case PermRequestMedia:
+		return p.RequestMedia
+	default:
+		return false
+	}
+}
+
+// EncodePermissions serialises a set as a comma-separated list, the storage
+// format for a frozen invitation template.
+func EncodePermissions(p Permissions) string {
+	var granted []string
+	for _, perm := range []Permission{
+		PermManageSettings, PermManageLibrary, PermManageUsers,
+		PermDeleteMedia, PermInviteUsers, PermRequestMedia,
+	} {
+		if p.Has(perm) {
+			granted = append(granted, string(perm))
+		}
+	}
+	return strings.Join(granted, ",")
+}
+
+// DecodePermissions reads back EncodePermissions. Unknown names are ignored, so
+// removing a permission in a later version degrades rather than fails.
+func DecodePermissions(raw string) Permissions {
+	var p Permissions
+	for _, name := range strings.Split(raw, ",") {
+		switch Permission(strings.TrimSpace(name)) {
+		case PermManageSettings:
+			p.ManageSettings = true
+		case PermManageLibrary:
+			p.ManageLibrary = true
+		case PermManageUsers:
+			p.ManageUsers = true
+		case PermDeleteMedia:
+			p.DeleteMedia = true
+		case PermInviteUsers:
+			p.InviteUsers = true
+		case PermRequestMedia:
+			p.RequestMedia = true
+		}
+	}
+	return p
+}
+
 // User represents a user profile
 type User struct {
 	ID           int    `json:"id"`
 	Username     string `json:"username"`
 	PasswordHash string `json:"-"` // Never expose the password hash
+	IsOwner      bool   `json:"is_owner"`
+	// Permissions is what this account may do.
+	Permissions Permissions `json:"permissions"`
+	// InviteGrants is the template applied to accounts created through this
+	// user's invitation links. Meaningless unless Permissions.InviteUsers.
+	InviteGrants Permissions `json:"invite_grants"`
 }
 
 // Media represents any media entity (movie, show, season, episode)
