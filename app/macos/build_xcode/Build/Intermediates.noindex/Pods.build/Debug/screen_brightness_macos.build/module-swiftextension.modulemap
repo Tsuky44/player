@@ -1,5 +1,0 @@
-
-module screen_brightness_macos.Swift {
-  header "screen_brightness_macos-Swift.h"
-  requires objc
-}

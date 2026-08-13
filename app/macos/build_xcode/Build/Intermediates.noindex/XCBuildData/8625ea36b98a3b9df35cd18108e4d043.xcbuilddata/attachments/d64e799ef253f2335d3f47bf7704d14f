@@ -1,4 +1,0 @@
-module sqflite_darwin {
-umbrella "/Users/mathis/Documents/project-mac/player/app/macos/Flutter/ephemeral/Packages/.packages/sqflite_darwin-2.4.3/Sources/sqflite_darwin/include"
-export *
-}

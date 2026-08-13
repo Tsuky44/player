@@ -1,4 +1,0 @@
-module wakelock_plus {
-header "wakelock_plus-Swift.h"
-export *
-}
