@@ -276,14 +276,102 @@ class ApiClient {
 
   // ==================== AUTH API ====================
 
+  /// Sign-up is closed unless the server has no account yet, in which case that
+  /// first account becomes the owner. Otherwise [inviteToken] is required.
   Future<Map<String, dynamic>> register(
-      String username, String password) async {
+    String username,
+    String password, {
+    String? inviteToken,
+  }) async {
     final response = await _dio.post("/api/auth/register", data: {
       "username": username,
       "password": password,
+      if (inviteToken != null && inviteToken.isNotEmpty)
+        "invite_token": inviteToken,
     });
     await saveLastUsername(username);
     return response.data as Map<String, dynamic>;
+  }
+
+  /// True while the server has no account at all: the login screen offers the
+  /// sign-up form only then, or when an invitation token is in hand.
+  /// Unauthenticated, and exposes nothing but that boolean.
+  Future<bool> getSetupRequired() async {
+    final response = await _dio.get("/api/auth/state");
+    final data = response.data as Map<String, dynamic>;
+    return data['setup_required'] == true;
+  }
+
+  Future<void> changeOwnPassword(
+      String currentPassword, String newPassword) async {
+    await _dio.post("/api/auth/password", data: {
+      "current_password": currentPassword,
+      "new_password": newPassword,
+    });
+  }
+
+  // ==================== USERS & INVITATIONS ====================
+
+  Future<List<User>> getUsers() async {
+    final response = await _dio.get("/api/users");
+    return (response.data as List<dynamic>)
+        .map((e) => User.fromJson(e as Map<String, dynamic>))
+        .toList();
+  }
+
+  /// Rewrites a user's rights. [inviteGrants] is the template their own
+  /// invitation links will apply; it is the admin who picks it, never them.
+  Future<User> updateUserPermissions(
+    int userId,
+    Permissions permissions, {
+    Permissions? inviteGrants,
+  }) async {
+    final response = await _dio.put("/api/users/$userId/permissions", data: {
+      "permissions": permissions.toJson(),
+      if (inviteGrants != null) "invite_grants": inviteGrants.toJson(),
+    });
+    return User.fromJson(response.data as Map<String, dynamic>);
+  }
+
+  Future<void> resetUserPassword(int userId, String newPassword) async {
+    await _dio.post("/api/users/$userId/password",
+        data: {"new_password": newPassword});
+  }
+
+  Future<void> deleteUser(int userId) async {
+    await _dio.delete("/api/users/$userId");
+  }
+
+  Future<void> transferOwnership(int userId) async {
+    await _dio.post("/api/users/$userId/transfer-ownership");
+  }
+
+  Future<List<Invitation>> getInvitations() async {
+    final response = await _dio.get("/api/invitations");
+    return (response.data as List<dynamic>)
+        .map((e) => Invitation.fromJson(e as Map<String, dynamic>))
+        .toList();
+  }
+
+  Future<Invitation> createInvitation({Permissions? grants}) async {
+    final response = await _dio.post(
+      "/api/invitations",
+      data: grants == null ? null : {"grants": grants.toJson()},
+    );
+    return Invitation.fromJson(response.data as Map<String, dynamic>);
+  }
+
+  Future<void> revokeInvitation(String token) async {
+    await _dio.delete("/api/invitations/$token");
+  }
+
+  /// The shareable link for an invitation. The server cannot build this itself
+  /// — behind a proxy or a tunnel it has no idea what its public address is —
+  /// so it is composed from the address this client is actually connected to.
+  /// That address may be LAN-only, which is why the raw code is shown next to
+  /// it: on the native apps it is the only usable path anyway.
+  String invitationLink(Invitation invitation) {
+    return "$baseUrl/?invite=${invitation.token}";
   }
 
   Future<User> login(String username, String password) async {
@@ -328,6 +416,33 @@ class ApiClient {
   /// Absolute URL for an artifact, ready to hand to the browser or the shell.
   String getAppDownloadUrl(AppDownload download) {
     return "$baseUrl${download.url}";
+  }
+
+  /// Fetches an artifact to [savePath] for the in-app updater.
+  ///
+  /// On its own Dio on purpose: the shared client pins a 30 s receive timeout
+  /// that a 150 MB installer trips on any slow link, and /api/downloads is
+  /// unauthenticated so none of the interceptor's work is needed here.
+  Future<void> downloadAppArtifact(
+    AppDownload download,
+    String savePath, {
+    ProgressCallback? onReceiveProgress,
+    CancelToken? cancelToken,
+  }) async {
+    final dio = Dio(BaseOptions(
+      connectTimeout: const Duration(seconds: 15),
+      receiveTimeout: const Duration(minutes: 5),
+    ));
+    try {
+      await dio.download(
+        getAppDownloadUrl(download),
+        savePath,
+        onReceiveProgress: onReceiveProgress,
+        cancelToken: cancelToken,
+      );
+    } finally {
+      dio.close();
+    }
   }
 
   Future<HomeResponse> getHome() async {

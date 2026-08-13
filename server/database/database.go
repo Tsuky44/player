@@ -171,6 +171,54 @@ func createTables() error {
 		);`,
 		`CREATE INDEX IF NOT EXISTS idx_user_player_layouts_user_id
 			ON user_player_layouts(user_id);`,
+
+		// --- Administration rights (lot A) ---
+		// The permission set is fixed by design (6 flags), so they live as columns
+		// on users rather than in a join table: no join on the auth hot path.
+		// is_owner is asymmetric and separate: the owner can demote any admin,
+		// nobody can demote the owner. See docs/adr/0001-user-permissions.md.
+		`ALTER TABLE users ADD COLUMN is_owner BOOLEAN NOT NULL DEFAULT 0;`,
+		`ALTER TABLE users ADD COLUMN perm_manage_settings BOOLEAN NOT NULL DEFAULT 0;`,
+		`ALTER TABLE users ADD COLUMN perm_manage_library BOOLEAN NOT NULL DEFAULT 0;`,
+		`ALTER TABLE users ADD COLUMN perm_manage_users BOOLEAN NOT NULL DEFAULT 0;`,
+		`ALTER TABLE users ADD COLUMN perm_delete_media BOOLEAN NOT NULL DEFAULT 0;`,
+		`ALTER TABLE users ADD COLUMN perm_invite_users BOOLEAN NOT NULL DEFAULT 0;`,
+		// request_media is the one permission a plain household account gets.
+		`ALTER TABLE users ADD COLUMN perm_request_media BOOLEAN NOT NULL DEFAULT 1;`,
+		// Invitation template: the permissions this user's links will grant. The
+		// inviter never picks them — an admin sets them when granting invite_users,
+		// which is what makes invite_users non-escalating.
+		`ALTER TABLE users ADD COLUMN invite_grants TEXT NOT NULL DEFAULT '';`,
+
+		// Single-use invitation links. grants is frozen at creation time; revoking
+		// invite_users from the inviter cascades to their pending links.
+		`CREATE TABLE IF NOT EXISTS invitations (
+			token TEXT PRIMARY KEY,
+			inviter_id INTEGER NOT NULL,
+			grants TEXT NOT NULL DEFAULT '',
+			status TEXT NOT NULL DEFAULT 'pending' CHECK(status IN ('pending', 'used', 'revoked')),
+			created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+			expires_at TEXT NOT NULL,
+			used_at TIMESTAMP,
+			used_by_user_id INTEGER,
+			FOREIGN KEY (inviter_id) REFERENCES users(id) ON DELETE CASCADE,
+			FOREIGN KEY (used_by_user_id) REFERENCES users(id) ON DELETE SET NULL
+		);`,
+		`CREATE INDEX IF NOT EXISTS idx_invitations_inviter_id ON invitations(inviter_id);`,
+
+		// One-shot backfill for installs that predate permissions: the oldest
+		// account is the one that set the server up, so it becomes the owner.
+		// Guarded by NOT EXISTS so a later ownership transfer is never undone.
+		`UPDATE users SET
+			is_owner = 1,
+			perm_manage_settings = 1,
+			perm_manage_library = 1,
+			perm_manage_users = 1,
+			perm_delete_media = 1,
+			perm_invite_users = 1,
+			perm_request_media = 1
+		WHERE id = (SELECT MIN(id) FROM users)
+		  AND NOT EXISTS (SELECT 1 FROM users WHERE is_owner = 1);`,
 	}
 
 	for _, query := range queries {

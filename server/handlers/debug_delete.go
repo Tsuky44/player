@@ -16,14 +16,14 @@ import (
 	"github.com/julienschmidt/httprouter"
 )
 
-// DebugDeleteShowPublic deletes a show and all its children (seasons, episodes)
-// from the database, removes associated subtitle files from disk, and clears
-// subtitle rows. This is a debug endpoint to test re-indexing a show from
-// scratch as if it just arrived on the server. No auth required.
+// DebugDeleteShow deletes a show and all its children (seasons, episodes) from
+// the database, removes associated subtitle files from disk, and clears
+// subtitle rows. Written as a helper to test re-indexing a show from scratch,
+// it is the most destructive route on the server, and requires delete_media.
 //
 // POST /api/indexer/debug/delete-show?title=Game%20of%20Thrones
 // POST /api/indexer/debug/delete-show/:id
-func DebugDeleteShowPublic(w http.ResponseWriter, r *http.Request, ps httprouter.Params) {
+func DebugDeleteShow(w http.ResponseWriter, r *http.Request, ps httprouter.Params, _ int) {
 	w.Header().Set("Content-Type", "application/json")
 
 	var showID int

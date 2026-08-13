@@ -11,6 +11,7 @@ import '../../utils/external_url.dart';
 import '../player_studio/player_studio_screen.dart';
 import '../player_studio/widgets/player_layouts_sheet.dart';
 import 'playback_preferences_screen.dart';
+import 'user_admin_sections.dart';
 
 class SettingsScreen extends StatefulWidget {
   const SettingsScreen({super.key});
@@ -70,6 +71,17 @@ class _SettingsScreenState extends State<SettingsScreen> {
     final api = context.read<ApiClient>();
     _serverUrlController.text = api.baseUrl;
     _loadDownloads(api);
+
+    // Server settings are only readable with manage_settings — asking without
+    // it would answer 403 and turn into a spurious error banner.
+    if (!context.read<AuthProvider>().permissions.manageSettings) {
+      setState(() {
+        _loading = false;
+        _error = null;
+      });
+      return;
+    }
+
     try {
       final settings = await api.getServerSettings();
       if (!mounted) return;
@@ -218,10 +230,45 @@ class _SettingsScreenState extends State<SettingsScreen> {
     }
   }
 
+  /// Self-service password rotation. Asks for the current password, so this is
+  /// a rotation and not a recovery — other sessions keep working.
+  Future<void> _changeOwnPassword() async {
+    final current = await promptPassword(
+      context,
+      title: 'Mot de passe actuel',
+      label: 'Mot de passe actuel',
+    );
+    if (current == null || !mounted) return;
+
+    final next = await promptPassword(
+      context,
+      title: 'Nouveau mot de passe',
+      hint: 'Minimum 4 caractères.',
+    );
+    if (next == null || !mounted) return;
+
+    try {
+      await context.read<ApiClient>().changeOwnPassword(current, next);
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Mot de passe mis à jour.')),
+      );
+    } catch (_) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Mot de passe actuel incorrect.'),
+          backgroundColor: AppColors.error,
+        ),
+      );
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     final home = context.watch<HomeProvider>();
     final auth = context.watch<AuthProvider>();
+    final perms = auth.permissions;
     final textTheme = Theme.of(context).textTheme;
 
     return Scaffold(
@@ -293,6 +340,10 @@ class _SettingsScreenState extends State<SettingsScreen> {
                         ],
                       ),
                     ),
+                    // Sections a user has no right to are absent, not greyed
+                    // out: what is not drawn cannot produce a 403, and nobody
+                    // needs to know a TMDB key exists.
+                    if (perms.manageSettings)
                     _Section(
                       title: 'MediaHub',
                       subtitle:
@@ -370,6 +421,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                         ],
                       ),
                     ),
+                    if (perms.manageSettings)
                     _Section(
                       title: 'TMDB',
                       subtitle:
@@ -453,13 +505,19 @@ class _SettingsScreenState extends State<SettingsScreen> {
                         ],
                       ),
                     ),
+                    // Paths belong to manage_settings, indexing actions to
+                    // manage_library: delegating a scan is harmless, repointing
+                    // MoviesDir is not.
+                    if (perms.manageSettings || perms.manageLibrary)
                     _Section(
                       title: 'Bibliothèque',
-                      subtitle:
-                          'Chemins scannés côté serveur, puis actions d’indexation.',
+                      subtitle: perms.manageSettings
+                          ? 'Chemins scannés côté serveur, puis actions d’indexation.'
+                          : 'Actions d’indexation de la bibliothèque.',
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.stretch,
                         children: [
+                          if (perms.manageSettings) ...[
                           TextField(
                             controller: _moviesDirController,
                             decoration: const InputDecoration(
@@ -487,6 +545,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
                             ),
                           ),
                           const SizedBox(height: 20),
+                          ],
+                          if (perms.manageLibrary) ...[
                           _ActionTile(
                             icon: Icons.sync_rounded,
                             title: 'Synchroniser la bibliothèque',
@@ -545,9 +605,26 @@ class _SettingsScreenState extends State<SettingsScreen> {
                                       home.triggerSubtitleExtract,
                                     ),
                           ),
+                          ],
                         ],
                       ),
                     ),
+                    if (perms.manageUsers)
+                      const _Section(
+                        title: 'Utilisateurs',
+                        subtitle:
+                            'Comptes du serveur et droits de chacun. Le propriétaire ne peut pas être rétrogradé.',
+                        child: UsersSection(),
+                      ),
+                    // An inviter without manage_users still gets this section —
+                    // and sees only their own links.
+                    if (perms.inviteUsers || perms.manageUsers)
+                      const _Section(
+                        title: 'Invitations',
+                        subtitle:
+                            'Liens à usage unique, valables 7 jours. Les droits accordés sont fixés par un administrateur.',
+                        child: InvitationsSection(),
+                      ),
                     _Section(
                       title: 'Lecture & studio',
                       subtitle:
@@ -610,15 +687,27 @@ class _SettingsScreenState extends State<SettingsScreen> {
                     _Section(
                       title: 'Compte',
                       subtitle: auth.currentUser?.username ?? '',
-                      child: _NavTile(
-                        icon: Icons.logout_rounded,
-                        title: 'Se déconnecter',
-                        subtitle: 'Revenir à l’écran de connexion',
-                        destructive: true,
-                        onTap: () {
-                          Navigator.of(context).pop();
-                          auth.logout();
-                        },
+                      child: Column(
+                        children: [
+                          // Without this, the password an admin typed when
+                          // creating the account would stay theirs forever.
+                          _NavTile(
+                            icon: Icons.password_rounded,
+                            title: 'Changer mon mot de passe',
+                            subtitle: 'Remplacer le mot de passe de ce compte',
+                            onTap: _changeOwnPassword,
+                          ),
+                          _NavTile(
+                            icon: Icons.logout_rounded,
+                            title: 'Se déconnecter',
+                            subtitle: 'Revenir à l’écran de connexion',
+                            destructive: true,
+                            onTap: () {
+                              Navigator.of(context).pop();
+                              auth.logout();
+                            },
+                          ),
+                        ],
                       ),
                     ),
                     if (_saving)
