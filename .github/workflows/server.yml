@@ -1,0 +1,150 @@
+name: Server
+
+# Build rapide du serveur Go + du client Web, sans reconstruire les
+# installateurs.
+#
+# Complement de release.yml, pas son remplacant : celui-ci sert a iterer sur le
+# serveur (~6 min sur un seul runner ubuntu) quand release.yml en demande ~26
+# repartis sur trois OS. Il ne cree ni tag git ni GitHub Release.
+#
+# Les installateurs sont recuperes depuis l'image :latest deja publiee et
+# reinjectes tels quels. Sans cela le dossier /app/downloads de l'image serait
+# vide et les liens de Parametres -> Applications disparaitraient, alors que
+# seul le serveur a change.
+
+on:
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "Tag Docker a publier"
+        required: true
+        default: "dev"
+        type: string
+  push:
+    branches: [main]
+    # Un changement de README ou de doc n'a pas a declencher un build d'image.
+    paths:
+      - "server/**"
+      - "app/lib/**"
+      - "app/web/**"
+      - "app/pubspec.yaml"
+      - "app/pubspec.lock"
+      - "scripts/build-web.sh"
+      - ".github/workflows/server.yml"
+
+permissions:
+  contents: read
+  packages: write
+
+env:
+  FLUTTER_VERSION: "3.44.2"
+  IMAGE_NAME: playeur-server
+
+# Deux pushs rapproches sur main n'ont pas a produire deux images concurrentes :
+# seul le dernier commit compte.
+concurrency:
+  group: server-image-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: subosito/flutter-action@v2
+        with:
+          flutter-version: ${{ env.FLUTTER_VERSION }}
+          channel: stable
+          cache: true
+
+      - id: meta
+        env:
+          TAG_INPUT: ${{ inputs.tag }}
+        run: |
+          set -euo pipefail
+          OWNER_LC="$(printf '%s' "${{ github.repository_owner }}" | tr '[:upper:]' '[:lower:]')"
+          IMAGE="ghcr.io/$OWNER_LC/$IMAGE_NAME"
+
+          # Jamais :latest par defaut. Ce tag designe la derniere version
+          # complete validee par release.yml ; un build serveur seul, declenche
+          # a chaque push sur main, n'a pas a se faire passer pour elle.
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            TAG="${TAG_INPUT:-dev}"
+          else
+            TAG="dev"
+          fi
+
+          {
+            echo "image=$IMAGE"
+            echo "tag=$TAG"
+            echo "sha_tag=main-$(git rev-parse --short HEAD)"
+          } >> "$GITHUB_OUTPUT"
+
+      - uses: docker/setup-buildx-action@v3
+
+      - uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      # Flutter ne cross-compilant pas le desktop, ces binaires ne peuvent pas
+      # etre reconstruits ici : l'image publiee est leur seul entrepot.
+      - name: Reprendre les installateurs de l'image publiee
+        env:
+          IMAGE: ${{ steps.meta.outputs.image }}
+        run: |
+          set -euo pipefail
+          mkdir -p server/downloads
+
+          if ! docker pull --platform linux/amd64 -q "$IMAGE:latest" >/dev/null 2>&1; then
+            echo "::warning::Image :latest introuvable — l'image produite n'aura aucun installateur a proposer. Lancez le workflow Release au moins une fois."
+            exit 0
+          fi
+
+          CID="$(docker create --platform linux/amd64 "$IMAGE:latest")"
+          docker cp "$CID:/app/downloads/." server/downloads/ 2>/dev/null || true
+          docker rm "$CID" >/dev/null
+
+          COUNT="$(find server/downloads -maxdepth 1 -type f ! -name '.gitkeep' | wc -l | tr -d ' ')"
+          if [ "$COUNT" -eq 0 ]; then
+            echo "::warning::Aucun installateur dans l'image :latest."
+          else
+            echo "$COUNT installateur(s) repris :"
+            ls -lh server/downloads
+          fi
+
+      # Embarque dans le binaire Go via go:embed : doit exister avant le build.
+      - name: Build du client Web
+        run: bash scripts/build-web.sh
+
+      - name: Build & push de l'image
+        uses: docker/build-push-action@v6
+        with:
+          context: ./server
+          platforms: linux/amd64
+          push: true
+          tags: |
+            ${{ steps.meta.outputs.image }}:${{ steps.meta.outputs.tag }}
+            ${{ steps.meta.outputs.image }}:${{ steps.meta.outputs.sha_tag }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      - name: Recapitulatif
+        env:
+          IMAGE: ${{ steps.meta.outputs.image }}
+          TAG: ${{ steps.meta.outputs.tag }}
+          SHA_TAG: ${{ steps.meta.outputs.sha_tag }}
+        run: |
+          {
+            echo "### Image serveur publiee"
+            echo ""
+            echo '```'
+            echo "docker pull $IMAGE:$TAG"
+            echo '```'
+            echo ""
+            echo "Egalement taguee \`$SHA_TAG\`."
+            echo ""
+            echo "> Le tag \`latest\` n'a pas ete touche : il reste sur la derniere version complete publiee par le workflow Release."
+          } >> "$GITHUB_STEP_SUMMARY"
