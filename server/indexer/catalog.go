@@ -9,6 +9,7 @@ import (
 	"sync"
 	"time"
 
+	"project-player/server/httpx"
 	"project-player/server/models"
 )
 
@@ -202,12 +203,11 @@ func fetchTMDBLogoURL(tmdbID int, mediaType models.MediaType) string {
 	if mediaType == models.TypeShow {
 		endpoint = "tv"
 	}
-	client := &http.Client{Timeout: 12 * time.Second}
 	u := fmt.Sprintf(
 		"https://api.themoviedb.org/3/%s/%d/images?api_key=%s&include_image_language=fr,en,null",
 		endpoint, tmdbID, apiKey,
 	)
-	resp, err := client.Get(u)
+	resp, err := httpx.Standard.Get(u)
 	if err != nil || resp.StatusCode != http.StatusOK {
 		if resp != nil {
 			resp.Body.Close()
@@ -249,7 +249,6 @@ func FetchMediaCatalogDetails(tmdbID int, mediaType models.MediaType) *models.Me
 		appendTo = "aggregate_credits,images,videos,keywords,recommendations,similar"
 	}
 
-	client := &http.Client{Timeout: 12 * time.Second}
 	fetch := func(lang string) *tmdbCatalogResponse {
 		u := fmt.Sprintf(
 			"https://api.themoviedb.org/3/%s/%d?api_key=%s&append_to_response=%s&include_image_language=fr,en,null",
@@ -258,7 +257,7 @@ func FetchMediaCatalogDetails(tmdbID int, mediaType models.MediaType) *models.Me
 		if lang != "" {
 			u += "&language=" + lang
 		}
-		resp, err := client.Get(u)
+		resp, err := httpx.Standard.Get(u)
 		if err != nil || resp.StatusCode != http.StatusOK {
 			if resp != nil {
 				resp.Body.Close()
@@ -560,7 +559,6 @@ func FetchPersonDetails(personID int) *models.PersonDetails {
 		return nil
 	}
 
-	client := &http.Client{Timeout: 12 * time.Second}
 	fetch := func(lang string) *tmdbPersonResponse {
 		u := fmt.Sprintf(
 			"https://api.themoviedb.org/3/person/%d?api_key=%s&append_to_response=combined_credits",
@@ -569,7 +567,7 @@ func FetchPersonDetails(personID int) *models.PersonDetails {
 		if lang != "" {
 			u += "&language=" + lang
 		}
-		resp, err := client.Get(u)
+		resp, err := httpx.Standard.Get(u)
 		if err != nil || resp.StatusCode != http.StatusOK {
 			if resp != nil {
 				resp.Body.Close()
@@ -668,7 +666,6 @@ func FetchCollectionDetails(collectionID int) *models.CollectionDetails {
 		return nil
 	}
 
-	client := &http.Client{Timeout: 12 * time.Second}
 	fetch := func(lang string) *tmdbCollectionResponse {
 		u := fmt.Sprintf(
 			"https://api.themoviedb.org/3/collection/%d?api_key=%s",
@@ -677,7 +674,7 @@ func FetchCollectionDetails(collectionID int) *models.CollectionDetails {
 		if lang != "" {
 			u += "&language=" + lang
 		}
-		resp, err := client.Get(u)
+		resp, err := httpx.Standard.Get(u)
 		if err != nil || resp.StatusCode != http.StatusOK {
 			if resp != nil {
 				resp.Body.Close()

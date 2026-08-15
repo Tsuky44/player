@@ -10,17 +10,53 @@ import (
 	"project-player/server/models"
 )
 
+// showFolderNameFromParts returns the folder that names the series: the deepest
+// one that is not a season folder, a release folder or a grouping folder.
+//
+// Walking from the deepest folder up is what makes nested libraries work
+// ("Séries/Animes/Naruto/Saison 1/…" is Naruto, not Animes); taking the first
+// folder instead merged every show of a category into one series.
+func showFolderNameFromParts(parts []string) (string, bool) {
+	for i := len(parts) - 2; i >= 0; i-- {
+		part := strings.TrimSpace(parts[i])
+		if part == "" || looksLikeEpisodeReleaseFolder(part) || looksLikeSeasonFolderName(part) {
+			continue
+		}
+		if looksLikeCategoryFolderName(part) || bareNumberRe.MatchString(part) {
+			continue
+		}
+		return part, true
+	}
+	// Second pass: a numeric folder can be the show itself ("24", "1883").
+	for i := len(parts) - 2; i >= 0; i-- {
+		part := strings.TrimSpace(parts[i])
+		if part == "" || looksLikeEpisodeReleaseFolder(part) || looksLikeSeasonFolderName(part) {
+			continue
+		}
+		if looksLikeCategoryFolderName(part) {
+			continue
+		}
+		return part, true
+	}
+	return "", false
+}
+
+// looksLikeSeasonFolderName matches "Season 1", "Saison 02", "S01", "Series 3".
+func looksLikeSeasonFolderName(name string) bool {
+	name = strings.TrimSpace(name)
+	if seasonFolderRe.MatchString(name) {
+		return true
+	}
+	lower := strings.ToLower(name)
+	return strings.HasPrefix(lower, "season ") || strings.HasPrefix(lower, "saison ") ||
+		lower == "specials" || lower == "saison 0"
+}
+
 // resolveShowTMDBSearchKeyFromPath returns a raw release string (year preserved)
 // for TMDB lookup. Display titles are normalized separately for deduplication.
 func resolveShowTMDBSearchKeyFromPath(parts []string, fileName string) string {
-	if len(parts) >= 2 {
-		for i := 0; i < len(parts)-1; i++ {
-			part := strings.TrimSpace(parts[i])
-			if part == "" || looksLikeEpisodeReleaseFolder(part) {
-				continue
-			}
-			return part
-		}
+	if folder, ok := showFolderNameFromParts(parts); ok {
+		return folder
 	}
 
 	loc := episodeRegex.FindStringIndex(fileName)
@@ -46,15 +82,9 @@ func looksLikeEpisodeReleaseFolder(name string) bool {
 // resolveShowTitleFromPath picks a stable show name from the series folder layout.
 // Per-episode download folders are ignored in favour of a parent folder or filename.
 func resolveShowTitleFromPath(parts []string, fileName string) string {
-	if len(parts) >= 2 {
-		for i := 0; i < len(parts)-1; i++ {
-			part := strings.TrimSpace(parts[i])
-			if part == "" || looksLikeEpisodeReleaseFolder(part) {
-				continue
-			}
-			if title := ReleaseDisplayTitle(StripProviderIDs(part), models.TypeShow); title != "" {
-				return title
-			}
+	if folder, ok := showFolderNameFromParts(parts); ok {
+		if title := ReleaseDisplayTitle(StripProviderIDs(folder), models.TypeShow); title != "" {
+			return title
 		}
 	}
 

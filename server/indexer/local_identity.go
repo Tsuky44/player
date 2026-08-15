@@ -80,8 +80,94 @@ func ParseEpisodeNumbers(filename string) (seasonNum, episodeNum int, ok bool) {
 	return 0, 0, false
 }
 
-// ResolveMovieLookupName prefers the parent folder name (Emby movie layout) over
-// a bare/generic filename when the file is not directly under the library root.
+var (
+	seasonFolderRe  = regexp.MustCompile(`(?i)^(?:season|saison|series|s)[\s._-]*(\d{1,2})$`)
+	bareNumberRe    = regexp.MustCompile(`^(\d{1,3})$`)
+	leadingEpRe     = regexp.MustCompile(`^(\d{1,3})\s*[-–_.]\s*\S`)
+	markedEpisodeRe = regexp.MustCompile(`(?i)(?:\bep(?:isode)?|épisode|\be)[\s._-]*(\d{1,3})\b`)
+	// "Kaamelott - 01 - Heat": the number framed by dashes is the episode.
+	dashedEpisodeRe = regexp.MustCompile(`[\s._][-–][\s._]*(\d{1,3})[\s._]*[-–][\s._]`)
+)
+
+// seasonNumberFromFolders reads "Season 2" / "Saison 2" / "S02" / "2" from the
+// folders above the file, deepest first.
+func seasonNumberFromFolders(relParts []string) (int, bool) {
+	for i := len(relParts) - 2; i >= 0; i-- {
+		part := strings.TrimSpace(relParts[i])
+		if part == "" {
+			continue
+		}
+		if m := seasonFolderRe.FindStringSubmatch(part); len(m) == 2 {
+			if n, err := strconv.Atoi(m[1]); err == nil && n >= 0 {
+				return n, true
+			}
+		}
+		if m := bareNumberRe.FindStringSubmatch(part); len(m) == 2 {
+			if n, err := strconv.Atoi(m[1]); err == nil && n > 0 && n <= 50 {
+				return n, true
+			}
+		}
+	}
+	return 0, false
+}
+
+// episodeNumberFromFileName reads an episode number from names without SxxExx
+// ("01 - Titre.mkv", "Episode 4.mkv", "12.mkv").
+func episodeNumberFromFileName(fileName string, hasSeasonFolder bool) (int, bool) {
+	base := strings.TrimSuffix(filepath.Base(fileName), filepath.Ext(fileName))
+	base = strings.TrimSpace(StripProviderIDs(base))
+
+	if m := bareNumberRe.FindStringSubmatch(base); len(m) == 2 {
+		if n, err := strconv.Atoi(m[1]); err == nil && n > 0 {
+			return n, true
+		}
+	}
+	if m := markedEpisodeRe.FindStringSubmatch(base); len(m) == 2 {
+		if n, err := strconv.Atoi(m[1]); err == nil && n > 0 {
+			return n, true
+		}
+	}
+	if m := dashedEpisodeRe.FindStringSubmatch(base); len(m) == 2 {
+		if n, err := strconv.Atoi(m[1]); err == nil && n > 0 {
+			return n, true
+		}
+	}
+	// A bare leading number is only trustworthy inside a season folder.
+	if hasSeasonFolder {
+		if m := leadingEpRe.FindStringSubmatch(base); len(m) == 2 {
+			if n, err := strconv.Atoi(m[1]); err == nil && n > 0 {
+				return n, true
+			}
+		}
+	}
+	return 0, false
+}
+
+// ResolveEpisodeNumbers finds season/episode numbers from the filename, then
+// from the folder layout — Emby indexes "Saison 1/01 - Titre.mkv" too, and
+// dropping those files silently loses whole seasons.
+func ResolveEpisodeNumbers(relParts []string, fileName string) (seasonNum, episodeNum int, ok bool) {
+	if s, e, found := ParseEpisodeNumbers(fileName); found {
+		return s, e, true
+	}
+	season, hasSeason := seasonNumberFromFolders(relParts)
+	episode, found := episodeNumberFromFileName(fileName, hasSeason)
+	if !found {
+		return 0, 0, false
+	}
+	if !hasSeason {
+		season = 1
+	}
+	return season, episode, true
+}
+
+// ResolveMovieLookupName returns the name a movie should be identified from.
+//
+// Emby rule: the folder names the movie only when the movie owns that folder
+// ("Inception (2010)/movie.mkv"). A folder holding several different movies is a
+// category/saga folder ("Films/Action/…", "Saga Harry Potter/…") and must never
+// name them — doing so gives every file in it the same identity, which then
+// collapses the whole folder onto a single TMDB match.
 func ResolveMovieLookupName(videoPath, moviesRoot string) string {
 	videoPath = filepath.Clean(videoPath)
 	moviesRoot = filepath.Clean(moviesRoot)
@@ -92,21 +178,25 @@ func ResolveMovieLookupName(videoPath, moviesRoot string) string {
 	if moviesRoot != "" && samePath(parentDir, moviesRoot) {
 		return fileBase
 	}
-	if looksLikeLibraryRootName(parentName) {
-		return fileBase
-	}
 	if parentName == "" || parentName == "." || parentName == string(filepath.Separator) {
 		return fileBase
 	}
+	if looksLikeLibraryRootName(parentName) || looksLikeCategoryFolderName(parentName) {
+		return fileBase
+	}
+	if strings.TrimSpace(StripProviderIDs(parentName)) == "" {
+		return fileBase
+	}
 
-	// Emby: folder is the identity source when the movie lives in its own folder.
-	if looksLikeGenericVideoName(fileBase) || folderLooksLikeMovieContainer(parentName) {
+	// A folder with several distinct movies names none of them.
+	if CountDistinctMoviesInDir(parentDir) > 1 {
+		return fileBase
+	}
+	// The filename carries nothing usable — the folder is all we have.
+	if looksLikeGenericVideoName(fileBase) {
 		return parentName
 	}
-	// Prefer folder when it carries year / provider IDs (strong Emby signal).
-	if extractYear(parentName) > 0 || providerTMDBRe.MatchString(parentName) || providerIMDbRe.MatchString(parentName) {
-		return parentName
-	}
+	// Single-movie folder: Emby trusts the folder, it is usually the cleaner name.
 	return parentName
 }
 
@@ -114,6 +204,13 @@ func looksLikeGenericVideoName(name string) bool {
 	lower := strings.ToLower(strings.TrimSpace(name))
 	switch lower {
 	case "", "movie", "video", "film", "feature", "movie title", "sample":
+		return true
+	}
+	// "VIDEO_TS", "title00", "BDMV", "00001" and friends carry no title.
+	if strings.HasPrefix(lower, "video_ts") || strings.HasPrefix(lower, "vts_") || lower == "index" {
+		return true
+	}
+	if _, err := strconv.Atoi(strings.TrimSpace(lower)); err == nil {
 		return true
 	}
 	return false
@@ -127,9 +224,49 @@ func looksLikeLibraryRootName(name string) bool {
 	return false
 }
 
-func folderLooksLikeMovieContainer(name string) bool {
-	cleaned := StripProviderIDs(name)
-	return strings.TrimSpace(cleaned) != ""
+// looksLikeCategoryFolderName recognises grouping folders (genre, alphabet,
+// quality, saga…) that must not be used as a movie or show title.
+func looksLikeCategoryFolderName(name string) bool {
+	lower := stripDiacritics(strings.ToLower(strings.TrimSpace(StripProviderIDs(name))))
+	if lower == "" {
+		return true
+	}
+	if looksLikeLibraryRootName(lower) {
+		return true
+	}
+	switch lower {
+	case "series", "serie", "saisons", "seasons", "emissions", "spectacle tv":
+		return true
+	}
+	// Alphabet buckets: "A", "0-9", "#".
+	if len([]rune(lower)) <= 2 {
+		return true
+	}
+	// Purely numeric folders group by year/decade ("2024", "1990s"), they never
+	// name a film — the filename inside does.
+	if _, err := strconv.Atoi(strings.TrimSuffix(lower, "s")); err == nil {
+		return true
+	}
+	switch lower {
+	case "action", "aventure", "adventure", "animation", "animations", "anime", "animes",
+		"comedie", "comédie", "comedy", "documentaire", "documentaires", "documentary",
+		"drame", "drama", "fantastique", "fantasy", "horreur", "horror", "thriller",
+		"policier", "romance", "science fiction", "science-fiction", "sci-fi", "sf",
+		"guerre", "war", "western", "musical", "biopic", "famille", "family",
+		"enfants", "kids", "jeunesse", "concert", "concerts", "spectacle", "spectacles",
+		"divers", "autres", "others", "misc", "nouveautes", "nouveautés", "new", "recents", "récents",
+		"vf", "vostfr", "multi", "4k", "uhd", "hd", "1080p", "720p", "2160p",
+		"a voir", "à voir", "vus", "non vus", "collection", "collections", "saga", "sagas",
+		"trilogie", "trilogy", "quadrilogie", "pentalogie", "integrale", "intégrale", "coffret":
+		return true
+	}
+	// "Saga Harry Potter", "Collection Marvel", "Trilogie Le Seigneur des Anneaux"…
+	for _, prefix := range []string{"saga ", "collection ", "coffret ", "trilogie ", "quadrilogie ", "integrale ", "intégrale ", "pack "} {
+		if strings.HasPrefix(lower, prefix) {
+			return true
+		}
+	}
+	return false
 }
 
 func samePath(a, b string) bool {

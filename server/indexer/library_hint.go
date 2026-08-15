@@ -57,14 +57,13 @@ func localShowFolderFromPath(filePath string) string {
 		if part == "" {
 			continue
 		}
-		lower := strings.ToLower(part)
-		if strings.HasPrefix(lower, "season ") || strings.HasPrefix(lower, "saison ") {
+		if looksLikeSeasonFolderName(part) {
 			continue
 		}
 		if episodeFolderPrefixRe.MatchString(part) {
 			continue
 		}
-		if looksLikeEpisodeReleaseFolder(part) {
+		if looksLikeEpisodeReleaseFolder(part) || looksLikeCategoryFolderName(part) {
 			continue
 		}
 		return part
