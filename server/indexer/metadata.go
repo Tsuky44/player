@@ -11,17 +11,21 @@ import (
 	"strconv"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"project-player/server/config"
 	"project-player/server/database"
+	"project-player/server/httpx"
 	"project-player/server/models"
 )
 
-var (
-	IsBackfilling bool
-	backfillMutex sync.Mutex
-)
+// backfilling is read by the scan-status endpoint while the backfill goroutine
+// writes it — see the note on indexer.scanning.
+var backfilling atomic.Bool
+
+// IsBackfilling reports whether a metadata backfill is currently running.
+func IsBackfilling() bool { return backfilling.Load() }
 
 type tmdbDetails struct {
 	ID            int    `json:"id"`
@@ -76,13 +80,23 @@ func humanizeFilenameTitle(raw string) string {
 }
 
 type tmdbSearchResult struct {
-	ID           int
-	Title        string
-	Name         string
-	Overview     string
-	PosterPath   string
-	ReleaseDate  string
-	FirstAirDate string
+	ID            int
+	Title         string
+	Name          string
+	OriginalTitle string
+	OriginalName  string
+	Overview      string
+	PosterPath    string
+	ReleaseDate   string
+	FirstAirDate  string
+	Popularity    float64
+}
+
+// candidateTitles lists every name a result can be matched against. Comparing
+// the original title too is what makes an English release name match a French
+// TMDB entry (and the reverse).
+func (r tmdbSearchResult) candidateTitles() []string {
+	return []string{r.Title, r.Name, r.OriginalTitle, r.OriginalName}
 }
 
 func tmdbResultYear(r tmdbSearchResult, mediaType models.MediaType) int {
@@ -129,18 +143,22 @@ func pickBestTMDBResult(results []tmdbSearchResult, targetTitle string, targetYe
 	return best
 }
 
-// scoreTMDBResult ranks a candidate by title similarity (dominant signal) and
-// release-year proximity.
-func scoreTMDBResult(r tmdbSearchResult, targetTitle string, targetYear int, mediaType models.MediaType) float64 {
+// bestTitleScore returns how well a candidate's names match the parsed title.
+func bestTitleScore(r tmdbSearchResult, targetTitle string) float64 {
 	target := normalizeForMatch(targetTitle)
 	titleScore := 0.0
-	for _, cand := range []string{r.Title, r.Name} {
+	for _, cand := range r.candidateTitles() {
 		if s := titleSimilarity(target, normalizeForMatch(cand)); s > titleScore {
 			titleScore = s
 		}
 	}
+	return titleScore
+}
 
-	score := titleScore
+// scoreTMDBResult ranks a candidate by title similarity (dominant signal) and
+// release-year proximity.
+func scoreTMDBResult(r tmdbSearchResult, targetTitle string, targetYear int, mediaType models.MediaType) float64 {
+	score := bestTitleScore(r, targetTitle)
 	if targetYear > 0 {
 		if ry := tmdbResultYear(r, mediaType); ry > 0 {
 			switch diff := absInt(ry - targetYear); {
@@ -153,6 +171,15 @@ func scoreTMDBResult(r tmdbSearchResult, targetTitle string, targetYear int, med
 			}
 		}
 	}
+	// Tiny popularity nudge, capped well below any title/year signal: it only
+	// separates candidates that are otherwise equally good across search variants.
+	if r.Popularity > 0 {
+		nudge := r.Popularity / 1000
+		if nudge > 0.02 {
+			nudge = 0.02
+		}
+		score += nudge
+	}
 	return score
 }
 
@@ -164,27 +191,95 @@ func titleSimilarity(a, b string) float64 {
 	if a == b {
 		return 1.0
 	}
+
+	best := 0.0
+	// Containment scaled by length: "alien" inside "aliens" is a near match,
+	// "alien" inside "alien vs predator" is not.
 	if strings.Contains(a, b) || strings.Contains(b, a) {
-		return 0.85
+		shorter, longer := len(a), len(b)
+		if shorter > longer {
+			shorter, longer = longer, shorter
+		}
+		best = 0.55 + 0.4*float64(shorter)/float64(longer)
 	}
 
-	setB := map[string]bool{}
-	for _, w := range strings.Fields(b) {
-		setB[w] = true
+	// Token overlap (Dice) catches reordered or partially translated titles.
+	if s := tokenDiceScore(a, b); s > best {
+		best = s
 	}
-	common := 0
-	union := len(setB)
-	for _, w := range strings.Fields(a) {
-		if setB[w] {
-			common++
-		} else {
-			union++
-		}
+	// Edit distance catches accents, punctuation and small typos.
+	if s := editDistanceScore(a, b); s > best {
+		best = s
 	}
-	if union == 0 {
+	return best
+}
+
+func tokenDiceScore(a, b string) float64 {
+	wordsA := strings.Fields(a)
+	wordsB := strings.Fields(b)
+	if len(wordsA) == 0 || len(wordsB) == 0 {
 		return 0
 	}
-	return 0.7 * float64(common) / float64(union)
+	countB := map[string]int{}
+	for _, w := range wordsB {
+		countB[w]++
+	}
+	common := 0
+	for _, w := range wordsA {
+		if countB[w] > 0 {
+			countB[w]--
+			common++
+		}
+	}
+	return 0.9 * 2 * float64(common) / float64(len(wordsA)+len(wordsB))
+}
+
+// editDistanceScore is 1 - normalized Levenshtein distance, capped just under an
+// exact match so only identical titles ever score 1.0.
+func editDistanceScore(a, b string) float64 {
+	maxLen := len(a)
+	if len(b) > maxLen {
+		maxLen = len(b)
+	}
+	if maxLen == 0 {
+		return 0
+	}
+	dist := levenshtein(a, b)
+	score := 1 - float64(dist)/float64(maxLen)
+	if score > 0.98 {
+		score = 0.98
+	}
+	if score < 0 {
+		return 0
+	}
+	return score
+}
+
+func levenshtein(a, b string) int {
+	ra, rb := []rune(a), []rune(b)
+	if len(ra) == 0 {
+		return len(rb)
+	}
+	if len(rb) == 0 {
+		return len(ra)
+	}
+	prev := make([]int, len(rb)+1)
+	cur := make([]int, len(rb)+1)
+	for j := range prev {
+		prev[j] = j
+	}
+	for i := 1; i <= len(ra); i++ {
+		cur[0] = i
+		for j := 1; j <= len(rb); j++ {
+			cost := 1
+			if ra[i-1] == rb[j-1] {
+				cost = 0
+			}
+			cur[j] = min(min(cur[j-1]+1, prev[j]+1), prev[j-1]+cost)
+		}
+		prev, cur = cur, prev
+	}
+	return prev[len(rb)]
 }
 
 // normalizeForMatch lowercases, strips accents and punctuation, and collapses
@@ -277,7 +372,7 @@ func fetchTMDBTranslation(tmdbID int, mediaType models.MediaType) (title, overvi
 		"https://api.themoviedb.org/3/%s/%d/translations?api_key=%s",
 		endpoint, tmdbID, apiKey,
 	)
-	resp, err := http.Get(u)
+	resp, err := httpx.Standard.Get(u)
 	if err != nil || resp.StatusCode != http.StatusOK {
 		if resp != nil {
 			resp.Body.Close()
@@ -326,13 +421,12 @@ func fetchTMDBDetailsByID(tmdbID int, mediaType models.MediaType) (posterURL, ov
 		endpoint = "tv"
 	}
 
-	client := &http.Client{Timeout: 12 * time.Second}
 	fetch := func(lang string) tmdbDetails {
 		u := fmt.Sprintf("https://api.themoviedb.org/3/%s/%d?api_key=%s", endpoint, tmdbID, apiKey)
 		if lang != "" {
 			u += "&language=" + lang
 		}
-		resp, err := client.Get(u)
+		resp, err := httpx.Standard.Get(u)
 		if err != nil || resp.StatusCode != http.StatusOK {
 			if resp != nil {
 				resp.Body.Close()
@@ -395,6 +489,13 @@ func fetchTMDBDetailsByID(tmdbID int, mediaType models.MediaType) (posterURL, ov
 
 func enrichSearchTitle(storedTitle, filePath string, mediaType models.MediaType, mediaID int) string {
 	if filePath != "" {
+		if mediaType == models.TypeMovie {
+			// Same folder-vs-filename rule as the scanner, so a film in its own
+			// folder is searched by folder and one in a genre folder by filename.
+			if name := ResolveMovieLookupName(filePath, filepath.Dir(filepath.Dir(filePath))); name != "" {
+				return name
+			}
+		}
 		base := strings.TrimSuffix(filepath.Base(filePath), filepath.Ext(filePath))
 		if base != "" {
 			return base
@@ -572,21 +673,10 @@ func loadBackfillQueue() []struct {
 	return items
 }
 
-// BackfillMissingMetadata fetches TMDB posters for movies/shows missing artwork.
-func BackfillMissingMetadata() {
-	backfillMutex.Lock()
-	if IsBackfilling {
-		backfillMutex.Unlock()
-		return
-	}
-	IsBackfilling = true
-	backfillMutex.Unlock()
-
-	defer func() {
-		backfillMutex.Lock()
-		IsBackfilling = false
-		backfillMutex.Unlock()
-	}()
+// backfillMissingMetadata fetches TMDB posters for movies/shows missing
+// artwork. The run guard belongs to BackfillMissingMetadataAsync, its only
+// caller, so that a trigger can answer 409 without racing.
+func backfillMissingMetadata() {
 
 	if tmdbAPIKey() == "" {
 		log.Println("TMDB: backfill skipped — set TMDB_API_KEY in your environment")
@@ -708,12 +798,11 @@ func SearchTMDBCandidates(query string, mediaType models.MediaType) []models.TMD
 		typeLabel = string(models.TypeShow)
 	}
 
-	client := &http.Client{Timeout: 12 * time.Second}
 	u := fmt.Sprintf(
 		"https://api.themoviedb.org/3/search/%s?api_key=%s&query=%s&language=%s",
 		endpoint, apiKey, url.QueryEscape(query), tmdbLanguage(),
 	)
-	resp, err := client.Get(u)
+	resp, err := httpx.Standard.Get(u)
 	if err != nil || resp.StatusCode != http.StatusOK {
 		if resp != nil {
 			resp.Body.Close()
@@ -894,9 +983,18 @@ func EnrichMediaByID(id int) bool {
 	return enrichMediaRecord(id, enrichSearchTitle(title, filePath, models.MediaType(mediaType), id), models.MediaType(mediaType), tmdbID)
 }
 
-// BackfillMissingMetadataAsync runs backfill in the background.
-func BackfillMissingMetadataAsync() {
-	go BackfillMissingMetadata()
+// BackfillMissingMetadataAsync runs backfill in the background. It claims the
+// run before returning, so the caller learns whether it started one — checking
+// IsBackfilling() first would race with another request doing the same.
+func BackfillMissingMetadataAsync() bool {
+	if !backfilling.CompareAndSwap(false, true) {
+		return false
+	}
+	go func() {
+		defer backfilling.Store(false)
+		backfillMissingMetadata()
+	}()
+	return true
 }
 
 // RedetectAllProgress tracks bulk re-identification for GET /api/indexer/status.
@@ -907,11 +1005,16 @@ type RedetectAllProgress struct {
 	Skipped   int `json:"skipped"`
 }
 
+// redetectingAll is the run guard; redetectAllMutex still protects the progress
+// counters, which are a struct and cannot be made atomic on their own.
 var (
-	IsRedetectingAll    bool
+	redetectingAll      atomic.Bool
 	redetectAllMutex    sync.Mutex
 	redetectAllProgress RedetectAllProgress
 )
+
+// IsRedetectingAll reports whether a bulk metadata redetect is running.
+func IsRedetectingAll() bool { return redetectingAll.Load() }
 
 // RedetectAllProgressSnapshot returns a copy of the current bulk redetect counters.
 func RedetectAllProgressSnapshot() RedetectAllProgress {
@@ -920,28 +1023,27 @@ func RedetectAllProgressSnapshot() RedetectAllProgress {
 	return redetectAllProgress
 }
 
-// RedetectAllMediaAsync re-runs Emby-style identification on every movie and show.
-func RedetectAllMediaAsync() {
-	go RedetectAllMedia()
+// RedetectAllMediaAsync re-runs Emby-style identification on every movie and
+// show. It claims the run before returning, so the caller learns whether it
+// started one rather than checking IsRedetectingAll() and racing.
+func RedetectAllMediaAsync() bool {
+	if !redetectingAll.CompareAndSwap(false, true) {
+		log.Println("Identify: bulk redetect already in progress")
+		return false
+	}
+	go func() {
+		defer redetectingAll.Store(false)
+		redetectAllMedia()
+	}()
+	return true
 }
 
-// RedetectAllMedia walks all library movies/shows and applies RedetectMediaByID.
-func RedetectAllMedia() {
+// redetectAllMedia walks all library movies/shows and applies RedetectMediaByID.
+// The run guard belongs to RedetectAllMediaAsync, its only caller.
+func redetectAllMedia() {
 	redetectAllMutex.Lock()
-	if IsRedetectingAll {
-		redetectAllMutex.Unlock()
-		log.Println("Identify: bulk redetect already in progress")
-		return
-	}
-	IsRedetectingAll = true
 	redetectAllProgress = RedetectAllProgress{}
 	redetectAllMutex.Unlock()
-
-	defer func() {
-		redetectAllMutex.Lock()
-		IsRedetectingAll = false
-		redetectAllMutex.Unlock()
-	}()
 
 	start := time.Now()
 	rows, err := database.DB.Query(`

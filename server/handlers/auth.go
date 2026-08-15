@@ -43,18 +43,15 @@ func RequireAuth(next AuthenticatedHandle) httprouter.Handle {
 			return
 		}
 
-		token := parts[1]
-		var userID int
-
-		// Verify token in database
-		err := database.DB.QueryRow("SELECT user_id FROM sessions WHERE token = ?", token).Scan(&userID)
-		if err != nil {
-			if err == sql.ErrNoRows {
-				http.Error(w, `{"error": "Invalid or expired session"}`, http.StatusUnauthorized)
-			} else {
-				log.Printf("Session query error: %v", err)
-				http.Error(w, `{"error": "Internal server error"}`, http.StatusInternalServerError)
-			}
+		// Resolve the token, rejecting one that has gone past its idle deadline.
+		userID, ok, err := lookupSession(parts[1])
+		if err != nil && err != sql.ErrNoRows {
+			log.Printf("Session query error: %v", err)
+			http.Error(w, `{"error": "Internal server error"}`, http.StatusInternalServerError)
+			return
+		}
+		if !ok {
+			http.Error(w, `{"error": "Invalid or expired session"}`, http.StatusUnauthorized)
 			return
 		}
 
@@ -246,17 +243,18 @@ func Login(w http.ResponseWriter, r *http.Request, _ httprouter.Params) {
 		return
 	}
 
+	// Verify the password before doing any more work: a wrong one must not cost
+	// the server a full profile load.
+	if err := bcrypt.CompareHashAndPassword([]byte(passwordHash), []byte(req.Password)); err != nil {
+		http.Error(w, `{"error": "Invalid username or password"}`, http.StatusUnauthorized)
+		return
+	}
+
 	// Load the full profile so the client knows its permissions from the start.
 	user, err := LoadUser(userID)
 	if err != nil {
 		log.Printf("Login: failed to load user %d: %v", userID, err)
 		http.Error(w, `{"error": "Internal server error"}`, http.StatusInternalServerError)
-		return
-	}
-
-	// Verify password
-	if err := bcrypt.CompareHashAndPassword([]byte(passwordHash), []byte(req.Password)); err != nil {
-		http.Error(w, `{"error": "Invalid username or password"}`, http.StatusUnauthorized)
 		return
 	}
 

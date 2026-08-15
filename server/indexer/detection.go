@@ -6,13 +6,13 @@ import (
 	"encoding/json"
 	"fmt"
 	"log"
-	"net/http"
 	"os/exec"
 	"path/filepath"
 	"strconv"
 	"strings"
 
 	"project-player/server/database"
+	"project-player/server/httpx"
 )
 
 // ChapterItem represents a simplified chapter structure
@@ -184,7 +184,7 @@ func GetIMDbIDFromTMDB(tmdbID int) (string, error) {
 	}
 
 	url := fmt.Sprintf("https://api.themoviedb.org/3/tv/%d/external_ids?api_key=%s", tmdbID, apiKey)
-	resp, err := http.Get(url)
+	resp, err := httpx.Standard.Get(url)
 	if err != nil {
 		return "", fmt.Errorf("failed to fetch TMDB external IDs: %v", err)
 	}
@@ -209,7 +209,7 @@ func GetIMDbIDFromTMDB(tmdbID int) (string, error) {
 // FetchSegmentsFromIntroDB fetches intro/recap/outro segments from TheIntroDB API
 func FetchSegmentsFromIntroDB(imdbID string, season, episode int) (*IntroDBResponse, error) {
 	url := fmt.Sprintf("https://api.introdb.app/segments?imdb_id=%s&season=%d&episode=%d", imdbID, season, episode)
-	resp, err := http.Get(url)
+	resp, err := httpx.Standard.Get(url)
 	if err != nil {
 		return nil, fmt.Errorf("failed to fetch from IntroDB: %v", err)
 	}

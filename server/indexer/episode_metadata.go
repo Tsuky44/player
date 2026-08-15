@@ -14,6 +14,7 @@ import (
 	"time"
 
 	"project-player/server/database"
+	"project-player/server/httpx"
 	"project-player/server/models"
 )
 
@@ -82,7 +83,7 @@ func fetchTMDBEpisodeTranslation(showTMDBID, seasonNum, episodeNum int) (title, 
 		"https://api.themoviedb.org/3/tv/%d/season/%d/episode/%d/translations?api_key=%s",
 		showTMDBID, seasonNum, episodeNum, apiKey,
 	)
-	resp, err := http.Get(u)
+	resp, err := httpx.Standard.Get(u)
 	if err != nil || resp.StatusCode != http.StatusOK {
 		if resp != nil {
 			resp.Body.Close()
@@ -110,7 +111,6 @@ func fetchTMDBEpisode(showTMDBID, seasonNum, episodeNum int) (title, overview, p
 		return "", "", "", "", 0
 	}
 
-	client := &http.Client{Timeout: 12 * time.Second}
 	fetch := func(lang string) tmdbEpisodeDetails {
 		u := fmt.Sprintf(
 			"https://api.themoviedb.org/3/tv/%d/season/%d/episode/%d?api_key=%s",
@@ -119,7 +119,7 @@ func fetchTMDBEpisode(showTMDBID, seasonNum, episodeNum int) (title, overview, p
 		if lang != "" {
 			u += "&language=" + lang
 		}
-		resp, err := client.Get(u)
+		resp, err := httpx.Standard.Get(u)
 		if err != nil || resp.StatusCode != http.StatusOK {
 			if resp != nil {
 				resp.Body.Close()

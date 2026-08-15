@@ -9,14 +9,21 @@ import (
 	"path/filepath"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
+	"project-player/server/httpx"
 	"project-player/server/models"
 )
 
-// Minimum TMDB search score to accept an automatic match (Emby-like: refuse weak guesses).
-// Exact title = 1.0; exact+year ≈ 1.6; substring+year ≈ 1.45; weak Jaccard stays well below.
-const minTMDBAcceptScore = 0.95
+// Title-similarity gates for accepting an automatic match (Emby-like: refuse
+// weak guesses, but don't leave a whole library unidentified either).
+const (
+	// With a matching release year the title only has to be close.
+	minTitleScoreWithYear = 0.80
+	// Without a year, only a near-identical title is trustworthy.
+	minTitleScoreNoYear = 0.92
+)
 
 // IdentityMatch is the result of Emby-style media identification.
 type IdentityMatch struct {
@@ -153,11 +160,14 @@ func searchTMDBWithConfidence(rawTitle string, hintYear int, mediaType models.Me
 	if mediaType == models.TypeShow {
 		endpoint = "tv"
 	}
-	client := &http.Client{Timeout: 12 * time.Second}
 
 	trySearch := func(query, searchYear, lang string) []tmdbSearchResult {
 		if query == "" {
 			return nil
+		}
+		cacheKey := strings.Join([]string{endpoint, query, searchYear, lang}, "|")
+		if cached, ok := getCachedSearch(cacheKey); ok {
+			return cached
 		}
 		u := fmt.Sprintf(
 			"https://api.themoviedb.org/3/search/%s?api_key=%s&query=%s",
@@ -173,25 +183,50 @@ func searchTMDBWithConfidence(rawTitle string, hintYear int, mediaType models.Me
 				u += "&year=" + searchYear
 			}
 		}
-		resp, err := client.Get(u)
-		if err != nil {
-			return nil
-		}
-		defer resp.Body.Close()
-		if resp.StatusCode != http.StatusOK {
-			return nil
-		}
+
 		var out TMDBResponse
-		if err := json.NewDecoder(resp.Body).Decode(&out); err != nil {
+		ok := false
+		// One retry: a transient network error must not silently leave a film
+		// unidentified for good.
+		for attempt := 0; attempt < 2; attempt++ {
+			if attempt > 0 {
+				time.Sleep(600 * time.Millisecond)
+			}
+			resp, err := httpx.Standard.Get(u)
+			if err != nil {
+				continue
+			}
+			if resp.StatusCode == http.StatusTooManyRequests {
+				resp.Body.Close()
+				time.Sleep(1500 * time.Millisecond)
+				continue
+			}
+			if resp.StatusCode != http.StatusOK {
+				resp.Body.Close()
+				break
+			}
+			err = json.NewDecoder(resp.Body).Decode(&out)
+			resp.Body.Close()
+			if err == nil {
+				ok = true
+				break
+			}
+		}
+		if !ok {
 			return nil
 		}
+
 		results := make([]tmdbSearchResult, 0, len(out.Results))
 		for _, r := range out.Results {
 			results = append(results, tmdbSearchResult{
-				ID: r.ID, Title: r.Title, Name: r.Name, Overview: r.Overview,
+				ID: r.ID, Title: r.Title, Name: r.Name,
+				OriginalTitle: r.OriginalTitle, OriginalName: r.OriginalName,
+				Overview:   r.Overview,
 				PosterPath: r.PosterPath, ReleaseDate: r.ReleaseDate, FirstAirDate: r.FirstAirDate,
+				Popularity: r.Popularity,
 			})
 		}
+		putCachedSearch(cacheKey, results)
 		return results
 	}
 
@@ -202,6 +237,7 @@ func searchTMDBWithConfidence(rawTitle string, hintYear int, mediaType models.Me
 
 	var best tmdbSearchResult
 	bestScore := -1.0
+search:
 	for _, query := range queries {
 		for _, searchYear := range []string{yearStr, ""} {
 			for _, lang := range []string{tmdbLanguage(), ""} {
@@ -214,6 +250,12 @@ func searchTMDBWithConfidence(rawTitle string, hintYear int, mediaType models.Me
 				if score > bestScore {
 					best = candidate
 					bestScore = score
+				}
+				// Exact title on the right year: no better match exists, stop
+				// burning API calls on the remaining query variants.
+				if bestTitleScore(best, parsed.Title) >= 1.0 &&
+					(parsed.Year == 0 || absInt(tmdbResultYear(best, mediaType)-parsed.Year) <= 1) {
+					break search
 				}
 			}
 		}
@@ -256,32 +298,53 @@ func searchTMDBWithConfidence(rawTitle string, hintYear int, mediaType models.Me
 	}
 }
 
-// isConfidentTMDBMatch mirrors Emby's refusal to lock a vague popularity hit.
-func isConfidentTMDBMatch(r tmdbSearchResult, targetTitle string, targetYear int, mediaType models.MediaType, score float64) bool {
-	if r.ID == 0 || score < minTMDBAcceptScore {
+// isConfidentTMDBMatch mirrors Emby's refusal to lock a vague popularity hit:
+// the title must really match, and a known year must not contradict the result.
+func isConfidentTMDBMatch(r tmdbSearchResult, targetTitle string, targetYear int, mediaType models.MediaType, _ float64) bool {
+	if r.ID == 0 {
 		return false
 	}
-	target := normalizeForMatch(targetTitle)
-	titleScore := 0.0
-	for _, cand := range []string{r.Title, r.Name} {
-		if s := titleSimilarity(target, normalizeForMatch(cand)); s > titleScore {
-			titleScore = s
-		}
-	}
-	if titleScore < 0.7 {
-		return false
-	}
-	if targetYear > 0 {
-		ry := tmdbResultYear(r, mediaType)
-		if ry > 0 && absInt(ry-targetYear) > 1 {
+	titleScore := bestTitleScore(r, targetTitle)
+	resultYear := tmdbResultYear(r, mediaType)
+
+	if targetYear > 0 && resultYear > 0 {
+		// A different year means a different film, however popular the candidate.
+		if absInt(resultYear-targetYear) > 1 {
 			return false
 		}
-		// With a known year, require a strong title signal (substring/exact).
-		if titleScore < 0.85 {
-			return false
-		}
+		return titleScore >= minTitleScoreWithYear
 	}
-	return true
+	return titleScore >= minTitleScoreNoYear
+}
+
+// Search results are cached for the length of a scan: the same show/collection
+// is looked up over and over (per episode, then again during backfill).
+var (
+	searchCache   = map[string][]tmdbSearchResult{}
+	searchCacheMu sync.Mutex
+)
+
+func getCachedSearch(key string) ([]tmdbSearchResult, bool) {
+	searchCacheMu.Lock()
+	defer searchCacheMu.Unlock()
+	results, ok := searchCache[key]
+	return results, ok
+}
+
+func putCachedSearch(key string, results []tmdbSearchResult) {
+	searchCacheMu.Lock()
+	defer searchCacheMu.Unlock()
+	if len(searchCache) > 5000 {
+		searchCache = map[string][]tmdbSearchResult{}
+	}
+	searchCache[key] = results
+}
+
+// ResetSearchCache drops memoized TMDB search results (called when a scan starts).
+func ResetSearchCache() {
+	searchCacheMu.Lock()
+	searchCache = map[string][]tmdbSearchResult{}
+	searchCacheMu.Unlock()
 }
 
 func findTMDBIDByExternal(externalID, source string, mediaType models.MediaType) int {
@@ -293,7 +356,7 @@ func findTMDBIDByExternal(externalID, source string, mediaType models.MediaType)
 		"https://api.themoviedb.org/3/find/%s?api_key=%s&external_source=%s",
 		url.PathEscape(externalID), apiKey, url.QueryEscape(source),
 	)
-	resp, err := http.Get(u)
+	resp, err := httpx.Standard.Get(u)
 	if err != nil {
 		log.Printf("TMDB find: %v", err)
 		return 0
@@ -326,18 +389,19 @@ func findTMDBIDByExternal(externalID, source string, mediaType models.MediaType)
 	return 0
 }
 
-// resolveShowFolderPath returns the on-disk show folder for NFO lookup.
+// resolveShowFolderPath returns the on-disk show folder for NFO lookup. Like the
+// title resolution it walks from the deepest folder up, so a nested library
+// points at the series folder and not at its category folder.
 func resolveShowFolderPath(seriesRoot string, relParts []string) string {
 	if seriesRoot == "" || len(relParts) == 0 {
 		return ""
 	}
-	for i := 0; i < len(relParts)-1; i++ {
+	for i := len(relParts) - 2; i >= 0; i-- {
 		part := strings.TrimSpace(relParts[i])
-		if part == "" || looksLikeEpisodeReleaseFolder(part) {
+		if part == "" || looksLikeEpisodeReleaseFolder(part) || looksLikeSeasonFolderName(part) {
 			continue
 		}
-		lower := strings.ToLower(part)
-		if strings.HasPrefix(lower, "season ") || strings.HasPrefix(lower, "saison ") {
+		if looksLikeCategoryFolderName(part) {
 			continue
 		}
 		return filepath.Join(append([]string{seriesRoot}, relParts[:i+1]...)...)

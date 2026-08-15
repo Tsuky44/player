@@ -250,15 +250,8 @@ func showTitle(showID int) string {
 // findEpisodeInSeason returns the first episode of a season whose number is
 // above afterEpisodeNumber. Pass 0 to get the season's first episode.
 func findEpisodeInSeason(userID, seasonID, afterEpisodeNumber int) (models.HomeMediaItem, bool) {
-	query := `
-		SELECT m.id, m.type, m.title, m.file_path, m.duration, m.parent_id, m.poster_url, m.overview, m.release_date, m.tmdb_id, m.created_at,
-		       COALESCE(p.current_position_seconds, 0) as current_position,
-		       COALESCE(p.is_finished, 0) as is_finished,
-		       m.intro_start, m.intro_end, m.outro_start, m.outro_end,
-		       COALESCE(NULLIF(m.season_number, 0), season.season_number, 0),
-		       COALESCE(m.episode_number, 0),
-		       COALESCE(season.title, ''),
-		       COALESCE(show_m.title, '')
+	item, err := scanEpisodeItem(database.DB.QueryRow(`
+		SELECT `+episodeItemColumns+`
 		FROM medias m
 		LEFT JOIN medias season ON m.parent_id = season.id AND season.type = 'season'
 		LEFT JOIN medias show_m ON season.parent_id = show_m.id AND show_m.type = 'show'
@@ -266,48 +259,12 @@ func findEpisodeInSeason(userID, seasonID, afterEpisodeNumber int) (models.HomeM
 		WHERE m.type = 'episode' AND m.parent_id = ?
 		  AND COALESCE(m.episode_number, 0) > ?
 		ORDER BY COALESCE(NULLIF(m.episode_number, 0), 9999), m.id ASC
-		LIMIT 1
-	`
-
-	var item models.HomeMediaItem
-	var filePath, posterURL, overview, releaseDate, showTitleRow sql.NullString
-	var tmdbID sql.NullInt64
-	var parentID, seasonNumber, episodeNumber int
-	var seasonTitle string
-
-	err := database.DB.QueryRow(query, userID, seasonID, afterEpisodeNumber).Scan(
-		&item.ID, &item.Type, &item.Title, &filePath, &item.Duration, &parentID, &posterURL, &overview, &releaseDate, &tmdbID, &item.CreatedAt,
-		&item.CurrentPositionSeconds, &item.IsFinished,
-		&item.IntroStart, &item.IntroEnd, &item.OutroStart, &item.OutroEnd,
-		&seasonNumber, &episodeNumber, &seasonTitle, &showTitleRow,
-	)
+		LIMIT 1`, userID, seasonID, afterEpisodeNumber))
 	if err != nil {
 		if err != sql.ErrNoRows {
 			log.Printf("NextEpisode error: %v", err)
 		}
 		return models.HomeMediaItem{}, false
-	}
-
-	item.ParentID = &parentID
-	if filePath.Valid {
-		item.FilePath = filePath.String
-	}
-	if posterURL.Valid {
-		item.PosterURL = posterURL.String
-	}
-	if overview.Valid {
-		item.Overview = overview.String
-	}
-	if releaseDate.Valid {
-		item.ReleaseDate = releaseDate.String
-	}
-	if tmdbID.Valid {
-		item.TMDBID = int(tmdbID.Int64)
-	}
-	item.SeasonNumber = resolveSeasonNumber(seasonTitle, item.FilePath, seasonNumber)
-	item.EpisodeNumber = parseEpisodeNumber(item.Title, episodeNumber)
-	if showTitleRow.Valid && showTitleRow.String != "" {
-		item.ShowTitle = showTitleRow.String
 	}
 
 	return item, true

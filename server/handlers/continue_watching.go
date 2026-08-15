@@ -14,6 +14,7 @@ import (
 
 	"github.com/julienschmidt/httprouter"
 )
+
 // resolveShowFromEpisode returns show id/title/poster for an episode row.
 // Handles the normal Show → Season → Episode tree and a direct Episode → Show link.
 func resolveShowFromEpisode(episodeID, episodeParentID int) (showID int, showTitle, showPoster string, ok bool) {
@@ -44,56 +45,9 @@ func resolveShowFromEpisode(episodeID, episodeParentID int) (showID int, showTit
 	return 0, "", "", false
 }
 
-func scanContinueWatchingMovieRow(rows *sql.Rows) (models.HomeMediaItem, time.Time, error) {
-	var item models.HomeMediaItem
-	var parentID sql.NullInt64
-	var filePath, posterURL, overview, releaseDate sql.NullString
-	var tmdbID sql.NullInt64
-	var updatedAt time.Time
-	var isFinishedInt int
-
-	err := rows.Scan(
-		&item.ID, &item.Type, &item.Title, &filePath, &item.Duration, &parentID, &posterURL,
-		&overview, &releaseDate, &tmdbID, &item.CreatedAt,
-		&item.CurrentPositionSeconds, &isFinishedInt,
-		&item.IntroStart, &item.IntroEnd, &item.OutroStart, &item.OutroEnd,
-		&updatedAt,
-	)
-	if err != nil {
-		return item, time.Time{}, err
-	}
-
-	if filePath.Valid {
-		item.FilePath = filePath.String
-	}
-	if parentID.Valid {
-		pid := int(parentID.Int64)
-		item.ParentID = &pid
-	}
-	if posterURL.Valid {
-		item.PosterURL = posterURL.String
-	}
-	if overview.Valid {
-		item.Overview = overview.String
-	}
-	if releaseDate.Valid {
-		item.ReleaseDate = releaseDate.String
-	}
-	if tmdbID.Valid {
-		item.TMDBID = int(tmdbID.Int64)
-	}
-	item.IsFinished = isFinishedInt != 0
-	item.UpdatedAt = updatedAt
-	return item, updatedAt, nil
-}
-
 func buildMovieContinueWatching(userID int, hidden map[string]struct{}) ([]models.HomeMediaItem, error) {
 	rows, err := database.DB.Query(`
-		SELECT m.id, m.type, m.title, m.file_path, m.duration, m.parent_id, m.poster_url,
-		       m.overview, m.release_date, m.tmdb_id, m.created_at,
-		       p.current_position_seconds, p.is_finished,
-		       m.intro_start, m.intro_end, m.outro_start, m.outro_end,
-		       p.updated_at
+		SELECT `+libraryItemColumns+`, p.updated_at
 		FROM progressions p
 		JOIN medias m ON p.media_id = m.id AND m.type = 'movie'
 		WHERE p.user_id = ?
@@ -107,11 +61,13 @@ func buildMovieContinueWatching(userID int, hidden map[string]struct{}) ([]model
 
 	var items []models.HomeMediaItem
 	for rows.Next() {
-		item, _, err := scanContinueWatchingMovieRow(rows)
+		var updatedAt time.Time
+		item, err := scanLibraryItem(rows, &updatedAt)
 		if err != nil {
 			log.Printf("ContinueWatching: movie scan error: %v", err)
 			continue
 		}
+		item.UpdatedAt = updatedAt
 		if !meetsContinueWatchingThreshold(item.CurrentPositionSeconds, item.Duration) {
 			continue
 		}
@@ -120,11 +76,13 @@ func buildMovieContinueWatching(userID int, hidden map[string]struct{}) ([]model
 		}
 		items = append(items, item)
 	}
-	return items, nil
+	return items, rows.Err()
 }
 
 type showProgressActivity struct {
 	showID    int
+	title     string
+	poster    string
 	updatedAt time.Time
 }
 
@@ -141,11 +99,18 @@ func meetsContinueWatchingThreshold(positionSeconds, durationSeconds int) bool {
 	return percent >= minContinueWatchingProgressPercent
 }
 
-// listShowsWithProgress returns show IDs where the user has any episode progression,
-// ordered by most recent activity (including finished episodes).
+// listShowsWithProgress returns the shows where the user has any episode
+// progression, ordered by most recent activity (including finished episodes).
+//
+// Title and poster come along for the ride: the show row is already joined here
+// to resolve the id, so re-reading it per show afterwards was a round trip that
+// bought nothing. They are functionally dependent on the GROUP BY key, so which
+// row of the group SQLite picks them from cannot matter.
 func listShowsWithProgress(userID int) ([]showProgressActivity, error) {
 	rows, err := database.DB.Query(`
 		SELECT COALESCE(show_s.id, show_d.id) AS show_id,
+		       COALESCE(show_s.title, show_d.title, '') AS show_title,
+		       COALESCE(show_s.poster_url, show_d.poster_url, '') AS show_poster,
 		       MAX(p.updated_at) AS last_activity
 		FROM progressions p
 		JOIN medias ep ON p.media_id = ep.id AND ep.type = 'episode'
@@ -165,7 +130,7 @@ func listShowsWithProgress(userID int) ([]showProgressActivity, error) {
 	for rows.Next() {
 		var act showProgressActivity
 		var updatedAtRaw sql.NullString
-		if err := rows.Scan(&act.showID, &updatedAtRaw); err != nil {
+		if err := rows.Scan(&act.showID, &act.title, &act.poster, &updatedAtRaw); err != nil {
 			log.Printf("ContinueWatching: show activity scan error: %v", err)
 			continue
 		}
@@ -175,17 +140,7 @@ func listShowsWithProgress(userID int) ([]showProgressActivity, error) {
 		act.updatedAt = scanSQLiteTime(updatedAtRaw)
 		out = append(out, act)
 	}
-	return out, nil
-}
-
-func loadShowMetadata(showID int) (title, poster string, err error) {
-	err = database.DB.QueryRow(`
-		SELECT title, COALESCE(poster_url, '')
-		FROM medias
-		WHERE id = ? AND type = 'show'
-		LIMIT 1`, showID,
-	).Scan(&title, &poster)
-	return title, poster, err
+	return out, rows.Err()
 }
 
 func episodeRowToContinueWatchingItem(showID int, showTitle, showPoster string, row *episodeProgressRow, updatedAt time.Time) models.HomeMediaItem {
@@ -229,13 +184,27 @@ func buildShowContinueWatching(userID int, hidden map[string]struct{}) ([]models
 		return nil, err
 	}
 
-	var items []models.HomeMediaItem
+	// Hidden shows are dropped before the episode load, so a dismissed series
+	// costs nothing at all rather than a full episode list thrown away after.
+	visible := activities[:0]
+	showIDs := make([]int, 0, len(activities))
 	for _, act := range activities {
-		episodes, err := loadShowEpisodesWithProgress(act.showID, userID)
-		if err != nil {
-			log.Printf("ContinueWatching: load episodes for show %d: %v", act.showID, err)
+		if isContinueWatchingHidden(hidden, 0, act.showID) {
 			continue
 		}
+		visible = append(visible, act)
+		showIDs = append(showIDs, act.showID)
+	}
+
+	// One query for every show, instead of one query per show.
+	episodesByShow, err := loadEpisodesWithProgressForShows(userID, showIDs)
+	if err != nil {
+		return nil, err
+	}
+
+	var items []models.HomeMediaItem
+	for _, act := range visible {
+		episodes := episodesByShow[act.showID]
 		row, ok := findResumeEpisodeRow(episodes)
 		if !ok || row == nil {
 			continue
@@ -243,15 +212,7 @@ func buildShowContinueWatching(userID int, hidden map[string]struct{}) ([]models
 		if !meetsShowContinueWatchingThreshold(row, episodes) {
 			continue
 		}
-		if isContinueWatchingHidden(hidden, 0, act.showID) {
-			continue
-		}
-		showTitle, showPoster, err := loadShowMetadata(act.showID)
-		if err != nil {
-			log.Printf("ContinueWatching: show metadata %d: %v", act.showID, err)
-			continue
-		}
-		items = append(items, episodeRowToContinueWatchingItem(act.showID, showTitle, showPoster, row, act.updatedAt))
+		items = append(items, episodeRowToContinueWatchingItem(act.showID, act.title, act.poster, row, act.updatedAt))
 	}
 
 	log.Printf("ContinueWatching: %d in-progress show(s) for user %d", len(items), userID)
