@@ -9,17 +9,17 @@ import (
 	"net/url"
 	"strconv"
 	"strings"
-	"time"
 
 	"project-player/server/config"
 	"project-player/server/database"
+	"project-player/server/httpx"
 
 	"github.com/julienschmidt/httprouter"
 )
 
 const maxMediaHubResponseSize = 8 << 20
 
-var mediaHubHTTPClient = &http.Client{Timeout: 30 * time.Second}
+var mediaHubHTTPClient = httpx.Long
 
 func MediaHubCatalog(w http.ResponseWriter, r *http.Request, _ httprouter.Params, userID int) {
 	proxyMediaHub(w, r, userID, http.MethodGet, "/api/integrations/player/catalog", r.URL.Query(), nil)

@@ -9,6 +9,8 @@ import (
 	"strconv"
 	"strings"
 
+	"project-player/server/httpx"
+
 	"github.com/julienschmidt/httprouter"
 )
 
@@ -256,7 +258,7 @@ func TmdbRequestFilterOptions(w http.ResponseWriter, r *http.Request, _ httprout
 
 	mediaType := r.URL.Query().Get("type")
 	lang := tmdbRequestLanguage()
-	client := &http.Client{Timeout: tmdbRequestTimeout * 1_000_000_000}
+	client := httpx.Catalog
 
 	type genreRow struct {
 		ID   int    `json:"id"`
@@ -326,7 +328,7 @@ func TmdbRequestWatchProviders(w http.ResponseWriter, r *http.Request, _ httprou
 		region = "FR"
 	}
 	lang := tmdbRequestLanguage()
-	client := &http.Client{Timeout: tmdbRequestTimeout * 1_000_000_000}
+	client := httpx.Catalog
 
 	type providerRow struct {
 		ProviderID   int    `json:"provider_id"`

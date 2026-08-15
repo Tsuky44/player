@@ -4,13 +4,19 @@ import (
 	"database/sql"
 	"log"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"project-player/server/database"
 )
 
-// IsExtracting is true while a library-wide forced subtitle extraction runs.
-var IsExtracting bool
+// extracting is read by the scan-status endpoint while the extraction
+// goroutine writes it, so it is atomic rather than a plain bool guarded only on
+// the write side. extractMutex still protects the progress counters.
+var extracting atomic.Bool
+
+// IsExtracting reports whether a library-wide forced subtitle extraction runs.
+func IsExtracting() bool { return extracting.Load() }
 
 var (
 	extractMutex sync.Mutex
@@ -36,12 +42,10 @@ func LastExtractStats() ExtractStats {
 // TryStartForceExtractAll launches a background re-extraction for every movie
 // and episode. Returns false if a run is already in progress.
 func TryStartForceExtractAll() bool {
-	extractMutex.Lock()
-	if IsExtracting {
-		extractMutex.Unlock()
+	if !extracting.CompareAndSwap(false, true) {
 		return false
 	}
-	IsExtracting = true
+	extractMutex.Lock()
 	extractStats = ExtractStats{}
 	extractMutex.Unlock()
 
@@ -50,11 +54,7 @@ func TryStartForceExtractAll() bool {
 }
 
 func runForceExtractAll() {
-	defer func() {
-		extractMutex.Lock()
-		IsExtracting = false
-		extractMutex.Unlock()
-	}()
+	defer extracting.Store(false)
 
 	started := time.Now()
 	log.Println("subtitles: starting forced library extraction…")
