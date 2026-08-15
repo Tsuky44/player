@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import '../../models/models.dart';
 import '../../services/api_client.dart';
 import '../../theme/app_colors.dart';
+import 'app_network_image.dart';
 
 /// Bottom sheet that lets the user re-identify a movie/show by picking the
 /// correct entry from a live TMDB search. The original filename is shown at the
@@ -401,16 +402,12 @@ class _CandidateTile extends StatelessWidget {
         children: [
           ClipRRect(
             borderRadius: BorderRadius.circular(8),
-            child: SizedBox(
+            child: AppNetworkImage(
+              url: candidate.posterUrl,
               width: 60,
               height: 90,
-              child: candidate.posterUrl != null
-                  ? Image.network(
-                      candidate.posterUrl!,
-                      fit: BoxFit.cover,
-                      errorBuilder: (_, __, ___) => const _PosterFallback(),
-                    )
-                  : const _PosterFallback(),
+              fit: BoxFit.cover,
+              errorWidget: const _PosterFallback(),
             ),
           ),
           const SizedBox(width: 12),

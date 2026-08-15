@@ -12,7 +12,8 @@ import '../../providers/home_provider.dart';
 import '../../providers/player_layout_provider.dart';
 import '../../navigation/search_route_observer.dart';
 import '../../services/api_client.dart';
-import '../../services/media_logo_cache.dart';
+import '../../services/media_details_cache.dart';
+import '../../utils/poster_url.dart';
 import 'hooks/use_player_controller.dart';
 import 'hooks/use_episode_navigation.dart';
 import 'hooks/use_player_media_keys.dart';
@@ -115,6 +116,12 @@ class _PlayerScreenState extends State<PlayerScreen> {
   int? _episodesPanelSeasonId;
   String _episodesPanelShowTitle = '';
 
+  /// The episode before this one inside the same season, when there is one.
+  ///
+  /// The server only answers "what comes next", so this is resolved from the
+  /// season listing instead — the same call the episode panel makes.
+  HomeMediaItem? _previousEpisode;
+
   String get _playerTitle =>
       playerMediaTitle(widget.media, seasonNumber: widget.seasonNumber);
 
@@ -140,14 +147,17 @@ class _PlayerScreenState extends State<PlayerScreen> {
 
     // Already resolved this session (detail page, or a previous playback):
     // set it synchronously so the chrome opens on the logo, not on the title.
-    if (MediaLogoCache.isCached(detailsId)) {
-      setState(() => _mediaLogoUrl = MediaLogoCache.peek(detailsId!));
+    // The URL is normalised to the same size the detail header asked for, so
+    // the bytes are in the image cache too and it draws on the first frame.
+    final cached = MediaDetailsCache.peek(detailsId);
+    if (cached != null) {
+      setState(() => _mediaLogoUrl = logoImageUrl(cached.logoUrl));
       return;
     }
 
-    final url = await MediaLogoCache.resolve(api, detailsId);
+    final url = await MediaDetailsCache.resolveLogo(api, detailsId);
     if (!mounted) return;
-    setState(() => _mediaLogoUrl = url);
+    setState(() => _mediaLogoUrl = logoImageUrl(url));
   }
 
   int? _seasonNumberFor(dynamic media) {
@@ -203,6 +213,33 @@ class _PlayerScreenState extends State<PlayerScreen> {
     });
     _controlsTimer?.cancel();
     await _loadEpisodesPanelData();
+  }
+
+  /// Resolves [_previousEpisode] from the current season listing.
+  ///
+  /// Season-crossing is deliberately not attempted: going back would mean
+  /// fetching the previous season's episodes to find its last one, and the
+  /// episode panel already covers that case.
+  Future<void> _loadPreviousEpisode() async {
+    final api = _apiClient;
+    final seasonId = _currentSeasonId;
+    if (!_isEpisode || api == null || seasonId == null || seasonId <= 0) return;
+
+    try {
+      final episodes = await api.getSeasonEpisodes(seasonId);
+      if (!mounted) return;
+      final idx = episodes.indexWhere((e) => e.media.id == _currentEpisodeId);
+      if (idx <= 0) return;
+      setState(() => _previousEpisode = episodes[idx - 1]);
+    } catch (_) {
+      // A missing back button is a smaller failure than a broken player.
+    }
+  }
+
+  void _goToPreviousEpisode() {
+    final previous = _previousEpisode;
+    if (previous == null) return;
+    _navigateToEpisode(previous);
   }
 
   void _closeEpisodesPanel() {
@@ -363,6 +400,7 @@ class _PlayerScreenState extends State<PlayerScreen> {
       );
       _episodeNav!.addListener(_episodeNavListener!);
       unawaited(_episodeNav!.load());
+      unawaited(_loadPreviousEpisode());
     }
 
     if (mounted) setState(() {});
@@ -1503,6 +1541,9 @@ class _PlayerScreenState extends State<PlayerScreen> {
                     onSkipNext: (_episodeNav?.nextEpisode != null)
                         ? _goToNextEpisode
                         : null,
+                    onSkipPrevious:
+                        _previousEpisode != null ? _goToPreviousEpisode : null,
+                    onOpenEpisodes: _isEpisode ? _openEpisodesPanel : null,
                     onSkipIntro: (_episodeNav?.showSkipIntro ?? false)
                         ? _skipIntroFromControl
                         : null,

@@ -1,14 +1,16 @@
-import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
 import '../../theme/app_colors.dart';
+import 'app_network_image.dart';
 
 /// Single poster card used by every catalog grid (films, séries, bibliothèque,
 /// demandes). The poster fills the whole grid cell above the metadata block, so
 /// the cell's aspect ratio — not a hardcoded height — decides the poster size.
 class PosterCard extends StatefulWidget {
   /// Fully resolved image URL (see `cardPosterUrl`). Null renders the fallback.
+  ///
+  /// This doubles as the cache identity: two cards showing the same artwork
+  /// share one download and one decode, wherever in the app they live.
   final String? posterUrl;
-  final String? cacheKey;
   final String title;
 
   /// Secondary line (année · note · rôle…). Rendered even when empty so every
@@ -35,7 +37,6 @@ class PosterCard extends StatefulWidget {
     required this.posterUrl,
     required this.title,
     required this.onTap,
-    this.cacheKey,
     this.subtitle,
     this.overlays = const [],
     this.footerOverlay,
@@ -147,18 +148,14 @@ class _PosterCardState extends State<PosterCard> {
   }
 
   Widget _poster() {
-    final url = widget.posterUrl;
-    if (url == null || url.isEmpty) return _fallback();
-
-    return CachedNetworkImage(
-      imageUrl: url,
-      cacheKey: widget.cacheKey,
+    return AppNetworkImage(
+      url: widget.posterUrl,
       fit: BoxFit.cover,
       fadeInDuration: const Duration(milliseconds: 180),
       color: widget.dimmed ? Colors.black.withValues(alpha: 0.45) : null,
       colorBlendMode: widget.dimmed ? BlendMode.darken : null,
-      placeholder: (_, __) => const ColoredBox(color: AppColors.surfaceElevated),
-      errorWidget: (_, __, ___) => _fallback(broken: true),
+      placeholder: const ColoredBox(color: AppColors.surfaceElevated),
+      errorWidget: _fallback(broken: widget.posterUrl?.isNotEmpty ?? false),
     );
   }
 

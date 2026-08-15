@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 
 import '../../../models/models.dart';
 import '../../../theme/app_colors.dart';
+import '../../../widgets/global/app_network_image.dart';
 
 /// End-of-season page, shown when the season that follows is not on the server.
 ///
@@ -123,10 +124,14 @@ class _Backdrop extends StatelessWidget {
             imageFilter: ImageFilter.blur(sigmaX: 60, sigmaY: 60),
             child: Opacity(
               opacity: 0.32,
-              child: Image.network(
-                posterUrl!,
+              child: AppNetworkImage(
+                // 60px of blur — a small decode is indistinguishable here, and
+                // this overlay appears mid-playback where nothing may stutter.
+                url: posterUrl,
                 fit: BoxFit.cover,
-                errorBuilder: (_, __, ___) => const SizedBox.shrink(),
+                decodeWidth: 320,
+                placeholder: const SizedBox.shrink(),
+                errorWidget: const SizedBox.shrink(),
               ),
             ),
           ),
@@ -341,12 +346,12 @@ class _Poster extends StatelessWidget {
             ),
           ],
         ),
-        child: Image.network(
-          url,
+        child: AppNetworkImage(
+          url: url,
           width: 132,
           height: 198,
           fit: BoxFit.cover,
-          errorBuilder: (_, __, ___) => const SizedBox.shrink(),
+          errorWidget: const SizedBox.shrink(),
         ),
       ),
     );

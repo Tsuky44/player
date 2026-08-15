@@ -1,10 +1,10 @@
-import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../../../models/media_request.dart';
 import '../../../providers/media_requests_provider.dart';
 import '../../../theme/app_colors.dart';
 import '../../../utils/format.dart';
+import '../../../widgets/global/app_network_image.dart';
 import 'request_status_badge.dart';
 
 /// Expandable season accordion with lazy-loaded TMDB episodes.
@@ -154,17 +154,12 @@ class _SeasonAccordionState extends State<_SeasonAccordion> {
                   children: [
                     ClipRRect(
                       borderRadius: BorderRadius.circular(6),
-                      child: SizedBox(
+                      child: AppNetworkImage(
+                        url: season.posterUrl,
                         width: 44,
                         height: 66,
-                        child: season.posterUrl != null
-                            ? CachedNetworkImage(
-                                imageUrl: season.posterUrl!,
-                                fit: BoxFit.cover,
-                                errorWidget: (_, __, ___) =>
-                                    _posterPlaceholder(),
-                              )
-                            : _posterPlaceholder(),
+                        fit: BoxFit.cover,
+                        errorWidget: _posterPlaceholder(),
                       ),
                     ),
                     const SizedBox(width: 14),
@@ -444,14 +439,11 @@ class _EpisodeCard extends StatelessWidget {
         child: Stack(
           fit: StackFit.expand,
           children: [
-            if (episode.stillUrl != null)
-              CachedNetworkImage(
-                imageUrl: episode.stillUrl!,
-                fit: BoxFit.cover,
-                errorWidget: (_, __, ___) => _stillPlaceholder(),
-              )
-            else
-              _stillPlaceholder(),
+            AppNetworkImage(
+              url: episode.stillUrl,
+              fit: BoxFit.cover,
+              errorWidget: _stillPlaceholder(),
+            ),
             Positioned(
               top: 8,
               left: 8,

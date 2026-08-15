@@ -1,7 +1,8 @@
-import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
 import '../../../models/media_request.dart';
 import '../../../theme/app_colors.dart';
+import '../../../utils/poster_url.dart';
+import '../../../widgets/global/app_network_image.dart';
 
 class RequestRelatedSlider extends StatelessWidget {
   final String title;
@@ -82,17 +83,10 @@ class _RelatedCardState extends State<_RelatedCard> {
                     child: Stack(
                       fit: StackFit.expand,
                       children: [
-                        if (widget.item.posterUrl != null)
-                          CachedNetworkImage(
-                            imageUrl: widget.item.posterUrl!,
-                            fit: BoxFit.cover,
-                            placeholder: (_, __) =>
-                                const ColoredBox(color: AppColors.surfaceElevated),
-                            errorWidget: (_, __, ___) =>
-                                const ColoredBox(color: AppColors.surfaceElevated),
-                          )
-                        else
-                          const ColoredBox(color: AppColors.surfaceElevated),
+                        AppNetworkImage(
+                          url: cardPosterUrl(widget.item.posterUrl),
+                          fit: BoxFit.cover,
+                        ),
                         if (widget.item.rating > 0)
                           Positioned(
                             top: 8,

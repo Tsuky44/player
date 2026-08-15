@@ -7,6 +7,7 @@ import '../../providers/auth_provider.dart';
 import '../../providers/home_provider.dart';
 import '../../providers/library_provider.dart';
 import '../../services/api_client.dart';
+import '../../services/media_details_cache.dart';
 import '../../theme/app_colors.dart';
 import '../../utils/responsive.dart';
 import '../../widgets/global/episode_tile.dart';
@@ -38,31 +39,47 @@ class _ShowDetailScreenState extends State<ShowDetailScreen> {
   void initState() {
     super.initState();
     _show = widget.show;
+    // Paint from the shared cache before the first frame when this show has
+    // been opened before this session, so the header does not rebuild from an
+    // empty state on every visit.
+    _adopt(MediaDetailsCache.peek(_show.id));
     _loadDetails();
     WidgetsBinding.instance.addPostFrameCallback((_) => _loadShowData());
   }
 
-  Future<void> _loadDetails() async {
-    setState(() => _loadingDetails = true);
+  /// Folds a details payload into the page state. The server may answer with a
+  /// different id than we asked for — it resolves duplicate show rows to a
+  /// canonical one — so the local handle adopts the resolved id.
+  void _adopt(MediaDetails? details) {
+    if (details == null) return;
+    _details = details;
+    _show = Media(
+      id: details.id,
+      type: _show.type,
+      title: details.title.isNotEmpty ? details.title : _show.title,
+      duration: _show.duration,
+      posterUrl: details.posterUrl ?? _show.posterUrl,
+      overview: details.overview ?? _show.overview,
+      releaseDate: details.releaseDate ?? _show.releaseDate,
+      tmdbId: details.tmdbId ?? _show.tmdbId,
+      createdAt: _show.createdAt,
+    );
+  }
+
+  Future<void> _loadDetails({bool forceRefresh = false}) async {
+    // Only claim to be loading when there is nothing on screen yet; a
+    // background revalidation must not swap the synopsis for a spinner.
+    if (_details == null) setState(() => _loadingDetails = true);
     try {
       final api = Provider.of<AuthProvider>(context, listen: false).apiClient;
-      final details = await api.getMediaDetails(_show.id);
+      final details = await MediaDetailsCache.load(
+        api,
+        _show.id,
+        forceRefresh: forceRefresh,
+      );
       if (!mounted) return;
       final resolvedId = details.id;
-      setState(() {
-        _details = details;
-        _show = Media(
-          id: resolvedId,
-          type: _show.type,
-          title: details.title.isNotEmpty ? details.title : _show.title,
-          duration: _show.duration,
-          posterUrl: details.posterUrl ?? _show.posterUrl,
-          overview: details.overview ?? _show.overview,
-          releaseDate: details.releaseDate ?? _show.releaseDate,
-          tmdbId: details.tmdbId ?? _show.tmdbId,
-          createdAt: _show.createdAt,
-        );
-      });
+      setState(() => _adopt(details));
       if (resolvedId != widget.show.id) {
         await _loadShowData();
       }
@@ -301,7 +318,10 @@ class _ShowDetailScreenState extends State<ShowDetailScreen> {
   Future<void> _reloadShowAfterMetadataChange() async {
     final library = Provider.of<LibraryProvider>(context, listen: false);
     final home = Provider.of<HomeProvider>(context, listen: false);
-    await _loadDetails();
+    // The cached payload now describes the wrong title — drop it everywhere,
+    // not just on this page, or the player would still show the old logo.
+    MediaDetailsCache.invalidate(_show.id);
+    await _loadDetails(forceRefresh: true);
     await library.loadSeasons(_show.id);
     if (_selectedSeason != null) {
       await library.loadEpisodes(

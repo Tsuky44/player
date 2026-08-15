@@ -1,6 +1,5 @@
 import 'dart:ui';
 
-import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
@@ -8,7 +7,9 @@ import '../../models/models.dart';
 import '../../navigation/catalog_navigation.dart';
 import '../../providers/auth_provider.dart';
 import '../../theme/app_colors.dart';
+import '../../utils/poster_url.dart';
 import '../../utils/responsive.dart';
+import '../../widgets/global/app_network_image.dart';
 import '../../widgets/global/media_detail_widgets.dart';
 import '../../widgets/global/overlay_back_button.dart';
 
@@ -189,11 +190,15 @@ class _PersonHeader extends StatelessWidget {
           if (backdrop != null && backdrop.isNotEmpty)
             ImageFiltered(
               imageFilter: ImageFilter.blur(sigmaX: 18, sigmaY: 18),
-              child: CachedNetworkImage(
-                imageUrl: backdrop,
+              child: AppNetworkImage(
+                // Blurred to 18px sigma — a wide decode would be thrown away.
+                url: backdropImageUrl(backdrop),
                 fit: BoxFit.cover,
+                decodeWidth: 640,
                 color: Colors.black.withValues(alpha: 0.55),
                 colorBlendMode: BlendMode.darken,
+                placeholder: const ColoredBox(color: AppColors.surface),
+                errorWidget: const ColoredBox(color: AppColors.surface),
               ),
             )
           else
@@ -230,16 +235,21 @@ class _PersonHeader extends StatelessWidget {
                   ),
                   child: ClipRRect(
                     borderRadius: BorderRadius.circular(12),
-                    child: SizedBox(
+                    child: AppNetworkImage(
+                      // The headshot is the subject of this page, so it keeps
+                      // the catalog's h632 portrait rather than the w185 the
+                      // cast cards downscale to.
+                      url: profile,
                       width: 160,
                       height: 240,
-                      child: profile != null && profile.isNotEmpty
-                          ? CachedNetworkImage(imageUrl: profile, fit: BoxFit.cover)
-                          : Container(
-                              color: AppColors.surfaceElevated,
-                              child: const Icon(Icons.person_rounded,
-                                  size: 64, color: AppColors.textMuted),
-                            ),
+                      fit: BoxFit.cover,
+                      errorWidget: Container(
+                        width: 160,
+                        height: 240,
+                        color: AppColors.surfaceElevated,
+                        child: const Icon(Icons.person_rounded,
+                            size: 64, color: AppColors.textMuted),
+                      ),
                     ),
                   ),
                 ),

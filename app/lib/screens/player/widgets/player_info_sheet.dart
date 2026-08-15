@@ -5,6 +5,8 @@ import 'package:flutter_animate/flutter_animate.dart';
 
 import '../../../models/models.dart';
 import '../../../theme/app_colors.dart';
+import '../../../utils/poster_url.dart';
+import '../../../widgets/global/app_network_image.dart';
 
 /// Emby-style "Info" card: poster, title, episode line, duration/CC badge,
 /// technical stream line, and a restart-from-beginning action.
@@ -94,23 +96,12 @@ class PlayerInfoSheet extends StatelessWidget {
             children: [
               ClipRRect(
                 borderRadius: BorderRadius.circular(10),
-                child: media.posterUrl != null && media.posterUrl!.isNotEmpty
-                    ? Image.network(
-                        media.posterUrl!,
-                        width: 90,
-                        height: 130,
-                        fit: BoxFit.cover,
-                        errorBuilder: (_, __, ___) => Container(
-                          width: 90,
-                          height: 130,
-                          color: AppColors.surfaceElevated,
-                        ),
-                      )
-                    : Container(
-                        width: 90,
-                        height: 130,
-                        color: AppColors.surfaceElevated,
-                      ),
+                child: AppNetworkImage(
+                  url: cardPosterUrl(media.posterUrl),
+                  width: 90,
+                  height: 130,
+                  fit: BoxFit.cover,
+                ),
               ),
               const SizedBox(width: 16),
               Expanded(

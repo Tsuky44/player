@@ -5,6 +5,7 @@ import '../../navigation/catalog_navigation.dart';
 import '../../providers/auth_provider.dart';
 import '../../providers/home_provider.dart';
 import '../../providers/library_provider.dart';
+import '../../services/media_details_cache.dart';
 import '../../theme/app_colors.dart';
 import '../../widgets/global/media_detail_widgets.dart';
 import '../../widgets/global/metadata_fix_sheet.dart';
@@ -41,41 +42,55 @@ class _MovieDetailScreenState extends State<MovieDetailScreen> {
     _media = widget.movieItem?.media ?? widget.movie!;
     _isFinished = widget.movieItem?.isFinished ?? false;
     _currentPosition = widget.movieItem?.currentPositionSeconds ?? 0;
+    // Paint from the shared cache before the first frame when this film has
+    // been opened before this session — the page then opens complete instead
+    // of on a bare backdrop with "Chargement des informations…".
+    _adopt(MediaDetailsCache.peek(_media.id));
     _loadDetails();
     if (widget.movieItem == null) {
       _loadProgress();
     }
   }
 
-  Future<void> _loadDetails() async {
-    setState(() => _loadingDetails = true);
+  /// Folds a details payload into the page state, enriching the local handle
+  /// with the catalog's title/overview/poster.
+  void _adopt(MediaDetails? details) {
+    if (details == null) return;
+    _details = details;
+    _media = Media(
+      id: _media.id,
+      type: _media.type,
+      title: details.title.isNotEmpty ? details.title : _media.title,
+      filePath: _media.filePath,
+      duration: _media.duration,
+      parentId: _media.parentId,
+      posterUrl: details.posterUrl ?? _media.posterUrl,
+      overview: details.overview ?? _media.overview,
+      releaseDate: details.releaseDate ?? _media.releaseDate,
+      tmdbId: details.tmdbId ?? _media.tmdbId,
+      seasonNumber: _media.seasonNumber,
+      episodeNumber: _media.episodeNumber,
+      createdAt: _media.createdAt,
+    );
+  }
+
+  Future<void> _loadDetails({bool forceRefresh = false}) async {
+    // Only claim to be loading when there is nothing on screen yet; a
+    // background revalidation must not swap the synopsis for a spinner.
+    if (_details == null) setState(() => _loadingDetails = true);
     try {
       final api = Provider.of<AuthProvider>(context, listen: false).apiClient;
-      final details = await api.getMediaDetails(_media.id);
+      final details = await MediaDetailsCache.load(
+        api,
+        _media.id,
+        forceRefresh: forceRefresh,
+      );
       if (!mounted) return;
-      setState(() {
-        _details = details;
-        // Adopt the enriched title/overview/poster onto the local handle.
-        _media = Media(
-          id: _media.id,
-          type: _media.type,
-          title: details.title.isNotEmpty ? details.title : _media.title,
-          filePath: _media.filePath,
-          duration: _media.duration,
-          parentId: _media.parentId,
-          posterUrl: details.posterUrl ?? _media.posterUrl,
-          overview: details.overview ?? _media.overview,
-          releaseDate: details.releaseDate ?? _media.releaseDate,
-          tmdbId: details.tmdbId ?? _media.tmdbId,
-          seasonNumber: _media.seasonNumber,
-          episodeNumber: _media.episodeNumber,
-          createdAt: _media.createdAt,
-        );
-      });
+      setState(() => _adopt(details));
     } catch (_) {
       // Keep local data on failure (offline / no TMDB key).
     } finally {
-      if (mounted) setState(() => _loadingDetails = false);
+      if (mounted && _loadingDetails) setState(() => _loadingDetails = false);
     }
   }
 
@@ -152,11 +167,14 @@ class _MovieDetailScreenState extends State<MovieDetailScreen> {
       final updated =
           await api.rematchMediaMetadata(_media.id, tmdbId: choice.tmdbId);
       if (!mounted) return;
+      // The cached payload now describes the wrong title — drop it everywhere,
+      // not just on this page, or the player would still show the old logo.
+      MediaDetailsCache.invalidate(_media.id);
       setState(() {
         _media = updated;
         _details = null;
       });
-      await _loadDetails();
+      await _loadDetails(forceRefresh: true);
       await home.loadHome(silent: true);
       messenger.showSnackBar(
         const SnackBar(content: Text('Fiche mise à jour')),

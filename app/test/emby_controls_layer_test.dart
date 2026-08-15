@@ -8,9 +8,12 @@ Future<void> pumpChrome(
   WidgetTester tester, {
   required double width,
   VoidCallback? onSkipNext,
+  VoidCallback? onSkipPrevious,
+  VoidCallback? onOpenEpisodes,
   VoidCallback? onSkipIntro,
   double volume = 70,
   bool isPlaying = true,
+  bool visible = true,
 }) async {
   tester.view.devicePixelRatio = 1.0;
   tester.view.physicalSize = Size(width, 700);
@@ -21,7 +24,7 @@ Future<void> pumpChrome(
       home: Scaffold(
         backgroundColor: Colors.black,
         body: EmbyControlsLayer(
-          visible: true,
+          visible: visible,
           isPlaying: isPlaying,
           position: const Duration(minutes: 42),
           duration: const Duration(hours: 2),
@@ -41,6 +44,8 @@ Future<void> pumpChrome(
           onOpenSettings: () {},
           onToggleFullscreen: () {},
           onSkipNext: onSkipNext,
+          onSkipPrevious: onSkipPrevious,
+          onOpenEpisodes: onOpenEpisodes,
           onSkipIntro: onSkipIntro,
         ),
       ),
@@ -121,6 +126,36 @@ void main() {
       expect(find.byIcon(Icons.skip_next_rounded), findsOneWidget);
     });
 
+    testWidgets('no previous-episode button on a movie', (tester) async {
+      await pumpChrome(tester, width: 1280);
+      expect(find.byIcon(Icons.skip_previous_rounded), findsNothing);
+    });
+
+    testWidgets('previous-episode button when there is one before',
+        (tester) async {
+      var back = 0;
+      await pumpChrome(tester, width: 1280, onSkipPrevious: () => back++);
+
+      expect(find.byIcon(Icons.skip_previous_rounded), findsOneWidget);
+      await tester.tap(find.byIcon(Icons.skip_previous_rounded));
+      expect(back, 1);
+    });
+
+    testWidgets('no episode-list button on a movie', (tester) async {
+      await pumpChrome(tester, width: 1280);
+      expect(find.byIcon(Icons.playlist_play_rounded), findsNothing);
+    });
+
+    testWidgets('episode-list button on a series, and it fires',
+        (tester) async {
+      var opened = 0;
+      await pumpChrome(tester, width: 1280, onOpenEpisodes: () => opened++);
+
+      expect(find.byIcon(Icons.playlist_play_rounded), findsOneWidget);
+      await tester.tap(find.byIcon(Icons.playlist_play_rounded));
+      expect(opened, 1);
+    });
+
     testWidgets('no skip-intro pill outside an intro chapter', (tester) async {
       await pumpChrome(tester, width: 1280);
       expect(find.text('Passer l’intro'), findsNothing);
@@ -129,6 +164,24 @@ void main() {
     testWidgets('skip-intro pill during an intro chapter', (tester) async {
       await pumpChrome(tester, width: 1280, onSkipIntro: () {});
       expect(find.text('Passer l’intro'), findsOneWidget);
+    });
+
+    testWidgets('the skip-intro pill outlives the hidden chrome',
+        (tester) async {
+      // A user who is not moving the mouse must still be offered the skip:
+      // the intro ends whether or not the chrome is up.
+      var skipped = 0;
+      await pumpChrome(
+        tester,
+        width: 1280,
+        visible: false,
+        onSkipIntro: () => skipped++,
+      );
+      await tester.pumpAndSettle();
+
+      expect(find.text('Passer l’intro'), findsOneWidget);
+      await tester.tap(find.text('Passer l’intro'));
+      expect(skipped, 1);
     });
   });
 
@@ -146,12 +199,24 @@ void main() {
 
   group('both arrangements stay usable', () {
     testWidgets('nothing overflows at phone width', (tester) async {
-      await pumpChrome(tester, width: 375, onSkipNext: () {});
+      await pumpChrome(
+          tester,
+          width: 375,
+          onSkipNext: () {},
+          onSkipPrevious: () {},
+          onOpenEpisodes: () {},
+          onSkipIntro: () {});
       expect(tester.takeException(), isNull);
     });
 
     testWidgets('nothing overflows at desktop width', (tester) async {
-      await pumpChrome(tester, width: 1280, onSkipNext: () {});
+      await pumpChrome(
+          tester,
+          width: 1280,
+          onSkipNext: () {},
+          onSkipPrevious: () {},
+          onOpenEpisodes: () {},
+          onSkipIntro: () {});
       expect(tester.takeException(), isNull);
     });
 
