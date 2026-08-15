@@ -1,14 +1,13 @@
-import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
 import '../../models/models.dart';
 import '../../services/api_client.dart';
-import '../../services/media_logo_cache.dart';
 import '../../theme/app_colors.dart';
 import '../../utils/format.dart';
 import '../../utils/poster_url.dart';
 import '../../utils/responsive.dart';
+import 'app_network_image.dart';
 import 'hero_banner.dart' show MetadataChip;
 import 'media_logo_display.dart';
 import 'poster_card.dart';
@@ -48,23 +47,20 @@ class DetailBackdropHeader extends StatelessWidget {
         ? (screenH * 0.62).clamp(420.0, 520.0)
         : heightDesktop;
 
-    final posterUrl = resolvePosterUrl(
+    final posterUrl = detailPosterUrl(
       details?.posterUrl ?? fallback.posterUrl,
       serverBaseUrl: baseUrl,
     );
-    final backdropUrl = details?.backdropUrl != null && details!.backdropUrl!.isNotEmpty
-        ? details!.backdropUrl
-        : resolveHeroImageUrl(fallback.posterUrl, serverBaseUrl: baseUrl);
+    final backdropUrl = backdropImageUrl(
+      details?.backdropUrl != null && details!.backdropUrl!.isNotEmpty
+          ? details!.backdropUrl
+          : fallback.posterUrl,
+      serverBaseUrl: baseUrl,
+    );
 
     final title = details?.title ?? fallback.title;
     final tagline = details?.tagline;
     final overview = details?.overview ?? fallback.overview;
-
-    // The player chrome shows this same logo. Handing it over here means the
-    // player renders it on the first frame instead of re-fetching the details.
-    if (details != null) {
-      MediaLogoCache.remember(details!.id, details!.logoUrl);
-    }
 
     final infoColumn = Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -82,7 +78,7 @@ class DetailBackdropHeader extends StatelessWidget {
         const SizedBox(height: 8),
         MediaLogoDisplay(
           title: title,
-          logoUrl: details?.logoUrl,
+          logoUrl: logoImageUrl(details?.logoUrl, serverBaseUrl: baseUrl),
           maxHeight: compact ? 72 : 160,
           maxWidth: compact ? double.infinity : 420,
           textStyle: Theme.of(context).textTheme.headlineMedium?.copyWith(
@@ -142,15 +138,19 @@ class DetailBackdropHeader extends StatelessWidget {
       child: Stack(
         fit: StackFit.expand,
         children: [
-          if (backdropUrl != null)
-            CachedNetworkImage(
-              imageUrl: backdropUrl,
-              fit: BoxFit.cover,
-              alignment: Alignment.topCenter,
-              filterQuality: FilterQuality.high,
-            )
-          else
-            Container(color: AppColors.surfaceElevated),
+          // Decoded at window width, not at the source's 1280 px: the backdrop
+          // is the largest image on the page and the one that used to hold up
+          // the first paint.
+          AppNetworkImage(
+            url: backdropUrl,
+            fit: BoxFit.cover,
+            alignment: Alignment.topCenter,
+            filterQuality: FilterQuality.high,
+            decodeWidth: MediaQuery.sizeOf(context).width,
+            fadeInDuration: const Duration(milliseconds: 220),
+            placeholder: const ColoredBox(color: AppColors.surfaceElevated),
+            errorWidget: const ColoredBox(color: AppColors.surfaceElevated),
+          ),
 
           const DecoratedBox(
             decoration: BoxDecoration(
@@ -246,19 +246,18 @@ class _Poster extends StatelessWidget {
       ),
       child: ClipRRect(
         borderRadius: BorderRadius.circular(10),
-        child: url != null
-            ? CachedNetworkImage(
-                imageUrl: url!,
-                width: w,
-                height: h,
-                fit: BoxFit.cover,
-              )
-            : Container(
-                width: w,
-                height: h,
-                color: AppColors.surfaceElevated,
-                child: const Icon(Icons.movie_rounded, size: 48, color: AppColors.textMuted),
-              ),
+        child: AppNetworkImage(
+          url: url,
+          width: w,
+          height: h,
+          fit: BoxFit.cover,
+          errorWidget: Container(
+            width: w,
+            height: h,
+            color: AppColors.surfaceElevated,
+            child: const Icon(Icons.movie_rounded, size: 48, color: AppColors.textMuted),
+          ),
+        ),
       ),
     );
   }
@@ -430,17 +429,14 @@ class _CastCard extends StatelessWidget {
             children: [
               ClipRRect(
                 borderRadius: BorderRadius.circular(10),
-                child: SizedBox(
+                child: AppNetworkImage(
+                  // The catalog serves h632 portraits — ~6x the pixels a card
+                  // this size can show, fetched a dozen at a time.
+                  url: castProfileUrl(member.profileUrl),
                   width: width,
                   height: imageHeight,
-                  child: member.profileUrl != null && member.profileUrl!.isNotEmpty
-                      ? CachedNetworkImage(
-                          imageUrl: member.profileUrl!,
-                          fit: BoxFit.cover,
-                          placeholder: (_, __) => Container(color: AppColors.surfaceElevated),
-                          errorWidget: (_, __, ___) => const _CastPlaceholder(),
-                        )
-                      : const _CastPlaceholder(),
+                  fit: BoxFit.cover,
+                  errorWidget: const _CastPlaceholder(),
                 ),
               ),
               const SizedBox(height: 8),
@@ -495,13 +491,12 @@ class CollectionSection extends StatelessWidget {
         child: Stack(
           children: [
             Positioned.fill(
-              child: collection.backdropUrl != null && collection.backdropUrl!.isNotEmpty
-                  ? CachedNetworkImage(
-                      imageUrl: collection.backdropUrl!,
-                      fit: BoxFit.cover,
-                      alignment: Alignment.center,
-                    )
-                  : Container(color: AppColors.surfaceElevated),
+              child: AppNetworkImage(
+                url: backdropImageUrl(collection.backdropUrl),
+                fit: BoxFit.cover,
+                alignment: Alignment.center,
+                decodeWidth: MediaQuery.sizeOf(context).width,
+              ),
             ),
             Positioned.fill(
               child: DecoratedBox(

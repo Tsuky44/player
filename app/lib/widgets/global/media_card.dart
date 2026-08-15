@@ -33,7 +33,6 @@ class MediaCard extends StatelessWidget {
 
     return PosterCard(
       posterUrl: url,
-      cacheKey: url == null ? null : '${media.id}_$url',
       title: media.title,
       subtitle: year,
       onTap: onTap,

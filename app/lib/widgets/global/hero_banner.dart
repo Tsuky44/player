@@ -1,11 +1,11 @@
 import 'package:flutter/material.dart';
-import 'package:cached_network_image/cached_network_image.dart';
 import 'package:provider/provider.dart';
 import '../../models/models.dart';
 import '../../services/api_client.dart';
 import '../../theme/app_colors.dart';
 import '../../utils/format.dart';
 import '../../utils/poster_url.dart';
+import 'app_network_image.dart';
 
 class HeroBanner extends StatelessWidget {
   final Media media;
@@ -36,8 +36,6 @@ class HeroBanner extends StatelessWidget {
     final year = extractYear(media.releaseDate);
     final screenHeight = MediaQuery.sizeOf(context).height;
     final screenWidth = MediaQuery.sizeOf(context).width;
-    final dpr = MediaQuery.devicePixelRatioOf(context);
-    final cacheWidth = (screenWidth * dpr).round().clamp(960, 2560);
     final isCompact = screenWidth < 600;
     final horizontalPadding = isCompact ? 16.0 : 48.0;
     final bannerHeight = (screenHeight * (isCompact ? 0.55 : 0.65)).clamp(360.0, 580.0);
@@ -48,16 +46,17 @@ class HeroBanner extends StatelessWidget {
       child: Stack(
         fit: StackFit.expand,
         children: [
-          if (posterUrl != null)
-            CachedNetworkImage(
-              imageUrl: posterUrl,
-              fit: BoxFit.cover,
-              alignment: Alignment.topCenter,
-              filterQuality: FilterQuality.high,
-              memCacheWidth: cacheWidth,
-            )
-          else
-            Container(color: AppColors.surfaceElevated),
+          AppNetworkImage(
+            url: posterUrl,
+            fit: BoxFit.cover,
+            alignment: Alignment.topCenter,
+            filterQuality: FilterQuality.high,
+            // Logical width — AppNetworkImage applies the device pixel ratio.
+            decodeWidth: screenWidth,
+            fadeInDuration: const Duration(milliseconds: 220),
+            placeholder: const ColoredBox(color: AppColors.surfaceElevated),
+            errorWidget: const ColoredBox(color: AppColors.surfaceElevated),
+          ),
 
           // Gradients
           DecoratedBox(
@@ -233,7 +232,10 @@ class DetailHero extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final apiClient = Provider.of<ApiClient>(context, listen: false);
-    final posterUrl = resolvePosterUrl(media.posterUrl, serverBaseUrl: apiClient.baseUrl);
+    final baseUrl = apiClient.baseUrl;
+    // The blurred background and the sharp poster are the same artwork. Asking
+    // for the same normalised URL means one download and one decode for both.
+    final posterUrl = detailPosterUrl(media.posterUrl, serverBaseUrl: baseUrl);
     const heroHeight = 480.0;
 
     return SizedBox(
@@ -242,14 +244,14 @@ class DetailHero extends StatelessWidget {
       child: Stack(
         fit: StackFit.expand,
         children: [
-          if (posterUrl != null)
-            CachedNetworkImage(
-              imageUrl: posterUrl,
-              fit: BoxFit.cover,
-              alignment: Alignment.topCenter,
-            )
-          else
-            Container(color: AppColors.surfaceElevated),
+          AppNetworkImage(
+            url: posterUrl,
+            fit: BoxFit.cover,
+            alignment: Alignment.topCenter,
+            decodeWidth: MediaQuery.sizeOf(context).width,
+            placeholder: const ColoredBox(color: AppColors.surfaceElevated),
+            errorWidget: const ColoredBox(color: AppColors.surfaceElevated),
+          ),
 
           DecoratedBox(
             decoration: BoxDecoration(
@@ -288,8 +290,8 @@ class DetailHero extends StatelessWidget {
                 if (posterUrl != null)
                   ClipRRect(
                     borderRadius: BorderRadius.circular(8),
-                    child: CachedNetworkImage(
-                      imageUrl: posterUrl,
+                    child: AppNetworkImage(
+                      url: posterUrl,
                       width: 180,
                       height: 270,
                       fit: BoxFit.cover,

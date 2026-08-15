@@ -6,6 +6,7 @@ import 'package:media_kit/media_kit.dart';
 import 'utils/app_platform.dart';
 import 'utils/window_controls.dart';
 import 'services/api_client.dart';
+import 'services/app_image_cache.dart';
 import 'providers/auth_provider.dart';
 import 'providers/home_provider.dart';
 import 'providers/library_provider.dart';
@@ -58,6 +59,8 @@ void main() async {
     hiddenTitleBar: useHiddenNativeTitleBar,
     showWindowButtons: AppPlatform.isMacOS,
   );
+
+  AppImageCache.configure();
 
   final apiClient = ApiClient();
   await apiClient.initialize();

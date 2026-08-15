@@ -1,10 +1,10 @@
 import 'dart:ui' show FontFeature;
 
-import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
 
 import '../../../../desktop_window.dart';
 import '../../../../utils/format.dart';
+import '../../../../widgets/global/app_network_image.dart';
 import 'emby_chrome_theme.dart';
 import 'emby_progress_bar.dart';
 
@@ -67,6 +67,12 @@ class EmbyControlsLayer extends StatelessWidget {
   /// Series only — null on a movie or at the end of a season.
   final VoidCallback? onSkipNext;
 
+  /// Series only — null on a movie or on the first episode of a season.
+  final VoidCallback? onSkipPrevious;
+
+  /// Opens the episode browser. Series only — null on a movie.
+  final VoidCallback? onOpenEpisodes;
+
   /// Only while an intro chapter is playing.
   final VoidCallback? onSkipIntro;
 
@@ -102,6 +108,8 @@ class EmbyControlsLayer extends StatelessWidget {
     this.overline,
     this.logoUrl,
     this.onSkipNext,
+    this.onSkipPrevious,
+    this.onOpenEpisodes,
     this.onSkipIntro,
     this.chapterMarks = const [],
     this.settingsButtonKey,
@@ -121,29 +129,62 @@ class EmbyControlsLayer extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    // Sized from its own constraints rather than the window, so the Studio can
+    // render this same widget shrunk into a preview box and still get the
+    // arrangement that box deserves.
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final width = constraints.maxWidth;
+        final m = EmbyChromeTheme.metricsFor(width);
+        return Stack(
+          children: [
+            Positioned(
+              top: 0,
+              left: 0,
+              right: 0,
+              child: _fadeWithChrome(_buildTop(m, width)),
+            ),
+            Positioned(
+              bottom: 0,
+              left: 0,
+              right: 0,
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  // Outside the fade on purpose: the intro offer is
+                  // time-limited, and a user who simply is not moving the mouse
+                  // would watch it expire behind hidden chrome. It keeps its
+                  // slot above the bottom bar, so revealing the chrome does not
+                  // move it.
+                  if (onSkipIntro != null)
+                    Padding(
+                      padding: EdgeInsets.fromLTRB(m.gutter, 0, m.gutter, 14),
+                      child: Align(
+                        alignment: Alignment.centerRight,
+                        child: _EmbySkipIntroButton(
+                            onPressed: onSkipIntro!, metrics: m),
+                      ),
+                    ),
+                  _fadeWithChrome(_buildBottom(m)),
+                ],
+              ),
+            ),
+          ],
+        );
+      },
+    );
+  }
+
+  /// Wraps a part of the chrome in the show/hide fade — and takes it out of
+  /// hit-testing while it is invisible, so a hidden control cannot be clicked.
+  Widget _fadeWithChrome(Widget child) {
     return IgnorePointer(
       ignoring: !visible,
       child: AnimatedOpacity(
         opacity: visible ? 1 : 0,
         duration: const Duration(milliseconds: 200),
         curve: Curves.easeOut,
-        // Sized from its own constraints rather than the window, so the
-        // Studio can render this same widget shrunk into a preview box and
-        // still get the arrangement that box deserves.
-        child: LayoutBuilder(
-          builder: (context, constraints) {
-            final width = constraints.maxWidth;
-            final m = EmbyChromeTheme.metricsFor(width);
-            return Stack(
-              children: [
-                Positioned(
-                    top: 0, left: 0, right: 0, child: _buildTop(m, width)),
-                Positioned(
-                    bottom: 0, left: 0, right: 0, child: _buildBottom(m)),
-              ],
-            );
-          },
-        ),
+        child: child,
       ),
     );
   }
@@ -193,18 +234,22 @@ class EmbyControlsLayer extends StatelessWidget {
     if (url != null && url.isNotEmpty) {
       return Align(
         alignment: Alignment.centerLeft,
-        // CachedNetworkImage, not Image.network: the detail pages render this
-        // same URL through the same store, so the bytes are already on disk by
-        // the time playback starts and the logo appears without a round trip.
-        child: CachedNetworkImage(
-          imageUrl: url,
+        // The detail pages render this exact URL — same normalised TMDB size —
+        // through the same store, so by the time playback starts the bytes are
+        // cached and the decoded frame is still in memory.
+        child: AppNetworkImage(
+          url: url,
           height: m.isCompact ? 26 : 38,
           fit: BoxFit.contain,
           fadeInDuration: const Duration(milliseconds: 120),
+          // Shared decode with the detail header rather than one sized to this
+          // 38 px slot — logos are small enough that the full frame is cheaper
+          // than a second entry.
+          decodeAtSourceSize: true,
           // No spinner and no gap: the title holds the slot until the logo is
           // ready, so the top row never jumps.
-          placeholder: (_, __) => _brandText(m),
-          errorWidget: (_, __, ___) => _brandText(m),
+          placeholder: _brandText(m),
+          errorWidget: _brandText(m),
         ),
       );
     }
@@ -237,13 +282,6 @@ class EmbyControlsLayer extends StatelessWidget {
         mainAxisSize: MainAxisSize.min,
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          if (onSkipIntro != null) ...[
-            Align(
-              alignment: Alignment.centerRight,
-              child: _EmbySkipIntroButton(onPressed: onSkipIntro!, metrics: m),
-            ),
-            const SizedBox(height: 14),
-          ],
           if (m.isCompact) ...[
             _buildTitleBlock(m),
             const SizedBox(height: 10),
@@ -320,6 +358,16 @@ class EmbyControlsLayer extends StatelessWidget {
     return Row(
       mainAxisSize: MainAxisSize.min,
       children: [
+        // Series only: a movie has no episode list to browse.
+        if (onOpenEpisodes != null) ...[
+          _EmbyIconButton(
+            icon: Icons.playlist_play_rounded,
+            tooltip: 'Épisodes suivants',
+            metrics: m,
+            onPressed: onOpenEpisodes!,
+          ),
+          SizedBox(width: m.clusterGap),
+        ],
         _EmbyIconButton(
           buttonKey: subtitlesButtonKey,
           icon: Icons.closed_caption_rounded,
@@ -394,6 +442,16 @@ class EmbyControlsLayer extends StatelessWidget {
     return Row(
       mainAxisSize: MainAxisSize.min,
       children: [
+        // Same rule as the next button: only when there is somewhere to go.
+        if (onSkipPrevious != null) ...[
+          _EmbyIconButton(
+            icon: Icons.skip_previous_rounded,
+            tooltip: 'Épisode précédent',
+            metrics: m,
+            onPressed: onSkipPrevious!,
+          ),
+          SizedBox(width: m.clusterGap + 4),
+        ],
         _EmbyIconButton(
           icon: Icons.replay_10_rounded,
           tooltip: 'Reculer de 10 s',

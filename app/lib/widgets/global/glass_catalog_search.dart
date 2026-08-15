@@ -9,6 +9,7 @@ import '../../screens/library/search_results_screen.dart';
 import '../../screens/library/show_detail_screen.dart';
 import '../../theme/app_colors.dart';
 import '../../utils/poster_url.dart';
+import 'app_network_image.dart';
 import 'glass_chrome.dart';
 
 /// Max number of results shown inline in the dropdown before offering "see all".
@@ -302,15 +303,13 @@ class _SearchResultsPanel extends StatelessWidget {
                     children: [
                       ClipRRect(
                         borderRadius: BorderRadius.circular(5),
-                        child: poster != null
-                            ? Image.network(
-                                poster,
-                                width: 34,
-                                height: 50,
-                                fit: BoxFit.cover,
-                                errorBuilder: (_, __, ___) => _posterPlaceholder(),
-                              )
-                            : _posterPlaceholder(),
+                        child: AppNetworkImage(
+                          url: poster,
+                          width: 34,
+                          height: 50,
+                          fit: BoxFit.cover,
+                          errorWidget: _posterPlaceholder(),
+                        ),
                       ),
                       const SizedBox(width: 10),
                       Expanded(

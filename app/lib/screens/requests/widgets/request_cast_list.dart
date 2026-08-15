@@ -1,7 +1,8 @@
-import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
 import '../../../models/media_request.dart';
 import '../../../theme/app_colors.dart';
+import '../../../utils/poster_url.dart';
+import '../../../widgets/global/app_network_image.dart';
 
 class RequestCastList extends StatelessWidget {
   final List<RequestCastMember> cast;
@@ -25,20 +26,11 @@ class RequestCastList extends StatelessWidget {
             child: Column(
               children: [
                 ClipOval(
-                  child: SizedBox(
+                  child: AppNetworkImage(
+                    url: castProfileUrl(member.profileUrl),
                     width: 70,
                     height: 70,
-                    child: member.profileUrl != null &&
-                            member.profileUrl!.isNotEmpty
-                        ? CachedNetworkImage(
-                            imageUrl: member.profileUrl!,
-                            fit: BoxFit.cover,
-                            placeholder: (_, __) => const ColoredBox(
-                                color: AppColors.surfaceElevated),
-                            errorWidget: (_, __, ___) => const ColoredBox(
-                                color: AppColors.surfaceElevated),
-                          )
-                        : const ColoredBox(color: AppColors.surfaceElevated),
+                    fit: BoxFit.cover,
                   ),
                 ),
                 const SizedBox(height: 6),

@@ -1,11 +1,12 @@
 import '../../utils/external_url.dart';
 
-import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../../models/media_request.dart';
 import '../../providers/media_requests_provider.dart';
 import '../../theme/app_colors.dart';
+import '../../utils/poster_url.dart';
+import '../../widgets/global/app_network_image.dart';
 import '../../widgets/global/empty_state.dart';
 import 'widgets/request_cast_list.dart';
 import 'widgets/request_info_table.dart';
@@ -207,14 +208,15 @@ class _RequestDetailScreenState extends State<RequestDetailScreen> {
       child: Stack(
         fit: StackFit.expand,
         children: [
-          if (details.backdropUrl != null)
-            CachedNetworkImage(
-              imageUrl: details.backdropUrl!,
-              fit: BoxFit.cover,
-              alignment: Alignment.topCenter,
-            )
-          else
-            const ColoredBox(color: AppColors.background),
+          AppNetworkImage(
+            url: backdropImageUrl(details.backdropUrl),
+            fit: BoxFit.cover,
+            alignment: Alignment.topCenter,
+            decodeWidth: MediaQuery.sizeOf(context).width,
+            fadeInDuration: const Duration(milliseconds: 220),
+            placeholder: const ColoredBox(color: AppColors.background),
+            errorWidget: const ColoredBox(color: AppColors.background),
+          ),
           DecoratedBox(
             decoration: BoxDecoration(
               gradient: LinearGradient(
@@ -306,11 +308,15 @@ class _RequestDetailScreenState extends State<RequestDetailScreen> {
           if (details.logoUrl != null)
             ConstrainedBox(
               constraints: const BoxConstraints(maxWidth: 420, maxHeight: 150),
-              child: CachedNetworkImage(
-                imageUrl: details.logoUrl!,
+              child: AppNetworkImage(
+                // Same normalised size the library detail header asks for, so
+                // a title already browsed there draws from cache.
+                url: logoImageUrl(details.logoUrl),
                 fit: BoxFit.contain,
                 alignment: Alignment.centerLeft,
-                errorWidget: (_, __, ___) => _titleFallback(details),
+                decodeAtSourceSize: true,
+                placeholder: _titleFallback(details),
+                errorWidget: _titleFallback(details),
               ),
             )
           else

@@ -22,6 +22,9 @@ dependencies:
 
   # UI & Media Kit Packages
   cached_network_image: ^3.3.1
+  # Already pulled in by cached_network_image; declared so the app can widen the
+  # default 200-file image store (see services/app_image_cache.dart).
+  flutter_cache_manager: ^3.4.1
   intl: ^0.19.0
   audio_video_progress_bar: ^2.0.3
   flutter_animate: ^4.5.0

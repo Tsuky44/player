@@ -1,4 +1,3 @@
-import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
@@ -6,7 +5,9 @@ import '../../models/models.dart';
 import '../../navigation/catalog_navigation.dart';
 import '../../providers/auth_provider.dart';
 import '../../theme/app_colors.dart';
+import '../../utils/poster_url.dart';
 import '../../utils/responsive.dart';
+import '../../widgets/global/app_network_image.dart';
 import '../../widgets/global/media_detail_widgets.dart';
 import '../../widgets/global/overlay_back_button.dart';
 
@@ -152,14 +153,14 @@ class _CollectionHeader extends StatelessWidget {
       child: Stack(
         fit: StackFit.expand,
         children: [
-          if (backdropUrl != null && backdropUrl!.isNotEmpty)
-            CachedNetworkImage(
-              imageUrl: backdropUrl!,
-              fit: BoxFit.cover,
-              alignment: Alignment.topCenter,
-            )
-          else
-            Container(color: AppColors.surface),
+          AppNetworkImage(
+            url: backdropImageUrl(backdropUrl),
+            fit: BoxFit.cover,
+            alignment: Alignment.topCenter,
+            decodeWidth: MediaQuery.sizeOf(context).width,
+            placeholder: const ColoredBox(color: AppColors.surface),
+            errorWidget: const ColoredBox(color: AppColors.surface),
+          ),
 
           const DecoratedBox(
             decoration: BoxDecoration(

@@ -1,10 +1,10 @@
-import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
 import '../../../models/request_catalog_filters.dart';
 import '../../../services/api_client.dart';
 import '../../../theme/app_colors.dart';
+import '../../../widgets/global/app_network_image.dart';
 
 /// MediaHub-style advanced filters modal (FilterModal + MediaFilters).
 class RequestFiltersSheet extends StatefulWidget {
@@ -457,9 +457,11 @@ class _RequestFiltersSheetState extends State<RequestFiltersSheet> {
                       ),
                       padding: const EdgeInsets.all(6),
                       child: p.logoUrl != null
-                          ? CachedNetworkImage(
-                              imageUrl: p.logoUrl!,
+                          ? AppNetworkImage(
+                              url: p.logoUrl,
                               fit: BoxFit.contain,
+                              placeholder: const SizedBox.shrink(),
+                              errorWidget: const SizedBox.shrink(),
                             )
                           : Center(
                               child: Text(
