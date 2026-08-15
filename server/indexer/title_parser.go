@@ -47,40 +47,68 @@ func normalizeSeparators(name string) string {
 	return strings.TrimSpace(name)
 }
 
-func extractYear(name string) int {
-	if y := extractYearBeforeTVEpisode(name); y > 0 {
-		return y
-	}
-	return extractYearFromText(name)
+// yearToken is a year-looking number found in a release name, with the position
+// it was found at and whether it was wrapped in brackets — "(2017)" is a release
+// year, a bare number may just be part of the title ("Blade Runner 2049").
+type yearToken struct {
+	value     int
+	start     int // byte offset of the token, bracket included
+	bracketed bool
 }
 
-func extractYearFromText(name string) int {
-	match := yearPattern.FindStringSubmatch(name)
-	if len(match) < 2 {
-		return 0
-	}
-	year, err := strconv.Atoi(match[1])
-	if err != nil {
-		return 0
-	}
+// findYearTokens lists every plausible release year (1900..next year) in a name.
+// Numbers outside that window (2049, 2077…) are title text, never a year.
+func findYearTokens(name string) []yearToken {
 	maxYear := time.Now().Year() + 1
-	if year >= 1900 && year <= maxYear {
-		return year
+	var tokens []yearToken
+	for _, loc := range yearPattern.FindAllStringIndex(name, -1) {
+		year, err := strconv.Atoi(name[loc[0]:loc[1]])
+		if err != nil || year < 1900 || year > maxYear {
+			continue
+		}
+		start, bracketed := loc[0], false
+		if before := strings.TrimRight(name[:loc[0]], " "); before != "" {
+			last := before[len(before)-1]
+			after := strings.TrimLeft(name[loc[1]:], " ")
+			if (last == '(' && strings.HasPrefix(after, ")")) || (last == '[' && strings.HasPrefix(after, "]")) {
+				bracketed = true
+				start = len(before) - 1
+			}
+		}
+		tokens = append(tokens, yearToken{value: year, start: start, bracketed: bracketed})
 	}
-	return 0
+	return tokens
 }
 
-// extractYearBeforeTVEpisode prefers the release/air year in TV filenames
-// (e.g. "Show.Name.2022.S01E01") instead of a year that appears only after SxxExx.
-func extractYearBeforeTVEpisode(name string) int {
-	head := name
-	for _, re := range tvEpisodeCutPatterns {
-		if loc := re.FindStringIndex(name); loc != nil {
-			head = name[:loc[0]]
-			break
+// pickReleaseYear chooses which year token is the release year. A bracketed year
+// wins ("Blade Runner 2049 (2017)"); otherwise the last one wins, because the
+// release year is appended after the title ("2001 A Space Odyssey 1968 1080p").
+// A single year at offset 0 is the title itself ("1917", "2012") and is ignored.
+func pickReleaseYear(name string) (yearToken, bool) {
+	tokens := findYearTokens(name)
+	if len(tokens) == 0 {
+		return yearToken{}, false
+	}
+	for i := len(tokens) - 1; i >= 0; i-- {
+		if tokens[i].bracketed {
+			return tokens[i], true
 		}
 	}
-	return extractYearFromText(head)
+	last := tokens[len(tokens)-1]
+	if last.start == 0 {
+		return yearToken{}, false
+	}
+	return last, true
+}
+
+func extractYear(name string) int {
+	if token, ok := pickReleaseYear(cutBeforeTVPattern(name)); ok {
+		return token.value
+	}
+	if token, ok := pickReleaseYear(name); ok {
+		return token.value
+	}
+	return 0
 }
 
 func cutBeforeTVPattern(title string) string {
@@ -93,15 +121,25 @@ func cutBeforeTVPattern(title string) string {
 	return title
 }
 
+// cutBeforeYear drops everything from the release year onwards, keeping years
+// that belong to the title itself. Returns the input untouched when the cut
+// would leave nothing behind.
 func cutBeforeYear(title string) string {
-	loc := yearPattern.FindStringIndex(title)
-	if loc != nil {
-		return strings.TrimSpace(title[:loc[0]])
+	token, ok := pickReleaseYear(title)
+	if !ok {
+		return title
 	}
-	return title
+	head := strings.TrimSpace(title[:token.start])
+	if head == "" {
+		return title
+	}
+	return head
 }
 
-func stripReleaseTags(title string, removeEpisodes bool) string {
+// stripReleaseTags removes release noise. Years are only stripped when
+// keepYears is false: past the year cut, any remaining "1917"/"2049" is part of
+// the title and removing it would search TMDB for the wrong film.
+func stripReleaseTags(title string, removeEpisodes bool, keepYears bool) string {
 	title = stripSourceRe.ReplaceAllString(title, " ")
 	title = stripQualityRe.ReplaceAllString(title, " ")
 	title = stripCodecRe.ReplaceAllString(title, " ")
@@ -109,7 +147,9 @@ func stripReleaseTags(title string, removeEpisodes bool) string {
 	title = stripLangRe.ReplaceAllString(title, " ")
 	title = stripFeatureRe.ReplaceAllString(title, " ")
 	title = stripGroupRe.ReplaceAllString(title, " ")
-	title = yearPattern.ReplaceAllString(title, " ")
+	if !keepYears {
+		title = yearPattern.ReplaceAllString(title, " ")
+	}
 	if removeEpisodes {
 		title = stripEpisodeRe.ReplaceAllString(title, " ")
 	}
@@ -124,13 +164,18 @@ func stripReleaseTags(title string, removeEpisodes bool) string {
 func extractTitle(name string, mediaType models.MediaType) string {
 	title := normalizeSeparators(name)
 
-	if mediaType == models.TypeMovie {
-		title = cutBeforeYear(title)
-	} else if mediaType == models.TypeShow {
+	if mediaType == models.TypeShow {
 		title = cutBeforeTVPattern(title)
 	}
+	title = cutBeforeYear(title)
 
-	return stripReleaseTags(title, true)
+	cleaned := stripReleaseTags(title, true, true)
+	if cleaned == "" {
+		// Title was made only of release tags — fall back to the raw head so the
+		// item still gets a searchable name instead of disappearing from lookup.
+		cleaned = strings.TrimSpace(spaceRe.ReplaceAllString(bracketRe.ReplaceAllString(title, " "), " "))
+	}
+	return cleaned
 }
 
 // ParseReleaseFilename extracts a clean title and year from a release filename.
@@ -139,7 +184,7 @@ func ParseReleaseFilename(raw string, mediaType models.MediaType) ParsedReleaseN
 	raw = StripProviderIDs(raw)
 	return ParsedReleaseName{
 		Title:    extractTitle(raw, mediaType),
-		Year:     extractYear(raw),
+		Year:     extractYear(normalizeSeparators(raw)),
 		Original: raw,
 	}
 }
@@ -159,7 +204,7 @@ func ReleaseDisplayTitle(raw string, mediaType models.MediaType) string {
 
 // StripReleaseTags removes release noise without removing season/episode markers.
 func StripReleaseTags(raw string) string {
-	return stripReleaseTags(normalizeSeparators(raw), false)
+	return stripReleaseTags(normalizeSeparators(raw), false, false)
 }
 
 // ExtraCleanSearchQuery applies a second-pass cleanup for TMDB search fallbacks.

@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"project-player/server/config"
+	"project-player/server/httpx"
 )
 
 // Shared TMDB/MediaHub lookups used by both the requests catalog and the
@@ -25,7 +26,7 @@ const (
 // tmdbFastClient serves the library detail screen, which used to be a single
 // SQLite read. A short timeout keeps a slow TMDB from stalling that screen: the
 // caller falls back to local-only seasons instead.
-var tmdbFastClient = &http.Client{Timeout: 3 * time.Second}
+var tmdbFastClient = httpx.Fast
 
 type cacheEntry[T any] struct {
 	value    T

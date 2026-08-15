@@ -10,13 +10,12 @@ import (
 	"sync"
 
 	"project-player/server/config"
+	"project-player/server/httpx"
 	"project-player/server/indexer"
 	"project-player/server/models"
 
 	"github.com/julienschmidt/httprouter"
 )
-
-const tmdbRequestTimeout = 15
 
 func tmdbRequestAPIKey() string {
 	return config.TMDBAPIKey()
@@ -122,7 +121,7 @@ func TmdbRequestCatalog(w http.ResponseWriter, r *http.Request, _ httprouter.Par
 	discover := parseDiscoverFilters(r.URL.Query())
 
 	lang := tmdbRequestLanguage()
-	client := &http.Client{Timeout: tmdbRequestTimeout * 1_000_000_000}
+	client := httpx.Catalog
 
 	var raw tmdbCatalogResponse
 
@@ -290,7 +289,7 @@ func TmdbRequestDetails(w http.ResponseWriter, r *http.Request, ps httprouter.Pa
 	var seasons []seasonInfo
 	if mediaType == models.TypeShow {
 		lang := tmdbRequestLanguage()
-		client := &http.Client{Timeout: tmdbRequestTimeout * 1_000_000_000}
+		client := httpx.Catalog
 		url := fmt.Sprintf("https://api.themoviedb.org/3/tv/%d?api_key=%s&language=%s", tmdbID, apiKey, lang)
 		resp, err := client.Get(url)
 		if err == nil {
@@ -428,7 +427,7 @@ func TmdbRequestSeasonEpisodes(w http.ResponseWriter, r *http.Request, ps httpro
 	}
 
 	lang := tmdbRequestLanguage()
-	client := &http.Client{Timeout: tmdbRequestTimeout * 1_000_000_000}
+	client := httpx.Catalog
 	reqURL := fmt.Sprintf(
 		"https://api.themoviedb.org/3/tv/%d/season/%d?api_key=%s&language=%s",
 		tmdbID, seasonNum, apiKey, lang,

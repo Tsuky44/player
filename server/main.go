@@ -12,6 +12,7 @@ import (
 	"project-player/server/database"
 	"project-player/server/handlers"
 	"project-player/server/indexer"
+	"project-player/server/middleware"
 	"project-player/server/models"
 	"project-player/server/streaming"
 	"project-player/server/webui"
@@ -45,11 +46,16 @@ func main() {
 		log.Fatalf("Failed to initialize stream handler: %v", err)
 	}
 
+	// Expired login tokens used to live forever. Sweep them in the background;
+	// RequireAuth rejects them on read either way.
+	handlers.StartSessionReaper()
+
 	// Initialize router
 	router := httprouter.New()
 
-	// Global CORS middleware helper
-	corsRouter := setupCORS(router)
+	// Global middleware: CORS on the outside, then gzip for the JSON API.
+	handler := middleware.Gzip(router)
+	corsRouter := setupCORS(handler)
 
 	// Base API route
 	router.GET("/api/ping", func(w http.ResponseWriter, r *http.Request, _ httprouter.Params) {
@@ -57,9 +63,13 @@ func main() {
 		w.Write([]byte(`{"status": "ok", "message": "Project Player Server is running"}`))
 	})
 
-	// Debug endpoint to check intro/outro data (no auth for easier debugging)
-	router.GET("/api/debug/intro-outro", handlers.DebugIntroOutro)
-	router.POST("/api/debug/detect-show/:id", handlers.DetectShowIntroOutro)
+	// Intro/outro inspection and forced re-detection. These were open to anyone
+	// "for easier debugging", which made detect-show a free way for an
+	// unauthenticated caller to pin the CPU: it runs ffprobe over every episode
+	// of a season. They read and rewrite library metadata, so manage_library is
+	// the permission that matches what they do.
+	router.GET("/api/debug/intro-outro", handlers.RequirePermission(models.PermManageLibrary, handlers.DebugIntroOutro))
+	router.POST("/api/debug/detect-show/:id", handlers.RequirePermission(models.PermManageLibrary, handlers.DetectShowIntroOutro))
 
 	// 1. Authentication Routes
 	// Register is not open sign-up: it only succeeds on a pristine server (that
@@ -150,6 +160,8 @@ func main() {
 	router.POST("/api/indexer/subtitles/extract", handlers.RequirePermission(models.PermManageLibrary, handlers.TriggerSubtitleExtract))
 	// Scan status is read-only progress, shown wherever a scan can be watched.
 	router.GET("/api/indexer/status", handlers.RequireAuth(handlers.GetScanStatus))
+	// Detailed scan accounting (skipped files, unmatched items) for library admins.
+	router.GET("/api/indexer/report", handlers.RequirePermission(models.PermManageLibrary, handlers.GetScanReport))
 	router.POST("/api/media/:id/subtitles/extract", handlers.RequirePermission(models.PermManageLibrary, handlers.ForceMediaSubtitleExtract))
 
 	// Delete a show and all its data (episodes, subtitles). Formerly unauthenticated
@@ -227,8 +239,8 @@ func main() {
 	}
 }
 
-// setupCORS wraps the httprouter to inject general CORS headers for all requests
-func setupCORS(router *httprouter.Router) http.Handler {
+// setupCORS wraps the handler chain to inject general CORS headers for all requests
+func setupCORS(router http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Access-Control-Allow-Origin", "*")
 		w.Header().Set("Access-Control-Allow-Methods", "POST, GET, OPTIONS, PUT, DELETE")

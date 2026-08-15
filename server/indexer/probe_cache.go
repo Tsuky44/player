@@ -5,7 +5,7 @@ import (
 	"log"
 	"math"
 	"os"
-	"sync"
+	"sync/atomic"
 	"time"
 
 	"project-player/server/database"
@@ -13,10 +13,12 @@ import (
 	"project-player/server/streaming"
 )
 
-var (
-	IsProbingBackfill bool
-	probeMutex        sync.Mutex
-)
+// probingBackfill is read by the scan-status endpoint while the backfill
+// goroutine writes it — see the note on indexer.scanning.
+var probingBackfill atomic.Bool
+
+// IsProbingBackfill reports whether an ffprobe backfill is currently running.
+func IsProbingBackfill() bool { return probingBackfill.Load() }
 
 // ProbeAndPersist runs ffprobe once and stores tracks/duration metadata in the DB.
 func ProbeAndPersist(mediaID int, title, filePath string, fileSize int64, modTime time.Time) {
@@ -68,22 +70,15 @@ func nullFloat(v float64) interface{} {
 }
 
 // BackfillMissingProbesAsync probes indexed movies/episodes that lack tracks_json.
-func BackfillMissingProbesAsync() {
-	probeMutex.Lock()
-	if IsProbingBackfill {
-		probeMutex.Unlock()
+// Returns false when a backfill is already running.
+func BackfillMissingProbesAsync() bool {
+	if !probingBackfill.CompareAndSwap(false, true) {
 		log.Println("Indexer: Probe backfill already in progress.")
-		return
+		return false
 	}
-	IsProbingBackfill = true
-	probeMutex.Unlock()
 
 	go func() {
-		defer func() {
-			probeMutex.Lock()
-			IsProbingBackfill = false
-			probeMutex.Unlock()
-		}()
+		defer probingBackfill.Store(false)
 
 		rows, err := database.DB.Query(`
 			SELECT id, title, file_path, COALESCE(file_size, 0)
@@ -118,6 +113,8 @@ func BackfillMissingProbesAsync() {
 		}
 		log.Printf("Indexer: Probe backfill completed (%d files)", count)
 	}()
+
+	return true
 }
 
 // InvalidateStreamCaches clears in-memory stream metadata after a library scan.

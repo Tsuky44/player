@@ -107,38 +107,39 @@ func DedupeShowMediaList(shows []models.Media) []models.Media {
 	return out
 }
 
-// ResolveCanonicalMovieID maps a movie row to the canonical entry when duplicates share a TMDB id.
+// ResolveCanonicalMovieID maps a movie row without a playable file onto another
+// row for the same film.
+//
+// A row that has its own file is always returned as-is: several files may share
+// a TMDB id (alternate versions, or a bad match), and redirecting them would
+// show — and play — the wrong file.
 func ResolveCanonicalMovieID(movieID int) int {
 	if movieID <= 0 {
 		return movieID
 	}
 	var tmdbID int
+	var filePath string
 	err := database.DB.QueryRow(
-		`SELECT COALESCE(tmdb_id, 0) FROM medias WHERE id = ? AND type = 'movie'`,
+		`SELECT COALESCE(tmdb_id, 0), COALESCE(file_path, '') FROM medias WHERE id = ? AND type = 'movie'`,
 		movieID,
-	).Scan(&tmdbID)
-	if err != nil || tmdbID <= 0 {
+	).Scan(&tmdbID, &filePath)
+	if err != nil || tmdbID <= 0 || strings.TrimSpace(filePath) != "" {
 		return movieID
 	}
 	rows, err := database.DB.Query(
-		`SELECT id FROM medias WHERE type = 'movie' AND tmdb_id = ?`, tmdbID,
+		`SELECT id FROM medias
+		 WHERE type = 'movie' AND tmdb_id = ? AND file_path IS NOT NULL AND file_path != ''
+		 ORDER BY id ASC`, tmdbID,
 	)
 	if err != nil {
 		return movieID
 	}
 	defer rows.Close()
 	ids := scanIDList(rows)
-	if len(ids) <= 1 {
+	if len(ids) == 0 {
 		return movieID
 	}
-	// Prefer row with a file_path and lowest id (stable).
-	canonical := ids[0]
-	for _, id := range ids[1:] {
-		if id < canonical {
-			canonical = id
-		}
-	}
-	return canonical
+	return ids[0]
 }
 
 // showDedupeKeyForMedia builds the dedupe key used by DedupeShowMediaList.
