@@ -28,11 +28,19 @@ type VideoStreamInfo struct {
 	PixFmt string `json:"pix_fmt"`
 }
 
-// EightBit reports whether the stream is plain 8-bit, the only depth every
-// target browser decodes.
-func (v *VideoStreamInfo) EightBit() bool {
+// EightBit420 reports whether the stream is plain 8-bit 4:2:0, the only
+// combination every target browser decodes.
+//
+// Chroma subsampling has to be checked alongside bit depth because it fails the
+// same way and just as silently. A browser's H.264 decoder handles 4:2:0 and
+// nothing else: High 10 (10-bit) and High 4:2:2 are both rejected without an
+// error anywhere — the segments append to the source buffer, the audio plays,
+// and no picture is ever drawn. 4:2:2 used to pass this check, which made a
+// 4:2:2 master the one kind of file that reached the viewer as sound over a
+// permanent spinner.
+func (v *VideoStreamInfo) EightBit420() bool {
 	switch strings.ToLower(v.PixFmt) {
-	case "yuv420p", "yuvj420p", "yuv422p", "yuvj422p", "nv12":
+	case "yuv420p", "yuvj420p", "nv12", "nv21":
 		return true
 	default:
 		return false

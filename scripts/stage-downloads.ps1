@@ -1,4 +1,4 @@
-# =============================================================================
+﻿# =============================================================================
 # Stage les applications installables dans server\downloads\, d'où le Dockerfile
 # les copie et où le serveur Go les publie sur /api/downloads.
 #

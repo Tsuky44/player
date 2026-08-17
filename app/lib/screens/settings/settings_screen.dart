@@ -1,3 +1,6 @@
+import 'package:dio/dio.dart' show DioException;
+import 'package:file_picker/file_picker.dart';
+import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
@@ -41,6 +44,11 @@ class _SettingsScreenState extends State<SettingsScreen> {
   String? _success;
 
   List<AppDownload> _downloads = const [];
+
+  /// Set while an installer is being sent, so the section can show progress and
+  /// refuse a second upload at the same time.
+  String? _uploadingLabel;
+  double? _uploadProgress;
 
   static const _languages = [
     ('fr-FR', 'Français'),
@@ -132,6 +140,184 @@ class _SettingsScreenState extends State<SettingsScreen> {
       _success = null;
       _error = 'Téléchargement disponible ici : $url';
     });
+  }
+
+  /// Picks an installer and publishes it, replacing whatever the server had for
+  /// that platform. Reserved to the admin account: the route rejects anyone
+  /// else, this only decides whether the entry point is shown.
+  ///
+  /// [replacing] restricts the picker to that artifact's extension, so
+  /// "remplacer le DMG" cannot silently overwrite the APK — the platform is
+  /// deduced from the extension server-side.
+  Future<void> _uploadInstaller({AppDownload? replacing}) async {
+    if (_uploadingLabel != null) return;
+
+    final extensions = replacing != null
+        ? [_extensionOf(replacing.file)]
+        : const ['exe', 'zip', 'dmg', 'apk'];
+
+    FilePickerResult? picked;
+    try {
+      picked = await FilePicker.platform.pickFiles(
+        type: FileType.custom,
+        allowedExtensions: extensions,
+        // Only the web has no file path to stream from; elsewhere reading a
+        // 150 MB installer into memory would be pointless.
+        withData: kIsWeb,
+      );
+    } catch (_) {
+      if (!mounted) return;
+      setState(() => _error = 'Sélecteur de fichiers indisponible.');
+      return;
+    }
+    if (picked == null || picked.files.isEmpty) return;
+    final file = picked.files.single;
+    if (!mounted) return;
+
+    final version = await _askVersion(file.name, replacing?.version ?? '');
+    if (version == null || !mounted) return;
+
+    setState(() {
+      _uploadingLabel = file.name;
+      _uploadProgress = null;
+      _error = null;
+      _success = null;
+    });
+
+    try {
+      final api = context.read<ApiClient>();
+      final downloads = await api.uploadAppDownload(
+        filename: file.name,
+        path: kIsWeb ? null : file.path,
+        bytes: kIsWeb ? file.bytes : null,
+        version: version,
+        onProgress: (sent, total) {
+          if (!mounted || total <= 0) return;
+          setState(() => _uploadProgress = sent / total);
+        },
+      );
+      if (!mounted) return;
+      setState(() {
+        _downloads = downloads;
+        _uploadingLabel = null;
+        _uploadProgress = null;
+        _success = 'Installeur publié : ${file.name}';
+      });
+    } catch (e) {
+      if (!mounted) return;
+      setState(() {
+        _uploadingLabel = null;
+        _uploadProgress = null;
+        _error = _installerError(e, 'Échec de l’envoi de l’installeur.');
+      });
+    }
+  }
+
+  Future<void> _deleteInstaller(AppDownload download) async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        backgroundColor: AppColors.surface,
+        title: const Text('Supprimer l’installeur ?'),
+        content: Text(
+          '${download.file} ne sera plus proposé au téléchargement.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(dialogContext).pop(false),
+            child: const Text('Annuler'),
+          ),
+          TextButton(
+            onPressed: () => Navigator.of(dialogContext).pop(true),
+            style: TextButton.styleFrom(foregroundColor: AppColors.error),
+            child: const Text('Supprimer'),
+          ),
+        ],
+      ),
+    );
+    if (confirmed != true || !mounted) return;
+
+    try {
+      final api = context.read<ApiClient>();
+      final downloads = await api.deleteAppDownload(download);
+      if (!mounted) return;
+      setState(() {
+        _downloads = downloads;
+        _success = 'Installeur supprimé.';
+        _error = null;
+      });
+    } catch (e) {
+      if (!mounted) return;
+      setState(() {
+        _error = _installerError(e, 'Échec de la suppression.');
+        _success = null;
+      });
+    }
+  }
+
+  /// Asks for the version to publish under, pre-filled with the one found in
+  /// the file name — a locally built `ProjectPlayer-Setup.exe` carries none, and
+  /// the listing shows that version to every user.
+  Future<String?> _askVersion(String filename, String fallback) {
+    final match = RegExp(r'(\d+\.\d+(?:\.\d+)?)').firstMatch(filename);
+    final controller = TextEditingController(
+      text: match?.group(1) ?? (fallback.isNotEmpty ? fallback : '1.0.0'),
+    );
+    return showDialog<String>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        backgroundColor: AppColors.surface,
+        title: const Text('Publier l’installeur'),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              filename,
+              style: const TextStyle(
+                color: AppColors.textSecondary,
+                fontSize: 12,
+              ),
+            ),
+            const SizedBox(height: 14),
+            TextField(
+              controller: controller,
+              autofocus: true,
+              decoration: const InputDecoration(
+                labelText: 'Version',
+                hintText: '1.0.0',
+              ),
+            ),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(dialogContext).pop(),
+            child: const Text('Annuler'),
+          ),
+          TextButton(
+            onPressed: () =>
+                Navigator.of(dialogContext).pop(controller.text.trim()),
+            child: const Text('Publier'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  String _extensionOf(String filename) {
+    final dot = filename.lastIndexOf('.');
+    return dot < 0 ? '' : filename.substring(dot + 1).toLowerCase();
+  }
+
+  /// Surfaces the server's own message (403 for a non-admin, 413 for a file
+  /// over the cap) rather than a generic failure.
+  String _installerError(Object error, String fallback) {
+    if (error is DioException) {
+      final data = error.response?.data;
+      if (data is Map && data['error'] != null) return data['error'].toString();
+    }
+    return fallback;
   }
 
   Future<void> _saveConnection() async {
@@ -269,6 +455,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
     final home = context.watch<HomeProvider>();
     final auth = context.watch<AuthProvider>();
     final perms = auth.permissions;
+    // Publishing the installers this server hands out is server administration.
+    final canManageInstallers = perms.manageSettings;
     final textTheme = Theme.of(context).textTheme;
 
     return Scaffold(
@@ -667,11 +855,12 @@ class _SettingsScreenState extends State<SettingsScreen> {
                         ],
                       ),
                     ),
-                    if (_downloads.isNotEmpty)
+                    if (_downloads.isNotEmpty || canManageInstallers)
                       _Section(
                         title: 'Applications',
-                        subtitle:
-                            'Installer Onyx sur un autre appareil. Les fichiers sont servis par ce serveur.',
+                        subtitle: canManageInstallers
+                            ? 'Installer Onyx sur un autre appareil. En tant qu’administrateur, vous pouvez remplacer les installeurs publiés par ce serveur.'
+                            : 'Installer Onyx sur un autre appareil. Les fichiers sont servis par ce serveur.',
                         child: Column(
                           children: [
                             for (final download in _downloads)
@@ -680,7 +869,54 @@ class _SettingsScreenState extends State<SettingsScreen> {
                                 title: download.label,
                                 subtitle: _downloadSubtitle(download),
                                 onTap: () => _openDownload(download),
+                                trailing: canManageInstallers
+                                    ? _InstallerMenu(
+                                        enabled: _uploadingLabel == null,
+                                        onReplace: () => _uploadInstaller(
+                                          replacing: download,
+                                        ),
+                                        onDelete: () =>
+                                            _deleteInstaller(download),
+                                      )
+                                    : null,
                               ),
+                            if (canManageInstallers) ...[
+                              if (_downloads.isEmpty)
+                                const Padding(
+                                  padding: EdgeInsets.only(bottom: 12),
+                                  child: Text(
+                                    'Aucun installeur publié pour l’instant.',
+                                    style: TextStyle(
+                                      color: AppColors.textMuted,
+                                      fontSize: 12,
+                                    ),
+                                  ),
+                                ),
+                              _ActionTile(
+                                icon: Icons.upload_file_rounded,
+                                title: _uploadingLabel == null
+                                    ? 'Ajouter ou remplacer un installeur'
+                                    : 'Envoi de $_uploadingLabel…',
+                                subtitle: _uploadingLabel == null
+                                    ? 'Fichier .exe, .zip, .dmg ou .apk — un par plateforme'
+                                    : _uploadProgressLabel(),
+                                busy: _uploadingLabel != null,
+                                onTap: _uploadingLabel == null
+                                    ? () => _uploadInstaller()
+                                    : null,
+                              ),
+                              if (_uploadProgress != null)
+                                Padding(
+                                  padding: const EdgeInsets.only(bottom: 8),
+                                  child: ClipRRect(
+                                    borderRadius: BorderRadius.circular(4),
+                                    child: LinearProgressIndicator(
+                                      value: _uploadProgress,
+                                      minHeight: 4,
+                                    ),
+                                  ),
+                                ),
+                            ],
                           ],
                         ),
                       ),
@@ -743,6 +979,12 @@ class _SettingsScreenState extends State<SettingsScreen> {
     }
   }
 
+  String _uploadProgressLabel() {
+    final progress = _uploadProgress;
+    if (progress == null) return 'Envoi en cours…';
+    return 'Envoi ${(progress * 100).clamp(0, 100).toStringAsFixed(0)} %';
+  }
+
   String _downloadSubtitle(AppDownload download) {
     final parts = <String>[
       if (download.version.isNotEmpty) 'Version ${download.version}',
@@ -765,6 +1007,58 @@ class _SettingsScreenState extends State<SettingsScreen> {
       return 'Progression ${stats.processed}/${stats.total}';
     }
     return 'Re-détection en cours…';
+  }
+}
+
+/// Per-artifact admin actions, in place of the tile's chevron so tapping the
+/// tile itself still means "télécharger".
+class _InstallerMenu extends StatelessWidget {
+  final bool enabled;
+  final VoidCallback onReplace;
+  final VoidCallback onDelete;
+
+  const _InstallerMenu({
+    required this.enabled,
+    required this.onReplace,
+    required this.onDelete,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return PopupMenuButton<String>(
+      enabled: enabled,
+      tooltip: 'Gérer cet installeur',
+      color: AppColors.surfaceElevated,
+      icon: const Icon(Icons.more_vert_rounded, color: AppColors.textMuted),
+      onSelected: (value) {
+        if (value == 'replace') {
+          onReplace();
+        } else {
+          onDelete();
+        }
+      },
+      itemBuilder: (_) => const [
+        PopupMenuItem(
+          value: 'replace',
+          child: ListTile(
+            dense: true,
+            contentPadding: EdgeInsets.zero,
+            leading: Icon(Icons.upload_file_rounded, size: 18),
+            title: Text('Remplacer'),
+          ),
+        ),
+        PopupMenuItem(
+          value: 'delete',
+          child: ListTile(
+            dense: true,
+            contentPadding: EdgeInsets.zero,
+            leading: Icon(Icons.delete_outline_rounded,
+                size: 18, color: AppColors.error),
+            title: Text('Supprimer', style: TextStyle(color: AppColors.error)),
+          ),
+        ),
+      ],
+    );
   }
 }
 
@@ -948,12 +1242,16 @@ class _NavTile extends StatelessWidget {
   final VoidCallback onTap;
   final bool destructive;
 
+  /// Replaces the chevron, for tiles that carry their own actions.
+  final Widget? trailing;
+
   const _NavTile({
     required this.icon,
     required this.title,
     required this.subtitle,
     required this.onTap,
     this.destructive = false,
+    this.trailing,
   });
 
   @override
@@ -1006,8 +1304,9 @@ class _NavTile extends StatelessWidget {
                     ],
                   ),
                 ),
-                const Icon(Icons.chevron_right_rounded,
-                    color: AppColors.textMuted),
+                trailing ??
+                    const Icon(Icons.chevron_right_rounded,
+                        color: AppColors.textMuted),
               ],
             ),
           ),

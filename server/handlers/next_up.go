@@ -15,8 +15,10 @@ import (
 )
 
 // nextSeasonPayload describes the season that follows the one just finished,
-// when the server does not hold it. The player turns this into its end-of-season
-// card; can_request drives whether that card offers an action at all.
+// when the server does not hold it and nobody has asked for it yet. The player
+// turns this into its end-of-season card, so its mere presence is the offer:
+// can_request only ever goes false client-side, once the request is sent and
+// the card flips to confirming it.
 type nextSeasonPayload struct {
 	ShowID        int    `json:"show_id"`
 	ShowTMDBID    int    `json:"show_tmdb_id"`
@@ -30,16 +32,39 @@ type nextSeasonPayload struct {
 	CanRequest    bool   `json:"can_request"`
 }
 
+// upcomingEpisodePayload describes the episode that comes after the last one the
+// server holds, while its season is still running. It always takes precedence
+// over nextSeasonPayload: a season airing week by week is not finished, so
+// offering the season after it would skip over episodes still to come.
+type upcomingEpisodePayload struct {
+	ShowID         int    `json:"show_id"`
+	ShowTitle      string `json:"show_title,omitempty"`
+	SeasonNumber   int    `json:"season_number"`
+	Number         int    `json:"number"`
+	Name           string `json:"name,omitempty"`
+	Overview       string `json:"overview,omitempty"`
+	StillURL       string `json:"still_url,omitempty"`
+	AirDate        string `json:"air_date,omitempty"`
+	SeasonEpisodes int    `json:"season_episodes,omitempty"`
+}
+
 // GetNextEpisode answers "what comes after this episode?" (GET /api/episodes/:id/next).
 //
-// Three outcomes, in order:
+// Four outcomes, in order:
 //  1. another episode in the same season;
 //  2. the first episode of the next season, when the library holds it;
-//  3. no episode, but a description of the next season so the player can offer
+//  3. no episode, but a description of the episode the season is still waiting
+//     for, when its season has not finished airing;
+//  4. no episode, but a description of the next season so the player can offer
 //     to request it.
 //
-// Outcome 3 is omitted entirely when MediaHub cannot be consulted or the show
-// has no TMDB match: a card with a dead button is worse than no card.
+// Outcome 3 shadows outcome 4 wherever both could apply, including alongside
+// outcome 2: while a season is still running, what follows its last held
+// episode is that season's next episode, never the season after.
+//
+// Outcome 4 is omitted entirely when MediaHub cannot be consulted, the show has
+// no TMDB match, or the season has already been requested: a card with a dead
+// button is worse than no card.
 func GetNextEpisode(w http.ResponseWriter, r *http.Request, ps httprouter.Params, userID int) {
 	w.Header().Set("Content-Type", "application/json")
 
@@ -79,6 +104,10 @@ func GetNextEpisode(w http.ResponseWriter, r *http.Request, ps httprouter.Params
 		return
 	}
 
+	// The season this episode ends may simply not be over: computed once here
+	// because every branch below has to defer to it.
+	upcoming := describeUpcomingEpisode(showID, currentSeasonNum, currentEpisodeNum)
+
 	// 2. First episode of the following season, when it is held locally.
 	//
 	// The following season is the lowest number above the current one across
@@ -86,7 +115,8 @@ func GetNextEpisode(w http.ResponseWriter, r *http.Request, ps httprouter.Params
 	// silently skipped over to a later season that happens to be present.
 	nextNumber, nextSeasonID := resolveFollowingSeason(showID, currentSeasonNum)
 	if nextNumber == 0 {
-		_ = json.NewEncoder(w).Encode(map[string]interface{}{"has_next": false})
+		_ = json.NewEncoder(w).Encode(withUpcoming(
+			map[string]interface{}{"has_next": false}, upcoming))
 		return
 	}
 	if nextSeasonID > 0 {
@@ -95,7 +125,11 @@ func GetNextEpisode(w http.ResponseWriter, r *http.Request, ps httprouter.Params
 				"has_next": true,
 				"episode":  item,
 			}
-			if season := lookaheadMissingSeason(userID, item.ID); season != nil {
+			if upcoming != nil {
+				// Playing on is still offered, but through the card, so
+				// crossing a hole in the current season stays a deliberate act.
+				response["upcoming_episode"] = upcoming
+			} else if season := lookaheadMissingSeason(userID, item.ID); season != nil {
 				response["next_season"] = season
 			}
 			_ = json.NewEncoder(w).Encode(response)
@@ -103,16 +137,28 @@ func GetNextEpisode(w http.ResponseWriter, r *http.Request, ps httprouter.Params
 		}
 		// Season row exists but holds no episode: nothing to play, and nothing
 		// to request either (MediaHub would report it as partial/available).
-		_ = json.NewEncoder(w).Encode(map[string]interface{}{"has_next": false})
+		_ = json.NewEncoder(w).Encode(withUpcoming(
+			map[string]interface{}{"has_next": false}, upcoming))
 		return
 	}
 
-	// 3. The following season is missing from the server.
+	// 3/4. Nothing left to play: the season's next episode when it has one,
+	// the missing season that follows otherwise.
 	response := map[string]interface{}{"has_next": false}
-	if season := describeMissingSeason(showID, nextNumber); season != nil {
+	if upcoming != nil {
+		response["upcoming_episode"] = upcoming
+	} else if season := describeMissingSeason(showID, nextNumber); season != nil {
 		response["next_season"] = season
 	}
 	_ = json.NewEncoder(w).Encode(response)
+}
+
+// withUpcoming attaches the upcoming episode to a response when there is one.
+func withUpcoming(response map[string]interface{}, upcoming *upcomingEpisodePayload) map[string]interface{} {
+	if upcoming != nil {
+		response["upcoming_episode"] = upcoming
+	}
+	return response
 }
 
 // currentEpisodePosition returns the season row and episode number of an episode.
@@ -189,6 +235,12 @@ func lookaheadMissingSeason(userID, nextEpisodeID int) *nextSeasonPayload {
 		return nil
 	}
 
+	// A season still airing is not one to look past: its own next episode is
+	// what follows, and there is nothing to download early for.
+	if describeUpcomingEpisode(showID, seasonNumber, episodeNumber) != nil {
+		return nil
+	}
+
 	number, localSeasonID := resolveFollowingSeason(showID, seasonNumber)
 	if number == 0 || localSeasonID > 0 {
 		return nil // no season after it, or the server already holds it
@@ -196,8 +248,67 @@ func lookaheadMissingSeason(userID, nextEpisodeID int) *nextSeasonPayload {
 	return describeMissingSeason(showID, number)
 }
 
-// describeMissingSeason builds the end-of-season card payload, or nil when no
-// action can be offered for it.
+// describeUpcomingEpisode describes the episode TMDB lists right after
+// afterEpisodeNumber in the same season, when the server does not hold it —
+// a season airing week by week, or one imported only in part.
+//
+// Callers reach it only once the season has no local episode left to play, so
+// any later episode TMDB knows about is by definition absent from the server.
+// Returns nil when the season holds nothing more, which is what hands the
+// screen back to the end-of-season card.
+func describeUpcomingEpisode(showID, seasonNumber, afterEpisodeNumber int) *upcomingEpisodePayload {
+	if afterEpisodeNumber <= 0 {
+		// An unnumbered episode says nothing about its position in the season;
+		// episode 1 would then read as "upcoming" for every one of them.
+		return nil
+	}
+
+	episodes := FetchTMDBSeasonEpisodes(showTMDBID(showID), seasonNumber)
+	if len(episodes) == 0 {
+		return nil // TMDB unreachable or season unknown: claim nothing
+	}
+
+	next := nextTMDBEpisodeAfter(episodes, afterEpisodeNumber)
+	if next == nil {
+		return nil // the season is complete on the server
+	}
+
+	payload := &upcomingEpisodePayload{
+		ShowID:         showID,
+		ShowTitle:      showTitle(showID),
+		SeasonNumber:   seasonNumber,
+		Number:         next.Number,
+		Name:           next.Name,
+		Overview:       next.Overview,
+		AirDate:        next.AirDate,
+		SeasonEpisodes: len(episodes),
+	}
+	if next.StillPath != "" {
+		payload.StillURL = "https://image.tmdb.org/t/p/w780" + next.StillPath
+	}
+	return payload
+}
+
+// nextTMDBEpisodeAfter returns the lowest-numbered episode above
+// afterEpisodeNumber, or nil when the list ends there. TMDB order is not
+// relied on: a season is scanned in full so a list out of order still yields
+// the episode that actually comes next.
+func nextTMDBEpisodeAfter(episodes []TMDBEpisodeSummary, afterEpisodeNumber int) *TMDBEpisodeSummary {
+	var next *TMDBEpisodeSummary
+	for i := range episodes {
+		if episodes[i].Number <= afterEpisodeNumber {
+			continue
+		}
+		if next == nil || episodes[i].Number < next.Number {
+			next = &episodes[i]
+		}
+	}
+	return next
+}
+
+// describeMissingSeason builds the end-of-season card payload, or nil when the
+// card would have nothing to offer — MediaHub unreachable, or the season
+// already asked for.
 func describeMissingSeason(showID, seasonNumber int) *nextSeasonPayload {
 	tmdbID := showTMDBID(showID)
 	statuses := mediaHubSeasonStatuses(tmdbID)
@@ -209,6 +320,12 @@ func describeMissingSeason(showID, seasonNumber int) *nextSeasonPayload {
 	if known, ok := statuses[seasonNumber]; ok && known != "" {
 		status = known
 	}
+	if status != requestStatusUnknown {
+		// Already requested, downloading, or sitting in MediaHub's library:
+		// there is nothing left to ask for, so the card would interrupt the
+		// credits only to state a fact the user already acted on.
+		return nil
+	}
 
 	payload := &nextSeasonPayload{
 		ShowID:        showID,
@@ -217,7 +334,7 @@ func describeMissingSeason(showID, seasonNumber int) *nextSeasonPayload {
 		Number:        seasonNumber,
 		Name:          "Saison " + strconv.Itoa(seasonNumber),
 		RequestStatus: status,
-		CanRequest:    status == requestStatusUnknown,
+		CanRequest:    true,
 	}
 
 	for _, season := range FetchTMDBShowSeasons(tmdbID) {

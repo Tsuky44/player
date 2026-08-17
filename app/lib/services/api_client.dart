@@ -407,10 +407,7 @@ class ApiClient {
   /// server-side, so this also works from the login screen.
   Future<List<AppDownload>> getAppDownloads() async {
     final response = await _dio.get("/api/downloads");
-    final data = response.data as Map<String, dynamic>;
-    return (data['artifacts'] as List<dynamic>? ?? const [])
-        .map((e) => AppDownload.fromJson(e as Map<String, dynamic>))
-        .toList();
+    return _parseDownloads(response.data as Map<String, dynamic>);
   }
 
   /// Absolute URL for an artifact, ready to hand to the browser or the shell.
@@ -443,6 +440,54 @@ class ApiClient {
     } finally {
       dio.close();
     }
+  }
+
+  /// Replaces the installer of one platform (admin only). The platform is
+  /// deduced server-side from the extension, so [filename] must keep it.
+  ///
+  /// Either [path] (desktop/mobile: streamed from disk) or [bytes] (web, where
+  /// there is no file path) must be given. [onProgress] receives sent/total,
+  /// total being -1 while the size is unknown.
+  ///
+  /// Returns the refreshed artifact list.
+  Future<List<AppDownload>> uploadAppDownload({
+    required String filename,
+    String? path,
+    List<int>? bytes,
+    String? version,
+    void Function(int sent, int total)? onProgress,
+  }) async {
+    final formData = FormData.fromMap({
+      if (version != null && version.isNotEmpty) "version": version,
+      "file": path != null
+          ? await MultipartFile.fromFile(path, filename: filename)
+          : MultipartFile.fromBytes(bytes ?? const [], filename: filename),
+    });
+
+    final response = await _dio.post(
+      "/api/downloads",
+      data: formData,
+      onSendProgress: onProgress,
+      // A 150 MB installer over a home connection outlives the default
+      // timeouts, and the server answers only once the file is on disk.
+      options: Options(
+        sendTimeout: const Duration(minutes: 30),
+        receiveTimeout: const Duration(minutes: 5),
+      ),
+    );
+    return _parseDownloads(response.data as Map<String, dynamic>);
+  }
+
+  /// Removes one published installer (admin only). Returns the refreshed list.
+  Future<List<AppDownload>> deleteAppDownload(AppDownload download) async {
+    final response = await _dio.delete("/api/downloads/${download.file}");
+    return _parseDownloads(response.data as Map<String, dynamic>);
+  }
+
+  List<AppDownload> _parseDownloads(Map<String, dynamic> data) {
+    return (data['artifacts'] as List<dynamic>? ?? const [])
+        .map((e) => AppDownload.fromJson(e as Map<String, dynamic>))
+        .toList();
   }
 
   Future<HomeResponse> getHome() async {
