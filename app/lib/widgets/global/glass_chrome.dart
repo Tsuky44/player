@@ -2,6 +2,7 @@ import 'dart:ui';
 
 import 'package:flutter/material.dart';
 import '../../theme/app_colors.dart';
+import '../../theme/app_motion.dart';
 import 'onyx_mark.dart';
 
 /// Full-width frosted strip — must float above scrolling content to blur it.
@@ -229,8 +230,10 @@ class GlassNavTab extends StatelessWidget {
           onTap: onTap,
           borderRadius: BorderRadius.circular(16),
           child: AnimatedContainer(
-            duration: const Duration(milliseconds: 180),
-            curve: Curves.easeOut,
+            // `move`, not `fade`: this animates padding and decoration, so it
+            // is geometry — the case reduced motion is meant to cancel.
+            duration: AppMotion.move(context, AppMotion.micro),
+            curve: AppMotion.curve,
             padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
             decoration: BoxDecoration(
               color: selected ? Colors.white.withValues(alpha: 0.14) : Colors.transparent,
