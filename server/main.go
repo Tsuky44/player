@@ -138,6 +138,9 @@ func main() {
 	router.GET("/api/downloads/:file", handlers.ServeDownload)
 	// Download managers probe with HEAD before starting a 100 MB transfer.
 	router.HEAD("/api/downloads/:file", handlers.ServeDownload)
+	// Managing the installers by hand is reserved to the first account.
+	router.POST("/api/downloads", handlers.RequireAdmin(handlers.UploadDownload))
+	router.DELETE("/api/downloads/:file", handlers.RequireAdmin(handlers.DeleteDownload))
 
 	// 5. Streaming Endpoint (Unauthenticated for video player compatibility)
 	router.GET("/stream", handlers.StreamMedia)

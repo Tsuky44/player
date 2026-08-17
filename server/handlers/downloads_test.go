@@ -1,11 +1,14 @@
 package handlers
 
 import (
+	"bytes"
 	"encoding/json"
+	"mime/multipart"
 	"net/http"
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/julienschmidt/httprouter"
@@ -113,5 +116,129 @@ func TestListDownloadsOnMissingDirectory(t *testing.T) {
 	}
 	if got := rec.Body.String(); got != "{\"artifacts\":[]}\n" {
 		t.Errorf("body = %q, want an empty list", got)
+	}
+}
+
+// uploadRequest builds the multipart request the admin UI sends.
+func uploadRequest(t *testing.T, filename, version, payload string) *http.Request {
+	t.Helper()
+	body := &bytes.Buffer{}
+	form := multipart.NewWriter(body)
+	if version != "" {
+		if err := form.WriteField("version", version); err != nil {
+			t.Fatal(err)
+		}
+	}
+	part, err := form.CreateFormFile("file", filename)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := part.Write([]byte(payload)); err != nil {
+		t.Fatal(err)
+	}
+	if err := form.Close(); err != nil {
+		t.Fatal(err)
+	}
+
+	req := httptest.NewRequest(http.MethodPost, "/api/downloads", body)
+	req.Header.Set("Content-Type", form.FormDataContentType())
+	return req
+}
+
+func TestUploadDownloadReplacesThePlatformArtifact(t *testing.T) {
+	dir := stageDownloads(t, "Onyx-0.9.0-windows.exe", "Onyx-1.0.0-macos.dmg")
+
+	rec := httptest.NewRecorder()
+	UploadDownload(rec, uploadRequest(t, "ProjectPlayer-Setup.exe", "1.4.0", "new-installer"), nil, 1)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d, want 200: %s", rec.Code, rec.Body.String())
+	}
+
+	// The old Windows artifact is gone, the macOS one untouched.
+	if _, err := os.Stat(filepath.Join(dir, "Onyx-0.9.0-windows.exe")); !os.IsNotExist(err) {
+		t.Error("previous windows artifact still present")
+	}
+	if _, err := os.Stat(filepath.Join(dir, "Onyx-1.0.0-macos.dmg")); err != nil {
+		t.Errorf("macos artifact disturbed: %v", err)
+	}
+
+	// Published under the staging script's naming, with the given version.
+	content, err := os.ReadFile(filepath.Join(dir, "Onyx-1.4.0-windows.exe"))
+	if err != nil {
+		t.Fatalf("uploaded artifact missing: %v", err)
+	}
+	if string(content) != "new-installer" {
+		t.Errorf("content = %q", content)
+	}
+
+	// No leftover temp file next to the artifacts.
+	entries, err := os.ReadDir(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, e := range entries {
+		if strings.HasPrefix(e.Name(), ".upload-") {
+			t.Errorf("temp file left behind: %s", e.Name())
+		}
+	}
+}
+
+func TestUploadDownloadFallsBackToTheVersionInTheFileName(t *testing.T) {
+	dir := stageDownloads(t)
+
+	rec := httptest.NewRecorder()
+	UploadDownload(rec, uploadRequest(t, "Onyx-2.1.0-android.apk", "", "apk"), nil, 1)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d, want 200: %s", rec.Code, rec.Body.String())
+	}
+	if _, err := os.Stat(filepath.Join(dir, "Onyx-2.1.0-android.apk")); err != nil {
+		t.Errorf("expected version read from the file name: %v", err)
+	}
+}
+
+func TestUploadDownloadRejectsUnknownExtension(t *testing.T) {
+	dir := stageDownloads(t)
+
+	rec := httptest.NewRecorder()
+	UploadDownload(rec, uploadRequest(t, "payload.sh", "1.0.0", "rm -rf /"), nil, 1)
+
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("status = %d, want 400", rec.Code)
+	}
+	entries, err := os.ReadDir(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(entries) != 0 {
+		t.Errorf("nothing should have been written, found %d entries", len(entries))
+	}
+}
+
+func TestDeleteDownloadRemovesOnlyListedArtifacts(t *testing.T) {
+	dir := stageDownloads(t, "Onyx-1.0.0-android.apk", "secrets.env")
+
+	rec := httptest.NewRecorder()
+	DeleteDownload(rec, httptest.NewRequest(http.MethodDelete, "/api/downloads/x", nil),
+		httprouter.Params{{Key: "file", Value: "/Onyx-1.0.0-android.apk"}}, 1)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d, want 200: %s", rec.Code, rec.Body.String())
+	}
+	if _, err := os.Stat(filepath.Join(dir, "Onyx-1.0.0-android.apk")); !os.IsNotExist(err) {
+		t.Error("artifact not removed")
+	}
+
+	// Same guard as ServeDownload: anything the listing does not vouch for.
+	for _, name := range []string{"secrets.env", "../../etc/passwd"} {
+		rec := httptest.NewRecorder()
+		DeleteDownload(rec, httptest.NewRequest(http.MethodDelete, "/api/downloads/x", nil),
+			httprouter.Params{{Key: "file", Value: "/" + name}}, 1)
+		if rec.Code != http.StatusNotFound {
+			t.Errorf("%q: status = %d, want 404", name, rec.Code)
+		}
+	}
+	if _, err := os.Stat(filepath.Join(dir, "secrets.env")); err != nil {
+		t.Errorf("unrelated file deleted: %v", err)
 	}
 }

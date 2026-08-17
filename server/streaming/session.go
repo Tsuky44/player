@@ -32,6 +32,9 @@ type TranscodeSession struct {
 	StartOffset int // seconds into the original media where the HLS timeline begins
 	TmpDir      string
 	Probe       *ProbeResult
+	// MasterPlaylist is the master this session publishes, rendered once at
+	// /start from the parameters it was created with. See BuildMasterPlaylist.
+	MasterPlaylist string
 
 	ctx    context.Context
 	cancel context.CancelFunc

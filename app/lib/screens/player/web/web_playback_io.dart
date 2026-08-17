@@ -7,8 +7,6 @@ abstract final class WebPlayback {
 
   static void adoptHlsSession(String masterUrl) {}
 
-  static int releaseStaleHlsSessions() => 0;
-
   static int releaseAllHlsSessions() => 0;
 
   static bool showSubtitleVtt(

@@ -184,6 +184,8 @@ func Login(w http.ResponseWriter, r *http.Request, _ httprouter.Params) {
 		return
 	}
 
+	user.IsAdmin = IsAdmin(user.ID)
+
 	// Return token and user info
 	json.NewEncoder(w).Encode(LoginResponse{
 		Token: token,
@@ -231,6 +233,8 @@ func Me(w http.ResponseWriter, r *http.Request, _ httprouter.Params, userID int)
 		http.Error(w, `{"error": "User not found"}`, http.StatusNotFound)
 		return
 	}
+
+	user.IsAdmin = IsAdmin(user.ID)
 
 	json.NewEncoder(w).Encode(user)
 }

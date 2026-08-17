@@ -19,11 +19,18 @@ class EpisodeNavigationController extends ChangeNotifier {
   /// the finale plays. See [isSeasonLookahead].
   NextSeason? nextSeason;
 
+  /// Set when this season is not over — the episode after this one exists on
+  /// TMDB but not on the server. Mutually exclusive with [nextSeason]: while a
+  /// season is still airing, asking for the one after it skips episodes.
+  UpcomingEpisode? upcomingEpisode;
+
   /// A "no thanks" only silences the card for this playback, never for good —
   /// the user may well change their mind on the next run.
   bool _nextSeasonDismissed = false;
   bool _nextSeasonForced = false;
   bool _seasonLookahead = false;
+  bool _upcomingDismissed = false;
+  bool _upcomingForced = false;
 
   bool isLoading = true;
 
@@ -171,6 +178,7 @@ class EpisodeNavigationController extends ChangeNotifier {
         nextEpisode = response.episode;
       }
       nextSeason = response.nextSeason;
+      upcomingEpisode = response.upcomingEpisode;
       // Offered early only while it can still be acted on: a season already
       // requested would just interrupt the finale for nothing.
       _seasonLookahead =
@@ -355,14 +363,17 @@ class EpisodeNavigationController extends ChangeNotifier {
 
     if (inOutro != showNextEpisodeOutro) {
       showNextEpisodeOutro = inOutro;
-      // The season card takes the outro over when it is up: auto-advancing out
-      // of a page that asks a question would answer it for the user.
-      // Once the early offer is up it stays up until answered: an outro
-      // followed by a teaser would otherwise pull it away mid-decision.
+      // An end card takes the outro over when it is up: auto-advancing out of
+      // a page that asks a question would answer it for the user.
+      // Once either card is up it stays up until answered: an outro followed
+      // by a teaser would otherwise pull it away mid-decision.
       if (inOutro && isSeasonLookahead && !_nextSeasonDismissed) {
         _nextSeasonForced = true;
       }
-      if (inOutro && nextEpisode != null && !showNextSeasonCard) {
+      if (inOutro && upcomingEpisode != null && !_upcomingDismissed) {
+        _upcomingForced = true;
+      }
+      if (inOutro && nextEpisode != null && !showEndCard) {
         _startOutroAutoPlay();
       } else {
         _cancelOutroAutoPlay();
@@ -397,31 +408,68 @@ class EpisodeNavigationController extends ChangeNotifier {
 
   /// Whether the end-of-season card should be on screen. It has no countdown
   /// and never acts on its own — requesting a season is always a deliberate tap.
+  ///
+  /// The upcoming-episode card wins when both could apply: the server sends one
+  /// or the other, and a season still airing is not one to look past.
   bool get showNextSeasonCard =>
       (showNextEpisodeOutro || _nextSeasonForced) &&
       nextSeason != null &&
+      upcomingEpisode == null &&
       (nextEpisode == null || isSeasonLookahead) &&
       !_nextSeasonDismissed;
 
+  /// Whether the "not out yet" card should be on screen. Purely informative:
+  /// there is no per-episode request to send, only a date to state.
+  bool get showUpcomingEpisodeCard =>
+      (showNextEpisodeOutro || _upcomingForced) &&
+      upcomingEpisode != null &&
+      !_upcomingDismissed;
+
+  /// Whether either end card owns the screen. Both shrink the video, suppress
+  /// the chrome and hold auto-advance back, so the player asks this one thing.
+  bool get showEndCard => showNextSeasonCard || showUpcomingEpisodeCard;
+
   /// Forces the card up when playback reached the very end without the outro
   /// ever being detected, so a missing chapter marker cannot swallow the offer.
+  /// Returns whether the card is now on screen — false means the caller is free
+  /// to move on, having been dismissed or having nothing to show.
   ///
   /// Kept separate from [showNextEpisodeOutro], which the position loop owns
   /// and rewrites on every tick.
-  void revealNextSeasonCard() {
-    if (nextSeason == null || _nextSeasonDismissed) return;
-    if (nextEpisode != null && !isSeasonLookahead) return;
+  bool revealNextSeasonCard() {
+    if (nextSeason == null || _nextSeasonDismissed) return false;
+    if (upcomingEpisode != null) return false;
+    if (nextEpisode != null && !isSeasonLookahead) return false;
     if (!_nextSeasonForced) {
       _nextSeasonForced = true;
       notifyListeners();
     }
+    return true;
+  }
+
+  /// Same as [revealNextSeasonCard], for the episode the season still awaits.
+  bool revealUpcomingEpisodeCard() {
+    if (upcomingEpisode == null || _upcomingDismissed) return false;
+    if (!_upcomingForced) {
+      _upcomingForced = true;
+      notifyListeners();
+    }
+    return true;
   }
 
   void dismissNextSeasonCard() {
     _nextSeasonDismissed = true;
     // Putting the card away mid-outro hands the outro back to the next-episode
     // pill, countdown included — the behaviour of any other episode.
-    if (showNextEpisodeOutro && nextEpisode != null) {
+    if (showNextEpisodeOutro && nextEpisode != null && !showEndCard) {
+      _startOutroAutoPlay();
+    }
+    notifyListeners();
+  }
+
+  void dismissUpcomingEpisodeCard() {
+    _upcomingDismissed = true;
+    if (showNextEpisodeOutro && nextEpisode != null && !showEndCard) {
       _startOutroAutoPlay();
     }
     notifyListeners();

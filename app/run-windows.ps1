@@ -1,4 +1,4 @@
-# Script de lancement Flutter Windows avec le bon generateur CMake pour Visual Studio 2026
+﻿# Script de lancement Flutter Windows avec le bon generateur CMake pour Visual Studio 2026
 # Utilisation: .\run-windows.ps1
 
 Write-Host "========================================" -ForegroundColor Cyan

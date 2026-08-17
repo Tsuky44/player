@@ -1,4 +1,4 @@
-# =============================================================================
+﻿# =============================================================================
 # Construit le bundle Flutter Web et le prépare pour l'embarquement dans le
 # binaire Go — équivalent PowerShell de scripts/build-web.sh.
 #

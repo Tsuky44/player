@@ -16,6 +16,10 @@ type User struct {
 	ID           int    `json:"id"`
 	Username     string `json:"username"`
 	PasswordHash string `json:"-"` // Never expose the password hash
+	// IsAdmin is derived, not stored: the first registered account owns the
+	// server-administration screens. Sent to the client so it can hide what it
+	// is not allowed to do; the routes enforce it independently.
+	IsAdmin bool `json:"is_admin"`
 }
 
 // Media represents any media entity (movie, show, season, episode)
