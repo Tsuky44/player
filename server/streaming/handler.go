@@ -190,21 +190,37 @@ func (h *Handler) handleStart(w http.ResponseWriter, r *http.Request, mediaID in
 		CopyVideo:              copyVideo,
 	})
 
+	// Copying the picture means the file's own bitrate goes out on the wire, so
+	// that — not the preset's ceiling, which no encoder is enforcing here — is
+	// what the variant has to be advertised at.
+	advertisedBandwidth := EstimateBandwidth(quality)
+	if copyVideo && bitrate > 0 {
+		advertisedBandwidth = int(bitrate)
+	}
+	master := BuildMasterPlaylist(MasterPlaylistOptions{
+		Probe:                  probe,
+		Quality:                quality,
+		AudioTypedIndexes:      audioMap,
+		DefaultAudioTypedIndex: audioIndex,
+		BandwidthBps:           advertisedBandwidth,
+	})
+
 	ctx, cancel := context.WithCancel(context.Background())
 	cmd := exec.CommandContext(ctx, "ffmpeg", args...)
 
 	sessionID := uuid.New().String()
 	session := &TranscodeSession{
-		ID:          sessionID,
-		MediaID:     mediaID,
-		Quality:     quality,
-		AudioIndex:  audioIndex,
-		StartOffset: startSeconds,
-		TmpDir:      tmpDir,
-		Probe:       probe,
-		ctx:         ctx,
-		cancel:      cancel,
-		cmd:         cmd,
+		ID:             sessionID,
+		MediaID:        mediaID,
+		Quality:        quality,
+		AudioIndex:     audioIndex,
+		StartOffset:    startSeconds,
+		TmpDir:         tmpDir,
+		Probe:          probe,
+		MasterPlaylist: master,
+		ctx:            ctx,
+		cancel:         cancel,
+		cmd:            cmd,
 	}
 	cmd.Stderr = &session.stderr
 
@@ -250,9 +266,12 @@ func (h *Handler) handleStart(w http.ResponseWriter, r *http.Request, mediaID in
 		time.Since(startedAt))
 }
 
-// handleServeFile streams a playlist or segment straight from the session temp
-// dir. No playlist rewriting is needed because mpv resolves relative child URIs
-// against the master URL it fetched.
+// handleServeFile serves one playlist or segment of a session.
+//
+// The master is rendered here; everything below it comes straight off the
+// session's temp dir. Child URIs stay relative in both, so a player resolves
+// them against the master URL it fetched and no rewriting is needed on the way
+// out.
 func (h *Handler) handleServeFile(w http.ResponseWriter, r *http.Request, sessionID, filename string) {
 	session, ok := h.manager.GetSession(sessionID)
 	if !ok {
@@ -265,6 +284,17 @@ func (h *Handler) handleServeFile(w http.ResponseWriter, r *http.Request, sessio
 		session.NoteSegment(idx)
 	} else {
 		session.Touch()
+	}
+
+	// The master is rendered from the session's own parameters, not read back from
+	// the copy FFmpeg wrote — see BuildMasterPlaylist for why that file cannot be
+	// served. Answering out of memory also means the master is ready the moment
+	// the session exists, before FFmpeg has written anything at all.
+	if filename == "master.m3u8" {
+		w.Header().Set("Content-Type", "application/vnd.apple.mpegurl")
+		w.Header().Set("Cache-Control", "no-cache")
+		_, _ = w.Write([]byte(session.MasterPlaylist))
+		return
 	}
 
 	filePath := filepath.Join(session.TmpDir, filename)
@@ -287,20 +317,6 @@ func (h *Handler) handleServeFile(w http.ResponseWriter, r *http.Request, sessio
 		}
 	}
 
-	// The master is rewritten rather than served verbatim — see
-	// filterMasterPlaylist for why FFmpeg's own output cannot be trusted here.
-	if filename == "master.m3u8" {
-		raw, err := os.ReadFile(filePath)
-		if err != nil {
-			http.Error(w, "file not ready", http.StatusNotFound)
-			return
-		}
-		w.Header().Set("Content-Type", "application/vnd.apple.mpegurl")
-		w.Header().Set("Cache-Control", "no-cache")
-		_, _ = w.Write([]byte(filterMasterPlaylist(string(raw))))
-		return
-	}
-
 	switch ext {
 	case ".ts":
 		w.Header().Set("Content-Type", "video/mp2t")
@@ -320,54 +336,6 @@ func (h *Handler) handleServeFile(w http.ResponseWriter, r *http.Request, sessio
 		w.Header().Set("Cache-Control", "no-cache")
 	}
 	http.ServeFile(w, r, filePath)
-}
-
-// filterMasterPlaylist drops the audio-only variants FFmpeg writes into the
-// master playlist alongside the real video variant.
-//
-// When an audio rendition group is used, FFmpeg declares every audio track
-// TWICE: once as #EXT-X-MEDIA — correct, that is how a player reaches a group
-// member — and once more as a standalone #EXT-X-STREAM-INF carrying no
-// RESOLUTION. That second form advertises the track as a complete, playable
-// stream, and because those entries have by far the lowest BANDWIDTH in the
-// master (~150 kbps against several Mbps), an adaptive player picks one and
-// lands on a stream with no video in it at all.
-//
-// ffprobe hides this: it just reports the first program, which is the video one.
-// A real player selecting by bandwidth does not, which is why publishing audio
-// renditions regressed playback while the probe output looked fine.
-func filterMasterPlaylist(content string) string {
-	lines := strings.Split(content, "\n")
-
-	// Only rewrite when a genuine video variant survives the filter, so an
-	// audio-only media can never be served an empty master.
-	hasVideoVariant := false
-	for _, l := range lines {
-		if strings.HasPrefix(l, "#EXT-X-STREAM-INF") && strings.Contains(l, "RESOLUTION=") {
-			hasVideoVariant = true
-			break
-		}
-	}
-	if !hasVideoVariant {
-		return content
-	}
-
-	out := make([]string, 0, len(lines))
-	for i := 0; i < len(lines); i++ {
-		line := lines[i]
-		if !strings.HasPrefix(line, "#EXT-X-STREAM-INF") || strings.Contains(line, "RESOLUTION=") {
-			out = append(out, line)
-			continue
-		}
-		// Drop the tag together with the URI line it introduces.
-		for i+1 < len(lines) && strings.TrimSpace(lines[i+1]) == "" {
-			i++
-		}
-		if i+1 < len(lines) {
-			i++
-		}
-	}
-	return strings.Join(out, "\n")
 }
 
 // waitForPath polls for a file to appear, returning true if it did in time.

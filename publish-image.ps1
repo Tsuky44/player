@@ -1,3 +1,19 @@
+﻿# =============================================================================
+# Usage :
+#   .\publish-image.ps1            # récupère les artefacts des autres
+#                                  # plateformes depuis l'image :latest
+#   .\publish-image.ps1 -NoPull    # n'utilise QUE le contenu actuel de
+#                                  # server\downloads\
+#
+# -NoPull sert quand les artefacts des autres plateformes ont été copiés à la
+# main dans server\downloads\ (clé USB, scp...). Sans ce commutateur, le pull de
+# l'étape 2 écrase un fichier copié manuellement par celui de l'image
+# précédente, puisque les deux portent le même nom.
+# =============================================================================
+param(
+    [switch]$NoPull
+)
+
 $GitHubUser = "tsuky44" # Doit être en minuscules pour ghcr.io
 $ImageName = "playeur-server"
 
@@ -74,23 +90,29 @@ Check-Error "Échec de la connexion à GitHub Packages."
 # machine Windows produit l'EXE et l'APK, jamais le DMG. Les artefacts des
 # autres plateformes sont donc récupérés depuis l'image publiée précédemment,
 # qui sert de stockage entre les machines de build.
-Write-Host "2. Récupération des applications déjà publiées..." -ForegroundColor Yellow
-$LatestImage = "ghcr.io/$GitHubUser/${ImageName}:latest"
-docker pull --platform linux/amd64 $LatestImage 2>&1 | Out-Null
-if ($LASTEXITCODE -eq 0) {
-    $PrevCid = (docker create --platform linux/amd64 $LatestImage 2>$null)
-    if ($PrevCid) {
-        New-Item -ItemType Directory -Force -Path $DownloadsDir | Out-Null
-        docker cp "${PrevCid}:/app/downloads/." "$DownloadsDir" 2>&1 | Out-Null
-        if ($LASTEXITCODE -eq 0) {
-            Write-Host "   Artefacts récupérés depuis l'image :latest" -ForegroundColor Green
-        } else {
-            Write-Host "   (aucun artefact dans l'image précédente)"
-        }
-        docker rm $PrevCid 2>&1 | Out-Null
-    }
+if ($NoPull) {
+    Write-Host "2. Récupération depuis :latest ignorée (-NoPull)." -ForegroundColor Yellow
+    Write-Host "   Seul le contenu actuel de server\downloads\ sera embarqué."
+    New-Item -ItemType Directory -Force -Path $DownloadsDir | Out-Null
 } else {
-    Write-Host "   (image :latest introuvable — première publication ?)"
+    Write-Host "2. Récupération des applications déjà publiées..." -ForegroundColor Yellow
+    $LatestImage = "ghcr.io/$GitHubUser/${ImageName}:latest"
+    docker pull --platform linux/amd64 $LatestImage 2>&1 | Out-Null
+    if ($LASTEXITCODE -eq 0) {
+        $PrevCid = (docker create --platform linux/amd64 $LatestImage 2>$null)
+        if ($PrevCid) {
+            New-Item -ItemType Directory -Force -Path $DownloadsDir | Out-Null
+            docker cp "${PrevCid}:/app/downloads/." "$DownloadsDir" 2>&1 | Out-Null
+            if ($LASTEXITCODE -eq 0) {
+                Write-Host "   Artefacts récupérés depuis l'image :latest" -ForegroundColor Green
+            } else {
+                Write-Host "   (aucun artefact dans l'image précédente)"
+            }
+            docker rm $PrevCid 2>&1 | Out-Null
+        }
+    } else {
+        Write-Host "   (image :latest introuvable — première publication ?)"
+    }
 }
 # docker pull/create mettent $LASTEXITCODE à une valeur non nulle en cas
 # d'absence d'image : on le remet à zéro pour ne pas piéger le Check-Error suivant.

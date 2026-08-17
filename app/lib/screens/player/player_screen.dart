@@ -20,6 +20,7 @@ import 'hooks/use_player_media_keys.dart';
 import 'widgets/skip_intro_button.dart';
 import 'widgets/next_episode_overlay.dart';
 import 'widgets/next_season_overlay.dart';
+import 'widgets/upcoming_episode_overlay.dart';
 import 'widgets/player_hud_overlay.dart';
 import 'widgets/modular_controls_layer.dart';
 import 'widgets/emby/emby_controls_layer.dart';
@@ -475,19 +476,18 @@ class _PlayerScreenState extends State<PlayerScreen> {
   void _onPlaybackCompleted() {
     if (_isDisposing || !mounted) return;
     _safeSetState(() {});
-    // The early season offer wins over auto-advance: leaving would answer the
-    // question by walking away from it. The card carries its own "next episode".
-    if (_episodeNav?.nextEpisode != null &&
-        !(_episodeNav?.showNextSeasonCard ?? false)) {
+    // An end card wins over auto-advance: leaving would answer its question by
+    // walking away from it, and both cards carry their own "next episode".
+    // Staying on the last frame is what keeps them there to be acted on.
+    //
+    // The gap card goes first: when the library holds a later season, crossing
+    // a hole in this one has to stay a deliberate act, never an auto-advance.
+    if (_episodeNav?.revealUpcomingEpisodeCard() ?? false) return;
+    if (_episodeNav?.nextEpisode != null && !_endCardVisible) {
       _goToNextEpisode();
       return;
     }
-    if (_episodeNav?.nextSeason != null) {
-      // Leaving here would wipe the card at the exact moment the user is about
-      // to act on it. Stay on the last frame and let them decide.
-      _episodeNav!.revealNextSeasonCard();
-      return;
-    }
+    if (_episodeNav?.revealNextSeasonCard() ?? false) return;
     unawaited(_leavePlayer());
   }
 
@@ -612,10 +612,14 @@ class _PlayerScreenState extends State<PlayerScreen> {
     _showControlsTransient();
   }
 
+  /// Whether one of the end-of-episode pages — the season request or the
+  /// episode this season still awaits — currently owns the screen.
+  bool get _endCardVisible => _episodeNav?.showEndCard ?? false;
+
   void _showControlsTransient() {
-    // The end-of-season page owns the screen: waking the HUD on every mouse
-    // move would stack a progress bar and a play button over it.
-    if (_episodeNav?.showNextSeasonCard ?? false) return;
+    // The end card owns the screen: waking the HUD on every mouse move would
+    // stack a progress bar and a play button over it.
+    if (_endCardVisible) return;
     setState(() => _showControls = true);
     _refreshPositionUi(force: true);
     _scheduleSubtitlePaddingSync();
@@ -623,16 +627,15 @@ class _PlayerScreenState extends State<PlayerScreen> {
   }
 
   /// Whether the player chrome — timeline, transport, top-right menus — may be
-  /// on screen. Single decision point so nothing slips through while the
-  /// end-of-season page is up; only the back button survives it.
-  bool get _controlsVisible =>
-      _showControls && !(_episodeNav?.showNextSeasonCard ?? false);
+  /// on screen. Single decision point so nothing slips through while an end
+  /// card is up; only the back button survives it.
+  bool get _controlsVisible => _showControls && !_endCardVisible;
 
   /// Netflix-style: hide the cursor while controls are hidden during playback.
-  /// Never on the end-of-season page, which has buttons to aim at.
+  /// Never on an end card, which has buttons to aim at.
   bool get _shouldHideCursor =>
       !_showControls &&
-      !(_episodeNav?.showNextSeasonCard ?? false) &&
+      !_endCardVisible &&
       _playerController.isPlaying &&
       // Never during start-up. `isPlaying` goes true when play() is issued,
       // which on a slow open is seconds before there is any picture — hiding
@@ -717,10 +720,21 @@ class _PlayerScreenState extends State<PlayerScreen> {
     _navigateToEpisode(next);
   }
 
-  /// How much of the screen the video keeps. It gives way to the end-of-season
-  /// card without ever being hidden: the credits stay visible and playing.
-  double get _videoScale =>
-      (_episodeNav?.showNextSeasonCard ?? false) ? 0.34 : 1.0;
+  /// How much of the screen the video keeps. It gives way to an end card
+  /// without ever being hidden: the credits stay visible and playing.
+  double get _videoScale => _endCardVisible ? 0.34 : 1.0;
+
+  /// Puts away whichever end card is up. Both are dismissed the same ways —
+  /// the close button, and a tap on the video the card shrank.
+  void _dismissEndCard() {
+    final nav = _episodeNav;
+    if (nav == null) return;
+    if (nav.showUpcomingEpisodeCard) {
+      nav.dismissUpcomingEpisodeCard();
+      return;
+    }
+    nav.dismissNextSeasonCard();
+  }
 
   /// Corner radius of the shrunk video, pre-divided by the scale so it looks
   /// like 16pt on screen. Zero at full size, where rounding would just crop.
@@ -1686,7 +1700,7 @@ class _PlayerScreenState extends State<PlayerScreen> {
                 // pill would otherwise sit there doing nothing when tapped.
                 if ((_episodeNav?.showNextEpisodeOutro ?? false) &&
                     _episodeNav?.nextEpisode != null &&
-                    !(_episodeNav?.showNextSeasonCard ?? false))
+                    !_endCardVisible)
                   NextEpisodeOverlay(
                     nextEpisode: _episodeNav!.nextEpisode,
                     autoPlayActive: _episodeNav!.outroAutoPlayActive,
@@ -1699,7 +1713,7 @@ class _PlayerScreenState extends State<PlayerScreen> {
                 // it dismisses the page and gives the picture and the controls
                 // back. Placed before the back button so that button, which
                 // sits inside this same strip, still gets the tap.
-                if (_episodeNav?.showNextSeasonCard ?? false)
+                if (_endCardVisible)
                   Positioned(
                     top: 0,
                     bottom: 0,
@@ -1709,18 +1723,29 @@ class _PlayerScreenState extends State<PlayerScreen> {
                       cursor: SystemMouseCursors.click,
                       child: GestureDetector(
                         behavior: HitTestBehavior.opaque,
-                        onTap: () => _episodeNav!.dismissNextSeasonCard(),
+                        onTap: _dismissEndCard,
                       ),
                     ),
                   ),
-                // The only chrome that survives the end-of-season page: without
-                // it the page would be a dead end, since every other way out is
+                // The only chrome that survives an end card: without it the
+                // page would be a dead end, since every other way out is
                 // hidden.
-                if (_episodeNav?.showNextSeasonCard ?? false)
+                if (_endCardVisible)
                   Positioned(
                     top: macOSWindowControlsTopInset + 12,
                     left: 20,
                     child: _PlayerBackButton(onTap: _leavePlayer),
+                  ),
+                if (_episodeNav?.showUpcomingEpisodeCard ?? false)
+                  UpcomingEpisodeOverlay(
+                    episode: _episodeNav!.upcomingEpisode!,
+                    onDismiss: () =>
+                        _episodeNav!.dismissUpcomingEpisodeCard(),
+                    onPlayNext: _episodeNav?.nextEpisode != null
+                        ? _goToNextEpisode
+                        : null,
+                    videoInset:
+                        MediaQuery.of(context).size.width * _videoScale,
                   ),
                 if (_episodeNav?.showNextSeasonCard ?? false)
                   NextSeasonOverlay(

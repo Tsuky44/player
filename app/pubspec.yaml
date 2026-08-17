@@ -41,6 +41,10 @@ dependencies:
   # Browser APIs, used only by the web-side conditional imports in lib/utils/
   web: ^1.1.0
   package_info_plus: ^9.0.1
+
+  # Native file dialog, used by the admin to replace the published installers
+  file_picker: ^8.1.7
+
 dev_dependencies:
   flutter_test:
     sdk: flutter

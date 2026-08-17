@@ -410,6 +410,75 @@ func TestBuildFFmpegArgs_SeekIsAnInputOption(t *testing.T) {
 	}
 }
 
+func TestCanCopyVideo_OnlyCodecsThatFitInMpegTS(t *testing.T) {
+	// The segments are .ts, and MPEG-TS has no stream type for VP8/VP9/AV1:
+	// copying one makes FFmpeg refuse to write a header and exit before its first
+	// segment, so /start times out and the media never loads at all.
+	for _, codec := range []string{"vp8", "vp9", "av1", "hevc", "mpeg2video"} {
+		probe := &ProbeResult{Video: &VideoStreamInfo{
+			Width: 1920, Height: 1080, Codec: codec, PixFmt: "yuv420p",
+		}}
+		if CanCopyVideo(probe, "1080p", false, 5_000_000, 12_000_000) {
+			t.Errorf("%s cannot be copied into MPEG-TS segments", codec)
+		}
+	}
+
+	h264 := &ProbeResult{Video: &VideoStreamInfo{
+		Width: 1920, Height: 1080, Codec: "h264", PixFmt: "yuv420p",
+	}}
+	if !CanCopyVideo(h264, "1080p", false, 5_000_000, 12_000_000) {
+		t.Error("8-bit 4:2:0 H.264 at native resolution is the whole point of the copy path")
+	}
+}
+
+func TestCanCopyVideo_RejectsChromaNoBrowserDecodes(t *testing.T) {
+	// 10-bit and 4:2:2 both fail silently in a browser: the segments append, the
+	// audio plays, and the picture never appears. Neither may reach the copy path.
+	for _, pixFmt := range []string{"yuv420p10le", "yuv422p", "yuvj422p", "yuv444p", "unknown", ""} {
+		probe := &ProbeResult{Video: &VideoStreamInfo{
+			Width: 1920, Height: 1080, Codec: "h264", PixFmt: pixFmt,
+		}}
+		if CanCopyVideo(probe, "1080p", false, 5_000_000, 12_000_000) {
+			t.Errorf("pix_fmt %q must not be copied through", pixFmt)
+		}
+	}
+}
+
+func TestH264Level_IsRaisedForFrameSizeAndRate(t *testing.T) {
+	// 4.1 tops out at 1080p30. Declaring it on anything larger under-states the
+	// stream in the SPS, which a hardware decoder is entitled to refuse — and it
+	// refuses the way browser video always does: audio plays, nothing is drawn.
+	cases := []struct {
+		quality string
+		fps     float64
+		want    string
+	}{
+		{"720p", 24, "4.1"},
+		{"720p", 60, "4.1"},
+		{"1080p", 23.976, "4.1"},
+		{"1080p", 29.97, "4.1"},
+		{"1080p", 50, "4.2"},
+		{"1080p", 59.94, "4.2"},
+		{"2160p", 24, "5.1"},
+		{"2160p", 60, "5.2"},
+	}
+	for _, c := range cases {
+		probe := probeWith(3840, 2160, c.fps)
+		if got := h264LevelFor(presetFor(c.quality), probe); got != c.want {
+			t.Errorf("h264LevelFor(%s, %gfps) = %s, want %s", c.quality, c.fps, got, c.want)
+		}
+	}
+
+	// The value has to reach the command line, not just the helper.
+	args := BuildFFmpegArgs(TranscodeOptions{
+		InputPath: "/x.mkv", Quality: "2160p", TmpDir: "/tmp/x",
+		Probe: probeWith(3840, 2160, 24), SegmentDuration: 2,
+	})
+	if level, _ := argValue(args, "-level"); level != "5.1" {
+		t.Errorf("-level = %q for a 4K rendition, want 5.1", level)
+	}
+}
+
 func TestEstimateBandwidthMatchesPresetCeiling(t *testing.T) {
 	// The advertised bandwidth and the encoder's actual ceiling must not drift.
 	got := EstimateBandwidth("720p")

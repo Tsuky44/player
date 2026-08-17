@@ -1,4 +1,4 @@
-# =============================================================================
+﻿# =============================================================================
 # Playeur — build Windows EXE (+ APK optionnel) puis copie dans dist/
 # =============================================================================
 # Usage (PowerShell, depuis la racine du repo ou app/) :
@@ -87,21 +87,60 @@ try {
         if (-not $SkipInstaller) {
             $iscc = Get-Command iscc -ErrorAction SilentlyContinue
             if (-not $iscc) {
-                $iscc = Get-Command "C:\Program Files (x86)\Inno Setup 6\ISCC.exe" -ErrorAction SilentlyContinue
+                # L'installeur d'Inno Setup laisse choisir le dossier cible, et
+                # une machine de build peut très bien l'avoir sous C:\InnoSetup.
+                # Le registre est la seule source fiable ; la liste de chemins
+                # ne sert que de repli si la désinstallation a laissé le disque
+                # propre mais le registre incomplet.
+                $candidates = @(
+                    (@("HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall\*",
+                       "HKLM:\SOFTWARE\WOW6432Node\Microsoft\Windows\CurrentVersion\Uninstall\*",
+                       "HKCU:\SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall\*") |
+                        ForEach-Object { Get-ItemProperty $_ -ErrorAction SilentlyContinue } |
+                        Where-Object { $_.DisplayName -like "*Inno Setup*" -and $_.InstallLocation } |
+                        ForEach-Object { Join-Path $_.InstallLocation "ISCC.exe" })
+                    "C:\Program Files (x86)\Inno Setup 6\ISCC.exe"
+                    "C:\Program Files\Inno Setup 6\ISCC.exe"
+                    "$env:LOCALAPPDATA\Programs\Inno Setup 6\ISCC.exe"
+                )
+                foreach ($c in $candidates) {
+                    if ($c -and (Test-Path $c)) { $iscc = Get-Command $c; break }
+                }
             }
             $iss = Join-Path $AppDir "installer.iss"
             if ($iscc -and (Test-Path $iss)) {
-                Write-Host "==> Inno Setup"
+                Write-Host "==> Inno Setup ($($iscc.Source))"
+                # OutputDir est vidé d'abord : sinon un installeur d'un build
+                # précédent serait ramassé et publié comme s'il était neuf.
+                $OutputDir = Join-Path $AppDir "Output"
+                if (Test-Path $OutputDir) { Remove-Item "$OutputDir\*.exe" -Force -ErrorAction SilentlyContinue }
+
                 & $iscc.Source $iss
-                $setupSrc = Join-Path $AppDir "Output\ProjectPlayer-Setup.exe"
-                if (Test-Path $setupSrc) {
-                    $setupDst = Join-Path $WindowsOut "Playeur-$Version-Setup.exe"
-                    Copy-Item $setupSrc $setupDst -Force
-                    Write-Host "    ✓ EXE → $setupDst"
-                    Add-Content $Manifest "windows_exe: $setupDst"
+                if ($LASTEXITCODE -ne 0) { throw "Inno Setup a échoué (code $LASTEXITCODE)" }
+
+                # Le nom vient de OutputBaseFilename dans installer.iss ; on le
+                # lit plutôt que de le coder en dur, un nom figé ici ayant déjà
+                # fait passer l'installeur à la trappe en silence.
+                $setupSrc = Get-ChildItem -Path $OutputDir -File -Filter "*.exe" -ErrorAction SilentlyContinue |
+                    Sort-Object LastWriteTime -Descending | Select-Object -First 1
+                if (-not $setupSrc) {
+                    throw "Inno Setup n'a produit aucun .exe dans $OutputDir"
                 }
+                $setupDst = Join-Path $WindowsOut "Playeur-$Version-Setup.exe"
+                Copy-Item $setupSrc.FullName $setupDst -Force
+                Write-Host "    ✓ Installeur → $setupDst"
+                Add-Content $Manifest "windows_exe: $setupDst"
+            } elseif (-not $iscc) {
+                # Un avertissement suffisait tant que le ZIP portable faisait
+                # l'affaire ; il masquait surtout l'absence d'installeur jusqu'à
+                # la publication de l'image.
+                throw @"
+Inno Setup introuvable — impossible de produire l'installeur .exe.
+Installez-le puis relancez :  winget install -e --id JRSoftware.InnoSetup
+Ou relancez avec -SkipInstaller pour ne produire que le ZIP portable.
+"@
             } else {
-                Write-Host "    ! Inno Setup absent — ZIP uniquement"
+                throw "installer.iss introuvable : $iss"
             }
         }
     } else {

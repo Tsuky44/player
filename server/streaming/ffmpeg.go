@@ -137,8 +137,8 @@ type TranscodeOptions struct {
 // than merely suboptimal, so the answer defaults to no:
 //
 //   - a codec the browser cannot decode is the whole point of transcoding;
-//   - 10-bit H.264 decodes nowhere in a browser and fails *silently*, showing a
-//     black picture with no error;
+//   - 10-bit and 4:2:2 H.264 decode nowhere in a browser and fail *silently*,
+//     showing a black picture with no error;
 //   - copying bytes cannot resize them, so any scaling rules it out;
 //   - burning a bitmap subtitle means painting on the frames, which means
 //     decoding them;
@@ -149,12 +149,21 @@ func CanCopyVideo(probe *ProbeResult, quality string, burn bool, sourceBitrateBp
 	if probe == nil || probe.Video == nil || burn {
 		return false
 	}
+	// H.264 only, and the container is the reason rather than the browser.
+	//
+	// These segments are MPEG-TS, and MPEG-TS has no stream type for VP8, VP9 or
+	// AV1: `-c:v copy` of one of those makes FFmpeg refuse to write a header
+	// ("codec not currently supported in container") and exit before its first
+	// segment, so /start times out and the media simply never loads. They used to
+	// be on this list, which is what made a WebM or AV1 file unplayable rather
+	// than merely expensive. Re-encoding them is correct until the segments
+	// become fMP4.
 	switch strings.ToLower(probe.Video.Codec) {
-	case "h264", "avc1", "vp8", "vp9", "av1":
+	case "h264", "avc1":
 	default:
 		return false
 	}
-	if !probe.Video.EightBit() {
+	if !probe.Video.EightBit420() {
 		return false
 	}
 	if buildScaleFilter(probe, presetFor(quality)) != "" {
@@ -297,7 +306,7 @@ func BuildFFmpegArgs(opt TranscodeOptions) []string {
 		"-preset", encoderPresetFor(preset),
 		"-pix_fmt", "yuv420p",
 		"-profile:v", "high",
-		"-level", "4.1",
+		"-level", h264LevelFor(preset, opt.Probe),
 		"-crf", "23",
 		"-b:v", "0",
 		"-maxrate", preset.VideoBitrate,
@@ -356,6 +365,9 @@ func audioAndMuxerArgs(opt TranscodeOptions, preset qualityPreset, audioIdxs []i
 		"-hls_list_size", "0",
 		"-hls_playlist_type", "event",
 		"-hls_flags", "independent_segments+temp_file",
+		// Required for -var_stream_map to lay out a rendition group, but the file
+		// it produces is never served: the handler answers master.m3u8 from
+		// BuildMasterPlaylist instead, for the reasons documented there.
 		"-master_pl_name", "master.m3u8",
 		"-var_stream_map", buildVarStreamMap(opt.Probe, audioIdxs),
 		"-hls_segment_filename", opt.TmpDir+"/stream_%v_%03d.ts",
@@ -428,21 +440,100 @@ func buildScaleFilter(probe *ProbeResult, preset qualityPreset) string {
 	)
 }
 
-// gopSize returns the keyframe interval in frames for one segment duration.
-func gopSize(probe *ProbeResult, segDur int) int {
+// outputResolution reports the frame size the session will actually publish,
+// for the master playlist's RESOLUTION attribute. ok is false when there is no
+// picture to describe.
+//
+// It mirrors buildScaleFilter: a source that already fits keeps its own size
+// (nothing is upscaled), and anything larger is fitted inside the preset's box.
+// Being a pixel or two away from what the scaler rounds to is harmless — players
+// use RESOLUTION to choose between variants and to size their surface, not to
+// decode — but claiming a 4K rendition on a 720p stream would misinform both.
+func outputResolution(probe *ProbeResult, preset qualityPreset) (int, int, bool) {
+	if probe == nil || probe.Video == nil {
+		return 0, 0, false
+	}
+	w, h := probe.Video.Width, probe.Video.Height
+	if w <= 0 || h <= 0 {
+		return 0, 0, false
+	}
+	if buildScaleFilter(probe, preset) == "" {
+		return w, h, true
+	}
+
+	// force_original_aspect_ratio=decrease: fit inside the box on whichever axis
+	// binds first, keeping square pixels. force_divisible_by=2 then rounds each
+	// side down to an even number, which is what yuv420p requires.
+	scale := float64(preset.W) / float64(w)
+	if vScale := float64(preset.H) / float64(h); vScale < scale {
+		scale = vScale
+	}
+	ow := int(float64(w)*scale+0.5) &^ 1
+	oh := int(float64(h)*scale+0.5) &^ 1
+	if ow < 2 {
+		ow = 2
+	}
+	if oh < 2 {
+		oh = 2
+	}
+	return ow, oh, true
+}
+
+// sourceFrameRate returns the source frame rate in fps, guarding against the
+// absurd values VFR containers report (Matroska happily claims 1000fps).
+func sourceFrameRate(probe *ProbeResult) float64 {
 	fps := 24.0
 	if probe != nil && probe.Video != nil && probe.Video.FrameRate > 0 {
 		fps = probe.Video.FrameRate
 	}
-	// Guard against absurd probe values (VFR containers report 1000fps).
 	if fps < 1 || fps > 120 {
 		fps = 24
 	}
-	gop := int(fps * float64(segDur))
+	return fps
+}
+
+// gopSize returns the keyframe interval in frames for one segment duration.
+func gopSize(probe *ProbeResult, segDur int) int {
+	gop := int(sourceFrameRate(probe) * float64(segDur))
 	if gop < 1 {
 		gop = 1
 	}
 	return gop
+}
+
+// h264LevelFor returns the H.264 level to declare for a rendition.
+//
+// The level is not decoration: libx264 writes it into the SPS, and it is what a
+// browser's *hardware* decoder consults before accepting the stream. The fixed
+// "4.1" this used to pass caps out at 1080p30 — it under-declares every 2160p
+// rendition and every 1080p50/60 one, and a decoder that refuses on that basis
+// refuses the way browser video always does: segments load, audio plays, the
+// picture never arrives.
+//
+// Only ever raised above 4.1, never lowered. A level is also a VBV constraint
+// the encoder must respect, and the presets' ceilings are chosen against the
+// viewer's link, not against a profile table — so a 720p tier stays at 4.1
+// rather than dropping to the 3.1 its pixel count would allow.
+func h264LevelFor(preset qualityPreset, probe *ProbeResult) string {
+	// 4.1/5.1 are the ≤30fps tiers of their frame size; past that the macroblock
+	// rate needs the next one up. The threshold sits at 33 so 29.97 and 30 land
+	// below it and 50/59.94/60 above.
+	highFrameRate := sourceFrameRate(probe) > 33
+
+	switch {
+	case preset.H > 1080:
+		if highFrameRate {
+			return "5.2"
+		}
+		return "5.1"
+	case preset.H > 720:
+		if highFrameRate {
+			return "4.2"
+		}
+		return "4.1"
+	default:
+		return "4.1"
+	}
 }
 
 // canCopyAudio reports whether the selected source track is already a stereo

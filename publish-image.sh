@@ -1,9 +1,29 @@
 #!/bin/bash
 
+# Usage :
+#   ./publish-image.sh              # récupère les artefacts des autres
+#                                   # plateformes depuis l'image :latest
+#   ./publish-image.sh --no-pull    # n'utilise QUE le contenu actuel de
+#                                   # server/downloads/
+#
+# --no-pull sert quand les artefacts des autres plateformes ont été copiés à la
+# main dans server/downloads/ (clé USB, scp...). Sans cette option, le pull de
+# l'étape 2 écrase un fichier copié manuellement par celui de l'image
+# précédente, puisque les deux portent le même nom.
+
 # Configuration
 GITHUB_USER="tsuky44" # Doit être en minuscules pour ghcr.io
 IMAGE_NAME="playeur-server"
 DEFAULT_VERSION="1.0.0"
+
+NO_PULL=0
+while [ $# -gt 0 ]; do
+    case "$1" in
+        --no-pull) NO_PULL=1; shift ;;
+        -h|--help) sed -n '3,13p' "$0"; exit 0 ;;
+        *) echo "Option inconnue : $1" >&2; exit 1 ;;
+    esac
+done
 
 # Couleurs pour le terminal
 CYAN='\033[0;36m'
@@ -84,8 +104,12 @@ fi
 # Mac produit l'APK et le DMG, jamais l'EXE Windows. Les artefacts des autres
 # plateformes sont donc recuperes depuis l'image publiee precedemment, qui sert
 # de stockage entre les machines de build.
-echo -e "${YELLOW}2. Récupération des applications déjà publiées...${NC}"
-if docker pull --platform linux/amd64 "ghcr.io/$GITHUB_USER/$IMAGE_NAME:latest" >/dev/null 2>&1; then
+if [ "$NO_PULL" -eq 1 ]; then
+    echo -e "${YELLOW}2. Récupération depuis :latest ignorée (--no-pull).${NC}"
+    echo "   Seul le contenu actuel de server/downloads/ sera embarqué."
+    mkdir -p "$DOWNLOADS_DIR"
+elif docker pull --platform linux/amd64 "ghcr.io/$GITHUB_USER/$IMAGE_NAME:latest" >/dev/null 2>&1; then
+    echo -e "${YELLOW}2. Récupération des applications déjà publiées...${NC}"
     PREV_CID=$(docker create --platform linux/amd64 "ghcr.io/$GITHUB_USER/$IMAGE_NAME:latest" 2>/dev/null)
     if [ -n "$PREV_CID" ]; then
         mkdir -p "$DOWNLOADS_DIR"
@@ -95,6 +119,7 @@ if docker pull --platform linux/amd64 "ghcr.io/$GITHUB_USER/$IMAGE_NAME:latest" 
         docker rm "$PREV_CID" >/dev/null 2>&1
     fi
 else
+    echo -e "${YELLOW}2. Récupération des applications déjà publiées...${NC}"
     echo "   (image :latest introuvable — première publication ?)"
 fi
 

@@ -1036,24 +1036,86 @@ class NextSeason {
   }
 }
 
+/// The episode a season is still waiting for: TMDB lists it, the server does
+/// not hold it. Nothing to play and nothing to request — a season is requested
+/// whole — so the player only ever states when it lands.
+class UpcomingEpisode {
+  final int showId;
+  final String showTitle;
+  final int seasonNumber;
+  final int number;
+  final String name;
+  final String? overview;
+  final String? stillUrl;
+
+  /// TMDB air date, `YYYY-MM-DD`. Empty for episodes not yet scheduled.
+  final String? airDate;
+
+  /// How many episodes the season holds in all, when TMDB knows.
+  final int seasonEpisodes;
+
+  const UpcomingEpisode({
+    required this.showId,
+    required this.showTitle,
+    required this.seasonNumber,
+    required this.number,
+    required this.name,
+    this.overview,
+    this.stillUrl,
+    this.airDate,
+    this.seasonEpisodes = 0,
+  });
+
+  /// True while the episode has a date that has not come yet — the difference
+  /// between "airs Friday" and "aired, but nobody imported it".
+  bool get isUnaired {
+    final raw = airDate;
+    if (raw == null || raw.trim().isEmpty) return false;
+    final parsed = DateTime.tryParse(raw.trim());
+    if (parsed == null) return false;
+    final now = DateTime.now();
+    return DateTime(parsed.year, parsed.month, parsed.day)
+        .isAfter(DateTime(now.year, now.month, now.day));
+  }
+
+  factory UpcomingEpisode.fromJson(Map<String, dynamic> json) {
+    return UpcomingEpisode(
+      showId: json['show_id'] as int? ?? 0,
+      showTitle: json['show_title'] as String? ?? '',
+      seasonNumber: json['season_number'] as int? ?? 0,
+      number: json['number'] as int? ?? 0,
+      name: json['name'] as String? ?? '',
+      overview: json['overview'] as String?,
+      stillUrl: json['still_url'] as String?,
+      airDate: json['air_date'] as String?,
+      seasonEpisodes: json['season_episodes'] as int? ?? 0,
+    );
+  }
+}
+
 class NextEpisodeResponse {
   final bool hasNext;
   final HomeMediaItem? episode;
   final NextSeason? nextSeason;
+  final UpcomingEpisode? upcomingEpisode;
 
   NextEpisodeResponse({
     required this.hasNext,
     this.episode,
     this.nextSeason,
+    this.upcomingEpisode,
   });
 
   factory NextEpisodeResponse.fromJson(Map<String, dynamic> json) {
     final episodeJson = json['episode'] as Map<String, dynamic>?;
     final seasonJson = json['next_season'] as Map<String, dynamic>?;
+    final upcomingJson = json['upcoming_episode'] as Map<String, dynamic>?;
     return NextEpisodeResponse(
       hasNext: json['has_next'] as bool? ?? false,
       episode: episodeJson != null ? HomeMediaItem.fromJson(episodeJson) : null,
       nextSeason: seasonJson != null ? NextSeason.fromJson(seasonJson) : null,
+      upcomingEpisode:
+          upcomingJson != null ? UpcomingEpisode.fromJson(upcomingJson) : null,
     );
   }
 }
