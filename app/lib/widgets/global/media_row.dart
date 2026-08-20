@@ -16,6 +16,11 @@ class MediaRow extends StatelessWidget {
   final Future<void> Function(HomeMediaItem item)? onContinueWatchingRemove;
   final bool isContinueWatching;
 
+  /// Hands the remote's starting position to this row's first card. Set by the
+  /// screen on its topmost row, so a television opens on the content rather
+  /// than on whichever header control the traversal policy sorts first.
+  final bool autofocusFirstItem;
+
   const MediaRow({
     super.key,
     required this.title,
@@ -26,6 +31,7 @@ class MediaRow extends StatelessWidget {
     this.onContinueWatchingRemove,
     this.onSeeAll,
     this.isContinueWatching = false,
+    this.autofocusFirstItem = false,
   });
 
   @override
@@ -89,6 +95,7 @@ class MediaRow extends StatelessWidget {
                 child: isContinueWatching
                     ? ContinueWatchingCard(
                         item: item as HomeMediaItem,
+                        autofocus: autofocusFirstItem && index == 0,
                         onTap: () => onItemTap(item),
                         onTitleTap: onContinueWatchingTitleTap != null
                             ? () => onContinueWatchingTitleTap!(item)
@@ -101,6 +108,7 @@ class MediaRow extends StatelessWidget {
                         child: MediaCard(
                           media: item as Media,
                           compact: true,
+                          autofocus: autofocusFirstItem && index == 0,
                           onTap: () => onItemTap(item),
                         ),
                       ),

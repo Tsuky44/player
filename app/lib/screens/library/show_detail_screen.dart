@@ -9,6 +9,7 @@ import '../../providers/library_provider.dart';
 import '../../services/api_client.dart';
 import '../../services/media_details_cache.dart';
 import '../../theme/app_colors.dart';
+import '../../tv/tv_mode.dart';
 import '../../utils/responsive.dart';
 import '../../widgets/global/episode_tile.dart';
 import '../../widgets/global/media_detail_widgets.dart';
@@ -496,6 +497,8 @@ class _ShowDetailScreenState extends State<ShowDetailScreen> {
                 children: [
                   if (resumeEp != null) ...[
                     ElevatedButton.icon(
+                      // Same as on a film: the remote starts on Play.
+                      autofocus: TvMode.isTv,
                       onPressed: () => _playEpisode(resumeEp),
                       icon: const Icon(Icons.play_arrow_rounded),
                       label: Text(

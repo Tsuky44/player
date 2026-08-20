@@ -225,6 +225,7 @@ class _HomeScreenState extends State<HomeScreen> {
                                   title: 'Reprendre la lecture',
                                   items: data.continueWatching,
                                   isContinueWatching: true,
+                                  autofocusFirstItem: true,
                                   onItemTap: (item) => _playMedia(context, item),
                                   onContinueWatchingTitleTap: (item) =>
                                       _openContinueWatchingDetails(context, item),
@@ -240,6 +241,8 @@ class _HomeScreenState extends State<HomeScreen> {
                                 child: MediaRow(
                                   title: 'Films récents',
                                   items: data.recentMovies,
+                                  autofocusFirstItem:
+                                      data.continueWatching.isEmpty,
                                   onSeeAll: widget.onNavigateToMovies,
                                   onItemTap: (item) => _openMedia(context, item as Media),
                                 ),
@@ -251,6 +254,9 @@ class _HomeScreenState extends State<HomeScreen> {
                                 child: MediaRow(
                                   title: 'Séries récentes',
                                   items: data.recentShows,
+                                  autofocusFirstItem:
+                                      data.continueWatching.isEmpty &&
+                                          data.recentMovies.isEmpty,
                                   onSeeAll: widget.onNavigateToShows,
                                   onItemTap: (item) => _openMedia(context, item as Media),
                                 ),

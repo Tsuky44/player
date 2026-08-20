@@ -44,6 +44,7 @@ dependencies:
 
   # Native file dialog, used by the admin to replace the published installers
   file_picker: ^8.1.7
+  qr_flutter: ^4.1.0
 
 dev_dependencies:
   flutter_test:

@@ -3,7 +3,9 @@ import 'package:flutter/material.dart';
 import '../../providers/auth_provider.dart';
 import '../../screens/player_studio/player_studio_screen.dart';
 import '../../screens/settings/settings_screen.dart';
+import '../../screens/settings/tv_pairing_screen.dart';
 import '../../theme/app_colors.dart';
+import '../../tv/tv_mode.dart';
 import 'glass_chrome.dart';
 
 /// Single owner of the account menu — consumed by the desktop header, the
@@ -15,6 +17,10 @@ class AccountMenu extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    // A television approving another television is a flow nobody has; the entry
+    // belongs on the device that holds the camera.
+    final isTv = TvScope.of(context);
+
     return PopupMenuButton<String>(
       tooltip: 'Menu',
       offset: const Offset(0, 44),
@@ -32,6 +38,8 @@ class AccountMenu extends StatelessWidget {
         const PopupMenuDivider(),
         const PopupMenuItem(value: 'settings', child: Text('Paramètres')),
         const PopupMenuItem(value: 'studio', child: Text('Player Studio')),
+        if (!isTv)
+          const PopupMenuItem(value: 'tv', child: Text('Connecter une TV')),
         const PopupMenuDivider(),
         const PopupMenuItem(value: 'logout', child: Text('Se déconnecter')),
       ],
@@ -44,6 +52,10 @@ class AccountMenu extends StatelessWidget {
           case 'studio':
             Navigator.of(context).push(
               MaterialPageRoute(builder: (_) => const PlayerStudioScreen()),
+            );
+          case 'tv':
+            Navigator.of(context).push(
+              MaterialPageRoute(builder: (_) => const TvPairingScreen()),
             );
           case 'logout':
             authProvider.logout();

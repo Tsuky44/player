@@ -14,6 +14,9 @@ import '../../widgets/global/glass_catalog_search.dart';
 import '../../widgets/global/glass_chrome.dart';
 import '../../widgets/global/sticky_glass_search.dart';
 import '../../desktop_window.dart';
+import '../../tv/tv_mode.dart';
+import '../../tv/tv_pairing_link.dart';
+import '../settings/tv_pairing_screen.dart';
 import '../home/home_screen.dart';
 import '../library/movies_screen.dart';
 import '../library/shows_screen.dart';
@@ -29,6 +32,21 @@ class MainShell extends StatefulWidget {
 class _MainShellState extends State<MainShell> {
   int _selectedIndex = 0;
 
+  @override
+  void initState() {
+    super.initState();
+    // A QR scanned on the TV parks its code before the app even knows whether
+    // anyone is signed in. This is the first moment there is both a session and
+    // a navigator, so it is where the approval screen opens.
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      final code = TvPairingLink.take();
+      if (code == null || !mounted) return;
+      Navigator.of(context).push(
+        MaterialPageRoute(builder: (_) => TvPairingScreen(initialCode: code)),
+      );
+    });
+  }
+
   void _selectTab(int index) {
     if (_selectedIndex == index) return;
     setState(() => _selectedIndex = index);
@@ -38,7 +56,10 @@ class _MainShellState extends State<MainShell> {
   Widget build(BuildContext context) {
     final homeProvider = Provider.of<HomeProvider>(context);
     final authProvider = Provider.of<AuthProvider>(context);
-    final isWide = AppLayout.isWide(context);
+    // A television always takes the wide chrome: the bottom tab bar is a thumb
+    // target, and there is no thumb. Some sticks report barely 960 logical
+    // pixels, which would otherwise land them in the phone layout.
+    final isWide = AppLayout.isWide(context) || TvScope.of(context);
 
     return Scaffold(
       backgroundColor: AppColors.background,
@@ -51,15 +72,27 @@ class _MainShellState extends State<MainShell> {
                 Expanded(
                   child: IndexedStack(
                     index: _selectedIndex,
+                    // An IndexedStack keeps every tab in the tree and paints
+                    // one. That is what makes switching instant, and it is also
+                    // what would let the D-pad walk into posters nobody can
+                    // see: focus traversal reads the widget tree, not what is
+                    // on screen. Excluding the hidden tabs keeps the remote
+                    // inside the tab the user is actually looking at.
                     children: [
-                      HomeScreen(
-                        embedded: isWide,
-                        onNavigateToMovies: () => _selectTab(1),
-                        onNavigateToShows: () => _selectTab(2),
-                      ),
-                      MoviesScreen(embedded: isWide),
-                      ShowsScreen(embedded: isWide),
-                      RequestsScreen(embedded: isWide),
+                      for (final (index, screen) in <Widget>[
+                        HomeScreen(
+                          embedded: isWide,
+                          onNavigateToMovies: () => _selectTab(1),
+                          onNavigateToShows: () => _selectTab(2),
+                        ),
+                        MoviesScreen(embedded: isWide),
+                        ShowsScreen(embedded: isWide),
+                        RequestsScreen(embedded: isWide),
+                      ].indexed)
+                        ExcludeFocus(
+                          excluding: index != _selectedIndex,
+                          child: screen,
+                        ),
                     ],
                   ),
                 ),

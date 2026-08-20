@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import '../../models/models.dart';
 import '../../theme/app_colors.dart';
+import '../../tv/tv_focus.dart';
 import '../../utils/format.dart';
 import 'media_poster.dart';
 
@@ -16,6 +17,10 @@ class ContinueWatchingCard extends StatefulWidget {
   final Future<void> Function(HomeMediaItem item)? onMarkAsWatched;
   final Future<void> Function(HomeMediaItem item)? onRemoveFromRow;
 
+  /// Takes the remote's focus on build. Set on the first card of the row, so a
+  /// television opens on "Reprendre" — the one thing anyone wants from a couch.
+  final bool autofocus;
+
   const ContinueWatchingCard({
     super.key,
     required this.item,
@@ -23,6 +28,7 @@ class ContinueWatchingCard extends StatefulWidget {
     this.onTitleTap,
     this.onMarkAsWatched,
     this.onRemoveFromRow,
+    this.autofocus = false,
   });
 
   @override
@@ -31,6 +37,17 @@ class ContinueWatchingCard extends StatefulWidget {
 
 class _ContinueWatchingCardState extends State<ContinueWatchingCard> {
   bool _hovered = false;
+  bool _focused = false;
+
+  /// Pointer hover and D-pad focus mean the same thing here.
+  bool get _active => _hovered || _focused;
+
+  /// Where a remote's context menu opens, since there is no cursor to anchor it
+  /// to: the middle of the screen.
+  void _showContextMenuCentred() {
+    final size = MediaQuery.sizeOf(context);
+    _showContextMenu(Offset(size.width / 2, size.height / 2));
+  }
 
   Future<void> _showContextMenu(Offset globalPosition) async {
     if (widget.onMarkAsWatched == null && widget.onRemoveFromRow == null) {
@@ -82,7 +99,19 @@ class _ContinueWatchingCardState extends State<ContinueWatchingCard> {
     final progress = widget.item.percentWatched;
     final detail = _detailLine();
 
-    return MouseRegion(
+    return TvFocusable(
+      onSelect: widget.onTap,
+      // The remote's menu button reaches the same two actions the mouse gets
+      // from a right-click and the phone from a long press.
+      onContextMenu: _showContextMenuCentred,
+      autofocus: widget.autofocus,
+      borderRadius: BorderRadius.circular(12),
+      showRing: false,
+      onFocusChange: (focused) {
+        if (_focused == focused) return;
+        setState(() => _focused = focused);
+      },
+      child: MouseRegion(
       onEnter: (_) => setState(() => _hovered = true),
       onExit: (_) => setState(() => _hovered = false),
       child: GestureDetector(
@@ -111,13 +140,15 @@ class _ContinueWatchingCardState extends State<ContinueWatchingCard> {
                       fit: BoxFit.cover,
                       alignment: Alignment.center,
                     ),
-                    if (_hovered)
+                    if (_active)
                       Container(
                         decoration: BoxDecoration(
                           borderRadius: BorderRadius.circular(12),
                           border: Border.all(
-                            color: Colors.white.withValues(alpha: 0.16),
-                            width: 1,
+                            color: _focused
+                                ? AppColors.accent
+                                : Colors.white.withValues(alpha: 0.16),
+                            width: _focused ? 3 : 1,
                           ),
                           color: Colors.black.withValues(alpha: 0.4),
                         ),
@@ -184,6 +215,7 @@ class _ContinueWatchingCardState extends State<ContinueWatchingCard> {
             ],
           ),
         ),
+      ),
       ),
     );
   }

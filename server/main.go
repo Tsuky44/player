@@ -50,6 +50,9 @@ func main() {
 	// RequireAuth rejects them on read either way.
 	handlers.StartSessionReaper()
 
+	// Unclaimed TV pairing codes are short-lived; sweep the dead rows.
+	handlers.StartDevicePairingReaper()
+
 	// Initialize router
 	router := httprouter.New()
 
@@ -80,6 +83,16 @@ func main() {
 	router.POST("/api/auth/logout", handlers.Logout)
 	router.GET("/api/auth/me", handlers.RequireAuth(handlers.Me))
 	router.POST("/api/auth/password", handlers.RequireAuth(handlers.ChangePassword))
+
+	// TV pairing (RFC 8628-shaped device flow). start/poll are unauthenticated
+	// because the caller is a television that has no account yet; both only ever
+	// speak in random codes, and nothing is minted until a signed-in phone
+	// approves. approve/deny run as the user whose account the TV inherits.
+	router.POST("/api/auth/device/start", handlers.StartDevicePairing)
+	router.POST("/api/auth/device/poll", handlers.PollDevicePairing)
+	router.GET("/api/auth/device/pending", handlers.RequireAuth(handlers.LookupDevicePairing))
+	router.POST("/api/auth/device/approve", handlers.RequireAuth(handlers.ApproveDevicePairing))
+	router.POST("/api/auth/device/deny", handlers.RequireAuth(handlers.DenyDevicePairing))
 
 	// User administration & invitations (lot A).
 	router.GET("/api/users", handlers.RequirePermission(models.PermManageUsers, handlers.ListUsers))

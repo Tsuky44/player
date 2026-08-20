@@ -1,0 +1,49 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Android TV home-row banner. The launcher wants a 320x180 xhdpi image; a
+     vector carries the same artwork at every density without shipping five
+     PNGs. Drawn dark on purpose: the TV launcher tints its own background
+     behind the tile, and the Onyx mark is what has to read from a couch. -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="320dp"
+    android:height="180dp"
+    android:viewportWidth="320"
+    android:viewportHeight="180">
+
+    <path
+        android:fillColor="#0A0A0A"
+        android:pathData="M0,0h320v180h-320z"/>
+
+    <!-- Rounded plate + play triangle: the same silhouette as the launcher
+         icon, so the tile and the app icon are recognisably one thing. -->
+    <path
+        android:fillColor="#F5F5F7"
+        android:pathData="M118,58h44a14,14 0 0 1 14,14v36a14,14 0 0 1 -14,14h-44a14,14 0 0 1 -14,-14v-36a14,14 0 0 1 14,-14z"/>
+    <path
+        android:fillColor="#0A0A0A"
+        android:pathData="M133,76l24,14l-24,14z"/>
+
+    <!-- ONYX, drawn as paths: a vector drawable cannot render text. -->
+    <group android:translateX="188" android:translateY="76">
+        <!-- O — ring drawn as a filled disc with the background punched back
+             over it, rather than as one even-odd path: winding rules on nested
+             subpaths are the classic way a vector drawable renders as a blob. -->
+        <path
+            android:fillColor="#F5F5F7"
+            android:pathData="M14,0m-14,0a14,14 0 1,0 28,0a14,14 0 1,0 -28,0z"/>
+        <path
+            android:fillColor="#0A0A0A"
+            android:pathData="M14,0m-8,0a8,8 0 1,0 16,0a8,8 0 1,0 -16,0z"/>
+        <!-- N -->
+        <path
+            android:fillColor="#F5F5F7"
+            android:pathData="M36,-14h5l12,17v-17h5v28h-5l-12,-17v17h-5z"/>
+        <!-- Y -->
+        <path
+            android:fillColor="#F5F5F7"
+            android:pathData="M64,-14h6l6,11l6,-11h6l-9,16v12h-6v-12z"/>
+        <!-- X -->
+        <path
+            android:fillColor="#F5F5F7"
+            android:pathData="M92,-14h6l5,9l5,-9h6l-8,13l9,15h-6l-6,-10l-6,10h-6l9,-15z"/>
+    </group>
+</vector>

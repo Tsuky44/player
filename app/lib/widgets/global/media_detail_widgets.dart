@@ -4,6 +4,7 @@ import 'package:provider/provider.dart';
 import '../../models/models.dart';
 import '../../services/api_client.dart';
 import '../../theme/app_colors.dart';
+import '../../tv/tv_focus.dart';
 import '../../utils/format.dart';
 import '../../utils/poster_url.dart';
 import '../../utils/responsive.dart';
@@ -418,7 +419,12 @@ class _CastCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return SizedBox(
+    return TvFocusable(
+      // A cast card with no destination is decoration; the remote skips it.
+      enabled: onTap != null,
+      onSelect: onTap,
+      borderRadius: BorderRadius.circular(10),
+      child: SizedBox(
       width: width,
       child: MouseRegion(
         cursor: onTap != null ? SystemMouseCursors.click : MouseCursor.defer,
@@ -463,6 +469,7 @@ class _CastCard extends StatelessWidget {
             ],
           ),
         ),
+      ),
       ),
     );
   }

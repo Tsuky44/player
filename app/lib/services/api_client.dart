@@ -2,6 +2,7 @@ import 'package:dio/dio.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../models/app_download.dart';
+import '../models/device_pairing.dart';
 import '../models/media_request.dart';
 import '../utils/app_platform.dart';
 import '../models/request_catalog_filters.dart';
@@ -300,6 +301,60 @@ class ApiClient {
     final response = await _dio.get("/api/auth/state");
     final data = response.data as Map<String, dynamic>;
     return data['setup_required'] == true;
+  }
+
+  // ==================== TV DEVICE PAIRING ====================
+
+  /// Opens a pairing on behalf of a screen that cannot type a password.
+  /// Unauthenticated server-side — that is the point.
+  Future<DevicePairing> startDevicePairing({required String deviceName}) async {
+    final response = await _dio.post(
+      "/api/auth/device/start",
+      data: {"device_name": deviceName},
+    );
+    return DevicePairing.fromJson(response.data as Map<String, dynamic>);
+  }
+
+  /// Asks whether a phone has approved yet. Returns the session on the one poll
+  /// that finds it approved; the server drops the pairing at that point.
+  Future<DevicePairingStatus> pollDevicePairing(String deviceCode) async {
+    final response = await _dio.post(
+      "/api/auth/device/poll",
+      data: {"device_code": deviceCode},
+    );
+    return DevicePairingStatus.fromJson(response.data as Map<String, dynamic>);
+  }
+
+  /// Describes a pending pairing to the phone about to approve it.
+  Future<DevicePairingRequest> lookupDevicePairing(String userCode) async {
+    final response = await _dio.get(
+      "/api/auth/device/pending",
+      queryParameters: {"code": userCode},
+    );
+    return DevicePairingRequest.fromJson(response.data as Map<String, dynamic>);
+  }
+
+  /// Binds a pending pairing to this account. The television inherits exactly
+  /// the signed-in user, so this is the moment that matters.
+  Future<void> approveDevicePairing(String userCode) async {
+    await _dio.post("/api/auth/device/approve", data: {"user_code": userCode});
+  }
+
+  Future<void> denyDevicePairing(String userCode) async {
+    await _dio.post("/api/auth/device/deny", data: {"user_code": userCode});
+  }
+
+  /// What the QR on the television encodes.
+  ///
+  /// Built from the address this client is connected to for the same reason the
+  /// invitation link is: behind a proxy or a tunnel the server has no idea what
+  /// its public address is, and the phone has to reach the same one the TV did.
+  String devicePairingLink(String userCode) => "$baseUrl/?tv=$userCode";
+
+  /// Adopts a session minted elsewhere — the pairing approval, in practice.
+  /// Skips the login call entirely: there is no password to present.
+  Future<void> adoptSession(String token) async {
+    await setConnection(baseUrl, token: token);
   }
 
   Future<void> changeOwnPassword(

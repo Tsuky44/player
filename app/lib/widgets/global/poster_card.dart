@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import '../../theme/app_colors.dart';
+import '../../tv/tv_focus.dart';
 import 'app_network_image.dart';
 
 /// Single poster card used by every catalog grid (films, séries, bibliothèque,
@@ -32,6 +33,11 @@ class PosterCard extends StatefulWidget {
   final IconData placeholderIcon;
   final bool compact;
 
+  /// Takes the remote's focus as soon as the card is built. One card per screen
+  /// sets this — the first poster of the first row — so a television lands on
+  /// the content instead of on whatever the traversal policy sorts first.
+  final bool autofocus;
+
   const PosterCard({
     super.key,
     required this.posterUrl,
@@ -44,6 +50,7 @@ class PosterCard extends StatefulWidget {
     this.showPlayOnHover = false,
     this.placeholderIcon = Icons.movie_outlined,
     this.compact = false,
+    this.autofocus = false,
   });
 
   static const double radius = 12;
@@ -54,16 +61,37 @@ class PosterCard extends StatefulWidget {
 
 class _PosterCardState extends State<PosterCard> {
   bool _hovered = false;
+  bool _focused = false;
+
+  /// Hover and D-pad focus are the same state as far as this card is concerned:
+  /// "the user is pointing at me". One flag drives one highlight, so the mouse
+  /// and the remote never disagree about which card is live.
+  bool get _active => _hovered || _focused;
 
   @override
   Widget build(BuildContext context) {
     final compact = widget.compact;
 
-    return MouseRegion(
+    return TvFocusable(
+      onSelect: widget.onTap,
+      autofocus: widget.autofocus,
+      borderRadius: BorderRadius.circular(PosterCard.radius),
+      // The artwork lights up on its own below; a ring around the title lines
+      // as well would double the outline.
+      showRing: false,
+      onFocusChange: (focused) {
+        if (_focused == focused) return;
+        setState(() => _focused = focused);
+      },
+      child: MouseRegion(
       onEnter: (_) => setState(() => _hovered = true),
       onExit: (_) => setState(() => _hovered = false),
       child: InkWell(
         onTap: widget.onTap,
+        // The wrapper above owns the focus. Leaving the ink well focusable too
+        // would put two stops on every card, so the remote would need two
+        // presses to cross one poster.
+        canRequestFocus: false,
         borderRadius: BorderRadius.circular(PosterCard.radius),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
@@ -76,14 +104,19 @@ class _PosterCardState extends State<PosterCard> {
                     borderRadius: BorderRadius.circular(PosterCard.radius),
                     child: _poster(),
                   ),
-                  if (_hovered)
+                  if (_active)
                     DecoratedBox(
                       decoration: BoxDecoration(
                         borderRadius:
                             BorderRadius.circular(PosterCard.radius),
+                        // The remote's highlight has to read across a room, so
+                        // it is the accent at full strength rather than the
+                        // hairline a mouse pointer gets.
                         border: Border.all(
-                          color: Colors.white.withValues(alpha: 0.16),
-                          width: 1,
+                          color: _focused
+                              ? AppColors.accent
+                              : Colors.white.withValues(alpha: 0.16),
+                          width: _focused ? 3 : 1,
                         ),
                         color: widget.showPlayOnHover
                             ? Colors.black.withValues(alpha: 0.22)
@@ -143,6 +176,7 @@ class _PosterCardState extends State<PosterCard> {
             ),
           ],
         ),
+      ),
       ),
     );
   }

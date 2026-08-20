@@ -112,6 +112,25 @@ class AuthProvider extends ChangeNotifier {
     }
   }
 
+  /// Signs in with a session someone else already approved.
+  ///
+  /// The television path: no password is typed here and none is held, because
+  /// the credential never existed on this device — the phone's approval minted
+  /// the session directly on the server.
+  Future<void> adoptPairedSession({
+    required String token,
+    required User user,
+  }) async {
+    await apiClient.adoptSession(token);
+    await apiClient.saveLastUsername(user.username);
+
+    _currentUser = user;
+    _isAuthenticated = true;
+    _errorMessage = null;
+    _isLoading = false;
+    notifyListeners();
+  }
+
   /// Re-reads the profile from the server. Called after a 403, so a user whose
   /// rights changed under them sees the UI catch up without signing out.
   Future<void> refreshProfile() async {

@@ -13,6 +13,7 @@ import '../../providers/player_layout_provider.dart';
 import '../../navigation/search_route_observer.dart';
 import '../../services/api_client.dart';
 import '../../services/media_details_cache.dart';
+import '../../tv/tv_mode.dart';
 import '../../utils/poster_url.dart';
 import 'hooks/use_player_controller.dart';
 import 'hooks/use_episode_navigation.dart';
@@ -587,6 +588,13 @@ class _PlayerScreenState extends State<PlayerScreen> {
     _controlsTimer = Timer(const Duration(seconds: 4), () {
       if (_isDisposing) return;
       if (!mounted) return;
+      // Never while the remote is standing on one of those buttons: the bar
+      // would go, and the cursor with it, leaving the next key press to land
+      // somewhere the user cannot see.
+      if (_remoteBrowsingControls) {
+        _hideControlsWithDelay();
+        return;
+      }
       if (_showControls &&
           !_playerController.isDraggingSlider &&
           _playerController.isPlaying) {
@@ -665,6 +673,35 @@ class _PlayerScreenState extends State<PlayerScreen> {
     _safeSetState(() {});
   }
 
+  /// Whether the remote is currently walking the on-screen controls rather than
+  /// driving playback.
+  ///
+  /// A television has exactly four direction keys and they have to do two jobs:
+  /// scrub the film, and move between the buttons on the HUD. Which job they do
+  /// is decided by who holds the focus. The player itself holds it by default,
+  /// so arrows scrub — what a remote should do the moment a film is on.
+  /// Pressing OK hands the focus to the control bar; from there the same arrows
+  /// walk the buttons, and Back hands it straight back.
+  bool get _remoteBrowsingControls =>
+      TvMode.isTv && !_keyboardFocusNode.hasPrimaryFocus;
+
+  /// Hands the remote to the control bar, and puts the chrome up to receive it.
+  void _enterControlBar() {
+    _showControlsTransient();
+    // After the frame: on a hidden chrome there is nothing focusable in the
+    // tree yet for the focus to land on.
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted || _isDisposing) return;
+      _keyboardFocusNode.nextFocus();
+    });
+  }
+
+  /// Takes the remote back off the control bar.
+  void _leaveControlBar() {
+    _keyboardFocusNode.requestFocus();
+    setState(() => _showControls = false);
+  }
+
   KeyEventResult _handlePlayerKeyEvent(FocusNode node, KeyEvent event) {
     if (!_isInitialized || _isDisposing) return KeyEventResult.ignored;
     if (event is! KeyDownEvent && event is! KeyRepeatEvent) {
@@ -675,6 +712,25 @@ class _PlayerScreenState extends State<PlayerScreen> {
     if (mediaResult != null) return mediaResult;
 
     final key = event.logicalKey;
+    final browsingControls = _remoteBrowsingControls;
+
+    // OK / D-pad centre / controller A. Space keeps its own branch below,
+    // because a keyboard user expects it to be play-pause and nothing else.
+    if (key == LogicalKeyboardKey.select ||
+        key == LogicalKeyboardKey.gameButtonA ||
+        key == LogicalKeyboardKey.enter ||
+        key == LogicalKeyboardKey.numpadEnter) {
+      if (event is KeyRepeatEvent) return KeyEventResult.handled;
+      // A focused button answers for itself — the app-wide shortcut turns this
+      // very key into its activation.
+      if (browsingControls) return KeyEventResult.ignored;
+      if (TvMode.isTv && !_showControls) {
+        _enterControlBar();
+      } else {
+        _togglePlayPause();
+      }
+      return KeyEventResult.handled;
+    }
 
     if (key == LogicalKeyboardKey.space) {
       if (event is KeyRepeatEvent) return KeyEventResult.handled;
@@ -682,29 +738,45 @@ class _PlayerScreenState extends State<PlayerScreen> {
       return KeyEventResult.handled;
     }
 
-    if (key == LogicalKeyboardKey.arrowLeft) {
-      _seekRelative(-10);
-      return KeyEventResult.handled;
+    // While the remote is on the control bar the arrows belong to focus
+    // traversal, or the buttons would be unreachable.
+    if (!browsingControls) {
+      if (key == LogicalKeyboardKey.arrowLeft) {
+        _seekRelative(-10);
+        return KeyEventResult.handled;
+      }
+
+      if (key == LogicalKeyboardKey.arrowRight) {
+        _seekRelative(10);
+        return KeyEventResult.handled;
+      }
+
+      if (key == LogicalKeyboardKey.arrowUp) {
+        // Up is the other way onto the control bar: it is what a hand reaches
+        // for once the chrome is already visible.
+        if (TvMode.isTv && _showControls) {
+          _enterControlBar();
+          return KeyEventResult.handled;
+        }
+        _adjustVolume(_volumeStep);
+        return KeyEventResult.handled;
+      }
+
+      if (key == LogicalKeyboardKey.arrowDown) {
+        _adjustVolume(-_volumeStep);
+        return KeyEventResult.handled;
+      }
     }
 
-    if (key == LogicalKeyboardKey.arrowRight) {
-      _seekRelative(10);
-      return KeyEventResult.handled;
-    }
-
-    if (key == LogicalKeyboardKey.arrowUp) {
-      _adjustVolume(_volumeStep);
-      return KeyEventResult.handled;
-    }
-
-    if (key == LogicalKeyboardKey.arrowDown) {
-      _adjustVolume(-_volumeStep);
-      return KeyEventResult.handled;
-    }
-
-    if (key == LogicalKeyboardKey.escape) {
+    if (key == LogicalKeyboardKey.escape ||
+        key == LogicalKeyboardKey.goBack ||
+        key == LogicalKeyboardKey.browserBack) {
       if (_showEpisodesPanel) {
         _closeEpisodesPanel();
+        return KeyEventResult.handled;
+      }
+      if (browsingControls) {
+        _leaveControlBar();
         return KeyEventResult.handled;
       }
       unawaited(_exitFullscreenIfActive());
@@ -1394,6 +1466,12 @@ class _PlayerScreenState extends State<PlayerScreen> {
         canPop: false,
         onPopInvokedWithResult: (didPop, _) async {
           if (didPop) return;
+          // The remote's Back arrives here, not as a key event. On the control
+          // bar it means "put that away", not "leave the film".
+          if (_remoteBrowsingControls) {
+            _leaveControlBar();
+            return;
+          }
           await _leavePlayer();
         },
         child: Scaffold(

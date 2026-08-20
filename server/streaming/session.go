@@ -23,6 +23,30 @@ var (
 	throttleEnabled = true
 )
 
+// lockedBuffer collects FFmpeg's stderr for later inspection.
+//
+// os/exec writes to cmd.Stderr from its own goroutine while request goroutines
+// read it, which an unguarded bytes.Buffer does not survive. It was a latent
+// race while only a failed start read the buffer; /start now inspects it on
+// every session — after a 750ms probe, with FFmpeg definitely still running —
+// so it is a race that would actually be hit.
+type lockedBuffer struct {
+	mu  sync.Mutex
+	buf bytes.Buffer
+}
+
+func (b *lockedBuffer) Write(p []byte) (int, error) {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	return b.buf.Write(p)
+}
+
+func (b *lockedBuffer) String() string {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	return b.buf.String()
+}
+
 // TranscodeSession represents a single active HLS transcoding session.
 type TranscodeSession struct {
 	ID          string
@@ -39,7 +63,7 @@ type TranscodeSession struct {
 	ctx    context.Context
 	cancel context.CancelFunc
 	cmd    *exec.Cmd
-	stderr bytes.Buffer
+	stderr lockedBuffer
 
 	mu                   sync.Mutex
 	active               bool
@@ -250,8 +274,11 @@ func (s *TranscodeSession) WaitForFile(name string, timeout time.Duration) error
 		time.Sleep(50 * time.Millisecond)
 	}
 
+	// Running out of budget is not a failure for the caller that matters here:
+	// /start probes briefly and expects to time out on a healthy session. Anything
+	// FFmpeg found worth printing in that window still is worth seeing.
 	if errStr := s.stderr.String(); errStr != "" {
-		log.Printf("Session %s: ffmpeg stderr on timeout: %s", s.ID, s.stderr.String())
+		log.Printf("Session %s: ffmpeg stderr while waiting for %s: %s", s.ID, name, errStr)
 	}
 	return errWaitTimeout
 }

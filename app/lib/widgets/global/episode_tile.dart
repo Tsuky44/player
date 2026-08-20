@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import '../../models/models.dart';
 import '../../theme/app_colors.dart';
+import '../../tv/tv_focus.dart';
 import '../../utils/format.dart';
 import '../../utils/responsive.dart';
 import 'media_poster.dart';
@@ -26,7 +27,11 @@ class EpisodeTile extends StatefulWidget {
 
 class _EpisodeTileState extends State<EpisodeTile> {
   bool _hovered = false;
+  bool _focused = false;
   bool _updatingWatched = false;
+
+  /// Pointer hover and D-pad focus drive the same row highlight.
+  bool get _active => _hovered || _focused;
 
   bool get _isAvailable => widget.episode.isAvailable;
 
@@ -58,7 +63,22 @@ class _EpisodeTileState extends State<EpisodeTile> {
     final thumbW = compact ? 128.0 : 180.0;
     final thumbH = compact ? 72.0 : 101.0;
 
-    return MouseRegion(
+    return TvFocusable(
+      // An episode that has not aired is shown but not reachable: the remote
+      // skips straight over it instead of landing on a dead row.
+      enabled: _isAvailable && widget.onTap != null,
+      onSelect: widget.onTap,
+      // A full-width row grows into its neighbours if it scales, and a list of
+      // episodes is scanned top to bottom, so it reads better near the top of
+      // the viewport than dead centre.
+      focusScale: 1.0,
+      scrollAlignment: 0.3,
+      showRing: false,
+      onFocusChange: (focused) {
+        if (_focused == focused) return;
+        setState(() => _focused = focused);
+      },
+      child: MouseRegion(
       onEnter: (_) => setState(() => _hovered = true),
       onExit: (_) => setState(() => _hovered = false),
       child: GestureDetector(
@@ -70,9 +90,17 @@ class _EpisodeTileState extends State<EpisodeTile> {
             horizontal: pad,
             vertical: compact ? 12 : 16,
           ),
-          color: _hovered && _isAvailable
-              ? AppColors.surfaceHover
-              : Colors.transparent,
+          decoration: BoxDecoration(
+            color: _active && _isAvailable
+                ? AppColors.surfaceHover
+                : Colors.transparent,
+            border: Border(
+              left: BorderSide(
+                color: _focused ? AppColors.accent : Colors.transparent,
+                width: 3,
+              ),
+            ),
+          ),
           child: Opacity(
             opacity: _isAvailable ? 1 : 0.72,
             child: Row(
@@ -90,7 +118,7 @@ class _EpisodeTileState extends State<EpisodeTile> {
                         else if (isFinished)
                           const Icon(Icons.check_circle_rounded,
                               color: AppColors.success, size: 22)
-                        else if (_hovered)
+                        else if (_active)
                           const Icon(Icons.play_circle_fill_rounded,
                               color: AppColors.textPrimary, size: 28)
                         else
@@ -269,6 +297,7 @@ class _EpisodeTileState extends State<EpisodeTile> {
             ),
           ),
         ),
+      ),
       ),
     );
   }

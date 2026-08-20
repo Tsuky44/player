@@ -142,6 +142,32 @@ const _bridgeSource = r'''
     var networkRestarts = 0;
     var mediaRecoveries = 0;
 
+    // Two facts settle almost every "it plays sound but shows nothing" report,
+    // and neither is visible from Dart: what the master actually offered, and
+    // which source buffers were created from it. A stream with no `video` buffer
+    // has no picture to show — the playlist or the segments are audio-only. One
+    // WITH a video buffer and still no picture is a decode the browser refused
+    // (10-bit, 4:2:2) or something above the player entirely.
+    hls.on(Events.MANIFEST_PARSED || 'hlsManifestParsed', function (_e, data) {
+      var levels = (data && data.levels) || [];
+      var first = levels[0] || {};
+      window.__playeurWeb.manifest =
+        'levels=' + levels.length +
+        ' size=' + (first.width || 0) + 'x' + (first.height || 0) +
+        ' audioTracks=' + (((data && data.audioTracks) || []).length);
+    });
+    // Accumulated, not replaced: in alt-audio mode the audio and the video
+    // stream controllers each announce their own buffer, so keeping only the
+    // last event reported "buffers=audio" on a session that had both.
+    hls.on(Events.BUFFER_CODECS || 'hlsBufferCodecs', function (_e, data) {
+      var seen = window.__playeurWeb.buffers.split('+');
+      Object.keys(data || {}).forEach(function (k) {
+        if (seen.indexOf(k) < 0) seen.push(k);
+      });
+      window.__playeurWeb.buffers =
+        seen.filter(function (k) { return k && k !== 'none'; }).join('+') || 'none';
+    });
+
     hls.on(Events.ERROR || 'hlsError', function (_evt, data) {
       var detail = (data && data.details) || 'unknown';
       window.__playeurWeb.lastError =
@@ -209,8 +235,15 @@ const _bridgeSource = r'''
     // ("is video.src set?") could not fail anyway: the empty string media_kit
     // assigns in stop() resolves against the page URL and reads back truthy.
     if (!video || !hlsReady) {
-      if (attempt < 300) { // 30s of budget
-        setTimeout(function () { step(url, gen, attempt + 1); }, 100);
+      if (attempt < 330) {
+        // Tight at first, then patient. The element normally appears within a
+        // frame or two of open() resolving, so a flat 100ms poll spent up to
+        // 100ms of pure dead time on every single launch — and 'waiting-for-video'
+        // is what the logs show on a cold start. The slow tail is still needed:
+        // entering the player screen for the first time can take seconds to
+        // produce the platform view. Budget stays ~30s.
+        var delay = attempt < 30 ? 16 : 100;
+        setTimeout(function () { step(url, gen, attempt + 1); }, delay);
         return record(!video ? 'waiting-for-video' : 'waiting-for-hlsjs');
       }
       return record('gave-up-waiting');
@@ -258,6 +291,8 @@ const _bridgeSource = r'''
   window.__playeurWeb = {
     lastOutcome: 'none',
     lastError: 'none',
+    manifest: 'manifest-not-parsed',
+    buffers: 'none',
 
     // Makes hls.js drive the playlist whenever it can, which is the order every
     // serious player uses and the one hls.js documents.
@@ -286,7 +321,13 @@ const _bridgeSource = r'''
     },
 
     diagnostics: function () {
+      var v = document.querySelector('video');
       return 'engine=' + window.__playeurWeb.lastOutcome +
+             ' ' + window.__playeurWeb.manifest +
+             ' buffers=' + window.__playeurWeb.buffers +
+             ' picture=' + (v ? v.videoWidth + 'x' + v.videoHeight : 'no-element') +
+             ' ready=' + (v ? v.readyState : '?') +
+             ' t=' + (v ? Math.round(v.currentTime) : '?') +
              ' error=' + window.__playeurWeb.lastError +
              ' instances=' + instances.length;
     }

@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"log"
 	"net/http"
@@ -37,6 +38,30 @@ const segmentDuration = 2
 // while still giving up quickly enough on a target that is genuinely minutes
 // away, which the client should have turned into a new session anyway.
 const segmentWait = 12 * time.Second
+
+// playlistWait is how long a request for a not-yet-written variant playlist is
+// held open.
+//
+// It has to cover the encode of the entire first segment, which is the slowest
+// thing a session ever does: on a 4K HEVC source on the CPU-only production box
+// that was measured between 3 and 6 seconds, and worse with several sessions
+// competing. Generous, therefore — but bounded well under the 20s the client
+// gives a playlist request before it calls it a timeout.
+const playlistWait = 15 * time.Second
+
+// startupProbe is how long /start waits before answering.
+//
+// It deliberately does NOT cover the first segment; see handleStart. Its only
+// job is to catch a session that cannot work at all — a codec FFmpeg refuses to
+// mux, a file it cannot open — while the caller is still in a position to be
+// told, since those failures land as soon as the header is written.
+//
+// Best-effort, and short on purpose. A dying transcoder is noticed within one
+// poll, so this budget is only ever spent in full on a HEALTHY session: it is
+// latency added to every single launch. Under load a healthy session can take
+// longer than this just to open its input, and that is fine — the failure it
+// misses surfaces on the playlist request instead, which watches the process too.
+const startupProbe = 300 * time.Millisecond
 
 // Handler wires the HLS transcoding endpoints to their dependencies.
 type Handler struct {
@@ -233,11 +258,26 @@ func (h *Handler) handleStart(w http.ResponseWriter, r *http.Request, mediaID in
 	}
 	h.manager.CreateSession(session)
 
-	// The video variant playlist guarantees the master has been written too.
-	if err := session.WaitForFile("stream_0.m3u8", 30*time.Second); err != nil {
+	// Deliberately NOT waiting for the first segment.
+	//
+	// This used to block until stream_0.m3u8 existed, i.e. until a whole segment
+	// had been encoded — 3 to 6 seconds on a 4K HEVC source on the production
+	// box. Every bit of the client's own start-up then queued behind it: creating
+	// the platform view that holds the <video>, booting hls.js, fetching the
+	// master. Answering as soon as the transcoder is up lets all of that happen
+	// *while* the first segment is being encoded, and the request for the variant
+	// playlist is held open until it lands rather than answered 404 (see
+	// handleServeFile). The master needs nothing from disk, so it is servable
+	// immediately — which is what makes this possible at all.
+	//
+	// A session that dies at once still fails here, where the client can be told
+	// plainly. Anything slower than the probe surfaces on the playlist request,
+	// which gives up as soon as the transcoder is gone.
+	if err := session.WaitForFile("stream_0.m3u8", startupProbe); err != nil &&
+		!errors.Is(err, errWaitTimeout) {
 		log.Printf("HLS start: %v (session %s)", err, sessionID)
 		h.manager.DestroySession(sessionID)
-		http.Error(w, "transcoding timeout", http.StatusServiceUnavailable)
+		http.Error(w, "transcoding failed to start", http.StatusServiceUnavailable)
 		return
 	}
 
@@ -260,7 +300,9 @@ func (h *Handler) handleStart(w http.ResponseWriter, r *http.Request, mediaID in
 	if copyVideo {
 		videoMode = "copy"
 	}
-	log.Printf("HLS: session %s media %d quality=%s video=%s (%.1f Mbps) start=%ds audio=%d renditions=%v burnsub=%d ready in %v",
+	// "accepted", not "ready": the first segment is still being encoded, and the
+	// client's request for the variant playlist is what waits for it.
+	log.Printf("HLS: session %s media %d quality=%s video=%s (%.1f Mbps) start=%ds audio=%d renditions=%v burnsub=%d accepted in %v",
 		sessionID, mediaID, quality, videoMode, float64(bitrate)/1e6,
 		startSeconds, audioIndex, audioMap, burnSubtitle,
 		time.Since(startedAt))
@@ -300,19 +342,31 @@ func (h *Handler) handleServeFile(w http.ResponseWriter, r *http.Request, sessio
 	filePath := filepath.Join(session.TmpDir, filename)
 	ext := strings.ToLower(filepath.Ext(filename))
 
-	// A segment listed in the playlist can legitimately not exist on disk yet:
-	// the JIT throttler SIGSTOPs FFmpeg once it is far enough ahead, and resumes
-	// it on the next tick. Answering 404 there is fatal for the HLS demuxer, so
-	// wait briefly for the file, then ask the client to retry instead.
+	// Neither a segment nor a variant playlist existing yet is an error — both are
+	// written as the transcode advances, and both are legitimately asked for
+	// before they land:
+	//
+	//   - segments, because the JIT throttler SIGSTOPs FFmpeg once it is far
+	//     enough ahead and resumes it on the next tick;
+	//   - variant playlists, because /start no longer waits for the first segment,
+	//     which is the whole point: the client's start-up overlaps the encode
+	//     instead of queueing behind it.
+	//
+	// Answering 404 is fatal for the HLS demuxer in both cases, so the request is
+	// held open until the file appears.
 	if _, err := os.Stat(filePath); os.IsNotExist(err) {
-		if ext == ".ts" && waitForPath(filePath, segmentWait) {
-			// produced while we waited — fall through and serve it
-		} else if ext == ".ts" {
-			w.Header().Set("Retry-After", "1")
-			http.Error(w, "segment not ready", http.StatusServiceUnavailable)
-			return
-		} else {
+		if ext != ".ts" && ext != ".m3u8" {
 			http.Error(w, "file not ready", http.StatusNotFound)
+			return
+		}
+		wait := segmentWait
+		if ext == ".m3u8" {
+			wait = playlistWait
+		}
+		if !waitForSessionFile(session, filePath, wait) {
+			// Out of budget, or the transcoder is gone and nothing is coming.
+			w.Header().Set("Retry-After", "1")
+			http.Error(w, "not ready", http.StatusServiceUnavailable)
 			return
 		}
 	}
@@ -338,12 +392,22 @@ func (h *Handler) handleServeFile(w http.ResponseWriter, r *http.Request, sessio
 	http.ServeFile(w, r, filePath)
 }
 
-// waitForPath polls for a file to appear, returning true if it did in time.
-func waitForPath(path string, timeout time.Duration) bool {
+// waitForSessionFile polls for a file the transcoder has not written yet,
+// returning true if it appeared in time.
+//
+// It watches the transcoder as well as the clock: once FFmpeg is gone nothing is
+// coming, and sitting out the rest of a 15-second budget only delays the error
+// the client has to handle either way. That matters more now that /start returns
+// before the first segment exists — a session that dies during start-up is
+// discovered here rather than there.
+func waitForSessionFile(session *TranscodeSession, path string, timeout time.Duration) bool {
 	deadline := time.Now().Add(timeout)
 	for time.Now().Before(deadline) {
 		if _, err := os.Stat(path); err == nil {
 			return true
+		}
+		if !session.IsActive() {
+			return false
 		}
 		time.Sleep(25 * time.Millisecond)
 	}

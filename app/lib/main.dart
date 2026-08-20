@@ -16,6 +16,10 @@ import 'services/layout_storage.dart';
 import 'providers/search_provider.dart';
 import 'navigation/search_route_observer.dart';
 import 'screens/auth/login_screen.dart';
+import 'screens/auth/tv_login_screen.dart';
+import 'tv/tv_focus.dart';
+import 'tv/tv_mode.dart';
+import 'tv/tv_pairing_link.dart';
 import 'screens/player/player_engine.dart';
 import 'screens/shell/main_shell.dart';
 import 'theme/app_colors.dart';
@@ -36,7 +40,9 @@ class AppScrollBehavior extends MaterialScrollBehavior {
 final GlobalKey<NavigatorState> rootNavigatorKey = GlobalKey<NavigatorState>();
 
 Future<void> _configureSystemUi() async {
-  if (!AppPlatform.isMobile) return;
+  // A television has no status bar and no navigation bar to blend into, and
+  // asking for edge-to-edge there just adds insets nothing draws behind.
+  if (!AppPlatform.isMobile || TvMode.isTv) return;
 
   await SystemChrome.setEnabledSystemUIMode(SystemUiMode.edgeToEdge);
   SystemChrome.setSystemUIOverlayStyle(
@@ -53,6 +59,16 @@ Future<void> _configureSystemUi() async {
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
   MediaKit.ensureInitialized();
+
+  // Resolved before the first frame: the login screen the user lands on differs
+  // entirely between a phone and a television, and flipping it after the fact
+  // would show the password form for a beat on every TV boot.
+  await TvMode.initialize();
+
+  // A QR scanned on the TV opens this app with ?tv=CODE. Read it now, act on it
+  // once the shell is up and there is a session to approve with.
+  TvPairingLink.capture();
+
   await _configureSystemUi();
 
   await WindowControls.initializeDesktopWindow(
@@ -107,51 +123,75 @@ class OnyxApp extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return SearchOverlayScope(
-      routeObserver: searchRouteObserver,
-      navigatorKey: rootNavigatorKey,
-      child: MaterialApp(
-        navigatorKey: rootNavigatorKey,
-        title: 'Onyx',
-        debugShowCheckedModeBanner: false,
-        theme: AppTheme.dark,
-        scrollBehavior: AppScrollBehavior(),
-        navigatorObservers: [searchRouteObserver],
-        builder: (context, child) {
-          return Column(
-            children: [
-              if (useDesktopCaptionBar)
-                ValueListenableBuilder<bool>(
-                  valueListenable: showDesktopCaption,
-                  builder: (context, visible, _) {
-                    return Visibility(
-                      visible: visible,
-                      maintainState: false,
-                      child: const WindowCaptionBar(),
-                    );
-                  },
-                ),
-              Expanded(
-                child: ColoredBox(
-                  color: AppColors.background,
-                  child: child ?? const SizedBox.shrink(),
-                ),
+    // One listener at the root republishes the mode through the tree, so a
+    // toggle in the settings takes effect everywhere at once instead of on the
+    // next cold start.
+    return ValueListenableBuilder<bool>(
+      valueListenable: TvMode.enabled,
+      builder: (context, isTv, _) {
+        return TvScope(
+          isTv: isTv,
+          child: SearchOverlayScope(
+            routeObserver: searchRouteObserver,
+            navigatorKey: rootNavigatorKey,
+            child: MaterialApp(
+              navigatorKey: rootNavigatorKey,
+              title: 'Onyx',
+              debugShowCheckedModeBanner: false,
+              theme: AppTheme.dark,
+              scrollBehavior: AppScrollBehavior(),
+              navigatorObservers: [searchRouteObserver],
+              // The D-pad's centre button and a controller's A, folded into the
+              // bindings Flutter already has for Enter. Everything that was
+              // keyboard-activatable becomes remote-activatable, app-wide,
+              // without a single widget knowing about it.
+              shortcuts: <ShortcutActivator, Intent>{
+                ...WidgetsApp.defaultShortcuts,
+                ...tvSelectShortcuts,
+              },
+              builder: (context, child) {
+                return Column(
+                  children: [
+                    if (useDesktopCaptionBar)
+                      ValueListenableBuilder<bool>(
+                        valueListenable: showDesktopCaption,
+                        builder: (context, visible, _) {
+                          return Visibility(
+                            visible: visible,
+                            maintainState: false,
+                            child: const WindowCaptionBar(),
+                          );
+                        },
+                      ),
+                    Expanded(
+                      child: ColoredBox(
+                        color: AppColors.background,
+                        child: child ?? const SizedBox.shrink(),
+                      ),
+                    ),
+                  ],
+                );
+              },
+              home: Consumer<AuthProvider>(
+                builder: (context, authProvider, _) {
+                  if (authProvider.isInitializing) {
+                    return const SplashScreen();
+                  }
+                  if (!authProvider.isAuthenticated) {
+                    // A television gets the QR pairing instead of a password
+                    // form. The form is still reachable from it, for the first
+                    // account on a server and for anyone without a phone.
+                    return isTv
+                        ? const TvLoginScreen()
+                        : const LoginScreen();
+                  }
+                  return const MainShell();
+                },
               ),
-            ],
-          );
-        },
-        home: Consumer<AuthProvider>(
-          builder: (context, authProvider, _) {
-            if (authProvider.isInitializing) {
-              return const SplashScreen();
-            }
-            if (!authProvider.isAuthenticated) {
-              return const LoginScreen();
-            }
-            return const MainShell();
-          },
-        ),
-      ),
+            ),
+          ),
+        );
+      },
     );
   }
 }
