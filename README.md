@@ -106,6 +106,56 @@ Toutes les routes API (sauf l'inscription/connexion et le stream) requièrent l'
 
 ---
 
+### 📺 1 ter. Appairage d'un téléviseur (QR code)
+
+Un téléviseur n'a pas de clavier : il ne saisit jamais de mot de passe. Il ouvre un appairage,
+affiche le code court en QR, et attend qu'un téléphone **déjà connecté** l'approuve. La session est
+créée au moment de l'approbation, sous l'identité de celui qui approuve — la TV hérite donc
+exactement de son compte et de ses droits.
+
+La forme est celle du device flow OAuth (RFC 8628) : `start` → `poll` → `approve`.
+
+Décisions détaillées : `docs/adr/0003-android-tv-et-appairage-par-qr-code.md`.
+
+#### ➡️ Ouvrir un appairage (depuis la TV, non authentifié)
+* **Route :** `POST /api/auth/device/start`
+* **Corps (JSON) :** `{ "device_name": "Salon" }` — facultatif, purement cosmétique.
+* **Réponse :** `{ "device_code": "…", "user_code": "ABCD2FGH", "expires_in": 300, "interval": 2 }`
+
+`device_code` est le secret de 256 bits que seule la TV détient ; `user_code` est la moitié courte,
+affichée à l'écran et encodée dans le QR. Le QR pointe sur `<serveur>/?tv=<user_code>`, composé
+côté client — derrière un proxy le serveur ignore sa propre adresse publique.
+
+#### ➡️ Interroger l'appairage (depuis la TV, non authentifié)
+* **Route :** `POST /api/auth/device/poll`
+* **Corps (JSON) :** `{ "device_code": "…" }`
+* **Réponse :** `{ "status": "pending" | "expired" | "approved", "token": "…", "user": {…} }`
+
+`token` et `user` ne sont servis que sur `approved`, et **une seule fois** : la récupération
+consomme l'appairage. Un code inconnu et un code déjà consommé répondent tous deux `expired`.
+
+#### ➡️ Décrire un code en attente (depuis le téléphone)
+* **Route :** `GET /api/auth/device/pending?code=ABCD2FGH`
+* **Réponse :** `{ "user_code": "…", "device_name": "Salon", "expires_in": 240 }`
+
+#### ➡️ Approuver / refuser (depuis le téléphone)
+* **Routes :** `POST /api/auth/device/approve` · `POST /api/auth/device/deny`
+* **Corps (JSON) :** `{ "user_code": "ABCD2FGH" }` — tiret, minuscules et espaces sont tolérés.
+
+Un code vit **5 minutes**, fait 8 caractères tirés d'un alphabet de 32 symboles sans `I`, `O`, `0`
+ni `1`, et ne peut être approuvé qu'une fois : deux téléphones qui lisent le même écran ne
+produisent pas deux sessions.
+
+#### Côté application
+
+Le même APK s'installe sur téléphone et sur Android TV (`LEANBACK_LAUNCHER`, écran tactile déclaré
+facultatif). Le mode télécommande est détecté au démarrage et forçable dans **Paramètres →
+Téléviseur → Mode télécommande**. Sur la TV, l'écran de connexion affiche le QR ; le formulaire mot
+de passe reste accessible à un bouton, pour le premier compte d'un serveur vierge. Depuis un
+téléphone, **menu compte → Connecter une TV** permet aussi de taper le code à la main.
+
+---
+
 ### 👥 1 bis. Droits, utilisateurs & invitations
 
 Six permissions indépendantes par compte : `manage_settings`, `manage_library`, `manage_users`,

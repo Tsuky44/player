@@ -2,10 +2,25 @@
     <uses-permission android:name="android.permission.INTERNET"/>
     <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE"/>
     <uses-permission android:name="android.permission.WAKE_LOCK"/>
+
+    <!-- Android TV. Leanback is declared not-required so the very same APK
+         still installs on phones; declaring it required would hide the app from
+         every non-TV device in the store and in `adb install` checks. -->
+    <uses-feature
+        android:name="android.software.leanback"
+        android:required="false"/>
+    <!-- A television has no touchscreen. Without this line the Play Store (and
+         Android TV's own installer) rejects the APK outright, because a
+         touchscreen is assumed required unless the manifest says otherwise. -->
+    <uses-feature
+        android:name="android.hardware.touchscreen"
+        android:required="false"/>
+
     <application
         android:label="Onyx"
         android:name="${applicationName}"
         android:usesCleartextTraffic="true"
+        android:banner="@drawable/tv_banner"
         android:icon="@mipmap/ic_launcher">
         <activity
             android:name=".MainActivity"
@@ -27,6 +42,10 @@
             <intent-filter>
                 <action android:name="android.intent.action.MAIN"/>
                 <category android:name="android.intent.category.LAUNCHER"/>
+                <!-- What puts the app on the Android TV home row. Without it the
+                     APK installs but has no icon anywhere on a TV, which reads
+                     to the user as "it did not install". -->
+                <category android:name="android.intent.category.LEANBACK_LAUNCHER"/>
             </intent-filter>
         </activity>
         <!-- Don't delete the meta-data below.

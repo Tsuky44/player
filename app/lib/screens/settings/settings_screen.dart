@@ -3,6 +3,8 @@ import 'package:file_picker/file_picker.dart';
 import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
+import '../../tv/tv_mode.dart';
+import 'tv_pairing_screen.dart';
 
 import '../../models/app_download.dart';
 import '../../providers/auth_provider.dart';
@@ -921,6 +923,27 @@ class _SettingsScreenState extends State<SettingsScreen> {
                         ),
                       ),
                     _Section(
+                      title: 'Téléviseur',
+                      subtitle:
+                          'Navigation à la télécommande et connexion par QR code.',
+                      child: Column(
+                        children: [
+                          _NavTile(
+                            icon: Icons.tv_rounded,
+                            title: 'Connecter une TV',
+                            subtitle:
+                                'Saisir le code affiché sur le téléviseur',
+                            onTap: () => Navigator.of(context).push(
+                              MaterialPageRoute(
+                                builder: (_) => const TvPairingScreen(),
+                              ),
+                            ),
+                          ),
+                          const _TvModeTile(),
+                        ],
+                      ),
+                    ),
+                    _Section(
                       title: 'Compte',
                       subtitle: auth.currentUser?.username ?? '',
                       child: Column(
@@ -1311,6 +1334,73 @@ class _NavTile extends StatelessWidget {
             ),
           ),
         ),
+      ),
+    );
+  }
+}
+
+/// Override for the automatic television detection.
+///
+/// Detection reads the hardware and is right almost always. The two ways it is
+/// wrong pull in opposite directions — a no-name Android box that never
+/// advertises leanback, and a tablet in a dock that does — so the override has
+/// to be able to push both ways, not just off.
+class _TvModeTile extends StatefulWidget {
+  const _TvModeTile();
+
+  @override
+  State<_TvModeTile> createState() => _TvModeTileState();
+}
+
+class _TvModeTileState extends State<_TvModeTile> {
+  Future<void> _apply(TvModePreference preference) async {
+    await TvMode.setPreference(preference);
+    if (mounted) setState(() {});
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final detected = TvMode.detected ? 'un téléviseur' : 'un appareil tactile';
+
+    return Padding(
+      padding: const EdgeInsets.only(top: 4),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Text(
+            'Mode télécommande',
+            style: TextStyle(
+              fontWeight: FontWeight.w600,
+              fontSize: 14,
+              color: AppColors.textPrimary,
+            ),
+          ),
+          const SizedBox(height: 2),
+          Text(
+            'Cet appareil est détecté comme $detected.',
+            style: const TextStyle(color: AppColors.textMuted, fontSize: 12),
+          ),
+          const SizedBox(height: 10),
+          SegmentedButton<TvModePreference>(
+            segments: const [
+              ButtonSegment(
+                value: TvModePreference.auto,
+                label: Text('Auto'),
+              ),
+              ButtonSegment(
+                value: TvModePreference.on,
+                label: Text('Activé'),
+              ),
+              ButtonSegment(
+                value: TvModePreference.off,
+                label: Text('Désactivé'),
+              ),
+            ],
+            selected: {TvMode.preference},
+            showSelectedIcon: false,
+            onSelectionChanged: (selection) => _apply(selection.first),
+          ),
+        ],
       ),
     );
   }

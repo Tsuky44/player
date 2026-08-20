@@ -7,6 +7,7 @@ import '../../providers/home_provider.dart';
 import '../../providers/library_provider.dart';
 import '../../services/media_details_cache.dart';
 import '../../theme/app_colors.dart';
+import '../../tv/tv_mode.dart';
 import '../../widgets/global/media_detail_widgets.dart';
 import '../../widgets/global/metadata_fix_sheet.dart';
 import '../../widgets/global/watched_action_button.dart';
@@ -226,6 +227,9 @@ class _MovieDetailScreenState extends State<MovieDetailScreen> {
               actions: Row(
                 children: [
                   ElevatedButton.icon(
+                    // The remote lands on Play: on a detail screen opened from
+                    // a couch there is exactly one thing anyone came for.
+                    autofocus: TvMode.isTv,
                     onPressed: _play,
                     icon: const Icon(Icons.play_arrow_rounded),
                     label: Text(_hasProgress ? 'REPRENDRE' : 'LECTURE'),

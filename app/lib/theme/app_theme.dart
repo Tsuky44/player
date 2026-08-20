@@ -3,6 +3,21 @@ import 'package:google_fonts/google_fonts.dart';
 import 'app_colors.dart';
 
 abstract final class AppTheme {
+  /// The outline a focused control wears.
+  ///
+  /// Material's own focus treatment is a ten-percent wash of the primary
+  /// colour — legible at arm's length on a phone, invisible from a sofa. A
+  /// remote-driven UI lives or dies on the user being able to find the cursor,
+  /// so focus gets a real ring, on every button, everywhere.
+  static WidgetStateProperty<BorderSide?> _focusSide(BorderSide? resting) {
+    return WidgetStateProperty.resolveWith((states) {
+      if (states.contains(WidgetState.focused)) {
+        return const BorderSide(color: AppColors.accent, width: 2.5);
+      }
+      return resting;
+    });
+  }
+
   static ThemeData get dark {
     final base = ThemeData(
       brightness: Brightness.dark,
@@ -81,7 +96,7 @@ abstract final class AppTheme {
         ),
       ),
       elevatedButtonTheme: ElevatedButtonThemeData(
-        style: ElevatedButton.styleFrom(
+        style: _focusRinged(ElevatedButton.styleFrom(
           backgroundColor: AppColors.textPrimary,
           foregroundColor: AppColors.background,
           disabledBackgroundColor: AppColors.surfaceHover,
@@ -93,10 +108,11 @@ abstract final class AppTheme {
             fontWeight: FontWeight.w700,
             letterSpacing: 0.2,
           ),
-        ),
+        )),
       ),
       outlinedButtonTheme: OutlinedButtonThemeData(
-        style: OutlinedButton.styleFrom(
+        style: _focusRinged(
+          OutlinedButton.styleFrom(
           foregroundColor: AppColors.textPrimary,
           side: BorderSide(color: AppColors.glassBorder),
           padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 14),
@@ -105,12 +121,14 @@ abstract final class AppTheme {
             fontWeight: FontWeight.w600,
           ),
         ),
+          resting: BorderSide(color: AppColors.glassBorder),
+        ),
       ),
       textButtonTheme: TextButtonThemeData(
-        style: TextButton.styleFrom(
+        style: _focusRinged(TextButton.styleFrom(
           foregroundColor: AppColors.textSecondary,
           textStyle: textTheme.labelLarge?.copyWith(fontWeight: FontWeight.w500),
-        ),
+        )),
       ),
       snackBarTheme: SnackBarThemeData(
         backgroundColor: AppColors.surfaceElevated,
@@ -138,5 +156,11 @@ abstract final class AppTheme {
       ),
       focusColor: AppColors.primary.withValues(alpha: 0.24),
     );
+  }
+
+  /// Adds the focus ring to a button style without disturbing anything else it
+  /// declares. [resting] is the border the button wears when it is not focused.
+  static ButtonStyle _focusRinged(ButtonStyle style, {BorderSide? resting}) {
+    return style.copyWith(side: _focusSide(resting));
   }
 }

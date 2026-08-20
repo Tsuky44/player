@@ -13,12 +13,16 @@ class MediaCard extends StatelessWidget {
   final VoidCallback onTap;
   final bool compact;
 
+  /// See [PosterCard.autofocus].
+  final bool autofocus;
+
   const MediaCard({
     super.key,
     required this.media,
     this.progress,
     required this.onTap,
     this.compact = false,
+    this.autofocus = false,
   });
 
   @override
@@ -37,6 +41,7 @@ class MediaCard extends StatelessWidget {
       subtitle: year,
       onTap: onTap,
       compact: compact,
+      autofocus: autofocus,
       showPlayOnHover: true,
       placeholderIcon: isShow ? Icons.tv_rounded : Icons.movie_rounded,
       footerOverlay: inProgress

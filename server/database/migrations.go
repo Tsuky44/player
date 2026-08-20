@@ -245,6 +245,30 @@ var migrations = []migration{
 			`CREATE INDEX IF NOT EXISTS idx_sessions_user_id ON sessions(user_id);`,
 		},
 	},
+	{
+		id:   4,
+		name: "device pairing",
+		stmts: []string{
+			// TV pairing. A television has no keyboard, so it never types a
+			// password: it opens a pairing, shows the short code as a QR, and
+			// polls until a phone that is already signed in approves it. The
+			// row holds the session token created at approval, which the TV
+			// then collects exactly once.
+			`CREATE TABLE IF NOT EXISTS device_pairings (
+				device_code TEXT PRIMARY KEY,
+				user_code TEXT NOT NULL UNIQUE,
+				device_name TEXT NOT NULL DEFAULT '',
+				created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+				expires_at TIMESTAMP NOT NULL,
+				approved_user_id INTEGER,
+				session_token TEXT,
+				FOREIGN KEY (approved_user_id) REFERENCES users(id) ON DELETE CASCADE
+			);`,
+			// The phone approves by short code, and the reaper sweeps by expiry.
+			`CREATE INDEX IF NOT EXISTS idx_device_pairings_user_code ON device_pairings(user_code);`,
+			`CREATE INDEX IF NOT EXISTS idx_device_pairings_expires_at ON device_pairings(expires_at);`,
+		},
+	},
 }
 
 // applyMigrations brings the database up to the latest schema version.

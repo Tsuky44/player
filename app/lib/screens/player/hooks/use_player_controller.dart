@@ -53,8 +53,10 @@ class PlayerController {
   /// belongs to the media that was asked for.
   bool hasFirstFrame = false;
 
-  /// mpv has read this file's dimensions — it knows what it is about to draw,
-  /// but has not necessarily drawn it yet.
+  /// The decoder has read this file's dimensions — it knows what it is about to
+  /// draw, but has not necessarily drawn it yet.
+  ///
+  /// Which signal carries that differs by platform; see where it is subscribed.
   bool _videoParamsReady = false;
 
   /// The playback clock has ticked at least once while playing, which mpv only
@@ -280,6 +282,12 @@ class PlayerController {
   /// directly at the right byte offset instead of playing from 0 and seeking.
   int _openedAtSeconds = -1;
 
+  /// Resume point handed over by the screen, usually still in flight.
+  ///
+  /// Held onto because the web needs it later than anything else does: see
+  /// [_startWebTranscode], which is the only place it can be applied there.
+  Future<int>? _resumePositionFuture;
+
   /// Milestones of the current start-up, printed once playback is rolling.
   ///
   /// "It takes a while to start" is otherwise unattributable: the wait is split
@@ -333,6 +341,7 @@ class PlayerController {
     Future<int>? resumePositionFuture,
   }) async {
     _startupWatch.start();
+    _resumePositionFuture = resumePositionFuture;
     // Must run before media_kit injects hls.js: the bridge intercepts the
     // assignment of `window.Hls` so it can reclaim abandoned instances later.
     WebPlayback.install();
@@ -393,16 +402,44 @@ class PlayerController {
       if (completed) onCompleted();
     });
 
-    _videoParamsSubscription = player.stream.videoParams.listen((params) {
-      if (_disposed) return;
-      final aspect = params.aspect;
-      if (aspect != null && aspect > 0) {
+    // `videoParams` is an mpv property, and in a browser it carries nothing.
+    //
+    // media_kit's web backend publishes exactly one value for it — a bare
+    // `const VideoParams()`, every field null — and it publishes it from stop().
+    // So `aspect` is null forever there, `_videoParamsReady` never turns true,
+    // and neither does [hasFirstFrame]. The player screen holds an opaque cover
+    // and a spinner over the video until that flag flips, so on the web the
+    // result was a black screen with a spinner over a stream that was playing
+    // perfectly well — audio and all. It reads exactly like a stalled transcode,
+    // which is what sent this looking for an HLS bug that was not there.
+    //
+    // The browser's own equivalent is the element's intrinsic size, which
+    // media_kit does publish: it watches `resize` on the <video> and forwards
+    // videoWidth/videoHeight. Those land once the decoder has produced enough of
+    // a frame to know its shape, which is the same moment mpv's videoParams
+    // describes.
+    if (AppPlatform.isWeb) {
+      _videoParamsSubscription = player.stream.width.listen((width) {
+        if (_disposed) return;
+        final height = player.state.height;
+        if (width == null || width <= 0 || height == null || height <= 0) return;
         _mark('firstFrame');
-        videoAspectRatio = aspect;
+        videoAspectRatio = width / height;
         _videoParamsReady = true;
         _maybeMarkFirstFrame();
-      }
-    });
+      });
+    } else {
+      _videoParamsSubscription = player.stream.videoParams.listen((params) {
+        if (_disposed) return;
+        final aspect = params.aspect;
+        if (aspect != null && aspect > 0) {
+          _mark('firstFrame');
+          videoAspectRatio = aspect;
+          _videoParamsReady = true;
+          _maybeMarkFirstFrame();
+        }
+      });
+    }
 
     _media = media;
     _apiClient = apiClient;
@@ -544,6 +581,23 @@ class PlayerController {
     }
   }
 
+  /// The second a web session should begin at, or 0.
+  ///
+  /// Bounded the same way the native path bounds it: a slow /progress response
+  /// must not hold the picture hostage, and starting from the beginning is a far
+  /// better failure than not starting.
+  Future<int> _resolveWebResumeSeconds() async {
+    final future = _resumePositionFuture;
+    if (future == null) return 0;
+    try {
+      final seconds =
+          await future.timeout(const Duration(milliseconds: 1500));
+      return seconds > 0 ? seconds : 0;
+    } catch (_) {
+      return 0;
+    }
+  }
+
   /// Starts playback on the web, which is always a transcoding session.
   ///
   /// Returns true when a session was started, so the caller stops configuring a
@@ -555,11 +609,45 @@ class PlayerController {
     if (tracks == null) return false;
 
     final height = tracks.video?.height ?? 0;
-    final quality = qualityForSourceHeight(height);
-    debugPrint("Player: web session — source height ${height}px, "
-        "asking $quality (video=${tracks.video?.codec})");
-    await switchToQuality(quality);
+    final surface = _surfacePixelHeight();
+    final quality = webQualityFor(
+      sourceHeight: height,
+      viewportHeight: surface,
+      sourceCodec: tracks.video?.codec ?? '',
+    );
+    // The resume point has to be part of the session rather than a seek applied
+    // to it afterwards: the server transcodes from `?start=N` onwards, and the
+    // rest of the film does not exist yet to seek into.
+    //
+    // This is also the only place it can be applied on the web. Every other
+    // platform folds it into the open() that init() performs; a browser cannot
+    // open anything until the track list has said which resolution to ask for,
+    // and by then startPlayback has already run and found no session to
+    // position. It used to depend on which of those two finished first — the
+    // track list normally won, and the resume point was simply dropped.
+    final startSeconds = await _resolveWebResumeSeconds();
+    debugPrint("Player: web session — source ${height}px, surface ${surface}px, "
+        "asking $quality from ${startSeconds}s (video=${tracks.video?.codec})");
+    await switchToQuality(quality, startSeconds: startSeconds);
     return true;
+  }
+
+  /// Height in real pixels of the surface the video will be painted on.
+  ///
+  /// The player screen fills the window, so the window is the surface. Physical
+  /// rather than logical pixels is what matters here: a 1440-logical-pixel window
+  /// on a 2× display really does have 2880 rows to fill, and asking for 720p
+  /// there would be visibly soft.
+  ///
+  /// 0 on anything unexpected, which [webQualityFor] reads as "apply no ceiling".
+  int _surfacePixelHeight() {
+    try {
+      final views = WidgetsBinding.instance.platformDispatcher.views;
+      if (views.isEmpty) return 0;
+      return views.first.physicalSize.height.round();
+    } catch (_) {
+      return 0;
+    }
   }
 
   /// Tells mpv which audio language to select when it loads the next file.
@@ -864,7 +952,15 @@ class PlayerController {
     required ApiClient apiClient,
     int resumeAtSeconds = 0,
   }) async {
-    if (_openedAtSeconds == resumeAtSeconds && currentQuality == null) {
+    if (AppPlatform.isWeb) {
+      // On the web the resume point is part of the session: the server was asked
+      // to start transcoding at that second, so there is nothing to seek to —
+      // and a seek would land outside the window it is producing anyway. When
+      // the session is not up yet (it waits on the track list, which normally
+      // arrives after this runs), _startWebTranscode is what applies the offset,
+      // and it opens with play:true.
+      await player.play();
+    } else if (_openedAtSeconds == resumeAtSeconds && currentQuality == null) {
       // Already positioned: init() opened the stream at this exact second via
       // `Media.start`, which media_kit applies inside mpv's `on_load` hook —
       // i.e. before the file is loaded, so the offset is part of the load
@@ -980,7 +1076,10 @@ class PlayerController {
 
   /// Switch transcoding quality (or start transcoding from Direct Play),
   /// resuming at the exact same second. Always shows the loading spinner.
-  Future<void> switchToQuality(String quality) async {
+  ///
+  /// [startSeconds] overrides that: the first web session of a media has no
+  /// current second to preserve, it has a resume point to honour.
+  Future<void> switchToQuality(String quality, {int? startSeconds}) async {
     if (_media == null || _apiClient == null) return;
     if (currentQuality == quality) return;
 
@@ -991,7 +1090,10 @@ class PlayerController {
       _hlsBurnedSubTypedIndex =
           _subtitlesExplicitlyOff ? -1 : _burnIndexFor(_selectedSubtitleLang);
     }
-    await _openHlsSession(quality: quality, startSeconds: position.inSeconds);
+    await _openHlsSession(
+      quality: quality,
+      startSeconds: startSeconds ?? position.inSeconds,
+    );
   }
 
   /// Reload the HLS session at a new absolute position (large seeks in HLS mode,
