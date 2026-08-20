@@ -81,6 +81,14 @@ void main() async {
   final apiClient = ApiClient();
   await apiClient.initialize();
 
+  // A scanned pairing link names its own server. Point the client at it before
+  // anything else runs: the phone that scans may have been signed in to another
+  // address, or to none, and the code only exists on the one the TV used.
+  final scannedOrigin = TvPairingLink.origin;
+  if (scannedOrigin != null && scannedOrigin != apiClient.baseUrl) {
+    await apiClient.setConnection(scannedOrigin);
+  }
+
   final searchRouteObserver = SearchRouteObserver();
 
   runApp(
