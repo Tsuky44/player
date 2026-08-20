@@ -102,15 +102,44 @@ proxy ou un tunnel, le serveur ignore sa propre adresse publique, et le téléph
 celle que la TV a effectivement utilisée. L'appareil photo natif suffit — aucune dépendance
 caméra n'est ajoutée à l'app.
 
+Le lien porte donc l'adresse du serveur, et le téléphone s'y raccorde avant de chercher le code :
+l'origine de la page scannée écrase l'adresse mémorisée par l'app. Un code n'existe que sur un
+serveur, et l'interroger sur un autre ne peut répondre que « code inconnu » — y compris quand le
+téléphone n'a encore jamais été connecté nulle part.
+
+### 6. La TV trouve le serveur toute seule
+
+L'adresse par défaut d'une build Android est l'alias de bouclage de l'émulateur : juste sur une
+machine de développement, injoignable sur tout appareil réel. Un téléviseur fraîchement installé
+n'a donc aucune adresse utilisable, et la seule réponse possible — « tapez l'IP » — est précisément
+ce que l'écran d'appairage existe pour éviter.
+
+Avant de renoncer, l'app balaie son propre /24 : un connect TCP écarte les 250 adresses vides, puis
+un aller-retour HTTP sur `/api/auth/state` distingue un serveur Onyx d'une imprimante. Quelques
+secondes, contre une minute de chasse au caractère à la télécommande. L'adresse par défaut n'est
+même pas essayée quand personne ne l'a choisie : dix secondes de timeout sur 10.0.2.2 avant de
+faire ce qui marche, c'est dix secondes de spinner.
+
+mDNS aurait été plus propre et plus cher : un paquet de dépendance, un service à publier côté
+serveur, et un multicast que beaucoup de box domestiques filtrent entre le Wi-Fi et l'Ethernet —
+soit exactement la topologie d'un salon.
+
 ## Conséquences
 
 - Le formulaire mot de passe reste accessible depuis l'écran TV, à un bouton. Un foyer dont le
   seul appareil est le téléviseur doit pouvoir entrer, et le tout premier compte d'un serveur
-  vierge n'a personne pour l'approuver.
+  vierge n'a personne pour l'approuver. Ses champs se chaînent à la touche d'action du clavier, et
+  le dernier valide : le clavier d'un téléviseur occupe tout l'écran, donc ni le champ suivant ni
+  le bouton ne sont atteignables tant qu'il est ouvert. `onEditingComplete` est à proscrire dans ce
+  formulaire — il *remplace* la gestion de cette touche au lieu de s'y ajouter.
 - Une session approuvée mais jamais récupérée est balayée par le reaper d'appairages, cinq minutes
   après expiration, au lieu d'attendre les quatre-vingt-dix jours d'inactivité des sessions.
 - L'écran d'appairage côté téléphone est le même quel qu'en soit le chemin d'accès (QR scanné ou
   code tapé depuis le menu compte) : les deux se terminent sur la même décision.
+- Les états terminaux de l'écran TV (échec, expiration) sont rendus avant l'état « pas encore de
+  code ». Testé, parce que l'ordre inverse est passé en revue sans que rien ne le signale : chaque
+  état sans appairage tombait dans le spinner, et une TV qui ne joignait aucun serveur chargeait
+  indéfiniment sans message ni bouton.
 - La navigation D-pad est active sur toutes les plateformes, pas seulement sur TV — un utilisateur
   clavier sur desktop en hérite. Seuls le zoom au focus et la prise de focus automatique sont
   réservés au mode TV, où ils ne concurrencent pas le survol souris.

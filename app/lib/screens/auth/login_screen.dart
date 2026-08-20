@@ -18,6 +18,15 @@ class _LoginScreenState extends State<LoginScreen> {
   final _usernameController = TextEditingController();
   final _passwordController = TextEditingController();
   final _inviteController = TextEditingController();
+
+  /// One node per field, so the keyboard's "next" key has somewhere to go.
+  /// Without them the on-screen keyboard is a dead end on a television: it
+  /// covers the form, and there is no pointer to tap the field underneath.
+  final _serverFocus = FocusNode();
+  final _inviteFocus = FocusNode();
+  final _usernameFocus = FocusNode();
+  final _passwordFocus = FocusNode();
+
   bool _isRegistering = false;
   bool _serverPrefilled = false;
 
@@ -68,7 +77,19 @@ class _LoginScreenState extends State<LoginScreen> {
     _usernameController.dispose();
     _passwordController.dispose();
     _inviteController.dispose();
+    _serverFocus.dispose();
+    _inviteFocus.dispose();
+    _usernameFocus.dispose();
+    _passwordFocus.dispose();
     super.dispose();
+  }
+
+  /// Whether the invitation field is on screen — it is what follows the server
+  /// address when an account is being created against an established server.
+  bool get _invitingShown => _isRegistering && !_setupRequired;
+
+  void _focus(FocusNode node) {
+    if (mounted) FocusScope.of(context).requestFocus(node);
   }
 
   /// Accepts either the raw code or the whole link pasted from a message — the
@@ -81,6 +102,10 @@ class _LoginScreenState extends State<LoginScreen> {
   }
 
   Future<void> _submit() async {
+    // A television's keyboard is full screen: leaving it up hides the result,
+    // error message included.
+    FocusScope.of(context).unfocus();
+
     if (!_formKey.currentState!.validate()) return;
 
     final authProvider = Provider.of<AuthProvider>(context, listen: false);
@@ -176,6 +201,9 @@ class _LoginScreenState extends State<LoginScreen> {
                       const SizedBox(height: 36),
                       TextFormField(
                         controller: _serverController,
+                        focusNode: _serverFocus,
+                        keyboardType: TextInputType.url,
+                        textInputAction: TextInputAction.next,
                         style: const TextStyle(color: AppColors.textPrimary),
                         decoration: const InputDecoration(
                           labelText: 'Adresse du serveur',
@@ -185,14 +213,28 @@ class _LoginScreenState extends State<LoginScreen> {
                         ),
                         validator: (v) =>
                             v == null || v.trim().isEmpty ? 'Requis' : null,
+                        // This used to be an `onEditingComplete`, which is the
+                        // callback that *replaces* Flutter's own handling of the
+                        // keyboard's action key. So "next" ran the probe and did
+                        // nothing else: focus never moved, the keyboard never
+                        // closed, and on a television — where it covers the form
+                        // and there is no pointer to tap the field underneath —
+                        // the password could not be reached at all.
+                        //
                         // Re-check whether that server is pristine when the
                         // address changes: the answer belongs to the server.
-                        onEditingComplete: _probeSetupState,
+                        onFieldSubmitted: (_) {
+                          _probeSetupState();
+                          _focus(_invitingShown ? _inviteFocus : _usernameFocus);
+                        },
                       ),
                       if (_isRegistering && !_setupRequired) ...[
                         const SizedBox(height: 16),
                         TextFormField(
                           controller: _inviteController,
+                          focusNode: _inviteFocus,
+                          textInputAction: TextInputAction.next,
+                          onFieldSubmitted: (_) => _focus(_usernameFocus),
                           style:
                               const TextStyle(color: AppColors.textPrimary),
                           decoration: const InputDecoration(
@@ -209,6 +251,9 @@ class _LoginScreenState extends State<LoginScreen> {
                       const SizedBox(height: 16),
                       TextFormField(
                         controller: _usernameController,
+                        focusNode: _usernameFocus,
+                        textInputAction: TextInputAction.next,
+                        onFieldSubmitted: (_) => _focus(_passwordFocus),
                         style: const TextStyle(color: AppColors.textPrimary),
                         decoration: const InputDecoration(
                           labelText: 'Nom d\'utilisateur',
@@ -221,7 +266,13 @@ class _LoginScreenState extends State<LoginScreen> {
                       const SizedBox(height: 16),
                       TextFormField(
                         controller: _passwordController,
+                        focusNode: _passwordFocus,
                         obscureText: true,
+                        // The last field submits. On a television the button is
+                        // behind the keyboard, so "done" has to be a way in and
+                        // not just a way out.
+                        textInputAction: TextInputAction.done,
+                        onFieldSubmitted: (_) => _submit(),
                         style: const TextStyle(color: AppColors.textPrimary),
                         decoration: const InputDecoration(
                           labelText: 'Mot de passe',

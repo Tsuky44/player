@@ -74,6 +74,15 @@ class ApiClient {
   String? _savedUsername;
   bool _configLoaded = false;
 
+  /// Whether the address in [baseUrl] was ever chosen, as opposed to falling
+  /// back to the per-platform default.
+  ///
+  /// The Android default is the emulator's loopback alias: right on a developer
+  /// machine, unreachable on every real device. A television on a fresh install
+  /// has to know the difference — it is the cue to go looking for the server
+  /// instead of spending ten seconds timing out against 10.0.2.2.
+  bool _serverChosen = false;
+
   /// Loads persisted server URL and auth token. Call once at app startup.
   Future<void> initialize() async {
     await _loadConfig();
@@ -146,6 +155,10 @@ class ApiClient {
 
   // Get current active base URL
   String get baseUrl => _baseUrl ?? _defaultBaseUrl;
+
+  /// True once a server address has been picked — remembered from a previous
+  /// run, entered by hand, or found on the network — rather than defaulted.
+  bool get hasChosenServer => _serverChosen;
 
   String? get savedUsername => _savedUsername;
 
@@ -249,6 +262,7 @@ class ApiClient {
 
     final previousUrl = _baseUrl;
     _baseUrl = formattedUrl;
+    _serverChosen = true;
 
     final prefs = await SharedPreferences.getInstance();
     await prefs.setString("server_url", formattedUrl);
@@ -264,7 +278,10 @@ class ApiClient {
 
   Future<void> _loadConfig() async {
     final prefs = await SharedPreferences.getInstance();
-    _baseUrl = prefs.getString('server_url') ?? _defaultBaseUrl;
+    final savedUrl = prefs.getString('server_url');
+    // On web the page origin *is* the server, so the default is never a guess.
+    _serverChosen = savedUrl != null || AppPlatform.isWeb;
+    _baseUrl = savedUrl ?? _defaultBaseUrl;
     _savedUsername = prefs.getString('last_username');
     _token = await _readToken();
     _configLoaded = true;
