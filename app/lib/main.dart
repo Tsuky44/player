@@ -20,6 +20,8 @@ import 'screens/auth/tv_login_screen.dart';
 import 'tv/tv_focus.dart';
 import 'tv/tv_mode.dart';
 import 'tv/tv_pairing_link.dart';
+import 'screens/player/hardware_decoding.dart';
+import 'screens/player/playback_profile.dart';
 import 'screens/player/player_engine.dart';
 import 'screens/shell/main_shell.dart';
 import 'theme/app_colors.dart';
@@ -64,6 +66,12 @@ void main() async {
   // entirely between a phone and a television, and flipping it after the fact
   // would show the password form for a beat on every TV boot.
   await TvMode.initialize();
+
+  // How much memory playback may spend here. Resolved before the first frame
+  // like the TV mode above, because it is read when a media opens and the
+  // answer never changes for the life of the process.
+  await PlaybackProfiles.initialize(isTv: TvMode.detected);
+  await HardwareDecoding.initialize();
 
   // A QR scanned on the TV opens this app with ?tv=CODE. Read it now, act on it
   // once the shell is up and there is a session to approve with.

@@ -19,6 +19,7 @@ import 'hooks/use_player_controller.dart';
 import 'hooks/use_episode_navigation.dart';
 import 'hooks/use_player_media_keys.dart';
 import 'widgets/skip_intro_button.dart';
+import 'widgets/video_zoom_hint.dart';
 import 'widgets/next_episode_overlay.dart';
 import 'widgets/next_season_overlay.dart';
 import 'widgets/upcoming_episode_overlay.dart';
@@ -32,6 +33,7 @@ import 'widgets/player_settings_anchor.dart';
 import 'widgets/player_subtitles_sheet.dart';
 import 'widgets/player_info_sheet.dart';
 import 'widgets/player_episodes_panel.dart';
+import 'pinch_zoom_fit.dart';
 import 'player_playback_preferences.dart';
 import '../../desktop_window.dart';
 import '../../utils/release_tag.dart';
@@ -72,6 +74,21 @@ class _PlayerScreenState extends State<PlayerScreen> {
   /// [BoxFit.contain] = original (letterbox possible).
   /// [BoxFit.cover]   = adaptive (fills screen, may crop edges).
   BoxFit _videoFit = BoxFit.contain;
+
+  /// Pinch-to-zoom, the gesture Netflix and YouTube both answer on a phone:
+  /// spreading two fingers fills the screen ([BoxFit.cover]), pinching them
+  /// back gives the original framing ([BoxFit.contain]). Reading the pinch
+  /// itself belongs to [PinchZoomFit]; what is left here is when to listen and
+  /// what to do with the answer.
+  ///
+  /// One fit decision per pinch. Without it, fingers drifting back across the
+  /// threshold mid-gesture would keep flipping the picture.
+  bool _pinchResolved = false;
+
+  BoxFit _zoomHintFit = BoxFit.contain;
+  bool _zoomHintVisible = false;
+  bool _zoomHintMounted = false;
+  Timer? _zoomHintTimer;
 
   /// Pack Cinéma — playback rate cycle for studio control.
   double _playbackRate = 1.0;
@@ -948,6 +965,7 @@ class _PlayerScreenState extends State<PlayerScreen> {
     _keyboardFocusNode.dispose();
     _isDisposing = true;
     _controlsTimer?.cancel();
+    _zoomHintTimer?.cancel();
     if (!_progressFlushed && _apiClient != null) {
       unawaited(_syncProgressOnExit(popAfter: false));
     }
@@ -1201,6 +1219,47 @@ class _PlayerScreenState extends State<PlayerScreen> {
     if (!mounted) return;
     setState(() => _playbackRate = next);
     _showControlsTransient();
+  }
+
+  /// Only where two fingers can reach the picture: a television is driven by a
+  /// remote and a desktop by a mouse, and neither can produce this gesture.
+  bool get _pinchToZoomEnabled => AppPlatform.isMobile && !TvMode.isTv;
+
+  void _handleVideoScaleStart(ScaleStartDetails details) {
+    _pinchResolved = false;
+  }
+
+  void _handleVideoScaleUpdate(ScaleUpdateDetails details) {
+    if (_pinchResolved) return;
+    final next = PinchZoomFit.resolve(
+      scale: details.scale,
+      pointerCount: details.pointerCount,
+    );
+    if (next == null) return;
+    _pinchResolved = true;
+    if (next != _videoFit) _updateVideoFit(next);
+    // Shown even when the fit does not change, so pinching a picture that
+    // already fills the screen answers instead of doing nothing at all.
+    _showZoomHint(next);
+  }
+
+  void _showZoomHint(BoxFit fit) {
+    _zoomHintTimer?.cancel();
+    setState(() {
+      _zoomHintFit = fit;
+      _zoomHintVisible = true;
+      _zoomHintMounted = true;
+    });
+    _zoomHintTimer = Timer(const Duration(milliseconds: 900), () {
+      if (!mounted || _isDisposing) return;
+      setState(() => _zoomHintVisible = false);
+      // Taken out of the tree only once it has finished fading, so the blur
+      // layer is not paid for over the rest of the film.
+      _zoomHintTimer = Timer(const Duration(milliseconds: 300), () {
+        if (!mounted || _isDisposing) return;
+        setState(() => _zoomHintMounted = false);
+      });
+    });
   }
 
   void _toggleAspectFitControl() {
@@ -1508,7 +1567,13 @@ class _PlayerScreenState extends State<PlayerScreen> {
                         elevation: _videoScale < 1 ? 24 / _videoScale : 0,
                         borderRadius:
                             BorderRadius.circular(_videoCornerRadius),
-                        clipBehavior: Clip.antiAlias,
+                        // Only while the card has actually shrunk the picture.
+                        // At full size the radius is 0, so this clips a
+                        // rectangle to itself — an antialiased full-screen clip
+                        // over every decoded frame, for nothing. It is free to
+                        // skip on a desktop GPU and it is not free on a stick.
+                        clipBehavior:
+                            _videoScale < 1 ? Clip.antiAlias : Clip.none,
                         animateColor: false,
                         child: SizedBox.expand(
                           child: Video(
@@ -1549,38 +1614,60 @@ class _PlayerScreenState extends State<PlayerScreen> {
                       child: ColoredBox(color: Colors.black),
                     ),
                   ),
+                // A pinch spans two of the tap zones below, so it cannot be
+                // handled by them: the recognizer has to sit above all three,
+                // where both fingers land on the same detector. The zones keep
+                // their taps — a scale gesture only takes the arena once the
+                // fingers move, which is past the point where a tap is still
+                // possible.
                 Positioned.fill(
-                  child: Row(
-                    children: [
-                      Expanded(
-                        flex: 3,
-                        child: GestureDetector(
-                          behavior: HitTestBehavior.opaque,
-                          onDoubleTap: () => _seekRelative(-10),
-                          onTap: _handleVideoTap,
-                          child: Container(color: Colors.transparent),
+                  child: GestureDetector(
+                    behavior: HitTestBehavior.deferToChild,
+                    // Left null off a touchscreen so no scale recognizer joins
+                    // the arena there at all.
+                    onScaleStart:
+                        _pinchToZoomEnabled ? _handleVideoScaleStart : null,
+                    onScaleUpdate:
+                        _pinchToZoomEnabled ? _handleVideoScaleUpdate : null,
+                    child: Row(
+                      children: [
+                        Expanded(
+                          flex: 3,
+                          child: GestureDetector(
+                            behavior: HitTestBehavior.opaque,
+                            onDoubleTap: () => _seekRelative(-10),
+                            onTap: _handleVideoTap,
+                            child: Container(color: Colors.transparent),
+                          ),
                         ),
-                      ),
-                      Expanded(
-                        flex: 4,
-                        child: GestureDetector(
-                          behavior: HitTestBehavior.opaque,
-                          onTap: () => _handleVideoTap(togglePlayback: true),
-                          child: Container(color: Colors.transparent),
+                        Expanded(
+                          flex: 4,
+                          child: GestureDetector(
+                            behavior: HitTestBehavior.opaque,
+                            onTap: () => _handleVideoTap(togglePlayback: true),
+                            child: Container(color: Colors.transparent),
+                          ),
                         ),
-                      ),
-                      Expanded(
-                        flex: 3,
-                        child: GestureDetector(
-                          behavior: HitTestBehavior.opaque,
-                          onDoubleTap: () => _seekRelative(10),
-                          onTap: _handleVideoTap,
-                          child: Container(color: Colors.transparent),
+                        Expanded(
+                          flex: 3,
+                          child: GestureDetector(
+                            behavior: HitTestBehavior.opaque,
+                            onDoubleTap: () => _seekRelative(10),
+                            onTap: _handleVideoTap,
+                            child: Container(color: Colors.transparent),
+                          ),
                         ),
-                      ),
-                    ],
+                      ],
+                    ),
                   ),
                 ),
+                if (_zoomHintMounted)
+                  Positioned.fill(
+                    child: VideoZoomHint(
+                      fit: _zoomHintFit,
+                      visible: _zoomHintVisible,
+                    ),
+                  ),
                 // Switched on rather than compared, so adding a chrome to
                 // [FixedChromeId] fails to compile here instead of silently
                 // rendering a player with no controls at all.
