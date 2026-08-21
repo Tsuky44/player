@@ -13,12 +13,14 @@ import '../../providers/player_layout_provider.dart';
 import '../../navigation/search_route_observer.dart';
 import '../../services/api_client.dart';
 import '../../services/media_details_cache.dart';
+import '../../services/screen_brightness_control.dart';
 import '../../tv/tv_mode.dart';
 import '../../utils/poster_url.dart';
 import 'hooks/use_player_controller.dart';
 import 'hooks/use_episode_navigation.dart';
 import 'hooks/use_player_media_keys.dart';
 import 'widgets/skip_intro_button.dart';
+import 'widgets/seek_feedback_overlay.dart';
 import 'widgets/video_zoom_hint.dart';
 import 'widgets/next_episode_overlay.dart';
 import 'widgets/next_season_overlay.dart';
@@ -85,10 +87,27 @@ class _PlayerScreenState extends State<PlayerScreen> {
   /// threshold mid-gesture would keep flipping the picture.
   bool _pinchResolved = false;
 
+  /// Screen brightness override, 0.0 -> 1.0, or null on a screen whose
+  /// backlight this app does not drive. Null is what keeps the left-hand bar
+  /// out of the chrome everywhere except a phone or tablet.
+  double? _screenBrightness;
+
   BoxFit _zoomHintFit = BoxFit.contain;
   bool _zoomHintVisible = false;
   bool _zoomHintMounted = false;
   Timer? _zoomHintTimer;
+
+  /// Running total of a burst of double-tap seeks, in seconds. Reset once the
+  /// taps stop, or the moment one goes the other way.
+  int _seekHintSeconds = 0;
+  bool _seekHintForward = true;
+
+  /// Bumped per tap so the overlay can replay its arc; see
+  /// [SeekFeedbackOverlay.pulse].
+  int _seekHintPulse = 0;
+  bool _seekHintVisible = false;
+  bool _seekHintMounted = false;
+  Timer? _seekHintTimer;
 
   /// Pack Cinéma — playback rate cycle for studio control.
   double _playbackRate = 1.0;
@@ -319,6 +338,7 @@ class _PlayerScreenState extends State<PlayerScreen> {
         showDesktopCaption.value = false;
       });
     }
+    unawaited(_loadScreenBrightness());
     _playerController = PlayerController();
     _mediaKeys = PlayerMediaKeysBinding(
       onPlayPause: _togglePlayPause,
@@ -586,8 +606,29 @@ class _PlayerScreenState extends State<PlayerScreen> {
     }
   }
 
+  /// Whether a tap on the video means "play/pause" or "show me the chrome".
+  ///
+  /// On a touchscreen there is no pointer to hover, so the same tap has to do
+  /// both jobs, and which one it does is decided by what is already on screen:
+  /// no chrome means the tap was a request to see it, chrome up means the tap
+  /// landed on a player whose controls the user can already read — so it drives
+  /// playback. A phone with no chrome showing pausing the film out from under
+  /// a finger placed to *find* the controls is the behaviour this replaces.
+  bool get _tapDrivesPlayback => _controlsVisible;
+
   void _handleVideoTap({bool togglePlayback = false}) {
     _keyboardFocusNode.requestFocus();
+
+    // Touch: one rule for all three zones, so the middle of the screen is not
+    // a different player from its edges.
+    if (_touchTapRules) {
+      if (_tapDrivesPlayback) _togglePlayPause();
+      // Either way the chrome comes up and its countdown restarts: the tap
+      // that revealed it, and the tap that used it, both mean "I am here".
+      _showControlsTransient();
+      return;
+    }
+
     final layoutProvider =
         Provider.of<PlayerLayoutProvider>(context, listen: false);
     if (togglePlayback ||
@@ -598,6 +639,23 @@ class _PlayerScreenState extends State<PlayerScreen> {
       return;
     }
     _toggleControls();
+  }
+
+  /// Phones and tablets, but not a television: a remote drives the chrome with
+  /// its own keys and never produces a tap.
+  bool get _touchTapRules => AppPlatform.isMobile && !TvMode.isTv;
+
+  /// Reads the brightness the screen is already on, so the bar opens where the
+  /// user left it instead of jumping on first touch.
+  Future<void> _loadScreenBrightness() async {
+    final value = await ScreenBrightnessControl.current();
+    if (value == null || !mounted || _isDisposing) return;
+    setState(() => _screenBrightness = value);
+  }
+
+  void _setScreenBrightness(double value) {
+    setState(() => _screenBrightness = value.clamp(0.0, 1.0));
+    unawaited(ScreenBrightnessControl.set(value));
   }
 
   void _hideControlsWithDelay() {
@@ -966,6 +1024,7 @@ class _PlayerScreenState extends State<PlayerScreen> {
     _isDisposing = true;
     _controlsTimer?.cancel();
     _zoomHintTimer?.cancel();
+    _seekHintTimer?.cancel();
     if (!_progressFlushed && _apiClient != null) {
       unawaited(_syncProgressOnExit(popAfter: false));
     }
@@ -982,6 +1041,12 @@ class _PlayerScreenState extends State<PlayerScreen> {
         DeviceOrientation.portraitDown,
       ]);
       SystemChrome.setEnabledSystemUIMode(SystemUiMode.edgeToEdge);
+    }
+    // Not between two episodes: the next screen is already built and holding
+    // the same override, and dropping it here would flash the panel back to
+    // the system brightness in the middle of a series.
+    if (!_isEpisodeTransition) {
+      unawaited(ScreenBrightnessControl.release());
     }
     if (_episodeNav != null && _episodeNavListener != null) {
       _episodeNav!.removeListener(_episodeNavListener!);
@@ -1258,6 +1323,45 @@ class _PlayerScreenState extends State<PlayerScreen> {
       _zoomHintTimer = Timer(const Duration(milliseconds: 300), () {
         if (!mounted || _isDisposing) return;
         setState(() => _zoomHintMounted = false);
+      });
+    });
+  }
+
+  /// A double-tap on one of the side zones: move the film, and say so.
+  ///
+  /// Separate from [_seekRelative] because the two have different audiences.
+  /// The ±10 buttons and the media keys are already visible causes with a
+  /// visible chrome to read the result off; a double-tap has neither, and is
+  /// the only seek that can arrive several times in a second.
+  void _handleDoubleTapSeek(int seconds) {
+    _seekRelative(seconds);
+    _showSeekHint(seconds);
+  }
+
+  void _showSeekHint(int seconds) {
+    final forward = seconds > 0;
+    _seekHintTimer?.cancel();
+    setState(() {
+      // A burst only accumulates while it keeps going the same way. Tapping
+      // back after tapping forward starts a new count, because "30 s" would
+      // otherwise be describing a journey that ended 10 s from where it began.
+      _seekHintSeconds =
+          (_seekHintVisible && forward == _seekHintForward)
+              ? _seekHintSeconds + seconds.abs()
+              : seconds.abs();
+      _seekHintForward = forward;
+      _seekHintPulse++;
+      _seekHintVisible = true;
+      _seekHintMounted = true;
+    });
+    _seekHintTimer = Timer(const Duration(milliseconds: 700), () {
+      if (!mounted || _isDisposing) return;
+      setState(() => _seekHintVisible = false);
+      // Out of the tree once faded, so its ticker is not left running over the
+      // rest of the film.
+      _seekHintTimer = Timer(const Duration(milliseconds: 300), () {
+        if (!mounted || _isDisposing) return;
+        setState(() => _seekHintMounted = false);
       });
     });
   }
@@ -1635,7 +1739,7 @@ class _PlayerScreenState extends State<PlayerScreen> {
                           flex: 3,
                           child: GestureDetector(
                             behavior: HitTestBehavior.opaque,
-                            onDoubleTap: () => _seekRelative(-10),
+                            onDoubleTap: () => _handleDoubleTapSeek(-10),
                             onTap: _handleVideoTap,
                             child: Container(color: Colors.transparent),
                           ),
@@ -1652,7 +1756,7 @@ class _PlayerScreenState extends State<PlayerScreen> {
                           flex: 3,
                           child: GestureDetector(
                             behavior: HitTestBehavior.opaque,
-                            onDoubleTap: () => _seekRelative(10),
+                            onDoubleTap: () => _handleDoubleTapSeek(10),
                             onTap: _handleVideoTap,
                             child: Container(color: Colors.transparent),
                           ),
@@ -1661,6 +1765,15 @@ class _PlayerScreenState extends State<PlayerScreen> {
                     ),
                   ),
                 ),
+                if (_seekHintMounted)
+                  Positioned.fill(
+                    child: SeekFeedbackOverlay(
+                      forward: _seekHintForward,
+                      seconds: _seekHintSeconds,
+                      pulse: _seekHintPulse,
+                      visible: _seekHintVisible,
+                    ),
+                  ),
                 if (_zoomHintMounted)
                   Positioned.fill(
                     child: VideoZoomHint(
@@ -1700,6 +1813,18 @@ class _PlayerScreenState extends State<PlayerScreen> {
                     volume: _playerController.player.state.volume,
                     onVolumeChanged: (v) =>
                         _playerController.player.setVolume(v),
+                    brightness: _screenBrightness,
+                    onBrightnessChanged: _setScreenBrightness,
+                    onBrightnessDraggingChanged: (dragging) {
+                      // Same deal as the scrubber: the chrome cannot fade out
+                      // from under a finger that is still on it.
+                      if (dragging) {
+                        _controlsTimer?.cancel();
+                        _safeSetState(() => _showControls = true);
+                      } else {
+                        _hideControlsWithDelay();
+                      }
+                    },
                     onBack: _leavePlayer,
                     // This chrome gets the Emby-shaped menu, not the tabbed
                     // panel the modular and default layouts use.

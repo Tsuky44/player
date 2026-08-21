@@ -505,3 +505,76 @@ func TestParseBitrate(t *testing.T) {
 		}
 	}
 }
+
+func TestStereoDownmixFilter(t *testing.T) {
+	// Mono and stereo need no help: FFmpeg's `-ac 2` alone is already lossless
+	// for them, and a filter would only cost a re-render of the samples.
+	for _, ch := range []int{0, 1, 2} {
+		if got := stereoDownmixFilter(ch); got != "" {
+			t.Errorf("%dch should need no filter, got %q", ch, got)
+		}
+	}
+
+	// Surround is addressed by index, never by name — a six-channel film is
+	// tagged 5.1 by one muxer and 5.1(side) by the next, and `pan` rejects a
+	// graph naming a channel the input layout does not carry.
+	for _, ch := range []int{6, 8} {
+		got := stereoDownmixFilter(ch)
+		if !strings.HasPrefix(got, "pan=stereo|") {
+			t.Errorf("%dch should be downmixed by pan, got %q", ch, got)
+		}
+		for _, name := range []string{"FL", "FR", "FC", "LFE", "BL", "SL"} {
+			if strings.Contains(got, name) {
+				t.Errorf("%dch filter names channel %s: %q", ch, name, got)
+			}
+		}
+		// The centre carries the dialogue, and the whole point of the filter is
+		// that it is no longer the quietest thing in the mix.
+		if !strings.Contains(got, "0.8*c2") {
+			t.Errorf("%dch filter does not lift the centre: %q", ch, got)
+		}
+		if !strings.Contains(got, "alimiter=") {
+			t.Errorf("%dch filter has no limiter to absorb its peaks: %q", ch, got)
+		}
+	}
+
+	// Counts whose layout is ambiguous keep FFmpeg's own routing and only take
+	// back the level it removed.
+	for _, ch := range []int{3, 4, 7} {
+		got := stereoDownmixFilter(ch)
+		if strings.Contains(got, "pan=") {
+			t.Errorf("%dch layout is ambiguous, should not be re-routed: %q", ch, got)
+		}
+		if !strings.Contains(got, "volume=") {
+			t.Errorf("%dch should still be level-corrected, got %q", ch, got)
+		}
+	}
+}
+
+func TestBuildFFmpegArgs_DownmixFilterOnlyOnSurroundRenditions(t *testing.T) {
+	probe := &ProbeResult{
+		Video: &VideoStreamInfo{Width: 1280, Height: 720, FrameRate: 24},
+		Audio: []AudioStreamInfo{
+			{Codec: "aac", Channels: 2},  // copied — no filter can apply
+			{Codec: "eac3", Channels: 2}, // re-encoded, but already stereo
+			{Codec: "dts", Channels: 6},  // 5.1 — the case the filter exists for
+		},
+	}
+	args := BuildFFmpegArgs(TranscodeOptions{
+		InputPath: "/tmp/in.mkv", Quality: "720p", TmpDir: "/tmp/out",
+		Probe: probe, SegmentDuration: 2, AudioTypedIndexes: []int{0, 1, 2},
+	})
+
+	for _, flag := range []string{"-filter:a:0", "-filter:a:1"} {
+		if _, ok := argValue(args, flag); ok {
+			t.Errorf("%s should carry no downmix filter", flag)
+		}
+	}
+	v, ok := argValue(args, "-filter:a:2")
+	if !ok {
+		t.Fatal("the 5.1 rendition should carry a downmix filter")
+	}
+	if !strings.HasPrefix(v, "pan=stereo|") {
+		t.Errorf("got %q", v)
+	}
+}

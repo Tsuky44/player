@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
 import '../../../../desktop_window.dart';
 import '../../../../utils/format.dart';
 import '../../../../widgets/global/app_network_image.dart';
+import 'emby_brightness_slider.dart';
 import 'emby_chrome_theme.dart';
 import 'emby_progress_bar.dart';
 
@@ -53,6 +54,17 @@ class EmbyControlsLayer extends StatelessWidget {
   final double volume;
   final ValueChanged<double> onVolumeChanged;
 
+  // --- Brightness ---------------------------------------------------------
+
+  /// Screen brightness, 0.0 -> 1.0, or null on a screen whose backlight this
+  /// app does not drive — a desktop monitor, a television, a browser tab. The
+  /// left-hand bar is left out entirely rather than shown doing nothing.
+  final double? brightness;
+  final ValueChanged<double>? onBrightnessChanged;
+
+  /// True while the bar is being dragged, so the chrome can be held open.
+  final ValueChanged<bool>? onBrightnessDraggingChanged;
+
   // --- Utilities ----------------------------------------------------------
   final VoidCallback onBack;
   final VoidCallback onToggleSubtitles;
@@ -95,6 +107,9 @@ class EmbyControlsLayer extends StatelessWidget {
     required this.onSeekFraction,
     required this.volume,
     required this.onVolumeChanged,
+    this.brightness,
+    this.onBrightnessChanged,
+    this.onBrightnessDraggingChanged,
     required this.onBack,
     required this.onToggleSubtitles,
     required this.onOpenAudio,
@@ -144,6 +159,26 @@ class EmbyControlsLayer extends StatelessWidget {
               right: 0,
               child: _fadeWithChrome(_buildTop(m, width)),
             ),
+            // Between the two scrims, on the edge Netflix and the rest put it.
+            // It rides the same fade as the chrome: a bar floating alone over
+            // a film nobody is touching is exactly the clutter the auto-hide
+            // exists to remove.
+            if (brightness != null && onBrightnessChanged != null)
+              Positioned(
+                left: m.gutter - 8,
+                top: 0,
+                bottom: 0,
+                child: Center(
+                  child: _fadeWithChrome(
+                    EmbyBrightnessSlider(
+                      value: brightness!,
+                      onChanged: onBrightnessChanged!,
+                      onDraggingChanged: onBrightnessDraggingChanged,
+                      metrics: m,
+                    ),
+                  ),
+                ),
+              ),
             Positioned(
               bottom: 0,
               left: 0,
