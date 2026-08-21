@@ -350,6 +350,9 @@ func audioAndMuxerArgs(opt TranscodeOptions, preset qualityPreset, audioIdxs []i
 			fmt.Sprintf("-b:a:%d", i), preset.AudioBitrate,
 			fmt.Sprintf("-ac:a:%d", i), "2",
 		)
+		if f := stereoDownmixFilter(sourceChannels(opt.Probe, idx)); f != "" {
+			args = append(args, fmt.Sprintf("-filter:a:%d", i), f)
+		}
 	}
 	args = append(args, "-sn", "-max_muxing_queue_size", "1024")
 
@@ -533,6 +536,62 @@ func h264LevelFor(preset qualityPreset, probe *ProbeResult) string {
 		return "4.1"
 	default:
 		return "4.1"
+	}
+}
+
+// sourceChannels is the channel count of one probed audio track, or 0 when the
+// probe says nothing about it.
+func sourceChannels(probe *ProbeResult, typedIndex int) int {
+	if probe == nil || typedIndex < 0 || typedIndex >= len(probe.Audio) {
+		return 0
+	}
+	return probe.Audio[typedIndex].Channels
+}
+
+// stereoDownmixFilter is the -filter:a value that folds a surround track into
+// the two channels every client can play, without burying the dialogue. Empty
+// for a track that is already stereo or mono, which needs no help.
+//
+// The `-ac 2` above is enough to *produce* stereo, and that is the problem:
+// FFmpeg's implicit downmix sums the six channels and then divides by the sum
+// of its own coefficients so the result cannot clip. On a film mastered with
+// speech in the centre and everything else around it, that division leaves the
+// centre at 0.29 and the fronts at 0.41 — voices end up under the music and the
+// whole track sounds like it is playing through a blanket. Carrying the centre
+// at the same 0.8 as the fronts is worth about 9 dB on speech and about 6 dB on
+// the fronts, and alimiter absorbs the peaks the missing division no longer
+// takes care of.
+//
+// It is the same default the client corrects for a Direct Play file (see the
+// player's stereoDownmixFilter). A transcoded stream has to be corrected here
+// instead, because by the time it reaches the client the six channels it would
+// need to do the correction are already gone.
+//
+// Channels are addressed by index, not by name: one muxer tags a six-channel
+// film `5.1` and the next tags it `5.1(side)` — rear pair called BL/BR versus
+// SL/SR — and `pan` rejects a graph naming a channel the input layout does not
+// carry. The index order is identical in both, so `c4`/`c5` is the rear pair
+// either way. Counts whose layout is genuinely ambiguous (3, 4, 7) keep
+// FFmpeg's routing and only take back the level it removed.
+func stereoDownmixFilter(channels int) string {
+	const limiter = "alimiter=limit=0.95:level=0"
+	switch {
+	case channels <= 2:
+		return ""
+	// 5.1 — FL FR FC LFE BL/SL BR/SR
+	case channels == 6:
+		return "pan=stereo|" +
+			"c0=0.8*c0+0.8*c2+0.5*c4+0.3*c3|" +
+			"c1=0.8*c1+0.8*c2+0.5*c5+0.3*c3" +
+			"," + limiter
+	// 7.1 — FL FR FC LFE BL BR SL SR
+	case channels == 8:
+		return "pan=stereo|" +
+			"c0=0.8*c0+0.8*c2+0.45*c4+0.45*c6+0.3*c3|" +
+			"c1=0.8*c1+0.8*c2+0.45*c5+0.45*c7+0.3*c3" +
+			"," + limiter
+	default:
+		return "volume=4dB," + limiter
 	}
 }
 

@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:onyx/screens/player/widgets/emby/emby_brightness_slider.dart';
 import 'package:onyx/screens/player/widgets/emby/emby_chrome_theme.dart';
 import 'package:onyx/screens/player/widgets/emby/emby_controls_layer.dart';
 
@@ -12,6 +13,8 @@ Future<void> pumpChrome(
   VoidCallback? onOpenEpisodes,
   VoidCallback? onSkipIntro,
   double volume = 70,
+  double? brightness,
+  ValueChanged<double>? onBrightnessChanged,
   bool isPlaying = true,
   bool visible = true,
 }) async {
@@ -37,6 +40,8 @@ Future<void> pumpChrome(
           onForward: () {},
           onSeekFraction: (_) {},
           onVolumeChanged: (_) {},
+          brightness: brightness,
+          onBrightnessChanged: onBrightnessChanged ?? (_) {},
           onBack: () {},
           onToggleSubtitles: () {},
           onOpenAudio: () {},
@@ -288,5 +293,90 @@ void main() {
     await tester.tap(find.byIcon(Icons.arrow_back_ios_new_rounded),
         warnIfMissed: false);
     expect(backTaps, 0);
+  });
+
+  group('the brightness bar', () {
+    testWidgets('is left out when the screen backlight is not ours to drive',
+        (tester) async {
+      // Desktop, television, browser: `brightness` arrives null and the bar
+      // must not be there at all rather than sit inert on the edge.
+      await pumpChrome(tester, width: 1280);
+
+      expect(find.byType(EmbyBrightnessSlider), findsNothing);
+    });
+
+    testWidgets('appears on the left once a brightness is known',
+        (tester) async {
+      await pumpChrome(tester, width: 420, brightness: 0.5);
+
+      final bar = find.byType(EmbyBrightnessSlider);
+      expect(bar, findsOneWidget);
+
+      // On the left edge, and clear of the middle of the picture.
+      final rect = tester.getRect(bar);
+      expect(rect.left, lessThan(60));
+      expect(rect.center.dy, closeTo(350, 60));
+    });
+
+    testWidgets('dragging up brightens and dragging down dims', (tester) async {
+      final values = <double>[];
+      await pumpChrome(
+        tester,
+        width: 420,
+        brightness: 0.5,
+        onBrightnessChanged: values.add,
+      );
+
+      final bar = find.byType(EmbyBrightnessSlider);
+      await tester.drag(bar, const Offset(0, -60));
+      await tester.pump();
+      expect(values.last, greaterThan(0.5),
+          reason: 'up is brighter, the direction the bar itself grows');
+
+      values.clear();
+      await tester.drag(bar, const Offset(0, 60));
+      await tester.pump();
+      expect(values.last, lessThan(0.5));
+    });
+
+    testWidgets('a drag past either end stays inside 0..1', (tester) async {
+      final values = <double>[];
+      await pumpChrome(
+        tester,
+        width: 420,
+        brightness: 0.5,
+        onBrightnessChanged: values.add,
+      );
+
+      final bar = find.byType(EmbyBrightnessSlider);
+      await tester.drag(bar, const Offset(0, -600));
+      await tester.pump();
+      await tester.drag(bar, const Offset(0, 600));
+      await tester.pump();
+
+      expect(values, isNotEmpty);
+      for (final v in values) {
+        expect(v, inInclusiveRange(0.0, 1.0));
+      }
+    });
+
+    testWidgets('hides with the rest of the chrome', (tester) async {
+      await pumpChrome(
+        tester,
+        width: 420,
+        brightness: 0.5,
+        visible: false,
+      );
+
+      final opacity = tester.widget<AnimatedOpacity>(
+        find
+            .ancestor(
+              of: find.byType(EmbyBrightnessSlider),
+              matching: find.byType(AnimatedOpacity),
+            )
+            .first,
+      );
+      expect(opacity.opacity, 0);
+    });
   });
 }

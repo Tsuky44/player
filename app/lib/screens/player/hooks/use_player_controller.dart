@@ -100,6 +100,8 @@ class PlayerController {
     // own answer, not what it was asked for: a decoder that failed to start
     // falls back silently, and "hwdec=mediacodec" in the settings tells you
     // nothing about whether a frame ever reached the GPU that way.
+    await _applyStereoDownmix();
+
     final hwdec = await _readMpvProperty(platform, 'hwdec-current');
     final codec = await _readMpvProperty(platform, 'video-codec');
     final params = player.state.videoParams;
@@ -1594,6 +1596,117 @@ class PlayerController {
     try {
       player.setAudioTrack(real[i]);
     } catch (_) {}
+    // The new track may not have the channel layout the old one had — a French
+    // 5.1 next to an English stereo is the normal shape of a library file — and
+    // the downmix filter is only correct for one of the two.
+    unawaited(_applyStereoDownmix(afterTrackSwitch: true));
+  }
+
+  /// The mpv audio filter currently installed, so an unchanged decision costs
+  /// no property write. Empty string means "no filter", null means "never set".
+  String? _audioFilterChain;
+
+  /// Rebalances a surround track when it is about to be squeezed into two
+  /// channels.
+  ///
+  /// FFmpeg's default 5.1 downmix — which is what both mpv and the transcoder
+  /// fall back to — mixes the six channels and then divides the result by the
+  /// sum of its own coefficients so the peaks cannot clip. On a film mastered
+  /// with dialogue in the centre and effects in the surrounds, that division
+  /// costs about 7 dB across the board and drops the centre furthest: voices
+  /// end up under the music, and the whole track sounds veiled. It is the
+  /// single most common "the sound is muffled" complaint on a phone, where
+  /// stereo is the only output there is.
+  ///
+  /// The fix is to downmix explicitly instead: keep the fronts near unity, hand
+  /// the centre half its level rather than a quarter, and fold the surrounds in
+  /// behind them. That is roughly +5 dB overall and rather more than that on
+  /// speech. [_downmixLimiter] catches the peaks the missing division no longer
+  /// takes care of, so the extra level costs no distortion.
+  ///
+  /// Applied only when the output really is stereo: on a desktop wired to a
+  /// receiver mpv sends the six channels through untouched, and folding them
+  /// down first would throw away the surround the user has the hardware for.
+  Future<void> _applyStereoDownmix({bool afterTrackSwitch = false}) async {
+    if (AppPlatform.isWeb || _disposed) return;
+    final platform = player.platform as dynamic;
+
+    // After a track switch mpv needs a moment to reconfigure the audio chain;
+    // reading the params on the same turn still answers with the old track's.
+    if (afterTrackSwitch) {
+      await Future<void>.delayed(const Duration(milliseconds: 400));
+      if (_disposed) return;
+    }
+
+    // `audio-params` is the decoder's output — the file's own layout, before
+    // any filter of ours. `audio-out-params` is what the audio API is actually
+    // being handed, which is where a real surround setup shows up.
+    final sourceChannels = int.tryParse(
+            await _readMpvProperty(platform, 'audio-params/channel-count') ??
+                '') ??
+        0;
+    final outputChannels = int.tryParse(
+            await _readMpvProperty(
+                    platform, 'audio-out-params/channel-count') ??
+                '') ??
+        0;
+
+    // A phone or a pair of headphones is stereo and nothing else; asking the
+    // AO is only worth it where the answer can differ.
+    final stereoOut =
+        AppPlatform.isMobile || outputChannels <= 2 || outputChannels == 0;
+
+    final wanted = (sourceChannels > 2 && stereoOut)
+        ? stereoDownmixFilter(sourceChannels)
+        : '';
+    if (wanted == _audioFilterChain) return;
+    _audioFilterChain = wanted;
+    await _setMpvProperty(platform, 'af', wanted);
+    debugPrint('Audio: ${sourceChannels}ch source, ${outputChannels}ch out — '
+        '${wanted.isEmpty ? 'no downmix filter' : 'dialogue-forward downmix'}');
+  }
+
+  /// The mpv `af` value that folds a [sourceChannels]-channel track into stereo
+  /// without burying the dialogue.
+  ///
+  /// Input channels are addressed by index rather than by name on purpose. The
+  /// same six-channel film is tagged `5.1` by one muxer and `5.1(side)` by the
+  /// next — the difference is whether the rear pair is called BL/BR or SL/SR —
+  /// and `pan` refuses a graph naming a channel the input layout does not have.
+  /// The index order is the same either way, so `c4`/`c5` reaches the rear pair
+  /// in both, and a file that would have failed the filter outright just plays.
+  ///
+  /// The centre is carried at the same 0.8 as the fronts, where the normalised
+  /// default leaves it at 0.29 against their 0.41 — measured against FFmpeg's
+  /// own downmix, that is about 9 dB more level on speech and about 6 dB on the
+  /// fronts, so dialogue does not merely get louder, it stops sitting behind
+  /// the music. The surrounds fold in behind both and the LFE adds weight
+  /// without becoming the mix. `alimiter` is what pays for coefficients that
+  /// deliberately sum past 1.0: the loudest peaks are rounded off rather than
+  /// squared off, which is what lets the levels be this generous at all.
+  ///
+  /// Layouts that cannot be addressed by index with any confidence (3, 4 or 7
+  /// channels, where the same count means different things) keep FFmpeg's own
+  /// routing and only take back the level it removed — the smaller half of the
+  /// fix, and the only half that is safe to apply blind.
+  static String stereoDownmixFilter(int sourceChannels) {
+    const limiter = 'alimiter=limit=0.95:level=0';
+    switch (sourceChannels) {
+      // 5.1 — FL FR FC LFE BL/SL BR/SR
+      case 6:
+        return 'lavfi=[pan=stereo|'
+            'c0=0.8*c0+0.8*c2+0.5*c4+0.3*c3|'
+            'c1=0.8*c1+0.8*c2+0.5*c5+0.3*c3'
+            ',$limiter]';
+      // 7.1 — FL FR FC LFE BL BR SL SR
+      case 8:
+        return 'lavfi=[pan=stereo|'
+            'c0=0.8*c0+0.8*c2+0.45*c4+0.45*c6+0.3*c3|'
+            'c1=0.8*c1+0.8*c2+0.45*c5+0.45*c7+0.3*c3'
+            ',$limiter]';
+      default:
+        return 'lavfi=[volume=4dB,$limiter]';
+    }
   }
 
   /// Monotonic token guarding against out-of-order subtitle loads (the user
