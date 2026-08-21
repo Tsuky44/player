@@ -11,6 +11,7 @@ import '../../providers/auth_provider.dart';
 import '../../providers/home_provider.dart';
 import '../../providers/player_layout_provider.dart';
 import '../../services/api_client.dart';
+import '../player/hardware_decoding.dart';
 import '../../theme/app_colors.dart';
 import '../../utils/external_url.dart';
 import '../player_studio/player_studio_screen.dart';
@@ -940,6 +941,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                             ),
                           ),
                           const _TvModeTile(),
+                          const _HardwareDecodingTile(),
                         ],
                       ),
                     ),
@@ -1334,6 +1336,79 @@ class _NavTile extends StatelessWidget {
             ),
           ),
         ),
+      ),
+    );
+  }
+}
+
+/// Escape hatch for a device whose zero-copy decoder is broken.
+///
+/// The default hands decoded frames straight to the GPU, which is what makes a
+/// 4K film playable on a streaming stick. Some Android vendors ship a
+/// MediaCodec that reports success and produces a green or black picture; that
+/// cannot be detected from the app, because mpv is told the frames decoded and
+/// displayed fine. So it is offered as a choice, with the fast path as the
+/// default and a working picture always one tap away.
+class _HardwareDecodingTile extends StatefulWidget {
+  const _HardwareDecodingTile();
+
+  @override
+  State<_HardwareDecodingTile> createState() => _HardwareDecodingTileState();
+}
+
+class _HardwareDecodingTileState extends State<_HardwareDecodingTile> {
+  Future<void> _apply(HardwareDecodingPreference preference) async {
+    await HardwareDecoding.setPreference(preference);
+    if (mounted) setState(() {});
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.only(top: 16),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Text(
+            'Décodage matériel',
+            style: TextStyle(
+              fontWeight: FontWeight.w600,
+              fontSize: 14,
+              color: AppColors.textPrimary,
+            ),
+          ),
+          const SizedBox(height: 2),
+          const Text(
+            'Passez sur « Compatible » si l\'image est noire ou verte alors '
+            'que le son fonctionne.',
+            style: TextStyle(color: AppColors.textMuted, fontSize: 12),
+          ),
+          const SizedBox(height: 10),
+          SegmentedButton<HardwareDecodingPreference>(
+            segments: const [
+              ButtonSegment(
+                value: HardwareDecodingPreference.auto,
+                label: Text('Rapide'),
+              ),
+              ButtonSegment(
+                value: HardwareDecodingPreference.copy,
+                label: Text('Compatible'),
+              ),
+              ButtonSegment(
+                value: HardwareDecodingPreference.off,
+                label: Text('Logiciel'),
+              ),
+            ],
+            selected: {HardwareDecoding.preference},
+            showSelectedIcon: false,
+            onSelectionChanged: (selection) => _apply(selection.first),
+          ),
+          const SizedBox(height: 6),
+          const Text(
+            'Le changement prend effet à la prochaine lecture.',
+            style: TextStyle(color: AppColors.textMuted, fontSize: 11),
+          ),
+        ],
       ),
     );
   }

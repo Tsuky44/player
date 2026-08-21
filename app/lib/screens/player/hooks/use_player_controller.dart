@@ -6,6 +6,9 @@ import '../../../models/models.dart';
 import '../../../utils/app_platform.dart';
 import '../player_engine.dart';
 import '../web/web_playback.dart';
+import '../display_frame_rate.dart';
+import '../hardware_decoding.dart';
+import '../playback_profile.dart';
 import '../web_quality.dart';
 import '../../../services/api_client.dart';
 import '../../../services/playback_preferences_storage.dart';
@@ -77,7 +80,61 @@ class PlayerController {
       if (_disposed || hasFirstFrame) return;
       hasFirstFrame = true;
       _onFirstFrame?.call();
+      unawaited(_onPictureLive());
     });
+  }
+
+  /// Runs once the picture is actually on screen.
+  ///
+  /// Two things need the decoder to have committed to a file, and neither can
+  /// be answered before it has: which rate the panel should run at, and what
+  /// mpv actually chose to decode with.
+  Future<void> _onPictureLive() async {
+    if (AppPlatform.isWeb || _disposed) return;
+    final platform = player.platform as dynamic;
+
+    final fps = double.tryParse(await _readMpvProperty(platform, 'container-fps') ?? '') ?? 0;
+    if (fps > 0) await DisplayFrameRate.matchTo(fps);
+
+    // The one line that says what is really happening. `hwdec-current` is mpv's
+    // own answer, not what it was asked for: a decoder that failed to start
+    // falls back silently, and "hwdec=mediacodec" in the settings tells you
+    // nothing about whether a frame ever reached the GPU that way.
+    final hwdec = await _readMpvProperty(platform, 'hwdec-current');
+    final codec = await _readMpvProperty(platform, 'video-codec');
+    final params = player.state.videoParams;
+    debugPrint('Playback: ${params.w}x${params.h} $codec @ '
+        '${fps.toStringAsFixed(3)}fps · hwdec=$hwdec '
+        '(asked ${HardwareDecoding.describe()}) · '
+        'buffers=${PlaybackProfiles.current.label}'
+        '${DisplayFrameRate.requested != null ? ' · display=${DisplayFrameRate.requested}Hz' : ''}');
+  }
+
+  /// Reads one mpv property, or null. The getter throws for a property that is
+  /// unset on this build or not yet available, which is not worth a log line.
+  Future<String?> _readMpvProperty(dynamic platform, String name) async {
+    try {
+      return await platform.getProperty(name) as String?;
+    } catch (_) {
+      return null;
+    }
+  }
+
+  /// What the decoder and the renderer each had to throw away.
+  ///
+  /// The two numbers separate the two failures that look identical on screen:
+  /// `decoder-frame-drop-count` rises when the decoder cannot keep up with the
+  /// file, `frame-drop-count` when the display path cannot keep up with the
+  /// decoder. Logged on the way out, when both are final.
+  Future<void> _logDropCounters() async {
+    if (AppPlatform.isWeb) return;
+    try {
+      final platform = player.platform as dynamic;
+      final vo = await _readMpvProperty(platform, 'frame-drop-count');
+      final dec = await _readMpvProperty(platform, 'decoder-frame-drop-count');
+      if (vo == '0' && dec == '0') return;
+      debugPrint('Playback: dropped frames — display=$vo decoder=$dec');
+    } catch (_) {}
   }
 
   /// In HLS mode the stream timeline resets to 0 at this offset (seconds) into
@@ -713,12 +770,19 @@ class PlayerController {
     if (AppPlatform.isWeb) return;
 
     final platform = player.platform as dynamic;
+    final profile = PlaybackProfiles.current;
+
     await _setMpvProperty(platform, 'cache', 'yes');
-    // ~4 min forward buffer: large enough to absorb any network jitter without
-    // hoarding hundreds of MB of RAM (memory pressure on 8GB machines causes
-    // periodic decode stalls — video freezes while audio keeps playing).
-    await _setMpvProperty(platform, 'demuxer-max-bytes', '268435456');
-    await _setMpvProperty(platform, 'demuxer-readahead-secs', '240');
+    // Forward buffer: large enough to absorb network jitter without hoarding
+    // memory the device does not have. On a desktop that is ~4 min and a
+    // quarter of a gigabyte; on a streaming stick with 1.5 GB of total RAM the
+    // same allocation *is* the memory pressure this comment used to warn about
+    // — video freezing while audio keeps playing, constantly instead of
+    // occasionally. [PlaybackProfile] holds the numbers per class of device.
+    await _setMpvProperty(
+        platform, 'demuxer-max-bytes', '${profile.demuxerMaxBytes}');
+    await _setMpvProperty(
+        platform, 'demuxer-readahead-secs', '${profile.readaheadSecs}');
     // Seek inside the buffer instead of re-fetching over HTTP. The default
     // (`auto`) does not commit to using the cache when the underlying stream is
     // itself seekable — which an HTTP range server is — so a rewind of a few
@@ -735,21 +799,26 @@ class PlayerController {
     // periodic decode stalls this player was fixed for were memory pressure on
     // 8 GB machines. +16 MiB over mpv's own default buys the seek back; another
     // hundred would risk buying the freeze back with it.
-    await _setMpvProperty(platform, 'demuxer-max-back-bytes', '67108864');
-    await _setMpvProperty(platform, 'hr-seek', 'yes');
-    // Whitelisted hardware decoders only (VideoToolbox on macOS, D3D11 on
-    // Windows, MediaCodec on Android). Plain 'auto' may pick flaky paths that
-    // stall the video track while audio continues.
-    // macOS 27 beta: plain VideoToolbox (hwdec=auto-safe) can freeze while
-    // audio continues. videotoolbox-copy decodes in GPU then copies frames to
-    // CPU RAM, which is compatible with mpv's OpenGL/CVPixelBuffer/Metal render
-    // pipeline on macOS. Windows/Android keep auto-safe (D3D11/MediaCodec).
     await _setMpvProperty(
-        platform, 'hwdec', AppPlatform.isMacOS ? 'videotoolbox-copy' : 'auto-safe');
+        platform, 'demuxer-max-back-bytes', '${profile.demuxerBackBytes}');
+    await _setMpvProperty(platform, 'hr-seek', 'yes');
+    // Which hardware decoder, and whether its frames are allowed to stay on the
+    // GPU. See [HardwareDecoding] — on Android that choice is the difference
+    // between a 4K film playing on a streaming stick and not, and it is a
+    // setting because the zero-copy path depends on the vendor's driver.
+    await _setMpvProperty(platform, 'hwdec', HardwareDecoding.mpvValue);
     // Direct rendering (decoding straight into GPU-mapped buffers) is a known
     // source of periodic video freezes with the libmpv render API embedding
     // used by media_kit; the extra copy is negligible.
-    await _setMpvProperty(platform, 'vd-lavc-dr', 'no');
+    //
+    // Android is not that embedding. There media_kit hands mpv a real Android
+    // Surface through `--wid` and lets `vo=gpu` draw into it, so the render-API
+    // bug this guards against cannot occur — while the extra copy it forces is
+    // very much not negligible on a 4K frame and a stick-class GPU. mpv's own
+    // default is left in place there.
+    if (!AppPlatform.isAndroid) {
+      await _setMpvProperty(platform, 'vd-lavc-dr', 'no');
+    }
     await _setMpvProperty(platform, 'sub-auto', 'no');
     await _setMpvProperty(platform, 'network-timeout', '60');
     // Transparent reconnection if the OS/router drops the long-lived HTTP
@@ -778,6 +847,13 @@ class PlayerController {
     // while the probe-size ceiling is left at FFmpeg's default so an unusual
     // file keeps enough room to have all of its tracks recognised.
     await _setMpvProperty(platform, 'demuxer-lavf-analyzeduration', '2');
+    // HDR peak detection is a compute pass over every frame. It buys slightly
+    // better tone mapping on a GPU that has the headroom, and costs frames on
+    // one that does not — and a 4K HDR film on a streaming stick is precisely
+    // the case where the picture is already the most expensive thing on screen.
+    if (!profile.allowHdrComputePeak) {
+      await _setMpvProperty(platform, 'hdr-compute-peak', 'no');
+    }
     if (AppPlatform.isMacOS) {
       // macOS rendering pipeline (mpv → OpenGL → CVPixelBuffer → Metal →
       // Flutter) can stall periodically, especially on macOS 27 beta. These
@@ -1727,16 +1803,25 @@ class PlayerController {
   Future<void> _applyHlsPlayerProperties() async {
     try {
       final p = player.platform as dynamic;
+      final profile = PlaybackProfiles.current;
       await p.setProperty('force-seekable', 'yes');
       await p.setProperty('cache', 'yes');
       await p.setProperty('demuxer-seekable-cache', 'yes');
-      await p.setProperty('demuxer-max-bytes', '104857600');
-      await p.setProperty('demuxer-readahead-secs', '60');
+      await p.setProperty(
+          'demuxer-max-bytes', '${profile.hlsDemuxerMaxBytes}');
+      await p.setProperty(
+          'demuxer-readahead-secs', '${profile.hlsReadaheadSecs}');
       // Same decode-path hardening as Direct Play — prevents video-only
       // freezes while audio keeps playing.
-      await p.setProperty(
-          'hwdec', AppPlatform.isMacOS ? 'videotoolbox-copy' : 'auto-safe');
-      await p.setProperty('vd-lavc-dr', 'no');
+      await p.setProperty('hwdec', HardwareDecoding.mpvValue);
+      // See the Direct Play block: this is a render-API workaround, and Android
+      // does not use the render API.
+      if (!AppPlatform.isAndroid) {
+        await p.setProperty('vd-lavc-dr', 'no');
+      }
+      if (!profile.allowHdrComputePeak) {
+        await p.setProperty('hdr-compute-peak', 'no');
+      }
       // HLS segments are short HTTP requests; reconnection is cheap insurance
       // against transient network blips between segment fetches.
       await p.setProperty('stream-lavf-o',
@@ -1820,6 +1905,11 @@ class PlayerController {
   }
 
   void dispose() {
+    // Before `_disposed`, so the property reads still go through.
+    unawaited(_logDropCounters());
+    // The catalogue is not 24 fps: a panel left at a film's rate makes every
+    // scroll in the app judder instead.
+    unawaited(DisplayFrameRate.release());
     _disposed = true;
     _deferredSubtitleExtractTimer?.cancel();
     _deferredSubtitleExtractTimer = null;
