@@ -202,6 +202,7 @@ func buildShowContinueWatching(userID int, hidden map[string]struct{}) ([]models
 		return nil, err
 	}
 
+	now := time.Now().UTC()
 	var items []models.HomeMediaItem
 	for _, act := range visible {
 		episodes := episodesByShow[act.showID]
@@ -212,7 +213,9 @@ func buildShowContinueWatching(userID int, hidden map[string]struct{}) ([]models
 		if !meetsShowContinueWatchingThreshold(row, episodes) {
 			continue
 		}
-		items = append(items, episodeRowToContinueWatchingItem(act.showID, act.title, act.poster, row, act.updatedAt))
+		item := episodeRowToContinueWatchingItem(act.showID, act.title, act.poster, row, act.updatedAt)
+		item.HasNewEpisode = isNewEpisodeRelease(episodes, row, now)
+		items = append(items, item)
 	}
 
 	log.Printf("ContinueWatching: %d in-progress show(s) for user %d", len(items), userID)
@@ -237,8 +240,14 @@ func buildContinueWatching(userID int, limit int) ([]models.HomeMediaItem, error
 		shows = nil
 	}
 
+	// Series with a freshly released episode lead the row: they are the reason
+	// someone opens the app on the day their show airs. Sorting before the
+	// limit is what keeps them from being cut off the end of a long list.
 	combined := append(movies, shows...)
-	sort.Slice(combined, func(i, j int) bool {
+	sort.SliceStable(combined, func(i, j int) bool {
+		if combined[i].HasNewEpisode != combined[j].HasNewEpisode {
+			return combined[i].HasNewEpisode
+		}
 		return combined[i].UpdatedAt.After(combined[j].UpdatedAt)
 	})
 

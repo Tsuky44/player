@@ -317,4 +317,8 @@ type HomeMediaItem struct {
 	ShowID                 int       `json:"show_id,omitempty"`
 	EpisodeTitle           string    `json:"episode_title,omitempty"`
 	UpdatedAt              time.Time `json:"updated_at"`
+	// HasNewEpisode marks a series whose resume episode is a freshly released
+	// one — the weekly drop the user has not watched yet. Continue watching
+	// only.
+	HasNewEpisode bool `json:"has_new_episode,omitempty"`
 }

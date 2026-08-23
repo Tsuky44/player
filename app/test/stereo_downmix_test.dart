@@ -1,58 +1,54 @@
 import 'package:flutter_test/flutter_test.dart';
 import 'package:onyx/screens/player/hooks/use_player_controller.dart';
 
-/// The client half of the muffled-dialogue fix. The transcoder carries the
-/// same rules in Go (`streaming.stereoDownmixFilter`) for the streams it
+/// The client half of the dialogue-forward downmix. The transcoder carries the
+/// same graph in Go (`streaming.stereoDownmixFilter`) for the streams it
 /// re-encodes; this one covers Direct Play, where the six channels reach the
 /// device intact and mpv is the thing about to fold them down.
+///
+/// The graph is a constant, and that is the point being protected here: the
+/// version it replaced picked one filter per channel count, which meant the
+/// layout had to be known before the filter could be installed — and it is not
+/// known until mpv has configured the track, well after the file has started.
 void main() {
+  const filter = PlayerController.dialogueForwardDownmix;
+
   group('folding surround into stereo', () {
+    test('normalises the layout before addressing channels by index', () {
+      // `pan` reads `c4` as "the fifth channel of whatever arrived", so the
+      // graph is only correct if the input is known to have six. `aformat`
+      // is what makes that true for every track in the library — mono, stereo,
+      // 5.1, 5.1(side) and 7.1 all reach `pan` as plain 5.1.
+      expect(filter.indexOf('aformat=channel_layouts=5.1'),
+          lessThan(filter.indexOf('pan=stereo')));
+    });
+
     test('never names a channel, so 5.1 and 5.1(side) both survive', () {
       // A six-channel film is tagged `5.1` by one muxer and `5.1(side)` by the
       // next — same order, different names for the rear pair — and `pan`
-      // rejects a graph naming a channel the input layout does not carry. Index
-      // addressing is what makes one filter correct for both.
-      for (final channels in [6, 8]) {
-        final filter = PlayerController.stereoDownmixFilter(channels);
-        for (final name in ['FL', 'FR', 'FC', 'LFE', 'BL', 'BR', 'SL', 'SR']) {
-          expect(filter, isNot(contains(name)),
-              reason: '$channels-channel filter names $name');
-        }
+      // rejects a graph naming a channel the input layout does not carry.
+      for (final name in ['FL', 'FR', 'FC', 'LFE', 'BL', 'BR', 'SL', 'SR']) {
+        expect(filter, isNot(contains(name)), reason: 'filter names $name');
       }
     });
 
     test('lifts the centre to the level of the fronts', () {
-      // The whole complaint: FFmpeg's normalised downmix leaves the centre at
-      // 0.29 against the fronts' 0.41, so speech sits under the music.
-      final filter = PlayerController.stereoDownmixFilter(6);
-      expect(filter, contains('0.8*c2')); // centre
-      expect(filter, contains('0.8*c0')); // front left
-      expect(filter, contains('0.8*c1')); // front right
+      // The whole complaint: the default downmix carries the centre at 0.707
+      // against the fronts' 1.0, so speech sits 3 dB under the music. Carrying
+      // both at 1.0 is +3 dB on dialogue and leaves everything else untouched —
+      // measured on mpv's own output, not assumed.
+      expect(filter, contains('c0=1.0*c0+1.0*c2')); // front left + centre
+      expect(filter, contains('c1=1.0*c1+1.0*c2')); // front right + centre
     });
 
     test('carries a limiter, since the coefficients sum past 1.0', () {
-      for (final channels in [3, 6, 7, 8]) {
-        expect(PlayerController.stereoDownmixFilter(channels),
-            contains('alimiter='));
-      }
-    });
-
-    test('leaves the routing alone when the layout is ambiguous', () {
-      // 3, 4 and 7 channels each mean more than one thing, so there is no index
-      // map worth trusting — only the lost level can be given back.
-      for (final channels in [3, 4, 7]) {
-        final filter = PlayerController.stereoDownmixFilter(channels);
-        expect(filter, isNot(contains('pan=')));
-        expect(filter, contains('volume='));
-      }
+      expect(filter, contains('alimiter='));
+      expect(filter.indexOf('alimiter='), greaterThan(filter.indexOf('pan=')));
     });
 
     test('is a graph mpv will accept as an `af` value', () {
-      for (final channels in [3, 6, 8]) {
-        final filter = PlayerController.stereoDownmixFilter(channels);
-        expect(filter, startsWith('lavfi=['));
-        expect(filter, endsWith(']'));
-      }
+      expect(filter, startsWith('lavfi=['));
+      expect(filter, endsWith(']'));
     });
   });
 }
