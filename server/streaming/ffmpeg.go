@@ -556,33 +556,34 @@ func sourceChannels(probe *ProbeResult, typedIndex int) int {
 // standard downmix: the front pair at unity and the centre at 0.707. (The
 // normalisation that divides a downmix by the sum of its own coefficients only
 // applies when the result lands in an integer sample format; the AAC encoder
-// works in float, so nothing here is attenuated.) A plain -3 dB on speech and
-// on nothing else is the whole of the "the dialogue is buried" complaint, and
-// carrying the centre at the same 1.0 as the fronts is the whole of the fix:
-// +3 dB on voices, everything else exactly where the mix left it. alimiter
-// absorbs the peaks that coefficients summing past 1.0 can now reach.
+// works in float, so nothing here is attenuated.) A plain -3 dB, on the one
+// channel that carries the dialogue and on nothing else, is the whole of the
+// "the voices are buried" complaint — and carrying the centre at 1.0 like the
+// fronts is the whole of the fix: +3 dB on speech, the rest of the mix exactly
+// where the film put it. The surrounds keep their standard 0.707 and the LFE,
+// dropped entirely by default, comes back low enough to add weight without
+// becoming the mix.
 //
-// It is the same correction the client applies to a Direct Play file, with the
-// same coefficients — mpv's default downmix is FFmpeg's (see the player's
-// dialogueForwardDownmix). A transcoded stream has to be corrected here
-// instead, because by the time it reaches the client the six channels it would
-// need to do the correction are already gone.
+// These are the three numbers the client hands mpv for a Direct Play file
+// (`dialogueForwardMixLevels`), against the same swresample rematrix, so a
+// title sounds the same whether it was transcoded on the way out or not.
 //
-// `aformat` is what lets one graph serve every track in the library. `pan`
-// addresses channels by index, so `c4` means "the fifth channel of whatever
-// arrived" — correct for 5.1, wrong for a track the probe got wrong or a
-// container that lies about its layout. Converting to 5.1 first makes the
-// index map true by construction, and it settles the `5.1` versus `5.1(side)`
-// tagging (same order, different names for the rear pair) at the same time.
+// It is one `aresample` and nothing else on purpose. The obvious alternative —
+// a `pan` graph with explicit coefficients — has to name channels by index,
+// which is only correct once you know the layout, and it needs `pan`,
+// `aformat` and `alimiter` to all exist in the FFmpeg it lands on. Mix levels
+// need none of that: swresample applies them to whatever layout arrives, and a
+// stereo track passes through untouched. The output layout is deliberately not
+// named here either — `-ac:a:N 2` already supplies it, and the option that
+// spells it has been renamed between FFmpeg releases.
 func stereoDownmixFilter(channels int) string {
 	if channels <= 2 {
 		return ""
 	}
-	return "aformat=channel_layouts=5.1," +
-		"pan=stereo|" +
-		"c0=1.0*c0+1.0*c2+0.7*c4+0.3*c3|" +
-		"c1=1.0*c1+1.0*c2+0.7*c5+0.3*c3" +
-		",alimiter=limit=0.95:level=0"
+	return "aresample=" +
+		"center_mix_level=1.0:" +
+		"surround_mix_level=0.7:" +
+		"lfe_mix_level=0.3"
 }
 
 // canCopyAudio reports whether the selected source track is already a stereo

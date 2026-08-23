@@ -515,42 +515,35 @@ func TestStereoDownmixFilter(t *testing.T) {
 		}
 	}
 
-	// Every surround count gets the same graph. `pan` addresses channels by
-	// index, so the graph is only correct if the input is known to have six of
-	// them — and the probe is not always right about that. `aformat` converts
-	// first and makes the index map true by construction, which also settles
-	// the 5.1 versus 5.1(side) tagging (same order, different names for the
-	// rear pair) that stops `pan` from naming channels at all.
+	// Every surround count gets the same value, because mix levels apply to
+	// whatever layout arrives — there is no channel index to get wrong, and
+	// nothing to know in advance about the track.
 	for _, ch := range []int{3, 4, 6, 7, 8, 12} {
 		got := stereoDownmixFilter(ch)
-		if !strings.HasPrefix(got, "aformat=channel_layouts=5.1,") {
-			t.Errorf("%dch: layout not normalised before pan: %q", ch, got)
+		if got != stereoDownmixFilter(6) {
+			t.Errorf("%dch should fold down like 5.1, got %q", ch, got)
 		}
-		if !strings.Contains(got, "pan=stereo|") {
-			t.Errorf("%dch should be downmixed by pan, got %q", ch, got)
+		if !strings.HasPrefix(got, "aresample=") {
+			t.Errorf("%dch: downmix should ride on the resampler, got %q", ch, got)
 		}
-		for _, name := range []string{"FL", "FR", "FC", "LFE", "BL", "SL"} {
-			if strings.Contains(got, name) {
-				t.Errorf("%dch filter names channel %s: %q", ch, name, got)
+		// The centre carries the dialogue, and the whole point is that it stops
+		// being 3 dB quieter than the fronts it sits between.
+		if !strings.Contains(got, "center_mix_level=1.0") {
+			t.Errorf("%dch does not carry the centre at front level: %q", ch, got)
+		}
+		// `pan` would need the layout to be known before the filter is built,
+		// and needs filters a minimal FFmpeg build does not carry.
+		if strings.Contains(got, "pan=") || strings.Contains(got, "alimiter") {
+			t.Errorf("%dch reintroduces a filter graph: %q", ch, got)
+		}
+		// `-ac:a:N 2` supplies the output layout. The option that spells it has
+		// been renamed between FFmpeg releases, so naming it here would tie the
+		// server to a version range.
+		for _, opt := range []string{"ochl=", "ocl=", "out_chlayout", "out_channel_layout"} {
+			if strings.Contains(got, opt) {
+				t.Errorf("%dch pins an FFmpeg-version-specific option %q: %q", ch, opt, got)
 			}
 		}
-		// The centre carries the dialogue, and the whole point of the filter is
-		// that it stops being 3 dB quieter than the fronts it sits between.
-		if !strings.Contains(got, "c0=1.0*c0+1.0*c2") ||
-			!strings.Contains(got, "c1=1.0*c1+1.0*c2") {
-			t.Errorf("%dch filter does not carry the centre at front level: %q", ch, got)
-		}
-		if !strings.Contains(got, "alimiter=") {
-			t.Errorf("%dch filter has no limiter to absorb its peaks: %q", ch, got)
-		}
-	}
-
-	// The client applies the identical correction to a Direct Play file; a
-	// stream that is transcoded on the way out must not end up sounding like a
-	// different mix from the same file played directly.
-	if got := stereoDownmixFilter(6); got != stereoDownmixFilter(8) {
-		t.Errorf("5.1 and 7.1 should fold down identically, got %q vs %q",
-			got, stereoDownmixFilter(8))
 	}
 }
 
@@ -577,7 +570,7 @@ func TestBuildFFmpegArgs_DownmixFilterOnlyOnSurroundRenditions(t *testing.T) {
 	if !ok {
 		t.Fatal("the 5.1 rendition should carry a downmix filter")
 	}
-	if !strings.Contains(v, "pan=stereo|") {
+	if !strings.Contains(v, "center_mix_level=1.0") {
 		t.Errorf("got %q", v)
 	}
 }
