@@ -160,6 +160,12 @@ class _ContinueWatchingCardState extends State<ContinueWatchingCard> {
                           ),
                         ),
                       ),
+                    if (widget.item.hasNewEpisode)
+                      const Positioned(
+                        top: 8,
+                        left: 8,
+                        child: _NewEpisodeBadge(),
+                      ),
                     Positioned(
                       left: 0,
                       right: 0,
@@ -235,5 +241,47 @@ class _ContinueWatchingCardState extends State<ContinueWatchingCard> {
     }
 
     return remainingStr;
+  }
+}
+
+/// Pastille « Nouvel épisode » posée sur l'affiche d'une série dont l'épisode à
+/// reprendre vient de sortir. Fond plein plutôt que teinté : elle doit tenir
+/// sur n'importe quelle affiche, claire comme sombre.
+class _NewEpisodeBadge extends StatelessWidget {
+  const _NewEpisodeBadge();
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+      decoration: BoxDecoration(
+        color: AppColors.accent,
+        borderRadius: BorderRadius.circular(999),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withValues(alpha: 0.35),
+            blurRadius: 6,
+            offset: const Offset(0, 2),
+          ),
+        ],
+      ),
+      child: const Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(Icons.fiber_new_rounded, size: 13, color: AppColors.onAccent),
+          SizedBox(width: 4),
+          Text(
+            'Nouvel épisode',
+            style: TextStyle(
+              color: AppColors.onAccent,
+              fontSize: 10,
+              fontWeight: FontWeight.w700,
+              letterSpacing: 0.2,
+              height: 1.1,
+            ),
+          ),
+        ],
+      ),
+    );
   }
 }

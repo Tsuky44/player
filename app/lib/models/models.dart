@@ -432,12 +432,17 @@ class HomeMediaItem {
   final String? episodeTitle;
   final DateTime? updatedAt;
 
+  /// Séries uniquement : l'épisode à reprendre vient tout juste de sortir et
+  /// n'a pas encore été vu. Renseigné par le serveur pour « À reprendre ».
+  final bool hasNewEpisode;
+
   HomeMediaItem({
     required this.media,
     required this.currentPositionSeconds,
     required this.duration,
     required this.isFinished,
     this.updatedAt,
+    this.hasNewEpisode = false,
     this.introStart = 0,
     this.introEnd = 0,
     this.outroStart = 0,
@@ -477,6 +482,7 @@ class HomeMediaItem {
       showPosterUrl: json['show_poster_url'] as String?,
       showId: json['show_id'] as int?,
       episodeTitle: json['episode_title'] as String?,
+      hasNewEpisode: json['has_new_episode'] == true,
     );
   }
 
@@ -561,7 +567,9 @@ class HomeMediaItem {
       outroEnd: outroEnd,
       showTitle: showTitle,
       showPosterUrl: showPosterUrl,
+      showId: showId,
       episodeTitle: episodeTitle,
+      hasNewEpisode: hasNewEpisode,
     );
   }
 }

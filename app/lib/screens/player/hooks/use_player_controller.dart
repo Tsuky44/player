@@ -4,6 +4,7 @@ import 'package:media_kit/media_kit.dart' as mk;
 import 'package:media_kit_video/media_kit_video.dart';
 import '../../../models/models.dart';
 import '../../../utils/app_platform.dart';
+import '../../../tv/tv_mode.dart';
 import '../player_engine.dart';
 import '../web/web_playback.dart';
 import '../display_frame_rate.dart';
@@ -100,8 +101,6 @@ class PlayerController {
     // own answer, not what it was asked for: a decoder that failed to start
     // falls back silently, and "hwdec=mediacodec" in the settings tells you
     // nothing about whether a frame ever reached the GPU that way.
-    await _applyStereoDownmix();
-
     final hwdec = await _readMpvProperty(platform, 'hwdec-current');
     final codec = await _readMpvProperty(platform, 'video-codec');
     final params = player.state.videoParams;
@@ -110,6 +109,19 @@ class PlayerController {
         '(asked ${HardwareDecoding.describe()}) · '
         'buffers=${PlaybackProfiles.current.label}'
         '${DisplayFrameRate.requested != null ? ' · display=${DisplayFrameRate.requested}Hz' : ''}');
+
+    // Read, never written: the downmix decision was made before this file was
+    // opened and nothing here may touch it (see [_applyAudioDownmix]). It is
+    // logged because "the sound is not right" is otherwise unanswerable — this
+    // line says whether the device received six channels and folded them, or
+    // was handed a stereo pair the server had already folded for it.
+    final srcChannels =
+        await _readMpvProperty(platform, 'audio-params/channel-count');
+    final outChannels =
+        await _readMpvProperty(platform, 'audio-out-params/channel-count');
+    debugPrint('Audio: ${srcChannels}ch source → ${outChannels}ch out · '
+        '${await _readMpvProperty(platform, 'audio-codec-name')} · '
+        '${_outputIsStereoOnly ? 'dialogue-forward downmix' : 'mpv downmix'}');
   }
 
   /// Reads one mpv property, or null. The getter throws for a property that is
@@ -568,6 +580,9 @@ class PlayerController {
         startAt = 0;
       }
       _mark('resume');
+
+      // Before the open, never after: see [_applyAudioDownmix].
+      await _applyAudioDownmix();
 
       try {
         await player.open(
@@ -1227,6 +1242,11 @@ class PlayerController {
       await _applyPreferredAudioLanguage(null);
       // No longer a Direct Play stream opened at a known second.
       _openedAtSeconds = -1;
+      // The server already delivers stereo renditions, so this is a no-op on
+      // the audio itself — but the engine is pooled and may still be carrying
+      // the filter installed for a Direct Play file. Clearing it here is what
+      // keeps a quality switch from being the moment the sound stops.
+      await _applyAudioDownmix();
       await player.open(mk.Media(hls.masterUrl), play: true);
       // Two defects to undo on web. media_kit trusts `canPlayType` to decide
       // whether the browser speaks HLS — Chromium says "maybe" and cannot — so
@@ -1306,6 +1326,7 @@ class PlayerController {
     // buffered the head of the file for nothing and made every switch back to
     // Direct Play take several seconds of spinner.
     _openedAtSeconds = savedSeconds > 0 ? savedSeconds : 0;
+    await _applyAudioDownmix();
     await player.open(
       mk.Media(
         streamUrl,
@@ -1596,118 +1617,84 @@ class PlayerController {
     try {
       player.setAudioTrack(real[i]);
     } catch (_) {}
-    // The new track may not have the channel layout the old one had — a French
-    // 5.1 next to an English stereo is the normal shape of a library file — and
-    // the downmix filter is only correct for one of the two.
-    unawaited(_applyStereoDownmix(afterTrackSwitch: true));
   }
 
-  /// The mpv audio filter currently installed, so an unchanged decision costs
-  /// no property write. Empty string means "no filter", null means "never set".
-  String? _audioFilterChain;
+  /// The mpv `af` graph that folds a surround track into a stereo pair while
+  /// keeping the dialogue in front of it.
+  ///
+  /// ### What the default actually does
+  ///
+  /// Neither mpv nor FFmpeg *attenuates* a downmix on this player's paths: the
+  /// normalisation that divides by the sum of the mix coefficients only kicks
+  /// in when the result lands in an integer sample format, and both the mpv
+  /// audio chain and the server's AAC encoder work in float. Measured against
+  /// a 5.1 source (mpv, `--ao=pcm`), the default gives the front pair unity and
+  /// the centre 0.707 — a plain -3 dB on speech and nothing else. That is the
+  /// whole of the "muffled" complaint, and it is also all there is to fix: an
+  /// earlier version of this code assumed a 7 dB loss across the board and paid
+  /// for the correction by pulling the fronts *down* 2 dB, which made the mix
+  /// quieter than doing nothing at all.
+  ///
+  /// So the centre is carried at the same 1.0 as the fronts — +3 dB on dialogue
+  /// with the rest of the mix left exactly where it was — the surrounds fold in
+  /// behind both, and the LFE adds weight without becoming the mix. `alimiter`
+  /// pays for coefficients that can now sum past 1.0: the loudest peaks are
+  /// rounded off rather than squared off.
+  ///
+  /// ### Why it is one constant and not a filter per layout
+  ///
+  /// `pan` addresses channels by index, so a graph written for six channels is
+  /// wrong for a track that has two — and the layout is only known once mpv has
+  /// configured the track, which is *after* the point where the filter has to
+  /// be installed. Guessing it (or reading it back and patching the chain
+  /// afterwards) is what made audio disappear.
+  ///
+  /// `aformat` removes the guess: it converts whatever the decoder produces to
+  /// 5.1 first, so `c0`..`c5` always exist and always mean the same thing.
+  /// A stereo source is upmixed to 5.1 and folded straight back — measured
+  /// identical to no filter at all — a mono source arrives in the centre and
+  /// comes out of both speakers, and 7.1 is folded to 5.1 by the same
+  /// conversion mpv would have used anyway. One value, correct for every track
+  /// in the library, which is what lets it be set once before the file loads.
+  static const String dialogueForwardDownmix = 'lavfi=['
+      'aformat=channel_layouts=5.1,'
+      'pan=stereo|'
+      'c0=1.0*c0+1.0*c2+0.7*c4+0.3*c3|'
+      'c1=1.0*c1+1.0*c2+0.7*c5+0.3*c3'
+      ',alimiter=limit=0.95:level=0]';
 
-  /// Rebalances a surround track when it is about to be squeezed into two
-  /// channels.
+  /// Whether this device's audio output is a stereo pair and nothing else.
   ///
-  /// FFmpeg's default 5.1 downmix — which is what both mpv and the transcoder
-  /// fall back to — mixes the six channels and then divides the result by the
-  /// sum of its own coefficients so the peaks cannot clip. On a film mastered
-  /// with dialogue in the centre and effects in the surrounds, that division
-  /// costs about 7 dB across the board and drops the centre furthest: voices
-  /// end up under the music, and the whole track sounds veiled. It is the
-  /// single most common "the sound is muffled" complaint on a phone, where
-  /// stereo is the only output there is.
+  /// A phone or a tablet is, always. A desktop may be wired to a receiver and a
+  /// television almost certainly is, and folding six channels down before the
+  /// hardware that can play them is throwing away what the user bought it for.
+  /// Both keep mpv's own downmix, which is the standard one and was never the
+  /// thing being complained about.
+  static bool get _outputIsStereoOnly =>
+      !AppPlatform.isWeb && AppPlatform.isMobile && !TvMode.isTv;
+
+  /// Installs the downmix for the file that is about to open.
   ///
-  /// The fix is to downmix explicitly instead: keep the fronts near unity, hand
-  /// the centre half its level rather than a quarter, and fold the surrounds in
-  /// behind them. That is roughly +5 dB overall and rather more than that on
-  /// speech. [_downmixLimiter] catches the peaks the missing division no longer
-  /// takes care of, so the extra level costs no distortion.
+  /// Must be called *before* [mk.Player.open], never during playback. Changing
+  /// `af` while audio is running makes mpv drain the filter chain and rebuild
+  /// the audio output from scratch (`draining left over audio` → `Trying audio
+  /// driver` in its log). That rebuild is not free and it is not always
+  /// successful: on Android's AudioTrack output a failed reinit leaves the file
+  /// playing with no sound at all, and the only way back is a track switch —
+  /// which reinitialises the chain, and is exactly the workaround this was
+  /// reported with. Set on a player with nothing loaded, the same value costs
+  /// one filter-list line and no AO at all.
   ///
-  /// Applied only when the output really is stereo: on a desktop wired to a
-  /// receiver mpv sends the six channels through untouched, and folding them
-  /// down first would throw away the surround the user has the hardware for.
-  Future<void> _applyStereoDownmix({bool afterTrackSwitch = false}) async {
+  /// Written unconditionally, including the empty value: the libmpv instance
+  /// comes from [PlayerEnginePool] and is reused, so silence here would mean
+  /// inheriting the previous playback's filter.
+  Future<void> _applyAudioDownmix() async {
     if (AppPlatform.isWeb || _disposed) return;
     final platform = player.platform as dynamic;
-
-    // After a track switch mpv needs a moment to reconfigure the audio chain;
-    // reading the params on the same turn still answers with the old track's.
-    if (afterTrackSwitch) {
-      await Future<void>.delayed(const Duration(milliseconds: 400));
-      if (_disposed) return;
-    }
-
-    // `audio-params` is the decoder's output — the file's own layout, before
-    // any filter of ours. `audio-out-params` is what the audio API is actually
-    // being handed, which is where a real surround setup shows up.
-    final sourceChannels = int.tryParse(
-            await _readMpvProperty(platform, 'audio-params/channel-count') ??
-                '') ??
-        0;
-    final outputChannels = int.tryParse(
-            await _readMpvProperty(
-                    platform, 'audio-out-params/channel-count') ??
-                '') ??
-        0;
-
-    // A phone or a pair of headphones is stereo and nothing else; asking the
-    // AO is only worth it where the answer can differ.
-    final stereoOut =
-        AppPlatform.isMobile || outputChannels <= 2 || outputChannels == 0;
-
-    final wanted = (sourceChannels > 2 && stereoOut)
-        ? stereoDownmixFilter(sourceChannels)
-        : '';
-    if (wanted == _audioFilterChain) return;
-    _audioFilterChain = wanted;
-    await _setMpvProperty(platform, 'af', wanted);
-    debugPrint('Audio: ${sourceChannels}ch source, ${outputChannels}ch out — '
-        '${wanted.isEmpty ? 'no downmix filter' : 'dialogue-forward downmix'}');
+    await _setMpvProperty(
+        platform, 'af', _outputIsStereoOnly ? dialogueForwardDownmix : '');
   }
 
-  /// The mpv `af` value that folds a [sourceChannels]-channel track into stereo
-  /// without burying the dialogue.
-  ///
-  /// Input channels are addressed by index rather than by name on purpose. The
-  /// same six-channel film is tagged `5.1` by one muxer and `5.1(side)` by the
-  /// next — the difference is whether the rear pair is called BL/BR or SL/SR —
-  /// and `pan` refuses a graph naming a channel the input layout does not have.
-  /// The index order is the same either way, so `c4`/`c5` reaches the rear pair
-  /// in both, and a file that would have failed the filter outright just plays.
-  ///
-  /// The centre is carried at the same 0.8 as the fronts, where the normalised
-  /// default leaves it at 0.29 against their 0.41 — measured against FFmpeg's
-  /// own downmix, that is about 9 dB more level on speech and about 6 dB on the
-  /// fronts, so dialogue does not merely get louder, it stops sitting behind
-  /// the music. The surrounds fold in behind both and the LFE adds weight
-  /// without becoming the mix. `alimiter` is what pays for coefficients that
-  /// deliberately sum past 1.0: the loudest peaks are rounded off rather than
-  /// squared off, which is what lets the levels be this generous at all.
-  ///
-  /// Layouts that cannot be addressed by index with any confidence (3, 4 or 7
-  /// channels, where the same count means different things) keep FFmpeg's own
-  /// routing and only take back the level it removed — the smaller half of the
-  /// fix, and the only half that is safe to apply blind.
-  static String stereoDownmixFilter(int sourceChannels) {
-    const limiter = 'alimiter=limit=0.95:level=0';
-    switch (sourceChannels) {
-      // 5.1 — FL FR FC LFE BL/SL BR/SR
-      case 6:
-        return 'lavfi=[pan=stereo|'
-            'c0=0.8*c0+0.8*c2+0.5*c4+0.3*c3|'
-            'c1=0.8*c1+0.8*c2+0.5*c5+0.3*c3'
-            ',$limiter]';
-      // 7.1 — FL FR FC LFE BL BR SL SR
-      case 8:
-        return 'lavfi=[pan=stereo|'
-            'c0=0.8*c0+0.8*c2+0.45*c4+0.45*c6+0.3*c3|'
-            'c1=0.8*c1+0.8*c2+0.45*c5+0.45*c7+0.3*c3'
-            ',$limiter]';
-      default:
-        return 'lavfi=[volume=4dB,$limiter]';
-    }
-  }
 
   /// Monotonic token guarding against out-of-order subtitle loads (the user
   /// switching language quickly, or a reload firing mid-fetch).
