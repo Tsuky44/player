@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import '../../../models/player_layout.dart';
+import '../../../tv/tv_focus.dart';
 import '../../../widgets/global/control_chrome.dart';
 
 /// Real, interactive control layer driven by a [PlayerLayoutConfig].
@@ -329,10 +330,18 @@ class ModularControlsLayer extends StatelessWidget {
         : placed.type.isTimelineBar
             ? chrome
             : handler != null
-                ? GestureDetector(
-                    behavior: HitTestBehavior.opaque,
-                    onTap: handler,
-                    child: chrome,
+                // [TvFocusable] is what makes a placed control reachable with a
+                // D-pad: the tap handler alone leaves it clickable and nothing
+                // more, so on a television the layout would be inert.
+                ? TvFocusable(
+                    onSelect: handler,
+                    focusScale: 1.12,
+                    borderRadius: BorderRadius.circular(12),
+                    child: GestureDetector(
+                      behavior: HitTestBehavior.opaque,
+                      onTap: handler,
+                      child: chrome,
+                    ),
                   )
                 : chrome;
 
