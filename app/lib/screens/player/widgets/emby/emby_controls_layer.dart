@@ -3,6 +3,7 @@ import 'dart:ui' show FontFeature;
 import 'package:flutter/material.dart';
 
 import '../../../../desktop_window.dart';
+import '../../../../tv/tv_focus.dart';
 import '../../../../utils/format.dart';
 import '../../../../widgets/global/app_network_image.dart';
 import 'emby_brightness_slider.dart';
@@ -94,6 +95,20 @@ class EmbyControlsLayer extends StatelessWidget {
   final GlobalKey? settingsButtonKey;
   final GlobalKey? subtitlesButtonKey;
 
+  // --- Television ---------------------------------------------------------
+
+  /// Driven by a remote rather than a mouse or a finger.
+  ///
+  /// Two things follow from it: the volume control goes (a set has its own on
+  /// its own remote, and an in-app slider is one more thing to walk past), and
+  /// the buttons become reachable with the D-pad instead of only clickable.
+  final bool isTv;
+
+  /// Where the remote lands when it enters the control bar. Play/pause is the
+  /// button a hand reaches for first, and every other control is one or two
+  /// presses from it.
+  final FocusNode? playPauseFocusNode;
+
   const EmbyControlsLayer({
     super.key,
     required this.visible,
@@ -129,6 +144,8 @@ class EmbyControlsLayer extends StatelessWidget {
     this.chapterMarks = const [],
     this.settingsButtonKey,
     this.subtitlesButtonKey,
+    this.isTv = false,
+    this.playPauseFocusNode,
   });
 
   double get _progressFraction {
@@ -213,13 +230,19 @@ class EmbyControlsLayer extends StatelessWidget {
   /// Wraps a part of the chrome in the show/hide fade — and takes it out of
   /// hit-testing while it is invisible, so a hidden control cannot be clicked.
   Widget _fadeWithChrome(Widget child) {
-    return IgnorePointer(
-      ignoring: !visible,
-      child: AnimatedOpacity(
-        opacity: visible ? 1 : 0,
-        duration: const Duration(milliseconds: 200),
-        curve: Curves.easeOut,
-        child: child,
+    return ExcludeFocus(
+      // A faded-out button is still a focusable button: without this the
+      // remote walks a control bar nobody can see, and the player never gets
+      // its own focus — and therefore its arrow keys — back.
+      excluding: !visible,
+      child: IgnorePointer(
+        ignoring: !visible,
+        child: AnimatedOpacity(
+          opacity: visible ? 1 : 0,
+          duration: const Duration(milliseconds: 200),
+          curve: Curves.easeOut,
+          child: child,
+        ),
       ),
     );
   }
@@ -248,15 +271,20 @@ class EmbyControlsLayer extends StatelessWidget {
           const SizedBox(width: 8),
           Flexible(child: _buildBrand(m)),
           const Spacer(),
-          _EmbyVolumeControl(
-            volume: volume,
-            onChanged: onVolumeChanged,
-            metrics: m,
-            // Below this the slider squeezes the title out of the top row.
-            // The mute button alone still leaves the volume reachable, and
-            // the settings sheet carries the fine control.
-            showSlider: width >= 560,
-          ),
+          // Left out entirely on a television: the set and its remote own the
+          // volume, so the slider would do a job that is already done — and,
+          // being the one focusable widget up here, it would collect the
+          // remote's focus and hold it.
+          if (!isTv)
+            _EmbyVolumeControl(
+              volume: volume,
+              onChanged: onVolumeChanged,
+              metrics: m,
+              // Below this the slider squeezes the title out of the top row.
+              // The mute button alone still leaves the volume reachable, and
+              // the settings sheet carries the fine control.
+              showSlider: width >= 560,
+            ),
         ],
       ),
     );
@@ -499,6 +527,7 @@ class EmbyControlsLayer extends StatelessWidget {
           tooltip: isPlaying ? 'Pause' : 'Lecture',
           metrics: m,
           size: m.playIconSize,
+          focusNode: playPauseFocusNode,
           onPressed: onPlayPause,
         ),
         SizedBox(width: m.clusterGap + 4),
@@ -526,6 +555,12 @@ class EmbyControlsLayer extends StatelessWidget {
 
 /// Flat Emby icon button: no chrome, no background — only the icon brightening
 /// on hover.
+/// Flat Emby icon button, reachable three ways: pointer, finger, and D-pad.
+///
+/// The remote is the reason this is wrapped in a [TvFocusable] rather than
+/// left as a bare [GestureDetector]. Nothing in this chrome used to request
+/// focus, so on a television the only focusable widget in it was the volume
+/// slider — the remote landed there and had nowhere else to go.
 class _EmbyIconButton extends StatefulWidget {
   final IconData icon;
   final String tooltip;
@@ -538,6 +573,9 @@ class _EmbyIconButton extends StatefulWidget {
   /// Anchor for popups that open above this button.
   final GlobalKey? buttonKey;
 
+  /// Supplied for the one button the remote is sent to on entry.
+  final FocusNode? focusNode;
+
   const _EmbyIconButton({
     required this.icon,
     required this.tooltip,
@@ -545,6 +583,7 @@ class _EmbyIconButton extends StatefulWidget {
     required this.metrics,
     this.size,
     this.buttonKey,
+    this.focusNode,
   });
 
   @override
@@ -553,6 +592,11 @@ class _EmbyIconButton extends StatefulWidget {
 
 class _EmbyIconButtonState extends State<_EmbyIconButton> {
   bool _hovered = false;
+  bool _focused = false;
+
+  /// Hover and focus are the same state to this button: the pointer is over it,
+  /// or the remote is on it. Either way it is the one being aimed at.
+  bool get _active => _hovered || _focused;
 
   @override
   Widget build(BuildContext context) {
@@ -564,23 +608,35 @@ class _EmbyIconButtonState extends State<_EmbyIconButton> {
     return Tooltip(
       message: widget.tooltip,
       waitDuration: const Duration(milliseconds: 500),
-      child: MouseRegion(
-        cursor: SystemMouseCursors.click,
-        onEnter: (_) => setState(() => _hovered = true),
-        onExit: (_) => setState(() => _hovered = false),
-        child: GestureDetector(
-          key: widget.buttonKey,
-          behavior: HitTestBehavior.opaque,
-          onTap: widget.onPressed,
-          child: SizedBox(
-            width: box,
-            height: box,
-            child: Icon(
-              widget.icon,
-              size: iconSize,
-              color: _hovered
-                  ? EmbyChromeTheme.iconActive
-                  : EmbyChromeTheme.icon,
+      child: TvFocusable(
+        focusNode: widget.focusNode,
+        onSelect: widget.onPressed,
+        // A circle, so the ring hugs a round icon instead of boxing it.
+        borderRadius: BorderRadius.circular(box / 2),
+        // Slightly more than the app's cards get: an icon is a much smaller
+        // thing to spot from a sofa, and the box has enough padding around it
+        // that growing it never reaches its neighbour.
+        focusScale: 1.12,
+        onFocusChange: (focused) {
+          if (_focused != focused) setState(() => _focused = focused);
+        },
+        child: MouseRegion(
+          cursor: SystemMouseCursors.click,
+          onEnter: (_) => setState(() => _hovered = true),
+          onExit: (_) => setState(() => _hovered = false),
+          child: GestureDetector(
+            key: widget.buttonKey,
+            behavior: HitTestBehavior.opaque,
+            onTap: widget.onPressed,
+            child: SizedBox(
+              width: box,
+              height: box,
+              child: Icon(
+                widget.icon,
+                size: iconSize,
+                color:
+                    _active ? EmbyChromeTheme.iconActive : EmbyChromeTheme.icon,
+              ),
             ),
           ),
         ),
@@ -683,23 +739,28 @@ class _EmbySkipIntroButton extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Material(
-      color: Colors.black.withValues(alpha: 0.55),
-      shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(6),
-        side: const BorderSide(color: EmbyChromeTheme.icon, width: 1.4),
-      ),
-      child: InkWell(
-        borderRadius: BorderRadius.circular(6),
-        onTap: onPressed,
-        child: Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 10),
-          child: Text(
-            'Passer l’intro',
-            style: TextStyle(
-              color: EmbyChromeTheme.iconActive,
-              fontSize: metrics.isCompact ? 13 : 14,
-              fontWeight: FontWeight.w600,
+    return TvFocusable(
+      onSelect: onPressed,
+      borderRadius: BorderRadius.circular(6),
+      focusScale: 1.06,
+      child: Material(
+        color: Colors.black.withValues(alpha: 0.55),
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(6),
+          side: const BorderSide(color: EmbyChromeTheme.icon, width: 1.4),
+        ),
+        child: InkWell(
+          borderRadius: BorderRadius.circular(6),
+          onTap: onPressed,
+          child: Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 10),
+            child: Text(
+              'Passer l’intro',
+              style: TextStyle(
+                color: EmbyChromeTheme.iconActive,
+                fontSize: metrics.isCompact ? 13 : 14,
+                fontWeight: FontWeight.w600,
+              ),
             ),
           ),
         ),

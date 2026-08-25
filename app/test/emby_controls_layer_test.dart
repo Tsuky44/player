@@ -17,6 +17,8 @@ Future<void> pumpChrome(
   ValueChanged<double>? onBrightnessChanged,
   bool isPlaying = true,
   bool visible = true,
+  bool isTv = false,
+  FocusNode? playPauseFocusNode,
 }) async {
   tester.view.devicePixelRatio = 1.0;
   tester.view.physicalSize = Size(width, 700);
@@ -52,6 +54,8 @@ Future<void> pumpChrome(
           onSkipPrevious: onSkipPrevious,
           onOpenEpisodes: onOpenEpisodes,
           onSkipIntro: onSkipIntro,
+          isTv: isTv,
+          playPauseFocusNode: playPauseFocusNode,
         ),
       ),
     ),
@@ -377,6 +381,82 @@ void main() {
             .first,
       );
       expect(opacity.opacity, 0);
+    });
+  });
+
+  group('driven by a remote', () {
+    testWidgets('the volume control is left out of the television chrome',
+        (tester) async {
+      await pumpChrome(tester, width: 1280, isTv: true);
+
+      // Both halves of it: the set owns the volume, and the slider was the one
+      // focusable widget in this chrome — the remote landed on it and stayed.
+      expect(find.byIcon(Icons.volume_up_rounded), findsNothing);
+      expect(find.byType(Slider), findsNothing);
+    });
+
+    testWidgets('the volume control stays everywhere else', (tester) async {
+      await pumpChrome(tester, width: 1280);
+
+      expect(find.byIcon(Icons.volume_up_rounded), findsOneWidget);
+    });
+
+    testWidgets('the remote is handed play/pause on the way in',
+        (tester) async {
+      final playPause = FocusNode();
+      addTearDown(playPause.dispose);
+
+      await pumpChrome(
+        tester,
+        width: 1280,
+        isTv: true,
+        playPauseFocusNode: playPause,
+      );
+
+      playPause.requestFocus();
+      await tester.pump();
+
+      expect(playPause.hasFocus, isTrue);
+    });
+
+    testWidgets('every control in the bar can take the focus', (tester) async {
+      await pumpChrome(
+        tester,
+        width: 1280,
+        isTv: true,
+        onSkipNext: () {},
+        onSkipPrevious: () {},
+        onOpenEpisodes: () {},
+      );
+
+      // One per button: back, episodes, subtitles, audio, speed, settings,
+      // fullscreen, previous, rewind, play/pause, forward, next. A count is
+      // what catches a control added later without a way to reach it.
+      final focusable = tester
+          .widgetList<Focus>(find.byType(Focus))
+          .where((f) => f.canRequestFocus)
+          .length;
+      expect(focusable, greaterThanOrEqualTo(12));
+    });
+
+    testWidgets('a hidden chrome holds no focus', (tester) async {
+      final playPause = FocusNode();
+      addTearDown(playPause.dispose);
+
+      await pumpChrome(
+        tester,
+        width: 1280,
+        isTv: true,
+        visible: false,
+        playPauseFocusNode: playPause,
+      );
+
+      playPause.requestFocus();
+      await tester.pump();
+
+      // Faded out, the bar is still in the tree. If its buttons could still be
+      // focused the remote would walk a control bar nobody can see.
+      expect(playPause.hasFocus, isFalse);
     });
   });
 }

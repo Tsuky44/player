@@ -3,6 +3,7 @@ import 'dart:ui';
 import 'package:flutter/material.dart';
 import 'package:flutter_animate/flutter_animate.dart';
 import '../../../models/models.dart';
+import '../../../tv/tv_mode.dart';
 import '../../../theme/app_colors.dart';
 import '../../../utils/format.dart';
 import '../../../widgets/global/media_poster.dart';
@@ -89,45 +90,51 @@ class _PlayerEpisodesPanelState extends State<PlayerEpisodesPanel> {
     final currentIdx = _currentIndex();
 
     return Positioned.fill(
-      child: Stack(
-        children: [
-          GestureDetector(
-            onTap: widget.onClose,
-            child: Container(color: Colors.black.withValues(alpha: 0.55)),
-          ),
-          Align(
-            alignment: Alignment.bottomCenter,
-            child: ClipRRect(
-              borderRadius: const BorderRadius.vertical(top: Radius.circular(20)),
-              child: BackdropFilter(
-                filter: ImageFilter.blur(sigmaX: 24, sigmaY: 24),
-                child: Container(
-                  height: panelHeight,
-                  decoration: BoxDecoration(
-                    color: _kPanelBg.withValues(alpha: 0.96),
-                    borderRadius: const BorderRadius.vertical(top: Radius.circular(20)),
-                    border: Border(
-                      top: BorderSide(color: Colors.white.withValues(alpha: 0.1)),
+      // The panel is drawn inside the player, not pushed as a route, so
+      // nothing hands it the focus. Without this a remote opens the
+      // episode list and keeps on scrubbing the film behind it.
+      child: FocusScope(
+        autofocus: TvMode.isTv,
+        child: Stack(
+          children: [
+            GestureDetector(
+              onTap: widget.onClose,
+              child: Container(color: Colors.black.withValues(alpha: 0.55)),
+            ),
+            Align(
+              alignment: Alignment.bottomCenter,
+              child: ClipRRect(
+                borderRadius: const BorderRadius.vertical(top: Radius.circular(20)),
+                child: BackdropFilter(
+                  filter: ImageFilter.blur(sigmaX: 24, sigmaY: 24),
+                  child: Container(
+                    height: panelHeight,
+                    decoration: BoxDecoration(
+                      color: _kPanelBg.withValues(alpha: 0.96),
+                      borderRadius: const BorderRadius.vertical(top: Radius.circular(20)),
+                      border: Border(
+                        top: BorderSide(color: Colors.white.withValues(alpha: 0.1)),
+                      ),
                     ),
-                  ),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.stretch,
-                    children: [
-                      _buildHeader(),
-                      if (widget.seasons.length > 1) _buildSeasonSelector(),
-                      Expanded(child: _buildBody(currentIdx)),
-                    ],
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.stretch,
+                      children: [
+                        _buildHeader(),
+                        if (widget.seasons.length > 1) _buildSeasonSelector(),
+                        Expanded(child: _buildBody(currentIdx)),
+                      ],
+                    ),
                   ),
                 ),
               ),
-            ),
-          ).animate().slideY(
-                begin: 0.12,
-                end: 0,
-                duration: 280.ms,
-                curve: Curves.easeOutCubic,
-              ),
-        ],
+            ).animate().slideY(
+                  begin: 0.12,
+                  end: 0,
+                  duration: 280.ms,
+                  curve: Curves.easeOutCubic,
+                ),
+          ],
+        ),
       ),
     );
   }

@@ -128,7 +128,27 @@ class _PlayerScreenState extends State<PlayerScreen> {
   /// Anchors subtitle lift to the real progress/timeline bar position.
   final GlobalKey _timelineAnchorKey = GlobalKey();
 
-  final FocusNode _keyboardFocusNode = FocusNode();
+  final FocusNode _keyboardFocusNode = FocusNode(debugLabel: 'player');
+
+  /// The control the remote is handed when it enters the control bar.
+  ///
+  /// Play/pause is the button a hand reaches for first, and on a chrome laid
+  /// out like a control bar every other button is one or two presses from it.
+  /// Traversal order would otherwise decide, and traversal order picks
+  /// whatever happens to be first in the tree.
+  final FocusNode _playPauseFocusNode =
+      FocusNode(debugLabel: 'player-play-pause');
+
+  /// The settings / subtitles / info popup currently on the overlay, with the
+  /// closure that dismisses it. Back goes through this before it reaches the
+  /// player. One at a time: each of these covers the screen with its own
+  /// dismiss barrier, so a second one stacked on it would be unreachable.
+  ({OverlayEntry entry, VoidCallback dismiss})? _openPopup;
+
+  /// Focus scope lent to whichever popup is open, so a remote can walk into a
+  /// menu that is not a route and would otherwise never receive the focus.
+  final FocusScopeNode _popupFocusScope =
+      FocusScopeNode(debugLabel: 'player-popup');
 
   static const double _volumeStep = 5.0;
 
@@ -339,6 +359,7 @@ class _PlayerScreenState extends State<PlayerScreen> {
       });
     }
     unawaited(_loadScreenBrightness());
+    _keyboardFocusNode.addListener(_handlePlayerFocusChanged);
     _playerController = PlayerController();
     _mediaKeys = PlayerMediaKeysBinding(
       onPlayPause: _togglePlayPause,
@@ -663,16 +684,19 @@ class _PlayerScreenState extends State<PlayerScreen> {
     _controlsTimer = Timer(const Duration(seconds: 4), () {
       if (_isDisposing) return;
       if (!mounted) return;
-      // Never while the remote is standing on one of those buttons: the bar
-      // would go, and the cursor with it, leaving the next key press to land
-      // somewhere the user cannot see.
+      if (_playerController.isDraggingSlider) return;
+      // A paused film keeps its chrome: there is nothing behind it to watch.
+      if (!_playerController.isPlaying) return;
+      // The remote has been parked on a button for the whole countdown. The
+      // bar goes — but the focus has to leave with it, or the next arrow press
+      // lands on a control nobody can see and the player stops answering its
+      // own keys. This used to re-arm the timer instead, which meant a chrome
+      // the remote had touched once never went away again.
       if (_remoteBrowsingControls) {
-        _hideControlsWithDelay();
+        _leaveControlBar();
         return;
       }
-      if (_showControls &&
-          !_playerController.isDraggingSlider &&
-          _playerController.isPlaying) {
+      if (_showControls) {
         setState(() => _showControls = false);
       }
     });
@@ -758,15 +782,50 @@ class _PlayerScreenState extends State<PlayerScreen> {
   /// Pressing OK hands the focus to the control bar; from there the same arrows
   /// walk the buttons, and Back hands it straight back.
   bool get _remoteBrowsingControls =>
-      TvMode.isTv && !_keyboardFocusNode.hasPrimaryFocus;
+      TvMode.isTv &&
+      // `hasFocus` and not merely "the player is not primary": the chrome
+      // lives inside this node, so a button holding the focus keeps the
+      // subtree focused. Focus that has escaped the subtree altogether is a
+      // different state, and treating it as "browsing the controls" is what
+      // used to wedge the chrome on screen forever.
+      _keyboardFocusNode.hasFocus &&
+      !_keyboardFocusNode.hasPrimaryFocus;
+
+  /// Keeps the player holding the focus whenever nothing else legitimately is.
+  ///
+  /// The chrome's buttons are inside [_keyboardFocusNode], so a remote sitting
+  /// on one still routes its keys through here. What has to be caught is the
+  /// focus leaving the subtree: the chrome faded out from under it, a panel
+  /// closed, a popup went away. From there the arrows reach nothing at all and
+  /// the player looks frozen. A popup on the overlay is the one legitimate
+  /// reason for the focus to be somewhere else.
+  void _handlePlayerFocusChanged() {
+    if (_isDisposing || !mounted) return;
+    if (!_keyboardFocusNode.hasFocus &&
+        _openPopup == null &&
+        // Not while this route is on its way out, either: the screen coming
+        // up underneath is taking the focus, and it is right to let it.
+        (ModalRoute.of(context)?.isCurrent ?? false)) {
+      _keyboardFocusNode.requestFocus();
+      return;
+    }
+    // Read all over the build, and it just changed.
+    _safeSetState(() {});
+  }
 
   /// Hands the remote to the control bar, and puts the chrome up to receive it.
   void _enterControlBar() {
     _showControlsTransient();
-    // After the frame: on a hidden chrome there is nothing focusable in the
-    // tree yet for the focus to land on.
+    // After the frame: a hidden chrome excludes its own controls from focus,
+    // so until it is painted there is nothing for the focus to land on.
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (!mounted || _isDisposing) return;
+      // Play/pause, where the chrome hands us its node. A layout that does
+      // not supply one falls back to whatever traversal reaches first.
+      if (_playPauseFocusNode.context != null) {
+        _playPauseFocusNode.requestFocus();
+        return;
+      }
       _keyboardFocusNode.nextFocus();
     });
   }
@@ -788,6 +847,11 @@ class _PlayerScreenState extends State<PlayerScreen> {
 
     final key = event.logicalKey;
     final browsingControls = _remoteBrowsingControls;
+
+    // Any key pressed while the remote is on the control bar means the user is
+    // there, so the hide countdown starts over — the same thing a mouse move
+    // does for a pointer. Without it the bar would fade out mid-navigation.
+    if (browsingControls) _hideControlsWithDelay();
 
     // OK / D-pad centre / controller A. Space keeps its own branch below,
     // because a keyboard user expects it to be play-pause and nothing else.
@@ -826,19 +890,24 @@ class _PlayerScreenState extends State<PlayerScreen> {
         return KeyEventResult.handled;
       }
 
-      if (key == LogicalKeyboardKey.arrowUp) {
-        // Up is the other way onto the control bar: it is what a hand reaches
-        // for once the chrome is already visible.
-        if (TvMode.isTv && _showControls) {
-          _enterControlBar();
+      if (key == LogicalKeyboardKey.arrowUp ||
+          key == LogicalKeyboardKey.arrowDown) {
+        // On a television both directions lead to the control bar — up because
+        // that is what a hand reaches for once the chrome is visible, down
+        // because the bar is at the bottom of the screen. Neither touches the
+        // volume: the set owns that, its remote has the keys for it, and the
+        // in-app slider is left out of the TV chrome entirely.
+        if (TvMode.isTv) {
+          if (_showControls) {
+            _enterControlBar();
+          } else {
+            _showControlsTransient();
+          }
           return KeyEventResult.handled;
         }
-        _adjustVolume(_volumeStep);
-        return KeyEventResult.handled;
-      }
-
-      if (key == LogicalKeyboardKey.arrowDown) {
-        _adjustVolume(-_volumeStep);
+        _adjustVolume(
+          key == LogicalKeyboardKey.arrowUp ? _volumeStep : -_volumeStep,
+        );
         return KeyEventResult.handled;
       }
     }
@@ -846,6 +915,9 @@ class _PlayerScreenState extends State<PlayerScreen> {
     if (key == LogicalKeyboardKey.escape ||
         key == LogicalKeyboardKey.goBack ||
         key == LogicalKeyboardKey.browserBack) {
+      // Innermost first: a menu opened from the chrome, then the episode
+      // panel, then the control bar, and only then the player itself.
+      if (_dismissTopPopup()) return KeyEventResult.handled;
       if (_showEpisodesPanel) {
         _closeEpisodesPanel();
         return KeyEventResult.handled;
@@ -1019,9 +1091,15 @@ class _PlayerScreenState extends State<PlayerScreen> {
 
   @override
   void dispose() {
-    unawaited(_mediaKeys.detach());
-    _keyboardFocusNode.dispose();
     _isDisposing = true;
+    // A menu belongs to the app's overlay, not to this route: left open, it
+    // would still be on screen after the player is gone.
+    _dismissTopPopup();
+    unawaited(_mediaKeys.detach());
+    _keyboardFocusNode.removeListener(_handlePlayerFocusChanged);
+    _keyboardFocusNode.dispose();
+    _playPauseFocusNode.dispose();
+    _popupFocusScope.dispose();
     _controlsTimer?.cancel();
     _zoomHintTimer?.cancel();
     _seekHintTimer?.cancel();
@@ -1107,11 +1185,86 @@ class _PlayerScreenState extends State<PlayerScreen> {
     return box.localToGlobal(Offset.zero).dy;
   }
 
+  /// Puts a popup on the overlay and gives a remote a way in and out of it.
+  ///
+  /// An [OverlayEntry] is not a route: nothing moves the focus into it, and
+  /// Back does not close it. On a television that leaves every menu the chrome
+  /// opens unreachable, and leaves Back meaning "quit the film" while a menu is
+  /// still on screen. So the content is wrapped in a focus scope the remote is
+  /// walked into, and the dismissal is registered where the player's own Back
+  /// handling can find it.
+  ///
+  /// [builder] receives the dismissal to wire into its barrier and its close
+  /// button, in place of calling `entry.remove()` itself — going through it is
+  /// what keeps the focus and the registration in step.
+  void _insertPlayerPopup(Widget Function(VoidCallback dismiss) builder) {
+    // Never two at once; the one underneath could not be reached anyway.
+    _dismissTopPopup();
+
+    late final OverlayEntry entry;
+    var dismissed = false;
+
+    void dismiss() {
+      if (dismissed) return;
+      dismissed = true;
+      if (identical(_openPopup?.entry, entry)) _openPopup = null;
+      entry.remove();
+      if (_isDisposing || !mounted) return;
+      // The remote came from the control bar and has to go back to it, or the
+      // next key press has nowhere to land.
+      if (TvMode.isTv) {
+        _enterControlBar();
+      } else {
+        _keyboardFocusNode.requestFocus();
+      }
+    }
+
+    entry = OverlayEntry(
+      builder: (ctx) => FocusScope(
+        node: _popupFocusScope,
+        onKeyEvent: (node, event) {
+          if (event is! KeyDownEvent) return KeyEventResult.ignored;
+          final key = event.logicalKey;
+          if (key == LogicalKeyboardKey.escape ||
+              key == LogicalKeyboardKey.goBack ||
+              key == LogicalKeyboardKey.browserBack) {
+            dismiss();
+            return KeyEventResult.handled;
+          }
+          return KeyEventResult.ignored;
+        },
+        child: builder(dismiss),
+      ),
+    );
+
+    _openPopup = (entry: entry, dismiss: dismiss);
+    Overlay.of(context).insert(entry);
+
+    // Only a remote is walked in: on a desktop the pointer is already where
+    // the user is looking, and stealing the focus would move it away.
+    if (!TvMode.isTv) return;
+    // After the frame — the scope has no children to offer until the entry
+    // has been built at least once.
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (dismissed || !mounted || _isDisposing) return;
+      _popupFocusScope.requestFocus();
+      _popupFocusScope.nextFocus();
+    });
+  }
+
+  /// Closes the popup on screen, if there is one. Returns whether it did, so
+  /// Back can stop there instead of also acting on the player.
+  bool _dismissTopPopup() {
+    final popup = _openPopup;
+    if (popup == null) return false;
+    popup.dismiss();
+    return true;
+  }
+
   void _showTrackSettings({int initialTabIndex = 0}) {
     final renderBox =
         _settingsButtonKey.currentContext?.findRenderObject() as RenderBox?;
     // Fallback: center the panel when the settings button isn't on-canvas.
-    final overlay = Overlay.of(context);
     final screenSize = MediaQuery.sizeOf(context);
     final hasChaptersTab = _episodeNav != null;
     final menuWidth =
@@ -1148,10 +1301,9 @@ class _PlayerScreenState extends State<PlayerScreen> {
     final maxTab = hasChaptersTab ? 4 : 3;
     final tab = initialTabIndex.clamp(0, maxTab);
 
-    late final OverlayEntry entry;
-    entry = OverlayEntry(
-      builder: (ctx) => GestureDetector(
-        onTap: () => entry.remove(),
+    _insertPlayerPopup(
+      (dismiss) => GestureDetector(
+        onTap: dismiss,
         behavior: HitTestBehavior.translucent,
         child: Material(
           type: MaterialType.transparency,
@@ -1170,7 +1322,7 @@ class _PlayerScreenState extends State<PlayerScreen> {
                       player: _playerController.player,
                       currentFit: _videoFit,
                       onFitChanged: _updateVideoFit,
-                      onClose: entry.remove,
+                      onClose: dismiss,
                       playerController: _playerController,
                       episodeNav: _episodeNav,
                       onSeekToAbsolute: _playerController.seekToAbsoluteSeconds,
@@ -1184,8 +1336,6 @@ class _PlayerScreenState extends State<PlayerScreen> {
         ),
       ),
     );
-
-    overlay.insert(entry);
   }
 
   /// Emby-chrome settings menu, anchored to the button that opened it.
@@ -1193,7 +1343,6 @@ class _PlayerScreenState extends State<PlayerScreen> {
     EmbyMenuSection section = EmbyMenuSection.root,
     required GlobalKey anchorKey,
   }) {
-    final overlay = Overlay.of(context);
     final screenSize = MediaQuery.sizeOf(context);
     final renderBox = anchorKey.currentContext?.findRenderObject() as RenderBox?;
 
@@ -1226,10 +1375,9 @@ class _PlayerScreenState extends State<PlayerScreen> {
       maxHeight = menuMaxHeight;
     }
 
-    late final OverlayEntry entry;
-    entry = OverlayEntry(
-      builder: (ctx) => GestureDetector(
-        onTap: () => entry.remove(),
+    _insertPlayerPopup(
+      (dismiss) => GestureDetector(
+        onTap: dismiss,
         behavior: HitTestBehavior.translucent,
         child: Material(
           type: MaterialType.transparency,
@@ -1256,7 +1404,7 @@ class _PlayerScreenState extends State<PlayerScreen> {
                       onSeekToAbsolute:
                           _playerController.seekToAbsoluteSeconds,
                       initialSection: section,
-                      onClose: entry.remove,
+                      onClose: dismiss,
                     ),
                   ),
                 ),
@@ -1266,8 +1414,6 @@ class _PlayerScreenState extends State<PlayerScreen> {
         ),
       ),
     );
-
-    overlay.insert(entry);
   }
 
   Future<void> _setPlaybackRate(double rate) async {
@@ -1387,7 +1533,6 @@ class _PlayerScreenState extends State<PlayerScreen> {
         _subtitlesButtonKey.currentContext?.findRenderObject() as RenderBox?;
     if (renderBox == null) return;
 
-    final overlay = Overlay.of(context);
     final buttonRect = renderBox.localToGlobal(Offset.zero) & renderBox.size;
     final screenSize = MediaQuery.sizeOf(context);
     const menuWidth = PlayerSettingsAnchor.subtitlesSheetWidth;
@@ -1403,10 +1548,9 @@ class _PlayerScreenState extends State<PlayerScreen> {
       popupMaxHeight: menuMaxHeight,
     );
 
-    late final OverlayEntry entry;
-    entry = OverlayEntry(
-      builder: (ctx) => GestureDetector(
-        onTap: () => entry.remove(),
+    _insertPlayerPopup(
+      (dismiss) => GestureDetector(
+        onTap: dismiss,
         behavior: HitTestBehavior.translucent,
         child: Material(
           type: MaterialType.transparency,
@@ -1424,7 +1568,7 @@ class _PlayerScreenState extends State<PlayerScreen> {
                     child: PlayerSubtitlesSheet(
                       player: _playerController.player,
                       playerController: _playerController,
-                      onClose: entry.remove,
+                      onClose: dismiss,
                     ),
                   ),
                 ),
@@ -1434,8 +1578,6 @@ class _PlayerScreenState extends State<PlayerScreen> {
         ),
       ),
     );
-
-    overlay.insert(entry);
   }
 
   /// The episode's own title (TV) or the media title (movies) — as opposed
@@ -1500,7 +1642,6 @@ class _PlayerScreenState extends State<PlayerScreen> {
     final renderBox =
         _mediaInfoButtonKey.currentContext?.findRenderObject() as RenderBox?;
 
-    final overlay = Overlay.of(context);
     final screenSize = MediaQuery.sizeOf(context);
     const cardWidth = 560.0;
     const cardMaxHeight = 220.0;
@@ -1531,10 +1672,9 @@ class _PlayerScreenState extends State<PlayerScreen> {
       maxHeight = cardMaxHeight;
     }
 
-    late final OverlayEntry entry;
-    entry = OverlayEntry(
-      builder: (ctx) => GestureDetector(
-        onTap: () => entry.remove(),
+    _insertPlayerPopup(
+      (dismiss) => GestureDetector(
+        onTap: dismiss,
         behavior: HitTestBehavior.translucent,
         child: Material(
           type: MaterialType.transparency,
@@ -1556,10 +1696,10 @@ class _PlayerScreenState extends State<PlayerScreen> {
                       tracks: _playerController.mediaTracks,
                       duration: _playerController.duration,
                       onRestart: () {
-                        entry.remove();
+                        dismiss();
                         _playerController.seekToAbsoluteSeconds(0);
                       },
-                      onClose: entry.remove,
+                      onClose: dismiss,
                     ),
                   ),
                 ),
@@ -1569,8 +1709,6 @@ class _PlayerScreenState extends State<PlayerScreen> {
         ),
       ),
     );
-
-    overlay.insert(entry);
   }
 
   Future<void> _toggleFullscreen() async {
@@ -1629,8 +1767,15 @@ class _PlayerScreenState extends State<PlayerScreen> {
         canPop: false,
         onPopInvokedWithResult: (didPop, _) async {
           if (didPop) return;
-          // The remote's Back arrives here, not as a key event. On the control
-          // bar it means "put that away", not "leave the film".
+          // The remote's Back arrives here, not as a key event — and it has to
+          // unwind the same stack the key path does, innermost first, or it
+          // walks out of the film with a menu still open on top of it.
+          if (_dismissTopPopup()) return;
+          if (_showEpisodesPanel) {
+            _closeEpisodesPanel();
+            return;
+          }
+          // On the control bar Back means "put that away", not "leave".
           if (_remoteBrowsingControls) {
             _leaveControlBar();
             return;
@@ -1854,6 +1999,10 @@ class _PlayerScreenState extends State<PlayerScreen> {
                     chapterMarks: _chapterMarks,
                     settingsButtonKey: _settingsButtonKey,
                     subtitlesButtonKey: _subtitlesButtonKey,
+                    // Read from the scope rather than [TvMode.isTv] so the
+                    // chrome rebuilds if the setting is flipped mid-playback.
+                    isTv: TvScope.of(context),
+                    playPauseFocusNode: _playPauseFocusNode,
                   ),
                   }
                 else if (useModular) ...[
