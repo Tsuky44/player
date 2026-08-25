@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../../providers/auth_provider.dart';
 import '../../services/api_client.dart';
+import '../../services/server_discovery.dart';
 import '../../theme/app_colors.dart';
 import '../../widgets/global/onyx_mark.dart';
 
@@ -30,6 +31,12 @@ class _LoginScreenState extends State<LoginScreen> {
   bool _isRegistering = false;
   bool _serverPrefilled = false;
 
+  /// True while the network sweep runs. This form is the fallback path — the
+  /// one a television reaches when it has nobody with a phone to link it — and
+  /// typing an address on it is the worst minute in the app, so the sweep is
+  /// offered right under the field.
+  bool _discovering = false;
+
   /// True while the server has no account at all. That is the only case where
   /// an account can be created without an invitation, and it produces the owner.
   bool _setupRequired = false;
@@ -56,6 +63,35 @@ class _LoginScreenState extends State<LoginScreen> {
     }
 
     _probeSetupState();
+  }
+
+  /// Sweeps the local network and fills the address in with what answers.
+  ///
+  /// Cheaper than it sounds — a TCP connect weeds out the addresses that are
+  /// not there — and vastly cheaper than hunting characters on an on-screen
+  /// keyboard with a D-pad.
+  Future<void> _discoverServer() async {
+    if (_discovering) return;
+    setState(() => _discovering = true);
+    String? found;
+    try {
+      found = await ServerDiscovery.find();
+    } catch (_) {
+      found = null;
+    }
+    if (!mounted) return;
+    setState(() => _discovering = false);
+
+    if (found == null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Aucun serveur Onyx trouvé sur ce réseau.'),
+        ),
+      );
+      return;
+    }
+    _serverController.text = found;
+    await _probeSetupState();
   }
 
   /// Asks the server whether it is still pristine. Unauthenticated and cheap;
@@ -228,6 +264,25 @@ class _LoginScreenState extends State<LoginScreen> {
                           _focus(_invitingShown ? _inviteFocus : _usernameFocus);
                         },
                       ),
+                      if (ServerDiscovery.isSupported)
+                        Align(
+                          alignment: Alignment.centerLeft,
+                          child: TextButton.icon(
+                            onPressed: _discovering ? null : _discoverServer,
+                            icon: _discovering
+                                ? const SizedBox(
+                                    width: 14,
+                                    height: 14,
+                                    child: CircularProgressIndicator(
+                                        strokeWidth: 2),
+                                  )
+                                : const Icon(Icons.travel_explore_rounded,
+                                    size: 18),
+                            label: Text(_discovering
+                                ? 'Recherche…'
+                                : 'Détecter le serveur sur le réseau'),
+                          ),
+                        ),
                       if (_isRegistering && !_setupRequired) ...[
                         const SizedBox(height: 16),
                         TextFormField(

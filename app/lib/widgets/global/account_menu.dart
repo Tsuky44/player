@@ -3,9 +3,10 @@ import 'package:flutter/material.dart';
 import '../../providers/auth_provider.dart';
 import '../../screens/player_studio/player_studio_screen.dart';
 import '../../screens/settings/settings_screen.dart';
-import '../../screens/settings/tv_pairing_screen.dart';
+import '../../screens/settings/tv_link_scanner_screen.dart';
 import '../../theme/app_colors.dart';
 import '../../tv/tv_mode.dart';
+import '../../utils/app_platform.dart';
 import 'glass_chrome.dart';
 
 /// Single owner of the account menu — consumed by the desktop header, the
@@ -17,9 +18,10 @@ class AccountMenu extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    // A television approving another television is a flow nobody has; the entry
-    // belongs on the device that holds the camera.
-    final isTv = TvScope.of(context);
+    // A television linking another television is a flow nobody has, and the
+    // entry point is a QR scanner — so it belongs on the device that holds a
+    // camera, which is the phone and only the phone.
+    final canLinkTv = AppPlatform.isMobile && !TvScope.of(context);
 
     return PopupMenuButton<String>(
       tooltip: 'Menu',
@@ -38,8 +40,11 @@ class AccountMenu extends StatelessWidget {
         const PopupMenuDivider(),
         const PopupMenuItem(value: 'settings', child: Text('Paramètres')),
         const PopupMenuItem(value: 'studio', child: Text('Player Studio')),
-        if (!isTv)
-          const PopupMenuItem(value: 'tv', child: Text('Connecter une TV')),
+        if (canLinkTv)
+          const PopupMenuItem(
+            value: 'tv',
+            child: Text('Connecter un téléviseur'),
+          ),
         const PopupMenuDivider(),
         const PopupMenuItem(value: 'logout', child: Text('Se déconnecter')),
       ],
@@ -55,7 +60,7 @@ class AccountMenu extends StatelessWidget {
             );
           case 'tv':
             Navigator.of(context).push(
-              MaterialPageRoute(builder: (_) => const TvPairingScreen()),
+              MaterialPageRoute(builder: (_) => const TvLinkScannerScreen()),
             );
           case 'logout':
             authProvider.logout();

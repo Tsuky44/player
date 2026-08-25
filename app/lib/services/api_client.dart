@@ -342,6 +342,17 @@ class ApiClient {
     return DevicePairingStatus.fromJson(response.data as Map<String, dynamic>);
   }
 
+  /// Mints a session for another screen, under this account.
+  ///
+  /// The television it is destined for has never reached this server — that is
+  /// the point of direct linking — so the phone asks on its behalf and carries
+  /// the answer over the local network itself. A session of its own rather than
+  /// a copy of this one: revoking the TV must not sign the phone out.
+  Future<DeviceSession> createDeviceSession() async {
+    final response = await _dio.post("/api/auth/device/session");
+    return DeviceSession.fromJson(response.data as Map<String, dynamic>);
+  }
+
   /// Describes a pending pairing to the phone about to approve it.
   Future<DevicePairingRequest> lookupDevicePairing(String userCode) async {
     final response = await _dio.get(

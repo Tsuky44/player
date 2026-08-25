@@ -89,3 +89,18 @@ class DevicePairingRequest {
     );
   }
 }
+
+/// A session minted for another device, delivered to it by this one.
+class DeviceSession {
+  final String token;
+  final User user;
+
+  const DeviceSession({required this.token, required this.user});
+
+  factory DeviceSession.fromJson(Map<String, dynamic> json) {
+    return DeviceSession(
+      token: json['token'] as String,
+      user: User.fromJson(json['user'] as Map<String, dynamic>),
+    );
+  }
+}

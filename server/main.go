@@ -93,6 +93,9 @@ func main() {
 	router.GET("/api/auth/device/pending", handlers.RequireAuth(handlers.LookupDevicePairing))
 	router.POST("/api/auth/device/approve", handlers.RequireAuth(handlers.ApproveDevicePairing))
 	router.POST("/api/auth/device/deny", handlers.RequireAuth(handlers.DenyDevicePairing))
+	// Direct linking: the phone mints a session for a television that never
+	// reached this server, and delivers it over the local network itself.
+	router.POST("/api/auth/device/session", handlers.RequireAuth(handlers.CreateDeviceSession))
 
 	// User administration & invitations (lot A).
 	router.GET("/api/users", handlers.RequirePermission(models.PermManageUsers, handlers.ListUsers))

@@ -1,7 +1,9 @@
 import 'dart:ui' show FontFeature;
 
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 
+import '../../../../theme/app_colors.dart';
 import '../../../../utils/format.dart';
 import 'emby_chrome_theme.dart';
 
@@ -31,6 +33,21 @@ class EmbyProgressBar extends StatefulWidget {
   /// Raised while the user is scrubbing so the parent can hold the chrome open.
   final ValueChanged<bool>? onScrubbingChanged;
 
+  /// Television only: the bar takes the focus, and the D-pad seeks from it.
+  ///
+  /// It is also what makes the rest of the chrome reachable. Directional focus
+  /// traversal prefers a target in the same vertical band as the control it
+  /// starts from; a full-width bar sitting between the transport row and the
+  /// top bar is in the band of every one of them, so up and down always find
+  /// something instead of depending on which button happens to line up with
+  /// which.
+  final bool focusable;
+
+  /// What left and right do while the bar holds the focus — the same ±10 s the
+  /// transport buttons carry, because a remote cannot drag a handle.
+  final VoidCallback? onStepBack;
+  final VoidCallback? onStepForward;
+
   const EmbyProgressBar({
     super.key,
     required this.progress,
@@ -40,6 +57,9 @@ class EmbyProgressBar extends StatefulWidget {
     required this.onSeek,
     this.chapterMarks = const [],
     this.onScrubbingChanged,
+    this.focusable = false,
+    this.onStepBack,
+    this.onStepForward,
   });
 
   @override
@@ -48,10 +68,34 @@ class EmbyProgressBar extends StatefulWidget {
 
 class _EmbyProgressBarState extends State<EmbyProgressBar> {
   bool _hovered = false;
+  bool _focused = false;
   double? _dragFraction;
   double? _pointerFraction;
 
-  bool get _active => _hovered || _dragFraction != null;
+  /// Pointed at, dragged, or standing under the remote — all three mean the
+  /// bar is the thing being aimed at, and all three thicken it.
+  bool get _active => _hovered || _focused || _dragFraction != null;
+
+  KeyEventResult _handleKey(FocusNode node, KeyEvent event) {
+    if (event is! KeyDownEvent && event is! KeyRepeatEvent) {
+      return KeyEventResult.ignored;
+    }
+    final key = event.logicalKey;
+    if (key == LogicalKeyboardKey.arrowLeft) {
+      final step = widget.onStepBack;
+      if (step == null) return KeyEventResult.ignored;
+      step();
+      return KeyEventResult.handled;
+    }
+    if (key == LogicalKeyboardKey.arrowRight) {
+      final step = widget.onStepForward;
+      if (step == null) return KeyEventResult.ignored;
+      step();
+      return KeyEventResult.handled;
+    }
+    // Up and down are the traversal's, so the remote can leave the bar.
+    return KeyEventResult.ignored;
+  }
 
   /// What the bar draws: the drag position while scrubbing, so the bar tracks
   /// the finger even though the seek itself only lands on release.
@@ -77,7 +121,7 @@ class _EmbyProgressBarState extends State<EmbyProgressBar> {
       builder: (context, constraints) {
         final width = constraints.maxWidth;
 
-        return MouseRegion(
+        final bar = MouseRegion(
           cursor: SystemMouseCursors.click,
           onEnter: (_) => setState(() => _hovered = true),
           onExit: (_) => setState(() {
@@ -117,6 +161,34 @@ class _EmbyProgressBarState extends State<EmbyProgressBar> {
                 ],
               ),
             ),
+          ),
+        );
+
+        if (!widget.focusable) return bar;
+
+        return Focus(
+          onKeyEvent: _handleKey,
+          onFocusChange: (focused) => setState(() => _focused = focused),
+          child: Stack(
+            clipBehavior: Clip.none,
+            children: [
+              bar,
+              // The bar is four pixels tall; the ring the rest of the chrome
+              // draws around a button would be a line on a line. It gets a
+              // frame around its whole hit row instead, which is what reads
+              // from a sofa.
+              if (_focused)
+                Positioned.fill(
+                  child: IgnorePointer(
+                    child: DecoratedBox(
+                      decoration: BoxDecoration(
+                        borderRadius: BorderRadius.circular(8),
+                        border: Border.all(color: AppColors.accent, width: 2),
+                      ),
+                    ),
+                  ),
+                ),
+            ],
           ),
         );
       },

@@ -5,6 +5,7 @@ import '../../providers/auth_provider.dart';
 import '../../providers/home_provider.dart';
 import '../../providers/library_provider.dart';
 import '../../theme/app_colors.dart';
+import '../../tv/tv_mode.dart';
 import '../../utils/hero_slides.dart';
 import '../../navigation/search_route_observer.dart';
 import '../../widgets/global/account_menu.dart';
@@ -148,6 +149,7 @@ class _HomeScreenState extends State<HomeScreen> {
   Widget build(BuildContext context) {
     final homeProvider = Provider.of<HomeProvider>(context);
     final authProvider = Provider.of<AuthProvider>(context);
+    final isTv = TvScope.of(context);
     final data = homeProvider.homeData;
     final heroSlides = data != null
         ? buildHeroSlides(
@@ -186,6 +188,10 @@ class _HomeScreenState extends State<HomeScreen> {
                                 slides: heroSlides,
                                 onPlay: (slide) => _onHeroPlay(context, slide),
                                 onInfo: (slide) => _onHeroInfo(context, slide),
+                                // On a television the banner is where the
+                                // remote starts. See below for why it is not
+                                // the first row.
+                                autofocusPlay: isTv,
                               ),
                             )
                           else
@@ -225,7 +231,13 @@ class _HomeScreenState extends State<HomeScreen> {
                                   title: 'Reprendre la lecture',
                                   items: data.continueWatching,
                                   isContinueWatching: true,
-                                  autofocusFirstItem: true,
+                                  // Never on a television, where taking the
+                                  // focus also scrolls this row to the middle
+                                  // of the screen — the banner the user has
+                                  // not seen yet goes off the top, and the home
+                                  // screen opens on a poster. The banner's play
+                                  // button holds the focus there instead.
+                                  autofocusFirstItem: !isTv,
                                   onItemTap: (item) => _playMedia(context, item),
                                   onContinueWatchingTitleTap: (item) =>
                                       _openContinueWatchingDetails(context, item),
@@ -242,7 +254,7 @@ class _HomeScreenState extends State<HomeScreen> {
                                   title: 'Films récents',
                                   items: data.recentMovies,
                                   autofocusFirstItem:
-                                      data.continueWatching.isEmpty,
+                                      !isTv && data.continueWatching.isEmpty,
                                   onSeeAll: widget.onNavigateToMovies,
                                   onItemTap: (item) => _openMedia(context, item as Media),
                                 ),
@@ -254,9 +266,9 @@ class _HomeScreenState extends State<HomeScreen> {
                                 child: MediaRow(
                                   title: 'Séries récentes',
                                   items: data.recentShows,
-                                  autofocusFirstItem:
+                                  autofocusFirstItem: !isTv &&
                                       data.continueWatching.isEmpty &&
-                                          data.recentMovies.isEmpty,
+                                      data.recentMovies.isEmpty,
                                   onSeeAll: widget.onNavigateToShows,
                                   onItemTap: (item) => _openMedia(context, item as Media),
                                 ),
