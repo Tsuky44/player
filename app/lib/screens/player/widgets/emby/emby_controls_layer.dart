@@ -341,7 +341,61 @@ class EmbyControlsLayer extends StatelessWidget {
     return Container(
       padding: EdgeInsets.fromLTRB(m.gutter, 60, m.gutter, m.isCompact ? 16 : 24),
       decoration: const BoxDecoration(gradient: EmbyChromeTheme.bottomScrim),
-      child: Column(
+      child: isTv ? _buildTvBottom(m) : _buildPointerBottom(m),
+    );
+  }
+
+  /// The television arrangement: title, scrubber, and one single row holding
+  /// every button.
+  ///
+  /// It exists for the D-pad, not for the look. Directional traversal picks a
+  /// target in the band of the control you start from, so a chrome with its
+  /// utilities in a right-aligned cluster above the scrubber and its transport
+  /// centred below it gives the remote no reliable path between the two — which
+  /// is exactly what "I can reach pause but not the settings" was. One row is
+  /// one band: left and right walk all of it. The full-width scrubber above it
+  /// is in the band of every button, so up always lands there, and from there
+  /// up again finds the back button.
+  Widget _buildTvBottom(EmbyChromeMetrics m) {
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        _buildTitleBlock(m),
+        const SizedBox(height: 10),
+        KeyedSubtree(
+          key: timelineAnchorKey,
+          child: EmbyProgressBar(
+            progress: _progressFraction,
+            buffered: buffered,
+            duration: duration,
+            chapterMarks: chapterMarks,
+            metrics: m,
+            onSeek: onSeekFraction,
+            onScrubbingChanged: onScrubbingChanged,
+            focusable: true,
+            onStepBack: onRewind,
+            onStepForward: onForward,
+          ),
+        ),
+        _buildTimes(m),
+        const SizedBox(height: 6),
+        Center(
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              _buildTransport(m),
+              SizedBox(width: m.clusterGap + 28),
+              _buildUtilities(m),
+            ],
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildPointerBottom(EmbyChromeMetrics m) {
+    return Column(
         mainAxisSize: MainAxisSize.min,
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
@@ -381,7 +435,6 @@ class EmbyControlsLayer extends StatelessWidget {
           ] else
             _buildTransport(m),
         ],
-      ),
     );
   }
 

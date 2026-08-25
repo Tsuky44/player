@@ -16,6 +16,14 @@ class HeroBanner extends StatelessWidget {
   final VoidCallback onPlay;
   final VoidCallback? onInfo;
 
+  /// Where the remote lands when the home screen opens on a television.
+  ///
+  /// Something has to hold the focus on a screen with no pointer, and the play
+  /// button of the banner already filling the screen is the one control the
+  /// user is looking at. The alternative — the first poster of a row further
+  /// down — scrolls the page to it before the user has seen the page.
+  final bool autofocusPlay;
+
   const HeroBanner({
     super.key,
     required this.media,
@@ -25,6 +33,7 @@ class HeroBanner extends StatelessWidget {
     this.playLabel = 'LECTURE',
     required this.onPlay,
     this.onInfo,
+    this.autofocusPlay = false,
   });
 
   @override
@@ -154,7 +163,11 @@ class HeroBanner extends StatelessWidget {
                     spacing: 12,
                     runSpacing: 12,
                     children: [
-                      _PlayButton(label: playLabel, onPressed: onPlay),
+                      _PlayButton(
+                        label: playLabel,
+                        onPressed: onPlay,
+                        autofocus: autofocusPlay,
+                      ),
                       if (onInfo != null)
                         _InfoButton(
                           onPressed: onInfo!,
@@ -175,13 +188,19 @@ class HeroBanner extends StatelessWidget {
 class _PlayButton extends StatelessWidget {
   final String label;
   final VoidCallback onPressed;
+  final bool autofocus;
 
-  const _PlayButton({required this.label, required this.onPressed});
+  const _PlayButton({
+    required this.label,
+    required this.onPressed,
+    this.autofocus = false,
+  });
 
   @override
   Widget build(BuildContext context) {
     return ElevatedButton.icon(
       onPressed: onPressed,
+      autofocus: autofocus,
       icon: const Icon(Icons.play_arrow_rounded, size: 28),
       label: Text(label),
       style: ElevatedButton.styleFrom(

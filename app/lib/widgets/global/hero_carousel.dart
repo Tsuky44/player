@@ -9,11 +9,16 @@ class HeroCarousel extends StatefulWidget {
   final void Function(HeroSlide slide) onPlay;
   final void Function(HeroSlide slide)? onInfo;
 
+  /// Gives the visible slide's play button the first focus. Television only —
+  /// see [HeroBanner.autofocusPlay].
+  final bool autofocusPlay;
+
   const HeroCarousel({
     super.key,
     required this.slides,
     required this.onPlay,
     this.onInfo,
+    this.autofocusPlay = false,
   });
 
   @override
@@ -27,6 +32,11 @@ class _HeroCarouselState extends State<HeroCarousel> {
   Timer? _autoTimer;
   int _currentIndex = 0;
   bool _hovered = false;
+
+  /// The remote is on the banner. Auto-advance stops for the same reason it
+  /// stops under the mouse — and for a harder one: the slide it would turn to
+  /// rebuilds the page the focused button lives on, and the focus goes with it.
+  bool _focused = false;
 
   @override
   void initState() {
@@ -56,10 +66,10 @@ class _HeroCarouselState extends State<HeroCarousel> {
 
   void _scheduleAutoAdvance() {
     _autoTimer?.cancel();
-    if (widget.slides.length <= 1 || _hovered) return;
+    if (widget.slides.length <= 1 || _hovered || _focused) return;
 
     _autoTimer = Timer.periodic(_autoInterval, (_) {
-      if (!mounted || _hovered || widget.slides.length <= 1) return;
+      if (!mounted || _hovered || _focused || widget.slides.length <= 1) return;
       final next = (_currentIndex + 1) % widget.slides.length;
       _pageController.animateToPage(
         next,
@@ -84,7 +94,16 @@ class _HeroCarouselState extends State<HeroCarousel> {
     final bannerHeight =
         (screenHeight * (isCompact ? 0.55 : 0.65)).clamp(360.0, 580.0);
 
-    return MouseRegion(
+    return Focus(
+      // A pure observer: it reports that something below it holds the focus,
+      // and never takes it itself.
+      canRequestFocus: false,
+      skipTraversal: true,
+      onFocusChange: (focused) {
+        _focused = focused;
+        _scheduleAutoAdvance();
+      },
+      child: MouseRegion(
       onEnter: (_) {
         _hovered = true;
         _autoTimer?.cancel();
@@ -115,6 +134,9 @@ class _HeroCarouselState extends State<HeroCarousel> {
                   onInfo: slide.showInfoButton && widget.onInfo != null
                       ? () => widget.onInfo!(slide)
                       : null,
+                  // Only the slide on screen: an autofocus on a page the
+                  // PageView has built ahead would pull the focus off-screen.
+                  autofocusPlay: widget.autofocusPlay && index == 0,
                 );
               },
             ),
@@ -151,6 +173,7 @@ class _HeroCarouselState extends State<HeroCarousel> {
               ),
           ],
         ),
+      ),
       ),
     );
   }

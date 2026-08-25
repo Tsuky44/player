@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:onyx/screens/player/widgets/emby/emby_brightness_slider.dart';
 import 'package:onyx/screens/player/widgets/emby/emby_chrome_theme.dart';
@@ -19,6 +20,9 @@ Future<void> pumpChrome(
   bool visible = true,
   bool isTv = false,
   FocusNode? playPauseFocusNode,
+  VoidCallback? onBack,
+  VoidCallback? onRewind,
+  VoidCallback? onForward,
 }) async {
   tester.view.devicePixelRatio = 1.0;
   tester.view.physicalSize = Size(width, 700);
@@ -38,13 +42,13 @@ Future<void> pumpChrome(
           overline: '2022',
           volume: volume,
           onPlayPause: () {},
-          onRewind: () {},
-          onForward: () {},
+          onRewind: onRewind ?? () {},
+          onForward: onForward ?? () {},
           onSeekFraction: (_) {},
           onVolumeChanged: (_) {},
           brightness: brightness,
           onBrightnessChanged: onBrightnessChanged ?? (_) {},
-          onBack: () {},
+          onBack: onBack ?? () {},
           onToggleSubtitles: () {},
           onOpenAudio: () {},
           onCycleSpeed: () {},
@@ -457,6 +461,98 @@ void main() {
       // Faded out, the bar is still in the tree. If its buttons could still be
       // focused the remote would walk a control bar nobody can see.
       expect(playPause.hasFocus, isFalse);
+    });
+  });
+
+  group('the D-pad walks the television chrome', () {
+    testWidgets('up from the transport row lands on the scrubber, which seeks',
+        (tester) async {
+      var rewound = 0;
+      final playPause = FocusNode();
+      addTearDown(playPause.dispose);
+
+      await pumpChrome(
+        tester,
+        width: 1280,
+        isTv: true,
+        playPauseFocusNode: playPause,
+        onRewind: () => rewound++,
+      );
+
+      playPause.requestFocus();
+      await tester.pump();
+
+      await tester.sendKeyEvent(LogicalKeyboardKey.arrowUp);
+      await tester.pump();
+      // Left on the scrubber seeks instead of moving the focus: that is how we
+      // know the focus landed there and not on a button that ignores it.
+      await tester.sendKeyEvent(LogicalKeyboardKey.arrowLeft);
+      await tester.pump();
+
+      expect(rewound, 1);
+    });
+
+    testWidgets('up from the scrubber reaches the back button', (tester) async {
+      var backs = 0;
+      final playPause = FocusNode();
+      addTearDown(playPause.dispose);
+
+      await pumpChrome(
+        tester,
+        width: 1280,
+        isTv: true,
+        playPauseFocusNode: playPause,
+        onBack: () => backs++,
+      );
+
+      playPause.requestFocus();
+      await tester.pump();
+
+      await tester.sendKeyEvent(LogicalKeyboardKey.arrowUp); // scrubber
+      await tester.pump();
+      await tester.sendKeyEvent(LogicalKeyboardKey.arrowUp); // back button
+      await tester.pump();
+      await tester.sendKeyEvent(LogicalKeyboardKey.enter);
+      await tester.pump();
+
+      expect(backs, 1);
+    });
+
+    testWidgets('the settings button is reachable going right along the row',
+        (tester) async {
+      final playPause = FocusNode();
+      addTearDown(playPause.dispose);
+
+      await pumpChrome(
+        tester,
+        width: 1280,
+        isTv: true,
+        playPauseFocusNode: playPause,
+      );
+
+      playPause.requestFocus();
+      await tester.pump();
+
+      // The utilities live on the transport row in this arrangement, so the
+      // remote reaches them by walking right — never by guessing a jump
+      // upwards into a cluster that is not in its band.
+      var reached = false;
+      for (var press = 0; press < 12 && !reached; press++) {
+        await tester.sendKeyEvent(LogicalKeyboardKey.arrowRight);
+        await tester.pump();
+        final context = primaryFocus?.context;
+        if (context == null) continue;
+        reached = find
+            .descendant(
+              of: find.byWidget(context.widget),
+              matching: find.byIcon(Icons.settings_rounded),
+            )
+            .evaluate()
+            .isNotEmpty;
+      }
+
+      expect(reached, isTrue,
+          reason: 'the settings button was never reached going right');
     });
   });
 }

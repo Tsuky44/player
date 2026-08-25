@@ -37,7 +37,9 @@ android {
         applicationId = "com.projectplayer.project_player_app"
         // You can update the following values to match your application needs.
         // For more information, see: https://flutter.dev/to/review-gradle-config.
-        minSdk = maxOf(flutter.minSdkVersion, 21)
+        // 23 is the barcode scanner's floor (mobile_scanner / ML Kit), and the
+        // refresh-rate matching in MainActivity already needs M anyway.
+        minSdk = maxOf(flutter.minSdkVersion, 23)
         targetSdk = flutter.targetSdkVersion
         versionCode = flutter.versionCode
         versionName = flutter.versionName

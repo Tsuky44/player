@@ -69,6 +69,11 @@ class _PlayerScreenState extends State<PlayerScreen> {
   bool _isEpisodeTransition = false;
   Timer? _controlsTimer;
   bool _isDisposing = false;
+
+  /// True from the moment this screen starts leaving — a pop, or a jump to the
+  /// next episode. The focus is on its way to another screen from here on, and
+  /// this one must stop claiming it back.
+  bool _isLeaving = false;
   bool _progressFlushed = false;
   ApiClient? _apiClient;
 
@@ -151,6 +156,18 @@ class _PlayerScreenState extends State<PlayerScreen> {
       FocusScopeNode(debugLabel: 'player-popup');
 
   static const double _volumeStep = 5.0;
+
+  /// Whether this screen may take over the device's orientation and system
+  /// bars for the duration of a playback.
+  ///
+  /// A phone, yes: a film is landscape and the phone is not. A television,
+  /// never — it cannot rotate, and the portrait request this screen used to
+  /// issue on the way out handed the app back to the shell in a portrait-shaped
+  /// window. That is the "it comes back in phone mode" after leaving a film:
+  /// the bottom tab bar, the narrow layout, on a 16:9 screen. It also has no
+  /// system bars for immersive mode to hide.
+  static bool get _ownsDeviceOrientation =>
+      AppPlatform.isMobile && !TvMode.isTv;
 
   EdgeInsets? _lastSubtitlePadding;
 
@@ -348,11 +365,13 @@ class _PlayerScreenState extends State<PlayerScreen> {
     super.initState();
     _showControls = !widget.autoAdvance;
     _videoFit = widget.initialVideoFit ?? BoxFit.contain;
-    SystemChrome.setPreferredOrientations([
-      DeviceOrientation.landscapeLeft,
-      DeviceOrientation.landscapeRight,
-    ]);
-    SystemChrome.setEnabledSystemUIMode(SystemUiMode.immersiveSticky);
+    if (_ownsDeviceOrientation) {
+      SystemChrome.setPreferredOrientations([
+        DeviceOrientation.landscapeLeft,
+        DeviceOrientation.landscapeRight,
+      ]);
+      SystemChrome.setEnabledSystemUIMode(SystemUiMode.immersiveSticky);
+    }
     if (AppPlatform.isWindows) {
       WidgetsBinding.instance.addPostFrameCallback((_) {
         showDesktopCaption.value = false;
@@ -801,11 +820,11 @@ class _PlayerScreenState extends State<PlayerScreen> {
   /// reason for the focus to be somewhere else.
   void _handlePlayerFocusChanged() {
     if (_isDisposing || !mounted) return;
-    if (!_keyboardFocusNode.hasFocus &&
-        _openPopup == null &&
-        // Not while this route is on its way out, either: the screen coming
-        // up underneath is taking the focus, and it is right to let it.
-        (ModalRoute.of(context)?.isCurrent ?? false)) {
+    // Not while this screen is on its way out, either: the screen coming up
+    // underneath is taking the focus, and it is right to let it. Asked of the
+    // widget tree instead — `ModalRoute.of` from here is an ancestor lookup on
+    // an element that may already be deactivated, which throws.
+    if (!_keyboardFocusNode.hasFocus && _openPopup == null && !_isLeaving) {
       _keyboardFocusNode.requestFocus();
       return;
     }
@@ -999,6 +1018,7 @@ class _PlayerScreenState extends State<PlayerScreen> {
 
     _closeEpisodesPanel();
     _isEpisodeTransition = true;
+    _isLeaving = true;
     final inheritedPreferences = _playerController.exportPreferences();
     final videoFit = _videoFit;
 
@@ -1087,7 +1107,10 @@ class _PlayerScreenState extends State<PlayerScreen> {
     if (popAfter && mounted) Navigator.of(context).pop();
   }
 
-  Future<void> _leavePlayer() => _syncProgressOnExit(popAfter: true);
+  Future<void> _leavePlayer() {
+    _isLeaving = true;
+    return _syncProgressOnExit(popAfter: true);
+  }
 
   @override
   void dispose() {
@@ -1113,7 +1136,7 @@ class _PlayerScreenState extends State<PlayerScreen> {
         });
       }
     }
-    if (!_isEpisodeTransition) {
+    if (!_isEpisodeTransition && _ownsDeviceOrientation) {
       SystemChrome.setPreferredOrientations([
         DeviceOrientation.portraitUp,
         DeviceOrientation.portraitDown,
@@ -1749,9 +1772,17 @@ class _PlayerScreenState extends State<PlayerScreen> {
   @override
   Widget build(BuildContext context) {
     final layoutProvider = Provider.of<PlayerLayoutProvider>(context);
+    final isTv = TvScope.of(context);
     // A fixed chrome is its own thing: it is neither the default HUD nor the
     // modular layer, and it ignores the layout config entirely.
-    final fixedChrome = layoutProvider.fixedChrome;
+    //
+    // A television always gets one, whatever playeur the account selected. The
+    // modular layouts place their controls in percentages of the screen, for a
+    // pointer that can reach any of them directly; a D-pad walks between them,
+    // and no arrangement a user can draw guarantees a path that reaches every
+    // control. The fixed chrome is laid out for that walk.
+    final fixedChrome =
+        isTv ? FixedChromeId.emby : layoutProvider.fixedChrome;
     final useModular = fixedChrome == null && layoutProvider.useModularLayout;
     final useDefaultHud = fixedChrome == null && !useModular;
     final totalSeconds = _playerController.duration.inSeconds;
@@ -1999,9 +2030,7 @@ class _PlayerScreenState extends State<PlayerScreen> {
                     chapterMarks: _chapterMarks,
                     settingsButtonKey: _settingsButtonKey,
                     subtitlesButtonKey: _subtitlesButtonKey,
-                    // Read from the scope rather than [TvMode.isTv] so the
-                    // chrome rebuilds if the setting is flipped mid-playback.
-                    isTv: TvScope.of(context),
+                    isTv: isTv,
                     playPauseFocusNode: _playPauseFocusNode,
                   ),
                   }

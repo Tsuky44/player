@@ -49,6 +49,7 @@ dependencies:
   # Backlight control for the player's brightness bar. Only the *application*
   # override is used, never the system setting — see services/screen_brightness_control.dart.
   screen_brightness: ^2.1.11
+  mobile_scanner: ^7.4.0
 
 dev_dependencies:
   flutter_test:

@@ -15,6 +15,19 @@
     <uses-feature
         android:name="android.hardware.touchscreen"
         android:required="false"/>
+    <!-- The phone scans a television's QR code to link it, which needs the
+         camera. A television has none, and it is the same APK — so every camera
+         feature the CAMERA permission would otherwise imply as required is
+         declared optional here, or the app would disappear from TV devices. -->
+    <uses-feature
+        android:name="android.hardware.camera"
+        android:required="false"/>
+    <uses-feature
+        android:name="android.hardware.camera.any"
+        android:required="false"/>
+    <uses-feature
+        android:name="android.hardware.camera.autofocus"
+        android:required="false"/>
 
     <application
         android:label="Onyx"

@@ -1,14 +1,13 @@
 import 'dart:async';
-import 'dart:ui' show FontFeature;
 
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:qr_flutter/qr_flutter.dart';
 
-import '../../models/device_pairing.dart';
 import '../../providers/auth_provider.dart';
 import '../../services/api_client.dart';
-import '../../services/server_discovery.dart';
+import '../../services/tv_link.dart';
+import '../../services/tv_link_host.dart';
 import '../../theme/app_colors.dart';
 import '../../tv/tv_mode.dart';
 import '../../widgets/global/onyx_mark.dart';
@@ -18,246 +17,119 @@ import 'login_screen.dart';
 ///
 /// Typing a password with a D-pad is a minute of hunting across an on-screen
 /// grid, and it is the first thing anyone does with the app — so the television
-/// does not do it. It opens a pairing, renders the short code as a QR, and
-/// waits for a phone that is already signed in to approve. The account that
-/// lands on the TV is the phone's account.
+/// does not do it. Nor does it ask for a server address, which was the same
+/// problem wearing a different hat: a freshly installed television has no
+/// address, no keyboard, and no way to be told one.
+///
+/// It offers instead. It opens a listener on the local network, renders an
+/// address to itself as a QR, and waits. The phone — which knows the server and
+/// is already signed in — scans it from inside the Onyx app and delivers both
+/// halves. The account that lands on the TV is the phone's account, and no
+/// credential is ever typed in the living room.
 ///
 /// The password form is still one button away: a household whose only device is
 /// the television has to be able to get in, and so does the very first account
 /// on a pristine server.
 class TvLoginScreen extends StatefulWidget {
-  /// Overrides the network sweep. Only tests pass this: the real one reaches
-  /// for whatever /24 the machine happens to be on, which is neither fast nor
-  /// the same twice.
-  final Future<String?> Function()? discoverServer;
+  /// Overrides the network listener. Only tests pass this: the real one binds a
+  /// socket, which a widget test has no business doing.
+  final TvLinkSession Function()? createLinkSession;
 
-  const TvLoginScreen({super.key, this.discoverServer});
+  const TvLoginScreen({super.key, this.createLinkSession});
 
   @override
   State<TvLoginScreen> createState() => _TvLoginScreenState();
 }
 
-enum _PairingPhase { connecting, searching, waiting, approved, expired, failed }
-
-/// Raised when the sweep came back empty. Distinct from a network error: there
-/// is nothing to retry against, and the message has to say so.
-class _NoServerFound implements Exception {
-  const _NoServerFound();
-}
+enum _LinkPhase { opening, waiting, linked, failed }
 
 class _TvLoginScreenState extends State<TvLoginScreen> {
-  final _serverController = TextEditingController();
-
-  DevicePairing? _pairing;
-  _PairingPhase _phase = _PairingPhase.connecting;
+  TvLinkSession? _session;
+  TvLinkOffer? _offer;
+  _LinkPhase _phase = _LinkPhase.opening;
   String? _error;
-  Timer? _pollTimer;
-  Timer? _countdownTimer;
-  Duration _remaining = Duration.zero;
 
-  /// Guards against two polls overlapping when the network is slow — the
-  /// approving poll consumes the pairing, and a second in-flight request would
-  /// come back "expired" and wipe a session that was just granted.
-  bool _polling = false;
+  /// Bumped every time a fresh offer is opened, so the delivery of an offer the
+  /// user has already replaced cannot sign the television in behind their back.
+  int _generation = 0;
 
   @override
   void initState() {
     super.initState();
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      final apiClient = context.read<ApiClient>();
-      _serverController.text = apiClient.baseUrl;
-      _startPairing();
-    });
+    WidgetsBinding.instance.addPostFrameCallback((_) => _startLink());
   }
 
   @override
   void dispose() {
-    _pollTimer?.cancel();
-    _countdownTimer?.cancel();
-    _serverController.dispose();
+    unawaited(_session?.stop());
     super.dispose();
   }
 
-  Future<void> _startPairing() async {
-    _pollTimer?.cancel();
-    _countdownTimer?.cancel();
+  Future<void> _startLink() async {
+    final generation = ++_generation;
+    unawaited(_session?.stop());
 
     setState(() {
-      _phase = _PairingPhase.connecting;
+      _phase = _LinkPhase.opening;
       _error = null;
-      _pairing = null;
+      _offer = null;
     });
 
-    final apiClient = context.read<ApiClient>();
+    final session = (widget.createLinkSession ?? TvLinkHost.new)();
+    _session = session;
+
+    TvLinkOffer? offer;
     try {
-      final pairing = await _openPairing(apiClient);
-      if (!mounted) return;
-
-      setState(() {
-        _pairing = pairing;
-        _phase = _PairingPhase.waiting;
-        _remaining = pairing.expiresIn;
-      });
-
-      _pollTimer = Timer.periodic(pairing.pollInterval, (_) => _poll());
-      _countdownTimer =
-          Timer.periodic(const Duration(seconds: 1), (_) => _tick());
+      offer = await session.start(deviceName: TvMode.deviceName);
     } catch (error) {
-      if (!mounted) return;
+      offer = null;
+      debugPrint('TvLoginScreen: cannot open a link offer ($error)');
+    }
+    if (!mounted || generation != _generation) return;
+
+    if (offer == null) {
       setState(() {
-        _phase = _PairingPhase.failed;
-        _error = _describe(error);
+        _phase = _LinkPhase.failed;
+        _error = 'Ce téléviseur n’est pas connecté au réseau. Vérifiez le '
+            'Wi-Fi ou le câble Ethernet, puis réessayez.';
       });
-    }
-  }
-
-  /// Opens a pairing, finding the server first if it has to.
-  ///
-  /// A remembered or hand-typed address is tried as given. The platform default
-  /// is not: on Android it is the emulator's loopback alias, so a television on
-  /// a fresh install would burn the connect timeout on an address that cannot
-  /// exist before doing the thing that works. When either path fails, the sweep
-  /// is what turns "server unreachable" into a pairing — nobody types an IP
-  /// with a D-pad if the app can find it in three seconds.
-  Future<DevicePairing> _openPairing(ApiClient apiClient) async {
-    final requested = _serverController.text.trim();
-    Object? firstError;
-
-    if (requested.isNotEmpty && apiClient.hasChosenServer) {
-      try {
-        return await _connectAndStart(apiClient, requested);
-      } catch (error) {
-        firstError = error;
-      }
-    }
-
-    if (mounted) setState(() => _phase = _PairingPhase.searching);
-    final found = await _discover();
-    if (found == null) throw firstError ?? const _NoServerFound();
-
-    if (mounted) setState(() => _phase = _PairingPhase.connecting);
-    return _connectAndStart(apiClient, found);
-  }
-
-  Future<String?> _discover() {
-    final override = widget.discoverServer;
-    if (override != null) return override();
-    if (!ServerDiscovery.isSupported) return Future<String?>.value(null);
-    return ServerDiscovery.find();
-  }
-
-  /// Points the client at [serverUrl] and opens the pairing there. The address
-  /// is echoed back into the field so the screen shows what it actually used,
-  /// not what it was asked to use.
-  Future<DevicePairing> _connectAndStart(
-    ApiClient apiClient,
-    String serverUrl,
-  ) async {
-    await apiClient.setConnection(serverUrl);
-    final pairing =
-        await apiClient.startDevicePairing(deviceName: TvMode.deviceName);
-    _serverController.text = apiClient.baseUrl;
-    return pairing;
-  }
-
-  void _tick() {
-    if (!mounted) return;
-    final next = _remaining - const Duration(seconds: 1);
-    if (next.isNegative || next == Duration.zero) {
-      _expire();
       return;
     }
-    setState(() => _remaining = next);
+
+    setState(() {
+      _offer = offer;
+      _phase = _LinkPhase.waiting;
+    });
+
+    unawaited(_awaitDelivery(session, generation));
   }
 
-  void _expire() {
-    _pollTimer?.cancel();
-    _countdownTimer?.cancel();
-    if (!mounted) return;
-    setState(() => _phase = _PairingPhase.expired);
-  }
-
-  Future<void> _poll() async {
-    final pairing = _pairing;
-    if (pairing == null || _polling) return;
-    _polling = true;
+  Future<void> _awaitDelivery(TvLinkSession session, int generation) async {
+    final TvLinkPayload payload;
     try {
-      final status =
-          await context.read<ApiClient>().pollDevicePairing(pairing.deviceCode);
-      if (!mounted) return;
-
-      if (status.isApproved && status.user != null) {
-        _pollTimer?.cancel();
-        _countdownTimer?.cancel();
-        setState(() => _phase = _PairingPhase.approved);
-        await context.read<AuthProvider>().adoptPairedSession(
-              token: status.token!,
-              user: status.user!,
-            );
-        return;
-      }
-
-      if (status.state == DevicePairingState.expired) _expire();
-    } catch (_) {
-      // A dropped poll is not a failed pairing — the code is still live on the
-      // server, and the next tick asks again. Only the countdown ends this.
-    } finally {
-      _polling = false;
+      payload = await session.linked;
+    } catch (error) {
+      if (!mounted || generation != _generation) return;
+      setState(() {
+        _phase = _LinkPhase.failed;
+        _error = 'La connexion depuis le téléphone a échoué.';
+      });
+      return;
     }
-  }
+    if (!mounted || generation != _generation) return;
 
-  String _describe(Object error) {
-    if (error is _NoServerFound) {
-      return 'Aucun serveur Onyx trouvé sur ce réseau. Vérifiez qu\'il est '
-          'allumé et que la TV est sur le même réseau, ou saisissez son '
-          'adresse.';
-    }
-    final text = error.toString();
-    if (text.contains('SocketException') ||
-        text.contains('connectionError') ||
-        text.contains('Failed host lookup') ||
-        text.contains('timeout')) {
-      return "Serveur injoignable. Vérifiez l'adresse et que le serveur est allumé.";
-    }
-    return "Impossible de démarrer l'appairage.";
-  }
+    setState(() => _phase = _LinkPhase.linked);
 
-  Future<void> _editServerAddress() async {
-    final controller = TextEditingController(text: _serverController.text);
-    final result = await showDialog<String>(
-      context: context,
-      builder: (dialogContext) => AlertDialog(
-        backgroundColor: AppColors.surfaceElevated,
-        title: const Text('Adresse du serveur'),
-        content: TextField(
-          controller: controller,
-          autofocus: true,
-          keyboardType: TextInputType.url,
-          style: const TextStyle(color: AppColors.textPrimary),
-          decoration: const InputDecoration(
-            hintText: 'http://192.168.1.50:8080',
-          ),
-          onSubmitted: (value) => Navigator.of(dialogContext).pop(value),
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.of(dialogContext).pop(),
-            child: const Text('Annuler'),
-          ),
-          ElevatedButton(
-            onPressed: () => Navigator.of(dialogContext).pop(controller.text),
-            child: const Text('Valider'),
-          ),
-        ],
-      ),
-    );
-    controller.dispose();
-
+    // The address first: everything the session is good for lives on that
+    // server, and adopting a session while the client still points somewhere
+    // else would authenticate against the wrong host.
+    final apiClient = context.read<ApiClient>();
+    await apiClient.setConnection(payload.serverUrl);
     if (!mounted) return;
-    final trimmed = result?.trim();
-    if (trimmed == null || trimmed.isEmpty) return;
-    _serverController.text = trimmed;
-    await _startPairing();
+    await context.read<AuthProvider>().adoptPairedSession(
+          token: payload.token,
+          user: payload.user,
+        );
   }
 
   void _openPasswordForm() {
@@ -362,16 +234,17 @@ class _TvLoginScreenState extends State<TvLoginScreen> {
           ),
         ),
         const SizedBox(height: 18),
-        _step(1, 'Ouvrez l\'appareil photo de votre téléphone.'),
-        _step(2, 'Scannez le code affiché à droite.'),
-        _step(
-          3,
-          'Connectez-vous si besoin, puis confirmez : votre compte arrive sur la TV.',
-        ),
+        // The app, not the camera: the phone has to be signed in for this to
+        // work, and its camera app cannot reach the account. Saying so in step
+        // one is what stops the scan that opens a browser page instead.
+        _step(1, 'Ouvrez l’application Onyx sur votre téléphone.'),
+        _step(2, 'Allez dans Compte, puis « Connecter un téléviseur ».'),
+        _step(3, 'Scannez le code affiché ici. C’est tout : ni adresse de '
+            'serveur, ni mot de passe à saisir.'),
         const SizedBox(height: 28),
-        _serverLine(textTheme),
+        _addressLine(textTheme),
         const SizedBox(height: 20),
-        // A Wrap, not a Row: side by side these two overflow the column on the
+        // A Wrap, not a Row: side by side these overflow the column on the
         // narrow layout, and a clipped button on a screen driven by a remote is
         // a dead end.
         //
@@ -383,11 +256,6 @@ class _TvLoginScreenState extends State<TvLoginScreen> {
           runSpacing: 8,
           crossAxisAlignment: WrapCrossAlignment.center,
           children: [
-            OutlinedButton.icon(
-              onPressed: _editServerAddress,
-              icon: const Icon(Icons.dns_rounded, size: 18),
-              label: const Text('Changer de serveur'),
-            ),
             TextButton(
               onPressed: _openPasswordForm,
               child: const Text('Utiliser un mot de passe'),
@@ -438,7 +306,11 @@ class _TvLoginScreenState extends State<TvLoginScreen> {
     );
   }
 
-  Widget _serverLine(TextTheme textTheme) {
+  /// This television's own address, not a server's — there is no server here
+  /// yet, and that is the point. It is shown so a user who scans and sees
+  /// nothing happen can check the two devices are on the same network.
+  Widget _addressLine(TextTheme textTheme) {
+    final offer = _offer;
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
       decoration: BoxDecoration(
@@ -449,16 +321,13 @@ class _TvLoginScreenState extends State<TvLoginScreen> {
       child: Row(
         mainAxisSize: MainAxisSize.min,
         children: [
-          const Icon(Icons.dns_rounded, size: 16, color: AppColors.textMuted),
+          const Icon(Icons.tv_rounded, size: 16, color: AppColors.textMuted),
           const SizedBox(width: 10),
           Flexible(
             child: Text(
-              // While the sweep runs the field still holds the address that just
-              // failed, and showing it reads as "this is the server", which is
-              // the one thing it is not.
-              _phase == _PairingPhase.searching
-                  ? 'Recherche du serveur…'
-                  : _serverController.text,
+              offer == null
+                  ? 'Ouverture du code…'
+                  : '${TvMode.deviceName} · ${offer.host}',
               maxLines: 1,
               overflow: TextOverflow.ellipsis,
               style: textTheme.bodySmall?.copyWith(color: AppColors.textMuted),
@@ -485,21 +354,16 @@ class _TvLoginScreenState extends State<TvLoginScreen> {
           child: _qrContent(),
         ),
         const SizedBox(height: 22),
-        _codeBlock(textTheme),
-        const SizedBox(height: 14),
         _status(textTheme),
       ],
     );
   }
 
   Widget _qrContent() {
-    // Order matters, and it used to be wrong: `pairing == null` was tested
-    // first, and every state that has no pairing yet — failed above all —
-    // fell into the spinner branch. A television that could not reach a server
-    // sat on a loading ring forever, with the error and its retry button
-    // rendered nowhere. The terminal states are answered first now, and the
-    // spinner is what is left over.
-    if (_phase == _PairingPhase.failed) {
+    // Terminal states first. The other order — "no offer yet" tested first —
+    // is how this screen once put a failed television on a spinner forever,
+    // with the error and its retry button rendered nowhere.
+    if (_phase == _LinkPhase.failed) {
       return _qrFrame(
         light: false,
         child: Padding(
@@ -512,56 +376,23 @@ class _TvLoginScreenState extends State<TvLoginScreen> {
                   size: 46, color: AppColors.error),
               const SizedBox(height: 16),
               Text(
-                _error ?? 'Serveur injoignable.',
+                _error ?? 'Connexion impossible.',
                 textAlign: TextAlign.center,
                 style: const TextStyle(color: AppColors.textSecondary),
               ),
               const SizedBox(height: 18),
               ElevatedButton(
                 autofocus: true,
-                onPressed: _startPairing,
+                onPressed: _startLink,
                 child: const Text('Réessayer'),
               ),
-              const SizedBox(height: 4),
-              TextButton(
-                onPressed: _editServerAddress,
-                child: const Text("Saisir l'adresse"),
-              ),
             ],
           ),
         ),
       );
     }
 
-    if (_phase == _PairingPhase.expired) {
-      return _qrFrame(
-        light: false,
-        child: Padding(
-          padding: const EdgeInsets.all(24),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              const Icon(Icons.timer_off_rounded,
-                  size: 46, color: AppColors.warning),
-              const SizedBox(height: 16),
-              const Text(
-                'Ce code a expiré.',
-                style: TextStyle(color: AppColors.textSecondary, fontSize: 16),
-              ),
-              const SizedBox(height: 18),
-              ElevatedButton(
-                autofocus: true,
-                onPressed: _startPairing,
-                child: const Text('Générer un nouveau code'),
-              ),
-            ],
-          ),
-        ),
-      );
-    }
-
-    if (_phase == _PairingPhase.approved) {
+    if (_phase == _LinkPhase.linked) {
       return _qrFrame(
         light: false,
         child: const Center(
@@ -581,30 +412,8 @@ class _TvLoginScreenState extends State<TvLoginScreen> {
       );
     }
 
-    if (_phase == _PairingPhase.searching) {
-      return _qrFrame(
-        light: false,
-        child: const Padding(
-          padding: EdgeInsets.all(24),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              CircularProgressIndicator(strokeWidth: 3),
-              SizedBox(height: 20),
-              Text(
-                'Recherche du serveur sur votre réseau…',
-                textAlign: TextAlign.center,
-                style: TextStyle(color: AppColors.textSecondary, fontSize: 15),
-              ),
-            ],
-          ),
-        ),
-      );
-    }
-
-    final pairing = _pairing;
-    if (pairing == null) {
+    final offer = _offer;
+    if (offer == null) {
       return _qrFrame(
         light: false,
         child: const Center(
@@ -615,13 +424,12 @@ class _TvLoginScreenState extends State<TvLoginScreen> {
 
     // A QR is read by a camera, not by a person: it needs real white quiet zone
     // around real black modules, whatever the app's own palette is doing.
-    final link = context.read<ApiClient>().devicePairingLink(pairing.userCode);
     return _qrFrame(
       light: true,
       child: Padding(
         padding: const EdgeInsets.all(18),
         child: QrImageView(
-          data: link,
+          data: offer.url,
           // 320 minus the frame's own padding: the module grid has to be a
           // stable size now that the panel grows with its content.
           size: 284,
@@ -654,36 +462,12 @@ class _TvLoginScreenState extends State<TvLoginScreen> {
     );
   }
 
-  Widget _codeBlock(TextTheme textTheme) {
-    final pairing = _pairing;
-    if (pairing == null || _phase != _PairingPhase.waiting) {
-      return const SizedBox(height: 44);
-    }
-
-    return Column(
-      children: [
-        Text(
-          'ou saisissez ce code dans l\'app Onyx',
-          style: textTheme.bodySmall?.copyWith(color: AppColors.textMuted),
-        ),
-        const SizedBox(height: 6),
-        Text(
-          pairing.formattedUserCode,
-          style: textTheme.headlineSmall?.copyWith(
-            fontWeight: FontWeight.w700,
-            letterSpacing: 6,
-            fontFeatures: const [FontFeature.tabularFigures()],
-          ),
-        ),
-      ],
-    );
-  }
-
   Widget _status(TextTheme textTheme) {
-    if (_phase != _PairingPhase.waiting) return const SizedBox(height: 20);
+    if (_phase != _LinkPhase.waiting) return const SizedBox(height: 20);
 
-    final minutes = _remaining.inMinutes;
-    final seconds = _remaining.inSeconds % 60;
+    // No countdown: nothing expires here. The code is only good while this
+    // screen is up, and the listener behind it dies with the screen — so the
+    // honest status is "waiting", not a clock the user has to beat.
     return Row(
       mainAxisAlignment: MainAxisAlignment.center,
       children: [
@@ -694,8 +478,7 @@ class _TvLoginScreenState extends State<TvLoginScreen> {
         ),
         const SizedBox(width: 10),
         Text(
-          'En attente de confirmation · expire dans '
-          '$minutes:${seconds.toString().padLeft(2, '0')}',
+          'En attente de votre téléphone…',
           style: textTheme.bodySmall?.copyWith(color: AppColors.textMuted),
         ),
       ],
