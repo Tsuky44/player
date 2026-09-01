@@ -8,6 +8,7 @@ import '../../screens/library/movie_detail_screen.dart';
 import '../../screens/library/search_results_screen.dart';
 import '../../screens/library/show_detail_screen.dart';
 import '../../theme/app_colors.dart';
+import '../../tv/tv_deferred_keyboard.dart';
 import '../../utils/poster_url.dart';
 import 'app_network_image.dart';
 import 'glass_chrome.dart';
@@ -40,6 +41,7 @@ class GlassCatalogSearch extends StatefulWidget {
 class _GlassCatalogSearchState extends State<GlassCatalogSearch> {
   final _controller = TextEditingController();
   final _focusNode = FocusNode();
+
   final LayerLink _link = LayerLink();
   final Object _tapGroupId = Object();
   OverlayEntry? _overlayEntry;
@@ -197,23 +199,28 @@ class _GlassCatalogSearchState extends State<GlassCatalogSearch> {
       );
     }
 
-    return TapRegion(
-      groupId: _tapGroupId,
-      child: CompositedTransformTarget(
-        link: _link,
-        child: AnimatedContainer(
-          duration: const Duration(milliseconds: 220),
-          curve: Curves.easeOutCubic,
-          width: width,
-          child: GlassSearchInput(
-            controller: _controller,
-            focusNode: _focusNode,
-            onChanged: _onQueryChanged,
-            onSubmitted: (_) => _showAllResults(),
-            onClear: _clear,
-            hint: expanded ? 'Titre, film, série…' : 'Rechercher',
-            focused: _focusNode.hasFocus,
-            hasText: _controller.text.isNotEmpty,
+    return TvDeferredKeyboard(
+      fieldFocusNode: _focusNode,
+      borderRadius: BorderRadius.circular(17),
+      builder: (context, canRequestFocus) => TapRegion(
+        groupId: _tapGroupId,
+        child: CompositedTransformTarget(
+          link: _link,
+          child: AnimatedContainer(
+            duration: const Duration(milliseconds: 220),
+            curve: Curves.easeOutCubic,
+            width: width,
+            child: GlassSearchInput(
+              controller: _controller,
+              focusNode: _focusNode,
+              canRequestFocus: canRequestFocus,
+              onChanged: _onQueryChanged,
+              onSubmitted: (_) => _showAllResults(),
+              onClear: _clear,
+              hint: expanded ? 'Titre, film, série…' : 'Rechercher',
+              focused: _focusNode.hasFocus,
+              hasText: _controller.text.isNotEmpty,
+            ),
           ),
         ),
       ),
