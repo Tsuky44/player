@@ -42,6 +42,23 @@ abstract final class HardwareDecoding {
 
   static HardwareDecodingPreference get preference => _preference;
 
+  /// Set once a playback has come back decoded in software on a file the
+  /// hardware had no business refusing. It means the zero-copy path does not
+  /// work on this device, whatever it claims.
+  ///
+  /// Session-scoped on purpose: this is an observation, not the user's choice.
+  /// Baking it into the stored preference would hide a device that starts
+  /// working after a firmware update, and would overwrite a setting the user
+  /// never touched.
+  static bool _zeroCopyFailed = false;
+
+  static bool get zeroCopyFailed => _zeroCopyFailed;
+
+  /// Called by the player when it sees software decode where hardware was
+  /// asked for. Every later media of this session opens on the copy path
+  /// directly, instead of paying the same discovery again.
+  static void noteZeroCopyFailure() => _zeroCopyFailed = true;
+
   /// Reads the stored preference. Call once at startup, before a media opens.
   static Future<void> initialize() async {
     try {
@@ -72,6 +89,7 @@ abstract final class HardwareDecoding {
         preference: _preference,
         isAndroid: AppPlatform.isAndroid,
         isMacOS: AppPlatform.isMacOS,
+        zeroCopyFailed: _zeroCopyFailed,
       );
 
   /// The platform-by-platform mapping, as a pure function so it can be checked
@@ -80,6 +98,7 @@ abstract final class HardwareDecoding {
     required HardwareDecodingPreference preference,
     required bool isAndroid,
     required bool isMacOS,
+    bool zeroCopyFailed = false,
   }) {
     switch (preference) {
       case HardwareDecodingPreference.off:
@@ -93,7 +112,14 @@ abstract final class HardwareDecoding {
         // to mpv's whitelist, which is conservative by design and is why a
         // frame the hardware had already decoded was being copied back through
         // the CPU on the devices least able to afford it.
-        if (isAndroid) return 'mediacodec';
+        //
+        // Unless this device has already been caught not honouring it. mpv
+        // falls back from `mediacodec` **straight to software** — there is no
+        // step in between — so on a box whose zero-copy path does not work, a
+        // 4K film is decoded on the CPU. That is not a slower playback, it is
+        // two frames a second and an app the low-memory killer takes out. The
+        // copy path is hardware too, and it is the compatible one.
+        if (isAndroid) return zeroCopyFailed ? 'mediacodec-copy' : 'mediacodec';
         // macOS 27 beta: plain VideoToolbox can freeze the video while audio
         // continues; the copy is compatible with the CVPixelBuffer/Metal path.
         // The two settings deliberately coincide there.
@@ -105,6 +131,8 @@ abstract final class HardwareDecoding {
   static String describe() => '${_preference.name} → $mpvValue';
 
   @visibleForTesting
-  static void overrideWith(HardwareDecodingPreference value) =>
-      _preference = value;
+  static void overrideWith(HardwareDecodingPreference value) {
+    _preference = value;
+    _zeroCopyFailed = false;
+  }
 }

@@ -1,0 +1,151 @@
+import 'package:pigeon/pigeon.dart';
+
+/// Le contrat entre le lecteur Dart et ExoPlayer.
+///
+/// C'est la seule source de vérité : les deux côtés sont générés à partir
+/// d'ici, donc un champ renommé casse la compilation sur la machine de
+/// développement plutôt que la lecture sur le téléviseur. Après toute
+/// modification :
+///
+/// ```
+/// dart run pigeon --input pigeons/messages.dart
+/// ```
+///
+/// Ne rien écrire à la main dans les fichiers `*.g.dart` / `Messages.g.kt`.
+@ConfigurePigeon(
+  PigeonOptions(
+    dartOut: 'lib/src/messages.g.dart',
+    dartOptions: DartOptions(),
+    kotlinOut:
+        'android/src/main/kotlin/com/projectplayer/onyx_player_android/Messages.g.kt',
+    kotlinOptions: KotlinOptions(
+      package: 'com.projectplayer.onyx_player_android',
+    ),
+    dartPackageName: 'onyx_player_android',
+  ),
+)
+/// Où en est le lecteur, dans le vocabulaire d'ExoPlayer.
+enum OnyxPlaybackState {
+  /// Rien de chargé.
+  idle,
+
+  /// Chargé, mais pas assez de données pour avancer.
+  buffering,
+
+  /// Prêt à jouer, ou en train de jouer.
+  ready,
+
+  /// Arrivé au bout.
+  ended,
+}
+
+/// Pourquoi une ouverture a échoué.
+///
+/// Le détail importe : c'est ce qui distingue un fichier qu'il faut transcoder
+/// d'un réseau qui a lâché, et donc s'il faut réessayer ou changer de source.
+enum OnyxPlayerErrorKind {
+  /// Le conteneur ou le codec n'est pas lisible par cet appareil. C'est le cas
+  /// qui bascule sur le transcodage.
+  unsupported,
+
+  /// La source n'a pas pu être lue : réseau, 404, connexion coupée.
+  source,
+
+  /// Tout le reste.
+  unknown,
+}
+
+class OnyxVideoSize {
+  OnyxVideoSize({required this.width, required this.height});
+
+  final int width;
+  final int height;
+}
+
+/// Un instantané complet de l'état du lecteur.
+///
+/// Un seul objet plutôt qu'un événement par propriété : l'appelant n'a qu'un
+/// état à réconcilier, et deux champs ne peuvent pas se contredire en chemin.
+class OnyxPlayerStatus {
+  OnyxPlayerStatus({
+    required this.playerId,
+    required this.state,
+    required this.isPlaying,
+    required this.positionMs,
+    required this.durationMs,
+    required this.bufferedPositionMs,
+    this.videoSize,
+    this.errorKind,
+    this.errorMessage,
+  });
+
+  final int playerId;
+  final OnyxPlaybackState state;
+
+  /// Le lecteur avance réellement — distinct de « on lui a demandé de lire ».
+  final bool isPlaying;
+
+  final int positionMs;
+
+  /// 0 tant qu'ExoPlayer ne connaît pas la durée (flux en cours de sondage).
+  final int durationMs;
+
+  final int bufferedPositionMs;
+
+  /// Null tant que le décodeur n'a pas annoncé les dimensions.
+  final OnyxVideoSize? videoSize;
+
+  final OnyxPlayerErrorKind? errorKind;
+  final String? errorMessage;
+}
+
+/// Ce qu'il faut pour répondre à « est-ce que c'est fluide ? » par un chiffre.
+///
+/// C'est le critère de recette du premier jalon : comparable au
+/// `frame-drop-count` que le lecteur mpv journalise déjà en sortie.
+class OnyxPlaybackStats {
+  OnyxPlaybackStats({
+    required this.droppedFrames,
+    required this.renderedFrames,
+  });
+
+  final int droppedFrames;
+  final int renderedFrames;
+}
+
+@HostApi()
+abstract class OnyxPlayerApi {
+  /// Crée un lecteur et rend son identifiant. La vue de rendu s'y rattache par
+  /// cet identifiant, ce qui permet de créer le lecteur avant que la vue
+  /// n'existe — et de survivre à sa reconstruction.
+  int create();
+
+  /// Détruit le lecteur. Sans appel, ExoPlayer garde son décodeur et sa
+  /// connexion réseau ouverts.
+  void release(int playerId);
+
+  /// Charge [url] et se positionne à [startPositionMs] dans le même geste.
+  /// Ouvrir puis chercher ferait payer deux fois la mise en mémoire tampon.
+  void open(int playerId, String url, int startPositionMs);
+
+  void play(int playerId);
+
+  void pause(int playerId);
+
+  void seekTo(int playerId, int positionMs);
+
+  /// L'état à cet instant. Les changements arrivent par le flux d'événements ;
+  /// ceci sert à s'amorcer sans attendre le premier.
+  OnyxPlayerStatus status(int playerId);
+
+  /// Les compteurs d'images du rendu vidéo.
+  OnyxPlaybackStats stats(int playerId);
+}
+
+@EventChannelApi()
+abstract class OnyxPlayerEventApi {
+  /// Un flux unique pour tous les lecteurs — [OnyxPlayerStatus.playerId] dit
+  /// lequel. Un canal par lecteur coûterait une négociation à chaque ouverture
+  /// pour distinguer des instances qui n'existent jamais à plus de deux.
+  OnyxPlayerStatus statusChanged();
+}

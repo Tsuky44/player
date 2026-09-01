@@ -70,6 +70,24 @@ class _PlayerScreenState extends State<PlayerScreen> {
   Timer? _controlsTimer;
   bool _isDisposing = false;
 
+  /// The picture has not arrived, and it has been long enough that saying
+  /// nothing is worse than saying the wrong thing.
+  ///
+  /// A start-up that stalls used to be indistinguishable from one that is
+  /// merely slow: the same spinner, forever. It is the network far more often
+  /// than not — a television on the far end of the Wi-Fi, a connect that hangs
+  /// where a retry would have worked — and none of that is visible from a
+  /// spinner. So the wait is given a deadline and an offer to try again.
+  bool _startupStalled = false;
+  Timer? _startupWatchdog;
+
+  /// How long the picture may take before the screen admits something is wrong.
+  ///
+  /// Long enough not to fire on a genuinely slow open — a big remux over a
+  /// weak link, a server that has to spin a disk up — and short enough that
+  /// nobody sits through it twice wondering whether to press something.
+  static const Duration _startupDeadline = Duration(seconds: 25);
+
   /// True from the moment this screen starts leaving — a pop, or a jump to the
   /// next episode. The focus is on its way to another screen from here on, and
   /// this one must stop claiming it back.
@@ -143,6 +161,15 @@ class _PlayerScreenState extends State<PlayerScreen> {
   /// whatever happens to be first in the tree.
   final FocusNode _playPauseFocusNode =
       FocusNode(debugLabel: 'player-play-pause');
+
+  /// The scrubber — where the remote actually lands when the HUD comes up.
+  ///
+  /// Emby's television player never leaves the viewer guessing: the instant
+  /// the HUD is on screen something is outlined, and that something is the
+  /// bar. Left and right therefore keep meaning "seek", exactly as they did
+  /// with the HUD down, and now the screen says so. Play/pause is one press
+  /// away, and OK on the bar itself toggles it.
+  final FocusNode _progressFocusNode = FocusNode(debugLabel: 'player-progress');
 
   /// The settings / subtitles / info popup currently on the overlay, with the
   /// closure that dismisses it. Back goes through this before it reaches the
@@ -436,6 +463,8 @@ class _PlayerScreenState extends State<PlayerScreen> {
         _safeSetState(() {});
       },
       onFirstFrame: () {
+        // The picture is here; nothing left for the deadline to catch.
+        _startupWatchdog?.cancel();
         // Lifts the start-up cover: the texture now holds this media.
         _safeSetState(() {});
         // Restart the auto-hide countdown here rather than leave the one armed
@@ -619,6 +648,7 @@ class _PlayerScreenState extends State<PlayerScreen> {
     );
     if (!mounted) return;
     setState(() => _isInitialized = true);
+    _armStartupWatchdog();
     _scheduleSubtitlePaddingSync();
     unawaited(_mediaKeys.attach(
       title: _playerTitle,
@@ -627,6 +657,45 @@ class _PlayerScreenState extends State<PlayerScreen> {
     ));
     _keyboardFocusNode.requestFocus();
     _hideControlsWithDelay();
+  }
+
+  /// Starts the countdown on the first picture. Cancelled the moment it lands;
+  /// re-armed by a retry.
+  void _armStartupWatchdog() {
+    _startupWatchdog?.cancel();
+    if (_playerController.hasFirstFrame) return;
+    _startupWatchdog = Timer(_startupDeadline, () {
+      if (!mounted || _isDisposing) return;
+      if (_playerController.hasFirstFrame) return;
+      setState(() => _startupStalled = true);
+    });
+  }
+
+  /// Opens this same media again, from scratch.
+  ///
+  /// A fresh screen rather than a seek or a re-open on the spot: the engine,
+  /// its HTTP connection and every subscription are rebuilt, which is what a
+  /// stalled start needs — whatever it got stuck on is not worth diagnosing
+  /// from here.
+  void _retryPlayback() {
+    if (!mounted) return;
+    _startupWatchdog?.cancel();
+    _isLeaving = true;
+    _playerController.cancelStreams();
+    final inheritedPreferences = _playerController.exportPreferences();
+    final videoFit = _videoFit;
+
+    Navigator.of(context).pushReplacement(
+      MaterialPageRoute(
+        settings: const RouteSettings(name: SearchRouteObserver.playerRouteName),
+        builder: (_) => PlayerScreen(
+          media: widget.media,
+          inheritedPreferences: inheritedPreferences,
+          initialVideoFit: videoFit,
+          seasonNumber: widget.seasonNumber,
+        ),
+      ),
+    );
   }
 
   void _handleMediaFastForward() {
@@ -750,6 +819,9 @@ class _PlayerScreenState extends State<PlayerScreen> {
     _refreshPositionUi(force: true);
     _scheduleSubtitlePaddingSync();
     _hideControlsWithDelay();
+    // Every route that raises the chrome goes through here, so this is the one
+    // place the television invariant has to hold.
+    _ensureRemoteInChrome();
   }
 
   /// Whether the player chrome — timeline, transport, top-right menus — may be
@@ -826,6 +898,11 @@ class _PlayerScreenState extends State<PlayerScreen> {
     // an element that may already be deactivated, which throws.
     if (!_keyboardFocusNode.hasFocus && _openPopup == null && !_isLeaving) {
       _keyboardFocusNode.requestFocus();
+      // On a television the player node is a parking spot, not a destination.
+      // If the chrome is up — a menu just closed over it, a panel went away —
+      // the remote belongs on a control, outlined, and not sitting invisibly
+      // on the video with the arrows doing something else.
+      _ensureRemoteInChrome();
       return;
     }
     // Read all over the build, and it just changed.
@@ -833,14 +910,39 @@ class _PlayerScreenState extends State<PlayerScreen> {
   }
 
   /// Hands the remote to the control bar, and puts the chrome up to receive it.
-  void _enterControlBar() {
-    _showControlsTransient();
+  void _enterControlBar() => _showControlsTransient();
+
+  /// The invariant that makes the remote legible: on a television, chrome on
+  /// screen means something on it is outlined.
+  ///
+  /// The player used to keep the focus for itself while the HUD was up, which
+  /// gave two indistinguishable states — same picture, same bar, but in one of
+  /// them nothing was highlighted and the arrows scrubbed, and in the other a
+  /// button was highlighted and the arrows walked. Which one you were in
+  /// depended on whether the HUD had been woken by OK or by a seek. This
+  /// collapses them into one: the HUD is up, the scrubber is outlined, left and
+  /// right seek from it.
+  void _ensureRemoteInChrome() {
+    if (!TvMode.isTv) return;
+    if (_isDisposing || _isLeaving || !_showControls) return;
+    // A popup, the episode browser or an end card owns the focus while it is
+    // up, and taking it back would trap the remote behind them.
+    if (_openPopup != null || _showEpisodesPanel || _endCardVisible) return;
+
     // After the frame: a hidden chrome excludes its own controls from focus,
     // so until it is painted there is nothing for the focus to land on.
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (!mounted || _isDisposing) return;
-      // Play/pause, where the chrome hands us its node. A layout that does
-      // not supply one falls back to whatever traversal reaches first.
+      if (!mounted || _isDisposing || _isLeaving) return;
+      if (!_showControls || _openPopup != null || _showEpisodesPanel) return;
+      // Already standing on a control — including one the user walked to.
+      // Re-requesting would drag them back to the scrubber on every seek.
+      if (_remoteBrowsingControls) return;
+      if (_progressFocusNode.context != null) {
+        _progressFocusNode.requestFocus();
+        return;
+      }
+      // Chromes with no scrubber node of their own fall back to play/pause,
+      // then to whatever traversal reaches first.
       if (_playPauseFocusNode.context != null) {
         _playPauseFocusNode.requestFocus();
         return;
@@ -882,7 +984,11 @@ class _PlayerScreenState extends State<PlayerScreen> {
       // A focused button answers for itself — the app-wide shortcut turns this
       // very key into its activation.
       if (browsingControls) return KeyEventResult.ignored;
-      if (TvMode.isTv && !_showControls) {
+      // On a television OK never toggles playback from here: it wakes the HUD
+      // and hands the remote to the scrubber, which answers the next OK with
+      // play/pause. Reaching this branch with the HUD already up means the
+      // focus slipped, and putting it back is the repair.
+      if (TvMode.isTv) {
         _enterControlBar();
       } else {
         _togglePlayPause();
@@ -898,7 +1004,23 @@ class _PlayerScreenState extends State<PlayerScreen> {
 
     // While the remote is on the control bar the arrows belong to focus
     // traversal, or the buttons would be unreachable.
-    if (!browsingControls) {
+    final isArrow = key == LogicalKeyboardKey.arrowLeft ||
+        key == LogicalKeyboardKey.arrowRight ||
+        key == LogicalKeyboardKey.arrowUp ||
+        key == LogicalKeyboardKey.arrowDown;
+
+    if (!browsingControls && isArrow) {
+      // A television never scrubs blind. Any direction wakes the HUD and puts
+      // the outline on the scrubber; from there the very same key seeks — and
+      // now the screen shows what it is seeking. Volume is untouched in either
+      // direction: the set owns it and its remote has the keys for it.
+      if (TvMode.isTv) {
+        // Held down, the wake-up press must not queue forty more of itself.
+        if (event is KeyRepeatEvent) return KeyEventResult.handled;
+        _enterControlBar();
+        return KeyEventResult.handled;
+      }
+
       if (key == LogicalKeyboardKey.arrowLeft) {
         _seekRelative(-10);
         return KeyEventResult.handled;
@@ -909,26 +1031,10 @@ class _PlayerScreenState extends State<PlayerScreen> {
         return KeyEventResult.handled;
       }
 
-      if (key == LogicalKeyboardKey.arrowUp ||
-          key == LogicalKeyboardKey.arrowDown) {
-        // On a television both directions lead to the control bar — up because
-        // that is what a hand reaches for once the chrome is visible, down
-        // because the bar is at the bottom of the screen. Neither touches the
-        // volume: the set owns that, its remote has the keys for it, and the
-        // in-app slider is left out of the TV chrome entirely.
-        if (TvMode.isTv) {
-          if (_showControls) {
-            _enterControlBar();
-          } else {
-            _showControlsTransient();
-          }
-          return KeyEventResult.handled;
-        }
-        _adjustVolume(
-          key == LogicalKeyboardKey.arrowUp ? _volumeStep : -_volumeStep,
-        );
-        return KeyEventResult.handled;
-      }
+      _adjustVolume(
+        key == LogicalKeyboardKey.arrowUp ? _volumeStep : -_volumeStep,
+      );
+      return KeyEventResult.handled;
     }
 
     if (key == LogicalKeyboardKey.escape ||
@@ -1122,8 +1228,10 @@ class _PlayerScreenState extends State<PlayerScreen> {
     _keyboardFocusNode.removeListener(_handlePlayerFocusChanged);
     _keyboardFocusNode.dispose();
     _playPauseFocusNode.dispose();
+    _progressFocusNode.dispose();
     _popupFocusScope.dispose();
     _controlsTimer?.cancel();
+    _startupWatchdog?.cancel();
     _zoomHintTimer?.cancel();
     _seekHintTimer?.cancel();
     if (!_progressFlushed && _apiClient != null) {
@@ -2032,6 +2140,7 @@ class _PlayerScreenState extends State<PlayerScreen> {
                     subtitlesButtonKey: _subtitlesButtonKey,
                     isTv: isTv,
                     playPauseFocusNode: _playPauseFocusNode,
+                    progressFocusNode: _progressFocusNode,
                   ),
                   }
                 else if (useModular) ...[
@@ -2249,17 +2358,28 @@ class _PlayerScreenState extends State<PlayerScreen> {
                 // Start-up spinner. IgnorePointer like the two below: loading is
                 // exactly when the user may want to go back, so the cover must
                 // never eat taps meant for the chrome.
+                //
+                // Past the deadline it stops being a spinner and starts being a
+                // question, which does take input — there is a button on it.
                 if (!_playerController.hasFirstFrame)
-                  const Positioned.fill(
-                    child: IgnorePointer(
-                      child: Center(
-                        child: CircularProgressIndicator(
-                          color: Color(0xFF00A4DC),
-                          strokeWidth: 3,
+                  if (_startupStalled)
+                    Positioned.fill(
+                      child: _StalledStartup(
+                        onRetry: _retryPlayback,
+                        onBack: _leavePlayer,
+                      ),
+                    )
+                  else
+                    const Positioned.fill(
+                      child: IgnorePointer(
+                        child: Center(
+                          child: CircularProgressIndicator(
+                            color: Color(0xFF00A4DC),
+                            strokeWidth: 3,
+                          ),
                         ),
                       ),
                     ),
-                  ),
                 // Both spinners below are IgnorePointer, not AbsorbPointer: they
                 // cover the whole screen and sit above the controls, so
                 // absorbing taps made every player button dead for as long as a
@@ -2326,6 +2446,82 @@ class _PlayerBackButtonState extends State<_PlayerBackButton> {
             Icons.arrow_back_rounded,
             size: 20,
             color: _hovered ? Colors.white : Colors.white70,
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+/// What replaces the start-up spinner once the picture is overdue.
+///
+/// The spinner is honest for twenty-five seconds and a lie after that: it says
+/// "working on it" about a start-up that, by then, has usually stopped working
+/// on anything. What actually helps is naming the likeliest cause — the link
+/// between this screen and the server — and offering the one action that fixes
+/// most of them, which is to open the whole thing again from scratch.
+class _StalledStartup extends StatelessWidget {
+  final VoidCallback onRetry;
+  final VoidCallback onBack;
+
+  const _StalledStartup({required this.onRetry, required this.onBack});
+
+  @override
+  Widget build(BuildContext context) {
+    return ColoredBox(
+      color: Colors.black.withValues(alpha: 0.86),
+      child: Center(
+        child: Padding(
+          padding: const EdgeInsets.all(40),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              const Icon(
+                Icons.wifi_tethering_error_rounded,
+                size: 54,
+                color: Colors.white70,
+              ),
+              const SizedBox(height: 22),
+              const Text(
+                'La lecture ne démarre pas',
+                textAlign: TextAlign.center,
+                style: TextStyle(
+                  color: Colors.white,
+                  fontSize: 22,
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+              const SizedBox(height: 12),
+              const Text(
+                'Le serveur met trop longtemps à envoyer la vidéo. '
+                'C’est presque toujours le réseau entre cet appareil et lui — '
+                'réessayer suffit le plus souvent.',
+                textAlign: TextAlign.center,
+                style: TextStyle(
+                  color: Colors.white70,
+                  fontSize: 15,
+                  height: 1.45,
+                ),
+              ),
+              const SizedBox(height: 28),
+              Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  ElevatedButton.icon(
+                    // The remote lands here: it is the button that helps.
+                    autofocus: true,
+                    onPressed: onRetry,
+                    icon: const Icon(Icons.refresh_rounded),
+                    label: const Text('Réessayer'),
+                  ),
+                  const SizedBox(width: 12),
+                  TextButton(
+                    onPressed: onBack,
+                    child: const Text('Retour'),
+                  ),
+                ],
+              ),
+            ],
           ),
         ),
       ),

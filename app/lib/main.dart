@@ -20,6 +20,7 @@ import 'screens/auth/tv_login_screen.dart';
 import 'tv/tv_focus.dart';
 import 'tv/tv_mode.dart';
 import 'tv/tv_pairing_link.dart';
+import 'screens/player/display_frame_rate.dart';
 import 'screens/player/hardware_decoding.dart';
 import 'screens/player/playback_profile.dart';
 import 'screens/player/player_engine.dart';
@@ -72,6 +73,7 @@ void main() async {
   // answer never changes for the life of the process.
   await PlaybackProfiles.initialize(isTv: TvMode.detected);
   await HardwareDecoding.initialize();
+  await DisplayFrameRate.initialize();
 
   // A QR scanned on the TV opens this app with ?tv=CODE. Read it now, act on it
   // once the shell is up and there is a session to approve with.

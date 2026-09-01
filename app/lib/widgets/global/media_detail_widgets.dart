@@ -660,6 +660,62 @@ class _UnavailableBadge extends StatelessWidget {
   }
 }
 
+/// "Titres similaires" rail closing a movie/show detail page. Owned entries
+/// open their library page, the rest open the request page — the same tap
+/// contract as a filmography grid, so the rail is a way out of the library as
+/// much as a way around it.
+class SimilarTitlesSection extends StatelessWidget {
+  final List<CatalogItem> items;
+  final void Function(CatalogItem item) onTapItem;
+
+  const SimilarTitlesSection({
+    super.key,
+    required this.items,
+    required this.onTapItem,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    if (items.isEmpty) return const SizedBox.shrink();
+    final pad = AppLayout.pagePadding(context);
+    final compact = AppLayout.isCompact(context);
+    final cardWidth = compact ? 112.0 : 142.0;
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Padding(
+          padding: EdgeInsets.fromLTRB(pad, 8, pad, 16),
+          child: Text(
+            'Titres similaires',
+            style: Theme.of(context).textTheme.titleLarge?.copyWith(
+                  fontWeight: FontWeight.w700,
+                ),
+          ),
+        ),
+        SizedBox(
+          // The cards size themselves from the cell, so the rail states the
+          // height a poster + two metadata lines need at this width.
+          height: mediaCardHeight(cardWidth),
+          child: ListView.separated(
+            scrollDirection: Axis.horizontal,
+            padding: EdgeInsets.symmetric(horizontal: pad),
+            itemCount: items.length,
+            separatorBuilder: (_, __) => const SizedBox(width: 14),
+            itemBuilder: (context, index) => SizedBox(
+              width: cardWidth,
+              child: CatalogPosterCard(
+                item: items[index],
+                onTap: () => onTapItem(items[index]),
+              ),
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+}
+
 class _CastPlaceholder extends StatelessWidget {
   const _CastPlaceholder();
 

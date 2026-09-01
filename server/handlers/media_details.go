@@ -136,9 +136,54 @@ func GetMediaDetails(w http.ResponseWriter, r *http.Request, ps httprouter.Param
 
 	if catalog := indexer.FetchMediaCatalogDetails(details.TMDBID, mt); catalog != nil {
 		mergeCatalogDetails(&details, catalog)
+		details.SimilarTitles = similarCatalogItems(catalog, details.TMDBID)
 	}
 
 	json.NewEncoder(w).Encode(details)
+}
+
+// maxSimilarTitles caps the "Titres similaires" rail. TMDB hands back 20 per
+// list and two lists; a rail nobody scrolls past a dozen cards does not need
+// forty posters.
+const maxSimilarTitles = 20
+
+// similarCatalogItems folds TMDB's recommendations and similar lists into the
+// rail shown at the bottom of a detail page. Recommendations lead — TMDB ranks
+// those by what people actually watched next — and every entry is tagged with
+// its local library id, so an owned title opens its library page while the rest
+// open the request page.
+func similarCatalogItems(catalog *models.MediaDetails, selfTMDBID int) []models.CatalogItem {
+	items := make([]models.CatalogItem, 0, maxSimilarTitles)
+	seen := map[int]bool{selfTMDBID: true}
+
+	for _, list := range [][]models.RelatedMedia{catalog.Recommendations, catalog.Similar} {
+		for _, rel := range list {
+			if len(items) >= maxSimilarTitles {
+				break
+			}
+			// A card with no poster is a grey rectangle in a poster rail.
+			if rel.ID <= 0 || rel.PosterURL == "" || seen[rel.ID] {
+				continue
+			}
+			seen[rel.ID] = true
+			year := ""
+			if len(rel.ReleaseDate) >= 4 {
+				year = rel.ReleaseDate[:4]
+			}
+			items = append(items, models.CatalogItem{
+				TMDBID:      rel.ID,
+				Title:       rel.Title,
+				PosterURL:   rel.PosterURL,
+				BackdropURL: rel.BackdropURL,
+				Year:        year,
+				MediaType:   string(rel.Type),
+				Rating:      rel.VoteAverage,
+			})
+		}
+	}
+
+	attachLocalIDs(items)
+	return items
 }
 
 // mergeCatalogDetails overlays live TMDB catalog data onto the local record,

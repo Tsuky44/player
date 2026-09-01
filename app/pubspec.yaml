@@ -51,6 +51,12 @@ dependencies:
   screen_brightness: ^2.1.11
   mobile_scanner: ^7.4.0
 
+  # Le lecteur Android (ExoPlayer dans une SurfaceView). Le paquet ne déclare
+  # que la plateforme Android : les builds macOS et Windows ne l'embarquent
+  # pas, et rien de leur chaîne de lecture n'est touché.
+  onyx_player_android:
+    path: ../packages/onyx_player_android
+
 dev_dependencies:
   flutter_test:
     sdk: flutter
