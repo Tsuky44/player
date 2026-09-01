@@ -52,6 +52,13 @@ de la vue. Dessiner *par-dessus* — chrome, sous-titres, menus — fonctionne n
 Sacrifier le plan vidéo pour préserver une animation, ce serait renoncer au 4K pour un coin
 arrondi.
 
+La composition doit être **hybride, et explicitement**. Le widget `AndroidView` de Flutter appelle
+`PlatformViewsService.initAndroidView`, qui compose en *Texture Layer* : la vue Android est rendue
+dans une texture Flutter. Une `SurfaceView` dessine sur sa propre couche système et n'est pas
+capturable par ce chemin — au mieux un rectangle noir, au pire une mesure de la composition GPU
+qu'on cherche à supprimer. `initExpensiveAndroidView` force la composition hybride ; son nom vise
+les appareils sous Android 9, alors qu'ici c'est le seul mode qui donne le plan vidéo.
+
 ### 3. Un contrôleur partagé, un port fin
 
 `PlayerController` fait 2052 lignes, dont **118 touchent mpv** — concentrées dans sept méthodes

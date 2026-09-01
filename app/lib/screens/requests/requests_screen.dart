@@ -6,6 +6,7 @@ import '../../models/request_catalog_filters.dart';
 import '../../providers/media_requests_provider.dart';
 import '../../desktop_window.dart';
 import '../../theme/app_colors.dart';
+import '../../tv/tv_deferred_keyboard.dart';
 import '../../utils/responsive.dart';
 import '../../widgets/global/empty_state.dart';
 import 'request_detail_screen.dart';
@@ -23,6 +24,11 @@ class RequestsScreen extends StatefulWidget {
 
 class _RequestsScreenState extends State<RequestsScreen> {
   final _searchController = TextEditingController();
+
+  /// Le champ est le premier arrêt du parcours dans cet onglet. Sur un
+  /// téléviseur, en prendre le focus ouvrirait le clavier plein écran d'Android
+  /// avant que l'utilisateur n'ait rien demandé — voir [TvDeferredKeyboard].
+  final _searchFocusNode = FocusNode(debugLabel: 'requests-search');
   final _scrollController = ScrollController();
 
   String _draftType = 'all';
@@ -52,6 +58,7 @@ class _RequestsScreenState extends State<RequestsScreen> {
   void dispose() {
     _searchDebounce?.cancel();
     _searchController.dispose();
+    _searchFocusNode.dispose();
     _scrollController.dispose();
     super.dispose();
   }
@@ -141,8 +148,12 @@ class _RequestsScreenState extends State<RequestsScreen> {
                       'Recherchez et demandez de nouveaux films et séries',
                       style: TextStyle(color: AppColors.textSecondary)),
                   const SizedBox(height: 22),
-                  TextField(
+                  TvDeferredKeyboard(
+                    fieldFocusNode: _searchFocusNode,
+                    builder: (context, canRequestFocus) => TextField(
                     controller: _searchController,
+                    focusNode: _searchFocusNode,
+                    canRequestFocus: canRequestFocus,
                     onChanged: (_) {
                       setState(() {});
                       _scheduleSearch();
@@ -166,6 +177,7 @@ class _RequestsScreenState extends State<RequestsScreen> {
                               },
                               icon: const Icon(Icons.close_rounded),
                             ),
+                    ),
                     ),
                   ),
                   if (!provider.filters.isDefault) ...[

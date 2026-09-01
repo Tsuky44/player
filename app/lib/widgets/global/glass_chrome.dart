@@ -81,6 +81,12 @@ class GlassSearchInput extends StatelessWidget {
   final bool focused;
   final bool hasText;
 
+  /// False pour un champ qui ne doit pas se laisser attraper par le parcours du
+  /// focus. Sur un téléviseur, prendre le focus fait ouvrir le clavier virtuel
+  /// par Android — et un clavier plein écran ouvert au passage de la
+  /// télécommande empêche d'atteindre quoi que ce soit après lui.
+  final bool canRequestFocus;
+
   const GlassSearchInput({
     super.key,
     required this.controller,
@@ -91,6 +97,7 @@ class GlassSearchInput extends StatelessWidget {
     required this.hint,
     this.focused = false,
     this.hasText = false,
+    this.canRequestFocus = true,
   });
 
   @override
@@ -114,6 +121,7 @@ class GlassSearchInput extends StatelessWidget {
         child: TextField(
           controller: controller,
           focusNode: focusNode,
+          canRequestFocus: canRequestFocus,
           onChanged: onChanged,
           onSubmitted: onSubmitted,
           textInputAction: TextInputAction.search,

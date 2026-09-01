@@ -77,3 +77,24 @@ espace pour lecture/pause.
   posée sur la barre au lieu de retomber sur un lecteur invisible.
 - Le nœud de lecture/pause reste fourni et reste le repli quand un chrome n'expose pas de barre
   focusable.
+
+## Amendement (2026-08-27) — un champ de saisie est un mur sur le chemin du focus
+
+Le même raisonnement vaut pour les champs de texte, et il coûtait plus cher que prévu.
+
+Sur Android, un champ qui prend le focus fait ouvrir le clavier virtuel. Sur un téléviseur ce
+clavier est plein écran. Un champ posé sur le chemin du parcours devient donc infranchissable : la
+croix directionnelle le traverse, le clavier s'ouvre par-dessus tout, et **ce qui se trouve après
+lui est inatteignable**. Dans l'en-tête, la barre de recherche est juste avant l'avatar du compte :
+les Paramètres étaient donc hors d'atteinte à la télécommande. L'onglet Demandes avait le même
+défaut, son champ étant le premier arrêt de l'écran.
+
+`TvDeferredKeyboard` fait de ces champs des **boutons** : hors du parcours tant que personne n'a
+appuyé sur OK, et de nouveau hors du parcours dès que le clavier se referme — sinon le passage
+suivant le rouvrirait de lui-même. Le focus revient alors sur le champ-bouton, pour ne laisser la
+télécommande nulle part.
+
+Hors téléviseur, le widget est transparent : le champ prend le focus au clic, comme avant.
+
+La règle générale, pour la prochaine fois : **sur un téléviseur, rien qui ouvre une surface plein
+écran ne doit le faire au passage du focus.** Seule une activation explicite peut le déclencher.
