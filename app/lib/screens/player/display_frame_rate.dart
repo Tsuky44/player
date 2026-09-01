@@ -1,5 +1,6 @@
 import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 import '../../utils/app_platform.dart';
 
@@ -20,6 +21,43 @@ import '../../utils/app_platform.dart';
 abstract final class DisplayFrameRate {
   static const MethodChannel _channel = MethodChannel('onyx/device');
 
+  static const String _preferenceKey = 'display_frame_rate_matching';
+
+  /// Whether the panel may be asked to change mode. On by default — it is the
+  /// whole point of the feature.
+  ///
+  /// It is a setting because switching mode makes the television renegotiate
+  /// HDMI: the picture blanks for a second or two while it does, and on some
+  /// panels and boxes the surface comes back in a state the video output has to
+  /// rebuild — which reads as a playback that hangs shortly after starting, on
+  /// some films and not others. Which films is not random: it is the ones whose
+  /// frame rate has a matching mode to switch to. Anyone whose set behaves that
+  /// way needs a way out that is not a new build of the app.
+  static bool _enabled = true;
+
+  static bool get enabled => _enabled;
+
+  /// Reads the stored preference. Call once at startup, before a media opens.
+  static Future<void> initialize() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      _enabled = prefs.getBool(_preferenceKey) ?? true;
+    } catch (_) {
+      _enabled = true;
+    }
+  }
+
+  static Future<void> setEnabled(bool value) async {
+    _enabled = value;
+    if (!value) await release();
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setBool(_preferenceKey, value);
+    } catch (_) {
+      // A preference that could not be stored still applies to this session.
+    }
+  }
+
   /// The rate currently requested, or null when the display is on its own.
   /// Exposed for the playback diagnostics line.
   static double? get requested => _requested;
@@ -31,7 +69,7 @@ abstract final class DisplayFrameRate {
   /// panel with a single 60 Hz mode is the common case, and there is nothing to
   /// be done about it from here.
   static Future<double?> matchTo(double fps) async {
-    if (!AppPlatform.isAndroid || fps <= 0) return null;
+    if (!_enabled || !AppPlatform.isAndroid || fps <= 0) return null;
     try {
       final rate = await _channel.invokeMethod<double>(
         'matchRefreshRate',

@@ -20,9 +20,11 @@ Future<void> pumpChrome(
   bool visible = true,
   bool isTv = false,
   FocusNode? playPauseFocusNode,
+  FocusNode? progressFocusNode,
   VoidCallback? onBack,
   VoidCallback? onRewind,
   VoidCallback? onForward,
+  VoidCallback? onPlayPause,
 }) async {
   tester.view.devicePixelRatio = 1.0;
   tester.view.physicalSize = Size(width, 700);
@@ -41,7 +43,7 @@ Future<void> pumpChrome(
           title: 'Avatar : La Voie de l’eau',
           overline: '2022',
           volume: volume,
-          onPlayPause: () {},
+          onPlayPause: onPlayPause ?? () {},
           onRewind: onRewind ?? () {},
           onForward: onForward ?? () {},
           onSeekFraction: (_) {},
@@ -60,6 +62,7 @@ Future<void> pumpChrome(
           onSkipIntro: onSkipIntro,
           isTv: isTv,
           playPauseFocusNode: playPauseFocusNode,
+          progressFocusNode: progressFocusNode,
         ),
       ),
     ),
@@ -490,6 +493,58 @@ void main() {
       await tester.pump();
 
       expect(rewound, 1);
+    });
+
+    testWidgets('the scrubber takes the node the player hands it',
+        (tester) async {
+      var rewound = 0;
+      final progress = FocusNode();
+      addTearDown(progress.dispose);
+
+      await pumpChrome(
+        tester,
+        width: 1280,
+        isTv: true,
+        progressFocusNode: progress,
+        onRewind: () => rewound++,
+      );
+
+      // The player puts the remote here the moment the HUD comes up, so it
+      // has to be reachable by node and not only by traversal.
+      progress.requestFocus();
+      await tester.pump();
+      expect(progress.hasFocus, isTrue);
+
+      await tester.sendKeyEvent(LogicalKeyboardKey.arrowLeft);
+      await tester.pump();
+      expect(rewound, 1);
+    });
+
+    testWidgets('OK on the scrubber is play/pause', (tester) async {
+      var toggled = 0;
+      final progress = FocusNode();
+      addTearDown(progress.dispose);
+
+      await pumpChrome(
+        tester,
+        width: 1280,
+        isTv: true,
+        progressFocusNode: progress,
+        onPlayPause: () => toggled++,
+      );
+
+      progress.requestFocus();
+      await tester.pump();
+
+      // The bar is where the remote lands, so the most common press of all
+      // has to work from it without walking down to the transport row.
+      await tester.sendKeyEvent(LogicalKeyboardKey.select);
+      await tester.pump();
+      expect(toggled, 1);
+
+      await tester.sendKeyEvent(LogicalKeyboardKey.enter);
+      await tester.pump();
+      expect(toggled, 2);
     });
 
     testWidgets('up from the scrubber reaches the back button', (tester) async {

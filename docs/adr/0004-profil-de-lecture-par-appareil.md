@@ -92,6 +92,51 @@ contenu, et le rend en sortant — le catalogue n'est pas à 24 fps, et un panne
 d'un film ferait saccader chaque défilement de l'app. Même résolution uniquement : choisir le mode
 nous regarde, changer ce que l'écran affiche non. Téléviseurs seulement.
 
+### Amendement (2026-08-26) — le repli quand le zéro copie ne prend pas
+
+La section ci-dessus dit que l'échec du chemin zéro copie est indétectable depuis l'app. C'est vrai
+d'**un** de ses deux échecs : le mauvais pilote qui décode et dessine de travers, image verte, son
+parfait. L'autre est parfaitement visible et n'était pas traité : le décodeur **ne démarre pas du
+tout**, mpv l'écrit dans `hwdec-current`, et il se rabat en silence.
+
+Or mpv se rabat de `mediacodec` **directement sur le logiciel** — il n'y a pas d'étape
+intermédiaire. Sur une boîte dont le chemin zéro copie ne fonctionne pas, un film 4K est donc décodé
+par le CPU. Ce n'est pas une lecture plus lente : c'est deux images par seconde, et la mémoire que
+réclame le décodeur logiciel est ce qui fait tuer l'app par le low-memory killer. Le symptôme
+rapporté — « le 1080p passe très bien, le 4K charge deux images et ça plante » — est exactement
+cette forme.
+
+Le lecteur lit donc `hwdec-current` après la première image, et s'il trouve du logiciel sur un
+fichier au-dessus de 1440p, il bascule sur `mediacodec-copy` — qui est du matériel lui aussi, et qui
+est le chemin compatible que le réglage proposait déjà à la main. `hwdec` se change à chaud, donc le
+film en cours se rattrape sur place.
+
+Borné de tous les côtés : Android seulement, une fois par lecture, uniquement si l'utilisateur n'a
+pas épinglé un décodeur lui-même, et uniquement au-dessus de 1440p — en dessous, un décodage
+logiciel est du gaspillage sans conséquence, et changer de décodeur sous un film qui passe bien
+serait un à-coup pour rien.
+
+L'observation vaut pour **la session**, pas au-delà : les lectures suivantes ouvrent directement sur
+le chemin compatible, mais rien n'est écrit dans le réglage. C'est une constatation, pas un choix de
+l'utilisateur — l'écrire masquerait un appareil réparé par une mise à jour de firmware, et
+écraserait un réglage auquel personne n'a touché.
+
+Quand même le chemin compatible ne suffit pas, le recours n'est plus un décodeur mais une
+résolution : le menu Qualité du chrome transcode la source en 1080p, et il est atteignable à la
+télécommande.
+
+### Amendement (2026-08-26) — l'adaptation de fréquence devient un réglage
+
+Changer de mode fait renégocier le HDMI : l'image s'éteint une seconde ou deux, et sur certains
+ensembles téléviseur/boîtier la surface revient dans un état que la sortie vidéo doit reconstruire —
+ce qui se lit comme une lecture qui se fige peu après le démarrage, sur certains films et pas
+d'autres. Lesquels n'a rien d'aléatoire : ce sont ceux dont la fréquence a un mode où aller.
+
+Le comportement reste activé par défaut — c'est tout l'intérêt de la fonction — mais il est
+désormais désactivable dans les réglages, au même titre que le décodage matériel et pour la même
+raison : l'échec dépend du matériel du salon, et il ne doit pas demander une nouvelle version de
+l'app.
+
 ### Ce qui reste, et qu'on ne peut pas changer ici
 
 Emby lit en Direct Play sans effort sur la même clé, et c'est vrai : son lecteur Android donne les

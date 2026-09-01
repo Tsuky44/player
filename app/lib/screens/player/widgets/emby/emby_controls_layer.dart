@@ -109,6 +109,11 @@ class EmbyControlsLayer extends StatelessWidget {
   /// presses from it.
   final FocusNode? playPauseFocusNode;
 
+  /// The scrubber's node. On a television this is where the remote lands, so
+  /// left and right go on meaning "seek" the way they do with the HUD down —
+  /// only now with an outline saying which control is answering.
+  final FocusNode? progressFocusNode;
+
   const EmbyControlsLayer({
     super.key,
     required this.visible,
@@ -146,6 +151,7 @@ class EmbyControlsLayer extends StatelessWidget {
     this.subtitlesButtonKey,
     this.isTv = false,
     this.playPauseFocusNode,
+    this.progressFocusNode,
   });
 
   double get _progressFraction {
@@ -376,6 +382,8 @@ class EmbyControlsLayer extends StatelessWidget {
             focusable: true,
             onStepBack: onRewind,
             onStepForward: onForward,
+            onSelect: onPlayPause,
+            focusNode: progressFocusNode,
           ),
         ),
         _buildTimes(m),

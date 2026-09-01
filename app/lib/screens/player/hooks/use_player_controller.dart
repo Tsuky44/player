@@ -66,6 +66,9 @@ class PlayerController {
   /// does once it is presenting frames.
   bool _clockRunning = false;
 
+  /// One decoder swap per playback; see [_recoverFromSoftwareDecode].
+  bool _softwareDecodeHandled = false;
+
   /// [hasFirstFrame] needs both, and one frame more.
   ///
   /// Neither signal alone is late enough. `videoParams` fires on load, well
@@ -109,6 +112,8 @@ class PlayerController {
         'buffers=${PlaybackProfiles.current.label}'
         '${DisplayFrameRate.requested != null ? ' · display=${DisplayFrameRate.requested}Hz' : ''}');
 
+    await _recoverFromSoftwareDecode(hwdec: hwdec, height: params.h);
+
     // Read, never written. Logged because "the sound is not right" is otherwise
     // unanswerable: this line says whether the device received six channels and
     // folded them itself — the case [dialogueForwardMixLevels] applies to — or
@@ -120,6 +125,46 @@ class PlayerController {
     final audioCodec = await _readMpvProperty(platform, 'audio-codec-name');
     debugPrint('Audio: ${srcChannels}ch source → ${outChannels}ch out · '
         '$audioCodec · af=${await _readMpvProperty(platform, 'af')}');
+  }
+
+  /// Switches to the compatible hardware path when the fast one silently did
+  /// not take.
+  ///
+  /// `hwdec-current` is mpv's own answer, and "no" there on a 2160p file is the
+  /// whole of the "4K is unwatchable" report: the decoder mpv was asked for did
+  /// not start, mpv fell back to the CPU without a word, and a set-top box
+  /// decoding 4K HEVC in software manages a couple of frames a second before
+  /// the memory it wants gets the app killed.
+  ///
+  /// mpv has no intermediate step to offer here — the fallback from
+  /// `mediacodec` is software, not `mediacodec-copy` — so this is the step.
+  /// `hwdec` is changeable at runtime, so the current film recovers in place;
+  /// [HardwareDecoding.noteZeroCopyFailure] is what saves every later one from
+  /// paying the same discovery.
+  ///
+  /// Bounded on every side: Android only, once per playback, only where the
+  /// user has not pinned a decoder themselves, and only above 1440p — below
+  /// that a software decode is merely wasteful, and swapping decoders under a
+  /// film that plays fine would be a hitch for nothing.
+  Future<void> _recoverFromSoftwareDecode({
+    String? hwdec,
+    int? height,
+  }) async {
+    if (_softwareDecodeHandled || _disposed) return;
+    if (!AppPlatform.isAndroid) return;
+    if (HardwareDecoding.preference != HardwareDecodingPreference.auto) return;
+    if (height == null || height < 1440) return;
+    // mpv writes "no" when nothing took; some builds answer with an empty
+    // string instead.
+    final decoded = (hwdec ?? '').trim();
+    if (decoded.isNotEmpty && decoded != 'no') return;
+
+    _softwareDecodeHandled = true;
+    HardwareDecoding.noteZeroCopyFailure();
+    debugPrint('Playback: ${height}p came back in software — retrying on '
+        'mediacodec-copy');
+    await _setMpvProperty(
+        player.platform as dynamic, 'hwdec', HardwareDecoding.mpvValue);
   }
 
   /// Reads one mpv property, or null. The getter throws for a property that is
@@ -410,6 +455,10 @@ class PlayerController {
     Future<int>? resumePositionFuture,
   }) async {
     _startupWatch.start();
+    // A pooled engine may still be unloading the last film. Opening on top of
+    // that is how a playback ends up behind a spinner that never resolves.
+    await _engine.settle();
+    _mark('engine');
     _resumePositionFuture = resumePositionFuture;
     // Must run before media_kit injects hls.js: the bridge intercepts the
     // assignment of `window.Hls` so it can reclaim abandoned instances later.

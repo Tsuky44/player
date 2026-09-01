@@ -284,6 +284,16 @@ class _MovieDetailScreenState extends State<MovieDetailScreen> {
                 ),
               ),
             ),
+          if (_details?.similarTitles.isNotEmpty ?? false)
+            SliverToBoxAdapter(
+              child: Padding(
+                padding: const EdgeInsets.only(top: 32),
+                child: SimilarTitlesSection(
+                  items: _details!.similarTitles,
+                  onTapItem: (item) => openCatalogItem(context, item),
+                ),
+              ),
+            ),
           const SliverToBoxAdapter(child: SizedBox(height: 48)),
         ],
       ),

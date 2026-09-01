@@ -1,0 +1,30 @@
+name: onyx_player_android
+description: >-
+  Le lecteur vidéo d'Onyx sur Android : ExoPlayer (androidx.media3) rendu dans
+  une SurfaceView, derrière un contrat généré par Pigeon.
+version: 0.1.0
+publish_to: none
+
+environment:
+  sdk: ^3.12.2
+  flutter: '>=3.3.0'
+
+dependencies:
+  flutter:
+    sdk: flutter
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+  flutter_lints: ^6.0.0
+  # Le contrat Dart↔Kotlin est généré des deux côtés à partir de
+  # `pigeons/messages.dart`. Régénérer après toute modification :
+  #   dart run pigeon --input pigeons/messages.dart
+  pigeon: ^28.0.0
+
+flutter:
+  plugin:
+    platforms:
+      android:
+        package: com.projectplayer.onyx_player_android
+        pluginClass: OnyxPlayerAndroidPlugin

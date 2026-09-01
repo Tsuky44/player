@@ -1,0 +1,4 @@
+<!-- Pas d'attribut `package` : depuis AGP 8 il est refusé quand le module
+     déclare déjà son `namespace` dans build.gradle.kts, ce qui est le cas. -->
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+</manifest>

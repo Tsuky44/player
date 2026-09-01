@@ -3,6 +3,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:onyx/screens/player/hardware_decoding.dart';
 
 void main() {
+  _zeroCopyFallback();
   tearDown(() =>
       HardwareDecoding.overrideWith(HardwareDecodingPreference.auto));
 
@@ -53,5 +54,80 @@ void main() {
   test('describe names both the choice and what mpv is told', () {
     HardwareDecoding.overrideWith(HardwareDecodingPreference.off);
     expect(HardwareDecoding.describe(), 'off → no');
+  });
+}
+
+void _zeroCopyFallback() {
+  group('a device that ignores the zero-copy path', () {
+    test('the fast path is what Android is asked for first', () {
+      expect(
+        HardwareDecoding.resolve(
+          preference: HardwareDecodingPreference.auto,
+          isAndroid: true,
+          isMacOS: false,
+        ),
+        'mediacodec',
+      );
+    });
+
+    test('once caught decoding in software, the copy path takes over', () {
+      // mpv falls back from `mediacodec` straight to the CPU, so a box whose
+      // zero-copy path does not work decodes 4K in software — two frames a
+      // second, and the memory that gets the app killed. The copy path is
+      // still hardware.
+      expect(
+        HardwareDecoding.resolve(
+          preference: HardwareDecodingPreference.auto,
+          isAndroid: true,
+          isMacOS: false,
+          zeroCopyFailed: true,
+        ),
+        'mediacodec-copy',
+      );
+    });
+
+    test('a decoder the user pinned is never second-guessed', () {
+      for (final pinned in [
+        HardwareDecodingPreference.copy,
+        HardwareDecodingPreference.off,
+      ]) {
+        final before = HardwareDecoding.resolve(
+          preference: pinned,
+          isAndroid: true,
+          isMacOS: false,
+        );
+        expect(
+          HardwareDecoding.resolve(
+            preference: pinned,
+            isAndroid: true,
+            isMacOS: false,
+            zeroCopyFailed: true,
+          ),
+          before,
+        );
+      }
+    });
+
+    test('the observation is Android-shaped and stays there', () {
+      // Nothing about a failed Android surface path says anything about macOS.
+      expect(
+        HardwareDecoding.resolve(
+          preference: HardwareDecodingPreference.auto,
+          isAndroid: false,
+          isMacOS: true,
+          zeroCopyFailed: true,
+        ),
+        'videotoolbox-copy',
+      );
+      expect(
+        HardwareDecoding.resolve(
+          preference: HardwareDecodingPreference.auto,
+          isAndroid: false,
+          isMacOS: false,
+          zeroCopyFailed: true,
+        ),
+        'auto-safe',
+      );
+    });
   });
 }

@@ -15,11 +15,31 @@ class PlayerEngine {
   final mk.Player player;
   final VideoController videoController;
 
+  /// The unload issued when this engine was parked, while it is still running.
+  ///
+  /// Whoever takes the engine out of the pool has to wait for this before
+  /// opening anything on it. It used to be fire-and-forget, and an unload that
+  /// landed *after* the next file was opened unloaded that file instead — mpv
+  /// sitting idle behind a spinner that never ends, on a playback that looked
+  /// like it had started. Rare on a desktop, where the stop is done long before
+  /// anyone picks the next episode; not rare on a television, where the stop is
+  /// slower and the next media is one press of OK away.
+  Future<void>? pendingStop;
+
   PlayerEngine._(this.player, this.videoController);
 
   factory PlayerEngine._create() {
     final player = mk.Player();
     return PlayerEngine._(player, VideoController(player));
+  }
+
+  /// Waits out the parked unload, if there is one. Idempotent.
+  Future<void> settle() async {
+    final pending = pendingStop;
+    if (pending == null) return;
+    await pending;
+    // Only clear what we waited on: a stop issued in the meantime is not ours.
+    if (identical(pendingStop, pending)) pendingStop = null;
   }
 }
 
@@ -68,7 +88,10 @@ class PlayerEnginePool {
     // duration and track list, so the next media cannot inherit a stale state
     // through the reused instance. Volume and playback rate deliberately
     // survive it — they belong to the person watching, not to the file.
-    unawaited(engine.player.stop().catchError((_) {}));
+    //
+    // Kept rather than dropped: the next playback has to wait for it. See
+    // [PlayerEngine.pendingStop].
+    engine.pendingStop = engine.player.stop().catchError((_) {});
     _idle = engine;
   }
 

@@ -834,6 +834,10 @@ class MediaDetails {
   final int numberOfSeasons;
   final int numberOfEpisodes;
 
+  /// TMDB titles close to this one, tagged with a local id when the library
+  /// already holds them. Drives the "Titres similaires" rail.
+  final List<CatalogItem> similarTitles;
+
   MediaDetails({
     required this.id,
     this.tmdbId,
@@ -863,6 +867,7 @@ class MediaDetails {
     this.collection,
     this.numberOfSeasons = 0,
     this.numberOfEpisodes = 0,
+    this.similarTitles = const [],
   });
 
   factory MediaDetails.fromJson(Map<String, dynamic> json) {
@@ -907,6 +912,10 @@ class MediaDetails {
           : null,
       numberOfSeasons: json['number_of_seasons'] as int? ?? 0,
       numberOfEpisodes: json['number_of_episodes'] as int? ?? 0,
+      similarTitles: (json['similar_titles'] as List<dynamic>?)
+              ?.map((e) => CatalogItem.fromJson(e as Map<String, dynamic>))
+              .toList() ??
+          const [],
     );
   }
 

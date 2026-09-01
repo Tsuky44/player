@@ -4,18 +4,21 @@ import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../../tv/tv_mode.dart';
-import 'tv_pairing_screen.dart';
+import 'tv_link_scanner_screen.dart';
 
 import '../../models/app_download.dart';
 import '../../providers/auth_provider.dart';
 import '../../providers/home_provider.dart';
 import '../../providers/player_layout_provider.dart';
 import '../../services/api_client.dart';
+import '../player/display_frame_rate.dart';
 import '../player/hardware_decoding.dart';
 import '../../theme/app_colors.dart';
+import '../../utils/app_platform.dart';
 import '../../utils/external_url.dart';
 import '../player_studio/player_studio_screen.dart';
 import '../player_studio/widgets/player_layouts_sheet.dart';
+import 'exoplayer_probe_screen.dart';
 import 'playback_preferences_screen.dart';
 import 'user_admin_sections.dart';
 
@@ -929,19 +932,36 @@ class _SettingsScreenState extends State<SettingsScreen> {
                           'Navigation à la télécommande et connexion par QR code.',
                       child: Column(
                         children: [
-                          _NavTile(
-                            icon: Icons.tv_rounded,
-                            title: 'Connecter une TV',
-                            subtitle:
-                                'Saisir le code affiché sur le téléviseur',
-                            onTap: () => Navigator.of(context).push(
-                              MaterialPageRoute(
-                                builder: (_) => const TvPairingScreen(),
+                          if (AppPlatform.isMobile && !TvScope.of(context))
+                            _NavTile(
+                              icon: Icons.tv_rounded,
+                              title: 'Connecter un téléviseur',
+                              subtitle:
+                                  'Scanner le code affiché sur le téléviseur',
+                              onTap: () => Navigator.of(context).push(
+                                MaterialPageRoute(
+                                  builder: (_) => const TvLinkScannerScreen(),
+                                ),
                               ),
                             ),
-                          ),
                           const _TvModeTile(),
                           const _HardwareDecodingTile(),
+                          const _FrameRateMatchingTile(),
+                          // Temporaire — banc d'essai du portage ExoPlayer.
+                          // À retirer avec l'écran qu'il ouvre, dès que le
+                          // jalon a rendu son verdict.
+                          if (AppPlatform.isAndroid)
+                            _NavTile(
+                              icon: Icons.science_outlined,
+                              title: 'Banc d’essai ExoPlayer',
+                              subtitle:
+                                  'Mesure les images perdues sur un fichier',
+                              onTap: () => Navigator.of(context).push(
+                                MaterialPageRoute(
+                                  builder: (_) => const ExoPlayerProbeScreen(),
+                                ),
+                              ),
+                            ),
                         ],
                       ),
                     ),
@@ -1474,6 +1494,73 @@ class _TvModeTileState extends State<_TvModeTile> {
             selected: {TvMode.preference},
             showSelectedIcon: false,
             onSelectionChanged: (selection) => _apply(selection.first),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+/// Whether the player may take over the television's display mode.
+///
+/// Left on by default: matching the panel to the film is what removes the 3:2
+/// judder, and it is the single biggest difference between this and a set-top
+/// player. But a mode switch makes the set renegotiate HDMI, and a set that
+/// comes back badly from that renegotiation turns some films — the ones with a
+/// mode to switch to — into a playback that stalls. This is the way out.
+class _FrameRateMatchingTile extends StatefulWidget {
+  const _FrameRateMatchingTile();
+
+  @override
+  State<_FrameRateMatchingTile> createState() => _FrameRateMatchingTileState();
+}
+
+class _FrameRateMatchingTileState extends State<_FrameRateMatchingTile> {
+  Future<void> _apply(bool value) async {
+    await DisplayFrameRate.setEnabled(value);
+    if (mounted) setState(() {});
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    // Android only: nothing else lets an app choose the display mode, and the
+    // toggle would sit there doing nothing.
+    if (!AppPlatform.isAndroid) return const SizedBox.shrink();
+
+    return Padding(
+      padding: const EdgeInsets.only(top: 16),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              const Expanded(
+                child: Text(
+                  'Adapter l’écran au film',
+                  style: TextStyle(
+                    fontWeight: FontWeight.w600,
+                    fontSize: 14,
+                    color: AppColors.textPrimary,
+                  ),
+                ),
+              ),
+              Switch(
+                value: DisplayFrameRate.enabled,
+                onChanged: _apply,
+              ),
+            ],
+          ),
+          const SizedBox(height: 2),
+          const Text(
+            'Fait passer le téléviseur à une fréquence multiple de celle du '
+            'film, ce qui supprime les saccades des travellings. Désactivez-le '
+            'si la lecture se fige peu après le démarrage sur certains films.',
+            style: TextStyle(color: AppColors.textMuted, fontSize: 12),
+          ),
+          const SizedBox(height: 6),
+          const Text(
+            'Le changement prend effet à la prochaine lecture.',
+            style: TextStyle(color: AppColors.textMuted, fontSize: 11),
           ),
         ],
       ),

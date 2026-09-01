@@ -268,6 +268,11 @@ type MediaDetails struct {
 	Recommendations []RelatedMedia `json:"recommendations,omitempty"`
 	Similar         []RelatedMedia `json:"similar,omitempty"`
 
+	// SimilarTitles is the "Titres similaires" rail on the library detail page:
+	// recommendations and similar folded into one list, each entry tagged with
+	// its local id when the library already holds it.
+	SimilarTitles []CatalogItem `json:"similar_titles,omitempty"`
+
 	// Movies-only: the saga/collection this title belongs to (nil when none).
 	Collection *CollectionInfo `json:"collection,omitempty"`
 

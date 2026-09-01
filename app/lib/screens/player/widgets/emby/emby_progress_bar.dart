@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
 import '../../../../theme/app_colors.dart';
+import '../../../../tv/tv_focus.dart';
 import '../../../../utils/format.dart';
 import 'emby_chrome_theme.dart';
 
@@ -48,6 +49,16 @@ class EmbyProgressBar extends StatefulWidget {
   final VoidCallback? onStepBack;
   final VoidCallback? onStepForward;
 
+  /// OK / D-pad centre while the bar holds the focus. The bar is where the
+  /// remote lands, so it has to answer the most common press of all with the
+  /// most common action — play/pause — rather than making the user walk down
+  /// to a button for it.
+  final VoidCallback? onSelect;
+
+  /// Supplied by the player so it can put the remote here the moment the HUD
+  /// comes up, instead of leaving traversal to pick a starting point.
+  final FocusNode? focusNode;
+
   const EmbyProgressBar({
     super.key,
     required this.progress,
@@ -60,6 +71,8 @@ class EmbyProgressBar extends StatefulWidget {
     this.focusable = false,
     this.onStepBack,
     this.onStepForward,
+    this.onSelect,
+    this.focusNode,
   });
 
   @override
@@ -81,6 +94,14 @@ class _EmbyProgressBarState extends State<EmbyProgressBar> {
       return KeyEventResult.ignored;
     }
     final key = event.logicalKey;
+    if (kTvSelectKeys.contains(key)) {
+      final select = widget.onSelect;
+      if (select == null) return KeyEventResult.ignored;
+      // Holding OK is one play/pause, not one per repeat.
+      if (event is KeyRepeatEvent) return KeyEventResult.handled;
+      select();
+      return KeyEventResult.handled;
+    }
     if (key == LogicalKeyboardKey.arrowLeft) {
       final step = widget.onStepBack;
       if (step == null) return KeyEventResult.ignored;
@@ -167,6 +188,7 @@ class _EmbyProgressBarState extends State<EmbyProgressBar> {
         if (!widget.focusable) return bar;
 
         return Focus(
+          focusNode: widget.focusNode,
           onKeyEvent: _handleKey,
           onFocusChange: (focused) => setState(() => _focused = focused),
           child: Stack(
