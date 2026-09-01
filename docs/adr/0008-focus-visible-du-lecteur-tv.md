@@ -96,5 +96,20 @@ télécommande nulle part.
 
 Hors téléviseur, le widget est transparent : le champ prend le focus au clic, comme avant.
 
+**La règle vaut pour tous les champs, pas pour ceux qui gênaient.** Les Réglages en comptent sept,
+le formulaire de connexion quatre, les filtres de demandes trois : parcourir cet écran à la
+télécommande ouvrait et refermait le clavier à chaque arrêt. Les vingt champs de l'app passent donc
+par ce widget, et **un test refuse la construction si un champ nu réapparaît** — avec une liste
+d'exceptions courte et motivée, parce que la prochaine occurrence viendra d'un fichier que personne
+n'aura relu.
+
+Deux détails que la migration a fait sortir :
+
+- Enchaîner deux champs ne peut plus se contenter de demander le focus au suivant : il est hors du
+  parcours tant que personne n'a réclamé son clavier. Le formulaire de connexion, dont l'ADR-0003
+  documente le chaînage, appelle donc `requestKeyboard()` sur le champ suivant.
+- La méthode ne s'appelle **pas** `activate` : `State` en a déjà une, que Flutter invoque quand
+  l'état est réinséré dans l'arbre. Le clavier se serait ouvert de lui-même.
+
 La règle générale, pour la prochaine fois : **sur un téléviseur, rien qui ouvre une surface plein
 écran ne doit le faire au passage du focus.** Seule une activation explicite peut le déclencher.

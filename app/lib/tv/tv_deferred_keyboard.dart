@@ -10,68 +10,95 @@ import 'tv_mode.dart';
 /// parcours du focus devient donc un mur : la croix directionnelle le traverse,
 /// le clavier s'ouvre par-dessus tout, et ce qui se trouve après lui est
 /// inatteignable. C'est ce qui rendait l'avatar du compte impossible à
-/// atteindre dans l'en-tête, la barre de recherche étant juste avant lui.
+/// atteindre dans l'en-tête, la barre de recherche étant juste avant lui — puis
+/// chaque champ des Réglages, l'un après l'autre.
 ///
 /// Le champ se comporte donc comme un bouton : il est **hors du parcours**
-/// jusqu'à ce qu'on appuie sur OK dessus, et il redevient un bouton dès que le
-/// clavier se referme. Hors téléviseur, rien de tout cela ne s'applique et le
-/// champ se comporte exactement comme avant.
+/// jusqu'à ce qu'on appuie sur OK dessus, et il en ressort dès que le clavier se
+/// referme. Hors téléviseur, ce widget est transparent : le champ prend le focus
+/// au clic, exactement comme avant.
 ///
-/// [builder] reçoit ce qu'il doit passer à son `TextField` : `canRequestFocus`.
-/// Le champ garde son propre [fieldFocusNode], que ce widget demande au bon
-/// moment.
+/// ```dart
+/// TvDeferredKeyboard(
+///   builder: (context, focusNode, canRequestFocus) => TextField(
+///     focusNode: focusNode,
+///     canRequestFocus: canRequestFocus,
+///     decoration: const InputDecoration(labelText: 'Adresse'),
+///   ),
+/// )
+/// ```
+///
+/// Le nœud est fourni par le widget, parce que sans cela chaque champ de l'app
+/// aurait dû s'en créer un — quinze déclarations et quinze `dispose` dont
+/// l'oubli ne se voit pas. Les rares champs qui en possèdent déjà un (la barre
+/// de recherche, le formulaire de connexion qui enchaîne ses champs) le passent
+/// par [fieldFocusNode].
 class TvDeferredKeyboard extends StatefulWidget {
   const TvDeferredKeyboard({
     super.key,
-    required this.fieldFocusNode,
     required this.builder,
+    this.fieldFocusNode,
     this.borderRadius = const BorderRadius.all(Radius.circular(12)),
   });
 
-  /// Le nœud du champ enveloppé. Ce widget l'observe pour savoir quand le
-  /// clavier s'est refermé, et le réclame quand l'utilisateur active le champ.
-  final FocusNode fieldFocusNode;
+  /// Construit le champ. Reçoit le nœud à lui donner, et ce qu'il doit passer à
+  /// son `canRequestFocus`.
+  final Widget Function(
+    BuildContext context,
+    FocusNode focusNode,
+    bool canRequestFocus,
+  ) builder;
 
-  final Widget Function(BuildContext context, bool canRequestFocus) builder;
+  /// Pour un appelant qui possède déjà le nœud — parce qu'il l'observe, ou
+  /// parce qu'il enchaîne le focus d'un champ au suivant. Sinon ce widget en
+  /// crée un et s'en occupe.
+  final FocusNode? fieldFocusNode;
 
   /// Épouse la forme du champ, pour que l'anneau de focus le suive.
   final BorderRadius borderRadius;
 
   @override
-  State<TvDeferredKeyboard> createState() => _TvDeferredKeyboardState();
+  State<TvDeferredKeyboard> createState() => TvDeferredKeyboardState();
 }
 
-class _TvDeferredKeyboardState extends State<TvDeferredKeyboard> {
+class TvDeferredKeyboardState extends State<TvDeferredKeyboard> {
   /// Où se pose la télécommande tant que le champ est un bouton.
   final FocusNode _remoteNode = FocusNode(debugLabel: 'tv-deferred-keyboard');
 
+  /// Créé ici quand l'appelant n'en fournit pas — et détruit ici seulement
+  /// dans ce cas : celui de l'appelant ne nous appartient pas.
+  FocusNode? _ownedNode;
+
   bool _keyboardRequested = false;
+
+  FocusNode get _fieldNode =>
+      widget.fieldFocusNode ?? (_ownedNode ??= FocusNode());
 
   @override
   void initState() {
     super.initState();
-    widget.fieldFocusNode.addListener(_onFieldFocusChanged);
+    _fieldNode.addListener(_onFieldFocusChanged);
   }
 
   @override
   void didUpdateWidget(TvDeferredKeyboard oldWidget) {
     super.didUpdateWidget(oldWidget);
     if (oldWidget.fieldFocusNode != widget.fieldFocusNode) {
-      oldWidget.fieldFocusNode.removeListener(_onFieldFocusChanged);
-      widget.fieldFocusNode.addListener(_onFieldFocusChanged);
+      oldWidget.fieldFocusNode?.removeListener(_onFieldFocusChanged);
+      _fieldNode.addListener(_onFieldFocusChanged);
     }
   }
 
   @override
   void dispose() {
-    widget.fieldFocusNode.removeListener(_onFieldFocusChanged);
+    _fieldNode.removeListener(_onFieldFocusChanged);
+    _ownedNode?.dispose();
     _remoteNode.dispose();
     super.dispose();
   }
 
   void _onFieldFocusChanged() {
-    if (!_keyboardRequested || widget.fieldFocusNode.hasFocus) return;
-    if (!mounted) return;
+    if (!_keyboardRequested || _fieldNode.hasFocus || !mounted) return;
     // Le clavier s'est refermé. Le champ ressort du parcours, sinon le passage
     // suivant de la télécommande le rouvrirait tout seul — et le focus revient
     // sur le champ-bouton, pour ne laisser la télécommande nulle part.
@@ -81,27 +108,39 @@ class _TvDeferredKeyboardState extends State<TvDeferredKeyboard> {
     });
   }
 
-  void _activate() {
+  /// Ouvre le clavier sur ce champ.
+  ///
+  /// Appelé par OK sur le champ-bouton, et exposé pour les formulaires qui
+  /// enchaînent leurs champs : sans cela, passer au champ suivant lui donnerait
+  /// le focus sans que le clavier ne s'ouvre.
+  ///
+  /// Surtout pas nommée `activate` : [State] en a déjà une, que Flutter appelle
+  /// quand l'état est réinséré dans l'arbre — le clavier se serait ouvert de
+  /// lui-même à chaque fois.
+  void requestKeyboard() {
+    if (!mounted) return;
     setState(() => _keyboardRequested = true);
     // Après la frame : le champ n'est focusable qu'une fois reconstruit avec
     // `canRequestFocus` à vrai.
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (mounted) widget.fieldFocusNode.requestFocus();
+      if (mounted) _fieldNode.requestFocus();
     });
   }
 
   @override
   Widget build(BuildContext context) {
-    if (!TvScope.of(context)) return widget.builder(context, true);
+    if (!TvScope.of(context)) {
+      return widget.builder(context, _fieldNode, true);
+    }
 
     return TvFocusable(
       focusNode: _remoteNode,
-      onSelect: _activate,
+      onSelect: requestKeyboard,
       borderRadius: widget.borderRadius,
-      // Pas d'agrandissement : ces champs vivent dans des barres serrées, et
-      // grandir les ferait chevaucher leurs voisins.
+      // Pas d'agrandissement : ces champs vivent dans des formulaires serrés,
+      // et grandir les ferait chevaucher leurs voisins.
       focusScale: 1.0,
-      child: widget.builder(context, _keyboardRequested),
+      child: widget.builder(context, _fieldNode, _keyboardRequested),
     );
   }
 }

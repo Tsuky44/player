@@ -1,4 +1,5 @@
 import 'package:dio/dio.dart';
+import '../../tv/tv_deferred_keyboard.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
@@ -671,11 +672,15 @@ Future<String?> _promptPassword(BuildContext context,
                     color: AppColors.textSecondary, fontSize: 12)),
             const SizedBox(height: 12),
           ],
-          TextField(
-            controller: controller,
-            obscureText: true,
-            autofocus: true,
-            decoration: InputDecoration(labelText: label),
+          TvDeferredKeyboard(
+            builder: (context, focusNode, canRequestFocus) => TextField(
+              focusNode: focusNode,
+              canRequestFocus: canRequestFocus,
+              controller: controller,
+              obscureText: true,
+              autofocus: true,
+              decoration: InputDecoration(labelText: label),
+                      ),
           ),
         ],
       ),

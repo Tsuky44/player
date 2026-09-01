@@ -25,8 +25,8 @@ Future<FocusNode> pumpBar(WidgetTester tester, {required bool isTv}) async {
               Expanded(
                 child: TvDeferredKeyboard(
                   fieldFocusNode: fieldNode,
-                  builder: (context, canRequestFocus) => TextField(
-                    focusNode: fieldNode,
+                  builder: (context, focusNode, canRequestFocus) => TextField(
+                    focusNode: focusNode,
                     canRequestFocus: canRequestFocus,
                   ),
                 ),
