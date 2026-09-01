@@ -202,7 +202,7 @@ class _GlassCatalogSearchState extends State<GlassCatalogSearch> {
     return TvDeferredKeyboard(
       fieldFocusNode: _focusNode,
       borderRadius: BorderRadius.circular(17),
-      builder: (context, canRequestFocus) => TapRegion(
+      builder: (context, focusNode, canRequestFocus) => TapRegion(
         groupId: _tapGroupId,
         child: CompositedTransformTarget(
           link: _link,

@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import '../../tv/tv_deferred_keyboard.dart';
 import 'package:provider/provider.dart';
 import '../../providers/auth_provider.dart';
 import '../../services/api_client.dart';
@@ -27,6 +28,16 @@ class _LoginScreenState extends State<LoginScreen> {
   final _inviteFocus = FocusNode();
   final _usernameFocus = FocusNode();
   final _passwordFocus = FocusNode();
+
+  /// Un enchaînement de champs ne peut plus se contenter de demander le focus.
+  ///
+  /// Sur un téléviseur, le champ suivant est **hors du parcours** tant que
+  /// personne n'a réclamé son clavier — c'est ce qui empêche la croix
+  /// directionnelle de l'ouvrir en passant. Enchaîner veut donc dire le
+  /// réclamer pour lui, ce que seule la clé du champ permet.
+  final _inviteKeyboard = GlobalKey<TvDeferredKeyboardState>();
+  final _usernameKeyboard = GlobalKey<TvDeferredKeyboardState>();
+  final _passwordKeyboard = GlobalKey<TvDeferredKeyboardState>();
 
   bool _isRegistering = false;
   bool _serverPrefilled = false;
@@ -124,8 +135,15 @@ class _LoginScreenState extends State<LoginScreen> {
   /// address when an account is being created against an established server.
   bool get _invitingShown => _isRegistering && !_setupRequired;
 
-  void _focus(FocusNode node) {
-    if (mounted) FocusScope.of(context).requestFocus(node);
+  /// Passe au champ suivant, clavier compris.
+  ///
+  /// La touche d'action du clavier virtuel est le seul moyen d'avancer dans ce
+  /// formulaire sur un téléviseur : le clavier occupe tout l'écran, donc ni le
+  /// champ suivant ni le bouton de validation ne sont atteignables tant qu'il
+  /// est ouvert. `onEditingComplete` reste à proscrire ici — il *remplace* la
+  /// gestion de cette touche au lieu de s'y ajouter.
+  void _focusNext(GlobalKey<TvDeferredKeyboardState> field) {
+    if (mounted) field.currentState?.requestKeyboard();
   }
 
   /// Accepts either the raw code or the whole link pasted from a message — the
@@ -235,34 +253,40 @@ class _LoginScreenState extends State<LoginScreen> {
                         ),
                       ),
                       const SizedBox(height: 36),
-                      TextFormField(
-                        controller: _serverController,
-                        focusNode: _serverFocus,
-                        keyboardType: TextInputType.url,
-                        textInputAction: TextInputAction.next,
-                        style: const TextStyle(color: AppColors.textPrimary),
-                        decoration: const InputDecoration(
-                          labelText: 'Adresse du serveur',
-                          hintText: 'http://192.168.1.50:8080',
-                          prefixIcon: Icon(Icons.dns_rounded,
-                              color: AppColors.textMuted),
-                        ),
-                        validator: (v) =>
-                            v == null || v.trim().isEmpty ? 'Requis' : null,
-                        // This used to be an `onEditingComplete`, which is the
-                        // callback that *replaces* Flutter's own handling of the
-                        // keyboard's action key. So "next" ran the probe and did
-                        // nothing else: focus never moved, the keyboard never
-                        // closed, and on a television — where it covers the form
-                        // and there is no pointer to tap the field underneath —
-                        // the password could not be reached at all.
-                        //
-                        // Re-check whether that server is pristine when the
-                        // address changes: the answer belongs to the server.
-                        onFieldSubmitted: (_) {
-                          _probeSetupState();
-                          _focus(_invitingShown ? _inviteFocus : _usernameFocus);
-                        },
+                      TvDeferredKeyboard(
+                        fieldFocusNode: _serverFocus,
+                        builder: (context, focusNode, canRequestFocus) => TextFormField(
+                          canRequestFocus: canRequestFocus,
+                          controller: _serverController,
+                          focusNode: _serverFocus,
+                          keyboardType: TextInputType.url,
+                          textInputAction: TextInputAction.next,
+                          style: const TextStyle(color: AppColors.textPrimary),
+                          decoration: const InputDecoration(
+                            labelText: 'Adresse du serveur',
+                            hintText: 'http://192.168.1.50:8080',
+                            prefixIcon: Icon(Icons.dns_rounded,
+                                color: AppColors.textMuted),
+                          ),
+                          validator: (v) =>
+                              v == null || v.trim().isEmpty ? 'Requis' : null,
+                          // This used to be an `onEditingComplete`, which is the
+                          // callback that *replaces* Flutter's own handling of the
+                          // keyboard's action key. So "next" ran the probe and did
+                          // nothing else: focus never moved, the keyboard never
+                          // closed, and on a television — where it covers the form
+                          // and there is no pointer to tap the field underneath —
+                          // the password could not be reached at all.
+                          //
+                          // Re-check whether that server is pristine when the
+                          // address changes: the answer belongs to the server.
+                          onFieldSubmitted: (_) {
+                            _probeSetupState();
+                            _focusNext(_invitingShown
+                                ? _inviteKeyboard
+                                : _usernameKeyboard);
+                          },
+                                              ),
                       ),
                       if (ServerDiscovery.isSupported)
                         Align(
@@ -285,60 +309,75 @@ class _LoginScreenState extends State<LoginScreen> {
                         ),
                       if (_isRegistering && !_setupRequired) ...[
                         const SizedBox(height: 16),
-                        TextFormField(
-                          controller: _inviteController,
-                          focusNode: _inviteFocus,
-                          textInputAction: TextInputAction.next,
-                          onFieldSubmitted: (_) => _focus(_usernameFocus),
-                          style:
-                              const TextStyle(color: AppColors.textPrimary),
-                          decoration: const InputDecoration(
-                            labelText: 'Code d\'invitation',
-                            hintText: 'Collez le lien reçu ou son code',
-                            prefixIcon: Icon(Icons.mail_outline_rounded,
-                                color: AppColors.textMuted),
-                          ),
-                          validator: (v) => v == null || v.trim().isEmpty
-                              ? 'Une invitation est requise'
-                              : null,
+                        TvDeferredKeyboard(
+                          key: _inviteKeyboard,
+                          fieldFocusNode: _inviteFocus,
+                          builder: (context, focusNode, canRequestFocus) => TextFormField(
+                            canRequestFocus: canRequestFocus,
+                            controller: _inviteController,
+                            focusNode: _inviteFocus,
+                            textInputAction: TextInputAction.next,
+                            onFieldSubmitted: (_) => _focusNext(_usernameKeyboard),
+                            style:
+                                const TextStyle(color: AppColors.textPrimary),
+                            decoration: const InputDecoration(
+                              labelText: 'Code d\'invitation',
+                              hintText: 'Collez le lien reçu ou son code',
+                              prefixIcon: Icon(Icons.mail_outline_rounded,
+                                  color: AppColors.textMuted),
+                            ),
+                            validator: (v) => v == null || v.trim().isEmpty
+                                ? 'Une invitation est requise'
+                                : null,
+                                                  ),
                         ),
                       ],
                       const SizedBox(height: 16),
-                      TextFormField(
-                        controller: _usernameController,
-                        focusNode: _usernameFocus,
-                        textInputAction: TextInputAction.next,
-                        onFieldSubmitted: (_) => _focus(_passwordFocus),
-                        style: const TextStyle(color: AppColors.textPrimary),
-                        decoration: const InputDecoration(
-                          labelText: 'Nom d\'utilisateur',
-                          prefixIcon: Icon(Icons.person_outline_rounded,
-                              color: AppColors.textMuted),
-                        ),
-                        validator: (v) =>
-                            v == null || v.trim().isEmpty ? 'Requis' : null,
+                      TvDeferredKeyboard(
+                        key: _usernameKeyboard,
+                        fieldFocusNode: _usernameFocus,
+                        builder: (context, focusNode, canRequestFocus) => TextFormField(
+                          canRequestFocus: canRequestFocus,
+                          controller: _usernameController,
+                          focusNode: _usernameFocus,
+                          textInputAction: TextInputAction.next,
+                          onFieldSubmitted: (_) => _focusNext(_passwordKeyboard),
+                          style: const TextStyle(color: AppColors.textPrimary),
+                          decoration: const InputDecoration(
+                            labelText: 'Nom d\'utilisateur',
+                            prefixIcon: Icon(Icons.person_outline_rounded,
+                                color: AppColors.textMuted),
+                          ),
+                          validator: (v) =>
+                              v == null || v.trim().isEmpty ? 'Requis' : null,
+                                              ),
                       ),
                       const SizedBox(height: 16),
-                      TextFormField(
-                        controller: _passwordController,
-                        focusNode: _passwordFocus,
-                        obscureText: true,
-                        // The last field submits. On a television the button is
-                        // behind the keyboard, so "done" has to be a way in and
-                        // not just a way out.
-                        textInputAction: TextInputAction.done,
-                        onFieldSubmitted: (_) => _submit(),
-                        style: const TextStyle(color: AppColors.textPrimary),
-                        decoration: const InputDecoration(
-                          labelText: 'Mot de passe',
-                          prefixIcon: Icon(Icons.lock_outline_rounded,
-                              color: AppColors.textMuted),
-                        ),
-                        validator: (v) {
-                          if (v == null || v.isEmpty) return 'Requis';
-                          if (v.length < 4) return 'Minimum 4 caractères';
-                          return null;
-                        },
+                      TvDeferredKeyboard(
+                        key: _passwordKeyboard,
+                        fieldFocusNode: _passwordFocus,
+                        builder: (context, focusNode, canRequestFocus) => TextFormField(
+                          canRequestFocus: canRequestFocus,
+                          controller: _passwordController,
+                          focusNode: _passwordFocus,
+                          obscureText: true,
+                          // The last field submits. On a television the button is
+                          // behind the keyboard, so "done" has to be a way in and
+                          // not just a way out.
+                          textInputAction: TextInputAction.done,
+                          onFieldSubmitted: (_) => _submit(),
+                          style: const TextStyle(color: AppColors.textPrimary),
+                          decoration: const InputDecoration(
+                            labelText: 'Mot de passe',
+                            prefixIcon: Icon(Icons.lock_outline_rounded,
+                                color: AppColors.textMuted),
+                          ),
+                          validator: (v) {
+                            if (v == null || v.isEmpty) return 'Requis';
+                            if (v.length < 4) return 'Minimum 4 caractères';
+                            return null;
+                          },
+                                              ),
                       ),
                       if (authProvider.errorMessage != null) ...[
                         const SizedBox(height: 16),

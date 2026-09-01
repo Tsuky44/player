@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import '../../../tv/tv_deferred_keyboard.dart';
 import '../../../models/player_layout.dart';
 import 'studio_drawer_shell.dart';
 
@@ -361,32 +362,36 @@ class _PercentageFieldState extends State<_PercentageField> {
   Widget build(BuildContext context) {
     return SizedBox(
       width: 72,
-      child: TextField(
-        controller: _controller,
-        focusNode: _focusNode,
-        style: const TextStyle(color: Colors.white, fontSize: 13),
-        textAlign: TextAlign.end,
-        keyboardType: const TextInputType.numberWithOptions(decimal: true),
-        decoration: const InputDecoration(
-          isDense: true,
-          contentPadding: EdgeInsets.only(left: 6, top: 4, bottom: 4, right: 2),
-          border: OutlineInputBorder(
-            borderRadius: BorderRadius.all(Radius.circular(6)),
-            borderSide: BorderSide(color: Colors.white24),
+      child: TvDeferredKeyboard(
+        fieldFocusNode: _focusNode,
+        builder: (context, focusNode, canRequestFocus) => TextField(
+          canRequestFocus: canRequestFocus,
+          controller: _controller,
+          focusNode: _focusNode,
+          style: const TextStyle(color: Colors.white, fontSize: 13),
+          textAlign: TextAlign.end,
+          keyboardType: const TextInputType.numberWithOptions(decimal: true),
+          decoration: const InputDecoration(
+            isDense: true,
+            contentPadding: EdgeInsets.only(left: 6, top: 4, bottom: 4, right: 2),
+            border: OutlineInputBorder(
+              borderRadius: BorderRadius.all(Radius.circular(6)),
+              borderSide: BorderSide(color: Colors.white24),
+            ),
+            enabledBorder: OutlineInputBorder(
+              borderRadius: BorderRadius.all(Radius.circular(6)),
+              borderSide: BorderSide(color: Colors.white24),
+            ),
+            focusedBorder: OutlineInputBorder(
+              borderRadius: BorderRadius.all(Radius.circular(6)),
+              borderSide: BorderSide(color: Color(0xFF0A84FF)),
+            ),
+            suffixText: '%',
+            suffixStyle: TextStyle(color: Colors.grey, fontSize: 13),
           ),
-          enabledBorder: OutlineInputBorder(
-            borderRadius: BorderRadius.all(Radius.circular(6)),
-            borderSide: BorderSide(color: Colors.white24),
-          ),
-          focusedBorder: OutlineInputBorder(
-            borderRadius: BorderRadius.all(Radius.circular(6)),
-            borderSide: BorderSide(color: Color(0xFF0A84FF)),
-          ),
-          suffixText: '%',
-          suffixStyle: TextStyle(color: Colors.grey, fontSize: 13),
-        ),
-        readOnly: widget.onChanged == null,
-        onTap: widget.onChanged == null ? null : () => _isEditing = true,
+          readOnly: widget.onChanged == null,
+          onTap: widget.onChanged == null ? null : () => _isEditing = true,
+              ),
       ),
     );
   }

@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import '../../../tv/tv_deferred_keyboard.dart';
 import 'package:provider/provider.dart';
 
 import '../../../models/request_catalog_filters.dart';
@@ -303,30 +304,38 @@ class _RequestFiltersSheetState extends State<RequestFiltersSheet> {
           child: Row(
             children: [
               Expanded(
-                child: TextField(
-                  controller: _minDurationController,
-                  keyboardType: TextInputType.number,
-                  decoration: const InputDecoration(
-                    labelText: 'Min',
-                    border: OutlineInputBorder(),
-                  ),
-                  onChanged: (v) => setState(
-                    () => _draft = _draft.copyWith(minDuration: v.trim()),
-                  ),
+                child: TvDeferredKeyboard(
+                  builder: (context, focusNode, canRequestFocus) => TextField(
+                    focusNode: focusNode,
+                    canRequestFocus: canRequestFocus,
+                    controller: _minDurationController,
+                    keyboardType: TextInputType.number,
+                    decoration: const InputDecoration(
+                      labelText: 'Min',
+                      border: OutlineInputBorder(),
+                    ),
+                    onChanged: (v) => setState(
+                      () => _draft = _draft.copyWith(minDuration: v.trim()),
+                    ),
+                                  ),
                 ),
               ),
               const SizedBox(width: 12),
               Expanded(
-                child: TextField(
-                  controller: _maxDurationController,
-                  keyboardType: TextInputType.number,
-                  decoration: const InputDecoration(
-                    labelText: 'Max',
-                    border: OutlineInputBorder(),
-                  ),
-                  onChanged: (v) => setState(
-                    () => _draft = _draft.copyWith(maxDuration: v.trim()),
-                  ),
+                child: TvDeferredKeyboard(
+                  builder: (context, focusNode, canRequestFocus) => TextField(
+                    focusNode: focusNode,
+                    canRequestFocus: canRequestFocus,
+                    controller: _maxDurationController,
+                    keyboardType: TextInputType.number,
+                    decoration: const InputDecoration(
+                      labelText: 'Max',
+                      border: OutlineInputBorder(),
+                    ),
+                    onChanged: (v) => setState(
+                      () => _draft = _draft.copyWith(maxDuration: v.trim()),
+                    ),
+                                  ),
                 ),
               ),
             ],
@@ -572,37 +581,41 @@ class _RequestFiltersSheetState extends State<RequestFiltersSheet> {
     TextEditingController controller,
     ValueChanged<String> onChanged,
   ) {
-    return TextField(
-      controller: controller,
-      decoration: InputDecoration(
-        labelText: label,
-        hintText: 'YYYY-MM-DD',
-        border: const OutlineInputBorder(),
-        suffixIcon: IconButton(
-          icon: const Icon(Icons.calendar_today_outlined, size: 18),
-          onPressed: () async {
-            final value = controller.text;
-            final initial = value.isNotEmpty
-                ? DateTime.tryParse(value)
-                : DateTime.now();
-            final picked = await showDatePicker(
-              context: context,
-              initialDate: initial ?? DateTime.now(),
-              firstDate: DateTime(1900),
-              lastDate: DateTime(2100),
-            );
-            if (picked != null) {
-              final formatted =
-                  '${picked.year.toString().padLeft(4, '0')}-'
-                  '${picked.month.toString().padLeft(2, '0')}-'
-                  '${picked.day.toString().padLeft(2, '0')}';
-              controller.text = formatted;
-              onChanged(formatted);
-            }
-          },
+    return TvDeferredKeyboard(
+      builder: (context, focusNode, canRequestFocus) => TextField(
+        focusNode: focusNode,
+        canRequestFocus: canRequestFocus,
+        controller: controller,
+        decoration: InputDecoration(
+          labelText: label,
+          hintText: 'YYYY-MM-DD',
+          border: const OutlineInputBorder(),
+          suffixIcon: IconButton(
+            icon: const Icon(Icons.calendar_today_outlined, size: 18),
+            onPressed: () async {
+              final value = controller.text;
+              final initial = value.isNotEmpty
+                  ? DateTime.tryParse(value)
+                  : DateTime.now();
+              final picked = await showDatePicker(
+                context: context,
+                initialDate: initial ?? DateTime.now(),
+                firstDate: DateTime(1900),
+                lastDate: DateTime(2100),
+              );
+              if (picked != null) {
+                final formatted =
+                    '${picked.year.toString().padLeft(4, '0')}-'
+                    '${picked.month.toString().padLeft(2, '0')}-'
+                    '${picked.day.toString().padLeft(2, '0')}';
+                controller.text = formatted;
+                onChanged(formatted);
+              }
+            },
+          ),
         ),
-      ),
-      onChanged: onChanged,
+        onChanged: onChanged,
+          ),
     );
   }
 }

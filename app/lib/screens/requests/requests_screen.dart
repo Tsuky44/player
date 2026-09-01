@@ -25,10 +25,6 @@ class RequestsScreen extends StatefulWidget {
 class _RequestsScreenState extends State<RequestsScreen> {
   final _searchController = TextEditingController();
 
-  /// Le champ est le premier arrêt du parcours dans cet onglet. Sur un
-  /// téléviseur, en prendre le focus ouvrirait le clavier plein écran d'Android
-  /// avant que l'utilisateur n'ait rien demandé — voir [TvDeferredKeyboard].
-  final _searchFocusNode = FocusNode(debugLabel: 'requests-search');
   final _scrollController = ScrollController();
 
   String _draftType = 'all';
@@ -58,7 +54,6 @@ class _RequestsScreenState extends State<RequestsScreen> {
   void dispose() {
     _searchDebounce?.cancel();
     _searchController.dispose();
-    _searchFocusNode.dispose();
     _scrollController.dispose();
     super.dispose();
   }
@@ -149,10 +144,9 @@ class _RequestsScreenState extends State<RequestsScreen> {
                       style: TextStyle(color: AppColors.textSecondary)),
                   const SizedBox(height: 22),
                   TvDeferredKeyboard(
-                    fieldFocusNode: _searchFocusNode,
-                    builder: (context, canRequestFocus) => TextField(
+                    builder: (context, focusNode, canRequestFocus) => TextField(
                     controller: _searchController,
-                    focusNode: _searchFocusNode,
+                    focusNode: focusNode,
                     canRequestFocus: canRequestFocus,
                     onChanged: (_) {
                       setState(() {});

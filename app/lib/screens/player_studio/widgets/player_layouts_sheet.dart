@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import '../../../tv/tv_deferred_keyboard.dart';
 import 'package:provider/provider.dart';
 import '../../../models/player_layout.dart';
 import '../../../providers/player_layout_provider.dart';
@@ -258,16 +259,20 @@ class _PlayerLayoutsSheet extends StatelessWidget {
       builder: (ctx) => AlertDialog(
         backgroundColor: const Color(0xFF1F1F1F),
         title: const Text('Renommer le playeur'),
-        content: TextField(
-          controller: controller,
-          autofocus: true,
-          maxLength: 64,
-          style: const TextStyle(color: Colors.white),
-          decoration: const InputDecoration(
-            hintText: 'Nom',
-            counterText: '',
-          ),
-          onSubmitted: (value) => Navigator.pop(ctx, value.trim()),
+        content: TvDeferredKeyboard(
+          builder: (context, focusNode, canRequestFocus) => TextField(
+            focusNode: focusNode,
+            canRequestFocus: canRequestFocus,
+            controller: controller,
+            autofocus: true,
+            maxLength: 64,
+            style: const TextStyle(color: Colors.white),
+            decoration: const InputDecoration(
+              hintText: 'Nom',
+              counterText: '',
+            ),
+            onSubmitted: (value) => Navigator.pop(ctx, value.trim()),
+                  ),
         ),
         actions: [
           TextButton(

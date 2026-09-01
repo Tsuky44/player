@@ -1,4 +1,5 @@
 import 'package:dio/dio.dart' show DioException;
+import '../../tv/tv_deferred_keyboard.dart';
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
@@ -286,13 +287,17 @@ class _SettingsScreenState extends State<SettingsScreen> {
               ),
             ),
             const SizedBox(height: 14),
-            TextField(
-              controller: controller,
-              autofocus: true,
-              decoration: const InputDecoration(
-                labelText: 'Version',
-                hintText: '1.0.0',
-              ),
+            TvDeferredKeyboard(
+              builder: (context, focusNode, canRequestFocus) => TextField(
+                focusNode: focusNode,
+                canRequestFocus: canRequestFocus,
+                controller: controller,
+                autofocus: true,
+                decoration: const InputDecoration(
+                  labelText: 'Version',
+                  hintText: '1.0.0',
+                ),
+                          ),
             ),
           ],
         ),
@@ -512,16 +517,20 @@ class _SettingsScreenState extends State<SettingsScreen> {
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.stretch,
                         children: [
-                          TextField(
-                            controller: _serverUrlController,
-                            decoration: const InputDecoration(
-                              labelText: 'URL du serveur',
-                              hintText: 'http://127.0.0.1:8080',
-                              prefixIcon: Icon(Icons.dns_outlined),
-                            ),
-                            keyboardType: TextInputType.url,
-                            textInputAction: TextInputAction.done,
-                            onSubmitted: (_) => _saveConnection(),
+                          TvDeferredKeyboard(
+                            builder: (context, focusNode, canRequestFocus) => TextField(
+                              focusNode: focusNode,
+                              canRequestFocus: canRequestFocus,
+                              controller: _serverUrlController,
+                              decoration: const InputDecoration(
+                                labelText: 'URL du serveur',
+                                hintText: 'http://127.0.0.1:8080',
+                                prefixIcon: Icon(Icons.dns_outlined),
+                              ),
+                              keyboardType: TextInputType.url,
+                              textInputAction: TextInputAction.done,
+                              onSubmitted: (_) => _saveConnection(),
+                                                      ),
                           ),
                           const SizedBox(height: 12),
                           Align(
@@ -545,41 +554,49 @@ class _SettingsScreenState extends State<SettingsScreen> {
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.stretch,
                         children: [
-                          TextField(
-                            controller: _mediaHubUrlController,
-                            decoration: const InputDecoration(
-                              labelText: 'URL MediaHub',
-                              hintText: 'https://mediahub.example.com',
-                              prefixIcon: Icon(Icons.link_rounded),
-                            ),
-                            keyboardType: TextInputType.url,
+                          TvDeferredKeyboard(
+                            builder: (context, focusNode, canRequestFocus) => TextField(
+                              focusNode: focusNode,
+                              canRequestFocus: canRequestFocus,
+                              controller: _mediaHubUrlController,
+                              decoration: const InputDecoration(
+                                labelText: 'URL MediaHub',
+                                hintText: 'https://mediahub.example.com',
+                                prefixIcon: Icon(Icons.link_rounded),
+                              ),
+                              keyboardType: TextInputType.url,
+                                                      ),
                           ),
                           const SizedBox(height: 12),
-                          TextField(
-                            controller: _mediaHubKeyController,
-                            obscureText: _obscureMediaHubKey,
-                            decoration: InputDecoration(
-                              labelText: 'Clé API MediaHub',
-                              hintText: _mediaHubKeySet
-                                  ? (_mediaHubKeyHint ?? 'Clé déjà configurée')
-                                  : 'Coller une nouvelle clé',
-                              prefixIcon:
-                                  const Icon(Icons.key_rounded),
-                              suffixIcon: IconButton(
-                                tooltip: _obscureMediaHubKey
-                                    ? 'Afficher'
-                                    : 'Masquer',
-                                onPressed: () => setState(
-                                  () => _obscureMediaHubKey =
-                                      !_obscureMediaHubKey,
-                                ),
-                                icon: Icon(
-                                  _obscureMediaHubKey
-                                      ? Icons.visibility_outlined
-                                      : Icons.visibility_off_outlined,
+                          TvDeferredKeyboard(
+                            builder: (context, focusNode, canRequestFocus) => TextField(
+                              focusNode: focusNode,
+                              canRequestFocus: canRequestFocus,
+                              controller: _mediaHubKeyController,
+                              obscureText: _obscureMediaHubKey,
+                              decoration: InputDecoration(
+                                labelText: 'Clé API MediaHub',
+                                hintText: _mediaHubKeySet
+                                    ? (_mediaHubKeyHint ?? 'Clé déjà configurée')
+                                    : 'Coller une nouvelle clé',
+                                prefixIcon:
+                                    const Icon(Icons.key_rounded),
+                                suffixIcon: IconButton(
+                                  tooltip: _obscureMediaHubKey
+                                      ? 'Afficher'
+                                      : 'Masquer',
+                                  onPressed: () => setState(
+                                    () => _obscureMediaHubKey =
+                                        !_obscureMediaHubKey,
+                                  ),
+                                  icon: Icon(
+                                    _obscureMediaHubKey
+                                        ? Icons.visibility_outlined
+                                        : Icons.visibility_off_outlined,
+                                  ),
                                 ),
                               ),
-                            ),
+                                                      ),
                           ),
                           if (_mediaHubKeySet)
                             Padding(
@@ -623,29 +640,33 @@ class _SettingsScreenState extends State<SettingsScreen> {
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.stretch,
                         children: [
-                          TextField(
-                            controller: _tmdbKeyController,
-                            obscureText: _obscureTmdbKey,
-                            decoration: InputDecoration(
-                              labelText: 'Clé API TMDB',
-                              hintText: _tmdbKeySet
-                                  ? (_tmdbKeyHint ?? 'Clé déjà configurée')
-                                  : 'Clé The Movie Database',
-                              prefixIcon:
-                                  const Icon(Icons.movie_filter_outlined),
-                              suffixIcon: IconButton(
-                                tooltip:
-                                    _obscureTmdbKey ? 'Afficher' : 'Masquer',
-                                onPressed: () => setState(
-                                  () => _obscureTmdbKey = !_obscureTmdbKey,
-                                ),
-                                icon: Icon(
-                                  _obscureTmdbKey
-                                      ? Icons.visibility_outlined
-                                      : Icons.visibility_off_outlined,
+                          TvDeferredKeyboard(
+                            builder: (context, focusNode, canRequestFocus) => TextField(
+                              focusNode: focusNode,
+                              canRequestFocus: canRequestFocus,
+                              controller: _tmdbKeyController,
+                              obscureText: _obscureTmdbKey,
+                              decoration: InputDecoration(
+                                labelText: 'Clé API TMDB',
+                                hintText: _tmdbKeySet
+                                    ? (_tmdbKeyHint ?? 'Clé déjà configurée')
+                                    : 'Clé The Movie Database',
+                                prefixIcon:
+                                    const Icon(Icons.movie_filter_outlined),
+                                suffixIcon: IconButton(
+                                  tooltip:
+                                      _obscureTmdbKey ? 'Afficher' : 'Masquer',
+                                  onPressed: () => setState(
+                                    () => _obscureTmdbKey = !_obscureTmdbKey,
+                                  ),
+                                  icon: Icon(
+                                    _obscureTmdbKey
+                                        ? Icons.visibility_outlined
+                                        : Icons.visibility_off_outlined,
+                                  ),
                                 ),
                               ),
-                            ),
+                                                      ),
                           ),
                           if (_tmdbKeySet)
                             Padding(
@@ -712,22 +733,30 @@ class _SettingsScreenState extends State<SettingsScreen> {
                         crossAxisAlignment: CrossAxisAlignment.stretch,
                         children: [
                           if (perms.manageSettings) ...[
-                          TextField(
-                            controller: _moviesDirController,
-                            decoration: const InputDecoration(
-                              labelText: 'Dossier films',
-                              hintText: '/media/Films',
-                              prefixIcon: Icon(Icons.folder_outlined),
-                            ),
+                          TvDeferredKeyboard(
+                            builder: (context, focusNode, canRequestFocus) => TextField(
+                              focusNode: focusNode,
+                              canRequestFocus: canRequestFocus,
+                              controller: _moviesDirController,
+                              decoration: const InputDecoration(
+                                labelText: 'Dossier films',
+                                hintText: '/media/Films',
+                                prefixIcon: Icon(Icons.folder_outlined),
+                              ),
+                                                      ),
                           ),
                           const SizedBox(height: 12),
-                          TextField(
-                            controller: _seriesDirController,
-                            decoration: const InputDecoration(
-                              labelText: 'Dossier séries',
-                              hintText: '/media/Series',
-                              prefixIcon: Icon(Icons.folder_copy_outlined),
-                            ),
+                          TvDeferredKeyboard(
+                            builder: (context, focusNode, canRequestFocus) => TextField(
+                              focusNode: focusNode,
+                              canRequestFocus: canRequestFocus,
+                              controller: _seriesDirController,
+                              decoration: const InputDecoration(
+                                labelText: 'Dossier séries',
+                                hintText: '/media/Series',
+                                prefixIcon: Icon(Icons.folder_copy_outlined),
+                              ),
+                                                      ),
                           ),
                           const SizedBox(height: 12),
                           Align(

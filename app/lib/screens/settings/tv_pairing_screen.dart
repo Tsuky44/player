@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import '../../tv/tv_deferred_keyboard.dart';
 import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
 
@@ -191,34 +192,38 @@ class _TvPairingScreenState extends State<TvPairingScreen> {
           style: Theme.of(context).textTheme.titleMedium,
         ),
         const SizedBox(height: 24),
-        TextField(
-          controller: _codeController,
-          autofocus: true,
-          textCapitalization: TextCapitalization.characters,
-          textAlign: TextAlign.center,
-          maxLength: 9, // eight characters plus the separator
-          style: const TextStyle(
-            color: AppColors.textPrimary,
-            fontSize: 26,
-            letterSpacing: 6,
-            fontWeight: FontWeight.w700,
-          ),
-          inputFormatters: [
-            // Re-inserting the dash as the user types keeps what they see
-            // identical to what the TV shows, which is what they are checking.
-            TextInputFormatter.withFunction((oldValue, newValue) {
-              final formatted = _format(newValue.text);
-              return TextEditingValue(
-                text: formatted,
-                selection: TextSelection.collapsed(offset: formatted.length),
-              );
-            }),
-          ],
-          decoration: const InputDecoration(
-            hintText: 'ABCD-EFGH',
-            counterText: '',
-          ),
-          onSubmitted: (_) => _lookup(),
+        TvDeferredKeyboard(
+          builder: (context, focusNode, canRequestFocus) => TextField(
+            focusNode: focusNode,
+            canRequestFocus: canRequestFocus,
+            controller: _codeController,
+            autofocus: true,
+            textCapitalization: TextCapitalization.characters,
+            textAlign: TextAlign.center,
+            maxLength: 9, // eight characters plus the separator
+            style: const TextStyle(
+              color: AppColors.textPrimary,
+              fontSize: 26,
+              letterSpacing: 6,
+              fontWeight: FontWeight.w700,
+            ),
+            inputFormatters: [
+              // Re-inserting the dash as the user types keeps what they see
+              // identical to what the TV shows, which is what they are checking.
+              TextInputFormatter.withFunction((oldValue, newValue) {
+                final formatted = _format(newValue.text);
+                return TextEditingValue(
+                  text: formatted,
+                  selection: TextSelection.collapsed(offset: formatted.length),
+                );
+              }),
+            ],
+            decoration: const InputDecoration(
+              hintText: 'ABCD-EFGH',
+              counterText: '',
+            ),
+            onSubmitted: (_) => _lookup(),
+                  ),
         ),
         if (_error != null) ...[
           const SizedBox(height: 12),

@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import '../../tv/tv_deferred_keyboard.dart';
 import '../../models/models.dart';
 import '../../services/api_client.dart';
 import '../../theme/app_colors.dart';
@@ -156,25 +157,29 @@ class _MetadataFixSheetState extends State<MetadataFixSheet> {
                         ),
                       ],
                       const SizedBox(height: 14),
-                      TextField(
-                        controller: _controller,
-                        autofocus: false,
-                        textInputAction: TextInputAction.search,
-                        onSubmitted: (_) => _search(),
-                        decoration: InputDecoration(
-                          hintText: 'Rechercher un titre…',
-                          filled: true,
-                          fillColor: AppColors.surface,
-                          prefixIcon: const Icon(Icons.search),
-                          suffixIcon: IconButton(
-                            icon: const Icon(Icons.arrow_forward),
-                            onPressed: _search,
+                      TvDeferredKeyboard(
+                        builder: (context, focusNode, canRequestFocus) => TextField(
+                          focusNode: focusNode,
+                          canRequestFocus: canRequestFocus,
+                          controller: _controller,
+                          autofocus: false,
+                          textInputAction: TextInputAction.search,
+                          onSubmitted: (_) => _search(),
+                          decoration: InputDecoration(
+                            hintText: 'Rechercher un titre…',
+                            filled: true,
+                            fillColor: AppColors.surface,
+                            prefixIcon: const Icon(Icons.search),
+                            suffixIcon: IconButton(
+                              icon: const Icon(Icons.arrow_forward),
+                              onPressed: _search,
+                            ),
+                            border: OutlineInputBorder(
+                              borderRadius: BorderRadius.circular(12),
+                              borderSide: BorderSide.none,
+                            ),
                           ),
-                          border: OutlineInputBorder(
-                            borderRadius: BorderRadius.circular(12),
-                            borderSide: BorderSide.none,
-                          ),
-                        ),
+                                              ),
                       ),
                     ],
                   ),
