@@ -5,6 +5,7 @@ import 'package:onyx_player_android/onyx_player_android.dart';
 
 import '../playback_profile.dart';
 import 'playback_session.dart';
+import 'subtitle_overlay.dart';
 
 /// [PlaybackSession] adossée à ExoPlayer, sur Android.
 ///
@@ -112,6 +113,12 @@ class ExoPlaybackSession implements PlaybackSession {
       _lastParams = params;
       _videoParams.add(params);
     }
+
+    // Republier des lignes identiques ferait reconstruire l'incrustation
+    // quatre fois par seconde, pour rien.
+    if (!_sameLines(status.subtitleCues, cues.value)) {
+      cues.value = List<String>.unmodifiable(status.subtitleCues);
+    }
   }
 
   @override
@@ -119,14 +126,12 @@ class ExoPlaybackSession implements PlaybackSession {
     // Le `fit` ne peut pas être appliqué par Flutter : une SurfaceView est une
     // couche du système, pas un pixel de la scène. C'est la vue native qui se
     // dimensionne, et le rapport d'image est celui que le décodeur annonce.
-    return _ExoSurface(key: key, ready: _ready);
+    return _ExoSurface(key: key, ready: _ready, session: this);
   }
 
   @override
   void setSubtitlePadding(EdgeInsets padding, {Duration duration = Duration.zero}) {
-    // Les sous-titres d'ExoPlayer remontent en texte et sont dessinés côté
-    // Flutter, au-dessus de la surface : leur position appartient à l'écran du
-    // lecteur, pas au moteur.
+    subtitleInset.value = (padding: padding, duration: duration);
   }
 
   // --- Commandes ---------------------------------------------------------
@@ -241,8 +246,28 @@ class ExoPlaybackSession implements PlaybackSession {
   PlaybackTrack? get currentSubtitleTrack =>
       _find(_status?.subtitleTracks, _status?.selectedSubtitleTrackId);
 
-  /// Les lignes de sous-titre à afficher maintenant, dessinées par l'écran.
-  List<String> get subtitleCues => _status?.subtitleCues ?? const [];
+  /// Les lignes de sous-titre à afficher maintenant.
+  ///
+  /// mpv les dessine lui-même dans une vue que media_kit fournit ; ExoPlayer
+  /// les remonte en texte et c'est [buildSurface] qui les peint, avec le même
+  /// habillage que les autres plateformes.
+  final ValueNotifier<List<String>> cues = ValueNotifier(const []);
+
+  /// De combien remonter les sous-titres, pour qu'ils passent au-dessus de la
+  /// barre de progression quand elle est là.
+  final ValueNotifier<({EdgeInsets padding, Duration duration})>
+      subtitleInset = ValueNotifier((
+    padding: SubtitleOverlay.defaultPadding,
+    duration: Duration.zero,
+  ));
+
+  static bool _sameLines(List<String> a, List<String> b) {
+    if (a.length != b.length) return false;
+    for (var i = 0; i < a.length; i++) {
+      if (a[i] != b[i]) return false;
+    }
+    return true;
+  }
 
   static PlaybackTrack _toTrack(OnyxTrack t) =>
       PlaybackTrack(id: t.id, title: t.title, language: t.language);
@@ -342,8 +367,17 @@ class ExoPlaybackSession implements PlaybackSession {
     // Rien à rattraper : le décodeur matériel est le seul chemin.
   }
 
-  /// Détruit le lecteur natif. Sans appel, ExoPlayer garde son décodeur et sa
-  /// connexion ouverts pour toute la vie du processus.
+  @override
+  Future<void> prepare() async {
+    // Rien à attendre : chaque session a son propre lecteur natif, il n'y a pas
+    // d'instance recyclée qui pourrait être en train de décharger un film.
+    await _ready;
+  }
+
+  /// Détruit le lecteur natif. Sans appel, ExoPlayer garde son décodeur, sa
+  /// connexion et son audio — le film continue de s'entendre après qu'on l'a
+  /// quitté.
+  @override
   Future<void> dispose() async {
     await _subscription?.cancel();
     await _positions.close();
@@ -353,6 +387,8 @@ class ExoPlaybackSession implements PlaybackSession {
     await _completions.close();
     await _tracks.close();
     await _videoParams.close();
+    cues.dispose();
+    subtitleInset.dispose();
     await (await _ready).release();
   }
 }
@@ -363,9 +399,14 @@ class ExoPlaybackSession implements PlaybackSession {
 /// est chère à construire, et un `FutureBuilder` la reconstruirait à chaque
 /// rebuild de l'écran — c'est-à-dire à chaque seconde de lecture.
 class _ExoSurface extends StatefulWidget {
-  const _ExoSurface({super.key, required this.ready});
+  const _ExoSurface({
+    super.key,
+    required this.ready,
+    required this.session,
+  });
 
   final Future<OnyxPlayer> ready;
+  final ExoPlaybackSession session;
 
   @override
   State<_ExoSurface> createState() => _ExoSurfaceState();
@@ -388,6 +429,18 @@ class _ExoSurfaceState extends State<_ExoSurface> {
     // Noir plutôt que rien : l'écran du lecteur pose son propre cache et son
     // indicateur par-dessus tant que la première image n'est pas arrivée.
     if (id == null) return const ColoredBox(color: Color(0xFF000000));
-    return OnyxPlayerView(playerId: id);
+    return Stack(
+      fit: StackFit.expand,
+      children: [
+        OnyxPlayerView(playerId: id),
+        // Au-dessus de la SurfaceView, pas dedans : Flutter compose son
+        // interface par-dessus la couche vidéo, ce qui est justement ce que la
+        // composition hybride permet.
+        SubtitleOverlay(
+          cues: widget.session.cues,
+          inset: widget.session.subtitleInset,
+        ),
+      ],
+    );
   }
 }

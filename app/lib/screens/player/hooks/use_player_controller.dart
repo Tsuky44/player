@@ -2,7 +2,6 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import '../../../models/models.dart';
 import '../../../utils/app_platform.dart';
-import '../player_engine.dart';
 import '../web/web_playback.dart';
 import '../display_frame_rate.dart';
 import '../hardware_decoding.dart';
@@ -373,12 +372,9 @@ class PlayerController {
   }
 
   /// The pooled libmpv instance this controller drives. Held so it can be given
-  /// back on dispose instead of destroyed.
-  late final PlayerEngine _engine;
 
   PlayerController() {
-    _engine = PlayerEnginePool.acquire();
-    session = createPlaybackSession(_engine);
+    session = createPlaybackSession();
   }
 
   Future<void> init({
@@ -397,9 +393,10 @@ class PlayerController {
     Future<int>? resumePositionFuture,
   }) async {
     _startupWatch.start();
-    // A pooled engine may still be unloading the last film. Opening on top of
-    // that is how a playback ends up behind a spinner that never resolves.
-    await _engine.settle();
+    // Un moteur repris au vestiaire peut encore décharger le film précédent.
+    // Ouvrir par-dessus est ce qui laissait une lecture derrière un indicateur
+    // qui ne s'arrêtait jamais.
+    await session.prepare();
     _mark('engine');
     _resumePositionFuture = resumePositionFuture;
     // Must run before media_kit injects hls.js: the bridge intercepts the
@@ -1755,8 +1752,9 @@ class PlayerController {
     // against a <video> that is about to disappear.
     WebPlayback.clearSubtitles();
     WebPlayback.releaseAllHlsSessions();
-    // Handed back rather than destroyed: the next playback reuses this libmpv
-    // instance and its texture instead of paying to build them again.
-    PlayerEnginePool.release(_engine);
+    // Rendre le moteur : sans ça, ce qui vit derrière garde son décodeur, sa
+    // connexion et son audio, et un film qu'on vient de quitter continue de
+    // s'entendre.
+    unawaited(session.dispose());
   }
 }

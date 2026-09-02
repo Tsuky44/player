@@ -26,7 +26,8 @@ const String dialogueForwardMixLevels =
 /// Ce fichier ne contient que ce qui n'a de sens que pour mpv — le vocabulaire
 /// de ses options, et la façon dont il énumère ses pistes.
 class MpvPlaybackSession implements PlaybackSession {
-  MpvPlaybackSession(this._engine);
+  /// Prend un moteur au vestiaire. Le rendre est le travail de [dispose].
+  MpvPlaybackSession() : _engine = PlayerEnginePool.acquire();
 
   final PlayerEngine _engine;
 
@@ -41,6 +42,16 @@ class MpvPlaybackSession implements PlaybackSession {
   /// commun des instances entre deux lectures, et le lecteur web qui pilote
   /// hls.js à côté. À ne pas utiliser pour contourner l'interface.
   PlayerEngine get engine => _engine;
+
+  @override
+  Future<void> prepare() => _engine.settle();
+
+  @override
+  Future<void> dispose() async {
+    // Rendu plutôt que détruit : la lecture suivante réutilise cette instance
+    // libmpv et sa texture au lieu de payer leur construction.
+    PlayerEnginePool.release(_engine);
+  }
 
   @override
   Widget buildSurface({Key? key, required BoxFit fit, double? aspectRatio}) {

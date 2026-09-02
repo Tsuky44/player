@@ -15,7 +15,10 @@ import androidx.media3.common.Tracks
 import androidx.media3.common.VideoSize
 import androidx.media3.common.text.CueGroup
 import androidx.media3.exoplayer.DefaultLoadControl
+import androidx.media3.exoplayer.DefaultRenderersFactory
 import androidx.media3.exoplayer.ExoPlayer
+import androidx.media3.exoplayer.audio.AudioSink
+import androidx.media3.exoplayer.audio.DefaultAudioSink
 import androidx.media3.exoplayer.SeekParameters
 import androidx.media3.exoplayer.analytics.AnalyticsListener
 import java.io.File
@@ -121,7 +124,25 @@ internal class PlayerInstance(
             }
         }.build()
 
-        val created = ExoPlayer.Builder(context).setLoadControl(load).build()
+        // Le repli stéréo d'Onyx s'insère dans la chaîne audio du puits. Il
+        // ne s'active que sur une entrée à plus de deux canaux — voir
+        // [DialogueForwardDownmix].
+        val renderers = object : DefaultRenderersFactory(context) {
+            override fun buildAudioSink(
+                context: Context,
+                enableFloatOutput: Boolean,
+                enableAudioOutputPlaybackParams: Boolean,
+            ): AudioSink = DefaultAudioSink.Builder(context)
+                .setEnableFloatOutput(enableFloatOutput)
+                .setEnableAudioOutputPlaybackParameters(enableAudioOutputPlaybackParams)
+                .setAudioProcessors(arrayOf(DialogueForwardDownmix()))
+                .build()
+        }
+
+        val created = ExoPlayer.Builder(context)
+            .setLoadControl(load)
+            .setRenderersFactory(renderers)
+            .build()
         created.addListener(listener)
         created.addAnalyticsListener(analytics)
         created.setSeekParameters(
