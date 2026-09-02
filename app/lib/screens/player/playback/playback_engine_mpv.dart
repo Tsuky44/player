@@ -1,15 +1,14 @@
 import '../../../utils/app_platform.dart';
-import '../player_engine.dart';
 import 'exo_playback_session.dart';
 import 'mpv_playback_session.dart';
 import 'playback_session.dart';
 
 /// Construit la session pour cette plateforme.
 ///
-/// [engine] est le moteur mpv mis en commun entre deux lectures. Il n'est
-/// consommé que hors d'Android ; là-bas ExoPlayer possède le sien, créé et
-/// détruit avec la session.
-PlaybackSession createPlaybackSession(PlayerEngine engine) {
+/// Chaque implémentation gère le cycle de vie de son propre moteur — mpv prend
+/// et rend une instance mise en commun, ExoPlayer crée et détruit la sienne.
+/// Le contrôleur n'a donc rien à savoir de l'un ni de l'autre.
+PlaybackSession createPlaybackSession() {
   if (AppPlatform.isAndroid) return ExoPlaybackSession();
-  return MpvPlaybackSession(engine);
+  return MpvPlaybackSession();
 }

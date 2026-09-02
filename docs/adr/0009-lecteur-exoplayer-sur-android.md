@@ -1,6 +1,6 @@
 # ADR-0009 — ExoPlayer sur Android, mpv ailleurs
 
-- **Statut :** accepté, en cours de réalisation
+- **Statut :** accepté, réalisé
 - **Date :** 2026-08-27
 - **Portée :** la chaîne de lecture sur Android (téléphone et téléviseur). macOS, Windows et le web
   ne changent pas de moteur.
@@ -125,6 +125,35 @@ a déjà donné. Pas de faux départ visible.
 L'extension FFmpeg de Media3 (compilée au NDK, audio seulement) est **reportée jusqu'à ce que les
 chiffres la réclament** : un téléviseur récent décode probablement AC3, E-AC3 et DTS, et on ne paiera
 pas une étape de build pour un problème qu'on n'a peut-être pas.
+
+## Amendement (2026-09-02) — ce que la réalisation a précisé
+
+**Les sous-titres sont dessinés par Flutter, y compris sur Android.** ExoPlayer remonte ses cues en
+texte ; `SubtitleOverlay` les peint au-dessus de la `SurfaceView`, avec le style et la mise à
+l'échelle de media_kit repris à l'identique — même taille de référence 1920×1080, même bandeau
+translucide. Dessiner *par-dessus* une SurfaceView est précisément ce que la composition hybride
+permet, et c'est ce qui garde un seul habillage pour toutes les plateformes.
+
+**Le repli stéréo est un `AudioProcessor` inséré dans le puits audio.** `DialogueForwardDownmix`
+porte les trois coefficients de l'ADR-0005 et se retire de la chaîne sous trois canaux — donc un
+appareil relié à un ampli, qui reçoit ses six canaux tels quels, n'est pas concerné. La
+normalisation par la somme des coefficients reproduit ce que fait le rééchantillonneur de FFmpeg sur
+une sortie entière : elle garde les proportions entre canaux, donc l'intention, au lieu d'écraser
+les crêtes.
+
+C'est le seul morceau du portage vérifiable sans appareil, et il est couvert par sept tests JUnit —
+dont celui qui énonce la décision de l'ADR-0005 en une assertion : une voix seule au centre doit
+peser autant, après repli, que la même énergie seule à l'avant gauche.
+
+**Trois contraintes d'ExoPlayer ont façonné le code**, et méritent d'être connues avant d'y toucher :
+
+- Les tampons de `DefaultLoadControl` se posent à la construction et ne changent plus. Le lecteur
+  est donc construit paresseusement et reconstruit quand le profil change — ce qui n'arrive qu'au
+  passage entre lecture directe et transcodage, moment qui est déjà un rechargement complet.
+- Un sous-titre externe fait partie du `MediaItem` : le poser oblige à rouvrir le média. La position
+  est préservée à la main.
+- ExoPlayer charge un sous-titre par URI, jamais par contenu ; le contrôleur, lui, a le texte en
+  main. Un fichier temporaire fait le pont.
 
 ## Ce qui décide de la suite
 

@@ -1214,7 +1214,11 @@ class _PlayerScreenState extends State<PlayerScreen> {
   }
 
   Future<void> _leavePlayer() {
-    _isLeaving = true;
+    // Tout de suite, pas à la destruction de l'écran : celle-ci n'arrive qu'une
+    // fois l'animation de sortie terminée, et jusque-là le film continuerait de
+    // s'entendre par-dessus l'écran qu'on rejoint.
+    unawaited(_playerController.session.pause());
+    _safeSetState(() => _isLeaving = true);
     return _syncProgressOnExit(popAfter: true);
   }
 
@@ -1967,10 +1971,19 @@ class _PlayerScreenState extends State<PlayerScreen> {
                           // Le widget de rendu appartient au moteur : mpv
                           // dessine dans une texture, ExoPlayer dans une
                           // SurfaceView composée par le plan vidéo de l'écran.
-                          child: _playerController.session.buildSurface(
-                            fit: _videoFit,
-                            aspectRatio: _playerController.videoAspectRatio,
-                          ),
+                          //
+                          // Retiré dès qu'on s'en va. Une SurfaceView est une
+                          // couche du système : Flutter ne peut pas l'emmener
+                          // dans son animation de sortie, et elle y restait
+                          // figée sur sa dernière image pendant que le reste
+                          // glissait. Du noir s'anime, lui.
+                          child: _isLeaving
+                              ? const ColoredBox(color: Colors.black)
+                              : _playerController.session.buildSurface(
+                                  fit: _videoFit,
+                                  aspectRatio:
+                                      _playerController.videoAspectRatio,
+                                ),
                         ),
                       ),
                     ),

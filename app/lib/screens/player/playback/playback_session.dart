@@ -139,6 +139,20 @@ abstract interface class PlaybackSession {
 
   // --- Commandes ---------------------------------------------------------
 
+  /// À appeler avant la première ouverture.
+  ///
+  /// Le moteur mpv est mis en commun entre deux lectures ; celui qu'on vient de
+  /// reprendre peut encore être en train de décharger le film précédent, et
+  /// ouvrir par-dessus est ce qui laissait un lecteur derrière un indicateur
+  /// qui ne s'arrêtait jamais.
+  Future<void> prepare();
+
+  /// Rend le moteur.
+  ///
+  /// Sans appel, ce qui vit derrière garde son décodeur, sa connexion réseau et
+  /// son audio — un film qu'on vient de quitter continue de s'entendre.
+  Future<void> dispose();
+
   /// Charge [url] en se plaçant à [start] dans le même geste : ouvrir puis
   /// chercher ferait payer deux fois la mise en mémoire tampon.
   Future<void> open(String url, {Duration? start, bool play = false});
