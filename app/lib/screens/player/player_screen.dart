@@ -503,7 +503,7 @@ class _PlayerScreenState extends State<PlayerScreen> {
         apiClient: apiClient,
         episodeId: actualMedia.id,
         initialTimestamps: initialTimestamps,
-        player: _playerController.player,
+        session: _playerController.session,
         onAutoPlay: _goToNextEpisode,
       );
       _episodeNav!.addListener(_episodeNavListener!);
@@ -856,9 +856,9 @@ class _PlayerScreenState extends State<PlayerScreen> {
   }
 
   void _adjustVolume(double delta) {
-    final player = _playerController.player;
-    final next = (player.state.volume + delta).clamp(0.0, 100.0);
-    player.setVolume(next);
+    final session = _playerController.session;
+    final next = (session.volume + delta).clamp(0.0, 100.0);
+    session.setVolume(next);
     _showControlsTransient();
     _safeSetState(() {});
   }
@@ -1450,7 +1450,7 @@ class _PlayerScreenState extends State<PlayerScreen> {
                   child: ConstrainedBox(
                     constraints: BoxConstraints(maxHeight: maxHeight),
                     child: PlayerSettingsSheet(
-                      player: _playerController.player,
+                      session: _playerController.session,
                       currentFit: _videoFit,
                       onFitChanged: _updateVideoFit,
                       onClose: dismiss,
@@ -1524,7 +1524,7 @@ class _PlayerScreenState extends State<PlayerScreen> {
                   child: ConstrainedBox(
                     constraints: BoxConstraints(maxHeight: maxHeight),
                     child: EmbySettingsMenu(
-                      player: _playerController.player,
+                      session: _playerController.session,
                       playerController: _playerController,
                       episodeNav: _episodeNav,
                       currentFit: _videoFit,
@@ -1548,7 +1548,7 @@ class _PlayerScreenState extends State<PlayerScreen> {
   }
 
   Future<void> _setPlaybackRate(double rate) async {
-    await _playerController.player.setRate(rate);
+    await _playerController.session.setRate(rate);
     if (!mounted) return;
     setState(() => _playbackRate = rate);
     _showControlsTransient();
@@ -1557,7 +1557,7 @@ class _PlayerScreenState extends State<PlayerScreen> {
   Future<void> _cyclePlaybackRate() async {
     final idx = _playbackRates.indexOf(_playbackRate);
     final next = _playbackRates[(idx < 0 ? 0 : idx + 1) % _playbackRates.length];
-    await _playerController.player.setRate(next);
+    await _playerController.session.setRate(next);
     if (!mounted) return;
     setState(() => _playbackRate = next);
     _showControlsTransient();
@@ -1697,7 +1697,7 @@ class _PlayerScreenState extends State<PlayerScreen> {
                   child: ConstrainedBox(
                     constraints: BoxConstraints(maxHeight: vertical.maxHeight),
                     child: PlayerSubtitlesSheet(
-                      player: _playerController.player,
+                      session: _playerController.session,
                       playerController: _playerController,
                       onClose: dismiss,
                     ),
@@ -1753,7 +1753,7 @@ class _PlayerScreenState extends State<PlayerScreen> {
   double get _bufferedFraction {
     final total = _playerController.duration.inSeconds;
     if (total <= 0) return 0;
-    return (_playerController.player.state.buffer.inSeconds / total)
+    return (_playerController.session.bufferedAhead.inSeconds / total)
         .clamp(0.0, 1.0);
   }
 
@@ -1964,10 +1964,10 @@ class _PlayerScreenState extends State<PlayerScreen> {
                             _videoScale < 1 ? Clip.antiAlias : Clip.none,
                         animateColor: false,
                         child: SizedBox.expand(
-                          child: Video(
-                            key: _videoKey,
-                            controller: _playerController.videoController,
-                            controls: null,
+                          // Le widget de rendu appartient au moteur : mpv
+                          // dessine dans une texture, ExoPlayer dans une
+                          // SurfaceView composée par le plan vidéo de l'écran.
+                          child: _playerController.session.buildSurface(
                             fit: _videoFit,
                             aspectRatio: _playerController.videoAspectRatio,
                           ),
@@ -2094,9 +2094,9 @@ class _PlayerScreenState extends State<PlayerScreen> {
                     title: _embyTitleLine,
                     overline: _embyOverline,
                     logoUrl: _mediaLogoUrl,
-                    volume: _playerController.player.state.volume,
+                    volume: _playerController.session.volume,
                     onVolumeChanged: (v) =>
-                        _playerController.player.setVolume(v),
+                        _playerController.session.setVolume(v),
                     brightness: _screenBrightness,
                     onBrightnessChanged: _setScreenBrightness,
                     onBrightnessDraggingChanged: (dragging) {
@@ -2164,9 +2164,9 @@ class _PlayerScreenState extends State<PlayerScreen> {
                     onToggleFullscreen: _toggleFullscreen,
                     mediaTitle: _playerTitle,
                     mediaLogoUrl: _mediaLogoUrl,
-                    volume: _playerController.player.state.volume,
+                    volume: _playerController.session.volume,
                     onVolumeChanged: (v) =>
-                        _playerController.player.setVolume(v),
+                        _playerController.session.setVolume(v),
                     onBack: _leavePlayer,
                     onOpenSettings: () => _showTrackSettings(),
                     onToggleSubtitles: _showSubtitlesMenu,
@@ -2193,7 +2193,7 @@ class _PlayerScreenState extends State<PlayerScreen> {
                   PlayerHUDOverlay(
                     visible: _controlsVisible,
                     timelineAnchorKey: _timelineAnchorKey,
-                    player: _playerController.player,
+                    session: _playerController.session,
                     media: widget.media,
                     mediaTitle: _playerTitle,
                     isPlaying: _playerController.isPlaying,
@@ -2211,10 +2211,7 @@ class _PlayerScreenState extends State<PlayerScreen> {
                       _playerController.isDraggingSlider = true;
                       _playerController.dragValue = value;
                       _safeSetState(() {});
-                      try {
-                        await (_playerController.player.platform as dynamic)
-                            .setProperty('hr-seek', 'no');
-                      } catch (_) {}
+                      await _playerController.session.setExactSeek(false);
                     },
                     onSliderChanged: (value) {
                       _playerController.dragValue = value;
@@ -2223,7 +2220,7 @@ class _PlayerScreenState extends State<PlayerScreen> {
                       // that do not exist yet. The final position is committed
                       // in onSliderChangeEnd.
                       if (_playerController.canSeekWithinSession(value.toInt())) {
-                        _playerController.player.seek(Duration(
+                        _playerController.session.seek(Duration(
                             seconds: value.toInt() -
                                 _playerController.hlsStartOffset));
                       }
@@ -2237,10 +2234,7 @@ class _PlayerScreenState extends State<PlayerScreen> {
                       await _playerController
                           .seekToAbsoluteSeconds(value.toInt());
                       if (_playerController.currentQuality == null) {
-                        try {
-                          await (_playerController.player.platform as dynamic)
-                              .setProperty('hr-seek', 'yes');
-                        } catch (_) {}
+                        await _playerController.session.setExactSeek(true);
                       }
                       _hideControlsWithDelay();
                     },
@@ -2250,7 +2244,7 @@ class _PlayerScreenState extends State<PlayerScreen> {
                   ),
                 if (_controlsVisible && useDefaultHud)
                   TopRightControls(
-                    player: _playerController.player,
+                    session: _playerController.session,
                     currentFit: _videoFit,
                     onFitChanged: _updateVideoFit,
                     playerController: _playerController,

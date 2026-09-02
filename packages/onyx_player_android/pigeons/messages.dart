@@ -55,6 +55,40 @@ enum OnyxPlayerErrorKind {
   unknown,
 }
 
+/// Une piste que le moteur a énumérée.
+class OnyxTrack {
+  OnyxTrack({required this.id, this.title, this.language});
+
+  final String id;
+  final String? title;
+  final String? language;
+}
+
+/// Les tampons, dans les unités d'ExoPlayer.
+///
+/// `PlaybackProfile` les exprime en octets et en secondes, parce que c'est le
+/// vocabulaire de mpv ; `DefaultLoadControl` ne connaît que des millisecondes.
+/// La traduction se fait côté Dart, où le profil est déjà résolu.
+class OnyxLoadTuning {
+  OnyxLoadTuning({
+    required this.minBufferMs,
+    required this.maxBufferMs,
+    required this.bufferForPlaybackMs,
+    required this.backBufferMs,
+  });
+
+  final int minBufferMs;
+  final int maxBufferMs;
+
+  /// Ce qu'il faut avoir en mémoire avant que l'image ne parte. Court : c'est
+  /// du temps ajouté devant la première image, à chaque ouverture.
+  final int bufferForPlaybackMs;
+
+  /// Ce qu'on garde derrière la tête de lecture, pour que le retour de 10 s ne
+  /// reparte pas sur le réseau.
+  final int backBufferMs;
+}
+
 class OnyxVideoSize {
   OnyxVideoSize({required this.width, required this.height});
 
@@ -74,7 +108,12 @@ class OnyxPlayerStatus {
     required this.positionMs,
     required this.durationMs,
     required this.bufferedPositionMs,
+    required this.audioTracks,
+    required this.subtitleTracks,
+    required this.subtitleCues,
     this.videoSize,
+    this.selectedAudioTrackId,
+    this.selectedSubtitleTrackId,
     this.errorKind,
     this.errorMessage,
   });
@@ -94,6 +133,16 @@ class OnyxPlayerStatus {
 
   /// Null tant que le décodeur n'a pas annoncé les dimensions.
   final OnyxVideoSize? videoSize;
+
+  /// Les pistes que le moteur a trouvées dans ce média.
+  final List<OnyxTrack> audioTracks;
+  final List<OnyxTrack> subtitleTracks;
+  final String? selectedAudioTrackId;
+  final String? selectedSubtitleTrackId;
+
+  /// Les lignes de sous-titre à afficher maintenant. Rendues côté Flutter, pour
+  /// que l'habillage soit le même que sur les autres plateformes.
+  final List<String> subtitleCues;
 
   final OnyxPlayerErrorKind? errorKind;
   final String? errorMessage;
@@ -126,13 +175,58 @@ abstract class OnyxPlayerApi {
 
   /// Charge [url] et se positionne à [startPositionMs] dans le même geste.
   /// Ouvrir puis chercher ferait payer deux fois la mise en mémoire tampon.
-  void open(int playerId, String url, int startPositionMs);
+  ///
+  /// [play] démarre la lecture dès que le média est prêt, sans second aller-
+  /// retour : c'est ce que fait le passage à l'épisode suivant.
+  void open(int playerId, String url, int startPositionMs, bool play);
 
   void play(int playerId);
 
   void pause(int playerId);
 
   void seekTo(int playerId, int positionMs);
+
+  void setVolume(int playerId, double volume);
+
+  void setRate(int playerId, double rate);
+
+  /// Quelle langue audio charger d'emblée, la plus probable en premier. Posé
+  /// avant l'ouverture — après, changer de piste recharge le tampon.
+  void setPreferredAudioLanguages(int playerId, List<String> priorities);
+
+  void selectAudioTrack(int playerId, String trackId);
+
+  /// Sélectionne une piste de sous-titres interne, ou aucune si [trackId] est
+  /// nul.
+  void selectSubtitleTrack(int playerId, String? trackId);
+
+  /// Charge un WebVTT que le serveur a produit, en le posant à côté du média.
+  ///
+  /// Le contenu est passé plutôt qu'une URL : c'est le contrôleur qui l'a
+  /// téléchargé, et le serveur a déjà recalé les temps sur l'offset du flux.
+  void setExternalSubtitle(
+    int playerId,
+    String? vttContent,
+    String? language,
+    String? title,
+  );
+
+  /// Cherche à l'image près, ou au point-clé le plus proche pendant qu'on fait
+  /// glisser la tête de lecture.
+  void setExactSeek(int playerId, bool exact);
+
+  /// Impose la durée totale : en transcodage, le moteur ne voit que les
+  /// segments déjà produits.
+  void overrideDuration(int playerId, int totalMs);
+
+  void applyTuning(int playerId, OnyxLoadTuning tuning);
+
+  /// Les types MIME audio que la puce sait décoder.
+  ///
+  /// mpv décodait tout en logiciel ; ExoPlayer dépend de MediaCodec. Demandé
+  /// une fois, pour que le contrôleur puisse trancher lecture directe ou
+  /// transcodage **avant** d'ouvrir, plutôt que d'échouer devant l'utilisateur.
+  List<String> decodableAudioMimeTypes();
 
   /// L'état à cet instant. Les changements arrivent par le flux d'événements ;
   /// ceci sert à s'amorcer sans attendre le premier.

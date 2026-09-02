@@ -123,6 +123,131 @@ enum OnyxPlayerErrorKind {
   unknown,
 }
 
+/// Une piste que le moteur a énumérée.
+class OnyxTrack {
+  OnyxTrack({
+    required this.id,
+    this.title,
+    this.language,
+  });
+
+  String id;
+
+  String? title;
+
+  String? language;
+
+  List<Object?> _toList() {
+    return <Object?>[
+      id,
+      title,
+      language,
+    ];
+  }
+
+  Object encode() {
+    return _toList();  }
+
+  static OnyxTrack decode(Object result) {
+    result as List<Object?>;
+    return OnyxTrack(
+      id: result[0]! as String,
+      title: result[1] as String?,
+      language: result[2] as String?,
+    );
+  }
+
+  @override
+  // ignore: avoid_equals_and_hash_code_on_mutable_classes
+  bool operator ==(Object other) {
+    if (other is! OnyxTrack || other.runtimeType != runtimeType) {
+      return false;
+    }
+    if (identical(this, other)) {
+      return true;
+    }
+    return _deepEquals(id, other.id) && _deepEquals(title, other.title) && _deepEquals(language, other.language);
+  }
+
+  @override
+  // ignore: avoid_equals_and_hash_code_on_mutable_classes
+  int get hashCode => _deepHash(<Object?>[runtimeType, ..._toList()]);
+
+  @override
+  String toString() {
+    return 'OnyxTrack(id: $id, title: $title, language: $language)';
+  }
+}
+
+/// Les tampons, dans les unités d'ExoPlayer.
+///
+/// `PlaybackProfile` les exprime en octets et en secondes, parce que c'est le
+/// vocabulaire de mpv ; `DefaultLoadControl` ne connaît que des millisecondes.
+/// La traduction se fait côté Dart, où le profil est déjà résolu.
+class OnyxLoadTuning {
+  OnyxLoadTuning({
+    required this.minBufferMs,
+    required this.maxBufferMs,
+    required this.bufferForPlaybackMs,
+    required this.backBufferMs,
+  });
+
+  int minBufferMs;
+
+  int maxBufferMs;
+
+  /// Ce qu'il faut avoir en mémoire avant que l'image ne parte. Court : c'est
+  /// du temps ajouté devant la première image, à chaque ouverture.
+  int bufferForPlaybackMs;
+
+  /// Ce qu'on garde derrière la tête de lecture, pour que le retour de 10 s ne
+  /// reparte pas sur le réseau.
+  int backBufferMs;
+
+  List<Object?> _toList() {
+    return <Object?>[
+      minBufferMs,
+      maxBufferMs,
+      bufferForPlaybackMs,
+      backBufferMs,
+    ];
+  }
+
+  Object encode() {
+    return _toList();  }
+
+  static OnyxLoadTuning decode(Object result) {
+    result as List<Object?>;
+    return OnyxLoadTuning(
+      minBufferMs: result[0]! as int,
+      maxBufferMs: result[1]! as int,
+      bufferForPlaybackMs: result[2]! as int,
+      backBufferMs: result[3]! as int,
+    );
+  }
+
+  @override
+  // ignore: avoid_equals_and_hash_code_on_mutable_classes
+  bool operator ==(Object other) {
+    if (other is! OnyxLoadTuning || other.runtimeType != runtimeType) {
+      return false;
+    }
+    if (identical(this, other)) {
+      return true;
+    }
+    return _deepEquals(minBufferMs, other.minBufferMs) && _deepEquals(maxBufferMs, other.maxBufferMs) && _deepEquals(bufferForPlaybackMs, other.bufferForPlaybackMs) && _deepEquals(backBufferMs, other.backBufferMs);
+  }
+
+  @override
+  // ignore: avoid_equals_and_hash_code_on_mutable_classes
+  int get hashCode => _deepHash(<Object?>[runtimeType, ..._toList()]);
+
+  @override
+  String toString() {
+    return 'OnyxLoadTuning(minBufferMs: $minBufferMs, maxBufferMs: $maxBufferMs, bufferForPlaybackMs: $bufferForPlaybackMs, backBufferMs: $backBufferMs)';
+  }
+}
+
 class OnyxVideoSize {
   OnyxVideoSize({
     required this.width,
@@ -186,6 +311,11 @@ class OnyxPlayerStatus {
     required this.durationMs,
     required this.bufferedPositionMs,
     this.videoSize,
+    required this.audioTracks,
+    required this.subtitleTracks,
+    this.selectedAudioTrackId,
+    this.selectedSubtitleTrackId,
+    required this.subtitleCues,
     this.errorKind,
     this.errorMessage,
   });
@@ -207,6 +337,19 @@ class OnyxPlayerStatus {
   /// Null tant que le décodeur n'a pas annoncé les dimensions.
   OnyxVideoSize? videoSize;
 
+  /// Les pistes que le moteur a trouvées dans ce média.
+  List<OnyxTrack> audioTracks;
+
+  List<OnyxTrack> subtitleTracks;
+
+  String? selectedAudioTrackId;
+
+  String? selectedSubtitleTrackId;
+
+  /// Les lignes de sous-titre à afficher maintenant. Rendues côté Flutter, pour
+  /// que l'habillage soit le même que sur les autres plateformes.
+  List<String> subtitleCues;
+
   OnyxPlayerErrorKind? errorKind;
 
   String? errorMessage;
@@ -220,6 +363,11 @@ class OnyxPlayerStatus {
       durationMs,
       bufferedPositionMs,
       videoSize,
+      audioTracks,
+      subtitleTracks,
+      selectedAudioTrackId,
+      selectedSubtitleTrackId,
+      subtitleCues,
       errorKind,
       errorMessage,
     ];
@@ -238,8 +386,13 @@ class OnyxPlayerStatus {
       durationMs: result[4]! as int,
       bufferedPositionMs: result[5]! as int,
       videoSize: result[6] as OnyxVideoSize?,
-      errorKind: result[7] as OnyxPlayerErrorKind?,
-      errorMessage: result[8] as String?,
+      audioTracks: (result[7]! as List<Object?>).cast<OnyxTrack>(),
+      subtitleTracks: (result[8]! as List<Object?>).cast<OnyxTrack>(),
+      selectedAudioTrackId: result[9] as String?,
+      selectedSubtitleTrackId: result[10] as String?,
+      subtitleCues: (result[11]! as List<Object?>).cast<String>(),
+      errorKind: result[12] as OnyxPlayerErrorKind?,
+      errorMessage: result[13] as String?,
     );
   }
 
@@ -252,7 +405,7 @@ class OnyxPlayerStatus {
     if (identical(this, other)) {
       return true;
     }
-    return _deepEquals(playerId, other.playerId) && _deepEquals(state, other.state) && _deepEquals(isPlaying, other.isPlaying) && _deepEquals(positionMs, other.positionMs) && _deepEquals(durationMs, other.durationMs) && _deepEquals(bufferedPositionMs, other.bufferedPositionMs) && _deepEquals(videoSize, other.videoSize) && _deepEquals(errorKind, other.errorKind) && _deepEquals(errorMessage, other.errorMessage);
+    return _deepEquals(playerId, other.playerId) && _deepEquals(state, other.state) && _deepEquals(isPlaying, other.isPlaying) && _deepEquals(positionMs, other.positionMs) && _deepEquals(durationMs, other.durationMs) && _deepEquals(bufferedPositionMs, other.bufferedPositionMs) && _deepEquals(videoSize, other.videoSize) && _deepEquals(audioTracks, other.audioTracks) && _deepEquals(subtitleTracks, other.subtitleTracks) && _deepEquals(selectedAudioTrackId, other.selectedAudioTrackId) && _deepEquals(selectedSubtitleTrackId, other.selectedSubtitleTrackId) && _deepEquals(subtitleCues, other.subtitleCues) && _deepEquals(errorKind, other.errorKind) && _deepEquals(errorMessage, other.errorMessage);
   }
 
   @override
@@ -261,7 +414,7 @@ class OnyxPlayerStatus {
 
   @override
   String toString() {
-    return 'OnyxPlayerStatus(playerId: $playerId, state: $state, isPlaying: $isPlaying, positionMs: $positionMs, durationMs: $durationMs, bufferedPositionMs: $bufferedPositionMs, videoSize: $videoSize, errorKind: $errorKind, errorMessage: $errorMessage)';
+    return 'OnyxPlayerStatus(playerId: $playerId, state: $state, isPlaying: $isPlaying, positionMs: $positionMs, durationMs: $durationMs, bufferedPositionMs: $bufferedPositionMs, videoSize: $videoSize, audioTracks: $audioTracks, subtitleTracks: $subtitleTracks, selectedAudioTrackId: $selectedAudioTrackId, selectedSubtitleTrackId: $selectedSubtitleTrackId, subtitleCues: $subtitleCues, errorKind: $errorKind, errorMessage: $errorMessage)';
   }
 }
 
@@ -333,14 +486,20 @@ class _PigeonCodec extends StandardMessageCodec {
     }    else if (value is OnyxPlayerErrorKind) {
       buffer.putUint8(130);
       writeValue(buffer, value.index);
-    }    else if (value is OnyxVideoSize) {
+    }    else if (value is OnyxTrack) {
       buffer.putUint8(131);
       writeValue(buffer, value.encode());
-    }    else if (value is OnyxPlayerStatus) {
+    }    else if (value is OnyxLoadTuning) {
       buffer.putUint8(132);
       writeValue(buffer, value.encode());
-    }    else if (value is OnyxPlaybackStats) {
+    }    else if (value is OnyxVideoSize) {
       buffer.putUint8(133);
+      writeValue(buffer, value.encode());
+    }    else if (value is OnyxPlayerStatus) {
+      buffer.putUint8(134);
+      writeValue(buffer, value.encode());
+    }    else if (value is OnyxPlaybackStats) {
+      buffer.putUint8(135);
       writeValue(buffer, value.encode());
     } else {
       super.writeValue(buffer, value);
@@ -357,10 +516,14 @@ class _PigeonCodec extends StandardMessageCodec {
         final value = readValue(buffer) as int?;
         return value == null ? null : OnyxPlayerErrorKind.values[value];
       case 131:
-        return OnyxVideoSize.decode(readValue(buffer)!);
+        return OnyxTrack.decode(readValue(buffer)!);
       case 132:
-        return OnyxPlayerStatus.decode(readValue(buffer)!);
+        return OnyxLoadTuning.decode(readValue(buffer)!);
       case 133:
+        return OnyxVideoSize.decode(readValue(buffer)!);
+      case 134:
+        return OnyxPlayerStatus.decode(readValue(buffer)!);
+      case 135:
         return OnyxPlaybackStats.decode(readValue(buffer)!);
       default:
         return super.readValueOfType(type, buffer);
@@ -427,14 +590,17 @@ class OnyxPlayerApi {
 
   /// Charge [url] et se positionne à [startPositionMs] dans le même geste.
   /// Ouvrir puis chercher ferait payer deux fois la mise en mémoire tampon.
-  Future<void> open(int playerId, String url, int startPositionMs) async {
+  ///
+  /// [play] démarre la lecture dès que le média est prêt, sans second aller-
+  /// retour : c'est ce que fait le passage à l'épisode suivant.
+  Future<void> open(int playerId, String url, int startPositionMs, bool play) async {
     final pigeonVar_channelName = 'dev.flutter.pigeon.onyx_player_android.OnyxPlayerApi.open$pigeonVar_messageChannelSuffix';
     final pigeonVar_channel = BasicMessageChannel<Object?>(
       pigeonVar_channelName,
       pigeonChannelCodec,
       binaryMessenger: pigeonVar_binaryMessenger,
     );
-    final Future<Object?> pigeonVar_sendFuture = pigeonVar_channel.send(<Object?>[playerId, url, startPositionMs]);
+    final Future<Object?> pigeonVar_sendFuture = pigeonVar_channel.send(<Object?>[playerId, url, startPositionMs, play]);
     final pigeonVar_replyList = await pigeonVar_sendFuture as List<Object?>?;
 
     _extractReplyValueOrThrow(
@@ -497,6 +663,204 @@ class OnyxPlayerApi {
         isNullValid: true,
     )
     ;
+  }
+
+  Future<void> setVolume(int playerId, double volume) async {
+    final pigeonVar_channelName = 'dev.flutter.pigeon.onyx_player_android.OnyxPlayerApi.setVolume$pigeonVar_messageChannelSuffix';
+    final pigeonVar_channel = BasicMessageChannel<Object?>(
+      pigeonVar_channelName,
+      pigeonChannelCodec,
+      binaryMessenger: pigeonVar_binaryMessenger,
+    );
+    final Future<Object?> pigeonVar_sendFuture = pigeonVar_channel.send(<Object?>[playerId, volume]);
+    final pigeonVar_replyList = await pigeonVar_sendFuture as List<Object?>?;
+
+    _extractReplyValueOrThrow(
+        pigeonVar_replyList,
+        pigeonVar_channelName,
+        isNullValid: true,
+    )
+    ;
+  }
+
+  Future<void> setRate(int playerId, double rate) async {
+    final pigeonVar_channelName = 'dev.flutter.pigeon.onyx_player_android.OnyxPlayerApi.setRate$pigeonVar_messageChannelSuffix';
+    final pigeonVar_channel = BasicMessageChannel<Object?>(
+      pigeonVar_channelName,
+      pigeonChannelCodec,
+      binaryMessenger: pigeonVar_binaryMessenger,
+    );
+    final Future<Object?> pigeonVar_sendFuture = pigeonVar_channel.send(<Object?>[playerId, rate]);
+    final pigeonVar_replyList = await pigeonVar_sendFuture as List<Object?>?;
+
+    _extractReplyValueOrThrow(
+        pigeonVar_replyList,
+        pigeonVar_channelName,
+        isNullValid: true,
+    )
+    ;
+  }
+
+  /// Quelle langue audio charger d'emblée, la plus probable en premier. Posé
+  /// avant l'ouverture — après, changer de piste recharge le tampon.
+  Future<void> setPreferredAudioLanguages(int playerId, List<String> priorities) async {
+    final pigeonVar_channelName = 'dev.flutter.pigeon.onyx_player_android.OnyxPlayerApi.setPreferredAudioLanguages$pigeonVar_messageChannelSuffix';
+    final pigeonVar_channel = BasicMessageChannel<Object?>(
+      pigeonVar_channelName,
+      pigeonChannelCodec,
+      binaryMessenger: pigeonVar_binaryMessenger,
+    );
+    final Future<Object?> pigeonVar_sendFuture = pigeonVar_channel.send(<Object?>[playerId, priorities]);
+    final pigeonVar_replyList = await pigeonVar_sendFuture as List<Object?>?;
+
+    _extractReplyValueOrThrow(
+        pigeonVar_replyList,
+        pigeonVar_channelName,
+        isNullValid: true,
+    )
+    ;
+  }
+
+  Future<void> selectAudioTrack(int playerId, String trackId) async {
+    final pigeonVar_channelName = 'dev.flutter.pigeon.onyx_player_android.OnyxPlayerApi.selectAudioTrack$pigeonVar_messageChannelSuffix';
+    final pigeonVar_channel = BasicMessageChannel<Object?>(
+      pigeonVar_channelName,
+      pigeonChannelCodec,
+      binaryMessenger: pigeonVar_binaryMessenger,
+    );
+    final Future<Object?> pigeonVar_sendFuture = pigeonVar_channel.send(<Object?>[playerId, trackId]);
+    final pigeonVar_replyList = await pigeonVar_sendFuture as List<Object?>?;
+
+    _extractReplyValueOrThrow(
+        pigeonVar_replyList,
+        pigeonVar_channelName,
+        isNullValid: true,
+    )
+    ;
+  }
+
+  /// Sélectionne une piste de sous-titres interne, ou aucune si [trackId] est
+  /// nul.
+  Future<void> selectSubtitleTrack(int playerId, String? trackId) async {
+    final pigeonVar_channelName = 'dev.flutter.pigeon.onyx_player_android.OnyxPlayerApi.selectSubtitleTrack$pigeonVar_messageChannelSuffix';
+    final pigeonVar_channel = BasicMessageChannel<Object?>(
+      pigeonVar_channelName,
+      pigeonChannelCodec,
+      binaryMessenger: pigeonVar_binaryMessenger,
+    );
+    final Future<Object?> pigeonVar_sendFuture = pigeonVar_channel.send(<Object?>[playerId, trackId]);
+    final pigeonVar_replyList = await pigeonVar_sendFuture as List<Object?>?;
+
+    _extractReplyValueOrThrow(
+        pigeonVar_replyList,
+        pigeonVar_channelName,
+        isNullValid: true,
+    )
+    ;
+  }
+
+  /// Charge un WebVTT que le serveur a produit, en le posant à côté du média.
+  ///
+  /// Le contenu est passé plutôt qu'une URL : c'est le contrôleur qui l'a
+  /// téléchargé, et le serveur a déjà recalé les temps sur l'offset du flux.
+  Future<void> setExternalSubtitle(int playerId, String? vttContent, String? language, String? title) async {
+    final pigeonVar_channelName = 'dev.flutter.pigeon.onyx_player_android.OnyxPlayerApi.setExternalSubtitle$pigeonVar_messageChannelSuffix';
+    final pigeonVar_channel = BasicMessageChannel<Object?>(
+      pigeonVar_channelName,
+      pigeonChannelCodec,
+      binaryMessenger: pigeonVar_binaryMessenger,
+    );
+    final Future<Object?> pigeonVar_sendFuture = pigeonVar_channel.send(<Object?>[playerId, vttContent, language, title]);
+    final pigeonVar_replyList = await pigeonVar_sendFuture as List<Object?>?;
+
+    _extractReplyValueOrThrow(
+        pigeonVar_replyList,
+        pigeonVar_channelName,
+        isNullValid: true,
+    )
+    ;
+  }
+
+  /// Cherche à l'image près, ou au point-clé le plus proche pendant qu'on fait
+  /// glisser la tête de lecture.
+  Future<void> setExactSeek(int playerId, bool exact) async {
+    final pigeonVar_channelName = 'dev.flutter.pigeon.onyx_player_android.OnyxPlayerApi.setExactSeek$pigeonVar_messageChannelSuffix';
+    final pigeonVar_channel = BasicMessageChannel<Object?>(
+      pigeonVar_channelName,
+      pigeonChannelCodec,
+      binaryMessenger: pigeonVar_binaryMessenger,
+    );
+    final Future<Object?> pigeonVar_sendFuture = pigeonVar_channel.send(<Object?>[playerId, exact]);
+    final pigeonVar_replyList = await pigeonVar_sendFuture as List<Object?>?;
+
+    _extractReplyValueOrThrow(
+        pigeonVar_replyList,
+        pigeonVar_channelName,
+        isNullValid: true,
+    )
+    ;
+  }
+
+  /// Impose la durée totale : en transcodage, le moteur ne voit que les
+  /// segments déjà produits.
+  Future<void> overrideDuration(int playerId, int totalMs) async {
+    final pigeonVar_channelName = 'dev.flutter.pigeon.onyx_player_android.OnyxPlayerApi.overrideDuration$pigeonVar_messageChannelSuffix';
+    final pigeonVar_channel = BasicMessageChannel<Object?>(
+      pigeonVar_channelName,
+      pigeonChannelCodec,
+      binaryMessenger: pigeonVar_binaryMessenger,
+    );
+    final Future<Object?> pigeonVar_sendFuture = pigeonVar_channel.send(<Object?>[playerId, totalMs]);
+    final pigeonVar_replyList = await pigeonVar_sendFuture as List<Object?>?;
+
+    _extractReplyValueOrThrow(
+        pigeonVar_replyList,
+        pigeonVar_channelName,
+        isNullValid: true,
+    )
+    ;
+  }
+
+  Future<void> applyTuning(int playerId, OnyxLoadTuning tuning) async {
+    final pigeonVar_channelName = 'dev.flutter.pigeon.onyx_player_android.OnyxPlayerApi.applyTuning$pigeonVar_messageChannelSuffix';
+    final pigeonVar_channel = BasicMessageChannel<Object?>(
+      pigeonVar_channelName,
+      pigeonChannelCodec,
+      binaryMessenger: pigeonVar_binaryMessenger,
+    );
+    final Future<Object?> pigeonVar_sendFuture = pigeonVar_channel.send(<Object?>[playerId, tuning]);
+    final pigeonVar_replyList = await pigeonVar_sendFuture as List<Object?>?;
+
+    _extractReplyValueOrThrow(
+        pigeonVar_replyList,
+        pigeonVar_channelName,
+        isNullValid: true,
+    )
+    ;
+  }
+
+  /// Les types MIME audio que la puce sait décoder.
+  ///
+  /// mpv décodait tout en logiciel ; ExoPlayer dépend de MediaCodec. Demandé
+  /// une fois, pour que le contrôleur puisse trancher lecture directe ou
+  /// transcodage **avant** d'ouvrir, plutôt que d'échouer devant l'utilisateur.
+  Future<List<String>> decodableAudioMimeTypes() async {
+    final pigeonVar_channelName = 'dev.flutter.pigeon.onyx_player_android.OnyxPlayerApi.decodableAudioMimeTypes$pigeonVar_messageChannelSuffix';
+    final pigeonVar_channel = BasicMessageChannel<Object?>(
+      pigeonVar_channelName,
+      pigeonChannelCodec,
+      binaryMessenger: pigeonVar_binaryMessenger,
+    );
+    final Future<Object?> pigeonVar_sendFuture = pigeonVar_channel.send(null);
+    final pigeonVar_replyList = await pigeonVar_sendFuture as List<Object?>?;
+
+    final Object? pigeonVar_replyValue = _extractReplyValueOrThrow(
+        pigeonVar_replyList,
+        pigeonVar_channelName,
+        isNullValid: false,
+    )
+    ;
+    return (pigeonVar_replyValue! as List<Object?>).cast<String>();
   }
 
   /// L'état à cet instant. Les changements arrivent par le flux d'événements ;

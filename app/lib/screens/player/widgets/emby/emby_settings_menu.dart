@@ -1,7 +1,7 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
-import 'package:media_kit/media_kit.dart' as mk;
+import '../../playback/playback_session.dart';
 
 import '../../../../models/models.dart';
 import '../../../../utils/app_platform.dart';
@@ -25,7 +25,7 @@ enum EmbyMenuSection { root, quality, audio, subtitles, speed, display, chapters
 /// Like the rest of this chrome, the look is locked and ignores
 /// [PlayerLayoutConfig] — see [EmbyChromeTheme].
 class EmbySettingsMenu extends StatefulWidget {
-  final mk.Player player;
+  final PlaybackSession session;
   final PlayerController? playerController;
   final EpisodeNavigationController? episodeNav;
 
@@ -46,7 +46,7 @@ class EmbySettingsMenu extends StatefulWidget {
 
   const EmbySettingsMenu({
     super.key,
-    required this.player,
+    required this.session,
     required this.currentFit,
     required this.onFitChanged,
     required this.playbackRate,
@@ -116,8 +116,8 @@ class _EmbySettingsMenuState extends State<EmbySettingsMenu> {
       }
       return '—';
     }
-    final current = widget.player.state.track.audio;
-    if (current.id == 'no') return 'Désactivé';
+    final current = widget.session.currentAudioTrack;
+    if (current == null || current.id == 'no') return 'Désactivé';
     return current.title ?? current.language ?? 'Piste 1';
   }
 
@@ -126,8 +126,8 @@ class _EmbySettingsMenuState extends State<EmbySettingsMenu> {
     if (controller == null) return '—';
 
     if (controller.currentQuality == null) {
-      final current = widget.player.state.track.subtitle;
-      if (current.id == 'no') return 'Désactivés';
+      final current = widget.session.currentSubtitleTrack;
+      if (current == null || current.id == 'no') return 'Désactivés';
       return current.title ?? current.language ?? 'Piste 1';
     }
 
@@ -326,9 +326,9 @@ class _EmbySettingsMenuState extends State<EmbySettingsMenu> {
       ]);
     }
 
-    final internal = widget.player.state.tracks.audio;
+    final internal = widget.session.audioTracks;
     if (internal.isEmpty) return const _EmbyMenuEmpty();
-    final current = widget.player.state.track.audio;
+    final current = widget.session.currentAudioTrack;
 
     return _sectionList([
       for (var i = 0; i < internal.length; i++)
@@ -341,7 +341,7 @@ class _EmbySettingsMenuState extends State<EmbySettingsMenu> {
                       : 'Audio ${i + 1}'),
           selected: internal[i] == current,
           onTap: () {
-            widget.player.setAudioTrack(internal[i]);
+            widget.session.setAudioTrack(internal[i]);
             widget.onClose();
           },
         ),
@@ -355,11 +355,11 @@ class _EmbySettingsMenuState extends State<EmbySettingsMenu> {
     // Direct Play reads the tracks off the file; a transcode carries the
     // canonical list from the server. Same split as [PlayerSubtitlesPicker].
     if (controller.currentQuality == null) {
-      final subs = widget.player.state.tracks.subtitle
+      final subs = widget.session.subtitleTracks
           .where((t) => t.id != 'auto')
           .toList();
       if (subs.isEmpty) return const _EmbyMenuEmpty();
-      final current = widget.player.state.track.subtitle;
+      final current = widget.session.currentSubtitleTrack;
 
       return _sectionList([
         for (var i = 0; i < subs.length; i++)

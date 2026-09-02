@@ -2,13 +2,13 @@ import 'dart:ui';
 import 'package:flutter/material.dart';
 import 'package:flutter_animate/flutter_animate.dart';
 import 'package:audio_video_progress_bar/audio_video_progress_bar.dart';
-import 'package:media_kit/media_kit.dart' as mk;
+import '../playback/playback_session.dart';
 import 'player_top_bar.dart';
 
 class PlayerHUDOverlay extends StatelessWidget {
   final bool visible;
   final GlobalKey? timelineAnchorKey;
-  final mk.Player player;
+  final PlaybackSession session;
   final dynamic media; // Can be Media or HomeMediaItem
   final String mediaTitle;
   final bool isPlaying;
@@ -31,7 +31,7 @@ class PlayerHUDOverlay extends StatelessWidget {
     super.key,
     required this.visible,
     this.timelineAnchorKey,
-    required this.player,
+    required this.session,
     required this.media,
     required this.mediaTitle,
     required this.isPlaying,

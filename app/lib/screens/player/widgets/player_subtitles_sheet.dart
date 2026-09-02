@@ -2,7 +2,7 @@ import 'dart:async';
 
 import 'package:flutter/material.dart';
 import 'package:flutter_animate/flutter_animate.dart';
-import 'package:media_kit/media_kit.dart' as mk;
+import '../playback/playback_session.dart';
 
 import '../hooks/use_player_controller.dart';
 import 'player_settings_anchor.dart';
@@ -11,13 +11,13 @@ import 'player_subtitles_picker.dart';
 
 /// Anchored popup for subtitle track selection (same look as settings, subtitles only).
 class PlayerSubtitlesSheet extends StatefulWidget {
-  final mk.Player player;
+  final PlaybackSession session;
   final PlayerController playerController;
   final VoidCallback? onClose;
 
   const PlayerSubtitlesSheet({
     super.key,
-    required this.player,
+    required this.session,
     required this.playerController,
     this.onClose,
   });
@@ -58,7 +58,7 @@ class _PlayerSubtitlesSheetState extends State<PlayerSubtitlesSheet> {
       maxHeight: PlayerSettingsAnchor.subtitlesSheetMaxHeight,
       onClose: _close,
       child: PlayerSubtitlesPicker(
-        player: widget.player,
+        session: widget.session,
         playerController: widget.playerController,
         onSelected: _close,
       ),

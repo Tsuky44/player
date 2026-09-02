@@ -1,6 +1,6 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
-import 'package:media_kit/media_kit.dart' as mk;
+import '../playback/playback_session.dart';
 import '../../../models/models.dart';
 import '../../../services/api_client.dart';
 
@@ -117,7 +117,7 @@ class EpisodeNavigationController extends ChangeNotifier {
     required ApiClient apiClient,
     required int episodeId,
     EpisodeTimestamps? initialTimestamps,
-    mk.Player? player,
+    PlaybackSession? session,
     this.onAutoPlay,
   })  : _apiClient = apiClient,
         _episodeId = episodeId {
@@ -426,7 +426,7 @@ class EpisodeNavigationController extends ChangeNotifier {
       !_upcomingDismissed;
 
   /// Whether either end card owns the screen. Both shrink the video, suppress
-  /// the chrome and hold auto-advance back, so the player asks this one thing.
+  /// the chrome and hold auto-advance back, so the session asks this one thing.
   bool get showEndCard => showNextSeasonCard || showUpcomingEpisodeCard;
 
   /// Forces the card up when playback reached the very end without the outro

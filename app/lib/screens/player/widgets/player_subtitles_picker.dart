@@ -1,5 +1,5 @@
 import 'package:flutter/material.dart';
-import 'package:media_kit/media_kit.dart' as mk;
+import '../playback/playback_session.dart';
 
 import '../../../models/models.dart';
 import '../hooks/use_player_controller.dart';
@@ -7,13 +7,13 @@ import 'player_settings_ui.dart';
 
 /// Subtitle track list shared by the settings sheet and the subtitles popup.
 class PlayerSubtitlesPicker extends StatefulWidget {
-  final mk.Player player;
+  final PlaybackSession session;
   final PlayerController playerController;
   final VoidCallback onSelected;
 
   const PlayerSubtitlesPicker({
     super.key,
-    required this.player,
+    required this.session,
     required this.playerController,
     required this.onSelected,
   });
@@ -27,7 +27,7 @@ class _PlayerSubtitlesPickerState extends State<PlayerSubtitlesPicker> {
 
   PlayerController get _controller => widget.playerController;
 
-  String _subtitleTrackName(mk.SubtitleTrack track, int index) {
+  String _subtitleTrackName(PlaybackTrack track, int index) {
     if (track.id == 'no') return 'Désactivés';
     return track.title ??
         (track.language != null
@@ -113,10 +113,10 @@ class _PlayerSubtitlesPickerState extends State<PlayerSubtitlesPicker> {
   }
 
   Widget _buildInternalSubtitleList() {
-    final subs = widget.player.state.tracks.subtitle
+    final subs = widget.session.subtitleTracks
         .where((t) => t.id != 'auto')
         .toList();
-    final current = widget.player.state.track.subtitle;
+    final current = widget.session.currentSubtitleTrack;
 
     if (subs.isEmpty) {
       return const _EmptySubtitlesMessage();
