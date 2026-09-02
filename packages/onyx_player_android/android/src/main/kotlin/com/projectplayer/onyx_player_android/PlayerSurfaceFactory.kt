@@ -4,6 +4,7 @@ import android.content.Context
 import android.view.SurfaceView
 import android.view.View
 import android.widget.FrameLayout
+import androidx.media3.ui.AspectRatioFrameLayout
 import io.flutter.plugin.common.StandardMessageCodec
 import io.flutter.plugin.platform.PlatformView
 import io.flutter.plugin.platform.PlatformViewFactory
@@ -29,7 +30,12 @@ internal class PlayerSurface(
 
     private val surfaceView = SurfaceView(context)
 
-    private val container = FrameLayout(context).apply {
+    /// Le cadre qui applique « taille adaptative » ou « taille d'origine ».
+    ///
+    /// C'est lui, et pas Flutter, qui peut le faire : une SurfaceView est une
+    /// couche du système, et un `BoxFit` posé par un widget parent ne
+    /// l'atteindrait pas.
+    private val frame = AspectRatioFrameLayout(context).apply {
         addView(
             surfaceView,
             FrameLayout.LayoutParams(
@@ -39,11 +45,22 @@ internal class PlayerSurface(
         )
     }
 
+    private val container = FrameLayout(context).apply {
+        addView(
+            frame,
+            FrameLayout.LayoutParams(
+                FrameLayout.LayoutParams.MATCH_PARENT,
+                FrameLayout.LayoutParams.MATCH_PARENT,
+                android.view.Gravity.CENTER,
+            ),
+        )
+    }
+
     init {
         // Le lecteur existe déjà : la vue s'y rattache, elle ne le crée pas.
         // C'est ce qui laisse Flutter reconstruire la vue sans interrompre la
         // lecture, et ce qui permet d'ouvrir un média avant le premier rendu.
-        host.playerFor(playerId)?.attachSurface(surfaceView)
+        host.playerFor(playerId)?.attachSurface(surfaceView, frame)
     }
 
     override fun getView(): View = container

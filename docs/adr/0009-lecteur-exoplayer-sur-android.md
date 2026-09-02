@@ -145,6 +145,18 @@ C'est le seul morceau du portage vérifiable sans appareil, et il est couvert pa
 dont celui qui énonce la décision de l'ADR-0005 en une assertion : une voix seule au centre doit
 peser autant, après repli, que la même énergie seule à l'avant gauche.
 
+**Le cadrage descend au natif.** « Taille adaptative » et « taille d'origine » — le pincement du
+téléphone comme le réglage — passaient par un `BoxFit` posé sur le widget vidéo. Sur une
+`SurfaceView` ça ne fait rien du tout : Flutter ne peut pas mettre à l'échelle une couche du
+système. C'est un `AspectRatioFrameLayout` qui la dimensionne, et le rapport d'image tient compte
+des pixels non carrés — un DVD anamorphosé stocke une image plus étroite qu'elle ne s'affiche.
+
+Le cycle de vie du moteur appartient à la session, pas au contrôleur : `prepare()` et `dispose()`
+font partie du port. Sans le second, ExoPlayer gardait son décodeur, sa connexion et son audio après
+qu'on avait quitté le film — on l'entendait encore par-dessus l'écran suivant. Une méthode
+qu'aucune interface ne déclare est une méthode que personne n'appelle, et c'est exactement ce qui
+s'était passé.
+
 **Trois contraintes d'ExoPlayer ont façonné le code**, et méritent d'être connues avant d'y toucher :
 
 - Les tampons de `DefaultLoadControl` se posent à la construction et ne changent plus. Le lecteur

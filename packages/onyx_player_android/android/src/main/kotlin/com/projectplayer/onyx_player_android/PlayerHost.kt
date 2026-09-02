@@ -21,6 +21,7 @@ import androidx.media3.exoplayer.audio.AudioSink
 import androidx.media3.exoplayer.audio.DefaultAudioSink
 import androidx.media3.exoplayer.SeekParameters
 import androidx.media3.exoplayer.analytics.AnalyticsListener
+import androidx.media3.ui.AspectRatioFrameLayout
 import java.io.File
 
 /// Un lecteur ExoPlayer, et l'état que Dart en connaît.
@@ -43,6 +44,12 @@ internal class PlayerInstance(
     private var tuning: OnyxLoadTuning? = null
     private var surfaceView: SurfaceView? = null
 
+    /// Le cadre qui applique le cadrage. Flutter ne peut pas mettre une
+    /// SurfaceView à l'échelle — c'est une couche du système, pas un pixel de
+    /// la scène — donc c'est lui qui la dimensionne.
+    private var frame: AspectRatioFrameLayout? = null
+    private var fit: OnyxVideoFit = OnyxVideoFit.CONTAIN
+
     private var droppedFrames: Long = 0
     private var renderedFrames: Long = 0
 
@@ -61,7 +68,10 @@ internal class PlayerInstance(
     private val listener = object : Player.Listener {
         override fun onPlaybackStateChanged(playbackState: Int) = emit()
         override fun onIsPlayingChanged(isPlaying: Boolean) = emit()
-        override fun onVideoSizeChanged(videoSize: VideoSize) = emit()
+        override fun onVideoSizeChanged(videoSize: VideoSize) {
+            applyFit()
+            emit()
+        }
         override fun onTracksChanged(tracks: Tracks) = emit()
 
         override fun onCues(cueGroup: CueGroup) {
@@ -154,14 +164,44 @@ internal class PlayerInstance(
         return created
     }
 
-    fun attachSurface(view: SurfaceView) {
+    fun attachSurface(view: SurfaceView, frame: AspectRatioFrameLayout) {
         surfaceView = view
+        this.frame = frame
         player?.setVideoSurfaceView(view)
+        applyFit()
     }
 
     fun detachSurface() {
         surfaceView = null
+        frame = null
         player?.clearVideoSurface()
+    }
+
+    fun setVideoFit(next: OnyxVideoFit) {
+        fit = next
+        applyFit()
+    }
+
+    /// Redimensionne le cadre autour de la surface.
+    ///
+    /// Le rapport d'image tient compte des pixels non carrés : un DVD
+    /// anamorphosé stocke une image plus étroite qu'elle ne doit s'afficher, et
+    /// l'ignorer donnerait des visages allongés.
+    private fun applyFit() {
+        val f = frame ?: return
+        // `setResizeMode` n'a pas de getter : la syntaxe de propriété Kotlin
+        // ne s'applique pas, il faut l'appeler.
+        f.setResizeMode(
+            when (fit) {
+                OnyxVideoFit.COVER -> AspectRatioFrameLayout.RESIZE_MODE_ZOOM
+                OnyxVideoFit.CONTAIN -> AspectRatioFrameLayout.RESIZE_MODE_FIT
+            },
+        )
+        val size = player?.videoSize ?: return
+        if (size.width <= 0 || size.height <= 0) return
+        f.setAspectRatio(
+            size.width * size.pixelWidthHeightRatio / size.height,
+        )
     }
 
     fun applyTuning(next: OnyxLoadTuning) {
@@ -191,6 +231,19 @@ internal class PlayerInstance(
         val builder = MediaItem.Builder().setUri(url)
         externalSubtitle?.let { builder.setSubtitleConfigurations(listOf(it)) }
         return builder.build()
+    }
+
+    /// Décharge le média. Le sous-titre externe est oublié **sans** rouvrir
+    /// quoi que ce soit — le retirer en cours de lecture demande une
+    /// réouverture, mais ici il n'y a plus rien à rouvrir.
+    fun stop() {
+        externalSubtitle = null
+        subtitleFile?.delete()
+        subtitleFile = null
+        currentUrl = null
+        cues = emptyList()
+        withPlayer { it.stop() }
+        emit()
     }
 
     fun play() = withPlayer { it.play() }
@@ -442,6 +495,16 @@ internal class PlayerHost(private val context: Context) : OnyxPlayerApi {
     private val players = mutableMapOf<Long, PlayerInstance>()
     private var nextId = 1L
 
+    init {
+        // Un moteur Flutter qui repart — après un plantage du côté Dart, ou une
+        // activité recréée — construit un hôte neuf. Les lecteurs de l'ancien,
+        // eux, sont natifs : ils survivent, et continuent de jouer par-dessus
+        // une interface qui vient de se recharger. Personne d'autre ne peut les
+        // rattraper, puisque plus rien ne les référence.
+        releaseOrphans()
+        live.add(this)
+    }
+
     private val handler = Handler(Looper.getMainLooper())
     private var sink: PigeonEventSink<OnyxPlayerStatus>? = null
 
@@ -488,6 +551,7 @@ internal class PlayerHost(private val context: Context) : OnyxPlayerApi {
     override fun seekTo(playerId: Long, positionMs: Long) {
         players[playerId]?.seekTo(positionMs)
     }
+    override fun stop(playerId: Long) { players[playerId]?.stop() }
     override fun setVolume(playerId: Long, volume: Double) {
         players[playerId]?.setVolume(volume)
     }
@@ -513,6 +577,9 @@ internal class PlayerHost(private val context: Context) : OnyxPlayerApi {
     }
     override fun setExactSeek(playerId: Long, exact: Boolean) {
         players[playerId]?.setExactSeek(exact)
+    }
+    override fun setVideoFit(playerId: Long, fit: OnyxVideoFit) {
+        players[playerId]?.setVideoFit(fit)
     }
     override fun overrideDuration(playerId: Long, totalMs: Long) {
         players[playerId]?.overrideDuration(totalMs)
@@ -565,6 +632,7 @@ internal class PlayerHost(private val context: Context) : OnyxPlayerApi {
         players.values.forEach { it.release() }
         players.clear()
         sink = null
+        live.remove(this)
     }
 
     private fun emit(status: OnyxPlayerStatus) {
@@ -573,5 +641,23 @@ internal class PlayerHost(private val context: Context) : OnyxPlayerApi {
 
     private companion object {
         const val POSITION_INTERVAL_MS = 250L
+
+        /// Les hôtes encore vivants dans ce processus.
+        ///
+        /// Le seul endroit d'où l'on peut atteindre un lecteur dont le moteur
+        /// Flutter a disparu sans prévenir. Un `WeakReference` serait plus
+        /// prudent, mais le rattrapage doit être *certain* : un décodeur
+        /// oublié tient un codec matériel et continue de sortir du son.
+        val live = mutableSetOf<PlayerHost>()
+
+        fun releaseOrphans() {
+            if (live.isEmpty()) return
+            // Copiée puis vidée avant de libérer : `releaseAll` se retire
+            // lui-même de la liste, et itérer dessus pendant qu'elle change
+            // lèverait.
+            val orphans = live.toList()
+            live.clear()
+            orphans.forEach { it.releaseAll() }
+        }
     }
 }

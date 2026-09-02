@@ -102,6 +102,32 @@ class TvFocusable extends StatefulWidget {
 class _TvFocusableState extends State<TvFocusable> {
   bool _focused = false;
 
+  /// A node can arrive already holding the focus.
+  ///
+  /// `onFocusChange` reports a *change*, and there is none: the player's
+  /// settings menu moves one node from row to row as it changes section, so
+  /// the row that inherits it was built around a node that never lost the
+  /// focus. Reading the node instead of waiting to be told is what keeps the
+  /// ring from being missing on the one row that has it.
+  @override
+  void initState() {
+    super.initState();
+    _focused = widget.focusNode?.hasFocus ?? false;
+    if (_focused) _scrollIntoView();
+  }
+
+  /// Same case, one step later: the node was handed to a row that already
+  /// exists. No rebuild is needed — [didUpdateWidget] is followed by [build].
+  @override
+  void didUpdateWidget(TvFocusable oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (widget.focusNode == oldWidget.focusNode) return;
+    final focused = widget.focusNode?.hasFocus ?? false;
+    if (focused == _focused) return;
+    _focused = focused;
+    if (_focused) _scrollIntoView();
+  }
+
   void _handleFocusChange(bool focused) {
     if (_focused != focused) {
       setState(() => _focused = focused);
@@ -109,7 +135,10 @@ class _TvFocusableState extends State<TvFocusable> {
     widget.onFocusChange?.call(focused);
 
     if (!focused) return;
+    _scrollIntoView();
+  }
 
+  void _scrollIntoView() {
     // Scrolling has to wait for the frame that granted the focus: the row may
     // still be laying out (a grid that just built the cell, a page that just
     // pushed), and ensureVisible on a stale geometry scrolls to the wrong spot.

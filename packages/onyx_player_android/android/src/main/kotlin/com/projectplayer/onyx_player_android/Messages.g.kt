@@ -235,6 +235,26 @@ enum class OnyxPlayerErrorKind(val raw: Int) {
 }
 
 /**
+ * Comment l'image remplit sa surface.
+ *
+ * Une `SurfaceView` est une couche du système : Flutter ne peut pas la mettre
+ * à l'échelle, donc le cadrage se décide côté natif. C'est ce qui fait
+ * répondre le pincement et le réglage « taille adaptative » sur Android.
+ */
+enum class OnyxVideoFit(val raw: Int) {
+  /** L'image entière, avec des bandes s'il le faut. */
+  CONTAIN(0),
+  /** La surface entière, en rognant ce qui dépasse. */
+  COVER(1);
+
+  companion object {
+    fun ofRaw(raw: Int): OnyxVideoFit? {
+      return values().firstOrNull { it.raw == raw }
+    }
+  }
+}
+
+/**
  * Une piste que le moteur a énumérée.
  *
  * Generated class from Pigeon that represents data sent in messages.
@@ -554,26 +574,31 @@ private open class MessagesPigeonCodec : StandardMessageCodec() {
         }
       }
       131.toByte() -> {
-        return (readValue(buffer) as? List<Any?>)?.let {
-          OnyxTrack.fromList(it)
+        return (readValue(buffer) as Long?)?.let {
+          OnyxVideoFit.ofRaw(it.toInt())
         }
       }
       132.toByte() -> {
         return (readValue(buffer) as? List<Any?>)?.let {
-          OnyxLoadTuning.fromList(it)
+          OnyxTrack.fromList(it)
         }
       }
       133.toByte() -> {
         return (readValue(buffer) as? List<Any?>)?.let {
-          OnyxVideoSize.fromList(it)
+          OnyxLoadTuning.fromList(it)
         }
       }
       134.toByte() -> {
         return (readValue(buffer) as? List<Any?>)?.let {
-          OnyxPlayerStatus.fromList(it)
+          OnyxVideoSize.fromList(it)
         }
       }
       135.toByte() -> {
+        return (readValue(buffer) as? List<Any?>)?.let {
+          OnyxPlayerStatus.fromList(it)
+        }
+      }
+      136.toByte() -> {
         return (readValue(buffer) as? List<Any?>)?.let {
           OnyxPlaybackStats.fromList(it)
         }
@@ -591,24 +616,28 @@ private open class MessagesPigeonCodec : StandardMessageCodec() {
         stream.write(130)
         writeValue(stream, value.raw.toLong())
       }
-      is OnyxTrack -> {
+      is OnyxVideoFit -> {
         stream.write(131)
-        writeValue(stream, value.toList())
+        writeValue(stream, value.raw.toLong())
       }
-      is OnyxLoadTuning -> {
+      is OnyxTrack -> {
         stream.write(132)
         writeValue(stream, value.toList())
       }
-      is OnyxVideoSize -> {
+      is OnyxLoadTuning -> {
         stream.write(133)
         writeValue(stream, value.toList())
       }
-      is OnyxPlayerStatus -> {
+      is OnyxVideoSize -> {
         stream.write(134)
         writeValue(stream, value.toList())
       }
-      is OnyxPlaybackStats -> {
+      is OnyxPlayerStatus -> {
         stream.write(135)
+        writeValue(stream, value.toList())
+      }
+      is OnyxPlaybackStats -> {
+        stream.write(136)
         writeValue(stream, value.toList())
       }
       else -> super.writeValue(stream, value)
@@ -642,6 +671,14 @@ interface OnyxPlayerApi {
   fun play(playerId: Long)
   fun pause(playerId: Long)
   fun seekTo(playerId: Long, positionMs: Long)
+  /**
+   * Décharge le média sans détruire le lecteur.
+   *
+   * C'est ici que le décodeur matériel est rendu — l'opération la plus chère
+   * du démontage. L'appeler tôt fait qu'elle se paie pendant qu'autre chose
+   * se passe à l'écran, plutôt qu'après.
+   */
+  fun stop(playerId: Long)
   fun setVolume(playerId: Long, volume: Double)
   fun setRate(playerId: Long, rate: Double)
   /**
@@ -667,6 +704,7 @@ interface OnyxPlayerApi {
    * glisser la tête de lecture.
    */
   fun setExactSeek(playerId: Long, exact: Boolean)
+  fun setVideoFit(playerId: Long, fit: OnyxVideoFit)
   /**
    * Impose la durée totale : en transcodage, le moteur ne voit que les
    * segments déjà produits.
@@ -808,6 +846,24 @@ interface OnyxPlayerApi {
         }
       }
       run {
+        val channel = BasicMessageChannel<Any?>(binaryMessenger, "dev.flutter.pigeon.onyx_player_android.OnyxPlayerApi.stop$separatedMessageChannelSuffix", codec)
+        if (api != null) {
+          channel.setMessageHandler { message, reply ->
+            val args = message as List<Any?>
+            val playerIdArg = args[0] as Long
+            val wrapped: List<Any?> = try {
+              api.stop(playerIdArg)
+              listOf(null)
+            } catch (exception: Throwable) {
+              MessagesPigeonUtils.wrapError(exception)
+            }
+            reply.reply(wrapped)
+          }
+        } else {
+          channel.setMessageHandler(null)
+        }
+      }
+      run {
         val channel = BasicMessageChannel<Any?>(binaryMessenger, "dev.flutter.pigeon.onyx_player_android.OnyxPlayerApi.setVolume$separatedMessageChannelSuffix", codec)
         if (api != null) {
           channel.setMessageHandler { message, reply ->
@@ -932,6 +988,25 @@ interface OnyxPlayerApi {
             val exactArg = args[1] as Boolean
             val wrapped: List<Any?> = try {
               api.setExactSeek(playerIdArg, exactArg)
+              listOf(null)
+            } catch (exception: Throwable) {
+              MessagesPigeonUtils.wrapError(exception)
+            }
+            reply.reply(wrapped)
+          }
+        } else {
+          channel.setMessageHandler(null)
+        }
+      }
+      run {
+        val channel = BasicMessageChannel<Any?>(binaryMessenger, "dev.flutter.pigeon.onyx_player_android.OnyxPlayerApi.setVideoFit$separatedMessageChannelSuffix", codec)
+        if (api != null) {
+          channel.setMessageHandler { message, reply ->
+            val args = message as List<Any?>
+            val playerIdArg = args[0] as Long
+            val fitArg = args[1] as OnyxVideoFit
+            val wrapped: List<Any?> = try {
+              api.setVideoFit(playerIdArg, fitArg)
               listOf(null)
             } catch (exception: Throwable) {
               MessagesPigeonUtils.wrapError(exception)

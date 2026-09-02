@@ -18,6 +18,7 @@ import 'navigation/search_route_observer.dart';
 import 'screens/auth/login_screen.dart';
 import 'screens/auth/tv_login_screen.dart';
 import 'tv/tv_focus.dart';
+import 'tv/tv_focus_guard.dart';
 import 'tv/tv_mode.dart';
 import 'tv/tv_pairing_link.dart';
 import 'screens/player/display_frame_rate.dart';
@@ -149,62 +150,66 @@ class OnyxApp extends StatelessWidget {
       builder: (context, isTv, _) {
         return TvScope(
           isTv: isTv,
-          child: SearchOverlayScope(
-            routeObserver: searchRouteObserver,
-            navigatorKey: rootNavigatorKey,
-            child: MaterialApp(
+          // Le focus est le seul moyen d'agir avec une télécommande : s'il se
+          // perd, l'app a l'air gelée. Voir [TvFocusGuard].
+          child: TvFocusGuard(
+              child: SearchOverlayScope(
+              routeObserver: searchRouteObserver,
               navigatorKey: rootNavigatorKey,
-              title: 'Onyx',
-              debugShowCheckedModeBanner: false,
-              theme: AppTheme.dark,
-              scrollBehavior: AppScrollBehavior(),
-              navigatorObservers: [searchRouteObserver],
-              // The D-pad's centre button and a controller's A, folded into the
-              // bindings Flutter already has for Enter. Everything that was
-              // keyboard-activatable becomes remote-activatable, app-wide,
-              // without a single widget knowing about it.
-              shortcuts: <ShortcutActivator, Intent>{
-                ...WidgetsApp.defaultShortcuts,
-                ...tvSelectShortcuts,
-              },
-              builder: (context, child) {
-                return Column(
-                  children: [
-                    if (useDesktopCaptionBar)
-                      ValueListenableBuilder<bool>(
-                        valueListenable: showDesktopCaption,
-                        builder: (context, visible, _) {
-                          return Visibility(
-                            visible: visible,
-                            maintainState: false,
-                            child: const WindowCaptionBar(),
-                          );
-                        },
-                      ),
-                    Expanded(
-                      child: ColoredBox(
-                        color: AppColors.background,
-                        child: child ?? const SizedBox.shrink(),
-                      ),
-                    ),
-                  ],
-                );
-              },
-              home: Consumer<AuthProvider>(
-                builder: (context, authProvider, _) {
-                  if (authProvider.isInitializing) {
-                    return const SplashScreen();
-                  }
-                  if (!authProvider.isAuthenticated) {
-                    // A television gets the QR pairing instead of a password
-                    // form. The form is still reachable from it, for the first
-                    // account on a server and for anyone without a phone.
-                    return isTv
-                        ? const TvLoginScreen()
-                        : const LoginScreen();
-                  }
-                  return const MainShell();
+              child: MaterialApp(
+                navigatorKey: rootNavigatorKey,
+                title: 'Onyx',
+                debugShowCheckedModeBanner: false,
+                theme: AppTheme.dark,
+                scrollBehavior: AppScrollBehavior(),
+                navigatorObservers: [searchRouteObserver],
+                // The D-pad's centre button and a controller's A, folded into the
+                // bindings Flutter already has for Enter. Everything that was
+                // keyboard-activatable becomes remote-activatable, app-wide,
+                // without a single widget knowing about it.
+                shortcuts: <ShortcutActivator, Intent>{
+                  ...WidgetsApp.defaultShortcuts,
+                  ...tvSelectShortcuts,
                 },
+                builder: (context, child) {
+                  return Column(
+                    children: [
+                      if (useDesktopCaptionBar)
+                        ValueListenableBuilder<bool>(
+                          valueListenable: showDesktopCaption,
+                          builder: (context, visible, _) {
+                            return Visibility(
+                              visible: visible,
+                              maintainState: false,
+                              child: const WindowCaptionBar(),
+                            );
+                          },
+                        ),
+                      Expanded(
+                        child: ColoredBox(
+                          color: AppColors.background,
+                          child: child ?? const SizedBox.shrink(),
+                        ),
+                      ),
+                    ],
+                  );
+                },
+                home: Consumer<AuthProvider>(
+                  builder: (context, authProvider, _) {
+                    if (authProvider.isInitializing) {
+                      return const SplashScreen();
+                    }
+                    if (!authProvider.isAuthenticated) {
+                      // A television gets the QR pairing instead of a password
+                      // form. The form is still reachable from it, for the first
+                      // account on a server and for anyone without a phone.
+                      return isTv
+                          ? const TvLoginScreen()
+                          : const LoginScreen();
+                    }
+                    return const MainShell();
+                  },
+                ),
               ),
             ),
           ),
