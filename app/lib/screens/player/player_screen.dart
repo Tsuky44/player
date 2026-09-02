@@ -2,7 +2,6 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
-import 'package:media_kit_video/media_kit_video.dart';
 import '../../utils/app_platform.dart';
 import '../../utils/window_controls.dart';
 import '../../models/models.dart';
@@ -145,8 +144,6 @@ class _PlayerScreenState extends State<PlayerScreen> {
   /// Key attached to the media-info button so we can anchor the info card above it.
   final GlobalKey _mediaInfoButtonKey = GlobalKey();
 
-  /// Key to access VideoState and call update() so fit changes propagate.
-  final GlobalKey<VideoState> _videoKey = GlobalKey();
 
   /// Anchors subtitle lift to the real progress/timeline bar position.
   final GlobalKey _timelineAnchorKey = GlobalKey();
@@ -1217,7 +1214,13 @@ class _PlayerScreenState extends State<PlayerScreen> {
     // Tout de suite, pas à la destruction de l'écran : celle-ci n'arrive qu'une
     // fois l'animation de sortie terminée, et jusque-là le film continuerait de
     // s'entendre par-dessus l'écran qu'on rejoint.
-    unawaited(_playerController.session.pause());
+    //
+    // `stop` plutôt que `pause` : c'est là que le décodeur matériel est rendu,
+    // et c'est la partie chère du démontage. La payer maintenant la fait tomber
+    // pendant l'animation, au lieu de figer l'écran d'arrivée. La position et
+    // la durée envoyées au serveur sont celles que le contrôleur a en mémoire,
+    // pas celles du moteur — l'arrêter d'abord ne les perd pas.
+    unawaited(_playerController.session.stop());
     _safeSetState(() => _isLeaving = true);
     return _syncProgressOnExit(popAfter: true);
   }
@@ -1270,13 +1273,10 @@ class _PlayerScreenState extends State<PlayerScreen> {
   }
 
   void _updateVideoFit(BoxFit fit) {
+    // La surface est reconstruite avec le nouveau cadrage ; chaque moteur
+    // l'applique à sa façon — Flutter met une texture à l'échelle, la vue
+    // native se redimensionne elle-même.
     setState(() => _videoFit = fit);
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      _videoKey.currentState?.update(
-        fit: fit,
-        aspectRatio: _playerController.videoAspectRatio,
-      );
-    });
   }
 
   void _syncSubtitlePadding(BuildContext context) {
@@ -1297,7 +1297,7 @@ class _PlayerScreenState extends State<PlayerScreen> {
     if (padding == _lastSubtitlePadding) return;
     _lastSubtitlePadding = padding;
 
-    _videoKey.currentState?.setSubtitleViewPadding(
+    _playerController.session.setSubtitlePadding(
       padding,
       duration: const Duration(milliseconds: 200),
     );
@@ -1380,6 +1380,12 @@ class _PlayerScreenState extends State<PlayerScreen> {
     if (!TvMode.isTv) return;
     // After the frame — the scope has no children to offer until the entry
     // has been built at least once.
+    //
+    // The first focusable it finds is a floor, not a verdict: a menu knows
+    // better than this method where its remote belongs — the track being
+    // played, the row it was opened from — and says so from its own
+    // post-frame callback, registered during the build this one waits for and
+    // therefore running after it.
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (dismissed || !mounted || _isDisposing) return;
       _popupFocusScope.requestFocus();

@@ -123,11 +123,19 @@ class ExoPlaybackSession implements PlaybackSession {
 
   @override
   Widget buildSurface({Key? key, required BoxFit fit, double? aspectRatio}) {
-    // Le `fit` ne peut pas être appliqué par Flutter : une SurfaceView est une
-    // couche du système, pas un pixel de la scène. C'est la vue native qui se
-    // dimensionne, et le rapport d'image est celui que le décodeur annonce.
-    return _ExoSurface(key: key, ready: _ready, session: this);
+    // Le cadrage ne peut pas être posé par un widget parent : une SurfaceView
+    // est une couche du système, pas un pixel de la scène. Il descend donc au
+    // natif, où la vue se redimensionne elle-même.
+    return _ExoSurface(key: key, ready: _ready, session: this, fit: fit);
   }
+
+  /// Pousse le cadrage au natif. Appelé par la surface, qui sait quand il
+  /// change.
+  Future<void> _pushFit(BoxFit fit) => _run(
+        (p) => p.setVideoFit(
+          fit == BoxFit.cover ? OnyxVideoFit.cover : OnyxVideoFit.contain,
+        ),
+      );
 
   @override
   void setSubtitlePadding(EdgeInsets padding, {Duration duration = Duration.zero}) {
@@ -192,9 +200,10 @@ class ExoPlaybackSession implements PlaybackSession {
 
   @override
   Future<void> stop() async {
-    final p = await _ready;
-    await p.pause();
-    await p.setExternalSubtitle(null);
+    // Surtout pas `setExternalSubtitle(null)` : retirer un sous-titre externe
+    // fait rouvrir le média, ce qui est l'inverse de l'arrêter. Le natif oublie
+    // les deux d'un coup.
+    await (await _ready).stop();
   }
 
   // --- État --------------------------------------------------------------
@@ -403,10 +412,12 @@ class _ExoSurface extends StatefulWidget {
     super.key,
     required this.ready,
     required this.session,
+    required this.fit,
   });
 
   final Future<OnyxPlayer> ready;
   final ExoPlaybackSession session;
+  final BoxFit fit;
 
   @override
   State<_ExoSurface> createState() => _ExoSurfaceState();
@@ -419,8 +430,21 @@ class _ExoSurfaceState extends State<_ExoSurface> {
   void initState() {
     super.initState();
     widget.ready.then((player) {
-      if (mounted) setState(() => _playerId = player.id);
+      if (!mounted) return;
+      setState(() => _playerId = player.id);
+      widget.session._pushFit(widget.fit);
     });
+  }
+
+  @override
+  void didUpdateWidget(_ExoSurface oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    // Le pincement et le réglage « taille adaptative » passent par ici : ils
+    // reconstruisent la surface avec un autre cadrage, qu'il faut porter au
+    // natif — un `BoxFit` seul n'atteindrait pas la couche vidéo.
+    if (widget.fit != oldWidget.fit && _playerId != null) {
+      widget.session._pushFit(widget.fit);
+    }
   }
 
   @override

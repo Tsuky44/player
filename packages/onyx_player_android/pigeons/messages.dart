@@ -55,6 +55,19 @@ enum OnyxPlayerErrorKind {
   unknown,
 }
 
+/// Comment l'image remplit sa surface.
+///
+/// Une `SurfaceView` est une couche du système : Flutter ne peut pas la mettre
+/// à l'échelle, donc le cadrage se décide côté natif. C'est ce qui fait
+/// répondre le pincement et le réglage « taille adaptative » sur Android.
+enum OnyxVideoFit {
+  /// L'image entière, avec des bandes s'il le faut.
+  contain,
+
+  /// La surface entière, en rognant ce qui dépasse.
+  cover,
+}
+
 /// Une piste que le moteur a énumérée.
 class OnyxTrack {
   OnyxTrack({required this.id, this.title, this.language});
@@ -186,6 +199,13 @@ abstract class OnyxPlayerApi {
 
   void seekTo(int playerId, int positionMs);
 
+  /// Décharge le média sans détruire le lecteur.
+  ///
+  /// C'est ici que le décodeur matériel est rendu — l'opération la plus chère
+  /// du démontage. L'appeler tôt fait qu'elle se paie pendant qu'autre chose
+  /// se passe à l'écran, plutôt qu'après.
+  void stop(int playerId);
+
   void setVolume(int playerId, double volume);
 
   void setRate(int playerId, double rate);
@@ -214,6 +234,8 @@ abstract class OnyxPlayerApi {
   /// Cherche à l'image près, ou au point-clé le plus proche pendant qu'on fait
   /// glisser la tête de lecture.
   void setExactSeek(int playerId, bool exact);
+
+  void setVideoFit(int playerId, OnyxVideoFit fit);
 
   /// Impose la durée totale : en transcodage, le moteur ne voit que les
   /// segments déjà produits.

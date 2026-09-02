@@ -113,3 +113,47 @@ Deux détails que la migration a fait sortir :
 
 La règle générale, pour la prochaine fois : **sur un téléviseur, rien qui ouvre une surface plein
 écran ne doit le faire au passage du focus.** Seule une activation explicite peut le déclencher.
+
+## Amendement (2026-09-02) — un focus perdu est une app gelée
+
+Sur un téléviseur, tout passe par le focus. S'il n'est nulle part, la télécommande ne fait plus
+rien du tout, et l'écran a l'air planté alors qu'il va très bien.
+
+Flutter n'a pas de filet pour ça : quand le widget focalisé disparaît, le focus remonte au
+conteneur le plus proche et s'y arrête — état dans lequel les flèches sont sans effet. Or les
+listes de cette app se rafraîchissent sous les pieds de l'utilisateur : **revenir d'un film
+recharge l'accueil**, ce qui reconstruit « Reprendre la lecture » et détruit la vignette qui avait
+le focus.
+
+`TvFocusGuard`, posé à la racine, constate qu'aucun élément actionnable ne détient le focus et le
+repose sur le premier atteignable. Le critère est simple : un `FocusScopeNode` qui détient le focus
+principal signifie « le focus est entré ici mais ne s'est posé sur rien ».
+
+La règle, à ajouter à celle des surfaces plein écran : **sur un téléviseur, aucune reconstruction
+ne doit pouvoir laisser le focus nulle part.** Ce n'est pas au code qui rafraîchit une liste d'y
+penser — il ne sait pas ce qui était focalisé — c'est au garde-fou.
+
+## Amendement (2026-09-02) — un focus invisible est un focus absent
+
+Le menu de réglages du chrome Emby s'ouvrait bien à la télécommande, et les flèches y déplaçaient
+bel et bien le focus. Rien ne le montrait. Ses lignes étaient des `InkWell`, dont le halo est peint
+par le `Material` englobant — donc **sous** le fond opaque du panneau. Anneau, survol, ondulation :
+tout atterrissait derrière, et l'utilisateur voyait un menu figé sur lequel OK déclenchait une
+ligne qu'il n'avait pas choisie. « Je peux ouvrir Audio mais je ne peux pas me balader dedans. »
+
+La règle de cet ADR ne portait que sur le chrome. Elle vaut partout : **ce que la télécommande
+tient doit se voir, sur chaque surface qu'elle peut atteindre** — un menu, un panneau, une liste.
+Un focus qu'on ne voit pas ne vaut pas mieux qu'un focus perdu (amendement précédent) : dans les
+deux cas l'écran ne dit pas ce que fera la touche suivante.
+
+Trois conséquences dans le menu :
+
+1. Les lignes passent par `TvFocusable` et peignent leur propre remplissage, au-dessus du fond.
+2. La télécommande arrive sur **la valeur en cours** — la langue jouée, pas la première ligne — et
+   retrouve, en revenant à l'index, la ligne d'où elle était partie.
+3. Retour et flèche gauche remontent d'un cran dans le menu au lieu de le fermer entièrement.
+
+Un piège qui vaut pour tout l'app : `onFocusChange` annonce un *changement*. Un nœud déplacé d'une
+ligne à l'autre — ce que fait le menu en changeant de section — arrive déjà focalisé, et la
+nouvelle ligne n'est jamais prévenue. `TvFocusable` lit donc l'état du nœud à la construction, au
+lieu d'attendre qu'on le lui dise.

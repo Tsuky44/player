@@ -8,6 +8,7 @@ export 'messages.g.dart'
         OnyxPlayerErrorKind,
         OnyxPlayerStatus,
         OnyxTrack,
+        OnyxVideoFit,
         OnyxVideoSize;
 
 /// Un lecteur ExoPlayer, vu de Dart.
@@ -96,6 +97,10 @@ class OnyxPlayer {
 
   Future<void> setExactSeek(bool exact) => _api.setExactSeek(_id, exact);
 
+  /// Le cadrage est appliqué par la vue native : Flutter ne peut pas mettre
+  /// une `SurfaceView` à l'échelle.
+  Future<void> setVideoFit(OnyxVideoFit fit) => _api.setVideoFit(_id, fit);
+
   Future<void> overrideDuration(Duration total) =>
       _api.overrideDuration(_id, total.inMilliseconds);
 
@@ -108,6 +113,10 @@ class OnyxPlayer {
 
   Future<void> seekTo(Duration position) =>
       _api.seekTo(_id, position.inMilliseconds);
+
+  /// Décharge le média sans détruire le lecteur — et rend le décodeur, qui est
+  /// la partie chère du démontage.
+  Future<void> stop() => _api.stop(_id);
 
   /// L'état à cet instant, pour s'amorcer sans attendre le premier événement.
   Future<OnyxPlayerStatus> status() => _api.status(_id);

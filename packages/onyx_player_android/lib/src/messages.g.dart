@@ -123,6 +123,18 @@ enum OnyxPlayerErrorKind {
   unknown,
 }
 
+/// Comment l'image remplit sa surface.
+///
+/// Une `SurfaceView` est une couche du système : Flutter ne peut pas la mettre
+/// à l'échelle, donc le cadrage se décide côté natif. C'est ce qui fait
+/// répondre le pincement et le réglage « taille adaptative » sur Android.
+enum OnyxVideoFit {
+  /// L'image entière, avec des bandes s'il le faut.
+  contain,
+  /// La surface entière, en rognant ce qui dépasse.
+  cover,
+}
+
 /// Une piste que le moteur a énumérée.
 class OnyxTrack {
   OnyxTrack({
@@ -486,20 +498,23 @@ class _PigeonCodec extends StandardMessageCodec {
     }    else if (value is OnyxPlayerErrorKind) {
       buffer.putUint8(130);
       writeValue(buffer, value.index);
-    }    else if (value is OnyxTrack) {
+    }    else if (value is OnyxVideoFit) {
       buffer.putUint8(131);
-      writeValue(buffer, value.encode());
-    }    else if (value is OnyxLoadTuning) {
+      writeValue(buffer, value.index);
+    }    else if (value is OnyxTrack) {
       buffer.putUint8(132);
       writeValue(buffer, value.encode());
-    }    else if (value is OnyxVideoSize) {
+    }    else if (value is OnyxLoadTuning) {
       buffer.putUint8(133);
       writeValue(buffer, value.encode());
-    }    else if (value is OnyxPlayerStatus) {
+    }    else if (value is OnyxVideoSize) {
       buffer.putUint8(134);
       writeValue(buffer, value.encode());
-    }    else if (value is OnyxPlaybackStats) {
+    }    else if (value is OnyxPlayerStatus) {
       buffer.putUint8(135);
+      writeValue(buffer, value.encode());
+    }    else if (value is OnyxPlaybackStats) {
+      buffer.putUint8(136);
       writeValue(buffer, value.encode());
     } else {
       super.writeValue(buffer, value);
@@ -516,14 +531,17 @@ class _PigeonCodec extends StandardMessageCodec {
         final value = readValue(buffer) as int?;
         return value == null ? null : OnyxPlayerErrorKind.values[value];
       case 131:
-        return OnyxTrack.decode(readValue(buffer)!);
+        final value = readValue(buffer) as int?;
+        return value == null ? null : OnyxVideoFit.values[value];
       case 132:
-        return OnyxLoadTuning.decode(readValue(buffer)!);
+        return OnyxTrack.decode(readValue(buffer)!);
       case 133:
-        return OnyxVideoSize.decode(readValue(buffer)!);
+        return OnyxLoadTuning.decode(readValue(buffer)!);
       case 134:
-        return OnyxPlayerStatus.decode(readValue(buffer)!);
+        return OnyxVideoSize.decode(readValue(buffer)!);
       case 135:
+        return OnyxPlayerStatus.decode(readValue(buffer)!);
+      case 136:
         return OnyxPlaybackStats.decode(readValue(buffer)!);
       default:
         return super.readValueOfType(type, buffer);
@@ -665,6 +683,29 @@ class OnyxPlayerApi {
     ;
   }
 
+  /// Décharge le média sans détruire le lecteur.
+  ///
+  /// C'est ici que le décodeur matériel est rendu — l'opération la plus chère
+  /// du démontage. L'appeler tôt fait qu'elle se paie pendant qu'autre chose
+  /// se passe à l'écran, plutôt qu'après.
+  Future<void> stop(int playerId) async {
+    final pigeonVar_channelName = 'dev.flutter.pigeon.onyx_player_android.OnyxPlayerApi.stop$pigeonVar_messageChannelSuffix';
+    final pigeonVar_channel = BasicMessageChannel<Object?>(
+      pigeonVar_channelName,
+      pigeonChannelCodec,
+      binaryMessenger: pigeonVar_binaryMessenger,
+    );
+    final Future<Object?> pigeonVar_sendFuture = pigeonVar_channel.send(<Object?>[playerId]);
+    final pigeonVar_replyList = await pigeonVar_sendFuture as List<Object?>?;
+
+    _extractReplyValueOrThrow(
+        pigeonVar_replyList,
+        pigeonVar_channelName,
+        isNullValid: true,
+    )
+    ;
+  }
+
   Future<void> setVolume(int playerId, double volume) async {
     final pigeonVar_channelName = 'dev.flutter.pigeon.onyx_player_android.OnyxPlayerApi.setVolume$pigeonVar_messageChannelSuffix';
     final pigeonVar_channel = BasicMessageChannel<Object?>(
@@ -791,6 +832,24 @@ class OnyxPlayerApi {
       binaryMessenger: pigeonVar_binaryMessenger,
     );
     final Future<Object?> pigeonVar_sendFuture = pigeonVar_channel.send(<Object?>[playerId, exact]);
+    final pigeonVar_replyList = await pigeonVar_sendFuture as List<Object?>?;
+
+    _extractReplyValueOrThrow(
+        pigeonVar_replyList,
+        pigeonVar_channelName,
+        isNullValid: true,
+    )
+    ;
+  }
+
+  Future<void> setVideoFit(int playerId, OnyxVideoFit fit) async {
+    final pigeonVar_channelName = 'dev.flutter.pigeon.onyx_player_android.OnyxPlayerApi.setVideoFit$pigeonVar_messageChannelSuffix';
+    final pigeonVar_channel = BasicMessageChannel<Object?>(
+      pigeonVar_channelName,
+      pigeonChannelCodec,
+      binaryMessenger: pigeonVar_binaryMessenger,
+    );
+    final Future<Object?> pigeonVar_sendFuture = pigeonVar_channel.send(<Object?>[playerId, fit]);
     final pigeonVar_replyList = await pigeonVar_sendFuture as List<Object?>?;
 
     _extractReplyValueOrThrow(

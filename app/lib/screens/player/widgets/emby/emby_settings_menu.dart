@@ -1,9 +1,12 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import '../../playback/playback_session.dart';
 
 import '../../../../models/models.dart';
+import '../../../../tv/tv_focus.dart';
+import '../../../../tv/tv_mode.dart';
 import '../../../../utils/app_platform.dart';
 import '../../hooks/use_episode_navigation.dart';
 import '../../hooks/use_player_controller.dart';
@@ -71,6 +74,18 @@ class _EmbySettingsMenuState extends State<EmbySettingsMenu> {
   late BoxFit _fit;
   StreamSubscription<void>? _tracksSubscription;
 
+  /// Where the remote lands on the list currently shown: the value already in
+  /// force inside a section, the row it came back from on the index.
+  ///
+  /// One node moved from row to row on every section change, rather than an
+  /// `autofocus` on each: two rows claiming the entry point is a ring that
+  /// jumps.
+  final FocusNode _entryNode = FocusNode(debugLabel: 'emby-menu-entry');
+
+  /// The section just left, so the index puts the ring back on its row instead
+  /// of dropping the user at the top of the list.
+  EmbyMenuSection? _returnedFrom;
+
   PlayerController? get _controller => widget.playerController;
 
   @override
@@ -81,12 +96,71 @@ class _EmbySettingsMenuState extends State<EmbySettingsMenu> {
     _tracksSubscription = _controller?.tracksStream.listen((_) {
       if (mounted) setState(() {});
     });
+    _focusEntryAfterBuild();
   }
 
   @override
   void dispose() {
     _tracksSubscription?.cancel();
+    _entryNode.dispose();
     super.dispose();
+  }
+
+  // --- Remote navigation ---------------------------------------------------
+
+  /// Puts the remote on the entry point of the list now showing.
+  ///
+  /// After the frame: the list has just been replaced, and [_entryNode] is
+  /// attached to a row only once that row is built. Waiting is also what makes
+  /// this choice win over the popup's generic "focus the first thing you find"
+  /// — on a track list the ring belongs on the language being played, not on
+  /// whatever happens to be at the top.
+  void _focusEntryAfterBuild() {
+    // Off a television nobody asked for the focus, and taking it would paint a
+    // ring neither the pointer nor a finger called for.
+    if (!TvMode.isTv) return;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) _entryNode.requestFocus();
+    });
+  }
+
+  void _openSection(EmbyMenuSection section) {
+    setState(() => _section = section);
+    _focusEntryAfterBuild();
+  }
+
+  void _backToRoot() {
+    setState(() {
+      _returnedFrom = _section;
+      _section = EmbyMenuSection.root;
+    });
+    _focusEntryAfterBuild();
+  }
+
+  /// The index row the remote lands on.
+  EmbyMenuSection get _rootEntry =>
+      _returnedFrom ??
+      (_hasQuality ? EmbyMenuSection.quality : EmbyMenuSection.audio);
+
+  /// Back and left go up one level instead of closing everything.
+  ///
+  /// The menu shows a hierarchy — an index, a section — and the remote has to
+  /// be able to climb it the same way it came down. On the index the key is
+  /// left alone: it reaches the popup, which closes the menu, and that is the
+  /// right next step up.
+  KeyEventResult _handleMenuKey(FocusNode node, KeyEvent event) {
+    if (event is! KeyDownEvent) return KeyEventResult.ignored;
+    if (_section == EmbyMenuSection.root) return KeyEventResult.ignored;
+
+    final key = event.logicalKey;
+    if (key == LogicalKeyboardKey.escape ||
+        key == LogicalKeyboardKey.goBack ||
+        key == LogicalKeyboardKey.browserBack ||
+        key == LogicalKeyboardKey.arrowLeft) {
+      _backToRoot();
+      return KeyEventResult.handled;
+    }
+    return KeyEventResult.ignored;
   }
 
   // --- Section availability ------------------------------------------------
@@ -163,36 +237,43 @@ class _EmbySettingsMenuState extends State<EmbySettingsMenu> {
 
   @override
   Widget build(BuildContext context) {
-    return Material(
-      color: Colors.transparent,
-      child: Container(
-        width: EmbySettingsMenu.width,
-        decoration: BoxDecoration(
-          // Flat surface, no blur: this chrome renders no glass anywhere.
-          color: EmbyChromeTheme.tooltipSurface,
-          borderRadius: BorderRadius.circular(10),
-          border: Border.all(color: Colors.white.withValues(alpha: 0.1)),
-          boxShadow: [
-            BoxShadow(
-              color: Colors.black.withValues(alpha: 0.5),
-              blurRadius: 32,
-              offset: const Offset(0, 12),
+    return Focus(
+      // Never a destination itself: this node is here only to see the keys
+      // travelling up from the focused row.
+      canRequestFocus: false,
+      skipTraversal: true,
+      onKeyEvent: _handleMenuKey,
+      child: Material(
+        color: Colors.transparent,
+        child: Container(
+          width: EmbySettingsMenu.width,
+          decoration: BoxDecoration(
+            // Flat surface, no blur: this chrome renders no glass anywhere.
+            color: EmbyChromeTheme.tooltipSurface,
+            borderRadius: BorderRadius.circular(10),
+            border: Border.all(color: Colors.white.withValues(alpha: 0.1)),
+            boxShadow: [
+              BoxShadow(
+                color: Colors.black.withValues(alpha: 0.5),
+                blurRadius: 32,
+                offset: const Offset(0, 12),
+              ),
+            ],
+          ),
+          // Height follows the visible section, so leaving a 12-chapter list
+          // for "Affichage" shrinks the menu instead of leaving a hole.
+          child: AnimatedSize(
+            duration: const Duration(milliseconds: 160),
+            curve: Curves.easeOut,
+            alignment: Alignment.topCenter,
+            child: ConstrainedBox(
+              constraints: const BoxConstraints(
+                maxHeight: EmbySettingsMenu.maxHeight,
+              ),
+              child: _section == EmbyMenuSection.root
+                  ? _buildRoot()
+                  : _buildSection(),
             ),
-          ],
-        ),
-        // Height follows the visible section, so leaving a 12-chapter list for
-        // "Affichage" shrinks the menu instead of leaving a hole.
-        child: AnimatedSize(
-          duration: const Duration(milliseconds: 160),
-          curve: Curves.easeOut,
-          alignment: Alignment.topCenter,
-          child: ConstrainedBox(
-            constraints: const BoxConstraints(
-              maxHeight: EmbySettingsMenu.maxHeight,
-            ),
-            child: _section == EmbyMenuSection.root
-                ? _buildRoot()
-                : _buildSection(),
           ),
         ),
       ),
@@ -200,41 +281,30 @@ class _EmbySettingsMenuState extends State<EmbySettingsMenu> {
   }
 
   Widget _buildRoot() {
+    Widget row(EmbyMenuSection section, String label, String value) {
+      return _EmbyMenuRow(
+        label: label,
+        value: value,
+        focusNode: _rootEntry == section ? _entryNode : null,
+        onTap: () => _openSection(section),
+      );
+    }
+
     return ListView(
       shrinkWrap: true,
       padding: const EdgeInsets.symmetric(vertical: 6),
       children: [
         if (_hasQuality)
-          _EmbyMenuRow(
-            label: 'Qualité',
-            value: _qualityValue,
-            onTap: () => setState(() => _section = EmbyMenuSection.quality),
-          ),
-        _EmbyMenuRow(
-          label: 'Audio',
-          value: _audioValue,
-          onTap: () => setState(() => _section = EmbyMenuSection.audio),
-        ),
-        _EmbyMenuRow(
-          label: 'Sous-titres',
-          value: _subtitlesValue,
-          onTap: () => setState(() => _section = EmbyMenuSection.subtitles),
-        ),
-        _EmbyMenuRow(
-          label: 'Vitesse de lecture',
-          value: _speedValue,
-          onTap: () => setState(() => _section = EmbyMenuSection.speed),
-        ),
-        _EmbyMenuRow(
-          label: 'Affichage',
-          value: _displayValue,
-          onTap: () => setState(() => _section = EmbyMenuSection.display),
-        ),
+          row(EmbyMenuSection.quality, 'Qualité', _qualityValue),
+        row(EmbyMenuSection.audio, 'Audio', _audioValue),
+        row(EmbyMenuSection.subtitles, 'Sous-titres', _subtitlesValue),
+        row(EmbyMenuSection.speed, 'Vitesse de lecture', _speedValue),
+        row(EmbyMenuSection.display, 'Affichage', _displayValue),
         if (_hasChapters)
-          _EmbyMenuRow(
-            label: 'Chapitres',
-            value: '${widget.episodeNav!.chapters.length}',
-            onTap: () => setState(() => _section = EmbyMenuSection.chapters),
+          row(
+            EmbyMenuSection.chapters,
+            'Chapitres',
+            '${widget.episodeNav!.chapters.length}',
           ),
       ],
     );
@@ -254,20 +324,30 @@ class _EmbySettingsMenuState extends State<EmbySettingsMenu> {
     return Column(
       mainAxisSize: MainAxisSize.min,
       children: [
-        _EmbyMenuBackHeader(
-          title: title,
-          onBack: () => setState(() => _section = EmbyMenuSection.root),
-        ),
+        _EmbyMenuBackHeader(title: title, onBack: _backToRoot),
         Flexible(child: body),
       ],
     );
   }
 
-  Widget _sectionList(List<Widget> children) => ListView(
-        shrinkWrap: true,
-        padding: const EdgeInsets.only(bottom: 6),
-        children: children,
-      );
+  /// Lays out a section and decides which of its rows the remote arrives on.
+  ///
+  /// The option already in force, so opening "Audio" outlines the language
+  /// being played and the next press moves from there. A list with nothing
+  /// selected — the chapters — hands it to the first row.
+  Widget _sectionList(List<_EmbyMenuOption> options) {
+    final selected = options.indexWhere((option) => option.selected);
+    final entry = selected < 0 ? 0 : selected;
+
+    return ListView(
+      shrinkWrap: true,
+      padding: const EdgeInsets.only(bottom: 6),
+      children: [
+        for (var i = 0; i < options.length; i++)
+          options[i].withFocusNode(i == entry ? _entryNode : null),
+      ],
+    );
+  }
 
   // --- Sections ------------------------------------------------------------
 
@@ -430,21 +510,24 @@ class _EmbySettingsMenuState extends State<EmbySettingsMenu> {
         label: 'Original',
         subtitle: 'Conserve les proportions',
         selected: _fit == BoxFit.contain,
-        onTap: () {
-          setState(() => _fit = BoxFit.contain);
-          widget.onFitChanged(BoxFit.contain);
-        },
+        onTap: () => _setFit(BoxFit.contain),
       ),
       _EmbyMenuOption(
         label: 'Adaptatif',
         subtitle: "Remplit l'écran, coupe les bords",
         selected: _fit == BoxFit.cover,
-        onTap: () {
-          setState(() => _fit = BoxFit.cover);
-          widget.onFitChanged(BoxFit.cover);
-        },
+        onTap: () => _setFit(BoxFit.cover),
       ),
     ]);
+  }
+
+  /// The one section that stays open after a choice, so the ring has to follow
+  /// it: the entry node has just moved to the other row, and without this the
+  /// focus would be left on a row that no longer holds it.
+  void _setFit(BoxFit fit) {
+    setState(() => _fit = fit);
+    widget.onFitChanged(fit);
+    _focusEntryAfterBuild();
   }
 
   Widget _buildChapters() {
@@ -468,22 +551,109 @@ class _EmbySettingsMenuState extends State<EmbySettingsMenu> {
 
 // --- Rows ------------------------------------------------------------------
 
+/// What makes a row reachable by a remote, and — the whole point — visible.
+///
+/// These rows used to be [InkWell]s. A remote could already walk them: the
+/// arrows moved the focus exactly as they should. What it could not do is
+/// *show* it. An ink highlight is painted by the enclosing [Material], which
+/// here sits above the panel's own opaque background — so every ring, splash
+/// and hover tint landed underneath it and never reached the screen. A menu
+/// where nothing lights up is a menu a remote cannot be driven through, and it
+/// reads from the sofa as an app that has stopped answering.
+///
+/// So the focus is drawn here instead, over the row: the accent ring
+/// [TvFocusable] paints everywhere else in the app, plus a fill that carries
+/// from three metres away. The pointer gets its own, quieter tint — it had
+/// lost its hover state to the same burial.
+class _EmbyMenuTile extends StatefulWidget {
+  final Widget child;
+  final VoidCallback onTap;
+
+  /// Supplied for the one row the remote is sent to on arrival.
+  final FocusNode? focusNode;
+
+  const _EmbyMenuTile({
+    required this.child,
+    required this.onTap,
+    this.focusNode,
+  });
+
+  @override
+  State<_EmbyMenuTile> createState() => _EmbyMenuTileState();
+}
+
+class _EmbyMenuTileState extends State<_EmbyMenuTile> {
+  bool _hovered = false;
+
+  @override
+  Widget build(BuildContext context) {
+    return TvFocusable(
+      focusNode: widget.focusNode,
+      onSelect: widget.onTap,
+      borderRadius: BorderRadius.circular(6),
+      // Rows touch each other: growing one would climb over its neighbour.
+      focusScale: 1.0,
+      // A long list — twelve chapters — reads better with the outlined row
+      // near the top than pinned to the middle.
+      scrollAlignment: 0.3,
+      child: MouseRegion(
+        cursor: SystemMouseCursors.click,
+        onEnter: (_) => setState(() => _hovered = true),
+        onExit: (_) => setState(() => _hovered = false),
+        child: GestureDetector(
+          behavior: HitTestBehavior.opaque,
+          onTap: widget.onTap,
+          // Read from the tree rather than kept in a flag of our own: the menu
+          // hands one node from row to row as it changes section, so a row can
+          // be built around a node that already holds the focus — and nothing
+          // would ever announce a change that never happened.
+          child: Builder(
+            builder: (context) {
+              final focused = Focus.of(context).hasFocus;
+              return DecoratedBox(
+                decoration: BoxDecoration(
+                  borderRadius: BorderRadius.circular(6),
+                  color: focused
+                      ? _focusFill
+                      : _hovered
+                          ? _hoverFill
+                          : Colors.transparent,
+                ),
+                child: widget.child,
+              );
+            },
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+/// Reads from three metres away, on a surface that is already almost black.
+final Color _focusFill = Colors.white.withValues(alpha: 0.14);
+
+/// The pointer gets the quieter half of the same treatment.
+final Color _hoverFill = Colors.white.withValues(alpha: 0.07);
+
 /// Index row: what the setting is on, without opening it.
 class _EmbyMenuRow extends StatelessWidget {
   final String label;
   final String value;
   final VoidCallback onTap;
+  final FocusNode? focusNode;
 
   const _EmbyMenuRow({
     required this.label,
     required this.value,
     required this.onTap,
+    this.focusNode,
   });
 
   @override
   Widget build(BuildContext context) {
-    return InkWell(
+    return _EmbyMenuTile(
       onTap: onTap,
+      focusNode: focusNode,
       child: Container(
         height: 44,
         padding: const EdgeInsets.symmetric(horizontal: 16),
@@ -533,6 +703,7 @@ class _EmbyMenuOption extends StatelessWidget {
   final String? badge;
   final bool selected;
   final VoidCallback onTap;
+  final FocusNode? focusNode;
 
   const _EmbyMenuOption({
     required this.label,
@@ -541,12 +712,27 @@ class _EmbyMenuOption extends StatelessWidget {
     this.subtitle,
     this.value,
     this.badge,
+    this.focusNode,
   });
+
+  /// The entry node is placed by the list, which is the only thing that knows
+  /// which option is the current one — the sections build their rows without
+  /// looking at each other.
+  _EmbyMenuOption withFocusNode(FocusNode? node) => _EmbyMenuOption(
+        label: label,
+        selected: selected,
+        onTap: onTap,
+        subtitle: subtitle,
+        value: value,
+        badge: badge,
+        focusNode: node,
+      );
 
   @override
   Widget build(BuildContext context) {
-    return InkWell(
+    return _EmbyMenuTile(
       onTap: onTap,
+      focusNode: focusNode,
       child: Container(
         constraints: const BoxConstraints(minHeight: 44),
         padding: const EdgeInsets.fromLTRB(12, 8, 16, 8),
@@ -627,7 +813,7 @@ class _EmbyMenuBackHeader extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return InkWell(
+    return _EmbyMenuTile(
       onTap: onBack,
       child: Container(
         height: 44,
