@@ -2,7 +2,7 @@ import 'dart:async';
 
 import 'package:flutter/material.dart';
 import 'package:flutter_animate/flutter_animate.dart';
-import 'package:media_kit/media_kit.dart' as mk;
+import '../playback/playback_session.dart';
 
 import '../../../models/models.dart';
 import '../../../services/playback_preferences_storage.dart';
@@ -14,7 +14,7 @@ import 'chapters_debug_panel.dart';
 import 'player_settings_ui.dart';
 
 class SettingsMenu extends StatefulWidget {
-  final mk.Player player;
+  final PlaybackSession session;
   final VoidCallback onClose;
   final BoxFit currentFit;
   final ValueChanged<BoxFit> onFitChanged;
@@ -24,7 +24,7 @@ class SettingsMenu extends StatefulWidget {
 
   const SettingsMenu({
     super.key,
-    required this.player,
+    required this.session,
     required this.onClose,
     required this.currentFit,
     required this.onFitChanged,
@@ -76,13 +76,13 @@ class _SettingsMenuState extends State<SettingsMenu> {
     super.dispose();
   }
 
-  String _audioTrackName(mk.AudioTrack track, int index) {
+  String _audioTrackName(PlaybackTrack track, int index) {
     if (track.id == 'no') return 'Désactivé';
     return track.title ??
         (track.language != null ? 'Audio (${track.language})' : 'Audio ${index + 1}');
   }
 
-  String _subtitleTrackName(mk.SubtitleTrack track, int index) {
+  String _subtitleTrackName(PlaybackTrack track, int index) {
     if (track.id == 'no') return 'Désactivés';
     return track.title ??
         (track.language != null ? 'Sous-titre (${track.language})' : 'Sous-titre ${index + 1}');
@@ -102,9 +102,9 @@ class _SettingsMenuState extends State<SettingsMenu> {
 
   @override
   Widget build(BuildContext context) {
-    final tracks = widget.player.state.tracks;
-    final currentAudio = widget.player.state.track.audio;
-    final currentSubtitle = widget.player.state.track.subtitle;
+
+    final currentAudio = widget.session.currentAudioTrack;
+    final currentSubtitle = widget.session.currentSubtitleTrack;
     final controller = widget.playerController;
     final mediaTracks = controller?.mediaTracks;
 
@@ -125,19 +125,20 @@ class _SettingsMenuState extends State<SettingsMenu> {
               (controller != null && mediaTracks != null && mediaTracks.audio.isNotEmpty)
                   ? _buildCanonicalAudioList(mediaTracks.audio, controller)
                   : _buildTrackList(
-                      tracks.audio,
+                      widget.session.audioTracks,
                       currentAudio,
-                      (track) => _audioTrackName(track, tracks.audio.indexOf(track)),
-                      (track) => widget.player.setAudioTrack(track),
+                      (track) => _audioTrackName(track, widget.session.audioTracks.indexOf(track)),
+                      (track) => widget.session.setAudioTrack(track),
                     ),
               (controller != null && mediaTracks != null)
                   ? _buildSubtitleTab(mediaTracks.subtitles, controller)
                   : _buildTrackList(
-                      tracks.subtitle,
+                      widget.session.subtitleTracks,
                       currentSubtitle,
                       (track) =>
-                          _subtitleTrackName(track, tracks.subtitle.indexOf(track)),
-                      (track) => widget.player.setSubtitleTrack(track),
+                          _subtitleTrackName(track, widget.session.subtitleTracks.indexOf(track)),
+                      (track) => widget.session.setSubtitles(
+                        SubtitleSelection.track(track)),
                     ),
               _buildDisplayOptions(),
               if (_hasChaptersTab)
@@ -346,10 +347,10 @@ class _SettingsMenuState extends State<SettingsMenu> {
   }
 
   Widget _buildInternalSubtitleList(PlayerController controller) {
-    final subs = widget.player.state.tracks.subtitle
+    final subs = widget.session.subtitleTracks
         .where((t) => t.id != 'auto')
         .toList();
-    final current = widget.player.state.track.subtitle;
+    final current = widget.session.currentSubtitleTrack;
     return _buildTrackList(
       subs,
       current,

@@ -1,13 +1,13 @@
 import 'dart:ui';
 import 'package:flutter/material.dart';
-import 'package:media_kit/media_kit.dart' as mk;
+import '../playback/playback_session.dart';
 import '../hooks/use_player_controller.dart';
 import '../hooks/use_episode_navigation.dart';
 import 'settings_menu.dart';
 import 'player_settings_anchor.dart';
 
 class TopRightControls extends StatefulWidget {
-  final mk.Player player;
+  final PlaybackSession session;
   final BoxFit currentFit;
   final ValueChanged<BoxFit> onFitChanged;
   final PlayerController? playerController;
@@ -16,7 +16,7 @@ class TopRightControls extends StatefulWidget {
 
   const TopRightControls({
     super.key,
-    required this.player,
+    required this.session,
     required this.currentFit,
     required this.onFitChanged,
     this.playerController,
@@ -43,7 +43,7 @@ class _TopRightControlsState extends State<TopRightControls> {
 
   @override
   Widget build(BuildContext context) {
-    final volume = widget.player.state.volume;
+    final volume = widget.session.volume;
     final isMuted = volume <= 0;
 
     return Stack(
@@ -114,9 +114,9 @@ class _TopRightControlsState extends State<TopRightControls> {
                         child: InkWell(
                           onTap: () {
                             if (isMuted) {
-                              widget.player.setVolume(100);
+                              widget.session.setVolume(100);
                             } else {
-                              widget.player.setVolume(0);
+                              widget.session.setVolume(0);
                             }
                             setState(() {});
                           },
@@ -155,7 +155,7 @@ class _TopRightControlsState extends State<TopRightControls> {
                                 min: 0,
                                 max: 100,
                                 onChanged: (v) {
-                                  widget.player.setVolume(v);
+                                  widget.session.setVolume(v);
                                   setState(() {});
                                 },
                               ),
@@ -203,7 +203,7 @@ class _TopRightControlsState extends State<TopRightControls> {
                 bottom: vertical.bottom,
                 top: vertical.top,
                 child: SettingsMenu(
-                  player: widget.player,
+                  session: widget.session,
                   onClose: _closeSettings,
                   currentFit: widget.currentFit,
                   onFitChanged: widget.onFitChanged,

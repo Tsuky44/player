@@ -2,10 +2,12 @@ import 'messages.g.dart';
 
 export 'messages.g.dart'
     show
+        OnyxLoadTuning,
         OnyxPlaybackState,
         OnyxPlaybackStats,
         OnyxPlayerErrorKind,
         OnyxPlayerStatus,
+        OnyxTrack,
         OnyxVideoSize;
 
 /// Un lecteur ExoPlayer, vu de Dart.
@@ -36,6 +38,13 @@ class OnyxPlayer {
 
   bool _released = false;
 
+  /// Ce que la puce sait décoder en audio.
+  ///
+  /// mpv décodait tout en logiciel ; ExoPlayer dépend de MediaCodec. Demandé
+  /// une fois, pour trancher lecture directe ou transcodage avant d'ouvrir.
+  static Future<List<String>> decodableAudioMimeTypes() =>
+      OnyxPlayerApi().decodableAudioMimeTypes();
+
   /// Crée le lecteur natif. Rien n'est chargé tant qu'[open] n'est pas appelé.
   static Future<OnyxPlayer> create() async {
     final api = OnyxPlayerApi();
@@ -55,9 +64,43 @@ class OnyxPlayer {
       _nativeStatuses().where((status) => status.playerId == _id);
 
   /// Charge [url] en se positionnant à [startPosition] dans le même geste.
-  Future<void> open(String url, {Duration startPosition = Duration.zero}) {
-    return _api.open(_id, url, startPosition.inMilliseconds);
+  Future<void> open(
+    String url, {
+    Duration startPosition = Duration.zero,
+    bool play = false,
+  }) {
+    return _api.open(_id, url, startPosition.inMilliseconds, play);
   }
+
+  Future<void> setVolume(double volume) => _api.setVolume(_id, volume);
+
+  Future<void> setRate(double rate) => _api.setRate(_id, rate);
+
+  Future<void> setPreferredAudioLanguages(List<String> priorities) =>
+      _api.setPreferredAudioLanguages(_id, priorities);
+
+  Future<void> selectAudioTrack(String trackId) =>
+      _api.selectAudioTrack(_id, trackId);
+
+  /// [trackId] nul coupe les sous-titres internes.
+  Future<void> selectSubtitleTrack(String? trackId) =>
+      _api.selectSubtitleTrack(_id, trackId);
+
+  /// Pose (ou retire, avec null) le WebVTT que le serveur a produit.
+  Future<void> setExternalSubtitle(
+    String? vtt, {
+    String? language,
+    String? title,
+  }) =>
+      _api.setExternalSubtitle(_id, vtt, language, title);
+
+  Future<void> setExactSeek(bool exact) => _api.setExactSeek(_id, exact);
+
+  Future<void> overrideDuration(Duration total) =>
+      _api.overrideDuration(_id, total.inMilliseconds);
+
+  Future<void> applyTuning(OnyxLoadTuning tuning) =>
+      _api.applyTuning(_id, tuning);
 
   Future<void> play() => _api.play(_id);
 

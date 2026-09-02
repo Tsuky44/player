@@ -2,7 +2,7 @@ import 'dart:async';
 
 import 'package:flutter/material.dart';
 import 'package:flutter_animate/flutter_animate.dart';
-import 'package:media_kit/media_kit.dart' as mk;
+import '../playback/playback_session.dart';
 
 import '../../../models/models.dart';
 import '../../../utils/app_platform.dart';
@@ -15,7 +15,7 @@ import 'player_subtitles_picker.dart';
 /// Bottom-sheet widget that lets the user pick audio / subtitle tracks,
 /// switch the video display mode (fit vs cover), and select transcoding quality.
 class PlayerSettingsSheet extends StatefulWidget {
-  final mk.Player player;
+  final PlaybackSession session;
   final BoxFit currentFit;
   final ValueChanged<BoxFit> onFitChanged;
   final VoidCallback? onClose;
@@ -28,7 +28,7 @@ class PlayerSettingsSheet extends StatefulWidget {
 
   const PlayerSettingsSheet({
     super.key,
-    required this.player,
+    required this.session,
     required this.currentFit,
     required this.onFitChanged,
     this.onClose,
@@ -86,13 +86,13 @@ class _PlayerSettingsSheetState extends State<PlayerSettingsSheet> {
     }
   }
 
-  String _audioTrackName(mk.AudioTrack track, int index) {
+  String _audioTrackName(PlaybackTrack track, int index) {
     if (track.id == 'no') return 'Désactivé';
     return track.title ??
         (track.language != null ? 'Audio (${track.language})' : 'Audio ${index + 1}');
   }
 
-  String _subtitleTrackName(mk.SubtitleTrack track, int index) {
+  String _subtitleTrackName(PlaybackTrack track, int index) {
     if (track.id == 'no') return 'Désactivés';
     return track.title ??
         (track.language != null
@@ -114,9 +114,9 @@ class _PlayerSettingsSheetState extends State<PlayerSettingsSheet> {
 
   @override
   Widget build(BuildContext context) {
-    final tracks = widget.player.state.tracks;
-    final currentAudio = widget.player.state.track.audio;
-    final currentSubtitle = widget.player.state.track.subtitle;
+
+    final currentAudio = widget.session.currentAudioTrack;
+    final currentSubtitle = widget.session.currentSubtitleTrack;
     final controller = widget.playerController;
     final mediaTracks = controller?.mediaTracks;
 
@@ -136,24 +136,25 @@ class _PlayerSettingsSheetState extends State<PlayerSettingsSheet> {
             (controller != null && mediaTracks != null && mediaTracks.audio.isNotEmpty)
                 ? _buildCanonicalAudioList(mediaTracks.audio, controller)
                 : _buildTrackList(
-                    tracks.audio,
+                    widget.session.audioTracks,
                     currentAudio,
-                    (track) => _audioTrackName(track, tracks.audio.indexOf(track)),
-                    (track) => widget.player.setAudioTrack(track),
+                    (track) => _audioTrackName(track, widget.session.audioTracks.indexOf(track)),
+                    (track) => widget.session.setAudioTrack(track),
                   ),
             // Subtitles
             (controller != null && mediaTracks != null)
                 ? PlayerSubtitlesPicker(
-                    player: widget.player,
+                    session: widget.session,
                     playerController: controller,
                     onSelected: _close,
                   )
                 : _buildTrackList(
-                    tracks.subtitle,
+                    widget.session.subtitleTracks,
                     currentSubtitle,
                     (track) =>
-                        _subtitleTrackName(track, tracks.subtitle.indexOf(track)),
-                    (track) => widget.player.setSubtitleTrack(track),
+                        _subtitleTrackName(track, widget.session.subtitleTracks.indexOf(track)),
+                    (track) => widget.session.setSubtitles(
+                        SubtitleSelection.track(track)),
                   ),
             _buildQualityOptions(),
             _buildDisplayOptions(),

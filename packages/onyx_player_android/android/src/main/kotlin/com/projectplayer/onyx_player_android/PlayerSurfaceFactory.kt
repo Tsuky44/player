@@ -43,7 +43,7 @@ internal class PlayerSurface(
         // Le lecteur existe déjà : la vue s'y rattache, elle ne le crée pas.
         // C'est ce qui laisse Flutter reconstruire la vue sans interrompre la
         // lecture, et ce qui permet d'ouvrir un média avant le premier rendu.
-        host.playerFor(playerId)?.player?.setVideoSurfaceView(surfaceView)
+        host.playerFor(playerId)?.attachSurface(surfaceView)
     }
 
     override fun getView(): View = container
@@ -52,7 +52,7 @@ internal class PlayerSurface(
         // La Surface disparaît avec la vue ; laisser ExoPlayer écrire dedans
         // ensuite est un rendu vers une cible morte. Le lecteur, lui, survit —
         // il n'appartient pas à la vue.
-        host.playerFor(playerId)?.player?.clearVideoSurface()
+        host.playerFor(playerId)?.detachSurface()
     }
 }
 

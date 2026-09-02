@@ -30,7 +30,7 @@ class _ChaptersDebugPanelState extends State<ChaptersDebugPanel> {
   void initState() {
     super.initState();
     widget.episodeNav.addListener(_rebuild);
-    _positionSub = widget.playerController.player.stream.position.listen((_) {
+    _positionSub = widget.playerController.session.positions.listen((_) {
       if (mounted) setState(() {});
     });
   }
@@ -47,7 +47,7 @@ class _ChaptersDebugPanelState extends State<ChaptersDebugPanel> {
   }
 
   int get _absolutePosition {
-    final pos = widget.playerController.player.state.position.inSeconds;
+    final pos = widget.playerController.session.position.inSeconds;
     final offset = widget.playerController.hlsStartOffset;
     return widget.playerController.currentQuality != null && offset > 0
         ? pos + offset

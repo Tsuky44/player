@@ -73,6 +73,12 @@ android {
 kotlin {
     compilerOptions {
         jvmTarget = org.jetbrains.kotlin.gradle.dsl.JvmTarget.JVM_17
+        // Media3 marque une partie de son API `@UnstableApi`, qui est un
+        // `@RequiresOptIn` de niveau ERREUR : `DefaultLoadControl` et
+        // `SeekParameters` ne compilent pas sans ça. Posé une fois pour le
+        // module plutôt qu'annoté classe par classe — tout ce module est du
+        // Media3, la question ne se pose pas fichier par fichier.
+        freeCompilerArgs.add("-opt-in=androidx.media3.common.util.UnstableApi")
     }
 }
 

@@ -234,6 +234,120 @@ enum class OnyxPlayerErrorKind(val raw: Int) {
   }
 }
 
+/**
+ * Une piste que le moteur a énumérée.
+ *
+ * Generated class from Pigeon that represents data sent in messages.
+ */
+data class OnyxTrack (
+  val id: String,
+  val title: String? = null,
+  val language: String? = null
+)
+ {
+  companion object {
+    fun fromList(pigeonVar_list: List<Any?>): OnyxTrack {
+      val id = pigeonVar_list[0] as String
+      val title = pigeonVar_list[1] as String?
+      val language = pigeonVar_list[2] as String?
+      return OnyxTrack(id, title, language)
+    }
+  }
+  fun toList(): List<Any?> {
+    return listOf(
+      id,
+      title,
+      language,
+    )
+  }
+  override fun equals(other: Any?): Boolean {
+    if (other == null || other.javaClass != javaClass) {
+      return false
+    }
+    if (this === other) {
+      return true
+    }
+    val other = other as OnyxTrack
+    return MessagesPigeonUtils.deepEquals(this.id, other.id) && MessagesPigeonUtils.deepEquals(this.title, other.title) && MessagesPigeonUtils.deepEquals(this.language, other.language)
+  }
+
+  override fun hashCode(): Int {
+    var result = javaClass.hashCode()
+    result = 31 * result + MessagesPigeonUtils.deepHash(this.id)
+    result = 31 * result + MessagesPigeonUtils.deepHash(this.title)
+    result = 31 * result + MessagesPigeonUtils.deepHash(this.language)
+    return result
+  }
+  override fun toString(): String {
+    return "OnyxTrack(id=$id, title=$title, language=$language)"
+  }
+}
+
+/**
+ * Les tampons, dans les unités d'ExoPlayer.
+ *
+ * `PlaybackProfile` les exprime en octets et en secondes, parce que c'est le
+ * vocabulaire de mpv ; `DefaultLoadControl` ne connaît que des millisecondes.
+ * La traduction se fait côté Dart, où le profil est déjà résolu.
+ *
+ * Generated class from Pigeon that represents data sent in messages.
+ */
+data class OnyxLoadTuning (
+  val minBufferMs: Long,
+  val maxBufferMs: Long,
+  /**
+   * Ce qu'il faut avoir en mémoire avant que l'image ne parte. Court : c'est
+   * du temps ajouté devant la première image, à chaque ouverture.
+   */
+  val bufferForPlaybackMs: Long,
+  /**
+   * Ce qu'on garde derrière la tête de lecture, pour que le retour de 10 s ne
+   * reparte pas sur le réseau.
+   */
+  val backBufferMs: Long
+)
+ {
+  companion object {
+    fun fromList(pigeonVar_list: List<Any?>): OnyxLoadTuning {
+      val minBufferMs = pigeonVar_list[0] as Long
+      val maxBufferMs = pigeonVar_list[1] as Long
+      val bufferForPlaybackMs = pigeonVar_list[2] as Long
+      val backBufferMs = pigeonVar_list[3] as Long
+      return OnyxLoadTuning(minBufferMs, maxBufferMs, bufferForPlaybackMs, backBufferMs)
+    }
+  }
+  fun toList(): List<Any?> {
+    return listOf(
+      minBufferMs,
+      maxBufferMs,
+      bufferForPlaybackMs,
+      backBufferMs,
+    )
+  }
+  override fun equals(other: Any?): Boolean {
+    if (other == null || other.javaClass != javaClass) {
+      return false
+    }
+    if (this === other) {
+      return true
+    }
+    val other = other as OnyxLoadTuning
+    return MessagesPigeonUtils.deepEquals(this.minBufferMs, other.minBufferMs) && MessagesPigeonUtils.deepEquals(this.maxBufferMs, other.maxBufferMs) && MessagesPigeonUtils.deepEquals(this.bufferForPlaybackMs, other.bufferForPlaybackMs) && MessagesPigeonUtils.deepEquals(this.backBufferMs, other.backBufferMs)
+  }
+
+  override fun hashCode(): Int {
+    var result = javaClass.hashCode()
+    result = 31 * result + MessagesPigeonUtils.deepHash(this.minBufferMs)
+    result = 31 * result + MessagesPigeonUtils.deepHash(this.maxBufferMs)
+    result = 31 * result + MessagesPigeonUtils.deepHash(this.bufferForPlaybackMs)
+    result = 31 * result + MessagesPigeonUtils.deepHash(this.backBufferMs)
+    return result
+  }
+  override fun toString(): String {
+    return "OnyxLoadTuning(minBufferMs=$minBufferMs, maxBufferMs=$maxBufferMs, bufferForPlaybackMs=$bufferForPlaybackMs, backBufferMs=$backBufferMs)"
+  }
+}
+
 /** Generated class from Pigeon that represents data sent in messages. */
 data class OnyxVideoSize (
   val width: Long,
@@ -294,6 +408,16 @@ data class OnyxPlayerStatus (
   val bufferedPositionMs: Long,
   /** Null tant que le décodeur n'a pas annoncé les dimensions. */
   val videoSize: OnyxVideoSize? = null,
+  /** Les pistes que le moteur a trouvées dans ce média. */
+  val audioTracks: List<OnyxTrack>,
+  val subtitleTracks: List<OnyxTrack>,
+  val selectedAudioTrackId: String? = null,
+  val selectedSubtitleTrackId: String? = null,
+  /**
+   * Les lignes de sous-titre à afficher maintenant. Rendues côté Flutter, pour
+   * que l'habillage soit le même que sur les autres plateformes.
+   */
+  val subtitleCues: List<String>,
   val errorKind: OnyxPlayerErrorKind? = null,
   val errorMessage: String? = null
 )
@@ -307,9 +431,14 @@ data class OnyxPlayerStatus (
       val durationMs = pigeonVar_list[4] as Long
       val bufferedPositionMs = pigeonVar_list[5] as Long
       val videoSize = pigeonVar_list[6] as OnyxVideoSize?
-      val errorKind = pigeonVar_list[7] as OnyxPlayerErrorKind?
-      val errorMessage = pigeonVar_list[8] as String?
-      return OnyxPlayerStatus(playerId, state, isPlaying, positionMs, durationMs, bufferedPositionMs, videoSize, errorKind, errorMessage)
+      val audioTracks = pigeonVar_list[7] as List<OnyxTrack>
+      val subtitleTracks = pigeonVar_list[8] as List<OnyxTrack>
+      val selectedAudioTrackId = pigeonVar_list[9] as String?
+      val selectedSubtitleTrackId = pigeonVar_list[10] as String?
+      val subtitleCues = pigeonVar_list[11] as List<String>
+      val errorKind = pigeonVar_list[12] as OnyxPlayerErrorKind?
+      val errorMessage = pigeonVar_list[13] as String?
+      return OnyxPlayerStatus(playerId, state, isPlaying, positionMs, durationMs, bufferedPositionMs, videoSize, audioTracks, subtitleTracks, selectedAudioTrackId, selectedSubtitleTrackId, subtitleCues, errorKind, errorMessage)
     }
   }
   fun toList(): List<Any?> {
@@ -321,6 +450,11 @@ data class OnyxPlayerStatus (
       durationMs,
       bufferedPositionMs,
       videoSize,
+      audioTracks,
+      subtitleTracks,
+      selectedAudioTrackId,
+      selectedSubtitleTrackId,
+      subtitleCues,
       errorKind,
       errorMessage,
     )
@@ -333,7 +467,7 @@ data class OnyxPlayerStatus (
       return true
     }
     val other = other as OnyxPlayerStatus
-    return MessagesPigeonUtils.deepEquals(this.playerId, other.playerId) && MessagesPigeonUtils.deepEquals(this.state, other.state) && MessagesPigeonUtils.deepEquals(this.isPlaying, other.isPlaying) && MessagesPigeonUtils.deepEquals(this.positionMs, other.positionMs) && MessagesPigeonUtils.deepEquals(this.durationMs, other.durationMs) && MessagesPigeonUtils.deepEquals(this.bufferedPositionMs, other.bufferedPositionMs) && MessagesPigeonUtils.deepEquals(this.videoSize, other.videoSize) && MessagesPigeonUtils.deepEquals(this.errorKind, other.errorKind) && MessagesPigeonUtils.deepEquals(this.errorMessage, other.errorMessage)
+    return MessagesPigeonUtils.deepEquals(this.playerId, other.playerId) && MessagesPigeonUtils.deepEquals(this.state, other.state) && MessagesPigeonUtils.deepEquals(this.isPlaying, other.isPlaying) && MessagesPigeonUtils.deepEquals(this.positionMs, other.positionMs) && MessagesPigeonUtils.deepEquals(this.durationMs, other.durationMs) && MessagesPigeonUtils.deepEquals(this.bufferedPositionMs, other.bufferedPositionMs) && MessagesPigeonUtils.deepEquals(this.videoSize, other.videoSize) && MessagesPigeonUtils.deepEquals(this.audioTracks, other.audioTracks) && MessagesPigeonUtils.deepEquals(this.subtitleTracks, other.subtitleTracks) && MessagesPigeonUtils.deepEquals(this.selectedAudioTrackId, other.selectedAudioTrackId) && MessagesPigeonUtils.deepEquals(this.selectedSubtitleTrackId, other.selectedSubtitleTrackId) && MessagesPigeonUtils.deepEquals(this.subtitleCues, other.subtitleCues) && MessagesPigeonUtils.deepEquals(this.errorKind, other.errorKind) && MessagesPigeonUtils.deepEquals(this.errorMessage, other.errorMessage)
   }
 
   override fun hashCode(): Int {
@@ -345,12 +479,17 @@ data class OnyxPlayerStatus (
     result = 31 * result + MessagesPigeonUtils.deepHash(this.durationMs)
     result = 31 * result + MessagesPigeonUtils.deepHash(this.bufferedPositionMs)
     result = 31 * result + MessagesPigeonUtils.deepHash(this.videoSize)
+    result = 31 * result + MessagesPigeonUtils.deepHash(this.audioTracks)
+    result = 31 * result + MessagesPigeonUtils.deepHash(this.subtitleTracks)
+    result = 31 * result + MessagesPigeonUtils.deepHash(this.selectedAudioTrackId)
+    result = 31 * result + MessagesPigeonUtils.deepHash(this.selectedSubtitleTrackId)
+    result = 31 * result + MessagesPigeonUtils.deepHash(this.subtitleCues)
     result = 31 * result + MessagesPigeonUtils.deepHash(this.errorKind)
     result = 31 * result + MessagesPigeonUtils.deepHash(this.errorMessage)
     return result
   }
   override fun toString(): String {
-    return "OnyxPlayerStatus(playerId=$playerId, state=$state, isPlaying=$isPlaying, positionMs=$positionMs, durationMs=$durationMs, bufferedPositionMs=$bufferedPositionMs, videoSize=$videoSize, errorKind=$errorKind, errorMessage=$errorMessage)"
+    return "OnyxPlayerStatus(playerId=$playerId, state=$state, isPlaying=$isPlaying, positionMs=$positionMs, durationMs=$durationMs, bufferedPositionMs=$bufferedPositionMs, videoSize=$videoSize, audioTracks=$audioTracks, subtitleTracks=$subtitleTracks, selectedAudioTrackId=$selectedAudioTrackId, selectedSubtitleTrackId=$selectedSubtitleTrackId, subtitleCues=$subtitleCues, errorKind=$errorKind, errorMessage=$errorMessage)"
   }
 }
 
@@ -416,15 +555,25 @@ private open class MessagesPigeonCodec : StandardMessageCodec() {
       }
       131.toByte() -> {
         return (readValue(buffer) as? List<Any?>)?.let {
-          OnyxVideoSize.fromList(it)
+          OnyxTrack.fromList(it)
         }
       }
       132.toByte() -> {
         return (readValue(buffer) as? List<Any?>)?.let {
-          OnyxPlayerStatus.fromList(it)
+          OnyxLoadTuning.fromList(it)
         }
       }
       133.toByte() -> {
+        return (readValue(buffer) as? List<Any?>)?.let {
+          OnyxVideoSize.fromList(it)
+        }
+      }
+      134.toByte() -> {
+        return (readValue(buffer) as? List<Any?>)?.let {
+          OnyxPlayerStatus.fromList(it)
+        }
+      }
+      135.toByte() -> {
         return (readValue(buffer) as? List<Any?>)?.let {
           OnyxPlaybackStats.fromList(it)
         }
@@ -442,16 +591,24 @@ private open class MessagesPigeonCodec : StandardMessageCodec() {
         stream.write(130)
         writeValue(stream, value.raw.toLong())
       }
-      is OnyxVideoSize -> {
+      is OnyxTrack -> {
         stream.write(131)
         writeValue(stream, value.toList())
       }
-      is OnyxPlayerStatus -> {
+      is OnyxLoadTuning -> {
         stream.write(132)
         writeValue(stream, value.toList())
       }
-      is OnyxPlaybackStats -> {
+      is OnyxVideoSize -> {
         stream.write(133)
+        writeValue(stream, value.toList())
+      }
+      is OnyxPlayerStatus -> {
+        stream.write(134)
+        writeValue(stream, value.toList())
+      }
+      is OnyxPlaybackStats -> {
+        stream.write(135)
         writeValue(stream, value.toList())
       }
       else -> super.writeValue(stream, value)
@@ -477,11 +634,53 @@ interface OnyxPlayerApi {
   /**
    * Charge [url] et se positionne à [startPositionMs] dans le même geste.
    * Ouvrir puis chercher ferait payer deux fois la mise en mémoire tampon.
+   *
+   * [play] démarre la lecture dès que le média est prêt, sans second aller-
+   * retour : c'est ce que fait le passage à l'épisode suivant.
    */
-  fun open(playerId: Long, url: String, startPositionMs: Long)
+  fun open(playerId: Long, url: String, startPositionMs: Long, play: Boolean)
   fun play(playerId: Long)
   fun pause(playerId: Long)
   fun seekTo(playerId: Long, positionMs: Long)
+  fun setVolume(playerId: Long, volume: Double)
+  fun setRate(playerId: Long, rate: Double)
+  /**
+   * Quelle langue audio charger d'emblée, la plus probable en premier. Posé
+   * avant l'ouverture — après, changer de piste recharge le tampon.
+   */
+  fun setPreferredAudioLanguages(playerId: Long, priorities: List<String>)
+  fun selectAudioTrack(playerId: Long, trackId: String)
+  /**
+   * Sélectionne une piste de sous-titres interne, ou aucune si [trackId] est
+   * nul.
+   */
+  fun selectSubtitleTrack(playerId: Long, trackId: String?)
+  /**
+   * Charge un WebVTT que le serveur a produit, en le posant à côté du média.
+   *
+   * Le contenu est passé plutôt qu'une URL : c'est le contrôleur qui l'a
+   * téléchargé, et le serveur a déjà recalé les temps sur l'offset du flux.
+   */
+  fun setExternalSubtitle(playerId: Long, vttContent: String?, language: String?, title: String?)
+  /**
+   * Cherche à l'image près, ou au point-clé le plus proche pendant qu'on fait
+   * glisser la tête de lecture.
+   */
+  fun setExactSeek(playerId: Long, exact: Boolean)
+  /**
+   * Impose la durée totale : en transcodage, le moteur ne voit que les
+   * segments déjà produits.
+   */
+  fun overrideDuration(playerId: Long, totalMs: Long)
+  fun applyTuning(playerId: Long, tuning: OnyxLoadTuning)
+  /**
+   * Les types MIME audio que la puce sait décoder.
+   *
+   * mpv décodait tout en logiciel ; ExoPlayer dépend de MediaCodec. Demandé
+   * une fois, pour que le contrôleur puisse trancher lecture directe ou
+   * transcodage **avant** d'ouvrir, plutôt que d'échouer devant l'utilisateur.
+   */
+  fun decodableAudioMimeTypes(): List<String>
   /**
    * L'état à cet instant. Les changements arrivent par le flux d'événements ;
    * ceci sert à s'amorcer sans attendre le premier.
@@ -540,8 +739,9 @@ interface OnyxPlayerApi {
             val playerIdArg = args[0] as Long
             val urlArg = args[1] as String
             val startPositionMsArg = args[2] as Long
+            val playArg = args[3] as Boolean
             val wrapped: List<Any?> = try {
-              api.open(playerIdArg, urlArg, startPositionMsArg)
+              api.open(playerIdArg, urlArg, startPositionMsArg, playArg)
               listOf(null)
             } catch (exception: Throwable) {
               MessagesPigeonUtils.wrapError(exception)
@@ -598,6 +798,194 @@ interface OnyxPlayerApi {
             val wrapped: List<Any?> = try {
               api.seekTo(playerIdArg, positionMsArg)
               listOf(null)
+            } catch (exception: Throwable) {
+              MessagesPigeonUtils.wrapError(exception)
+            }
+            reply.reply(wrapped)
+          }
+        } else {
+          channel.setMessageHandler(null)
+        }
+      }
+      run {
+        val channel = BasicMessageChannel<Any?>(binaryMessenger, "dev.flutter.pigeon.onyx_player_android.OnyxPlayerApi.setVolume$separatedMessageChannelSuffix", codec)
+        if (api != null) {
+          channel.setMessageHandler { message, reply ->
+            val args = message as List<Any?>
+            val playerIdArg = args[0] as Long
+            val volumeArg = args[1] as Double
+            val wrapped: List<Any?> = try {
+              api.setVolume(playerIdArg, volumeArg)
+              listOf(null)
+            } catch (exception: Throwable) {
+              MessagesPigeonUtils.wrapError(exception)
+            }
+            reply.reply(wrapped)
+          }
+        } else {
+          channel.setMessageHandler(null)
+        }
+      }
+      run {
+        val channel = BasicMessageChannel<Any?>(binaryMessenger, "dev.flutter.pigeon.onyx_player_android.OnyxPlayerApi.setRate$separatedMessageChannelSuffix", codec)
+        if (api != null) {
+          channel.setMessageHandler { message, reply ->
+            val args = message as List<Any?>
+            val playerIdArg = args[0] as Long
+            val rateArg = args[1] as Double
+            val wrapped: List<Any?> = try {
+              api.setRate(playerIdArg, rateArg)
+              listOf(null)
+            } catch (exception: Throwable) {
+              MessagesPigeonUtils.wrapError(exception)
+            }
+            reply.reply(wrapped)
+          }
+        } else {
+          channel.setMessageHandler(null)
+        }
+      }
+      run {
+        val channel = BasicMessageChannel<Any?>(binaryMessenger, "dev.flutter.pigeon.onyx_player_android.OnyxPlayerApi.setPreferredAudioLanguages$separatedMessageChannelSuffix", codec)
+        if (api != null) {
+          channel.setMessageHandler { message, reply ->
+            val args = message as List<Any?>
+            val playerIdArg = args[0] as Long
+            val prioritiesArg = args[1] as List<String>
+            val wrapped: List<Any?> = try {
+              api.setPreferredAudioLanguages(playerIdArg, prioritiesArg)
+              listOf(null)
+            } catch (exception: Throwable) {
+              MessagesPigeonUtils.wrapError(exception)
+            }
+            reply.reply(wrapped)
+          }
+        } else {
+          channel.setMessageHandler(null)
+        }
+      }
+      run {
+        val channel = BasicMessageChannel<Any?>(binaryMessenger, "dev.flutter.pigeon.onyx_player_android.OnyxPlayerApi.selectAudioTrack$separatedMessageChannelSuffix", codec)
+        if (api != null) {
+          channel.setMessageHandler { message, reply ->
+            val args = message as List<Any?>
+            val playerIdArg = args[0] as Long
+            val trackIdArg = args[1] as String
+            val wrapped: List<Any?> = try {
+              api.selectAudioTrack(playerIdArg, trackIdArg)
+              listOf(null)
+            } catch (exception: Throwable) {
+              MessagesPigeonUtils.wrapError(exception)
+            }
+            reply.reply(wrapped)
+          }
+        } else {
+          channel.setMessageHandler(null)
+        }
+      }
+      run {
+        val channel = BasicMessageChannel<Any?>(binaryMessenger, "dev.flutter.pigeon.onyx_player_android.OnyxPlayerApi.selectSubtitleTrack$separatedMessageChannelSuffix", codec)
+        if (api != null) {
+          channel.setMessageHandler { message, reply ->
+            val args = message as List<Any?>
+            val playerIdArg = args[0] as Long
+            val trackIdArg = args[1] as String?
+            val wrapped: List<Any?> = try {
+              api.selectSubtitleTrack(playerIdArg, trackIdArg)
+              listOf(null)
+            } catch (exception: Throwable) {
+              MessagesPigeonUtils.wrapError(exception)
+            }
+            reply.reply(wrapped)
+          }
+        } else {
+          channel.setMessageHandler(null)
+        }
+      }
+      run {
+        val channel = BasicMessageChannel<Any?>(binaryMessenger, "dev.flutter.pigeon.onyx_player_android.OnyxPlayerApi.setExternalSubtitle$separatedMessageChannelSuffix", codec)
+        if (api != null) {
+          channel.setMessageHandler { message, reply ->
+            val args = message as List<Any?>
+            val playerIdArg = args[0] as Long
+            val vttContentArg = args[1] as String?
+            val languageArg = args[2] as String?
+            val titleArg = args[3] as String?
+            val wrapped: List<Any?> = try {
+              api.setExternalSubtitle(playerIdArg, vttContentArg, languageArg, titleArg)
+              listOf(null)
+            } catch (exception: Throwable) {
+              MessagesPigeonUtils.wrapError(exception)
+            }
+            reply.reply(wrapped)
+          }
+        } else {
+          channel.setMessageHandler(null)
+        }
+      }
+      run {
+        val channel = BasicMessageChannel<Any?>(binaryMessenger, "dev.flutter.pigeon.onyx_player_android.OnyxPlayerApi.setExactSeek$separatedMessageChannelSuffix", codec)
+        if (api != null) {
+          channel.setMessageHandler { message, reply ->
+            val args = message as List<Any?>
+            val playerIdArg = args[0] as Long
+            val exactArg = args[1] as Boolean
+            val wrapped: List<Any?> = try {
+              api.setExactSeek(playerIdArg, exactArg)
+              listOf(null)
+            } catch (exception: Throwable) {
+              MessagesPigeonUtils.wrapError(exception)
+            }
+            reply.reply(wrapped)
+          }
+        } else {
+          channel.setMessageHandler(null)
+        }
+      }
+      run {
+        val channel = BasicMessageChannel<Any?>(binaryMessenger, "dev.flutter.pigeon.onyx_player_android.OnyxPlayerApi.overrideDuration$separatedMessageChannelSuffix", codec)
+        if (api != null) {
+          channel.setMessageHandler { message, reply ->
+            val args = message as List<Any?>
+            val playerIdArg = args[0] as Long
+            val totalMsArg = args[1] as Long
+            val wrapped: List<Any?> = try {
+              api.overrideDuration(playerIdArg, totalMsArg)
+              listOf(null)
+            } catch (exception: Throwable) {
+              MessagesPigeonUtils.wrapError(exception)
+            }
+            reply.reply(wrapped)
+          }
+        } else {
+          channel.setMessageHandler(null)
+        }
+      }
+      run {
+        val channel = BasicMessageChannel<Any?>(binaryMessenger, "dev.flutter.pigeon.onyx_player_android.OnyxPlayerApi.applyTuning$separatedMessageChannelSuffix", codec)
+        if (api != null) {
+          channel.setMessageHandler { message, reply ->
+            val args = message as List<Any?>
+            val playerIdArg = args[0] as Long
+            val tuningArg = args[1] as OnyxLoadTuning
+            val wrapped: List<Any?> = try {
+              api.applyTuning(playerIdArg, tuningArg)
+              listOf(null)
+            } catch (exception: Throwable) {
+              MessagesPigeonUtils.wrapError(exception)
+            }
+            reply.reply(wrapped)
+          }
+        } else {
+          channel.setMessageHandler(null)
+        }
+      }
+      run {
+        val channel = BasicMessageChannel<Any?>(binaryMessenger, "dev.flutter.pigeon.onyx_player_android.OnyxPlayerApi.decodableAudioMimeTypes$separatedMessageChannelSuffix", codec)
+        if (api != null) {
+          channel.setMessageHandler { _, reply ->
+            val wrapped: List<Any?> = try {
+              listOf(api.decodableAudioMimeTypes())
             } catch (exception: Throwable) {
               MessagesPigeonUtils.wrapError(exception)
             }

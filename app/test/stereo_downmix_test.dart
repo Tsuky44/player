@@ -1,5 +1,5 @@
 import 'package:flutter_test/flutter_test.dart';
-import 'package:onyx/screens/player/hooks/use_player_controller.dart';
+import 'package:onyx/screens/player/playback/mpv_playback_session.dart';
 
 /// The client half of the dialogue-forward downmix. The transcoder carries the
 /// same three numbers in Go (`streaming.stereoDownmixFilter`) for the streams
@@ -12,7 +12,7 @@ import 'package:onyx/screens/player/hooks/use_player_controller.dart';
 /// a graph naming any of them does not degrade, it leaves the file playing with
 /// no sound at all.
 void main() {
-  const levels = PlayerController.dialogueForwardMixLevels;
+  const levels = dialogueForwardMixLevels;
 
   group('folding surround into stereo', () {
     test('lifts the centre to the level of the fronts', () {
