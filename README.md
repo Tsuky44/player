@@ -224,6 +224,20 @@ n'affecte que les liens futurs.
     "is_finished": false
   }
   ```
+* **Rejeu d'une lecture hors ligne :** un client qui a regardé un média téléchargé sans réseau
+  ajoute `"client_updated_at"` (RFC3339, date de la lecture, pas de l'envoi). Le serveur refuse
+  alors d'écraser une progression plus récente venue d'un autre appareil, et répond avec l'état
+  réellement stocké. Le champ est facultatif : un battement de coeur normal l'omet et vaut
+  « maintenant ». Voir `docs/adr/0010-telechargements-hors-ligne.md`.
+  ```json
+  {
+    "media_id": 12,
+    "current_position_seconds": 1240,
+    "duration": 8880,
+    "is_finished": true,
+    "client_updated_at": "2026-09-01T20:14:03Z"
+  }
+  ```
 
 ---
 

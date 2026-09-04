@@ -11,6 +11,7 @@ import '../../providers/home_provider.dart';
 import '../../providers/player_layout_provider.dart';
 import '../../navigation/search_route_observer.dart';
 import '../../services/api_client.dart';
+import '../../services/download_manager.dart';
 import '../../services/media_details_cache.dart';
 import '../../services/screen_brightness_control.dart';
 import '../../tv/tv_mode.dart';
@@ -612,17 +613,30 @@ class _PlayerScreenState extends State<PlayerScreen> {
       }
     }
 
-    try {
-      final progressData = await apiClient.getProgress(actualMedia.id);
-      final fromApi = progressData["current_position_seconds"] as int? ?? 0;
-      final isFinished = progressData["is_finished"] as bool? ?? false;
-      if (isFinished) {
-        savedPositionSeconds = 0;
-      } else if (fromApi > savedPositionSeconds) {
-        savedPositionSeconds = fromApi;
+    // Une lecture hors ligne pas encore rejouée fait autorité : le serveur en
+    // est resté à la dernière fois qu'il a eu des nouvelles, et lui demander
+    // reviendrait à rembobiner l'épisode qu'on vient de regarder dans le train.
+    final offline = DownloadManager.instance.entryFor(actualMedia.id);
+    if (offline != null && offline.needsSync) {
+      savedPositionSeconds = offline.isFinished ? 0 : offline.positionSeconds;
+    } else {
+      try {
+        final progressData = await apiClient.getProgress(actualMedia.id);
+        final fromApi = progressData["current_position_seconds"] as int? ?? 0;
+        final isFinished = progressData["is_finished"] as bool? ?? false;
+        if (isFinished) {
+          savedPositionSeconds = 0;
+        } else if (fromApi > savedPositionSeconds) {
+          savedPositionSeconds = fromApi;
+        }
+      } catch (e) {
+        debugPrint("Player: Failed to query progress: $e");
+        // Serveur injoignable : le manifeste local est tout ce qui reste, et
+        // pour un média téléchargé c'est exactement ce qu'il faut.
+        if (offline != null) {
+          savedPositionSeconds = offline.isFinished ? 0 : offline.positionSeconds;
+        }
       }
-    } catch (e) {
-      debugPrint("Player: Failed to query progress: $e");
     }
 
     return (!widget.autoAdvance && savedPositionSeconds >= 3)

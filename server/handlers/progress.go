@@ -6,6 +6,8 @@ import (
 	"log"
 	"net/http"
 	"strconv"
+	"strings"
+	"time"
 
 	"project-player/server/database"
 	"project-player/server/models"
@@ -19,6 +21,37 @@ type ProgressRequest struct {
 	CurrentPositionSeconds int  `json:"current_position_seconds"`
 	Duration               int  `json:"duration"` // client informs server of media duration (learned from player)
 	IsFinished             bool `json:"is_finished"`
+	// ClientUpdatedAt (RFC3339) dates a play that happened before this request:
+	// an offline session being replayed on reconnection. It is what makes that
+	// replay safe — the write is skipped when the stored row is more recent, so
+	// a week-old episode watched on a plane cannot rewind what a phone did
+	// yesterday. A live heartbeat leaves it empty, which means "now".
+	ClientUpdatedAt string `json:"client_updated_at,omitempty"`
+}
+
+// sqliteTimeLayout is the shape CURRENT_TIMESTAMP writes. Progress timestamps
+// are compared as text, so anything this handler writes has to match it
+// exactly — same layout, same UTC zone — or the comparison silently degrades
+// to a string ordering that means nothing.
+const sqliteTimeLayout = "2006-01-02 15:04:05"
+
+// parseClientUpdatedAt reads the client's play time. A value in the future is
+// clamped to now: a device with a wrong clock would otherwise pin the row and
+// block every later write.
+func parseClientUpdatedAt(raw string) (time.Time, bool) {
+	if strings.TrimSpace(raw) == "" {
+		return time.Time{}, false
+	}
+	parsed, err := time.Parse(time.RFC3339, raw)
+	if err != nil {
+		return time.Time{}, false
+	}
+	now := time.Now().UTC()
+	parsed = parsed.UTC()
+	if parsed.After(now) {
+		return now, true
+	}
+	return parsed, true
 }
 
 // UpdateProgress handles the streaming heartbeat and saves progress (POST /api/progress)
@@ -59,20 +92,53 @@ func UpdateProgress(w http.ResponseWriter, r *http.Request, _ httprouter.Params,
 		}
 	}
 
-	// Insert or replace progression
+	// When the play is being replayed after the fact, it carries its own time
+	// and only wins if nothing more recent has landed since. A live heartbeat
+	// is stamped now and always wins, which is the behaviour this endpoint has
+	// always had.
+	replayedAt, isReplay := parseClientUpdatedAt(req.ClientUpdatedAt)
+	stamp := time.Now().UTC()
+	if isReplay {
+		stamp = replayedAt
+	}
+
+	// The guard lives in the ON CONFLICT clause rather than in a read-then-write
+	// here: two devices reconnecting at the same second would otherwise both
+	// read "older" and both write.
 	query := `
 		INSERT INTO progressions (user_id, media_id, current_position_seconds, is_finished, updated_at)
-		VALUES (?, ?, ?, ?, CURRENT_TIMESTAMP)
+		VALUES (?, ?, ?, ?, ?)
 		ON CONFLICT(user_id, media_id) DO UPDATE SET
 			current_position_seconds = excluded.current_position_seconds,
 			is_finished = excluded.is_finished,
-			updated_at = CURRENT_TIMESTAMP
+			updated_at = excluded.updated_at
+		WHERE ? = 0 OR progressions.updated_at IS NULL OR progressions.updated_at <= excluded.updated_at
 	`
-	_, err := database.DB.Exec(query, userID, req.MediaID, req.CurrentPositionSeconds, isFinished)
+	guard := 0
+	if isReplay {
+		guard = 1
+	}
+	_, err := database.DB.Exec(query, userID, req.MediaID, req.CurrentPositionSeconds,
+		isFinished, stamp.Format(sqliteTimeLayout), guard)
 	if err != nil {
 		log.Printf("Progress error: failed to update progression: %v", err)
 		http.Error(w, `{"error": "Internal database error"}`, http.StatusInternalServerError)
 		return
+	}
+
+	// A refused replay must not be answered with what it asked for: the client
+	// adopts this reply, and telling it "finished" when the row says otherwise
+	// would put the wrong badge on the episode until the next full reload.
+	if isReplay {
+		var storedPosition int
+		var storedFinished bool
+		if err := database.DB.QueryRow(
+			"SELECT current_position_seconds, is_finished FROM progressions WHERE user_id = ? AND media_id = ?",
+			userID, req.MediaID,
+		).Scan(&storedPosition, &storedFinished); err == nil {
+			isFinished = storedFinished
+			req.CurrentPositionSeconds = storedPosition
+		}
 	}
 
 	var mediaType string

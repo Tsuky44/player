@@ -1,6 +1,9 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import '../models/models.dart';
 import '../services/api_client.dart';
+import '../services/download_manager.dart';
 
 class LibraryProvider extends ChangeNotifier {
   final ApiClient apiClient;
@@ -222,6 +225,16 @@ class LibraryProvider extends ChangeNotifier {
     final isFinished = result['is_finished'] as bool? ?? watched;
     final position = result['current_position_seconds'] as int? ?? 0;
     _patchLocalProgress(mediaId, isFinished: isFinished, positionSeconds: position);
+    // Le manifeste hors ligne suit le même verdict. Sans ça, un épisode coché
+    // « vu » depuis la bibliothèque resterait « à voir » dans l'écran des
+    // téléchargements — et échapperait au ménage des médias vus.
+    unawaited(DownloadManager.instance.recordProgress(
+      mediaId: mediaId,
+      positionSeconds: position,
+      durationSeconds: 0,
+      isFinished: isFinished,
+      syncedWithServer: true,
+    ));
     notifyListeners();
     return isFinished;
   }

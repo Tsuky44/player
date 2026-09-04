@@ -6,6 +6,8 @@ import '../../utils/app_platform.dart';
 import '../../utils/window_controls.dart';
 import '../../providers/auth_provider.dart';
 import '../../providers/home_provider.dart';
+import '../../services/download_manager.dart';
+import '../../services/server_reachability.dart';
 import '../../theme/app_colors.dart';
 import '../../utils/responsive.dart';
 import '../../widgets/global/account_menu.dart';
@@ -17,6 +19,7 @@ import '../../desktop_window.dart';
 import '../../tv/tv_mode.dart';
 import '../../tv/tv_pairing_link.dart';
 import '../settings/tv_pairing_screen.dart';
+import '../downloads/downloads_screen.dart';
 import '../home/home_screen.dart';
 import '../library/movies_screen.dart';
 import '../library/shows_screen.dart';
@@ -56,6 +59,15 @@ class _MainShellState extends State<MainShell> {
   Widget build(BuildContext context) {
     final homeProvider = Provider.of<HomeProvider>(context);
     final authProvider = Provider.of<AuthProvider>(context);
+    final downloads = Provider.of<DownloadManager>(context);
+
+    // Une session ouverte sur un profil en cache n'a rien à montrer d'autre que
+    // le disque : chaque autre onglet ne saurait afficher qu'une erreur. On les
+    // retire plutôt que de les laisser échouer, et ils reviennent d'eux-mêmes
+    // dès que le serveur répond de nouveau.
+    if (authProvider.isOfflineSession) {
+      return _OfflineShell(authProvider: authProvider);
+    }
     // A television always takes the wide chrome: the bottom tab bar is a thumb
     // target, and there is no thumb. Some sticks report barely 960 logical
     // pixels, which would otherwise land them in the phone layout.
@@ -88,6 +100,7 @@ class _MainShellState extends State<MainShell> {
                         MoviesScreen(embedded: isWide),
                         ShowsScreen(embedded: isWide),
                         RequestsScreen(embedded: isWide),
+                        DownloadsScreen(embedded: isWide),
                       ].indexed)
                         ExcludeFocus(
                           excluding: index != _selectedIndex,
@@ -101,6 +114,7 @@ class _MainShellState extends State<MainShell> {
                     selectedIndex: _selectedIndex,
                     onTabSelected: _selectTab,
                     canRequestMedia: authProvider.permissions.requestMedia,
+                    canDownload: downloads.isSupported,
                   ),
               ],
             ),
@@ -115,6 +129,7 @@ class _MainShellState extends State<MainShell> {
                 onTabSelected: _selectTab,
                 homeProvider: homeProvider,
                 authProvider: authProvider,
+                canDownload: downloads.isSupported,
               ),
             ),
           if (!isWide && _selectedIndex != 0)
@@ -153,11 +168,16 @@ class _DesktopGlassHeader extends StatelessWidget {
   final HomeProvider homeProvider;
   final AuthProvider authProvider;
 
+  /// Faux sur le web, où il n'y a pas d'espace de stockage applicatif : sans
+  /// destination possible, l'onglet n'existe pas.
+  final bool canDownload;
+
   const _DesktopGlassHeader({
     required this.selectedIndex,
     required this.onTabSelected,
     required this.homeProvider,
     required this.authProvider,
+    required this.canDownload,
   });
 
   @override
@@ -199,6 +219,12 @@ class _DesktopGlassHeader extends StatelessWidget {
                 selected: selectedIndex == 3,
                 onTap: () => onTabSelected(3),
               ),
+            if (canDownload)
+              GlassNavTab(
+                label: 'Téléchargements',
+                selected: selectedIndex == 4,
+                onTap: () => onTabSelected(4),
+              ),
             const Spacer(),
             const GlassCatalogSearch(
               collapsedWidth: 200,
@@ -235,11 +261,13 @@ class _MobileBottomNav extends StatelessWidget {
   final ValueChanged<int> onTabSelected;
 
   final bool canRequestMedia;
+  final bool canDownload;
 
   const _MobileBottomNav({
     required this.selectedIndex,
     required this.onTabSelected,
     required this.canRequestMedia,
+    required this.canDownload,
   });
 
   @override
@@ -283,6 +311,13 @@ class _MobileBottomNav extends StatelessWidget {
                       label: 'Demandes',
                       selected: selectedIndex == 3,
                       onTap: () => onTabSelected(3),
+                    ),
+                  if (canDownload)
+                    _BottomNavItem(
+                      icon: Icons.download_rounded,
+                      label: 'Hors ligne',
+                      selected: selectedIndex == 4,
+                      onTap: () => onTabSelected(4),
                     ),
                 ],
               ),
@@ -413,3 +448,61 @@ class _StatusBadge extends StatelessWidget {
   }
 }
 
+
+
+/// L'app quand le serveur n'a pas répondu au démarrage.
+///
+/// Pas une version dégradée de la coquille habituelle : une coquille à part,
+/// qui n'a qu'un écran parce qu'il n'y a qu'une chose à faire. Elle disparaît
+/// d'elle-même — [AuthProvider.reconnect] repasse la session en ligne dès que
+/// le sondage de connectivité retrouve le serveur, et la coquille normale
+/// reprend sa place.
+class _OfflineShell extends StatelessWidget {
+  final AuthProvider authProvider;
+
+  const _OfflineShell({required this.authProvider});
+
+  @override
+  Widget build(BuildContext context) {
+    final reachability = Provider.of<ServerReachability>(context);
+
+    return Scaffold(
+      backgroundColor: AppColors.background,
+      body: Stack(
+        children: [
+          const Positioned.fill(child: DownloadsScreen()),
+          Positioned(
+            top: 0,
+            left: 0,
+            right: 0,
+            child: SafeArea(
+              bottom: false,
+              child: Padding(
+                padding: const EdgeInsets.fromLTRB(16, 6, 12, 0),
+                child: Row(
+                  children: [
+                    const Spacer(),
+                    IconButton(
+                      tooltip: 'Réessayer de joindre le serveur',
+                      // Les deux, et pas seulement le sondage : si le serveur
+                      // répondait déjà — l'authentification du démarrage a pu
+                      // échouer sur un simple délai — il n'y aurait aucune
+                      // transition à observer, et le bouton n'aurait rien fait.
+                      onPressed: () async {
+                        await reachability.check();
+                        await authProvider.reconnect();
+                      },
+                      icon: const Icon(Icons.refresh_rounded,
+                          color: AppColors.textSecondary),
+                    ),
+                    AccountMenu(authProvider: authProvider),
+                  ],
+                ),
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}

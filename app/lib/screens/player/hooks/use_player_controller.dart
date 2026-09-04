@@ -10,6 +10,7 @@ import '../playback/playback_session.dart';
 import '../playback_profile.dart';
 import '../web_quality.dart';
 import '../../../services/api_client.dart';
+import '../../../services/download_manager.dart';
 import '../../../services/playback_preferences_storage.dart';
 import '../player_playback_preferences.dart';
 
@@ -143,6 +144,21 @@ class PlayerController {
   /// Current transcoding quality. null = Direct Play.
   String? currentQuality;
   String? _hlsSessionId;
+
+  /// Chemin du fichier local quand ce média est téléchargé, sinon null.
+  ///
+  /// Résolu une fois à l'ouverture et jamais relu : le fichier ne peut pas
+  /// disparaître sous le lecteur (la suppression demande confirmation depuis un
+  /// autre écran), et une lecture qui hésiterait entre deux sources en cours de
+  /// route serait pire que tout.
+  ///
+  /// Une copie locale l'emporte sur le flux même en ligne : elle démarre sans
+  /// mise en mémoire tampon, survit à une coupure au milieu de l'épisode, et ne
+  /// coûte rien au serveur.
+  String? _localFilePath;
+
+  /// Vrai quand l'image vient du disque et non du réseau.
+  bool get isLocalPlayback => _localFilePath != null;
 
   /// Source audio tracks the current HLS session publishes as renditions, in
   /// player enumeration order. Empty in Direct Play, where the player sees the
@@ -488,7 +504,8 @@ class PlayerController {
     _onFirstFrame = onFirstFrame;
     _onTracksChanged = onTracksChanged;
 
-    final streamUrl = apiClient.getStreamUrl(media.id);
+    _localFilePath = DownloadManager.instance.localVideoPath(media.id);
+    final streamUrl = _directPlaySource(apiClient, media.id);
 
     if (inheritedPreferences != null) {
       _applyInheritedPreferences(inheritedPreferences);
@@ -571,14 +588,20 @@ class PlayerController {
     }
   }
 
+  /// Ce que le moteur doit ouvrir en Direct Play : le fichier local s'il est
+  /// là, l'URL de flux sinon. Un seul endroit décide, pour que le retour depuis
+  /// le transcodage retombe sur la même source que l'ouverture initiale.
+  String _directPlaySource(ApiClient apiClient, int mediaId) =>
+      _localFilePath ?? apiClient.getStreamUrl(mediaId);
+
   Future<void> _loadMediaTracksAndPreferences({
     required ApiClient apiClient,
     required int mediaId,
     required PlayerPlaybackPreferences? inheritedPreferences,
   }) async {
     try {
-      final tracks = await apiClient.getMediaTracks(mediaId);
-      if (_disposed) return;
+      final tracks = await _loadTracks(apiClient, mediaId);
+      if (_disposed || tracks == null) return;
 
       mediaTracks = tracks;
 
@@ -609,6 +632,39 @@ class PlayerController {
     } catch (e) {
       debugPrint("Player: failed to load media tracks: $e");
     }
+  }
+
+  /// La liste des pistes, du serveur ou du disque.
+  ///
+  /// Pour un média téléchargé, la copie locale passe devant : elle est
+  /// instantanée, elle décrit exactement le fichier qu'on est en train de lire,
+  /// et surtout elle existe hors ligne — où l'appel réseau ne ferait
+  /// qu'attendre son délai avant de laisser les menus vides.
+  Future<MediaTracks?> _loadTracks(ApiClient apiClient, int mediaId) async {
+    if (_localFilePath != null) {
+      final offline = DownloadManager.instance.offlineTracks(mediaId);
+      if (offline != null) return MediaTracks.fromJson(offline);
+    }
+    try {
+      return await apiClient.getMediaTracks(mediaId);
+    } catch (e) {
+      final offline = DownloadManager.instance.offlineTracks(mediaId);
+      if (offline != null) return MediaTracks.fromJson(offline);
+      rethrow;
+    }
+  }
+
+  /// Le WebVTT d'une piste, local d'abord.
+  ///
+  /// [start] n'est non nul qu'en transcodage, qui suppose déjà un serveur : la
+  /// copie locale, dont les temps sont ceux du fichier entier, ne conviendrait
+  /// pas à une session HLS commençant en cours de route.
+  Future<String> _loadSubtitleVtt(int mediaId, String lang, int start) async {
+    if (_localFilePath != null && start == 0) {
+      final local = await DownloadManager.instance.offlineSubtitle(mediaId, lang);
+      if (local != null && local.contains('-->')) return local;
+    }
+    return _apiClient!.fetchSubtitleContent(mediaId, lang, start: start);
   }
 
   /// The second a web session should begin at, or 0.
@@ -966,16 +1022,35 @@ class PlayerController {
       durSeconds = _knownDurationSeconds;
     }
     if (posSeconds <= 0) return;
+
+    // Le serveur d'abord, le disque ensuite — et le disque dans tous les cas.
+    //
+    // C'est ce qui rend le hors ligne transparent : un épisode téléchargé garde
+    // son avancement dans le manifeste, marqué à resynchroniser tant que le
+    // serveur ne l'a pas accepté. Au retour de la connexion, le rejeu le porte
+    // et l'épisode apparaît vu partout ailleurs, sans que le lecteur ait eu à
+    // savoir s'il y avait du réseau.
+    var synced = false;
+    var resolvedFinished = isFinished;
     try {
-      await apiClient.sendProgress(
+      resolvedFinished = await apiClient.sendProgress(
         mediaId: mediaId,
         currentPositionSeconds: posSeconds,
         duration: durSeconds,
         isFinished: isFinished,
       );
+      synced = true;
     } catch (e) {
       debugPrint("Player: failed to sync progress: $e");
     }
+
+    await DownloadManager.instance.recordProgress(
+      mediaId: mediaId,
+      positionSeconds: posSeconds,
+      durationSeconds: durSeconds,
+      isFinished: resolvedFinished,
+      syncedWithServer: synced,
+    );
   }
 
   Future<void> finishPlayback({
@@ -1153,7 +1228,7 @@ class PlayerController {
     // Back to the file's own tracks: load straight onto the language the user
     // was listening to, instead of the container default followed by a switch.
     await _applyPreferredAudioLanguage(_selectedAudioLang);
-    final streamUrl = _apiClient!.getStreamUrl(_media!.id);
+    final streamUrl = _directPlaySource(_apiClient!, _media!.id);
     // Open straight at the position the HLS session was left at. The previous
     // shape — open at 0, wait out a full buffering cycle, seek, wait again —
     // buffered the head of the file for nothing and made every switch back to
@@ -1515,9 +1590,7 @@ class PlayerController {
     final mediaId = _media!.id;
 
     debugPrint("SUB: request #$reqId lang=$lang start=$start hls=$inHls");
-    _apiClient!
-        .fetchSubtitleContent(mediaId, lang, start: start)
-        .then((vtt) async {
+    _loadSubtitleVtt(mediaId, lang, start).then((vtt) async {
       // Ignore stale responses (selection changed while we were fetching).
       if (_disposed || reqId != _subtitleRequestId) {
         debugPrint(
