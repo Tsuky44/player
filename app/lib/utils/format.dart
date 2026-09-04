@@ -85,3 +85,21 @@ String mediaTypeLabel(MediaType type) {
       return 'Épisode';
   }
 }
+
+/// Taille de fichier lisible : « 1,4 Go ».
+///
+/// Base 1000 comme les systèmes d'exploitation grand public l'affichent, et
+/// une décimale seulement à partir du gigaoctet — sous cette échelle elle ne
+/// renseigne sur rien.
+String formatBytes(int bytes) {
+  if (bytes <= 0) return '0 Mo';
+  const units = ['o', 'Ko', 'Mo', 'Go', 'To'];
+  var value = bytes.toDouble();
+  var unit = 0;
+  while (value >= 1000 && unit < units.length - 1) {
+    value /= 1000;
+    unit++;
+  }
+  final decimals = unit >= 3 && value < 100 ? 1 : 0;
+  return '${value.toStringAsFixed(decimals).replaceAll('.', ',')} ${units[unit]}';
+}

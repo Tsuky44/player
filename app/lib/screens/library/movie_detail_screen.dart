@@ -9,6 +9,7 @@ import '../../services/media_details_cache.dart';
 import '../../theme/app_colors.dart';
 import '../../tv/tv_mode.dart';
 import '../../widgets/global/media_detail_widgets.dart';
+import '../../widgets/global/media_download_button.dart';
 import '../../widgets/global/metadata_fix_sheet.dart';
 import '../../widgets/global/watched_action_button.dart';
 import '../../navigation/search_route_observer.dart';
@@ -188,14 +189,20 @@ class _MovieDetailScreenState extends State<MovieDetailScreen> {
     }
   }
 
+  /// Le film tel que le lecteur et le téléchargement le voient, progression
+  /// locale comprise. Un seul point de construction, pour que les deux boutons
+  /// ne divergent pas.
+  HomeMediaItem get _playbackItem =>
+      widget.movieItem ??
+      HomeMediaItem(
+        media: _media,
+        currentPositionSeconds: _currentPosition,
+        duration: _media.duration,
+        isFinished: _isFinished,
+      );
+
   void _play() {
-    final item = widget.movieItem ??
-        HomeMediaItem(
-          media: _media,
-          currentPositionSeconds: _currentPosition,
-          duration: _media.duration,
-          isFinished: _isFinished,
-        );
+    final item = _playbackItem;
     Navigator.of(context).push(
       MaterialPageRoute(
         settings: const RouteSettings(name: SearchRouteObserver.playerRouteName),
@@ -240,7 +247,9 @@ class _MovieDetailScreenState extends State<MovieDetailScreen> {
                     isLoading: _loadingWatched || _loadingProgress,
                     onPressed: _toggleWatched,
                   ),
-                  const SizedBox(width: 8),
+                  const SizedBox(width: 4),
+                  MediaDownloadButton(item: _playbackItem),
+                  const SizedBox(width: 4),
                   IconButton(
                     onPressed: _rematch,
                     tooltip: 'Corriger la fiche',

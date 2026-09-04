@@ -2,6 +2,7 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import '../models/models.dart';
 import '../services/api_client.dart';
+import '../services/download_manager.dart';
 
 class HomeProvider extends ChangeNotifier {
   static const double _minContinueWatchingPercent = 10.0;
@@ -207,7 +208,16 @@ class HomeProvider extends ChangeNotifier {
   }
 
   Future<void> markContinueWatchingAsWatched(HomeMediaItem item) async {
-    await apiClient.setMediaWatched(item.media.id, true);
+    final result = await apiClient.setMediaWatched(item.media.id, true);
+    // Le manifeste hors ligne suit : un épisode marqué vu ici doit apparaître
+    // vu dans l'écran des téléchargements, et entrer dans le ménage des vus.
+    unawaited(DownloadManager.instance.recordProgress(
+      mediaId: item.media.id,
+      positionSeconds: result['current_position_seconds'] as int? ?? 0,
+      durationSeconds: 0,
+      isFinished: result['is_finished'] as bool? ?? true,
+      syncedWithServer: true,
+    ));
     await loadHome(silent: true);
   }
 

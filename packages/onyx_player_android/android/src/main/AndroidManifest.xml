@@ -1,4 +1,9 @@
 <!-- Pas d'attribut `package` : depuis AGP 8 il est refusé quand le module
      déclare déjà son `namespace` dans build.gradle.kts, ce qui est le cas. -->
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
+    <!-- Le `setWakeMode` du lecteur prend un verrou processeur et Wi-Fi pendant
+         la lecture ; `acquire()` lève une SecurityException sans cette ligne.
+         Déclarée ici et pas seulement dans l'app pour que le plugin porte ce
+         dont il a besoin — l'app la déclare aussi, la fusion n'en garde qu'une. -->
+    <uses-permission android:name="android.permission.WAKE_LOCK"/>
 </manifest>

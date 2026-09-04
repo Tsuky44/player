@@ -1,3 +1,5 @@
+import 'dart:convert';
+
 import 'package:dio/dio.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -65,6 +67,18 @@ class ApiClient {
         ? 'http://10.0.2.2:8080'
         : 'http://127.0.0.1:8080';
   }
+
+  /// Prévenu quand un appel n'a pas pu joindre le serveur (DNS, refus de
+  /// connexion, délai dépassé) — par opposition à un appel arrivé à
+  /// destination et refusé, qui prouve au contraire que le serveur est là.
+  ///
+  /// C'est [ServerReachability] qui s'y branche : un échec réel vaut mieux
+  /// qu'un sondage pour savoir qu'on vient de basculer hors ligne.
+  static void Function()? onConnectionError;
+
+  /// Prévenu quand une réponse arrive — la preuve la moins chère qu'il y a un
+  /// serveur au bout.
+  static void Function()? onConnectionSuccess;
 
   final Dio _dio = Dio();
   final _secureStorage = const FlutterSecureStorage();
@@ -145,10 +159,21 @@ class ApiClient {
       options.receiveTimeout = const Duration(seconds: 30);
 
       return handler.next(options);
+    }, onResponse: (response, handler) {
+      onConnectionSuccess?.call();
+      return handler.next(response);
     }, onError: (DioException e, handler) {
       // Global error logging
       print(
           "API Error [${e.requestOptions.method}] ${e.requestOptions.path}: ${e.message}");
+      switch (e.type) {
+        case DioExceptionType.connectionError:
+        case DioExceptionType.connectionTimeout:
+          onConnectionError?.call();
+        default:
+          // Une réponse, même 500, prouve qu'il y a quelqu'un en face.
+          if (e.response != null) onConnectionSuccess?.call();
+      }
       return handler.next(e);
     }));
   }
@@ -290,6 +315,41 @@ class ApiClient {
   Future<void> clearAuth() async {
     _token = null;
     await _deleteToken();
+    await clearCachedProfile();
+  }
+
+  // ==================== PROFIL EN CACHE ====================
+  //
+  // Le profil est relu au serveur à chaque démarrage, et c'est très bien tant
+  // qu'il répond. Sans lui, l'app tombait sur l'écran de connexion — donc sur
+  // rien du tout, alors que des médias téléchargés attendent sur le disque.
+  // Cette copie est ce qui permet d'ouvrir une session hors ligne : la même
+  // identité, les mêmes droits, jusqu'à ce que le serveur puisse confirmer ou
+  // démentir.
+
+  Future<void> cacheProfile(User user) async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setString('cached_profile', jsonEncode(user.toJson()));
+    } catch (_) {}
+  }
+
+  Future<User?> readCachedProfile() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final raw = prefs.getString('cached_profile');
+      if (raw == null || raw.isEmpty) return null;
+      return User.fromJson(jsonDecode(raw) as Map<String, dynamic>);
+    } catch (_) {
+      return null;
+    }
+  }
+
+  Future<void> clearCachedProfile() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.remove('cached_profile');
+    } catch (_) {}
   }
 
   // ==================== AUTH API ====================
@@ -628,17 +688,24 @@ class ApiClient {
     return response.data as Map<String, dynamic>;
   }
 
+  /// [clientUpdatedAt] date une lecture qui a eu lieu avant l'envoi — le rejeu
+  /// d'un visionnage hors ligne. Le serveur s'en sert pour ne pas écraser une
+  /// progression plus récente venue d'un autre appareil ; un battement de coeur
+  /// normal l'omet et vaut « maintenant ».
   Future<bool> sendProgress({
     required int mediaId,
     required int currentPositionSeconds,
     required int duration,
     required bool isFinished,
+    DateTime? clientUpdatedAt,
   }) async {
     final response = await _dio.post("/api/progress", data: {
       "media_id": mediaId,
       "current_position_seconds": currentPositionSeconds,
       "duration": duration,
       "is_finished": isFinished,
+      if (clientUpdatedAt != null)
+        "client_updated_at": clientUpdatedAt.toUtc().toIso8601String(),
     });
 
     return response.data["is_finished"] as bool? ?? isFinished;
@@ -699,8 +766,18 @@ class ApiClient {
   }
 
   Future<MediaTracks> getMediaTracks(int mediaId) async {
+    return MediaTracks.fromJson(await getMediaTracksJson(mediaId));
+  }
+
+  /// Charge la liste des pistes sous sa forme brute.
+  ///
+  /// Le téléchargement hors ligne met cette réponse de côté telle quelle et la
+  /// reparse sans serveur : la garder en JSON évite d'avoir à sérialiser
+  /// [MediaTracks] en sens inverse, et la copie locale reste lisible par une
+  /// version plus riche du modèle.
+  Future<Map<String, dynamic>> getMediaTracksJson(int mediaId) async {
     final response = await _dio.get("/api/media/$mediaId/tracks");
-    return MediaTracks.fromJson(response.data as Map<String, dynamic>);
+    return response.data as Map<String, dynamic>;
   }
 
   Future<RequestCatalogPage> getRequestCatalog({

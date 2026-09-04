@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -7,6 +9,8 @@ import 'utils/app_platform.dart';
 import 'utils/window_controls.dart';
 import 'services/api_client.dart';
 import 'services/app_image_cache.dart';
+import 'services/download_manager.dart';
+import 'services/server_reachability.dart';
 import 'providers/auth_provider.dart';
 import 'providers/home_provider.dart';
 import 'providers/library_provider.dart';
@@ -102,11 +106,32 @@ void main() async {
 
   final searchRouteObserver = SearchRouteObserver();
 
+  // Les téléchargements se relisent depuis le disque, pas depuis le serveur :
+  // c'est ce qui permet à l'app de savoir ce qu'elle possède avant même de
+  // savoir si elle a du réseau. L'initialisation n'est pas attendue — un
+  // manifeste ne retarde pas la première image.
+  final downloads = DownloadManager.instance;
+  unawaited(downloads.initialize(apiClient));
+
+  final authProvider = AuthProvider(apiClient);
+  final reachability = ServerReachability(apiClient);
+
+  // Le retour du serveur est le seul moment qui compte pour les deux : la
+  // session en cache redevient une vraie session, et ce qui a été regardé hors
+  // ligne part enfin vers le serveur.
+  reachability.addRestoredListener(() {
+    unawaited(authProvider.reconnect());
+    unawaited(downloads.onServerReachable());
+  });
+  reachability.start();
+
   runApp(
     MultiProvider(
       providers: [
         Provider<ApiClient>.value(value: apiClient),
-        ChangeNotifierProvider(create: (_) => AuthProvider(apiClient)),
+        ChangeNotifierProvider<AuthProvider>.value(value: authProvider),
+        ChangeNotifierProvider<DownloadManager>.value(value: downloads),
+        ChangeNotifierProvider<ServerReachability>.value(value: reachability),
         ChangeNotifierProvider(create: (_) => HomeProvider(apiClient)),
         ChangeNotifierProvider(create: (_) => LibraryProvider(apiClient)),
         ChangeNotifierProvider(create: (_) => MediaRequestsProvider(apiClient)),

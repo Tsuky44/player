@@ -4,6 +4,7 @@ import '../../theme/app_colors.dart';
 import '../../tv/tv_focus.dart';
 import '../../utils/format.dart';
 import '../../utils/responsive.dart';
+import 'media_download_button.dart';
 import 'media_poster.dart';
 import 'watched_action_button.dart';
 
@@ -13,12 +14,26 @@ class EpisodeTile extends StatefulWidget {
   final VoidCallback? onTap;
   final Future<void> Function(bool watched)? onToggleWatched;
 
+  /// Contexte de la série, transmis au bouton de téléchargement.
+  ///
+  /// Un épisode ne porte pas le nom de sa série, et une fois hors ligne il n'y
+  /// a plus personne à qui le demander : c'est ici, au moment du geste, qu'il
+  /// faut le capturer.
+  final String? showTitle;
+  final int? showId;
+  final String? showPosterUrl;
+  final int? seasonNumber;
+
   const EpisodeTile({
     super.key,
     required this.episode,
     required this.episodeNumber,
     this.onTap,
     this.onToggleWatched,
+    this.showTitle,
+    this.showId,
+    this.showPosterUrl,
+    this.seasonNumber,
   });
 
   @override
@@ -222,6 +237,15 @@ class _EpisodeTileState extends State<EpisodeTile> {
                                 color: AppColors.textMuted,
                                 fontSize: 13,
                               ),
+                            ),
+                          if (_isAvailable)
+                            MediaDownloadButton(
+                              item: widget.episode,
+                              compact: true,
+                              showTitle: widget.showTitle,
+                              showId: widget.showId,
+                              showPosterUrl: widget.showPosterUrl,
+                              seasonNumber: widget.seasonNumber,
                             ),
                           if (_isAvailable && widget.onToggleWatched != null)
                             WatchedActionButton(

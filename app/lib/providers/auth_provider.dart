@@ -12,6 +12,11 @@ class AuthProvider extends ChangeNotifier {
   bool _isLoading = false;
   String? _errorMessage;
 
+  /// La session ouverte l'a été sur un profil en cache, faute d'avoir pu
+  /// joindre le serveur. Tout ce qui vient du réseau est indisponible ; ce qui
+  /// a été téléchargé, non.
+  bool _isOfflineSession = false;
+
   AuthProvider(this.apiClient) {
     tryAutoLogin();
   }
@@ -23,6 +28,9 @@ class AuthProvider extends ChangeNotifier {
   Permissions get permissions => _currentUser?.permissions ?? const Permissions();
   bool get isOwner => _currentUser?.isOwner ?? false;
   bool get isAuthenticated => _isAuthenticated;
+
+  /// Vrai quand l'identité affichée vient du disque et non du serveur.
+  bool get isOfflineSession => _isOfflineSession;
   bool get isInitializing => _isInitializing;
   bool get isLoading => _isLoading;
   String? get errorMessage => _errorMessage;
@@ -41,21 +49,71 @@ class AuthProvider extends ChangeNotifier {
     try {
       _currentUser = await apiClient.getMe();
       await apiClient.saveLastUsername(_currentUser!.username);
+      await apiClient.cacheProfile(_currentUser!);
       _isAuthenticated = true;
+      _isOfflineSession = false;
       _errorMessage = null;
     } on DioException catch (e) {
-      _currentUser = null;
-      _isAuthenticated = false;
+      // Un 401 est un verdict : la session n'existe plus, on nettoie et on
+      // renvoie vers l'écran de connexion. Une absence de réponse n'est un
+      // verdict sur rien — c'est le cas hors ligne, et il se rattrape.
       if (e.response?.statusCode == 401) {
+        _currentUser = null;
+        _isAuthenticated = false;
+        _isOfflineSession = false;
         await apiClient.clearAuth();
+      } else if (!await _openOfflineSession()) {
+        _currentUser = null;
+        _isAuthenticated = false;
       }
     } catch (_) {
-      _currentUser = null;
-      _isAuthenticated = false;
+      if (!await _openOfflineSession()) {
+        _currentUser = null;
+        _isAuthenticated = false;
+      }
     } finally {
       _isInitializing = false;
       notifyListeners();
     }
+  }
+
+  /// Ouvre une session sur le profil mis de côté au dernier passage en ligne.
+  ///
+  /// Le jeton est toujours là — il n'a pas été invalidé, juste impossible à
+  /// présenter — donc la première requête qui aboutira après la reconnexion
+  /// repartira normalement. Renvoie false quand aucun profil n'a été gardé :
+  /// il n'y a alors rien à ouvrir, et l'écran de connexion est la bonne réponse.
+  Future<bool> _openOfflineSession() async {
+    final cached = await apiClient.readCachedProfile();
+    if (cached == null) return false;
+    _currentUser = cached;
+    _isAuthenticated = true;
+    _isOfflineSession = true;
+    _errorMessage = null;
+    return true;
+  }
+
+  /// Le serveur répond de nouveau : on retente une vraie authentification.
+  ///
+  /// Sans effet quand la session en cours est déjà en ligne, pour que le
+  /// sondage de connectivité puisse appeler sans condition.
+  Future<void> reconnect() async {
+    if (!_isOfflineSession) return;
+    try {
+      _currentUser = await apiClient.getMe();
+      await apiClient.cacheProfile(_currentUser!);
+      _isAuthenticated = true;
+      _isOfflineSession = false;
+      notifyListeners();
+    } on DioException catch (e) {
+      if (e.response?.statusCode == 401) {
+        await apiClient.clearAuth();
+        _currentUser = null;
+        _isAuthenticated = false;
+        _isOfflineSession = false;
+        notifyListeners();
+      }
+    } catch (_) {}
   }
 
   // Connect user
@@ -70,7 +128,9 @@ class AuthProvider extends ChangeNotifier {
       
       // 2. Try login (will save token internally inside ApiClient)
       _currentUser = await apiClient.login(username, password);
+      await apiClient.cacheProfile(_currentUser!);
       _isAuthenticated = true;
+      _isOfflineSession = false;
       _isLoading = false;
       notifyListeners();
       return true;
@@ -124,8 +184,10 @@ class AuthProvider extends ChangeNotifier {
     await apiClient.adoptSession(token);
     await apiClient.saveLastUsername(user.username);
 
+    await apiClient.cacheProfile(user);
     _currentUser = user;
     _isAuthenticated = true;
+    _isOfflineSession = false;
     _errorMessage = null;
     _isLoading = false;
     notifyListeners();
@@ -152,6 +214,7 @@ class AuthProvider extends ChangeNotifier {
     await apiClient.logout();
     _currentUser = null;
     _isAuthenticated = false;
+    _isOfflineSession = false;
     _isLoading = false;
     
     notifyListeners();

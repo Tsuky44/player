@@ -719,6 +719,10 @@ class _ShowDetailScreenState extends State<ShowDetailScreen> {
                     episode: episode,
                     episodeNumber:
                         episode.media.episodeNumber ?? index + 1,
+                    showTitle: _show.title,
+                    showId: _show.id,
+                    showPosterUrl: _show.posterUrl,
+                    seasonNumber: _playerSeasonNumber,
                     onToggleWatched: episode.isAvailable
                         ? (watched) => _toggleEpisodeWatched(episode, watched)
                         : null,

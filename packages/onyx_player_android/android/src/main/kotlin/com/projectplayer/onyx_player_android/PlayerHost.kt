@@ -1,10 +1,12 @@
 package com.projectplayer.onyx_player_android
 
+import android.app.Activity
 import android.content.Context
 import android.media.MediaCodecList
 import android.os.Handler
 import android.os.Looper
 import android.view.SurfaceView
+import android.view.WindowManager
 import androidx.media3.common.C
 import androidx.media3.common.MediaItem
 import androidx.media3.common.MimeTypes
@@ -68,6 +70,12 @@ internal class PlayerInstance(
     private val listener = object : Player.Listener {
         override fun onPlaybackStateChanged(playbackState: Int) = emit()
         override fun onIsPlayingChanged(isPlaying: Boolean) = emit()
+
+        /// Mettre en pause pendant une mise en mémoire tampon ne change ni
+        /// l'état ni `isPlaying` — les deux sont déjà « pas en train de jouer ».
+        /// Sans ce rappel, rien ne préviendrait, et l'écran resterait tenu
+        /// éveillé par un lecteur qui n'a plus l'intention de jouer.
+        override fun onPlayWhenReadyChanged(playWhenReady: Boolean, reason: Int) = emit()
         override fun onVideoSizeChanged(videoSize: VideoSize) {
             applyFit()
             emit()
@@ -155,6 +163,12 @@ internal class PlayerInstance(
             .build()
         created.addListener(listener)
         created.addAnalyticsListener(analytics)
+        // Le processeur et le Wi-Fi, pas l'écran (voir [wantsScreenOn]). Sur un
+        // boîtier de salon, la mise en veille du système coupe le réseau avant
+        // de couper quoi que ce soit d'autre : sans ce verrou, un film lu
+        // depuis le serveur s'arrête de se remplir alors qu'il joue encore.
+        // ExoPlayer le prend et le rend lui-même selon l'état de lecture.
+        created.setWakeMode(C.WAKE_MODE_NETWORK)
         created.setSeekParameters(
             if (exactSeek) SeekParameters.EXACT else SeekParameters.CLOSEST_SYNC,
         )
@@ -357,6 +371,20 @@ internal class PlayerInstance(
 
     // --- Lecture d'état -----------------------------------------------------
 
+    /// Ce lecteur a-t-il besoin que l'écran reste allumé ?
+    ///
+    /// L'intention de jouer, pas la lecture effective : `isPlaying` retombe à
+    /// chaque remise en mémoire tampon, et un tampon qui se remplit trente
+    /// secondes sur une connexion lente n'est pas une raison d'éteindre la
+    /// télévision. En pause, en revanche, l'écran doit pouvoir s'éteindre comme
+    /// d'habitude — c'est ce que l'utilisateur attend d'un appareil laissé là.
+    fun wantsScreenOn(): Boolean {
+        val exo = player ?: return false
+        if (!exo.playWhenReady) return false
+        return exo.playbackState == Player.STATE_READY ||
+            exo.playbackState == Player.STATE_BUFFERING
+    }
+
     fun status(): OnyxPlayerStatus {
         val exo = player
         val size = exo?.videoSize
@@ -495,6 +523,11 @@ internal class PlayerHost(private val context: Context) : OnyxPlayerApi {
     private val players = mutableMapOf<Long, PlayerInstance>()
     private var nextId = 1L
 
+    /// L'activité, quand il y en a une. Seule une fenêtre peut demander que
+    /// l'écran reste allumé, et un `Context` d'application n'en a pas.
+    private var activity: Activity? = null
+    private var screenOnHeld = false
+
     init {
         // Un moteur Flutter qui repart — après un plantage du côté Dart, ou une
         // activité recréée — construit un hôte neuf. Les lecteurs de l'ancien,
@@ -527,9 +560,47 @@ internal class PlayerHost(private val context: Context) : OnyxPlayerApi {
 
     fun playerFor(id: Long): PlayerInstance? = players[id]
 
+    /// Rattache l'activité, ou la détache quand elle s'en va.
+    ///
+    /// Le drapeau vit sur la fenêtre : une activité recréée en repart sans, il
+    /// faut donc le reposer sur la nouvelle — d'où la remise à zéro de
+    /// [screenOnHeld], qui est un souvenir de la fenêtre d'avant.
+    fun attachActivity(activity: Activity?) {
+        this.activity = activity
+        screenOnHeld = false
+        refreshScreenOn()
+    }
+
+    /// Tient l'écran allumé tant qu'un lecteur a l'intention de jouer.
+    ///
+    /// Sans cela, la télévision s'éteint au milieu d'un film. Rien dans une
+    /// lecture ne compte comme activité pour Android : la veille se règle sur
+    /// la télécommande, et une télécommande qu'on ne touche pas pendant deux
+    /// heures est exactement ce que fait un spectateur. Sur un boîtier HDMI,
+    /// l'écran qui s'éteint met la télévision en veille avec lui.
+    ///
+    /// `FLAG_KEEP_SCREEN_ON` plutôt qu'un `WakeLock` : c'est la fenêtre qui le
+    /// porte, donc le système le relâche seul dès que l'app passe à l'arrière-
+    /// plan ou meurt. Un verrou explicite oublié dans un chemin d'erreur, lui,
+    /// tiendrait l'écran allumé jusqu'au redémarrage.
+    private fun refreshScreenOn() {
+        val wanted = players.values.any { it.wantsScreenOn() }
+        if (wanted == screenOnHeld) return
+        val window = (activity ?: return).window ?: return
+        screenOnHeld = wanted
+        if (wanted) {
+            window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
+        } else {
+            window.clearFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
+        }
+    }
+
     override fun create(): Long {
         val id = nextId++
-        players[id] = PlayerInstance(id, context) { status -> emit(status) }
+        players[id] = PlayerInstance(id, context) { status ->
+            emit(status)
+            refreshScreenOn()
+        }
         if (players.size == 1) {
             handler.removeCallbacks(ticker)
             handler.postDelayed(ticker, POSITION_INTERVAL_MS)
@@ -540,6 +611,9 @@ internal class PlayerHost(private val context: Context) : OnyxPlayerApi {
     override fun release(playerId: Long) {
         players.remove(playerId)?.release()
         if (players.isEmpty()) handler.removeCallbacks(ticker)
+        // Un lecteur libéré ne préviendra plus : sans ce rappel, l'écran
+        // resterait tenu éveillé par un lecteur qui n'existe plus.
+        refreshScreenOn()
     }
 
     override fun open(playerId: Long, url: String, startPositionMs: Long, play: Boolean) {
@@ -631,6 +705,8 @@ internal class PlayerHost(private val context: Context) : OnyxPlayerApi {
         handler.removeCallbacks(ticker)
         players.values.forEach { it.release() }
         players.clear()
+        refreshScreenOn()
+        activity = null
         sink = null
         live.remove(this)
     }
