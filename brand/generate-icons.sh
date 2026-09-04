@@ -48,6 +48,19 @@ resize maskable 192 "$app/web/icons/Icon-maskable-192.png"
 resize maskable 512 "$app/web/icons/Icon-maskable-512.png"
 resize square 32 "$app/web/favicon.png"
 
+echo "iOS…"
+# Les icônes iOS sont plein cadre et sans transparence : c'est le système qui
+# arrondit les coins. Les noms de fichiers sont ceux du modèle Flutter, qui
+# sont référencés par `AppIcon.appiconset/Contents.json`.
+ios_icons="$app/ios/Runner/Assets.xcassets/AppIcon.appiconset"
+for spec in 20:1 20:2 20:3 29:1 29:2 29:3 40:1 40:2 40:3 60:2 60:3 76:1 76:2; do
+  pt="${spec%%:*}"
+  scale="${spec##*:}"
+  resize square "$((pt * scale))" "$ios_icons/Icon-App-${pt}x${pt}@${scale}x.png"
+done
+resize square 167 "$ios_icons/Icon-App-83.5x83.5@2x.png"
+resize square 1024 "$ios_icons/Icon-App-1024x1024@1x.png"
+
 echo "Windows…"
 for size in 16 32 48 64 128 256; do
   resize square "$size" "$tmp/ico_$size.png"

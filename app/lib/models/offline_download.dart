@@ -64,6 +64,13 @@ class OfflineDownload {
   final String? overview;
   final String? releaseDate;
 
+  /// Serveur d'où le média a été rapatrié, normalisé.
+  ///
+  /// C'est ce qui rattache l'entrée à son compte : le playeur à appliquer hors
+  /// ligne ([OfflineChrome]) est celui de ce serveur-là, même si l'app a été
+  /// pointée ailleurs depuis.
+  final String serverUrl;
+
   /// URL distante de l'affiche, telle que l'API l'a donnée. Conservée pour le
   /// jour où la vignette locale manque (échec du rapatriement de l'image).
   final String? posterUrl;
@@ -124,6 +131,7 @@ class OfflineDownload {
     this.episodeNumber,
     this.overview,
     this.releaseDate,
+    this.serverUrl = '',
     this.posterUrl,
     this.showPosterUrl,
     this.durationSeconds = 0,
@@ -175,6 +183,19 @@ class OfflineDownload {
   String get groupTitle =>
       (showTitle != null && showTitle!.isNotEmpty) ? showTitle! : title;
 
+  /// Sous quel identifiant chercher la fiche rapatriée avec ce média.
+  ///
+  /// Un épisode renvoie à sa série — la fiche décrit la série, et les vingt
+  /// épisodes d'une saison la partagent. Un film est sa propre fiche. Les
+  /// identifiants venant tous de la même table côté serveur, les deux cas
+  /// cohabitent sans risque de collision.
+  int? get infoId {
+    if (type == MediaType.episode) {
+      return (showId != null && showId! > 0) ? showId : null;
+    }
+    return mediaId;
+  }
+
   OfflineDownload copyWith({
     String? title,
     int? durationSeconds,
@@ -204,6 +225,7 @@ class OfflineDownload {
       episodeNumber: episodeNumber,
       overview: overview,
       releaseDate: releaseDate,
+      serverUrl: serverUrl,
       posterUrl: posterUrl,
       showPosterUrl: showPosterUrl,
       durationSeconds: durationSeconds ?? this.durationSeconds,
@@ -270,6 +292,7 @@ class OfflineDownload {
       episodeNumber: json['episode_number'] as int?,
       overview: json['overview'] as String?,
       releaseDate: json['release_date'] as String?,
+      serverUrl: json['server_url'] as String? ?? '',
       posterUrl: json['poster_url'] as String?,
       showPosterUrl: json['show_poster_url'] as String?,
       durationSeconds: json['duration'] as int? ?? 0,
@@ -308,6 +331,7 @@ class OfflineDownload {
         if (episodeNumber != null) 'episode_number': episodeNumber,
         if (overview != null) 'overview': overview,
         if (releaseDate != null) 'release_date': releaseDate,
+        if (serverUrl.isNotEmpty) 'server_url': serverUrl,
         if (posterUrl != null) 'poster_url': posterUrl,
         if (showPosterUrl != null) 'show_poster_url': showPosterUrl,
         'duration': durationSeconds,

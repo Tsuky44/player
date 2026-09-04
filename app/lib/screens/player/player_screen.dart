@@ -12,6 +12,7 @@ import '../../providers/player_layout_provider.dart';
 import '../../navigation/search_route_observer.dart';
 import '../../services/api_client.dart';
 import '../../services/download_manager.dart';
+import '../../services/server_reachability.dart';
 import '../../services/media_details_cache.dart';
 import '../../services/screen_brightness_control.dart';
 import '../../tv/tv_mode.dart';
@@ -286,6 +287,31 @@ class _PlayerScreenState extends State<PlayerScreen> {
 
   int? get _currentSeasonId => _actualMedia.parentId;
 
+  /// Quel playeur habille cette lecture.
+  ///
+  /// Le compte fait foi dès que le serveur a confirmé lequel il utilise. Sinon
+  /// — hors ligne, ou avant la première synchronisation de la session — un
+  /// média téléchargé en sait plus que l'app : l'instantané rangé avec lui
+  /// porte le playeur du compte **du serveur d'où il vient**, là où le provider
+  /// ne tient qu'une trace locale, qui peut appartenir à un autre compte ou
+  /// n'avoir jamais été renseignée. Sans ça un épisode téléchargé s'ouvrait
+  /// sur le HUD par défaut, que personne n'avait choisi.
+  _ResolvedChrome _resolveChrome(PlayerLayoutProvider provider) {
+    if (!provider.isSyncedWithAccount) {
+      final snapshot = DownloadManager.instance.chromeFor(_actualMedia.id);
+      if (snapshot != null) {
+        return _ResolvedChrome(
+          config: snapshot.config,
+          useModular: snapshot.useModular,
+        );
+      }
+    }
+    return _ResolvedChrome(
+      config: provider.config,
+      useModular: provider.useModularLayout,
+    );
+  }
+
   int? get _currentShowId {
     if (widget.media is HomeMediaItem) {
       return (widget.media as HomeMediaItem).showId;
@@ -418,6 +444,7 @@ class _PlayerScreenState extends State<PlayerScreen> {
     final authProvider = Provider.of<AuthProvider>(context, listen: false);
     final apiClient = authProvider.apiClient;
     _apiClient = apiClient;
+    _seedOfflineDetails();
 
     // Extract the actual Media object (handle both Media and HomeMediaItem)
     Media actualMedia;
@@ -513,6 +540,24 @@ class _PlayerScreenState extends State<PlayerScreen> {
     final resumeAt = await resumePositionFuture;
     if (!mounted) return;
     await _startPlayback(resumeAtSeconds: resumeAt);
+  }
+
+  /// Verse la fiche rapatriée avec ce média dans le cache que lisent les
+  /// écrans, pour que le logo-titre et le reste existent sans serveur.
+  ///
+  /// Uniquement hors ligne : en ligne, la fiche du serveur est plus fraîche, et
+  /// pré-remplir le cache la retarderait de sa durée de validité.
+  void _seedOfflineDetails() {
+    final reachability =
+        Provider.of<ServerReachability>(context, listen: false);
+    if (reachability.isOnline) return;
+    final downloads = DownloadManager.instance;
+    final details = downloads.offlineDetails(_actualMedia.id);
+    if (details == null) return;
+    // Sous l'identifiant qui a servi à la demander : le lecteur cherche la
+    // fiche par l'identifiant de la série, pas par celui de l'épisode.
+    final infoId = downloads.entryFor(_actualMedia.id)?.infoId;
+    MediaDetailsCache.remember(infoId ?? details.id, details);
   }
 
   void _safeSetState(VoidCallback fn) {
@@ -749,11 +794,10 @@ class _PlayerScreenState extends State<PlayerScreen> {
       return;
     }
 
-    final layoutProvider =
-        Provider.of<PlayerLayoutProvider>(context, listen: false);
+    final chrome = _resolveChrome(
+        Provider.of<PlayerLayoutProvider>(context, listen: false));
     if (togglePlayback ||
-        (layoutProvider.useModularLayout &&
-            layoutProvider.config.tapToTogglePlayback)) {
+        (chrome.useModular && chrome.config.tapToTogglePlayback)) {
       _togglePlayPause();
       _showControlsTransient();
       return;
@@ -1296,14 +1340,14 @@ class _PlayerScreenState extends State<PlayerScreen> {
   void _syncSubtitlePadding(BuildContext context) {
     if (!mounted || !_isInitialized) return;
 
-    final layoutProvider =
-        Provider.of<PlayerLayoutProvider>(context, listen: false);
+    final chrome = _resolveChrome(
+        Provider.of<PlayerLayoutProvider>(context, listen: false));
     final screenSize = MediaQuery.sizeOf(context);
     final measuredTop = _measureTimelineTop(context);
     final padding = SubtitlePaddingCalculator.resolve(
       controlsVisible: _showControls,
-      useModularLayout: layoutProvider.useModularLayout,
-      modularConfig: layoutProvider.config,
+      useModularLayout: chrome.useModular,
+      modularConfig: chrome.config,
       screenSize: screenSize,
       measuredTimelineTopDy: measuredTop,
     );
@@ -1904,6 +1948,7 @@ class _PlayerScreenState extends State<PlayerScreen> {
   @override
   Widget build(BuildContext context) {
     final layoutProvider = Provider.of<PlayerLayoutProvider>(context);
+    final chrome = _resolveChrome(layoutProvider);
     final isTv = TvScope.of(context);
     // A fixed chrome is its own thing: it is neither the default HUD nor the
     // modular layer, and it ignores the layout config entirely.
@@ -1913,9 +1958,8 @@ class _PlayerScreenState extends State<PlayerScreen> {
     // pointer that can reach any of them directly; a D-pad walks between them,
     // and no arrangement a user can draw guarantees a path that reaches every
     // control. The fixed chrome is laid out for that walk.
-    final fixedChrome =
-        isTv ? FixedChromeId.emby : layoutProvider.fixedChrome;
-    final useModular = fixedChrome == null && layoutProvider.useModularLayout;
+    final fixedChrome = isTv ? FixedChromeId.emby : chrome.fixedChrome;
+    final useModular = fixedChrome == null && chrome.useModular;
     final useDefaultHud = fixedChrome == null && !useModular;
     final totalSeconds = _playerController.duration.inSeconds;
     final progressFraction = totalSeconds > 0
@@ -2178,7 +2222,7 @@ class _PlayerScreenState extends State<PlayerScreen> {
                   }
                 else if (useModular) ...[
                   ModularControlsLayer(
-                    config: layoutProvider.config,
+                    config: chrome.config,
                     visible: _controlsVisible,
                     timelineAnchorKey: _timelineAnchorKey,
                     isPlaying: _playerController.isPlaying,
@@ -2291,8 +2335,7 @@ class _PlayerScreenState extends State<PlayerScreen> {
                 if ((_episodeNav?.showSkipIntro ?? false) &&
                     fixedChrome == null &&
                     !(useModular &&
-                        layoutProvider.config
-                            .hasControl(PlayerControlType.skipIntro)))
+                        chrome.config.hasControl(PlayerControlType.skipIntro)))
                   SkipIntroButton(
                     onSkip: () async {
                       final end = _episodeNav!.introSkipTarget;
@@ -2554,4 +2597,19 @@ class _StalledStartup extends StatelessWidget {
       ),
     );
   }
+}
+
+
+/// Le playeur retenu pour une lecture : sa configuration, et laquelle des trois
+/// couches de chrome elle décrit.
+///
+/// [fixedChrome] n'est pas un troisième champ mais une lecture de la
+/// configuration : un chrome figé *est* une configuration qui en nomme un.
+class _ResolvedChrome {
+  final PlayerLayoutConfig config;
+  final bool useModular;
+
+  const _ResolvedChrome({required this.config, required this.useModular});
+
+  FixedChromeId? get fixedChrome => config.fixedChrome;
 }

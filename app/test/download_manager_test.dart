@@ -2,7 +2,9 @@ import 'dart:convert';
 import 'dart:io';
 
 import 'package:flutter_test/flutter_test.dart';
+import 'package:onyx/models/offline_chrome.dart';
 import 'package:onyx/models/offline_download.dart';
+import 'package:onyx/models/player_layout.dart';
 import 'package:onyx/services/api_client.dart';
 import 'package:onyx/services/download_manager.dart';
 import 'package:path_provider_platform_interface/path_provider_platform_interface.dart';
@@ -32,6 +34,8 @@ Map<String, dynamic> _entry({
     'file_name': 'video.mkv',
     'added_at': '2026-09-01T12:00:00.000Z',
     'show_title': 'Ma série',
+    'show_id': 7,
+    'server_url': 'http://nas:8080',
     'season_number': 1,
     'episode_number': mediaId,
     'duration': 2400,
@@ -66,6 +70,20 @@ void main() {
     }));
     Directory('${store.path}/1').createSync();
     File('${store.path}/1/video.mkv').writeAsStringSync('des octets');
+
+    // La fiche de la série, écrite une fois et partagée par ses épisodes.
+    Directory('${store.path}/shows/7').createSync(recursive: true);
+    File('${store.path}/shows/7/details.json').writeAsStringSync(jsonEncode({
+      'id': 7,
+      'type': 'show',
+      'title': 'Ma série',
+      'overview': 'Un synopsis rapatrié avec les épisodes.',
+      'genres': ['Drame', 'Science-fiction'],
+      'number_of_seasons': 3,
+      'vote_average': 8.4,
+      'release_date': '2019-05-01',
+    }));
+    File('${store.path}/shows/7/poster.jpg').writeAsStringSync('jpeg');
 
     await DownloadManager.instance.initialize(ApiClient());
   });
@@ -138,6 +156,67 @@ void main() {
     expect(manager.downloads.length, 2);
   });
 
+  test('la fiche de la série est relue et partagée par ses épisodes', () {
+    final manager = DownloadManager.instance;
+
+    final byShow = manager.detailsForShow(7);
+    expect(byShow, isNotNull);
+    expect(byShow!.title, 'Ma série');
+    expect(byShow.numberOfSeasons, 3);
+    expect(byShow.genres, contains('Science-fiction'));
+
+    // Les deux épisodes renvoient à la même fiche : un épisode ne porte pas de
+    // synopsis de série, c'est sa série qui en a un.
+    expect(manager.offlineDetails(1)?.overview,
+        'Un synopsis rapatrié avec les épisodes.');
+    expect(manager.offlineDetails(2)?.id, 7);
+    expect(manager.entryFor(1)?.infoId, 7);
+
+    expect(manager.showPosterPath(7), endsWith('/shows/7/poster.jpg'));
+    // Aucun logo n'a été rapatrié : l'appelant retombe sur le titre écrit.
+    expect(manager.showLogoPath(7), isNull);
+  });
+
+  test('le playeur figé est celui du serveur d’où vient le média', () async {
+    final manager = DownloadManager.instance;
+    expect(manager.chromeFor(1), isNull);
+
+    await manager.rememberChrome(OfflineChrome(
+      serverUrl: 'http://nas:8080',
+      presetId: 'preset-42',
+      name: 'Mon playeur',
+      useModular: true,
+      config: PlayerLayoutConfig.fixed(FixedChromeId.emby),
+      savedAt: DateTime.utc(2026, 9, 3),
+    ));
+
+    final chrome = manager.chromeFor(1);
+    expect(chrome, isNotNull);
+    expect(chrome!.presetId, 'preset-42');
+    expect(chrome.useModular, isTrue);
+    expect(chrome.config.fixedChrome, FixedChromeId.emby);
+
+    // Écrit sur le disque, pas seulement en mémoire : c'est justement au
+    // démarrage suivant, hors ligne, qu'il servira.
+    final saved = jsonDecode(
+      File('${root.path}/onyx_offline/chromes.json').readAsStringSync(),
+    ) as Map<String, dynamic>;
+    expect(saved.keys, contains('http://nas:8080'));
+    expect(
+      OfflineChrome.fromJson(
+        Map<String, dynamic>.from(saved['http://nas:8080'] as Map),
+      ).config.fixedChrome,
+      FixedChromeId.emby,
+    );
+  });
+
+  test('une adresse de serveur ne varie pas selon sa barre oblique finale', () {
+    expect(OfflineChrome.normalizeServerUrl('http://nas:8080/'),
+        'http://nas:8080');
+    expect(OfflineChrome.normalizeServerUrl('  http://nas:8080//  '),
+        'http://nas:8080');
+  });
+
   test('le ménage des vus efface le média et son dossier', () async {
     final manager = DownloadManager.instance;
     await manager.recordProgress(
@@ -152,6 +231,9 @@ void main() {
     expect(deleted, 2);
     expect(manager.downloads, isEmpty);
     expect(Directory('${root.path}/onyx_offline/1').existsSync(), isFalse);
+    // Plus un seul épisode de la série : sa fiche n'a plus rien à décrire.
+    expect(Directory('${root.path}/onyx_offline/shows/7').existsSync(), isFalse);
+    expect(manager.detailsForShow(7), isNull);
 
     // Le manifeste réécrit doit refléter la suppression, pas seulement la
     // mémoire du processus.
