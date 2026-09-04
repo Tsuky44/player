@@ -33,7 +33,8 @@ fichier partiel parfaitement reprenable : au démarrage suivant l'entrée repass
 
 ### 2. Un manifeste JSON, pas une base
 
-`<support applicatif>/onyx_offline/manifest.json` plus un dossier par média. Quelques dizaines
+`<support applicatif>/onyx_offline/manifest.json` plus un dossier par média, un dossier `shows/`
+pour les fiches de séries et un `chromes.json` pour les playeurs. Quelques dizaines
 d'entrées, écrites par un seul processus, lues d'un bloc au démarrage : SQLite n'apporterait ici
 qu'une dépendance et une migration. L'écriture est atomique (fichier temporaire puis renommage) et
 groupée, pour qu'une app tuée pendant la sauvegarde retrouve l'ancien manifeste plutôt qu'un JSON
@@ -43,7 +44,46 @@ Le manifeste ne garde **que des noms de fichiers**, jamais des chemins absolus :
 d'application se déplace d'une version à l'autre, et un chemin gravé ne survivrait pas à une mise
 à jour.
 
-### 3. Une session hors ligne, sur un profil mis en cache
+### 3. La fiche de la série voyage avec l'épisode
+
+Un épisode seul ne dit rien de ce qu'il est : ni synopsis de la série, ni affiche verticale, ni
+logo-titre. Hors ligne, un téléchargement s'affichait donc sous un titre nu, et le lecteur ouvrait
+sur du texte là où il montre d'habitude le logo.
+
+`GET /api/media/<showId>/details` est donc rapatrié en même temps que le fichier, dans
+`shows/<showId>/details.json` — **une fois par série, partagée par tous ses épisodes**. La
+vingtième descente d'une saison n'écrit rien de plus que la première, et la fiche part quand le
+dernier épisode part. Un film est sa propre fiche, rangée au même endroit sous son propre
+identifiant : les identifiants viennent tous de la même table côté serveur, les deux cas
+cohabitent.
+
+L'affiche et le logo sont rapatriés avec, et — c'est ce qui fait la différence — **classés dans le
+magasin d'images partagé sous leur URL d'origine**. Aucun widget n'a donc à savoir qu'il existe une
+copie locale : il demande la même URL qu'en ligne et la trouve sur le disque. Le chrome du lecteur
+affiche son logo, la liste affiche ses affiches, sans une ligne de code conditionnel.
+
+### 4. Le playeur du compte est figé, par serveur
+
+Le chrome du lecteur vit sur le compte, côté serveur. Hors ligne il n'y a personne pour le dire, et
+un média rapatrié se lisait avec le HUD par défaut — un lecteur que l'utilisateur n'a jamais choisi.
+
+L'instantané est rangé **par serveur d'origine** (`chromes.json`), pas par média : c'est un réglage
+de compte, et cent épisodes n'ont pas à en garder cent copies. C'est aussi ce qui donne la bonne
+réponse quand l'app a été pointée ailleurs depuis — chaque téléchargement retrouve le playeur du
+compte d'où il vient.
+
+Il est rafraîchi à chaque fois que l'app sait de source sûre quel playeur le compte utilise : à
+chaque synchronisation réussie et à chaque modification dans le Studio, pas seulement au
+téléchargement. Changer de playeur en ligne se voit hors ligne le soir même, sans rien
+retélécharger.
+
+L'arbitrage au moment de lire est explicite : **le compte fait foi dès que le serveur l'a
+confirmé dans la session**. Sinon seulement, l'instantané prend la main — car ce que tient alors le
+provider n'est qu'une trace locale, qui peut appartenir à un autre compte ou n'avoir jamais été
+renseignée. Un téléviseur garde son chrome fixe quoi qu'il arrive : les dispositions modulaires se
+parcourent au pointeur, pas à la télécommande (voir l'[ADR-0006](0006-chrome-du-lecteur-a-la-telecommande.md)).
+
+### 5. Une session hors ligne, sur un profil mis en cache
 
 `tryAutoLogin` distingue désormais deux échecs. Un 401 est un verdict : la session n'existe plus,
 on nettoie. Une absence de réponse n'est un verdict sur rien — l'app ouvre alors une session sur le
@@ -55,14 +95,14 @@ Cette session-là n'affiche qu'un écran, les téléchargements. Les autres ongl
 montrer que des erreurs ; on les retire plutôt que de les laisser échouer, et ils reviennent d'eux-
 mêmes dès que `ServerReachability` retrouve le serveur.
 
-### 4. La joignabilité se mesure sur le serveur, pas sur le réseau
+### 6. La joignabilité se mesure sur le serveur, pas sur le réseau
 
 `GET /api/ping`, pas un état de connectivité système. Un téléphone peut être parfaitement connecté
 au Wi-Fi d'un hôtel sans que le NAS de la maison soit à portée : ce qui compte n'est pas d'avoir du
 réseau, c'est d'avoir *ce* serveur. Le sondage est doublé par les erreurs de connexion remontées
 par le client HTTP — un appel qui échoue en dit plus long, et plus tôt, que le prochain sondage.
 
-### 5. La progression locale fait autorité tant qu'elle n'a pas été acquittée
+### 7. La progression locale fait autorité tant qu'elle n'a pas été acquittée
 
 Le battement de coeur du lecteur écrit **dans les deux sens** : le serveur d'abord, le manifeste
 ensuite, et le manifeste dans tous les cas. Une entrée dont l'envoi a échoué porte `needs_sync`, et
@@ -71,7 +111,7 @@ qu'on vient de regarder dans le train.
 
 Au retour de la connexion, chaque entrée en attente est rejouée vers `POST /api/progress`.
 
-### 6. Le rejeu porte sa date : `client_updated_at`
+### 8. Le rejeu porte sa date : `client_updated_at`
 
 C'est la seule modification côté serveur. Un rejeu date la lecture qu'il décrit, et la garde
 `ON CONFLICT … WHERE progressions.updated_at <= excluded.updated_at` refuse d'écraser une
@@ -86,7 +126,7 @@ reconnectant à la même seconde liraient tous les deux « plus ancien » et éc
 Une date dans le futur — appareil à l'heure fausse — est ramenée à maintenant, sinon elle épinglerait
 la ligne et bloquerait toute écriture ultérieure.
 
-### 7. La suppression reste un geste
+### 9. La suppression reste un geste
 
 Rien ne s'efface tout seul, même une fois vu. Un épisode vu porte sa pastille dans la liste, et
 deux chemins mènent à sa suppression : l'entrée du menu de sa ligne, et un « Supprimer les vus »
@@ -104,3 +144,7 @@ supprimé l'épisode qu'on comptait revoir le soir même.
   celles que le serveur extrait — le lecteur les injecte déjà par leur contenu, la copie locale se
   substitue donc à l'appel réseau sans rien changer en aval.
 - Le téléchargement s'arrête quand l'app s'arrête. Un service d'arrière-plan Android reste à faire.
+- La fiche rapatriée n'est pas rafraîchie : une correction de métadonnées côté serveur ne se voit
+  hors ligne qu'après suppression et retéléchargement de la série. En ligne, la fiche du serveur
+  reprend la main — le cache de fiches n'est pré-rempli avec la copie locale que lorsque le serveur
+  est injoignable, sans quoi elle retarderait la vraie de sa durée de validité.

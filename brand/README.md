@@ -31,7 +31,7 @@ pas partie de la marque.
 ```
 
 Le script n'utilise que des outils livrés avec macOS (`qlmanage`, `sips`,
-`python3`) et écrit dans `app/macos`, `app/android`, `app/web` et
+`python3`) et écrit dans `app/macos`, `app/android`, `app/ios`, `app/web` et
 `app/windows`. Il faut donc le lancer depuis un Mac.
 
 ## Dans l'app

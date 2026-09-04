@@ -748,6 +748,13 @@ class ApiClient {
 
   /// Fetches rich, Emby-style catalog details (cast, genres, rating, backdrop,
   /// crew…) for a movie or show, merging local library data with live TMDB.
+  /// La fiche sous sa forme brute, telle que le téléchargement hors ligne la
+  /// range sur le disque. Voir [getMediaTracksJson] pour le même raisonnement.
+  Future<Map<String, dynamic>> getMediaDetailsJson(int mediaId) async {
+    final response = await _dio.get("/api/media/$mediaId/details");
+    return response.data as Map<String, dynamic>;
+  }
+
   Future<MediaDetails> getMediaDetails(int mediaId) async {
     final response = await _dio.get("/api/media/$mediaId/details");
     return MediaDetails.fromJson(response.data as Map<String, dynamic>);

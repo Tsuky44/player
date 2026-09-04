@@ -8,9 +8,11 @@ import 'package:path/path.dart' as p;
 import 'package:path_provider/path_provider.dart';
 
 import '../models/models.dart';
+import '../models/offline_chrome.dart';
 import '../models/offline_download.dart';
 import '../utils/poster_url.dart';
 import 'api_client.dart';
+import 'app_image_cache.dart';
 
 /// Le magasin hors ligne : ce qui a été rapatrié sur cet appareil, ce qui est
 /// en train de l'être, et ce qui en a été vu sans que le serveur le sache
@@ -25,6 +27,11 @@ import 'api_client.dart';
 /// ```
 /// <support applicatif>/onyx_offline/
 ///   manifest.json          ← la liste, seule source de vérité
+///   chromes.json           ← le playeur du compte, par serveur d'origine
+///   shows/<showId>/
+///     details.json         ← la fiche de la série, partagée par ses épisodes
+///     poster.jpg
+///     logo.png
 ///   <mediaId>/
 ///     video.mkv            ← le fichier d'origine, octet pour octet
 ///     poster.jpg
@@ -67,6 +74,15 @@ class DownloadManager extends ChangeNotifier {
 
   final Map<int, OfflineDownload> _entries = {};
   final Map<int, CancelToken> _cancelTokens = {};
+
+  /// Les fiches rapatriées, indexées par l'identifiant de la série (ou du film
+  /// pour un film). Relues d'un bloc au démarrage : l'écran des
+  /// téléchargements les lit pendant qu'il construit ses lignes, et une
+  /// lecture disque par ligne se verrait.
+  final Map<int, MediaDetails> _shows = {};
+
+  /// Le playeur de chaque compte, par serveur d'origine.
+  final Map<String, OfflineChrome> _chromes = {};
 
   int? _activeMediaId;
   bool _pumping = false;
@@ -129,6 +145,8 @@ class DownloadManager extends ChangeNotifier {
       }
       _root = root;
       await _loadManifest();
+      await _loadShows();
+      await _loadChromes();
     } catch (e) {
       debugPrint('Downloads: initialisation impossible: $e');
     } finally {
@@ -160,10 +178,67 @@ class DownloadManager extends ChangeNotifier {
     }
   }
 
+  /// Relit les fiches de séries écrites à côté des médias.
+  ///
+  /// Une fiche illisible est ignorée, jamais fatale : elle décore l'écran, elle
+  /// ne conditionne pas la lecture.
+  Future<void> _loadShows() async {
+    final dir = _showsDir;
+    if (dir == null || !await dir.exists()) return;
+    await for (final entity in dir.list(followLinks: false)) {
+      if (entity is! Directory) continue;
+      final id = int.tryParse(p.basename(entity.path));
+      if (id == null) continue;
+      final file = File(p.join(entity.path, 'details.json'));
+      if (!await file.exists()) continue;
+      try {
+        final raw = jsonDecode(await file.readAsString());
+        _shows[id] = MediaDetails.fromJson(raw as Map<String, dynamic>);
+      } catch (e) {
+        debugPrint('Downloads: fiche $id illisible: $e');
+      }
+    }
+  }
+
+  Future<void> _loadChromes() async {
+    final file = _chromesFile;
+    if (file == null || !await file.exists()) return;
+    try {
+      final raw = jsonDecode(await file.readAsString());
+      if (raw is! Map) return;
+      for (final entry in raw.entries) {
+        final value = entry.value;
+        if (value is! Map) continue;
+        _chromes[entry.key as String] =
+            OfflineChrome.fromJson(Map<String, dynamic>.from(value));
+      }
+    } catch (e) {
+      debugPrint('Downloads: playeurs hors ligne illisibles: $e');
+    }
+  }
+
   File? get _manifestFile {
     final root = _root;
     if (root == null) return null;
     return File(p.join(root.path, 'manifest.json'));
+  }
+
+  File? get _chromesFile {
+    final root = _root;
+    if (root == null) return null;
+    return File(p.join(root.path, 'chromes.json'));
+  }
+
+  Directory? get _showsDir {
+    final root = _root;
+    if (root == null) return null;
+    return Directory(p.join(root.path, 'shows'));
+  }
+
+  Directory? _showDirFor(int infoId) {
+    final dir = _showsDir;
+    if (dir == null) return null;
+    return Directory(p.join(dir.path, '$infoId'));
   }
 
   void _markDirty() {
@@ -246,6 +321,75 @@ class DownloadManager extends ChangeNotifier {
   /// les menus audio et sous-titres existent aussi sans serveur.
   Map<String, dynamic>? offlineTracks(int mediaId) => _entries[mediaId]?.tracks;
 
+  /// La fiche rapatriée avec ce média : celle de sa série pour un épisode,
+  /// la sienne pour un film. Null quand rien n'a pu être récupéré.
+  ///
+  /// C'est tout ce que la page de détail affichait — synopsis, genres, note,
+  /// distribution, nombre de saisons — disponible sans serveur.
+  MediaDetails? offlineDetails(int mediaId) {
+    final infoId = _entries[mediaId]?.infoId;
+    return infoId == null ? null : _shows[infoId];
+  }
+
+  /// La fiche rangée sous cet identifiant, pour un appelant qui le connaît
+  /// déjà (l'en-tête d'une série dans la liste, par exemple).
+  MediaDetails? detailsForShow(int infoId) => _shows[infoId];
+
+  String? showPosterPath(int infoId) => _showAsset(infoId, 'poster.jpg');
+
+  /// Logo-titre de la série. C'est lui que le lecteur affiche en haut de
+  /// l'écran à la place du titre écrit.
+  String? showLogoPath(int infoId) => _showAsset(infoId, 'logo.png');
+
+  String? _showAsset(int infoId, String fileName) {
+    final dir = _showDirFor(infoId);
+    if (dir == null) return null;
+    final path = p.join(dir.path, fileName);
+    return File(path).existsSync() ? path : null;
+  }
+
+  /// Le playeur à appliquer pour ce média : celui du compte du serveur d'où il
+  /// a été téléchargé.
+  OfflineChrome? chromeFor(int mediaId) {
+    final entry = _entries[mediaId];
+    if (entry == null || entry.serverUrl.isEmpty) return null;
+    return _chromes[entry.serverUrl];
+  }
+
+  /// Fige le playeur actif d'un compte.
+  ///
+  /// Appelé à chaque fois que l'app sait de source sûre quel playeur le compte
+  /// utilise — donc à chaque synchronisation réussie, pas seulement au
+  /// téléchargement : changer de playeur en ligne doit se voir hors ligne le
+  /// soir même, sans avoir à retélécharger quoi que ce soit.
+  Future<void> rememberChrome(OfflineChrome chrome) async {
+    if (chrome.serverUrl.isEmpty || _root == null) return;
+    final existing = _chromes[chrome.serverUrl];
+    if (existing != null &&
+        existing.presetId == chrome.presetId &&
+        existing.useModular == chrome.useModular &&
+        existing.config.encode() == chrome.config.encode()) {
+      return; // rien de neuf : pas d'écriture disque
+    }
+    _chromes[chrome.serverUrl] = chrome;
+    await _saveChromes();
+  }
+
+  Future<void> _saveChromes() async {
+    final file = _chromesFile;
+    if (file == null) return;
+    try {
+      final payload = jsonEncode(
+        _chromes.map((key, value) => MapEntry(key, value.toJson())),
+      );
+      final tmp = File('${file.path}.tmp');
+      await tmp.writeAsString(payload, flush: true);
+      await tmp.rename(file.path);
+    } catch (e) {
+      debugPrint('Downloads: écriture des playeurs impossible: $e');
+    }
+  }
+
   /// Contenu WebVTT d'une piste rapatriée, ou null.
   Future<String?> offlineSubtitle(int mediaId, String lang) async {
     final entry = _entries[mediaId];
@@ -294,6 +438,7 @@ class DownloadManager extends ChangeNotifier {
       episodeNumber: media.effectiveEpisodeNumber,
       overview: media.overview,
       releaseDate: media.releaseDate,
+      serverUrl: OfflineChrome.normalizeServerUrl(_api?.baseUrl ?? ''),
       posterUrl: media.posterUrl,
       showPosterUrl: showPosterUrl ?? item.showPosterUrl,
       durationSeconds: item.effectiveDuration,
@@ -362,9 +507,27 @@ class DownloadManager extends ChangeNotifier {
         debugPrint('Downloads: suppression de $mediaId impossible: $e');
       }
     }
+    if (entry != null) await _dropOrphanShowInfo(entry.infoId);
     await _saveManifest();
     notifyListeners();
     unawaited(_pump());
+  }
+
+  /// Efface la fiche d'une série dont plus aucun épisode n'est là.
+  ///
+  /// Tant qu'il en reste un, la fiche sert : c'est elle qui donne son nom, son
+  /// affiche et son logo à ce qui reste dans la liste.
+  Future<void> _dropOrphanShowInfo(int? infoId) async {
+    if (infoId == null) return;
+    if (_entries.values.any((e) => e.infoId == infoId)) return;
+    _shows.remove(infoId);
+    final dir = _showDirFor(infoId);
+    if (dir == null) return;
+    try {
+      if (await dir.exists()) await dir.delete(recursive: true);
+    } catch (e) {
+      debugPrint('Downloads: suppression de la fiche $infoId impossible: $e');
+    }
   }
 
   /// Supprime tout ce qui a été vu. Renvoie le nombre d'entrées effacées.
@@ -626,24 +789,98 @@ class DownloadManager extends ChangeNotifier {
         entry.posterUrl ?? entry.showPosterUrl,
         serverBaseUrl: api.baseUrl,
       );
-      if (url != null) {
-        try {
-          final response = await _transferDio.get<List<int>>(
+      if (url != null &&
+          await _downloadImage(
             tmdbSizedUrl(url, 'w500'),
-            options: Options(responseType: ResponseType.bytes),
-          );
-          final bytes = response.data;
-          if (bytes != null && bytes.isNotEmpty) {
-            final file = File(p.join(dir.path, 'poster.jpg'));
-            await file.writeAsBytes(bytes, flush: true);
-            _entries[mediaId] =
-                _entries[mediaId]!.copyWith(posterFileName: 'poster.jpg');
-            _markDirty();
-          }
-        } catch (e) {
-          debugPrint('Downloads: affiche de $mediaId indisponible: $e');
+            File(p.join(dir.path, 'poster.jpg')),
+          )) {
+        final current = _entries[mediaId];
+        if (current != null) {
+          _entries[mediaId] = current.copyWith(posterFileName: 'poster.jpg');
+          _markDirty();
         }
       }
+    }
+
+    await _fetchShowInfo(api, mediaId);
+  }
+
+  /// Rapatrie la fiche de la série (ou du film) à côté du média.
+  ///
+  /// Un épisode seul ne dit rien de ce qu'il est : ni synopsis de la série, ni
+  /// affiche verticale, ni logo-titre. Sans cette fiche, un téléchargement
+  /// s'affiche hors ligne sous un titre nu, et le lecteur ouvre sur du texte là
+  /// où il montre d'habitude le logo de la série.
+  ///
+  /// Elle est rangée **une fois par série** et partagée par tous ses épisodes :
+  /// la vingtième descente d'une saison n'écrit rien de plus que la première.
+  /// Tout y est facultatif — rien de ce qui échoue ici n'empêche de regarder.
+  Future<void> _fetchShowInfo(ApiClient api, int mediaId) async {
+    final infoId = _entries[mediaId]?.infoId;
+    final dir = infoId == null ? null : _showDirFor(infoId);
+    if (infoId == null || dir == null) return;
+    // Déjà là : une série ne change pas de synopsis entre deux épisodes.
+    if (_shows.containsKey(infoId)) return;
+
+    try {
+      final raw = await api.getMediaDetailsJson(infoId);
+      final details = MediaDetails.fromJson(raw);
+      if (!await dir.exists()) await dir.create(recursive: true);
+      await File(p.join(dir.path, 'details.json'))
+          .writeAsString(jsonEncode(raw), flush: true);
+      _shows[infoId] = details;
+      notifyListeners();
+
+      // L'affiche verticale de la série et son logo-titre : les deux images que
+      // l'app dessine à partir d'une fiche, donc les deux qui manqueraient.
+      final poster =
+          detailPosterUrl(details.posterUrl, serverBaseUrl: api.baseUrl);
+      if (poster != null) {
+        await _downloadImage(poster, File(p.join(dir.path, 'poster.jpg')));
+      }
+      final logo = logoImageUrl(details.logoUrl, serverBaseUrl: api.baseUrl);
+      if (logo != null) {
+        await _downloadImage(logo, File(p.join(dir.path, 'logo.png')));
+      }
+      notifyListeners();
+    } catch (e) {
+      debugPrint('Downloads: fiche de $infoId indisponible: $e');
+    }
+  }
+
+  /// Écrit une image distante dans [target]. Renvoie false sur le moindre
+  /// accroc — une vignette absente se dessine en aplat, ce n'est pas une panne.
+  ///
+  /// Les octets sont aussi classés dans le magasin d'images partagé, **sous
+  /// l'URL d'origine**. C'est ce qui fait qu'une affiche ou un logo-titre
+  /// rapatriés s'affichent hors ligne partout où l'app les dessine — chrome du
+  /// lecteur compris — sans qu'aucun widget ait à savoir qu'il existe une copie
+  /// locale : il demande la même URL qu'en ligne, et la trouve sur le disque.
+  Future<bool> _downloadImage(String url, File target) async {
+    try {
+      final response = await _transferDio.get<List<int>>(
+        url,
+        options: Options(responseType: ResponseType.bytes),
+      );
+      final bytes = response.data;
+      if (bytes == null || bytes.isEmpty) return false;
+      await target.writeAsBytes(bytes, flush: true);
+      try {
+        await AppImageCache.manager.putFile(
+          url,
+          Uint8List.fromList(bytes),
+          // Bien au-delà de la péremption d'hygiène du magasin : tant que le
+          // média est sur l'appareil, son artwork doit l'être aussi.
+          maxAge: const Duration(days: 365),
+          fileExtension: p.extension(target.path).replaceFirst('.', ''),
+        );
+      } catch (e) {
+        debugPrint('Downloads: mise en cache de $url impossible: $e');
+      }
+      return true;
+    } catch (e) {
+      debugPrint('Downloads: image indisponible ($url): $e');
+      return false;
     }
   }
 

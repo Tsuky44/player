@@ -1,8 +1,10 @@
 import 'package:flutter/foundation.dart';
+import '../models/offline_chrome.dart';
 import '../models/player_layout.dart';
 import '../models/player_layout_preset.dart';
 import '../providers/auth_provider.dart';
 import '../services/api_client.dart';
+import '../services/download_manager.dart';
 import '../services/layout_storage.dart';
 
 /// Holds the canonical modular player layout for the whole app.
@@ -22,6 +24,13 @@ class PlayerLayoutProvider extends ChangeNotifier {
   List<PlayerLayoutPreset> _presets = const [];
   String? _errorMessage;
   int? _boundUserId;
+
+  /// Le serveur a confirmé quel playeur ce compte utilise, dans cette session.
+  ///
+  /// Tant que c'est faux, ce que tient le provider n'est qu'une trace locale :
+  /// celle d'un autre compte, d'un autre serveur, ou rien du tout. Pour un
+  /// média téléchargé, l'instantané rangé avec lui en sait davantage.
+  bool _syncedWithAccount = false;
 
   PlayerLayoutProvider(this._storage, this._apiClient) {
     _init();
@@ -50,6 +59,9 @@ class PlayerLayoutProvider extends ChangeNotifier {
   }
 
   String get activePresetName => activePreset?.name ?? 'Mon playeur';
+
+  /// Voir [_syncedWithAccount].
+  bool get isSyncedWithAccount => _syncedWithAccount;
 
   Future<void> _init() async {
     _config = await _storage.load();
@@ -81,6 +93,7 @@ class PlayerLayoutProvider extends ChangeNotifier {
     _presets = const [];
     _activePresetId = null;
     _errorMessage = null;
+    _syncedWithAccount = false;
     await _storage.clearAccountCache();
     // Keep the last local layout usable on the login screen / offline.
     Future.microtask(notifyListeners);
@@ -112,6 +125,7 @@ class PlayerLayoutProvider extends ChangeNotifier {
 
       final preferredId = await _storage.loadActivePresetId();
       final selected = _resolvePreset(preferredId) ?? _presets.first;
+      _syncedWithAccount = true;
       await _applyPreset(selected, persistActiveId: true);
     } catch (e) {
       _errorMessage = 'Sync playeurs impossible';
@@ -148,6 +162,26 @@ class PlayerLayoutProvider extends ChangeNotifier {
     }
     await _storage.save(_config);
     await _storage.saveUseModular(_useModularLayout);
+    await _mirrorToOfflineStore(preset);
+  }
+
+  /// Fige le playeur actif à côté des téléchargements du serveur courant.
+  ///
+  /// Seulement quand le serveur a confirmé : recopier une trace locale
+  /// reviendrait à figer le playeur d'un autre compte sur des médias qui n'ont
+  /// rien à voir avec lui. Rien n'est écrit si le playeur figé est déjà le bon.
+  Future<void> _mirrorToOfflineStore(PlayerLayoutPreset preset) async {
+    if (!_syncedWithAccount) return;
+    final serverUrl = OfflineChrome.normalizeServerUrl(_apiClient.baseUrl);
+    if (serverUrl.isEmpty) return;
+    await DownloadManager.instance.rememberChrome(OfflineChrome(
+      serverUrl: serverUrl,
+      presetId: preset.id,
+      name: preset.name,
+      useModular: preset.useModular,
+      config: preset.config,
+      savedAt: DateTime.now(),
+    ));
   }
 
   Future<void> selectPreset(String id) async {
@@ -211,6 +245,10 @@ class PlayerLayoutProvider extends ChangeNotifier {
           if (preset.id == id) updated else preset,
       ];
       await _storage.savePresetsCache(_presets);
+      // Le playeur vient de changer sous les doigts de l'utilisateur : ce que
+      // liront ses téléchargements doit changer avec, sans attendre la
+      // prochaine ouverture de session.
+      await _mirrorToOfflineStore(updated);
       notifyListeners();
     } catch (e) {
       debugPrint('PlayerLayoutProvider._persistActiveToServer: $e');

@@ -1,13 +1,31 @@
 # Onyx — client Flutter
 
 Client Direct Play du serveur média Onyx (`../server`). Une seule base de code
-pour macOS, Windows, Android et le web.
+pour macOS, Windows, Android, iOS et le web.
 
 ## Lancer
 
 ```bash
-flutter run -d macos    # ou windows, chrome, ou un appareil Android
+flutter run -d macos    # ou windows, chrome, ou un appareil Android / iOS
 ```
+
+## iOS
+
+Le lecteur y est mpv (`media_kit`), comme sur macOS et Windows — ExoPlayer ne
+sort pas d'Android (ADR-0009, ADR-0011). Rien de spécifique côté Dart : c'est
+`ios/` qui porte les réglages qui comptent, et ils sont expliqués dans
+l'ADR-0011.
+
+Produire un `.ipa` installable sur un iPhone :
+
+```bash
+../scripts/build-ios-ipa.sh
+```
+
+Le fichier atterrit dans `../dist/ios/`. Il n'est pas signé : c'est Sideloadly
+ou AltStore qui le resigne à l'installation, sans compte développeur payant
+mais avec une durée de vie de 7 jours. Avec un compte Apple configuré dans le
+projet Xcode, `../scripts/build-ios-ipa.sh --signed` produit un `.ipa` signé.
 
 ## Repères
 

@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
 import '../../desktop_window.dart';
+import '../../models/models.dart';
 import '../../models/offline_download.dart';
 import '../../navigation/search_route_observer.dart';
 import '../../services/download_manager.dart';
@@ -90,13 +91,10 @@ class DownloadsScreen extends StatelessWidget {
               SliverToBoxAdapter(
                 child: Padding(
                   padding: EdgeInsets.fromLTRB(pad, 24, pad, 8),
-                  child: Text(
-                    group.title,
-                    style: const TextStyle(
-                      color: AppColors.textPrimary,
-                      fontSize: 18,
-                      fontWeight: FontWeight.w700,
-                    ),
+                  child: _GroupHeader(
+                    title: group.title,
+                    infoId: group.infoId,
+                    episodeCount: group.entries.length,
                   ),
                 ),
               ),
@@ -139,10 +137,12 @@ class DownloadsScreen extends StatelessWidget {
           if (season != 0) return season;
           return (a.episodeNumber ?? 0).compareTo(b.episodeNumber ?? 0);
         });
-      groups.add(_Group(title, entries));
+      groups.add(_Group(title, entries, infoId: entries.first.infoId));
     }
     if (movies.isNotEmpty) {
       movies.sort((a, b) => a.title.compareTo(b.title));
+      // Pas de fiche commune : chaque film est la sienne, et l'en-tête « Films »
+      // ne décrit rien d'autre qu'un regroupement.
       groups.add(_Group('Films', movies));
     }
     return groups;
@@ -152,7 +152,132 @@ class DownloadsScreen extends StatelessWidget {
 class _Group {
   final String title;
   final List<OfflineDownload> entries;
-  const _Group(this.title, this.entries);
+
+  /// Identifiant sous lequel la fiche de la série est rangée, quand il y en a
+  /// une (null pour le regroupement des films).
+  final int? infoId;
+
+  const _Group(this.title, this.entries, {this.infoId});
+}
+
+/// L'en-tête d'une série, nourri par la fiche rapatriée avec ses épisodes.
+///
+/// Sans elle il n'y aurait qu'un titre : c'est la fiche qui apporte l'affiche,
+/// l'année, les genres et le synopsis — soit tout ce qui permet de reconnaître
+/// une série sans serveur pour la décrire.
+class _GroupHeader extends StatefulWidget {
+  final String title;
+  final int? infoId;
+  final int episodeCount;
+
+  const _GroupHeader({
+    required this.title,
+    required this.infoId,
+    required this.episodeCount,
+  });
+
+  @override
+  State<_GroupHeader> createState() => _GroupHeaderState();
+}
+
+class _GroupHeaderState extends State<_GroupHeader> {
+  bool _expanded = false;
+
+  @override
+  Widget build(BuildContext context) {
+    final manager = context.watch<DownloadManager>();
+    final infoId = widget.infoId;
+    final details = infoId == null ? null : manager.detailsForShow(infoId);
+    final posterPath = infoId == null ? null : manager.showPosterPath(infoId);
+
+    final titleWidget = Text(
+      widget.title,
+      style: const TextStyle(
+        color: AppColors.textPrimary,
+        fontSize: 18,
+        fontWeight: FontWeight.w700,
+      ),
+    );
+
+    // Rien à décorer : on garde exactement l'en-tête d'avant.
+    if (details == null && posterPath == null) return titleWidget;
+
+    final overview = details?.overview?.trim() ?? '';
+    final meta = _metaLine(details);
+
+    return Row(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        if (posterPath != null) ...[
+          ClipRRect(
+            borderRadius: BorderRadius.circular(4),
+            child: SizedBox(
+              width: 46,
+              height: 69,
+              child: localFileImage(posterPath),
+            ),
+          ),
+          const SizedBox(width: 12),
+        ],
+        Expanded(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              titleWidget,
+              if (meta.isNotEmpty) ...[
+                const SizedBox(height: 3),
+                Text(
+                  meta,
+                  style: const TextStyle(
+                    color: AppColors.textMuted,
+                    fontSize: 12,
+                  ),
+                ),
+              ],
+              if (overview.isNotEmpty) ...[
+                const SizedBox(height: 6),
+                // Le synopsis complet en tête de chaque série repousserait les
+                // épisodes hors de l'écran : deux lignes, le reste sur demande.
+                GestureDetector(
+                  onTap: () => setState(() => _expanded = !_expanded),
+                  child: Text(
+                    overview,
+                    maxLines: _expanded ? null : 2,
+                    overflow: _expanded ? null : TextOverflow.ellipsis,
+                    style: const TextStyle(
+                      color: AppColors.textSecondary,
+                      fontSize: 12.5,
+                      height: 1.4,
+                    ),
+                  ),
+                ),
+              ],
+            ],
+          ),
+        ),
+      ],
+    );
+  }
+
+  String _metaLine(MediaDetails? details) {
+    final parts = <String>[
+      '${widget.episodeCount} ${widget.episodeCount > 1 ? 'éléments' : 'élément'}',
+    ];
+    if (details != null) {
+      final year = extractYear(details.releaseDate);
+      if (year != null) parts.add(year);
+      if (details.numberOfSeasons > 0) {
+        parts.add(
+          '${details.numberOfSeasons} saison${details.numberOfSeasons > 1 ? 's' : ''}',
+        );
+      }
+      if (details.genres.isNotEmpty) parts.add(details.genres.take(2).join(', '));
+      if (details.voteAverage > 0) {
+        parts.add('★ ${details.voteAverage.toStringAsFixed(1)}');
+      }
+    }
+    return parts.join(' · ');
+  }
 }
 
 class _Header extends StatelessWidget {
