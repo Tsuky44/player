@@ -2,8 +2,8 @@ import 'package:flutter/material.dart';
 
 import 'emby_chrome_theme.dart';
 
-/// The vertical brightness bar down the left edge of the player, the control
-/// every phone video app puts there.
+/// The vertical brightness bar down the right edge of the player, the control
+/// every phone video app puts on one of the two.
 ///
 /// It is a bar rather than a [Slider] on purpose. A Slider's thumb is a target
 /// to find before the gesture can start; this one takes the touch wherever it
@@ -36,8 +36,9 @@ class EmbyBrightnessSlider extends StatefulWidget {
 }
 
 class _EmbyBrightnessSliderState extends State<EmbyBrightnessSlider> {
-  /// Width of the drawn track. The touch target around it is [_hitWidth].
-  static const double _trackWidth = 6;
+  /// Width of the drawn track. The touch target around it is [_hitWidth],
+  /// which stays at the 44 px a finger needs however thin the track is drawn.
+  static const double _trackWidth = 5;
   static const double _hitWidth = 44;
 
   bool _dragging = false;
@@ -67,11 +68,14 @@ class _EmbyBrightnessSliderState extends State<EmbyBrightnessSlider> {
 
     return LayoutBuilder(
       builder: (context, constraints) {
-        // Roughly a third of the screen's height, bounded so it neither
+        // Under a quarter of the screen's height, bounded so it neither
         // disappears on a small phone nor runs into the chrome on a tablet.
+        // Short on purpose: the bar is read at a glance and driven by a drag
+        // that can start anywhere on it, so length buys nothing — it only
+        // takes room from the film, which is what the eye is actually on.
         final trackHeight = constraints.maxHeight.isFinite
-            ? (constraints.maxHeight * 0.34).clamp(110.0, 220.0)
-            : 160.0;
+            ? (constraints.maxHeight * 0.22).clamp(80.0, 140.0)
+            : 110.0;
         _trackHeight = trackHeight;
 
         return Column(
@@ -97,7 +101,7 @@ class _EmbyBrightnessSliderState extends State<EmbyBrightnessSlider> {
                   child: AnimatedContainer(
                     duration: const Duration(milliseconds: 140),
                     curve: Curves.easeOut,
-                    width: _dragging ? _trackWidth + 3 : _trackWidth,
+                    width: _dragging ? _trackWidth + 2 : _trackWidth,
                     height: trackHeight,
                     decoration: BoxDecoration(
                       color: EmbyChromeTheme.progressTrack,
@@ -130,7 +134,7 @@ class _EmbyBrightnessSliderState extends State<EmbyBrightnessSlider> {
                 ),
               ),
             ),
-            const SizedBox(height: 10),
+            const SizedBox(height: 8),
             // Says what the bar is for. Below it rather than above, so it stays
             // clear of the finger for the whole of an upward drag.
             Icon(

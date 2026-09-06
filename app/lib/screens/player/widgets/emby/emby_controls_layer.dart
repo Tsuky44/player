@@ -182,13 +182,14 @@ class EmbyControlsLayer extends StatelessWidget {
               right: 0,
               child: _fadeWithChrome(_buildTop(m, width)),
             ),
-            // Between the two scrims, on the edge Netflix and the rest put it.
-            // It rides the same fade as the chrome: a bar floating alone over
-            // a film nobody is touching is exactly the clutter the auto-hide
-            // exists to remove.
+            // Between the two scrims, on the right edge — the side the hand
+            // holding the phone reaches without crossing the picture. It rides
+            // the same fade as the chrome: a bar floating alone over a film
+            // nobody is touching is exactly the clutter the auto-hide exists to
+            // remove.
             if (brightness != null && onBrightnessChanged != null)
               Positioned(
-                left: m.gutter - 8,
+                right: m.gutter - 8,
                 top: 0,
                 bottom: 0,
                 child: Center(

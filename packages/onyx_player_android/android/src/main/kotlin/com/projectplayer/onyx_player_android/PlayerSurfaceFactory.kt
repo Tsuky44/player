@@ -3,8 +3,6 @@ package com.projectplayer.onyx_player_android
 import android.content.Context
 import android.view.SurfaceView
 import android.view.View
-import android.widget.FrameLayout
-import androidx.media3.ui.AspectRatioFrameLayout
 import io.flutter.plugin.common.StandardMessageCodec
 import io.flutter.plugin.platform.PlatformView
 import io.flutter.plugin.platform.PlatformViewFactory
@@ -34,27 +32,9 @@ internal class PlayerSurface(
     ///
     /// C'est lui, et pas Flutter, qui peut le faire : une SurfaceView est une
     /// couche du système, et un `BoxFit` posé par un widget parent ne
-    /// l'atteindrait pas.
-    private val frame = AspectRatioFrameLayout(context).apply {
-        addView(
-            surfaceView,
-            FrameLayout.LayoutParams(
-                FrameLayout.LayoutParams.MATCH_PARENT,
-                FrameLayout.LayoutParams.MATCH_PARENT,
-            ),
-        )
-    }
-
-    private val container = FrameLayout(context).apply {
-        addView(
-            frame,
-            FrameLayout.LayoutParams(
-                FrameLayout.LayoutParams.MATCH_PARENT,
-                FrameLayout.LayoutParams.MATCH_PARENT,
-                android.view.Gravity.CENTER,
-            ),
-        )
-    }
+    /// l'atteindrait pas. Il est la vue de plateforme elle-même — Flutter lui
+    /// impose sa taille, et lui seul dimensionne la surface à l'intérieur.
+    private val frame = VideoFrame(context).apply { addView(surfaceView) }
 
     init {
         // Le lecteur existe déjà : la vue s'y rattache, elle ne le crée pas.
@@ -63,7 +43,7 @@ internal class PlayerSurface(
         host.playerFor(playerId)?.attachSurface(surfaceView, frame)
     }
 
-    override fun getView(): View = container
+    override fun getView(): View = frame
 
     override fun dispose() {
         // La Surface disparaît avec la vue ; laisser ExoPlayer écrire dedans
