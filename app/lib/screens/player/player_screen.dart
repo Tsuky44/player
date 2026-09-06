@@ -1330,6 +1330,19 @@ class _PlayerScreenState extends State<PlayerScreen> {
     super.dispose();
   }
 
+  /// Keeps a chrome layer clear of the screen's cutouts — the camera bubble,
+  /// a notch, the rounded corners of the panel itself.
+  ///
+  /// Only the chrome. The picture stays full-bleed: it is what the user came
+  /// for, and a black band down the side of the film would cost far more than
+  /// a button sitting a few pixels in.
+  ///
+  /// [SafeArea] reads `MediaQuery.padding`, which keeps the cutout's inset even
+  /// once the system bars are hidden — in immersive mode the cutout is exactly
+  /// what is left to dodge, and it is the one inset the player still has to
+  /// respect.
+  Widget _clearOfCutout(Widget chrome) => SafeArea(child: chrome);
+
   void _updateVideoFit(BoxFit fit) {
     // La surface est reconstruite avec le nouveau cadrage ; chaque moteur
     // l'applique à sa façon — Flutter met une texture à l'échelle, la vue
@@ -2146,7 +2159,7 @@ class _PlayerScreenState extends State<PlayerScreen> {
                 // [FixedChromeId] fails to compile here instead of silently
                 // rendering a player with no controls at all.
                 if (fixedChrome != null)
-                  switch (fixedChrome) {
+                  _clearOfCutout(switch (fixedChrome) {
                     FixedChromeId.emby => EmbyControlsLayer(
                     visible: _controlsVisible,
                     timelineAnchorKey: _timelineAnchorKey,
@@ -2219,9 +2232,9 @@ class _PlayerScreenState extends State<PlayerScreen> {
                     playPauseFocusNode: _playPauseFocusNode,
                     progressFocusNode: _progressFocusNode,
                   ),
-                  }
+                  })
                 else if (useModular) ...[
-                  ModularControlsLayer(
+                  _clearOfCutout(ModularControlsLayer(
                     config: chrome.config,
                     visible: _controlsVisible,
                     timelineAnchorKey: _timelineAnchorKey,
@@ -2265,9 +2278,9 @@ class _PlayerScreenState extends State<PlayerScreen> {
                     settingsButtonKey: _settingsButtonKey,
                     subtitlesButtonKey: _subtitlesButtonKey,
                     mediaInfoButtonKey: _mediaInfoButtonKey,
-                  ),
+                  )),
                 ] else
-                  PlayerHUDOverlay(
+                  _clearOfCutout(PlayerHUDOverlay(
                     visible: _controlsVisible,
                     timelineAnchorKey: _timelineAnchorKey,
                     session: _playerController.session,
@@ -2318,16 +2331,16 @@ class _PlayerScreenState extends State<PlayerScreen> {
                     onNextEpisode: (_episodeNav?.nextEpisode != null)
                         ? _goToNextEpisode
                         : null,
-                  ),
+                  )),
                 if (_controlsVisible && useDefaultHud)
-                  TopRightControls(
+                  _clearOfCutout(TopRightControls(
                     session: _playerController.session,
                     currentFit: _videoFit,
                     onFitChanged: _updateVideoFit,
                     playerController: _playerController,
                     episodeNav: _episodeNav,
                     onSeekToAbsolute: _playerController.seekToAbsoluteSeconds,
-                  ),
+                  )),
                 // Overlays must be AFTER HUD in Stack to render on top.
                 // If the Studio layout already places a skip-intro control —
                 // or the fixed chrome draws its own — hide the built-in

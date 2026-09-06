@@ -23,7 +23,6 @@ import androidx.media3.exoplayer.audio.AudioSink
 import androidx.media3.exoplayer.audio.DefaultAudioSink
 import androidx.media3.exoplayer.SeekParameters
 import androidx.media3.exoplayer.analytics.AnalyticsListener
-import androidx.media3.ui.AspectRatioFrameLayout
 import java.io.File
 
 /// Un lecteur ExoPlayer, et l'état que Dart en connaît.
@@ -49,7 +48,7 @@ internal class PlayerInstance(
     /// Le cadre qui applique le cadrage. Flutter ne peut pas mettre une
     /// SurfaceView à l'échelle — c'est une couche du système, pas un pixel de
     /// la scène — donc c'est lui qui la dimensionne.
-    private var frame: AspectRatioFrameLayout? = null
+    private var frame: VideoFrame? = null
     private var fit: OnyxVideoFit = OnyxVideoFit.CONTAIN
 
     private var droppedFrames: Long = 0
@@ -178,7 +177,7 @@ internal class PlayerInstance(
         return created
     }
 
-    fun attachSurface(view: SurfaceView, frame: AspectRatioFrameLayout) {
+    fun attachSurface(view: SurfaceView, frame: VideoFrame) {
         surfaceView = view
         this.frame = frame
         player?.setVideoSurfaceView(view)
@@ -196,26 +195,25 @@ internal class PlayerInstance(
         applyFit()
     }
 
-    /// Redimensionne le cadre autour de la surface.
+    /// Redimensionne la surface dans son cadre.
     ///
-    /// Le rapport d'image tient compte des pixels non carrés : un DVD
-    /// anamorphosé stocke une image plus étroite qu'elle ne doit s'afficher, et
-    /// l'ignorer donnerait des visages allongés.
+    /// Appelé de partout où l'un des deux ingrédients change — le cadrage
+    /// demandé et la taille de l'image — et à chaque fois que la vue se
+    /// rattache : l'ordre entre les trois n'est pas garanti, et aucun ne suffit
+    /// seul.
     private fun applyFit() {
         val f = frame ?: return
-        // `setResizeMode` n'a pas de getter : la syntaxe de propriété Kotlin
-        // ne s'applique pas, il faut l'appeler.
-        f.setResizeMode(
-            when (fit) {
-                OnyxVideoFit.COVER -> AspectRatioFrameLayout.RESIZE_MODE_ZOOM
-                OnyxVideoFit.CONTAIN -> AspectRatioFrameLayout.RESIZE_MODE_FIT
-            },
-        )
+        f.setCover(fit == OnyxVideoFit.COVER)
         val size = player?.videoSize ?: return
-        if (size.width <= 0 || size.height <= 0) return
-        f.setAspectRatio(
-            size.width * size.pixelWidthHeightRatio / size.height,
+        val aspect = VideoFraming.aspectOf(
+            size.width,
+            size.height,
+            size.pixelWidthHeightRatio,
         )
+        // Un rapport inconnu n'écrase pas celui qu'on affiche déjà : à l'arrêt
+        // et entre deux médias, ExoPlayer repasse par une taille nulle, et
+        // l'image n'a pas à s'étirer en plein écran le temps de la traversée.
+        if (aspect > 0f) f.setVideoAspect(aspect)
     }
 
     fun applyTuning(next: OnyxLoadTuning) {

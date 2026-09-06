@@ -316,17 +316,29 @@ void main() {
       expect(find.byType(EmbyBrightnessSlider), findsNothing);
     });
 
-    testWidgets('appears on the left once a brightness is known',
+    testWidgets('appears on the right once a brightness is known',
         (tester) async {
       await pumpChrome(tester, width: 420, brightness: 0.5);
 
       final bar = find.byType(EmbyBrightnessSlider);
       expect(bar, findsOneWidget);
 
-      // On the left edge, and clear of the middle of the picture.
+      // On the right edge — the side the hand holding the phone reaches
+      // without crossing the picture — and clear of the middle of it.
       final rect = tester.getRect(bar);
-      expect(rect.left, lessThan(60));
+      expect(rect.right, greaterThan(420 - 60));
       expect(rect.center.dy, closeTo(350, 60));
+    });
+
+    testWidgets('takes well under half the height of the picture',
+        (tester) async {
+      // A bar over a film is measured against what it hides. It is read at a
+      // glance and driven by a drag that can start anywhere on it, so length
+      // buys nothing — this is the assertion that keeps it from creeping back.
+      await pumpChrome(tester, width: 420, brightness: 0.5);
+
+      final rect = tester.getRect(find.byType(EmbyBrightnessSlider));
+      expect(rect.height, lessThan(700 * 0.35));
     });
 
     testWidgets('dragging up brightens and dragging down dims', (tester) async {

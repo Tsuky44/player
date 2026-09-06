@@ -148,8 +148,20 @@ peser autant, après repli, que la même énergie seule à l'avant gauche.
 **Le cadrage descend au natif.** « Taille adaptative » et « taille d'origine » — le pincement du
 téléphone comme le réglage — passaient par un `BoxFit` posé sur le widget vidéo. Sur une
 `SurfaceView` ça ne fait rien du tout : Flutter ne peut pas mettre à l'échelle une couche du
-système. C'est un `AspectRatioFrameLayout` qui la dimensionne, et le rapport d'image tient compte
-des pixels non carrés — un DVD anamorphosé stocke une image plus étroite qu'elle ne s'affiche.
+système. C'est un cadre natif qui la dimensionne, et le rapport d'image tient compte des pixels non
+carrés — un DVD anamorphosé stocke une image plus étroite qu'elle ne s'affiche.
+
+**Ce cadre ne peut pas être l'`AspectRatioFrameLayout` de media3**, qui était le choix naturel et
+qui n'a jamais rien cadré. Il se redimensionne *lui-même* et demande une passe de layout à son
+parent ; dans une vue de plateforme, ce parent est Flutter, qui réimpose la taille de la vue à
+chaque image affichée. Le cadre revenait plein écran, et l'image avec lui — étirée sur le téléphone,
+insensible au pincement comme au réglage. Le `VideoFrame` du paquet garde donc toujours la taille
+qu'on lui donne et ne dimensionne que son enfant : plus rien à négocier avec le parent. Il applique
+le cadrage à chaque `onLayout` **et** immédiatement quand il change, parce qu'un `requestLayout()`
+dans cette hiérarchie dépend d'une passe que Flutter pilote. La géométrie, elle, est sortie de la
+vue (`VideoFraming`) pour être la seule partie du cadrage vérifiable sans appareil — c'est là que
+vivait l'autre défaut, un décodeur qui annonce un rapport de pixels nul au lieu de 1, ce qui
+annulait le cadrage entier.
 
 Le cycle de vie du moteur appartient à la session, pas au contrôleur : `prepare()` et `dispose()`
 font partie du port. Sans le second, ExoPlayer gardait son décodeur, sa connexion et son audio après

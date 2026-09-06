@@ -88,9 +88,6 @@ dependencies {
     // HLS, ce que couvre `exoplayer-hls`.
     implementation("androidx.media3:media3-exoplayer:$media3Version")
     implementation("androidx.media3:media3-exoplayer-hls:$media3Version")
-    // Pour `AspectRatioFrameLayout` seulement : c'est lui qui applique le
-    // cadrage à une SurfaceView, que Flutter ne peut pas mettre à l'échelle.
-    implementation("androidx.media3:media3-ui:$media3Version")
 
     testImplementation("org.jetbrains.kotlin:kotlin-test")
     testImplementation("org.mockito:mockito-core:5.0.0")
