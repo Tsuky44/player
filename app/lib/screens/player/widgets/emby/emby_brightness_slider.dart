@@ -2,8 +2,11 @@ import 'package:flutter/material.dart';
 
 import 'emby_chrome_theme.dart';
 
-/// The vertical brightness bar down the right edge of the player, the control
-/// every phone video app puts on one of the two.
+/// The vertical brightness bar down the left edge of the player, the control
+/// every phone video app puts there.
+///
+/// The left edge is not interchangeable with the right one: the right is where
+/// this chrome's utility buttons live, and a bar in their column covers them.
 ///
 /// It is a bar rather than a [Slider] on purpose. A Slider's thumb is a target
 /// to find before the gesture can start; this one takes the touch wherever it

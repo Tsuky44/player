@@ -6,6 +6,7 @@ import '../../../../desktop_window.dart';
 import '../../../../tv/tv_focus.dart';
 import '../../../../utils/format.dart';
 import '../../../../widgets/global/app_network_image.dart';
+import '../avoid_cutouts.dart';
 import 'emby_brightness_slider.dart';
 import 'emby_chrome_theme.dart';
 import 'emby_progress_bar.dart';
@@ -114,6 +115,24 @@ class EmbyControlsLayer extends StatelessWidget {
   /// only now with an outline saying which control is answering.
   final FocusNode? progressFocusNode;
 
+  /// Where the screen's own hardware sits — a camera bubble, a notch — as
+  /// rectangles in the window's coordinates, from [DisplayCutouts].
+  ///
+  /// Rectangles rather than margins, and applied row by row rather than to the
+  /// chrome as a whole: a bubble halfway down the left edge has to move the
+  /// brightness bar and nothing else. Padding the layer would have moved the
+  /// title, the scrubber and every button with it, which is the interface
+  /// stepping aside for something that was in the way of one control.
+  ///
+  /// The scrims are never moved: a gradient that stops short of the camera
+  /// reads as a rendering bug, while a button that stops short of it reads as
+  /// intent.
+  ///
+  /// Empty for anything rendering this chrome away from a screen edge — the
+  /// Studio preview, a windowed desktop — which is why it is passed in rather
+  /// than read from the ambient [MediaQuery].
+  final List<Rect> cutouts;
+
   const EmbyControlsLayer({
     super.key,
     required this.visible,
@@ -152,7 +171,14 @@ class EmbyControlsLayer extends StatelessWidget {
     this.isTv = false,
     this.playPauseFocusNode,
     this.progressFocusNode,
+    this.cutouts = const <Rect>[],
   });
+
+  /// Moves one row of the chrome clear of a camera bubble, if the bubble is
+  /// actually on it. Everything else stays exactly where it was.
+  Widget _dodgeCutouts(Widget child) => cutouts.isEmpty
+      ? child
+      : AvoidCutouts(cutouts: cutouts, child: child);
 
   double get _progressFraction {
     final total = duration.inSeconds;
@@ -182,23 +208,29 @@ class EmbyControlsLayer extends StatelessWidget {
               right: 0,
               child: _fadeWithChrome(_buildTop(m, width)),
             ),
-            // Between the two scrims, on the right edge — the side the hand
-            // holding the phone reaches without crossing the picture. It rides
-            // the same fade as the chrome: a bar floating alone over a film
-            // nobody is touching is exactly the clutter the auto-hide exists to
-            // remove.
+            // On the left edge, and it has to stay there: the right edge is
+            // where the utilities cluster ends — subtitles, audio, speed,
+            // settings, fullscreen — and a bar in that column lands on top of
+            // those buttons, taking their taps and losing its own. The left
+            // edge carries the title, which is text and takes nothing.
+            //
+            // It rides the same fade as the chrome: a bar floating alone over
+            // a film nobody is touching is exactly the clutter the auto-hide
+            // exists to remove.
             if (brightness != null && onBrightnessChanged != null)
               Positioned(
-                right: m.gutter - 8,
+                left: m.gutter - 8,
                 top: 0,
                 bottom: 0,
                 child: Center(
-                  child: _fadeWithChrome(
-                    EmbyBrightnessSlider(
-                      value: brightness!,
-                      onChanged: onBrightnessChanged!,
-                      onDraggingChanged: onBrightnessDraggingChanged,
-                      metrics: m,
+                  child: _dodgeCutouts(
+                    _fadeWithChrome(
+                      EmbyBrightnessSlider(
+                        value: brightness!,
+                        onChanged: onBrightnessChanged!,
+                        onDraggingChanged: onBrightnessDraggingChanged,
+                        metrics: m,
+                      ),
                     ),
                   ),
                 ),
@@ -267,8 +299,9 @@ class EmbyControlsLayer extends StatelessWidget {
         28,
       ),
       decoration: const BoxDecoration(gradient: EmbyChromeTheme.topScrim),
-      child: Row(
-        children: [
+      child: _dodgeCutouts(
+        Row(
+          children: [
           _EmbyIconButton(
             icon: Icons.arrow_back_ios_new_rounded,
             tooltip: 'Retour',
@@ -292,7 +325,8 @@ class EmbyControlsLayer extends StatelessWidget {
               // the settings sheet carries the fine control.
               showSlider: width >= 560,
             ),
-        ],
+          ],
+        ),
       ),
     );
   }
@@ -368,11 +402,12 @@ class EmbyControlsLayer extends StatelessWidget {
       mainAxisSize: MainAxisSize.min,
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        _buildTitleBlock(m),
+        _dodgeCutouts(_buildTitleBlock(m)),
         const SizedBox(height: 10),
-        KeyedSubtree(
-          key: timelineAnchorKey,
-          child: EmbyProgressBar(
+        _dodgeCutouts(
+          KeyedSubtree(
+            key: timelineAnchorKey,
+            child: EmbyProgressBar(
             progress: _progressFraction,
             buffered: buffered,
             duration: duration,
@@ -384,19 +419,22 @@ class EmbyControlsLayer extends StatelessWidget {
             onStepBack: onRewind,
             onStepForward: onForward,
             onSelect: onPlayPause,
-            focusNode: progressFocusNode,
+              focusNode: progressFocusNode,
+            ),
           ),
         ),
-        _buildTimes(m),
+        _dodgeCutouts(_buildTimes(m)),
         const SizedBox(height: 6),
-        Center(
-          child: Row(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              _buildTransport(m),
-              SizedBox(width: m.clusterGap + 28),
-              _buildUtilities(m),
-            ],
+        _dodgeCutouts(
+          Center(
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                _buildTransport(m),
+                SizedBox(width: m.clusterGap + 28),
+                _buildUtilities(m),
+              ],
+            ),
           ),
         ),
       ],
@@ -404,45 +442,52 @@ class EmbyControlsLayer extends StatelessWidget {
   }
 
   Widget _buildPointerBottom(EmbyChromeMetrics m) {
+    // Every row dodges the camera on its own: on a phone held sideways this
+    // bar is half the height of the screen, so a bubble on the edge lands on
+    // one of these rows and not on the others.
     return Column(
         mainAxisSize: MainAxisSize.min,
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           if (m.isCompact) ...[
-            _buildTitleBlock(m),
+            _dodgeCutouts(_buildTitleBlock(m)),
             const SizedBox(height: 10),
           ] else
-            Row(
-              crossAxisAlignment: CrossAxisAlignment.end,
-              children: [
-                Expanded(child: _buildTitleBlock(m)),
-                const SizedBox(width: 24),
-                _buildUtilities(m),
-              ],
+            _dodgeCutouts(
+              Row(
+                crossAxisAlignment: CrossAxisAlignment.end,
+                children: [
+                  Expanded(child: _buildTitleBlock(m)),
+                  const SizedBox(width: 24),
+                  _buildUtilities(m),
+                ],
+              ),
             ),
           const SizedBox(height: 6),
-          KeyedSubtree(
-            key: timelineAnchorKey,
-            child: EmbyProgressBar(
-              progress: _progressFraction,
-              buffered: buffered,
-              duration: duration,
-              chapterMarks: chapterMarks,
-              metrics: m,
-              onSeek: onSeekFraction,
-              onScrubbingChanged: onScrubbingChanged,
+          _dodgeCutouts(
+            KeyedSubtree(
+              key: timelineAnchorKey,
+              child: EmbyProgressBar(
+                progress: _progressFraction,
+                buffered: buffered,
+                duration: duration,
+                chapterMarks: chapterMarks,
+                metrics: m,
+                onSeek: onSeekFraction,
+                onScrubbingChanged: onScrubbingChanged,
+              ),
             ),
           ),
-          _buildTimes(m),
+          _dodgeCutouts(_buildTimes(m)),
           const SizedBox(height: 4),
           // Compact gives the utilities their own centred row: side by side
           // with the transport they need ~414px, which does not fit a phone.
           if (m.isCompact) ...[
-            Center(child: _buildTransport(m)),
+            _dodgeCutouts(Center(child: _buildTransport(m))),
             const SizedBox(height: 2),
-            Center(child: _buildUtilities(m)),
+            _dodgeCutouts(Center(child: _buildUtilities(m))),
           ] else
-            _buildTransport(m),
+            _dodgeCutouts(_buildTransport(m)),
         ],
     );
   }
