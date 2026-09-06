@@ -15,6 +15,7 @@ import '../../services/download_manager.dart';
 import '../../services/server_reachability.dart';
 import '../../services/media_details_cache.dart';
 import '../../services/screen_brightness_control.dart';
+import 'display_cutouts.dart';
 import '../../tv/tv_mode.dart';
 import '../../utils/poster_url.dart';
 import 'hooks/use_player_controller.dart';
@@ -1331,17 +1332,21 @@ class _PlayerScreenState extends State<PlayerScreen> {
   }
 
   /// Keeps a chrome layer clear of the screen's cutouts — the camera bubble,
-  /// a notch, the rounded corners of the panel itself.
+  /// a notch.
   ///
   /// Only the chrome. The picture stays full-bleed: it is what the user came
   /// for, and a black band down the side of the film would cost far more than
   /// a button sitting a few pixels in.
   ///
-  /// [SafeArea] reads `MediaQuery.padding`, which keeps the cutout's inset even
-  /// once the system bars are hidden — in immersive mode the cutout is exactly
-  /// what is left to dodge, and it is the one inset the player still has to
-  /// respect.
-  Widget _clearOfCutout(Widget chrome) => SafeArea(child: chrome);
+  /// This is the blunt version, and it is only for the layers that place their
+  /// controls freely — a Studio layout puts a button at any fraction of the
+  /// screen, so there is no row to test and nothing finer to do than pad the
+  /// edge. The Emby chrome takes the cutouts themselves and moves one row at a
+  /// time; see its `cutouts`.
+  Widget _clearOfCutout(Widget chrome) => Padding(
+        padding: DisplayCutouts.of(context),
+        child: chrome,
+      );
 
   void _updateVideoFit(BoxFit fit) {
     // La surface est reconstruite avec le nouveau cadrage ; chaque moteur
@@ -2159,7 +2164,7 @@ class _PlayerScreenState extends State<PlayerScreen> {
                 // [FixedChromeId] fails to compile here instead of silently
                 // rendering a player with no controls at all.
                 if (fixedChrome != null)
-                  _clearOfCutout(switch (fixedChrome) {
+                  switch (fixedChrome) {
                     FixedChromeId.emby => EmbyControlsLayer(
                     visible: _controlsVisible,
                     timelineAnchorKey: _timelineAnchorKey,
@@ -2231,8 +2236,12 @@ class _PlayerScreenState extends State<PlayerScreen> {
                     isTv: isTv,
                     playPauseFocusNode: _playPauseFocusNode,
                     progressFocusNode: _progressFocusNode,
+                    // Row by row, and only the rows the camera is actually
+                    // on. Padding the layer would have stepped the whole
+                    // interface aside for something in the way of one control.
+                    cutouts: DisplayCutouts.rects(context),
                   ),
-                  })
+                  }
                 else if (useModular) ...[
                   _clearOfCutout(ModularControlsLayer(
                     config: chrome.config,

@@ -316,17 +316,18 @@ void main() {
       expect(find.byType(EmbyBrightnessSlider), findsNothing);
     });
 
-    testWidgets('appears on the right once a brightness is known',
+    testWidgets('appears on the left once a brightness is known',
         (tester) async {
       await pumpChrome(tester, width: 420, brightness: 0.5);
 
       final bar = find.byType(EmbyBrightnessSlider);
       expect(bar, findsOneWidget);
 
-      // On the right edge — the side the hand holding the phone reaches
-      // without crossing the picture — and clear of the middle of it.
+      // On the left edge, and clear of the middle of the picture. Not the
+      // right one: that column belongs to the utility buttons, and a bar over
+      // them takes their taps.
       final rect = tester.getRect(bar);
-      expect(rect.right, greaterThan(420 - 60));
+      expect(rect.left, lessThan(60));
       expect(rect.center.dy, closeTo(350, 60));
     });
 
