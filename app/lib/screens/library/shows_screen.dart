@@ -42,12 +42,9 @@ class _ShowsScreenState extends State<ShowsScreen> {
     return items;
   }
 
-  int _crossAxisCount(double width) => AppLayout.posterGridCount(width);
-
   @override
   Widget build(BuildContext context) {
     final lp = Provider.of<LibraryProvider>(context);
-    final width = MediaQuery.sizeOf(context).width;
     final horizontalPadding = AppLayout.pagePadding(context);
     final filtered = _filteredShows(lp);
     final compact = AppLayout.isCompact(context);
@@ -80,7 +77,10 @@ class _ShowsScreenState extends State<ShowsScreen> {
                           children: [
                             Text(
                               'Séries',
-                              style: Theme.of(context).textTheme.displaySmall?.copyWith(
+                              style: Theme.of(context)
+                                  .textTheme
+                                  .displaySmall
+                                  ?.copyWith(
                                     fontWeight: FontWeight.w800,
                                     fontSize: compact ? 26 : 32,
                                   ),
@@ -98,7 +98,8 @@ class _ShowsScreenState extends State<ShowsScreen> {
                             const SizedBox(height: 8),
                             Text(
                               '${filtered.length} série${filtered.length > 1 ? 's' : ''}',
-                              style: const TextStyle(color: AppColors.textMuted, fontSize: 13),
+                              style: const TextStyle(
+                                  color: AppColors.textMuted, fontSize: 13),
                             ),
                           ],
                         ),
@@ -109,7 +110,8 @@ class _ShowsScreenState extends State<ShowsScreen> {
                         child: EmptyStateView(
                           icon: Icons.tv_off_rounded,
                           title: 'Aucune série',
-                          message: 'Ajoutez des dossiers de séries avec des épisodes SxxExx puis synchronisez la bibliothèque.',
+                          message:
+                              'Ajoutez des dossiers de séries avec des épisodes SxxExx puis synchronisez la bibliothèque.',
                         ),
                       )
                     else if (filtered.isEmpty)
@@ -129,32 +131,29 @@ class _ShowsScreenState extends State<ShowsScreen> {
                           horizontalPadding,
                           MediaQuery.paddingOf(context).bottom + 48,
                         ),
-                        sliver: SliverGrid(
-                          gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
-                            crossAxisCount: _crossAxisCount(width),
-                            mainAxisSpacing: compact
-                                ? 16
-                                : AppLayout.posterGridMainSpacing,
-                            crossAxisSpacing: compact
-                                ? 10
-                                : AppLayout.posterGridCrossSpacing,
-                            childAspectRatio: AppLayout.posterGridAspectRatio,
-                          ),
-                          delegate: SliverChildBuilderDelegate(
-                            (context, index) {
-                              final show = filtered[index];
-                              return MediaCard(
-                                media: show,
-                                onTap: () {
-                                  Navigator.of(context).push(
-                                    MaterialPageRoute(
-                                      builder: (_) => ShowDetailScreen(show: show),
-                                    ),
-                                  );
-                                },
-                              );
-                            },
-                            childCount: filtered.length,
+                        sliver: SliverLayoutBuilder(
+                          builder: (context, constraints) => SliverGrid(
+                            gridDelegate: AppLayout.posterGridDelegate(
+                              constraints.crossAxisExtent,
+                              compact: compact,
+                            ),
+                            delegate: SliverChildBuilderDelegate(
+                              (context, index) {
+                                final show = filtered[index];
+                                return MediaCard(
+                                  media: show,
+                                  onTap: () {
+                                    Navigator.of(context).push(
+                                      MaterialPageRoute(
+                                        builder: (_) =>
+                                            ShowDetailScreen(show: show),
+                                      ),
+                                    );
+                                  },
+                                );
+                              },
+                              childCount: filtered.length,
+                            ),
                           ),
                         ),
                       ),
@@ -183,7 +182,8 @@ class _SortDropdown extends StatelessWidget {
         child: DropdownButton<_SortOption>(
           value: value,
           dropdownColor: AppColors.surfaceElevated,
-          icon: const Icon(Icons.sort_rounded, color: AppColors.textSecondary, size: 20),
+          icon: const Icon(Icons.sort_rounded,
+              color: AppColors.textSecondary, size: 20),
           items: const [
             DropdownMenuItem(value: _SortOption.recent, child: Text('Récents')),
             DropdownMenuItem(value: _SortOption.title, child: Text('A → Z')),

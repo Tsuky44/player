@@ -102,12 +102,9 @@ class _RequestsScreenState extends State<RequestsScreen> {
     );
   }
 
-  int _columns(double width) => AppLayout.requestGridCount(width);
-
   @override
   Widget build(BuildContext context) {
     final provider = context.watch<MediaRequestsProvider>();
-    final width = MediaQuery.sizeOf(context).width;
     final horizontalPadding = AppLayout.pagePadding(context);
     final compact = AppLayout.isCompact(context);
 
@@ -126,9 +123,7 @@ class _RequestsScreenState extends State<RequestsScreen> {
             child: Padding(
               padding: EdgeInsets.fromLTRB(
                 horizontalPadding,
-                widget.embedded
-                    ? embeddedShellContentTopInset(context)
-                    : 28,
+                widget.embedded ? embeddedShellContentTopInset(context) : 28,
                 horizontalPadding,
                 20,
               ),
@@ -137,7 +132,8 @@ class _RequestsScreenState extends State<RequestsScreen> {
                 children: [
                   Text('Demander',
                       style: Theme.of(context).textTheme.displaySmall?.copyWith(
-                          fontWeight: FontWeight.w800, fontSize: compact ? 26 : 32)),
+                          fontWeight: FontWeight.w800,
+                          fontSize: compact ? 26 : 32)),
                   const SizedBox(height: 6),
                   const Text(
                       'Recherchez et demandez de nouveaux films et séries',
@@ -145,33 +141,33 @@ class _RequestsScreenState extends State<RequestsScreen> {
                   const SizedBox(height: 22),
                   TvDeferredKeyboard(
                     builder: (context, focusNode, canRequestFocus) => TextField(
-                    controller: _searchController,
-                    focusNode: focusNode,
-                    canRequestFocus: canRequestFocus,
-                    onChanged: (_) {
-                      setState(() {});
-                      _scheduleSearch();
-                    },
-                    onSubmitted: (_) {
-                      _searchDebounce?.cancel();
-                      _runSearch();
-                    },
-                    textInputAction: TextInputAction.search,
-                    decoration: InputDecoration(
-                      hintText: 'Rechercher un film ou une série…',
-                      prefixIcon: const Icon(Icons.search_rounded),
-                      suffixIcon: _searchController.text.isEmpty
-                          ? null
-                          : IconButton(
-                              onPressed: () {
-                                _searchDebounce?.cancel();
-                                _searchController.clear();
-                                setState(() {});
-                                _runSearch();
-                              },
-                              icon: const Icon(Icons.close_rounded),
-                            ),
-                    ),
+                      controller: _searchController,
+                      focusNode: focusNode,
+                      canRequestFocus: canRequestFocus,
+                      onChanged: (_) {
+                        setState(() {});
+                        _scheduleSearch();
+                      },
+                      onSubmitted: (_) {
+                        _searchDebounce?.cancel();
+                        _runSearch();
+                      },
+                      textInputAction: TextInputAction.search,
+                      decoration: InputDecoration(
+                        hintText: 'Rechercher un film ou une série…',
+                        prefixIcon: const Icon(Icons.search_rounded),
+                        suffixIcon: _searchController.text.isEmpty
+                            ? null
+                            : IconButton(
+                                onPressed: () {
+                                  _searchDebounce?.cancel();
+                                  _searchController.clear();
+                                  setState(() {});
+                                  _runSearch();
+                                },
+                                icon: const Icon(Icons.close_rounded),
+                              ),
+                      ),
                     ),
                   ),
                   if (!provider.filters.isDefault) ...[
@@ -223,26 +219,26 @@ class _RequestsScreenState extends State<RequestsScreen> {
             SliverPadding(
               padding: EdgeInsets.fromLTRB(
                   horizontalPadding, 8, horizontalPadding, 36),
-              sliver: SliverGrid(
-                gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
-                  crossAxisCount: _columns(width),
-                  mainAxisSpacing: 24,
-                  crossAxisSpacing: 14,
-                  childAspectRatio: 0.56,
-                ),
-                delegate: SliverChildBuilderDelegate(
-                  (context, index) {
-                    final item = provider.items[index];
-                    return RequestMediaCard(
-                      item: item,
-                      showTypeBadge: provider.type == 'all',
-                      onTap: () => Navigator.of(context).push(
-                        MaterialPageRoute(
-                            builder: (_) => RequestDetailScreen(item: item)),
-                      ),
-                    );
-                  },
-                  childCount: provider.items.length,
+              sliver: SliverLayoutBuilder(
+                builder: (context, constraints) => SliverGrid(
+                  gridDelegate: AppLayout.posterGridDelegate(
+                    constraints.crossAxisExtent,
+                    compact: AppLayout.isCompact(context),
+                  ),
+                  delegate: SliverChildBuilderDelegate(
+                    (context, index) {
+                      final item = provider.items[index];
+                      return RequestMediaCard(
+                        item: item,
+                        showTypeBadge: provider.type == 'all',
+                        onTap: () => Navigator.of(context).push(
+                          MaterialPageRoute(
+                              builder: (_) => RequestDetailScreen(item: item)),
+                        ),
+                      );
+                    },
+                    childCount: provider.items.length,
+                  ),
                 ),
               ),
             ),

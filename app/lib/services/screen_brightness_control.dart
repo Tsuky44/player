@@ -3,6 +3,7 @@ import 'package:screen_brightness/screen_brightness.dart';
 
 import '../utils/app_platform.dart';
 import '../tv/tv_mode.dart';
+import 'perceived_brightness.dart';
 
 /// The screen's own backlight, for the duration of a playback.
 ///
@@ -15,14 +16,28 @@ import '../tv/tv_mode.dart';
 ///
 /// Native only, and never on a television: a set has its own backlight control
 /// on its own remote, and the Android TV build would simply be told no.
+///
+/// **The values here are perceived brightness, not backlight.** 0.5 means "half
+/// as bright as it can look", which is nowhere near half the backlight — see
+/// [PerceivedBrightness]. Callers deal in what the eye reads; the conversion to
+/// what the hardware is driven with happens at this boundary and nowhere else.
+///
+/// On iOS there is nothing to convert: `UIScreen.brightness` is the position of
+/// the system's own slider, which already carries that curve. Applying ours on
+/// top would curve it twice and crush the whole usable range into the bottom of
+/// the bar — the exact fault it exists to remove, only worse.
 abstract final class ScreenBrightnessControl {
   const ScreenBrightnessControl._();
 
   static bool get supported =>
       !AppPlatform.isWeb && AppPlatform.isMobile && !TvMode.isTv;
 
-  /// The override currently in force, or null when the screen is still on
-  /// whatever the system chose.
+  /// Whether this platform's brightness value is linear in backlight, and so
+  /// needs the curve put back. Android's window brightness is; iOS's is not.
+  static bool get _needsCurve => AppPlatform.isAndroid;
+
+  /// The override currently in force — in perceived brightness — or null when
+  /// the screen is still on whatever the system chose.
   static double? _override;
 
   /// What the screen was showing before the player asked for anything, so the
@@ -32,7 +47,8 @@ abstract final class ScreenBrightnessControl {
     final held = _override;
     if (held != null) return held;
     try {
-      return (await ScreenBrightness().application).clamp(0.0, 1.0);
+      final value = (await ScreenBrightness().application).clamp(0.0, 1.0);
+      return _needsCurve ? PerceivedBrightness.fromBacklight(value) : value;
     } catch (e) {
       // A device that refuses to report its brightness will refuse to set it
       // too; answering null is what tells the caller to leave the control out.
@@ -41,15 +57,16 @@ abstract final class ScreenBrightnessControl {
     }
   }
 
-  /// Applies [value] (0..1) as this app's brightness override.
+  /// Applies [value] (0..1, perceived) as this app's brightness override.
   static Future<void> set(double value) async {
     if (!supported) return;
     final v = value.clamp(0.0, 1.0);
     _override = v;
+    final backlight = _needsCurve ? PerceivedBrightness.toBacklight(v) : v;
     try {
-      await ScreenBrightness().setApplicationScreenBrightness(v);
+      await ScreenBrightness().setApplicationScreenBrightness(backlight);
     } catch (e) {
-      debugPrint('Brightness: cannot set $v: $e');
+      debugPrint('Brightness: cannot set $backlight: $e');
     }
   }
 

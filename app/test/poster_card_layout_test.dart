@@ -72,6 +72,54 @@ void main() {
     expect(poster.height / poster.width, closeTo(1.5, 0.08));
   });
 
+  group('poster grid columns follow the poster size, not breakpoints', () {
+    double cell(double contentWidth,
+        {double gap = AppLayout.posterGridCrossSpacing}) {
+      final columns = AppLayout.posterGridCount(contentWidth, spacing: gap);
+      return (contentWidth - gap * (columns - 1)) / columns;
+    }
+
+    test('a cell stays close to the target size at every width', () {
+      for (var contentWidth = 320.0; contentWidth <= 3000; contentWidth += 17) {
+        final width = cell(contentWidth);
+        if (AppLayout.posterGridCount(contentWidth) <= 2) continue;
+        expect(
+          width,
+          greaterThanOrEqualTo(AppLayout.posterTileMin),
+          reason: 'cells too narrow at $contentWidth',
+        );
+        expect(
+          width,
+          lessThan(AppLayout.posterTileTarget * 1.45),
+          reason: 'cells too wide at $contentWidth',
+        );
+      }
+    });
+
+    test('a wider row never shows fewer posters', () {
+      var previous = 0;
+      for (var contentWidth = 320.0; contentWidth <= 3000; contentWidth += 7) {
+        final columns = AppLayout.posterGridCount(contentWidth);
+        expect(columns, greaterThanOrEqualTo(previous),
+            reason: 'column count dropped at $contentWidth');
+        previous = columns;
+      }
+    });
+
+    test('phones keep two large posters, desktops get many', () {
+      // iPhone 390pt minus the 16pt gutters, compact spacing.
+      expect(
+        AppLayout.posterGridCount(358,
+            spacing: AppLayout.posterGridCompactCrossSpacing),
+        2,
+      );
+      // 1440pt window minus the 48pt gutters.
+      expect(AppLayout.posterGridCount(1344), greaterThanOrEqualTo(8));
+      // 1920pt window minus the 48pt gutters.
+      expect(AppLayout.posterGridCount(1824), greaterThanOrEqualTo(11));
+    });
+  });
+
   test('card posters are normalised to TMDB w500', () {
     expect(
       cardPosterUrl('https://image.tmdb.org/t/p/w300/abc.jpg'),

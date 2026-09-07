@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../../../models/player_layout.dart';
+import '../../../utils/app_platform.dart';
 import '../../player/widgets/emby/emby_controls_layer.dart';
 
 /// What Player Studio shows when the active playeur is a fixed chrome.
@@ -51,6 +52,11 @@ class FixedChromePreview extends StatelessWidget {
         return EmbyControlsLayer(
           visible: true,
           isPlaying: false,
+          // The preview shows the chrome this device will actually get: no
+          // volume control on a phone, and an iPhone's is drawn a little
+          // smaller.
+          showVolume: !AppPlatform.isMobile,
+          scale: AppPlatform.isIOS ? 0.9 : 1,
           // Sample values: a preview with a zeroed timeline reads as broken.
           position: const Duration(minutes: 42, seconds: 17),
           duration: const Duration(hours: 1, minutes: 58),

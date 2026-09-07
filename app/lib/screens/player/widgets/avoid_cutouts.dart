@@ -103,16 +103,28 @@ class RenderAvoidCutouts extends RenderShiftedBox {
     });
   }
 
+  /// Sideways only, and that is a rule rather than an omission.
+  ///
+  /// Moving a row *down* changes its own height, which changes where the rows
+  /// around it sit — and in a bar pinned to the bottom of the screen, that
+  /// moves this row too. The next measurement then reads a different position,
+  /// asks for a different inset, and the chrome jitters from frame to frame.
+  /// A sideways inset changes nothing about where anything sits vertically, so
+  /// the measurement it is based on cannot move: it settles in one pass and
+  /// stays there.
+  ///
+  /// Nothing is lost that this can dodge anyway. A camera on the top edge is a
+  /// portrait phone's problem, and the player is landscape — sideways is where
+  /// the bubble is.
   EdgeInsets _insetFor(Rect box) {
     var left = 0.0;
-    var top = 0.0;
     var right = 0.0;
     for (final cutout in _cutouts) {
       // Only what lands on this row. A bubble halfway down the left edge is
       // nothing to the bar at the bottom of the screen, and this is where that
       // is decided.
       if (!cutout.overlaps(box)) continue;
-      // And only from an edge it reaches. A cutout sitting in the middle of a
+      // And only from a side it reaches. A cutout sitting in the middle of a
       // row cannot be dodged by moving the row sideways — there is nowhere to
       // move it to — so it is left alone rather than shoved somewhere worse.
       if (cutout.left <= box.left + _tolerance) {
@@ -121,13 +133,9 @@ class RenderAvoidCutouts extends RenderShiftedBox {
       if (cutout.right >= box.right - _tolerance) {
         right = math.max(right, box.right - cutout.left);
       }
-      if (cutout.top <= box.top + _tolerance) {
-        top = math.max(top, cutout.bottom - box.top);
-      }
     }
     // A cutout wider than the row itself would leave nothing to lay out.
-    final horizontal = left + right;
-    if (horizontal >= box.width) return EdgeInsets.zero;
-    return EdgeInsets.fromLTRB(left, top, right, 0);
+    if (left + right >= box.width) return EdgeInsets.zero;
+    return EdgeInsets.only(left: left, right: right);
   }
 }

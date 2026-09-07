@@ -112,6 +112,21 @@ class _PlayerScreenState extends State<PlayerScreen> {
   /// threshold mid-gesture would keep flipping the picture.
   bool _pinchResolved = false;
 
+  /// The fingers on the picture right now, and how far apart the first two
+  /// were when the second landed.
+  ///
+  /// The pinch is read from raw pointers rather than from a scale recognizer,
+  /// and that is the whole reason it answers every time. A recognizer has to
+  /// win the gesture arena, and over the video it was up against the tap and
+  /// double-tap of the three seek zones underneath it: a pinch that spread
+  /// slowly, or whose fingers landed a moment apart, was awarded to a tap
+  /// before the scale recognizer had seen enough movement to claim it — the
+  /// "sometimes nothing happens" of it. A [Listener] takes part in no arena at
+  /// all, so it sees the fingers whatever the taps do, and the taps keep
+  /// working.
+  final Map<int, Offset> _pinchPointers = <int, Offset>{};
+  double? _pinchStartSpan;
+
   /// Screen brightness override, 0.0 -> 1.0, or null on a screen whose
   /// backlight this app does not drive. Null is what keeps the left-hand bar
   /// out of the chrome everywhere except a phone or tablet.
@@ -772,26 +787,18 @@ class _PlayerScreenState extends State<PlayerScreen> {
     }
   }
 
-  /// Whether a tap on the video means "play/pause" or "show me the chrome".
-  ///
-  /// On a touchscreen there is no pointer to hover, so the same tap has to do
-  /// both jobs, and which one it does is decided by what is already on screen:
-  /// no chrome means the tap was a request to see it, chrome up means the tap
-  /// landed on a player whose controls the user can already read — so it drives
-  /// playback. A phone with no chrome showing pausing the film out from under
-  /// a finger placed to *find* the controls is the behaviour this replaces.
-  bool get _tapDrivesPlayback => _controlsVisible;
-
   void _handleVideoTap({bool togglePlayback = false}) {
     _keyboardFocusNode.requestFocus();
 
     // Touch: one rule for all three zones, so the middle of the screen is not
-    // a different player from its edges.
+    // a different player from its edges — and that rule is only ever about the
+    // chrome. A tap shows it or puts it away; play and pause belong to the
+    // button, which is a target the user aimed at. On a phone the film is
+    // watched with the screen in reach of a hand that is also holding it, and
+    // every stray touch stopping it — a thumb steadying the phone, a finger
+    // reaching for the controls — is a pause nobody asked for.
     if (_touchTapRules) {
-      if (_tapDrivesPlayback) _togglePlayPause();
-      // Either way the chrome comes up and its countdown restarts: the tap
-      // that revealed it, and the tap that used it, both mean "I am here".
-      _showControlsTransient();
+      _toggleControls();
       return;
     }
 
@@ -1331,6 +1338,15 @@ class _PlayerScreenState extends State<PlayerScreen> {
     super.dispose();
   }
 
+  /// How big the fixed chrome is drawn.
+  ///
+  /// The same widget at the same width reads slightly larger on an iPhone than
+  /// on an Android phone, so it is trimmed there. Only what is drawn: the
+  /// targets stay the size of a finger.
+  static const double _iosChromeScale = 0.9;
+
+  double get _chromeScale => AppPlatform.isIOS ? _iosChromeScale : 1;
+
   /// Keeps a chrome layer clear of the screen's cutouts — the camera bubble,
   /// a notch.
   ///
@@ -1653,15 +1669,30 @@ class _PlayerScreenState extends State<PlayerScreen> {
   /// remote and a desktop by a mouse, and neither can produce this gesture.
   bool get _pinchToZoomEnabled => AppPlatform.isMobile && !TvMode.isTv;
 
-  void _handleVideoScaleStart(ScaleStartDetails details) {
-    _pinchResolved = false;
+  /// How far apart the first two fingers are, or null with fewer than two.
+  double? _pinchSpan() {
+    if (_pinchPointers.length < 2) return null;
+    final fingers = _pinchPointers.values.toList();
+    return (fingers[1] - fingers[0]).distance;
   }
 
-  void _handleVideoScaleUpdate(ScaleUpdateDetails details) {
+  void _handlePinchPointerDown(PointerDownEvent event) {
+    _pinchPointers[event.pointer] = event.position;
+    // The span is re-baselined on every finger that lands, so a second finger
+    // arriving late starts the pinch from where it actually started.
+    _pinchStartSpan = _pinchSpan();
+  }
+
+  void _handlePinchPointerMove(PointerMoveEvent event) {
+    if (!_pinchPointers.containsKey(event.pointer)) return;
+    _pinchPointers[event.pointer] = event.position;
     if (_pinchResolved) return;
+    final start = _pinchStartSpan;
+    final span = _pinchSpan();
+    if (start == null || span == null || start <= 0) return;
     final next = PinchZoomFit.resolve(
-      scale: details.scale,
-      pointerCount: details.pointerCount,
+      scale: span / start,
+      pointerCount: _pinchPointers.length,
     );
     if (next == null) return;
     _pinchResolved = true;
@@ -1669,6 +1700,15 @@ class _PlayerScreenState extends State<PlayerScreen> {
     // Shown even when the fit does not change, so pinching a picture that
     // already fills the screen answers instead of doing nothing at all.
     _showZoomHint(next);
+  }
+
+  void _handlePinchPointerEnd(PointerEvent event) {
+    _pinchPointers.remove(event.pointer);
+    _pinchStartSpan = _pinchSpan();
+    // Only once the hand is off the glass: lifting one finger of a pinch that
+    // has already answered and spreading again is the same gesture, not a new
+    // one, and re-arming there would flip the picture back mid-movement.
+    if (_pinchPointers.isEmpty) _pinchResolved = false;
   }
 
   void _showZoomHint(BoxFit fit) {
@@ -2098,20 +2138,22 @@ class _PlayerScreenState extends State<PlayerScreen> {
                     ),
                   ),
                 // A pinch spans two of the tap zones below, so it cannot be
-                // handled by them: the recognizer has to sit above all three,
-                // where both fingers land on the same detector. The zones keep
-                // their taps — a scale gesture only takes the arena once the
-                // fingers move, which is past the point where a tap is still
-                // possible.
+                // handled by them: the fingers have to be counted somewhere
+                // above all three. Watching the pointers rather than competing
+                // for them is what makes it reliable — see [_pinchPointers].
                 Positioned.fill(
-                  child: GestureDetector(
+                  child: Listener(
                     behavior: HitTestBehavior.deferToChild,
-                    // Left null off a touchscreen so no scale recognizer joins
-                    // the arena there at all.
-                    onScaleStart:
-                        _pinchToZoomEnabled ? _handleVideoScaleStart : null,
-                    onScaleUpdate:
-                        _pinchToZoomEnabled ? _handleVideoScaleUpdate : null,
+                    // Left null off a touchscreen: nothing there can produce a
+                    // second finger, and this would only be bookkeeping.
+                    onPointerDown:
+                        _pinchToZoomEnabled ? _handlePinchPointerDown : null,
+                    onPointerMove:
+                        _pinchToZoomEnabled ? _handlePinchPointerMove : null,
+                    onPointerUp:
+                        _pinchToZoomEnabled ? _handlePinchPointerEnd : null,
+                    onPointerCancel:
+                        _pinchToZoomEnabled ? _handlePinchPointerEnd : null,
                     child: Row(
                       children: [
                         Expanded(
@@ -2240,6 +2282,10 @@ class _PlayerScreenState extends State<PlayerScreen> {
                     // on. Padding the layer would have stepped the whole
                     // interface aside for something in the way of one control.
                     cutouts: DisplayCutouts.rects(context),
+                    // The phone has volume keys; the desktop has nothing but
+                    // this.
+                    showVolume: !AppPlatform.isMobile,
+                    scale: _chromeScale,
                   ),
                   }
                 else if (useModular) ...[

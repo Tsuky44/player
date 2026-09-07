@@ -32,6 +32,23 @@ particulier. `media_kit_libs_ios_video` embarque libmpv et ses dépendances (~10
 `onyx_player_android` ne déclare que la plateforme Android : rien de lui n'entre dans le binaire
 iOS.
 
+### 1 bis. Deux réglages du lecteur ne se transposent pas tels quels
+
+Le travail fait sur le lecteur Android vaut sur iPhone sans rien changer — le cadrage et le
+pincement passent par `Video(fit:)` de media_kit, donc par Flutter, là où Android devait descendre
+au natif — à deux exceptions près, toutes deux au contact du matériel.
+
+**La courbe de luminosité ne s'applique qu'à Android.** La luminosité de fenêtre d'Android est
+linéaire en rétroéclairage : la moitié de la barre donnait un écran déjà perçu comme au maximum, et
+`PerceivedBrightness` remet la courbe que l'œil attend. `UIScreen.brightness` d'iOS, lui, *est* la
+position du curseur système, courbe comprise. L'appliquer aussi là-bas la poserait deux fois et
+tasserait toute la plage utile dans le bas de la barre.
+
+**Le chrome est dessiné 10 % plus petit sur iPhone.** À largeur égale il y lisait plus gros que sur
+Android. Seul ce qui est *dessiné* rétrécit — textes, icônes, marges : les cibles tactiles gardent
+leur taille, parce qu'un chrome 10 % plus petit et 10 % plus dur à toucher n'est pas le même
+échange (`EmbyChromeMetrics.scaledBy`).
+
 ### 2. Le HTTP en clair est autorisé, explicitement
 
 Le serveur est chez soi, sur `http://192.168.x.x:8080`, sans certificat. App Transport Security

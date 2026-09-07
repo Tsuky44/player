@@ -79,7 +79,8 @@ class _CollectionScreenState extends State<CollectionScreen> {
             const SliverToBoxAdapter(
               child: Padding(
                 padding: EdgeInsets.all(64),
-                child: Center(child: CircularProgressIndicator(strokeWidth: 2.5)),
+                child:
+                    Center(child: CircularProgressIndicator(strokeWidth: 2.5)),
               ),
             )
           else if (_failed || collection == null)
@@ -99,14 +100,10 @@ class _CollectionScreenState extends State<CollectionScreen> {
               padding: AppLayout.pageInsets(context, top: 28, bottom: 48),
               sliver: SliverLayoutBuilder(
                 builder: (context, constraints) {
-                  final width = constraints.crossAxisExtent;
-                  final columns = AppLayout.posterGridCount(width);
                   return SliverGrid(
-                    gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
-                      crossAxisCount: columns,
-                      crossAxisSpacing: AppLayout.posterGridCrossSpacing,
-                      mainAxisSpacing: AppLayout.posterGridMainSpacing,
-                      childAspectRatio: AppLayout.posterGridAspectRatio,
+                    gridDelegate: AppLayout.posterGridDelegate(
+                      constraints.crossAxisExtent,
+                      compact: AppLayout.isCompact(context),
                     ),
                     delegate: SliverChildBuilderDelegate(
                       (context, index) {
@@ -161,7 +158,6 @@ class _CollectionHeader extends StatelessWidget {
             placeholder: const ColoredBox(color: AppColors.surface),
             errorWidget: const ColoredBox(color: AppColors.surface),
           ),
-
           const DecoratedBox(
             decoration: BoxDecoration(
               gradient: LinearGradient(
@@ -185,7 +181,6 @@ class _CollectionHeader extends StatelessWidget {
               ),
             ),
           ),
-
           Positioned(
             left: AppLayout.pagePadding(context),
             right: AppLayout.pagePadding(context),
@@ -216,7 +211,8 @@ class _CollectionHeader extends StatelessWidget {
                   Text(
                     '$partsCount film${partsCount > 1 ? 's' : ''}'
                     '${ownedCount > 0 ? ' · $ownedCount dans ta bibliothèque' : ''}',
-                    style: const TextStyle(color: AppColors.textSecondary, fontSize: 14),
+                    style: const TextStyle(
+                        color: AppColors.textSecondary, fontSize: 14),
                   ),
                 ],
                 if (overview != null && overview!.isNotEmpty) ...[
@@ -238,7 +234,6 @@ class _CollectionHeader extends StatelessWidget {
               ],
             ),
           ),
-
           Positioned(
             top: 4,
             left: 8,
