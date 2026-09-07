@@ -38,22 +38,57 @@ abstract final class AppLayout {
     return EdgeInsets.fromLTRB(h, top, h, bottom);
   }
 
-  /// Poster grid columns — shared by every catalog screen (films, séries,
-  /// bibliothèque, demandes) so the poster size never changes between them.
-  static int posterGridCount(double width) {
-    if (width >= 1400) return 7;
-    if (width >= 1100) return 6;
-    if (width >= 800) return 5;
-    if (width >= 550) return 4;
-    return 2;
+  /// Ideal width of one poster cell. Grids fit as many whole columns of about
+  /// this width as the row allows, so a poster keeps the same physical size
+  /// everywhere: a wider window simply shows more of them.
+  static const double posterTileTarget = 150;
+
+  /// A cell never gets narrower than this — below it the title and the rating
+  /// line stop being readable, so the grid drops a column instead.
+  static const double posterTileMin = 135;
+
+  /// Poster grid columns for a row of [contentWidth] logical pixels (the width
+  /// left *after* the page gutters). Shared by every catalog screen (films,
+  /// séries, bibliothèque, demandes) so the poster size never changes between
+  /// them.
+  static int posterGridCount(double contentWidth, {double? spacing}) {
+    final gap = spacing ?? posterGridCrossSpacing;
+    var columns = ((contentWidth + gap) / (posterTileTarget + gap)).round();
+    // Rounding up must not squeeze the cells below the readable minimum.
+    while (columns > 2 &&
+        (contentWidth - gap * (columns - 1)) / columns < posterTileMin) {
+      columns--;
+    }
+    return columns < 2 ? 2 : columns;
   }
 
-  static int requestGridCount(double width) => posterGridCount(width);
+  static int requestGridCount(double contentWidth, {double? spacing}) =>
+      posterGridCount(contentWidth, spacing: spacing);
 
   /// Cell ratio for poster grids: 2:3 poster + title + subtitle line.
   static const double posterGridAspectRatio = 0.56;
   static const double posterGridMainSpacing = 24;
   static const double posterGridCrossSpacing = 14;
+  static const double posterGridCompactMainSpacing = 16;
+  static const double posterGridCompactCrossSpacing = 10;
+
+  /// The one grid delegate every catalog grid uses. [contentWidth] is the row
+  /// width inside the page gutters — take it from a `SliverLayoutBuilder` so
+  /// side navigation is accounted for, not from the window width.
+  static SliverGridDelegate posterGridDelegate(
+    double contentWidth, {
+    bool compact = false,
+  }) {
+    final cross =
+        compact ? posterGridCompactCrossSpacing : posterGridCrossSpacing;
+    return SliverGridDelegateWithFixedCrossAxisCount(
+      crossAxisCount: posterGridCount(contentWidth, spacing: cross),
+      crossAxisSpacing: cross,
+      mainAxisSpacing:
+          compact ? posterGridCompactMainSpacing : posterGridMainSpacing,
+      childAspectRatio: posterGridAspectRatio,
+    );
+  }
 
   static double mediaRowCardWidth(BuildContext context) =>
       isCompact(context) ? 118.0 : 150.0;

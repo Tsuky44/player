@@ -75,7 +75,8 @@ class _PersonDetailScreenState extends State<PersonDetailScreen> {
             const SliverToBoxAdapter(
               child: Padding(
                 padding: EdgeInsets.all(64),
-                child: Center(child: CircularProgressIndicator(strokeWidth: 2.5)),
+                child:
+                    Center(child: CircularProgressIndicator(strokeWidth: 2.5)),
               ),
             )
           else if (_failed || person == null)
@@ -133,14 +134,10 @@ class _PersonDetailScreenState extends State<PersonDetailScreen> {
                 padding: AppLayout.pageInsets(context, bottom: 48),
                 sliver: SliverLayoutBuilder(
                   builder: (context, constraints) {
-                    final width = constraints.crossAxisExtent;
-                    final columns = AppLayout.posterGridCount(width);
                     return SliverGrid(
-                      gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
-                        crossAxisCount: columns,
-                        crossAxisSpacing: AppLayout.posterGridCrossSpacing,
-                        mainAxisSpacing: AppLayout.posterGridMainSpacing,
-                        childAspectRatio: AppLayout.posterGridAspectRatio,
+                      gridDelegate: AppLayout.posterGridDelegate(
+                        constraints.crossAxisExtent,
+                        compact: AppLayout.isCompact(context),
                       ),
                       delegate: SliverChildBuilderDelegate(
                         (context, index) {
@@ -203,7 +200,6 @@ class _PersonHeader extends StatelessWidget {
             )
           else
             Container(color: AppColors.surface),
-
           const DecoratedBox(
             decoration: BoxDecoration(
               gradient: LinearGradient(
@@ -214,7 +210,6 @@ class _PersonHeader extends StatelessWidget {
               ),
             ),
           ),
-
           Positioned(
             left: AppLayout.pagePadding(context),
             right: AppLayout.pagePadding(context),
@@ -261,7 +256,10 @@ class _PersonHeader extends StatelessWidget {
                     children: [
                       Text(
                         name,
-                        style: Theme.of(context).textTheme.headlineMedium?.copyWith(
+                        style: Theme.of(context)
+                            .textTheme
+                            .headlineMedium
+                            ?.copyWith(
                               fontWeight: FontWeight.w800,
                               height: 1.05,
                             ),
@@ -284,7 +282,9 @@ class _PersonHeader extends StatelessWidget {
                         runSpacing: 8,
                         children: [
                           if (_birthLine(person) != null)
-                            _InfoBit(icon: Icons.cake_rounded, text: _birthLine(person)!),
+                            _InfoBit(
+                                icon: Icons.cake_rounded,
+                                text: _birthLine(person)!),
                           if (person?.placeOfBirth != null &&
                               person!.placeOfBirth!.isNotEmpty)
                             _InfoBit(
@@ -299,7 +299,6 @@ class _PersonHeader extends StatelessWidget {
               ],
             ),
           ),
-
           Positioned(
             top: 4,
             left: 8,

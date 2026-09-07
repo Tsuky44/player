@@ -9,11 +9,15 @@ import 'package:onyx/screens/player/widgets/emby/emby_controls_layer.dart';
 Future<void> pumpChrome(
   WidgetTester tester, {
   required double width,
+  double height = 700,
   VoidCallback? onSkipNext,
   VoidCallback? onSkipPrevious,
   VoidCallback? onOpenEpisodes,
   VoidCallback? onSkipIntro,
   double volume = 70,
+  bool showVolume = true,
+  double scale = 1,
+  List<Rect> cutouts = const [],
   double? brightness,
   ValueChanged<double>? onBrightnessChanged,
   bool isPlaying = true,
@@ -27,7 +31,7 @@ Future<void> pumpChrome(
   VoidCallback? onPlayPause,
 }) async {
   tester.view.devicePixelRatio = 1.0;
-  tester.view.physicalSize = Size(width, 700);
+  tester.view.physicalSize = Size(width, height);
   addTearDown(tester.view.reset);
 
   await tester.pumpWidget(
@@ -48,6 +52,9 @@ Future<void> pumpChrome(
           onForward: onForward ?? () {},
           onSeekFraction: (_) {},
           onVolumeChanged: (_) {},
+          showVolume: showVolume,
+          cutouts: cutouts,
+          scale: scale,
           brightness: brightness,
           onBrightnessChanged: onBrightnessChanged ?? (_) {},
           onBack: onBack ?? () {},
@@ -316,30 +323,34 @@ void main() {
       expect(find.byType(EmbyBrightnessSlider), findsNothing);
     });
 
-    testWidgets('appears on the left once a brightness is known',
+    testWidgets('takes the band between the two bars, on the right edge',
         (tester) async {
       await pumpChrome(tester, width: 420, brightness: 0.5);
 
       final bar = find.byType(EmbyBrightnessSlider);
       expect(bar, findsOneWidget);
 
-      // On the left edge, and clear of the middle of the picture. Not the
-      // right one: that column belongs to the utility buttons, and a bar over
-      // them takes their taps.
       final rect = tester.getRect(bar);
-      expect(rect.left, lessThan(60));
-      expect(rect.center.dy, closeTo(350, 60));
+      expect(rect.right, greaterThan(420 - 60));
+      // Below the top bar, which is measured rather than guessed at: the
+      // control starts where the bar above it ends.
+      final back = tester.getRect(find.byIcon(Icons.arrow_back_ios_new_rounded));
+      expect(rect.top, greaterThanOrEqualTo(back.bottom));
     });
 
-    testWidgets('takes well under half the height of the picture',
+    testWidgets('never reaches the buttons it shares an edge with',
         (tester) async {
-      // A bar over a film is measured against what it hides. It is read at a
-      // glance and driven by a drag that can start anywhere on it, so length
-      // buys nothing — this is the assertion that keeps it from creeping back.
+      // The failure this closes was invisible: where the control overlapped
+      // the utilities cluster, those buttons were hit-tested first and took
+      // the touches, so the lower part of the bar simply stopped answering
+      // while still being drawn.
       await pumpChrome(tester, width: 420, brightness: 0.5);
 
       final rect = tester.getRect(find.byType(EmbyBrightnessSlider));
-      expect(rect.height, lessThan(700 * 0.35));
+      final fullscreen =
+          tester.getRect(find.byIcon(Icons.fullscreen_rounded));
+
+      expect(rect.bottom, lessThanOrEqualTo(fullscreen.top));
     });
 
     testWidgets('dragging up brightens and dragging down dims', (tester) async {
@@ -361,6 +372,122 @@ void main() {
       await tester.drag(bar, const Offset(0, 60));
       await tester.pump();
       expect(values.last, lessThan(0.5));
+    });
+
+    testWidgets('still there on a screen too short to be comfortable',
+        (tester) async {
+      // A 1080p phone at 3x, held sideways: 360 dp of height, of which this
+      // chrome's bottom bar takes two thirds. The band left is barely 70 px,
+      // and the bar has to live in it — it vanished outright at one point,
+      // which is worse than tight.
+      await pumpChrome(tester, width: 800, height: 360, brightness: 0.5);
+
+      expect(find.byType(EmbyBrightnessSlider), findsOneWidget);
+      final rect = tester.getRect(find.byType(EmbyBrightnessSlider));
+      final fullscreen =
+          tester.getRect(find.byIcon(Icons.fullscreen_rounded));
+      expect(rect.bottom, lessThanOrEqualTo(fullscreen.top));
+    });
+
+    testWidgets('holds still under a camera bubble', (tester) async {
+      // The jitter this closes: dodging a bubble used to be able to move a row
+      // *down*, which changed its height, which moved the rows around it — and
+      // in a bar pinned to the bottom of the screen, that moved the row itself.
+      // The next frame measured a different position and asked for a different
+      // dodge, so the chrome never settled.
+      await pumpChrome(
+        tester,
+        width: 800,
+        height: 360,
+        brightness: 0.5,
+        cutouts: const [Rect.fromLTWH(0, 120, 40, 80)],
+      );
+
+      final bar = tester.getRect(find.byType(EmbyBrightnessSlider));
+      final fullscreen =
+          tester.getRect(find.byIcon(Icons.fullscreen_rounded));
+
+      for (var frame = 0; frame < 5; frame++) {
+        await tester.pump(const Duration(milliseconds: 16));
+      }
+
+      expect(tester.getRect(find.byType(EmbyBrightnessSlider)), bar);
+      expect(tester.getRect(find.byIcon(Icons.fullscreen_rounded)), fullscreen);
+    });
+
+    testWidgets('a finger that lands beside the bar still drives it',
+        (tester) async {
+      // The point of the catch area: it is much wider than the track, and
+      // invisible, so the finger never has to find the 8 px that are drawn.
+      final values = <double>[];
+      await pumpChrome(
+        tester,
+        width: 420,
+        brightness: 0.5,
+        onBrightnessChanged: values.add,
+      );
+
+      final rect = tester.getRect(find.byType(EmbyBrightnessSlider));
+      await tester.dragFrom(
+        Offset(rect.left + 8, rect.center.dy),
+        const Offset(0, -60),
+      );
+      await tester.pump();
+
+      expect(values.last, greaterThan(0.5));
+    });
+
+    testWidgets('the catch area reaches past both ends of the bar',
+        (tester) async {
+      // Both ends, because they have to be even. A finger lands lower than it
+      // aims — the pad touches the glass, the tip does the aiming — so a catch
+      // area generous above the track and stopping at the icon grabs first
+      // time at the top and hardly at all at the bottom.
+      final values = <double>[];
+      await pumpChrome(
+        tester,
+        width: 420,
+        brightness: 0.5,
+        onBrightnessChanged: values.add,
+      );
+      final rect = tester.getRect(find.byType(EmbyBrightnessSlider));
+
+      await tester.dragFrom(
+        Offset(rect.center.dx, rect.bottom - 4),
+        const Offset(0, -60),
+      );
+      await tester.pump();
+      expect(values.last, greaterThan(0.5), reason: 'below the icon');
+
+      values.clear();
+      await tester.dragFrom(
+        Offset(rect.center.dx, rect.top + 4),
+        const Offset(0, 60),
+      );
+      await tester.pump();
+      expect(values.last, lessThan(0.5), reason: 'above the track');
+    });
+
+    testWidgets('a touch that goes nowhere changes nothing', (tester) async {
+      // Landing on the column is not an adjustment. Jumping to the touch made
+      // every stray contact something to undo — and it is what a catch area
+      // this wide could not afford.
+      final values = <double>[];
+      await pumpChrome(
+        tester,
+        width: 420,
+        brightness: 0.5,
+        onBrightnessChanged: values.add,
+      );
+
+      final gesture = await tester.startGesture(
+        tester.getCenter(find.byType(EmbyBrightnessSlider)),
+      );
+      await tester.pump();
+      await gesture.up();
+      await tester.pump();
+
+      expect(values, isEmpty);
     });
 
     testWidgets('a drag past either end stays inside 0..1', (tester) async {
@@ -404,6 +531,48 @@ void main() {
     });
   });
 
+  group('drawn smaller on an iPhone', () {
+    test('scaling trims what is drawn and leaves what is touched', () {
+      // The whole point of the split: a chrome that looks 10% smaller and is
+      // 10% harder to press is not the same trade.
+      const base = EmbyChromeMetrics.wide();
+      final small = base.scaledBy(0.9);
+
+      expect(small.titleSize, closeTo(base.titleSize * 0.9, 0.001));
+      expect(small.iconSize, closeTo(base.iconSize * 0.9, 0.001));
+      expect(small.gutter, closeTo(base.gutter * 0.9, 0.001));
+      expect(small.hitSize, base.hitSize);
+      expect(small.barThickness, base.barThickness);
+      expect(small.isCompact, base.isCompact);
+    });
+
+    testWidgets('the icons come out smaller and the targets do not',
+        (tester) async {
+      Size targetOf(WidgetTester tester) => tester.getSize(
+            find
+                .ancestor(
+                  of: find.byIcon(Icons.fullscreen_rounded),
+                  matching: find.byType(GestureDetector),
+                )
+                .first,
+          );
+
+      // The glyph, not its box: the box is the target, and that is the half
+      // that must not move.
+      double glyphOf(WidgetTester tester) =>
+          tester.widget<Icon>(find.byIcon(Icons.fullscreen_rounded)).size!;
+
+      await pumpChrome(tester, width: 1280);
+      final glyphAtFullSize = glyphOf(tester);
+      final targetAtFullSize = targetOf(tester);
+
+      await pumpChrome(tester, width: 1280, scale: 0.9);
+
+      expect(glyphOf(tester), closeTo(glyphAtFullSize * 0.9, 0.001));
+      expect(targetOf(tester), targetAtFullSize);
+    });
+  });
+
   group('driven by a remote', () {
     testWidgets('the volume control is left out of the television chrome',
         (tester) async {
@@ -419,6 +588,16 @@ void main() {
       await pumpChrome(tester, width: 1280);
 
       expect(find.byIcon(Icons.volume_up_rounded), findsOneWidget);
+    });
+
+    testWidgets('a phone is left out of it too', (tester) async {
+      // Same reasoning as the television, different hardware: the handset has
+      // volume keys under the fingers already holding it, and the top row is
+      // short of slots.
+      await pumpChrome(tester, width: 420, showVolume: false);
+
+      expect(find.byIcon(Icons.volume_up_rounded), findsNothing);
+      expect(find.byType(Slider), findsNothing);
     });
 
     testWidgets('the remote is handed play/pause on the way in',

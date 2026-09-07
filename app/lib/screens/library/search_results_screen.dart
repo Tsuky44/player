@@ -16,8 +16,6 @@ class SearchResultsScreen extends StatelessWidget {
 
   const SearchResultsScreen({super.key, required this.query});
 
-  int _crossAxisCount(double width) => AppLayout.posterGridCount(width);
-
   void _openMedia(BuildContext context, Media media, LibraryProvider lp) {
     if (media.type == MediaType.movie) {
       Navigator.of(context).push(
@@ -64,34 +62,37 @@ class SearchResultsScreen extends StatelessWidget {
               slivers: [
                 SliverToBoxAdapter(
                   child: Padding(
-                    padding: EdgeInsets.fromLTRB(horizontalPadding, 8, horizontalPadding, 0),
+                    padding: EdgeInsets.fromLTRB(
+                        horizontalPadding, 8, horizontalPadding, 0),
                     child: Text(
                       '${results.length} résultat${results.length > 1 ? 's' : ''}',
-                      style: const TextStyle(color: AppColors.textMuted, fontSize: 13),
+                      style: const TextStyle(
+                          color: AppColors.textMuted, fontSize: 13),
                     ),
                   ),
                 ),
                 SliverPadding(
-                  padding: EdgeInsets.fromLTRB(horizontalPadding, 20, horizontalPadding, 48),
-                  sliver: SliverGrid(
-                    gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
-                      crossAxisCount: _crossAxisCount(width),
-                      mainAxisSpacing: AppLayout.posterGridMainSpacing,
-                      crossAxisSpacing: AppLayout.posterGridCrossSpacing,
-                      childAspectRatio: AppLayout.posterGridAspectRatio,
-                    ),
-                    delegate: SliverChildBuilderDelegate(
-                      (context, index) {
-                        final media = results[index];
-                        return MediaCard(
-                          media: media,
-                          progress: media.type == MediaType.movie
-                              ? lp.movieProgressFor(media.id)
-                              : null,
-                          onTap: () => _openMedia(context, media, lp),
-                        );
-                      },
-                      childCount: results.length,
+                  padding: EdgeInsets.fromLTRB(
+                      horizontalPadding, 20, horizontalPadding, 48),
+                  sliver: SliverLayoutBuilder(
+                    builder: (context, constraints) => SliverGrid(
+                      gridDelegate: AppLayout.posterGridDelegate(
+                        constraints.crossAxisExtent,
+                        compact: AppLayout.isCompact(context),
+                      ),
+                      delegate: SliverChildBuilderDelegate(
+                        (context, index) {
+                          final media = results[index];
+                          return MediaCard(
+                            media: media,
+                            progress: media.type == MediaType.movie
+                                ? lp.movieProgressFor(media.id)
+                                : null,
+                            onTap: () => _openMedia(context, media, lp),
+                          );
+                        },
+                        childCount: results.length,
+                      ),
                     ),
                   ),
                 ),

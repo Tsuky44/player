@@ -72,15 +72,37 @@ void main() {
       expect(row.right, 360);
     });
 
-    testWidgets('a notch on the top edge pushes the row down', (tester) async {
-      // Portrait, where the camera sits on the edge the first row starts at.
+    testWidgets('never moves a row vertically', (tester) async {
+      // Sideways or not at all. Moving a row down changes its height, which
+      // moves the rows around it — and in a bar pinned to the bottom of the
+      // screen, that moves this row too; the next measurement then asks for a
+      // different inset and the chrome jitters frame after frame. A bubble
+      // that starts above a row is exactly the case that used to trigger it.
       await pumpRows(
         tester,
-        cutouts: const [Rect.fromLTWH(150, 0, 100, 24)],
+        cutouts: const [
+          Rect.fromLTWH(150, 0, 100, 24),
+          Rect.fromLTWH(0, 40, 40, 60),
+        ],
       );
 
-      expect(tester.getTopLeft(find.byKey(upper)).dy, 24);
-      expect(tester.getTopLeft(find.byKey(middle)).dx, 0);
+      expect(tester.getTopLeft(find.byKey(upper)).dy, 0);
+      expect(tester.getTopLeft(find.byKey(middle)).dy, 60);
+      expect(tester.getTopLeft(find.byKey(lower)).dy, 120);
+    });
+
+    testWidgets('a cutout that merely starts higher up is not from above',
+        (tester) async {
+      // The bubble spans 40..100 and the middle row 60..120: it reaches into
+      // the row from the left, not from the top, and the answer is a sideways
+      // move of exactly its width.
+      await pumpRows(
+        tester,
+        cutouts: const [Rect.fromLTWH(0, 40, 40, 60)],
+      );
+
+      expect(tester.getTopLeft(find.byKey(middle)).dx, 40);
+      expect(tester.getTopLeft(find.byKey(upper)).dx, 40);
     });
 
     testWidgets('a cutout wider than the row is left alone', (tester) async {

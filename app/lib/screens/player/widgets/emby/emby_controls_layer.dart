@@ -98,6 +98,24 @@ class EmbyControlsLayer extends StatelessWidget {
 
   // --- Television ---------------------------------------------------------
 
+  /// How big the chrome is drawn, as a factor.
+  ///
+  /// 1 everywhere except on an iPhone, where the same widget reads slightly
+  /// larger than it does on Android at the same width. Only what is drawn
+  /// shrinks — the touch targets do not, see
+  /// [EmbyChromeMetrics.scaledBy]. Passed in rather than read from the
+  /// platform, for the same reason [showVolume] is: the Studio renders this
+  /// chrome away from any device.
+  final double scale;
+
+  /// Whether the top bar carries a volume control.
+  ///
+  /// False on a phone: the handset has volume keys under the fingers already
+  /// holding it, and a second control for the same thing costs a slot in a row
+  /// that is short of them. Kept on a computer, where the only volume within
+  /// reach is the one on screen.
+  final bool showVolume;
+
   /// Driven by a remote rather than a mouse or a finger.
   ///
   /// Two things follow from it: the volume control goes (a set has its own on
@@ -172,7 +190,20 @@ class EmbyControlsLayer extends StatelessWidget {
     this.playPauseFocusNode,
     this.progressFocusNode,
     this.cutouts = const <Rect>[],
+    this.showVolume = true,
+    this.scale = 1,
   });
+
+  /// The empty strip at the bottom of the top bar, and the one at the top of
+  /// the bottom bar.
+  ///
+  /// Both are pure scrim: gradient, nothing drawn in them, nothing in them that
+  /// can take a touch. They belong to the brightness bar as much as to the bars
+  /// they pad — and on a phone held sideways they have to, because the bottom
+  /// bar alone is more than half the height of the screen and what is left
+  /// between the two is not enough to put a control in.
+  static const double _topBarTail = 28;
+  static const double _bottomBarLead = 60;
 
   /// Moves one row of the chrome clear of a camera bubble, if the bubble is
   /// actually on it. Everything else stays exactly where it was.
@@ -199,46 +230,65 @@ class EmbyControlsLayer extends StatelessWidget {
     return LayoutBuilder(
       builder: (context, constraints) {
         final width = constraints.maxWidth;
-        final m = EmbyChromeTheme.metricsFor(width);
-        return Stack(
+        final m = EmbyChromeTheme.metricsFor(width, scale: scale);
+        final hasBrightness =
+            brightness != null && onBrightnessChanged != null;
+        // Not a Stack.
+        //
+        // The brightness bar shares the right edge with the utilities cluster
+        // — subtitles, audio, speed, settings, fullscreen — and in a Stack the
+        // two only stayed apart by arithmetic: guess the height of the top bar,
+        // guess the height of the bottom one, hope the bar fits between them.
+        // Where they did overlap, the buttons are hit-tested first, so the
+        // lower part of the bar quietly stopped answering — it looked like a
+        // control that only worked at the top.
+        //
+        // This lays the two bars out first, measures them, and gives the bar
+        // the band that is actually left. It cannot overlap either of them,
+        // and the band being known means the whole of it can catch a finger.
+        return CustomMultiChildLayout(
+          delegate: _EmbyChromeLayout(
+            topLead: _topBarTail,
+            // The skip-intro button sits in that strip when there is one, and
+            // it is a button: the bar has to stay off it.
+            bottomLead: onSkipIntro == null ? _bottomBarLead : 0,
+          ),
           children: [
-            Positioned(
-              top: 0,
-              left: 0,
-              right: 0,
+            LayoutId(
+              id: _EmbyChromeLayout.top,
               child: _fadeWithChrome(_buildTop(m, width)),
             ),
-            // On the left edge, and it has to stay there: the right edge is
-            // where the utilities cluster ends — subtitles, audio, speed,
-            // settings, fullscreen — and a bar in that column lands on top of
-            // those buttons, taking their taps and losing its own. The left
-            // edge carries the title, which is text and takes nothing.
-            //
             // It rides the same fade as the chrome: a bar floating alone over
             // a film nobody is touching is exactly the clutter the auto-hide
             // exists to remove.
-            if (brightness != null && onBrightnessChanged != null)
-              Positioned(
-                left: m.gutter - 8,
-                top: 0,
-                bottom: 0,
-                child: Center(
-                  child: _dodgeCutouts(
-                    _fadeWithChrome(
-                      EmbyBrightnessSlider(
-                        value: brightness!,
-                        onChanged: onBrightnessChanged!,
-                        onDraggingChanged: onBrightnessDraggingChanged,
-                        metrics: m,
-                      ),
+            if (hasBrightness)
+              LayoutId(
+                id: _EmbyChromeLayout.brightness,
+                // A full-width row holding one right-aligned control, rather
+                // than a box pinned to the right edge: that is the shape the
+                // cutout dodge reasons about, and it is what lets a camera on
+                // this edge push the bar in without moving anything else.
+                child: _dodgeCutouts(
+                  Padding(
+                    padding: EdgeInsets.only(right: m.gutter - 8),
+                    child: Row(
+                      mainAxisAlignment: MainAxisAlignment.end,
+                      children: [
+                        _fadeWithChrome(
+                          EmbyBrightnessSlider(
+                            value: brightness!,
+                            onChanged: onBrightnessChanged!,
+                            onDraggingChanged: onBrightnessDraggingChanged,
+                            metrics: m,
+                          ),
+                        ),
+                      ],
                     ),
                   ),
                 ),
               ),
-            Positioned(
-              bottom: 0,
-              left: 0,
-              right: 0,
+            LayoutId(
+              id: _EmbyChromeLayout.bottom,
               child: Column(
                 mainAxisSize: MainAxisSize.min,
                 children: [
@@ -249,7 +299,12 @@ class EmbyControlsLayer extends StatelessWidget {
                   // move it.
                   if (onSkipIntro != null)
                     Padding(
-                      padding: EdgeInsets.fromLTRB(m.gutter, 0, m.gutter, 14),
+                      padding: EdgeInsets.fromLTRB(
+                        m.gutter,
+                        0,
+                        m.gutter,
+                        14,
+                      ),
                       child: Align(
                         alignment: Alignment.centerRight,
                         child: _EmbySkipIntroButton(
@@ -296,7 +351,7 @@ class EmbyControlsLayer extends StatelessWidget {
         m.gutter,
         macOSWindowControlsTopInset + 12,
         m.gutter,
-        28,
+        _topBarTail,
       ),
       decoration: const BoxDecoration(gradient: EmbyChromeTheme.topScrim),
       child: _dodgeCutouts(
@@ -314,8 +369,9 @@ class EmbyControlsLayer extends StatelessWidget {
           // Left out entirely on a television: the set and its remote own the
           // volume, so the slider would do a job that is already done — and,
           // being the one focusable widget up here, it would collect the
-          // remote's focus and hold it.
-          if (!isTv)
+          // remote's focus and hold it. Same conclusion on a phone, for the
+          // same reason with different hardware — see [showVolume].
+          if (!isTv && showVolume)
             _EmbyVolumeControl(
               volume: volume,
               onChanged: onVolumeChanged,
@@ -379,10 +435,35 @@ class EmbyControlsLayer extends StatelessWidget {
   // --- Bottom -------------------------------------------------------------
 
   Widget _buildBottom(EmbyChromeMetrics m) {
-    return Container(
-      padding: EdgeInsets.fromLTRB(m.gutter, 60, m.gutter, m.isCompact ? 16 : 24),
-      decoration: const BoxDecoration(gradient: EmbyChromeTheme.bottomScrim),
-      child: isTv ? _buildTvBottom(m) : _buildPointerBottom(m),
+    // The scrim is painted *behind* the rows rather than around them, and it
+    // does not take touches.
+    //
+    // A `Container` with a decoration is a `DecoratedBox`, and that asks the
+    // decoration whether a point is inside it — which, for a rectangle, is
+    // always yes. So the gradient was swallowing every touch that landed
+    // anywhere in this bar's box, including the empty strip along its top;
+    // and this bar is two thirds of a phone's height held sideways. That is
+    // what stopped the brightness bar answering in its lower half: not the
+    // buttons, the scrim behind them.
+    return Stack(
+      children: [
+        const Positioned.fill(
+          child: IgnorePointer(
+            child: DecoratedBox(
+              decoration: BoxDecoration(gradient: EmbyChromeTheme.bottomScrim),
+            ),
+          ),
+        ),
+        Padding(
+          padding: EdgeInsets.fromLTRB(
+            m.gutter,
+            _bottomBarLead,
+            m.gutter,
+            m.isCompact ? 16 : 24,
+          ),
+          child: isTv ? _buildTvBottom(m) : _buildPointerBottom(m),
+        ),
+      ],
     );
   }
 
@@ -874,4 +955,75 @@ class _EmbySkipIntroButton extends StatelessWidget {
       ),
     );
   }
+}
+
+/// Lays the chrome out as three bands: the top bar, the bottom cluster, and
+/// whatever is left between them.
+///
+/// The middle band is the brightness bar's, and it is the whole point of doing
+/// this by hand. The two bars are laid out first and *measured*; the bar is
+/// then given the space that actually remains, so it can neither be drawn over
+/// the buttons nor — worse, because it is invisible — catch fingers where they
+/// belong to the buttons. A [Stack] could only have guessed at those heights.
+class _EmbyChromeLayout extends MultiChildLayoutDelegate {
+  _EmbyChromeLayout({required this.topLead, required this.bottomLead});
+
+  /// How far the band may reach back into each bar — their empty scrim
+  /// margins, which draw nothing and catch nothing.
+  final double topLead;
+  final double bottomLead;
+
+  static const String top = 'top';
+  static const String bottom = 'bottom';
+  static const String brightness = 'brightness';
+
+  @override
+  void performLayout(Size size) {
+    // Full width, and **unbounded** height: the bars are asked how tall they
+    // want to be, not told how tall they may be. A bounded height is not the
+    // same question — several widgets in these bars, an [Align] around the
+    // title among them, answer "as tall as you'll let me" and would take the
+    // whole screen. It is the constraint a [Positioned] pinned to one edge
+    // gives, which is what these bars were written against.
+    final natural = BoxConstraints(
+      minWidth: size.width,
+      maxWidth: size.width,
+    );
+
+    var topHeight = 0.0;
+    if (hasChild(top)) {
+      topHeight = layoutChild(top, natural).height;
+      positionChild(top, Offset.zero);
+    }
+
+    var bottomHeight = 0.0;
+    if (hasChild(bottom)) {
+      bottomHeight = layoutChild(bottom, natural).height;
+      positionChild(bottom, Offset(0, size.height - bottomHeight));
+    }
+
+    if (hasChild(brightness)) {
+      // What is left between the two bars, plus the empty margin each of them
+      // offers back. Never less than nothing: on a short window the bars can
+      // take the whole height, and the control answers a band too small to use
+      // by drawing nothing at all.
+      final bandTop = (topHeight - topLead).clamp(0.0, size.height);
+      final bandBottom =
+          (size.height - bottomHeight + bottomLead).clamp(0.0, size.height);
+      final band = (bandBottom - bandTop).clamp(0.0, size.height);
+      layoutChild(
+        brightness,
+        BoxConstraints(
+          minWidth: size.width,
+          maxWidth: size.width,
+          maxHeight: band,
+        ),
+      );
+      positionChild(brightness, Offset(0, bandTop));
+    }
+  }
+
+  @override
+  bool shouldRelayout(_EmbyChromeLayout oldDelegate) =>
+      oldDelegate.topLead != topLead || oldDelegate.bottomLead != bottomLead;
 }

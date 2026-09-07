@@ -47,12 +47,9 @@ class _MoviesScreenState extends State<MoviesScreen> {
     return items;
   }
 
-  int _crossAxisCount(double width) => AppLayout.posterGridCount(width);
-
   @override
   Widget build(BuildContext context) {
     final lp = Provider.of<LibraryProvider>(context);
-    final width = MediaQuery.sizeOf(context).width;
     final horizontalPadding = AppLayout.pagePadding(context);
     final filtered = _filteredMovies(lp);
     final compact = AppLayout.isCompact(context);
@@ -85,7 +82,10 @@ class _MoviesScreenState extends State<MoviesScreen> {
                           children: [
                             Text(
                               'Films',
-                              style: Theme.of(context).textTheme.displaySmall?.copyWith(
+                              style: Theme.of(context)
+                                  .textTheme
+                                  .displaySmall
+                                  ?.copyWith(
                                     fontWeight: FontWeight.w800,
                                     fontSize: compact ? 26 : 32,
                                   ),
@@ -103,7 +103,8 @@ class _MoviesScreenState extends State<MoviesScreen> {
                             const SizedBox(height: 8),
                             Text(
                               '${filtered.length} film${filtered.length > 1 ? 's' : ''}',
-                              style: const TextStyle(color: AppColors.textMuted, fontSize: 13),
+                              style: const TextStyle(
+                                  color: AppColors.textMuted, fontSize: 13),
                             ),
                           ],
                         ),
@@ -114,7 +115,8 @@ class _MoviesScreenState extends State<MoviesScreen> {
                         child: EmptyStateView(
                           icon: Icons.movie_creation_outlined,
                           title: 'Aucun film',
-                          message: 'Ajoutez des fichiers vidéo dans votre dossier Films puis synchronisez la bibliothèque.',
+                          message:
+                              'Ajoutez des fichiers vidéo dans votre dossier Films puis synchronisez la bibliothèque.',
                         ),
                       )
                     else if (filtered.isEmpty)
@@ -134,33 +136,32 @@ class _MoviesScreenState extends State<MoviesScreen> {
                           horizontalPadding,
                           MediaQuery.paddingOf(context).bottom + 48,
                         ),
-                        sliver: SliverGrid(
-                          gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
-                            crossAxisCount: _crossAxisCount(width),
-                            mainAxisSpacing: compact
-                                ? 16
-                                : AppLayout.posterGridMainSpacing,
-                            crossAxisSpacing: compact
-                                ? 10
-                                : AppLayout.posterGridCrossSpacing,
-                            childAspectRatio: AppLayout.posterGridAspectRatio,
-                          ),
-                          delegate: SliverChildBuilderDelegate(
-                            (context, index) {
-                              final item = filtered[index];
-                              return MediaCard(
-                                media: item.media,
-                                progress: item.isFinished ? null : item.percentWatched,
-                                onTap: () {
-                                  Navigator.of(context).push(
-                                    MaterialPageRoute(
-                                      builder: (_) => MovieDetailScreen(movieItem: item),
-                                    ),
-                                  );
-                                },
-                              );
-                            },
-                            childCount: filtered.length,
+                        sliver: SliverLayoutBuilder(
+                          builder: (context, constraints) => SliverGrid(
+                            gridDelegate: AppLayout.posterGridDelegate(
+                              constraints.crossAxisExtent,
+                              compact: compact,
+                            ),
+                            delegate: SliverChildBuilderDelegate(
+                              (context, index) {
+                                final item = filtered[index];
+                                return MediaCard(
+                                  media: item.media,
+                                  progress: item.isFinished
+                                      ? null
+                                      : item.percentWatched,
+                                  onTap: () {
+                                    Navigator.of(context).push(
+                                      MaterialPageRoute(
+                                        builder: (_) =>
+                                            MovieDetailScreen(movieItem: item),
+                                      ),
+                                    );
+                                  },
+                                );
+                              },
+                              childCount: filtered.length,
+                            ),
                           ),
                         ),
                       ),
@@ -189,11 +190,13 @@ class _SortDropdown extends StatelessWidget {
         child: DropdownButton<_SortOption>(
           value: value,
           dropdownColor: AppColors.surfaceElevated,
-          icon: const Icon(Icons.sort_rounded, color: AppColors.textSecondary, size: 20),
+          icon: const Icon(Icons.sort_rounded,
+              color: AppColors.textSecondary, size: 20),
           items: const [
             DropdownMenuItem(value: _SortOption.recent, child: Text('Récents')),
             DropdownMenuItem(value: _SortOption.title, child: Text('A → Z')),
-            DropdownMenuItem(value: _SortOption.progress, child: Text('En cours')),
+            DropdownMenuItem(
+                value: _SortOption.progress, child: Text('En cours')),
           ],
           onChanged: (v) {
             if (v != null) onChanged(v);

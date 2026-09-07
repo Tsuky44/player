@@ -53,10 +53,16 @@ abstract final class EmbyChromeTheme {
   /// Sizes are split in two fixed sets rather than scaled continuously: at
   /// phone widths a scaled-down icon lands well under the 44px touch target,
   /// which would make the chrome unusable on the very devices it has to serve.
-  static EmbyChromeMetrics metricsFor(double width) =>
-      width < compactBreakpoint
-          ? const EmbyChromeMetrics.compact()
-          : const EmbyChromeMetrics.wide();
+  ///
+  /// [scale] trims what is *drawn* without touching what is touched — see
+  /// [EmbyChromeMetrics.scaledBy]. It is how an iPhone gets a slightly smaller
+  /// chrome than the same widget on Android.
+  static EmbyChromeMetrics metricsFor(double width, {double scale = 1}) {
+    final base = width < compactBreakpoint
+        ? const EmbyChromeMetrics.compact()
+        : const EmbyChromeMetrics.wide();
+    return scale == 1 ? base : base.scaledBy(scale);
+  }
 }
 
 /// The two size sets of the Emby chrome, picked by width.
@@ -114,4 +120,41 @@ class EmbyChromeMetrics {
         handleSize = 13,
         clusterGap = 0,
         isCompact = true;
+
+  const EmbyChromeMetrics._({
+    required this.gutter,
+    required this.hitSize,
+    required this.iconSize,
+    required this.playIconSize,
+    required this.titleSize,
+    required this.metaSize,
+    required this.timeSize,
+    required this.barThickness,
+    required this.barThicknessActive,
+    required this.handleSize,
+    required this.clusterGap,
+    required this.isCompact,
+  });
+
+  /// The same chrome, drawn smaller.
+  ///
+  /// Only what is *seen* shrinks: text, icons, margins. [hitSize] and the
+  /// scrubber's own thickness are left alone, because they are not style —
+  /// they are the size of a fingertip and of a target that has to be hit while
+  /// a film is playing. A chrome that looks 10% smaller and is 10% harder to
+  /// press is not the same trade.
+  EmbyChromeMetrics scaledBy(double factor) => EmbyChromeMetrics._(
+        gutter: gutter * factor,
+        hitSize: hitSize,
+        iconSize: iconSize * factor,
+        playIconSize: playIconSize * factor,
+        titleSize: titleSize * factor,
+        metaSize: metaSize * factor,
+        timeSize: timeSize * factor,
+        barThickness: barThickness,
+        barThicknessActive: barThicknessActive,
+        handleSize: handleSize,
+        clusterGap: clusterGap * factor,
+        isCompact: isCompact,
+      );
 }
