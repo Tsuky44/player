@@ -26,9 +26,8 @@ internal class VideoFrame(context: Context) : ViewGroup(context) {
     /// Rapport largeur/hauteur à l'affichage, ou 0 tant qu'il est inconnu.
     private var aspect: Float = 0f
 
-    /// « Taille d'origine » : couvrir le cadre et rogner, plutôt qu'entrer
-    /// dedans avec des bandes.
-    private var cover: Boolean = false
+    /// Le cadrage demandé — voir [VideoFraming.sizeFor].
+    private var fit: OnyxVideoFit = OnyxVideoFit.CONTAIN
 
     fun setVideoAspect(next: Float) {
         if (next == aspect) return
@@ -36,9 +35,9 @@ internal class VideoFrame(context: Context) : ViewGroup(context) {
         applyNow()
     }
 
-    fun setCover(next: Boolean) {
-        if (next == cover) return
-        cover = next
+    fun setFit(next: OnyxVideoFit) {
+        if (next == fit) return
+        fit = next
         applyNow()
     }
 
@@ -74,7 +73,7 @@ internal class VideoFrame(context: Context) : ViewGroup(context) {
 
     private fun measureSurface(frameWidth: Int, frameHeight: Int) {
         val surface = surface() ?: return
-        val (width, height) = VideoFraming.sizeFor(frameWidth, frameHeight, aspect, cover)
+        val (width, height) = VideoFraming.sizeFor(frameWidth, frameHeight, aspect, fit)
         surface.measure(
             MeasureSpec.makeMeasureSpec(width, MeasureSpec.EXACTLY),
             MeasureSpec.makeMeasureSpec(height, MeasureSpec.EXACTLY),
@@ -83,7 +82,7 @@ internal class VideoFrame(context: Context) : ViewGroup(context) {
 
     private fun layoutSurface(frameWidth: Int, frameHeight: Int) {
         val surface = surface() ?: return
-        val (width, height) = VideoFraming.sizeFor(frameWidth, frameHeight, aspect, cover)
+        val (width, height) = VideoFraming.sizeFor(frameWidth, frameHeight, aspect, fit)
         // Centré : les bandes de la taille adaptative sont égales, et la taille
         // d'origine rogne autant des deux côtés.
         val left = (frameWidth - width) / 2

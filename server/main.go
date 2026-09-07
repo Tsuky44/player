@@ -52,6 +52,7 @@ func main() {
 
 	// Unclaimed TV pairing codes are short-lived; sweep the dead rows.
 	handlers.StartDevicePairingReaper()
+	handlers.StartAccessRequestReaper()
 
 	// Initialize router
 	router := httprouter.New()
@@ -97,6 +98,13 @@ func main() {
 	// reached this server, and delivers it over the local network itself.
 	router.POST("/api/auth/device/session", handlers.RequireAuth(handlers.CreateDeviceSession))
 
+	// Demandes d'accès : le pendant tiré de l'invitation. request/poll sont
+	// ouvertes parce que le demandeur n'a pas de compte ici — c'est tout
+	// l'objet — et ne parlent qu'en codes aléatoires ; rien n'est créé tant
+	// qu'un administrateur n'a pas approuvé. Voir ADR-0013.
+	router.POST("/api/auth/access/request", handlers.RequestAccess)
+	router.POST("/api/auth/access/poll", handlers.PollAccessRequest)
+
 	// User administration & invitations (lot A).
 	router.GET("/api/users", handlers.RequirePermission(models.PermManageUsers, handlers.ListUsers))
 	router.PUT("/api/users/:id/permissions", handlers.RequirePermission(models.PermManageUsers, handlers.UpdateUserPermissions))
@@ -111,6 +119,13 @@ func main() {
 	router.GET("/api/invitations", handlers.RequireAnyPermission(invitePerms, handlers.ListInvitations))
 	router.POST("/api/invitations", handlers.RequireAnyPermission(invitePerms, handlers.CreateInvitation))
 	router.DELETE("/api/invitations/:token", handlers.RequireAnyPermission(invitePerms, handlers.RevokeInvitation))
+
+	// Accepter une demande, c'est ce que fait déjà un lien d'invitation, donc
+	// invite_users suffit — et le gabarit borne ce que cela accorde, exactement
+	// comme pour un lien.
+	router.GET("/api/access-requests", handlers.RequireAnyPermission(invitePerms, handlers.ListAccessRequests))
+	router.POST("/api/access-requests/:id/approve", handlers.RequireAnyPermission(invitePerms, handlers.ApproveAccessRequest))
+	router.POST("/api/access-requests/:id/deny", handlers.RequireAnyPermission(invitePerms, handlers.DenyAccessRequest))
 
 	// Settings (MediaHub, TMDB, library paths). Reading is fine for any account;
 	// writing rewrites API keys and library paths, so it needs manage_settings.

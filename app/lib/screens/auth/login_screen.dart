@@ -1,11 +1,21 @@
+import 'dart:async';
+
+import 'package:dio/dio.dart' show DioException;
 import 'package:flutter/material.dart';
 import '../../tv/tv_deferred_keyboard.dart';
 import 'package:provider/provider.dart';
+import '../../models/server_account.dart';
 import '../../providers/auth_provider.dart';
 import '../../services/api_client.dart';
 import '../../services/server_discovery.dart';
 import '../../theme/app_colors.dart';
 import '../../widgets/global/onyx_mark.dart';
+
+/// Les trois façons d'arriver sur un serveur.
+///
+/// [request] est celle qu'ADR-0013 ajoute : on ne possède ni compte ni
+/// invitation, alors on sonne et on attend qu'un administrateur ouvre.
+enum _LoginMode { signIn, register, request }
 
 class LoginScreen extends StatefulWidget {
   const LoginScreen({super.key});
@@ -39,8 +49,17 @@ class _LoginScreenState extends State<LoginScreen> {
   final _usernameKeyboard = GlobalKey<TvDeferredKeyboardState>();
   final _passwordKeyboard = GlobalKey<TvDeferredKeyboardState>();
 
-  bool _isRegistering = false;
+  _LoginMode _mode = _LoginMode.signIn;
   bool _serverPrefilled = false;
+
+  /// Motif joint à une demande d'accès. Décoratif, mais c'est la seule chose
+  /// qui distingue un inconnu d'un autre sur l'écran de l'administrateur.
+  final _messageController = TextEditingController();
+
+  /// Le sondage des demandes en attente. Sur cet écran il a un sens précis :
+  /// la personne est devant, elle attend d'être acceptée, et l'app doit la
+  /// faire entrer d'elle-même le moment venu.
+  Timer? _poll;
 
   /// True while the network sweep runs. This form is the fallback path — the
   /// one a television reaches when it has nobody with a phone to link it — and
@@ -70,10 +89,13 @@ class _LoginScreenState extends State<LoginScreen> {
     final invite = Uri.base.queryParameters['invite'];
     if (invite != null && invite.isNotEmpty) {
       _inviteController.text = invite;
-      _isRegistering = true;
+      _mode = _LoginMode.register;
     }
 
     _probeSetupState();
+    // Une demande partie d'ici a pu être acceptée entre-temps : c'est le
+    // premier écran que voit l'app, donc le premier endroit où le vérifier.
+    _startPollingIfPending();
   }
 
   /// Sweeps the local network and fills the address in with what answers.
@@ -124,6 +146,8 @@ class _LoginScreenState extends State<LoginScreen> {
     _usernameController.dispose();
     _passwordController.dispose();
     _inviteController.dispose();
+    _messageController.dispose();
+    _poll?.cancel();
     _serverFocus.dispose();
     _inviteFocus.dispose();
     _usernameFocus.dispose();
@@ -133,7 +157,35 @@ class _LoginScreenState extends State<LoginScreen> {
 
   /// Whether the invitation field is on screen — it is what follows the server
   /// address when an account is being created against an established server.
-  bool get _invitingShown => _isRegistering && !_setupRequired;
+  bool get _invitingShown =>
+      _mode == _LoginMode.register && !_setupRequired;
+
+  /// La demande en attente pour l'adresse affichée, s'il y en a une.
+  PendingAccessRequest? _pendingFor(AuthProvider auth) {
+    final url = ServerAccount.normalizeUrl(_serverController.text);
+    for (final request in auth.pendingAccessRequests) {
+      if (request.url == url) return request;
+    }
+    return auth.pendingAccessRequests.isEmpty
+        ? null
+        : auth.pendingAccessRequests.first;
+  }
+
+  /// Interroge le serveur jusqu'à ce qu'on soit accepté — auquel cas
+  /// [AuthProvider] ouvre la session et cet écran disparaît de lui-même.
+  void _startPollingIfPending() {
+    final auth = context.read<AuthProvider>();
+    if (auth.pendingAccessRequests.isEmpty) {
+      _poll?.cancel();
+      _poll = null;
+      return;
+    }
+    _poll ??= Timer.periodic(const Duration(seconds: 5), (_) async {
+      if (!mounted) return;
+      await context.read<AuthProvider>().refreshAccessRequests();
+      if (mounted) _startPollingIfPending();
+    });
+  }
 
   /// Passe au champ suivant, clavier compris.
   ///
@@ -167,33 +219,71 @@ class _LoginScreenState extends State<LoginScreen> {
     final username = _usernameController.text.trim();
     final password = _passwordController.text;
 
-    if (_isRegistering) {
-      final success = await authProvider.register(
-        serverUrl,
-        username,
-        password,
-        inviteToken: _inviteToken(),
-      );
-      if (success && mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-              content: Text('Inscription réussie ! Connectez-vous.')),
+    switch (_mode) {
+      case _LoginMode.register:
+        final success = await authProvider.register(
+          serverUrl,
+          username,
+          password,
+          inviteToken: _inviteToken(),
         );
-        setState(() {
-          _isRegistering = false;
-          _inviteController.clear();
-          _setupRequired = false;
-        });
-      }
-    } else {
-      await authProvider.login(serverUrl, username, password);
+        if (success && mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+                content: Text('Inscription réussie ! Connectez-vous.')),
+          );
+          setState(() {
+            _mode = _LoginMode.signIn;
+            _inviteController.clear();
+            _setupRequired = false;
+          });
+        }
+
+      case _LoginMode.request:
+        try {
+          await authProvider.requestAccess(
+            serverUrl: serverUrl,
+            username: username,
+            password: password,
+            message: _messageController.text.trim(),
+          );
+          if (!mounted) return;
+          setState(() => _mode = _LoginMode.signIn);
+          _startPollingIfPending();
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text(
+                  'Demande envoyée. Vous serez connecté dès qu’elle sera acceptée.'),
+            ),
+          );
+        } catch (e) {
+          if (!mounted) return;
+          ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+            content: Text(_requestErrorText(e)),
+            backgroundColor: AppColors.error,
+          ));
+        }
+
+      case _LoginMode.signIn:
+        await authProvider.login(serverUrl, username, password);
     }
+  }
+
+  /// Le serveur écrit ses refus en français (nom pris, serveur vierge, file
+  /// pleine) : les relayer tels quels vaut mieux que de les traduire à
+  /// l'aveugle.
+  String _requestErrorText(Object error) {
+    final response = error is DioException ? error.response : null;
+    final data = response?.data;
+    if (data is Map && data['error'] != null) return data['error'].toString();
+    return 'Demande impossible : vérifiez l’adresse du serveur.';
   }
 
   @override
   Widget build(BuildContext context) {
     final authProvider = Provider.of<AuthProvider>(context);
     final textTheme = Theme.of(context).textTheme;
+    final pending = _pendingFor(authProvider);
 
     return Scaffold(
       backgroundColor: AppColors.background,
@@ -242,11 +332,15 @@ class _LoginScreenState extends State<LoginScreen> {
                       ),
                       const SizedBox(height: 10),
                       Text(
-                        _isRegistering
-                            ? (_setupRequired
-                                ? 'Créer le compte propriétaire'
-                                : 'Créer un compte avec une invitation')
-                            : 'Connectez-vous à votre serveur',
+                        switch (_mode) {
+                          _LoginMode.register => _setupRequired
+                              ? 'Créer le compte propriétaire'
+                              : 'Créer un compte avec une invitation',
+                          _LoginMode.request =>
+                            'Demander l’accès à ce serveur',
+                          _LoginMode.signIn =>
+                            'Connectez-vous à votre serveur',
+                        },
                         textAlign: TextAlign.center,
                         style: textTheme.bodyMedium?.copyWith(
                           color: AppColors.textSecondary,
@@ -307,7 +401,7 @@ class _LoginScreenState extends State<LoginScreen> {
                                 : 'Détecter le serveur sur le réseau'),
                           ),
                         ),
-                      if (_isRegistering && !_setupRequired) ...[
+                      if (_invitingShown) ...[
                         const SizedBox(height: 16),
                         TvDeferredKeyboard(
                           key: _inviteKeyboard,
@@ -379,6 +473,71 @@ class _LoginScreenState extends State<LoginScreen> {
                           },
                                               ),
                       ),
+                      if (_mode == _LoginMode.request) ...[
+                        const SizedBox(height: 16),
+                        TvDeferredKeyboard(
+                          builder: (context, focusNode, canRequestFocus) =>
+                              TextFormField(
+                            focusNode: focusNode,
+                            canRequestFocus: canRequestFocus,
+                            controller: _messageController,
+                            maxLength: 280,
+                            style:
+                                const TextStyle(color: AppColors.textPrimary),
+                            decoration: const InputDecoration(
+                              labelText: 'Message (facultatif)',
+                              hintText: 'Dites qui vous êtes',
+                              prefixIcon: Icon(
+                                  Icons.chat_bubble_outline_rounded,
+                                  color: AppColors.textMuted),
+                            ),
+                          ),
+                        ),
+                      ],
+                      if (pending != null) ...[
+                        const SizedBox(height: 16),
+                        Container(
+                          padding: const EdgeInsets.all(12),
+                          decoration: BoxDecoration(
+                            color: AppColors.primary.withValues(alpha: 0.10),
+                            borderRadius: BorderRadius.circular(12),
+                            border: Border.all(
+                                color:
+                                    AppColors.primary.withValues(alpha: 0.35)),
+                          ),
+                          child: Row(
+                            children: [
+                              const SizedBox(
+                                width: 16,
+                                height: 16,
+                                child:
+                                    CircularProgressIndicator(strokeWidth: 2),
+                              ),
+                              const SizedBox(width: 12),
+                              Expanded(
+                                child: Text(
+                                  'Demande envoyée à ${pending.prettyHost} pour '
+                                  '« ${pending.username} ». La connexion se fera '
+                                  'toute seule dès qu’un administrateur aura '
+                                  'accepté.',
+                                  style: const TextStyle(
+                                      color: AppColors.textSecondary,
+                                      fontSize: 12),
+                                ),
+                              ),
+                              TextButton(
+                                onPressed: () async {
+                                  await context
+                                      .read<AuthProvider>()
+                                      .abandonAccessRequest(pending);
+                                  if (mounted) _startPollingIfPending();
+                                },
+                                child: const Text('Annuler'),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ],
                       if (authProvider.errorMessage != null) ...[
                         const SizedBox(height: 16),
                         Container(
@@ -412,26 +571,44 @@ class _LoginScreenState extends State<LoginScreen> {
                                   color: AppColors.background,
                                 ),
                               )
-                            : Text(_isRegistering
-                                ? 'S\'inscrire'
-                                : 'Se connecter'),
+                            : Text(switch (_mode) {
+                                _LoginMode.register => 'S\'inscrire',
+                                _LoginMode.request => 'Envoyer la demande',
+                                _LoginMode.signIn => 'Se connecter',
+                              }),
                       ),
                       const SizedBox(height: 12),
                       TextButton(
                         onPressed: authProvider.isLoading
                             ? null
-                            : () => setState(
-                                () => _isRegistering = !_isRegistering),
+                            : () => setState(() {
+                                  _mode = _mode == _LoginMode.signIn
+                                      ? _LoginMode.register
+                                      : _LoginMode.signIn;
+                                }),
                         child: Text(
-                          _isRegistering
-                              ? 'Déjà un compte ? Connectez-vous'
-                              : (_setupRequired
+                          _mode == _LoginMode.signIn
+                              ? (_setupRequired
                                   // Nobody exists yet: this account takes the
                                   // server over.
                                   ? 'Premier lancement : créer le compte propriétaire'
-                                  : 'J\'ai un code d\'invitation'),
+                                  : 'J\'ai un code d\'invitation')
+                              : 'Déjà un compte ? Connectez-vous',
                         ),
                       ),
+                      // Sans invitation et sans compte, il reste la sonnette :
+                      // demander à quelqu'un du serveur de vous ouvrir. Masqué
+                      // sur un serveur vierge, qui n'a encore personne pour
+                      // répondre.
+                      if (!_setupRequired && _mode != _LoginMode.request)
+                        TextButton(
+                          onPressed: authProvider.isLoading
+                              ? null
+                              : () => setState(
+                                  () => _mode = _LoginMode.request),
+                          child: const Text(
+                              'Pas d’invitation ? Demander l’accès'),
+                        ),
                     ],
                   ),
                 ),

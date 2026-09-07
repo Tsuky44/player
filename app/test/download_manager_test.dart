@@ -10,6 +10,16 @@ import 'package:onyx/services/download_manager.dart';
 import 'package:path_provider_platform_interface/path_provider_platform_interface.dart';
 import 'package:plugin_platform_interface/plugin_platform_interface.dart';
 
+/// Un client pointé sur le serveur d'où viennent les médias du manifeste.
+///
+/// Ce n'est pas un détail de mise en scène : depuis qu'un appareil peut tenir
+/// plusieurs serveurs (ADR-0013), la liste des téléchargements est celle du
+/// serveur actif — un `media_id` ne veut rien dire ailleurs.
+class _ApiAtNas extends ApiClient {
+  @override
+  String get baseUrl => 'http://nas:8080';
+}
+
 /// Pointe le stockage applicatif vers un dossier jetable.
 class _TempSupportDirectory extends PathProviderPlatform
     with MockPlatformInterfaceMixin {
@@ -85,7 +95,7 @@ void main() {
     }));
     File('${store.path}/shows/7/poster.jpg').writeAsStringSync('jpeg');
 
-    await DownloadManager.instance.initialize(ApiClient());
+    await DownloadManager.instance.initialize(_ApiAtNas());
   });
 
   tearDownAll(() {

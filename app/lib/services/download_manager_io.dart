@@ -73,6 +73,20 @@ class DownloadManager extends ChangeNotifier {
   bool _ready = false;
 
   final Map<int, OfflineDownload> _entries = {};
+
+  /// Les entrées des **autres** serveurs, gardées de côté telles quelles.
+  ///
+  /// Une entrée est repérée par son `mediaId`, qui est un numéro propre à un
+  /// serveur : le film 42 de l'un n'a rien à voir avec le film 42 de l'autre.
+  /// Depuis qu'un même appareil peut tenir plusieurs serveurs (ADR-0013), la
+  /// carte en mémoire ne contient donc que le serveur actif — sinon deux
+  /// bibliothèques se recouvriraient à la première collision de numéro. Le
+  /// manifeste, lui, continue de tout porter : ce qui a été téléchargé ailleurs
+  /// est toujours sur le disque, et réapparaît en revenant sur ce serveur.
+  final List<OfflineDownload> _otherServers = [];
+
+  /// Adresse normalisée du serveur dont [_entries] tient les téléchargements.
+  String _scope = '';
   final Map<int, CancelToken> _cancelTokens = {};
 
   /// Les fiches rapatriées, indexées par l'identifiant de la série (ou du film
@@ -136,6 +150,7 @@ class DownloadManager extends ChangeNotifier {
 
   Future<void> initialize(ApiClient api) async {
     _api = api;
+    _scope = OfflineChrome.normalizeServerUrl(api.baseUrl);
     if (_ready) return;
     try {
       final support = await getApplicationSupportDirectory();
@@ -167,6 +182,10 @@ class DownloadManager extends ChangeNotifier {
       final items = (raw is Map ? raw['items'] : raw) as List? ?? const [];
       for (final item in items) {
         final entry = OfflineDownload.fromJson(item as Map<String, dynamic>);
+        if (!_inScope(entry)) {
+          _otherServers.add(entry);
+          continue;
+        }
         // « En cours » ne peut pas avoir survécu à l'arrêt du processus : ce
         // qui l'était redevient une entrée de file.
         _entries[entry.mediaId] = entry.status == DownloadStatus.downloading
@@ -268,7 +287,12 @@ class DownloadManager extends ChangeNotifier {
     try {
       final payload = jsonEncode({
         'version': 1,
-        'items': _entries.values.map((e) => e.toJson()).toList(),
+        'items': [
+          for (final entry in _entries.values) _stamped(entry).toJson(),
+          // Ce qui appartient aux autres serveurs est réécrit intact : le
+          // manifeste est commun, la carte en mémoire ne l'est pas.
+          for (final entry in _otherServers) entry.toJson(),
+        ],
       });
       // Écriture puis renommage : une app tuée pendant la sauvegarde laisse
       // l'ancien manifeste intact plutôt qu'un JSON tronqué.
@@ -278,6 +302,52 @@ class DownloadManager extends ChangeNotifier {
     } catch (e) {
       debugPrint('Downloads: écriture du manifeste impossible: $e');
     }
+  }
+
+  /// Une entrée sans adresse date de l'époque mono-serveur : elle appartient à
+  /// celui qui est actif, faute de pouvoir appartenir à quelqu'un d'autre.
+  bool _inScope(OfflineDownload entry) =>
+      entry.serverUrl.isEmpty || entry.serverUrl == _scope;
+
+  OfflineDownload _stamped(OfflineDownload entry) =>
+      entry.serverUrl.isEmpty && _scope.isNotEmpty
+          ? entry.copyWith(serverUrl: _scope)
+          : entry;
+
+  /// Rebranche la liste sur le serveur qui vient de devenir actif.
+  ///
+  /// Les transferts en cours sur le serveur qu'on quitte redeviennent des
+  /// entrées de file : leur reprise se fera au retour, à l'octet près, et
+  /// continuer à télécharger depuis une adresse qu'on n'utilise plus n'aurait
+  /// pas de sens.
+  Future<void> onServerChanged() async {
+    final next = OfflineChrome.normalizeServerUrl(_api?.baseUrl ?? '');
+    if (next == _scope) return;
+
+    // Le transfert en cours est coupé net : il tire sur une adresse dont on
+    // vient de changer. Il repartira à l'octet près au retour.
+    for (final token in _cancelTokens.values) {
+      token.cancel('server switched');
+    }
+    _cancelTokens.clear();
+    _activeMediaId = null;
+
+    for (final entry in _entries.values) {
+      _otherServers.add(_stamped(entry).status == DownloadStatus.downloading
+          ? _stamped(entry).copyWith(status: DownloadStatus.queued)
+          : _stamped(entry));
+    }
+    _entries.clear();
+    _scope = next;
+
+    final mine = _otherServers.where(_inScope).toList();
+    _otherServers.removeWhere(_inScope);
+    for (final entry in mine) {
+      _entries[entry.mediaId] = entry;
+    }
+
+    notifyListeners();
+    unawaited(_pump());
   }
 
   void _notifyThrottled({bool force = false}) {

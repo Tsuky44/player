@@ -1,7 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:dio/dio.dart';
 import '../models/models.dart';
+import '../models/server_account.dart';
 import '../services/api_client.dart';
+import '../utils/app_platform.dart';
 
 class AuthProvider extends ChangeNotifier {
   final ApiClient apiClient;
@@ -18,7 +20,17 @@ class AuthProvider extends ChangeNotifier {
   bool _isOfflineSession = false;
 
   AuthProvider(this.apiClient) {
+    // Le carnet de serveurs se modifie aussi sans passer par ici — un renommage
+    // depuis l'écran des serveurs, par exemple. Le relayer évite que le menu de
+    // compte affiche l'ancien nom jusqu'au prochain événement.
+    apiClient.servers.addListener(notifyListeners);
     tryAutoLogin();
+  }
+
+  @override
+  void dispose() {
+    apiClient.servers.removeListener(notifyListeners);
+    super.dispose();
   }
 
   User? get currentUser => _currentUser;
@@ -181,8 +193,11 @@ class AuthProvider extends ChangeNotifier {
     required String token,
     required User user,
   }) async {
-    await apiClient.adoptSession(token);
-    await apiClient.saveLastUsername(user.username);
+    await apiClient.adoptSession(
+      token,
+      username: user.username,
+      userId: user.id,
+    );
 
     await apiClient.cacheProfile(user);
     _currentUser = user;
@@ -206,17 +221,265 @@ class AuthProvider extends ChangeNotifier {
     }
   }
 
-  // Disconnect user
+  /// Ferme la session du serveur actif sur cet appareil.
+  ///
+  /// Quand un autre compte reste au carnet, on y bascule au lieu de retomber
+  /// sur l'écran de connexion : se déconnecter d'un serveur n'est pas se
+  /// déconnecter de l'app.
   Future<void> logout() async {
     _isLoading = true;
     notifyListeners();
-    
+
     await apiClient.logout();
+
+    final next = apiClient.servers.active;
+    if (next != null && await apiClient.activateAccount(next.id)) {
+      _onServerChanged?.call();
+      await _openSessionOnActive();
+      _isLoading = false;
+      notifyListeners();
+      return;
+    }
+
     _currentUser = null;
     _isAuthenticated = false;
     _isOfflineSession = false;
     _isLoading = false;
-    
+
+    notifyListeners();
+  }
+
+  // ==================== PLUSIEURS SERVEURS ====================
+  //
+  // L'app tient un carnet de comptes (un par serveur) et n'en active qu'un.
+  // Basculer ne renégocie rien : le jeton de l'autre serveur est déjà là, il
+  // n'avait simplement pas cours. Voir ADR-0013.
+
+  /// Prévenu juste avant qu'une bascule prenne effet, pour que les providers
+  /// vident ce qui appartenait au serveur précédent. Branché dans `main()` —
+  /// [AuthProvider] n'a pas à connaître la bibliothèque ni les téléchargements.
+  void Function()? _onServerChanged;
+
+  set onServerChanged(void Function()? callback) => _onServerChanged = callback;
+
+  List<ServerAccount> get servers => apiClient.servers.accounts;
+  ServerAccount? get activeServer => apiClient.servers.active;
+  bool get hasMultipleServers => apiClient.servers.hasMultipleServers;
+  List<PendingAccessRequest> get pendingAccessRequests =>
+      apiClient.servers.pendingRequests;
+
+  /// Bascule sur un autre serveur du carnet.
+  ///
+  /// L'identité est relue au serveur d'arrivée avant d'annoncer quoi que ce
+  /// soit : les droits ne sont pas les mêmes des deux côtés, et afficher ceux
+  /// du serveur qu'on quitte ouvrirait des écrans sur lesquels tout finirait
+  /// en 403.
+  Future<bool> switchServer(String accountId) async {
+    if (activeServer?.id == accountId) return true;
+
+    _isLoading = true;
+    notifyListeners();
+
+    if (!await apiClient.activateAccount(accountId)) {
+      _isLoading = false;
+      _errorMessage = "Ce serveur n'est plus enregistré sur cet appareil.";
+      notifyListeners();
+      return false;
+    }
+
+    _onServerChanged?.call();
+    final ok = await _openSessionOnActive();
+    _isLoading = false;
+    notifyListeners();
+    return ok;
+  }
+
+  /// Ouvre la session du compte devenu actif : profil du serveur si on peut le
+  /// joindre, profil en cache sinon. Le même compromis qu'au démarrage, pour la
+  /// même raison — un serveur injoignable ne prouve pas qu'on n'y a plus de
+  /// compte, et les téléchargements, eux, sont sur le disque.
+  Future<bool> _openSessionOnActive() async {
+    try {
+      _currentUser = await apiClient.getMe();
+      await apiClient.cacheProfile(_currentUser!);
+      _isAuthenticated = true;
+      _isOfflineSession = false;
+      _errorMessage = null;
+      return true;
+    } on DioException catch (e) {
+      if (e.response?.statusCode == 401) {
+        // La session a été révoquée de l'autre côté : le compte reste au
+        // carnet, mais il faudra retaper un mot de passe.
+        await apiClient.clearAuth();
+        _currentUser = null;
+        _isAuthenticated = false;
+        _isOfflineSession = false;
+        _errorMessage = 'Session expirée sur ce serveur, reconnectez-vous.';
+        return false;
+      }
+      return await _openOfflineSession();
+    } catch (_) {
+      return await _openOfflineSession();
+    }
+  }
+
+  /// Retire un serveur du carnet sans passer par sa page de déconnexion.
+  ///
+  /// La session correspondante n'est pas fermée côté serveur : on ne peut pas
+  /// la fermer sans repointer le client dessus, et un compte qu'on retire de
+  /// cet appareil-ci n'a pas à faire tomber les autres.
+  Future<void> forgetServer(String accountId) async {
+    final wasActive = activeServer?.id == accountId;
+    await apiClient.forgetAccount(accountId);
+    if (!wasActive) {
+      notifyListeners();
+      return;
+    }
+
+    final next = apiClient.servers.active;
+    if (next != null && await apiClient.activateAccount(next.id)) {
+      _onServerChanged?.call();
+      await _openSessionOnActive();
+    } else {
+      _currentUser = null;
+      _isAuthenticated = false;
+      _isOfflineSession = false;
+    }
+    notifyListeners();
+  }
+
+  /// Ajoute un serveur sur lequel on a déjà un compte.
+  ///
+  /// Rien à demander à personne : le mot de passe suffit. La session n'est pas
+  /// activée quand une autre est déjà ouverte — le carnet s'allonge, l'écran ne
+  /// bouge pas.
+  Future<ServerAccount> addServerWithPassword({
+    required String serverUrl,
+    required String username,
+    required String password,
+  }) async {
+    final activate = !_isAuthenticated;
+    final user = await apiClient.signInAt(
+      serverUrl: serverUrl,
+      username: username,
+      password: password,
+      activate: activate,
+    );
+    if (activate) {
+      _onServerChanged?.call();
+      _currentUser = user;
+      _isAuthenticated = true;
+      _isOfflineSession = false;
+      _errorMessage = null;
+      await apiClient.cacheProfile(user);
+    }
+    notifyListeners();
+    return apiClient.servers.accountForUrl(serverUrl)!;
+  }
+
+  // ==================== DEMANDES D'ACCÈS ====================
+
+  /// Sonne à la porte d'un serveur où l'on n'a pas de compte.
+  ///
+  /// La demande est notée sur l'appareil : un administrateur peut mettre des
+  /// jours à répondre, et le code qui permettra de relever la session ne se
+  /// retrouve nulle part ailleurs.
+  Future<PendingAccessRequest> requestAccess({
+    required String serverUrl,
+    required String username,
+    required String password,
+    String? message,
+  }) async {
+    final url = ServerAccount.normalizeUrl(serverUrl);
+    final ticket = await apiClient.requestAccess(
+      serverUrl: url,
+      username: username,
+      password: password,
+      deviceName: AppPlatform.label,
+      message: message,
+    );
+    final pending = PendingAccessRequest(
+      url: url,
+      username: username,
+      requestCode: ticket.requestCode,
+      createdAt: DateTime.now(),
+    );
+    await apiClient.servers.addPendingRequest(pending);
+    notifyListeners();
+    return pending;
+  }
+
+  /// Demande le verdict d'une demande en attente.
+  ///
+  /// Une approbation entre au carnet **sans** basculer dessus quand une session
+  /// est déjà ouverte ailleurs : l'utilisateur regardait peut-être un film. Sur
+  /// un appareil qui n'a encore aucun compte, elle ouvre la session, parce que
+  /// c'est précisément ce qu'il attendait.
+  Future<AccessRequestStatus> checkAccessRequest(
+    PendingAccessRequest request,
+  ) async {
+    final AccessRequestVerdict verdict;
+    try {
+      verdict = await apiClient.pollAccessRequest(
+        serverUrl: request.url,
+        requestCode: request.requestCode,
+      );
+    } catch (_) {
+      // Serveur injoignable : la demande tient toujours, on redemandera.
+      return AccessRequestStatus.pending;
+    }
+
+    switch (verdict.status) {
+      case AccessRequestStatus.approved:
+        final token = verdict.token;
+        final userJson = verdict.user;
+        if (token == null || userJson == null) {
+          await apiClient.servers.dropPendingRequest(request.requestCode);
+          return AccessRequestStatus.expired;
+        }
+        final user = User.fromJson(userJson);
+        final hadSession = _isAuthenticated;
+        await apiClient.rememberSession(
+          serverUrl: request.url,
+          username: user.username,
+          token: token,
+          userId: user.id,
+          activate: !hadSession,
+        );
+        await apiClient.servers.dropPendingRequest(request.requestCode);
+        if (!hadSession) {
+          _onServerChanged?.call();
+          _currentUser = user;
+          _isAuthenticated = true;
+          _isOfflineSession = false;
+          _errorMessage = null;
+          await apiClient.cacheProfile(user);
+        }
+        notifyListeners();
+        return AccessRequestStatus.approved;
+
+      case AccessRequestStatus.denied:
+      case AccessRequestStatus.expired:
+        await apiClient.servers.dropPendingRequest(request.requestCode);
+        notifyListeners();
+        return verdict.status;
+
+      case AccessRequestStatus.pending:
+        return AccessRequestStatus.pending;
+    }
+  }
+
+  /// Repasse sur toutes les demandes en attente. Appelé au démarrage et au
+  /// retour du réseau : c'est ce qui fait qu'une approbation arrivée pendant la
+  /// nuit est déjà là au réveil de l'app.
+  Future<void> refreshAccessRequests() async {
+    for (final request in List.of(pendingAccessRequests)) {
+      await checkAccessRequest(request);
+    }
+  }
+
+  Future<void> abandonAccessRequest(PendingAccessRequest request) async {
+    await apiClient.servers.dropPendingRequest(request.requestCode);
     notifyListeners();
   }
 

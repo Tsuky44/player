@@ -212,6 +212,7 @@ class OfflineDownload {
     DateTime? progressUpdatedAt,
     bool? needsSync,
     String? fileName,
+    String? serverUrl,
   }) {
     return OfflineDownload(
       mediaId: mediaId,
@@ -225,7 +226,7 @@ class OfflineDownload {
       episodeNumber: episodeNumber,
       overview: overview,
       releaseDate: releaseDate,
-      serverUrl: serverUrl,
+      serverUrl: serverUrl ?? this.serverUrl,
       posterUrl: posterUrl,
       showPosterUrl: showPosterUrl,
       durationSeconds: durationSeconds ?? this.durationSeconds,

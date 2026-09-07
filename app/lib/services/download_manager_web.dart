@@ -63,4 +63,5 @@ class DownloadManager extends ChangeNotifier {
 
   Future<void> syncPending() async {}
   Future<void> onServerReachable() async {}
+  Future<void> onServerChanged() async {}
 }

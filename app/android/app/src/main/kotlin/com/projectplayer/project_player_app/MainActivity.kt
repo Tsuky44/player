@@ -1,21 +1,37 @@
 package com.projectplayer.project_player_app
 
 import android.app.ActivityManager
+import android.app.PictureInPictureParams
 import android.app.UiModeManager
 import android.content.Context
 import android.content.pm.PackageManager
 import android.content.res.Configuration
 import android.os.Build
 import android.os.Bundle
+import android.util.Rational
 import android.view.Display
 import kotlin.math.abs
 import kotlin.math.roundToInt
 import androidx.core.view.WindowCompat
+import androidx.lifecycle.Lifecycle
 import io.flutter.embedding.android.FlutterActivity
 import io.flutter.embedding.engine.FlutterEngine
 import io.flutter.plugin.common.MethodChannel
 
 class MainActivity : FlutterActivity() {
+    /// The channel, kept so the activity can talk back — picture-in-picture is
+    /// entered and left by the system, not by Dart, and the interface has to
+    /// hear about it.
+    private var device: MethodChannel? = null
+
+    /// The shape of the film, when Dart has asked for picture-in-picture.
+    ///
+    /// Null means "do not". Holding it here rather than asking Dart at the last
+    /// moment is what makes the feature work at all: `onUserLeaveHint` is the
+    /// one instant where the window may be created, and a round trip to Dart
+    /// would land after it.
+    private var pictureInPicture: Rational? = null
+
     override fun onCreate(savedInstanceState: Bundle?) {
         WindowCompat.setDecorFitsSystemWindows(window, false)
         super.onCreate(savedInstanceState)
@@ -24,8 +40,11 @@ class MainActivity : FlutterActivity() {
     override fun configureFlutterEngine(flutterEngine: FlutterEngine) {
         super.configureFlutterEngine(flutterEngine)
 
-        MethodChannel(flutterEngine.dartExecutor.binaryMessenger, DEVICE_CHANNEL)
-            .setMethodCallHandler { call, result ->
+        device = MethodChannel(
+            flutterEngine.dartExecutor.binaryMessenger,
+            DEVICE_CHANNEL,
+        ).also { channel ->
+            channel.setMethodCallHandler { call, result ->
                 when (call.method) {
                     "isTelevision" -> result.success(isTelevision())
                     "deviceName" -> result.success(deviceName())
@@ -38,9 +57,90 @@ class MainActivity : FlutterActivity() {
                         releaseRefreshRate()
                         result.success(null)
                     }
+                    "supportsPictureInPicture" ->
+                        result.success(supportsPictureInPicture())
+                    "setPictureInPicture" -> {
+                        val width = call.argument<Int>("width") ?: 0
+                        val height = call.argument<Int>("height") ?: 0
+                        setPictureInPicture(width, height)
+                        result.success(supportsPictureInPicture())
+                    }
                     else -> result.notImplemented()
                 }
             }
+        }
+    }
+
+    // --- Picture-in-picture -------------------------------------------------
+
+    /// Whether this device can put a film in a corner of the home screen.
+    ///
+    /// A television cannot — Android TV has its own idea of it, and the chrome
+    /// here is not built for it — and neither can a device that simply does not
+    /// carry the feature.
+    private fun supportsPictureInPicture(): Boolean =
+        Build.VERSION.SDK_INT >= Build.VERSION_CODES.O &&
+            !isTelevision() &&
+            packageManager.hasSystemFeature(PackageManager.FEATURE_PICTURE_IN_PICTURE)
+
+    /// Arms or disarms the little window, and says what shape it should be.
+    ///
+    /// A width or height of zero disarms it: leaving the player, or a film that
+    /// has not said how big it is yet.
+    private fun setPictureInPicture(width: Int, height: Int) {
+        if (!supportsPictureInPicture()) return
+        pictureInPicture =
+            if (width > 0 && height > 0) Rational(width, height) else null
+        // From Android 12 the system enters on its own, on the same gesture
+        // that goes home — which is what makes the picture fly into the corner
+        // instead of blinking into it. Below that, `onUserLeaveHint` is the
+        // only hook there is.
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+            runCatching { setPictureInPictureParams(pictureInPictureParams()) }
+        }
+    }
+
+    private fun pictureInPictureParams(): PictureInPictureParams {
+        val builder = PictureInPictureParams.Builder()
+        pictureInPicture?.let { builder.setAspectRatio(it) }
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+            builder.setAutoEnterEnabled(pictureInPicture != null)
+        }
+        return builder.build()
+    }
+
+    /// The user is leaving — home button, or the gesture that does the same.
+    ///
+    /// This is the only moment Android allows the window to be created, and it
+    /// is why the shape is held in [pictureInPicture] rather than asked for
+    /// now. On Android 12 and up the system has already done it.
+    override fun onUserLeaveHint() {
+        super.onUserLeaveHint()
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) return
+        if (pictureInPicture == null || !supportsPictureInPicture()) return
+        if (isInPictureInPictureMode) return
+        runCatching { enterPictureInPictureMode(pictureInPictureParams()) }
+    }
+
+    override fun onPictureInPictureModeChanged(
+        isInPictureInPictureMode: Boolean,
+        newConfig: Configuration,
+    ) {
+        super.onPictureInPictureModeChanged(isInPictureInPictureMode, newConfig)
+        device?.invokeMethod(
+            "pictureInPictureChanged",
+            mapOf(
+                "inPictureInPicture" to isInPictureInPictureMode,
+                // Leaving the window while the activity is *not* coming back to
+                // the front means it was closed, not restored. The two need
+                // telling apart: one puts the interface back, the other has to
+                // stop a film that no longer has anywhere to play.
+                "closed" to (
+                    !isInPictureInPictureMode &&
+                        !lifecycle.currentState.isAtLeast(Lifecycle.State.STARTED)
+                    ),
+            ),
+        )
     }
 
     /// Whether this build is running on a television.

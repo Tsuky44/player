@@ -131,6 +131,14 @@ enum OnyxPlayerErrorKind {
 enum OnyxVideoFit {
   /// L'image entière, avec des bandes s'il le faut.
   contain,
+  /// Toute la hauteur, quitte à ce que les côtés sortent du cadre.
+  ///
+  /// C'est ce que « taille d'origine » veut dire sur un téléphone tenu à
+  /// l'horizontale : la framing d'origine y arrive sous forme de bandes noires
+  /// en haut et en bas dès que le film est plus large que l'écran, ce qui est
+  /// le cas de la plupart. Sur un écran qu'on tient, les bandes valent moins
+  /// que l'image.
+  fillHeight,
   /// La surface entière, en rognant ce qui dépasse.
   cover,
 }

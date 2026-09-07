@@ -133,7 +133,13 @@ class ExoPlaybackSession implements PlaybackSession {
   /// change.
   Future<void> _pushFit(BoxFit fit) => _run(
         (p) => p.setVideoFit(
-          fit == BoxFit.cover ? OnyxVideoFit.cover : OnyxVideoFit.contain,
+          switch (fit) {
+            BoxFit.cover => OnyxVideoFit.cover,
+            // « Taille d'origine » sur un téléphone : toute la hauteur, les
+            // côtés hors cadre — voir [VideoFitRendering].
+            BoxFit.fitHeight => OnyxVideoFit.fillHeight,
+            _ => OnyxVideoFit.contain,
+          },
         ),
       );
 
