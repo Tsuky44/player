@@ -59,6 +59,10 @@ type TranscodeSession struct {
 	// MasterPlaylist is the master this session publishes, rendered once at
 	// /start from the parameters it was created with. See BuildMasterPlaylist.
 	MasterPlaylist string
+	// SegmentExt is the extension the muxer writes segments with, ".ts" or
+	// ".m4s". The throttler counts segment files by name, so it has to know
+	// which name the session is producing; empty means ".ts".
+	SegmentExt string
 
 	ctx    context.Context
 	cancel context.CancelFunc
@@ -182,8 +186,9 @@ func (s *TranscodeSession) countVideoSegments() int {
 	n := s.producedSegments
 	s.mu.Unlock()
 
+	ext := s.segmentExt()
 	for {
-		path := filepath.Join(s.TmpDir, fmt.Sprintf("stream_0_%03d.ts", n))
+		path := filepath.Join(s.TmpDir, fmt.Sprintf("stream_0_%03d%s", n, ext))
 		if _, err := os.Stat(path); err != nil {
 			break
 		}
@@ -197,6 +202,15 @@ func (s *TranscodeSession) countVideoSegments() int {
 	n = s.producedSegments
 	s.mu.Unlock()
 	return n
+}
+
+// segmentExt is the extension this session's segments carry, defaulting to
+// MPEG-TS for a session created before the field existed.
+func (s *TranscodeSession) segmentExt() string {
+	if s.SegmentExt == "" {
+		return ".ts"
+	}
+	return s.SegmentExt
 }
 
 func (s *TranscodeSession) signal(sig syscall.Signal) {

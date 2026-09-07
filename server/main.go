@@ -142,6 +142,10 @@ func main() {
 
 	// 2. Dashboard & Progress Routes
 	router.GET("/api/home", handlers.RequireAuth(handlers.Home))
+	router.GET("/api/media-identities", handlers.RequireAuth(handlers.GetMediaIdentities))
+	router.POST("/api/media-resolve", handlers.RequireAuth(handlers.ResolveMedia))
+	router.GET("/api/progress/sync", handlers.RequireAuth(handlers.ExportProgress))
+	router.POST("/api/progress/sync", handlers.RequireAuth(handlers.ImportProgress))
 	router.GET("/api/progress", handlers.RequireAuth(handlers.GetProgress))
 	router.POST("/api/progress", handlers.RequireAuth(handlers.UpdateProgress))
 	router.POST("/api/continue-watching/hide", handlers.RequireAuth(handlers.HideFromContinueWatching))

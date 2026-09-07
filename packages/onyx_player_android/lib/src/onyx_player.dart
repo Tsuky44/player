@@ -2,6 +2,7 @@ import 'messages.g.dart';
 
 export 'messages.g.dart'
     show
+        OnyxDeviceCapabilities,
         OnyxLoadTuning,
         OnyxPlaybackState,
         OnyxPlaybackStats,
@@ -39,12 +40,14 @@ class OnyxPlayer {
 
   bool _released = false;
 
-  /// Ce que la puce sait décoder en audio.
+  /// Ce que cet appareil-ci sait faire : décodeurs, sortie audio, écran.
   ///
-  /// mpv décodait tout en logiciel ; ExoPlayer dépend de MediaCodec. Demandé
-  /// une fois, pour trancher lecture directe ou transcodage avant d'ouvrir.
-  static Future<List<String>> decodableAudioMimeTypes() =>
-      OnyxPlayerApi().decodableAudioMimeTypes();
+  /// mpv décodait tout en logiciel ; ExoPlayer dépend de MediaCodec, et la
+  /// sortie audio dépend de ce qu'il y a au bout du HDMI. Demandé une fois,
+  /// pour trancher lecture directe ou transcodage avant d'ouvrir — et pour
+  /// dire au serveur ce qu'il peut livrer tel quel.
+  static Future<OnyxDeviceCapabilities> deviceCapabilities() =>
+      OnyxPlayerApi().deviceCapabilities();
 
   /// Crée le lecteur natif. Rien n'est chargé tant qu'[open] n'est pas appelé.
   static Future<OnyxPlayer> create() async {

@@ -413,6 +413,7 @@ class PlayerController {
     // Ouvrir par-dessus est ce qui laissait une lecture derrière un indicateur
     // qui ne s'arrêtait jamais.
     await session.prepare();
+    if (_disposed) return;
     _mark('engine');
     _resumePositionFuture = resumePositionFuture;
     // Must run before media_kit injects hls.js: the bridge intercepts the
@@ -425,6 +426,7 @@ class PlayerController {
       debugPrint("Player: failed to apply native MPV properties: $e");
     }
 
+    if (_disposed) return;
     _positionSubscription = session.positions.listen((pos) {
       if (_disposed) return;
       // A session swap retires one stream and starts another. Until the new one
@@ -557,6 +559,7 @@ class PlayerController {
       } else {
         startAt = 0;
       }
+      if (_disposed) return;
       _mark('resume');
 
       try {
@@ -575,6 +578,7 @@ class PlayerController {
       _mark('opened');
     }
 
+    if (_disposed) return;
     unawaited(_loadMediaTracksAndPreferences(
       apiClient: apiClient,
       mediaId: media.id,
@@ -939,6 +943,7 @@ class PlayerController {
     required ApiClient apiClient,
     int resumeAtSeconds = 0,
   }) async {
+    if (_disposed) return;
     if (AppPlatform.isWeb) {
       // On the web the resume point is part of the session: the server was asked
       // to start transcoding at that second, so there is nothing to seek to —
@@ -1038,12 +1043,15 @@ class PlayerController {
         currentPositionSeconds: posSeconds,
         duration: durSeconds,
         isFinished: isFinished,
+        clientUpdatedAt: DateTime.now().toUtc(),
       );
       synced = true;
     } catch (e) {
       debugPrint("Player: failed to sync progress: $e");
     }
 
+    // The old server may answer after a relay changed the download catalog.
+    if (apiClient.servers.active?.id != apiClient.accountId) return;
     await DownloadManager.instance.recordProgress(
       mediaId: mediaId,
       positionSeconds: posSeconds,

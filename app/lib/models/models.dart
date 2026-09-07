@@ -1286,6 +1286,18 @@ class MediaAudioTrack {
   final int channels;
   final bool isDefault;
 
+  /// `atmos` or `dtsx`, empty for plain channel-based audio.
+  ///
+  /// Object-based audio is not a codec: Atmos rides inside E-AC-3 (as JOC) or
+  /// TrueHD, and DTS:X inside DTS. The server reads it off the stream profile,
+  /// which is the only place it is visible — so a track can say "EAC3" and be
+  /// Atmos, and nothing but this field can tell them apart.
+  final String spatialFormat;
+
+  /// Whether the track is a bit-exact copy of its master (TrueHD, FLAC,
+  /// DTS-HD MA, PCM).
+  final bool lossless;
+
   MediaAudioTrack({
     required this.index,
     required this.typedIndex,
@@ -1294,6 +1306,8 @@ class MediaAudioTrack {
     this.title,
     this.channels = 0,
     this.isDefault = false,
+    this.spatialFormat = '',
+    this.lossless = false,
   });
 
   factory MediaAudioTrack.fromJson(Map<String, dynamic> json) {
@@ -1305,15 +1319,49 @@ class MediaAudioTrack {
       title: json['title'] as String?,
       channels: json['channels'] as int? ?? 0,
       isDefault: json['default'] as bool? ?? false,
+      spatialFormat: json['spatial_format'] as String? ?? '',
+      lossless: json['lossless'] as bool? ?? false,
     );
   }
 
-  /// Emby-style readable name, e.g. "Français (AC3 5.1)".
+  /// How the format is named to a person: "Dolby Atmos", "DTS:X", "Dolby
+  /// Digital Plus", "DTS-HD MA".
+  ///
+  /// The spatial format wins when there is one, because it is what the track
+  /// actually is — "EAC3" on an Atmos track is true and useless.
+  String get formatLabel {
+    switch (spatialFormat) {
+      case 'atmos':
+        return 'Dolby Atmos';
+      case 'dtsx':
+        return 'DTS:X';
+    }
+    switch (codec.toLowerCase()) {
+      case 'eac3':
+        return 'Dolby Digital+';
+      case 'ac3':
+        return 'Dolby Digital';
+      case 'truehd':
+        return 'Dolby TrueHD';
+      case 'dts':
+        return lossless ? 'DTS-HD MA' : 'DTS';
+      case 'aac':
+        return 'AAC';
+      case 'flac':
+        return 'FLAC';
+      case 'opus':
+        return 'Opus';
+      default:
+        return codec.toUpperCase();
+    }
+  }
+
+  /// Emby-style readable name, e.g. "Français (Dolby Atmos 5.1)".
   String get displayName {
     final parts = <String>[];
     final t = title?.trim() ?? '';
     if (t.isNotEmpty) parts.add(t);
-    if (codec.isNotEmpty) parts.add(codec.toUpperCase());
+    if (codec.isNotEmpty) parts.add(formatLabel);
     final ch = _channelsLabel(channels);
     if (ch != null) parts.add(ch);
     final lang = languageName(language);
@@ -1387,16 +1435,28 @@ class MediaSubtitleTrack {
   String get displayName => name.isNotEmpty ? name : languageName(lang);
 }
 
-/// Primary video stream metadata (codec, pixel dimensions).
+/// Primary video stream metadata (codec, pixel dimensions, dynamic range).
 class MediaVideoTrack {
   final String codec;
   final int width;
   final int height;
 
+  /// `hdr10`, `hlg`, `hdr10plus`, `dolbyvision`, or empty for SDR.
+  ///
+  /// Decided server-side rather than reconstructed here: what makes a stream
+  /// HDR is a rule about colour transfer and side data, and a rule stated in
+  /// two languages is a rule that will eventually disagree with itself.
+  final String hdrFormat;
+
+  /// Bits per sample, resolved by the server (8 when nothing said so).
+  final int bitDepth;
+
   MediaVideoTrack({
     required this.codec,
     required this.width,
     required this.height,
+    this.hdrFormat = '',
+    this.bitDepth = 8,
   });
 
   factory MediaVideoTrack.fromJson(Map<String, dynamic> json) {
@@ -1404,6 +1464,8 @@ class MediaVideoTrack {
       codec: json['codec_name'] as String? ?? '',
       width: json['width'] as int? ?? 0,
       height: json['height'] as int? ?? 0,
+      hdrFormat: json['hdr_format'] as String? ?? '',
+      bitDepth: json['bit_depth'] as int? ?? 8,
     );
   }
 
@@ -1414,11 +1476,31 @@ class MediaVideoTrack {
     return '${height}p';
   }
 
-  /// e.g. "4K HEVC" — no HDR/Dolby Vision detection yet (not probed server-side).
+  /// True for anything that needs an HDR display to look right.
+  bool get isHDR => hdrFormat.isNotEmpty;
+
+  /// How the dynamic range is named to a person, or empty for SDR.
+  String get hdrLabel {
+    switch (hdrFormat) {
+      case 'dolbyvision':
+        return 'Dolby Vision';
+      case 'hdr10plus':
+        return 'HDR10+';
+      case 'hdr10':
+        return 'HDR10';
+      case 'hlg':
+        return 'HLG';
+      default:
+        return '';
+    }
+  }
+
+  /// e.g. "4K HEVC Dolby Vision".
   String get displayName {
     final parts = <String>[
       if (resolutionLabel.isNotEmpty) resolutionLabel,
       if (codec.isNotEmpty) codec.toUpperCase(),
+      if (hdrLabel.isNotEmpty) hdrLabel,
     ];
     return parts.join(' ');
   }

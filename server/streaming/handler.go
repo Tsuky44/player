@@ -141,6 +141,17 @@ type startResponse struct {
 	// or -1. The client compares it with what it asked for to know whether the
 	// request was honoured.
 	BurnedSubtitle int `json:"burned_subtitle"`
+	// VideoMode is "copy" when the picture is being repackaged untouched and
+	// "encode" when it is being re-encoded. VideoReason names why a copy was
+	// refused, and is empty on the copy path.
+	//
+	// Both are for the viewer as much as for the log: "Direct Stream" and "why
+	// is my CPU at 400%" are the same question, and answering it needs the
+	// server's own reason rather than a guess reconstructed on the client.
+	VideoMode   string `json:"video_mode"`
+	VideoReason string `json:"video_reason,omitempty"`
+	// Container is the segment format the session actually publishes.
+	Container string `json:"container"`
 }
 
 func (h *Handler) handleStart(w http.ResponseWriter, r *http.Request, mediaID int) {
@@ -153,6 +164,10 @@ func (h *Handler) handleStart(w http.ResponseWriter, r *http.Request, mediaID in
 	startSeconds := atoiDefault(r.URL.Query().Get("start"), 0)
 	audioIndex := atoiDefault(r.URL.Query().Get("audio"), 0)
 	burnSubtitle := atoiDefault(r.URL.Query().Get("burnsub"), NoBurnedSubtitle)
+	// What the client says it can decode. A client that says nothing gets the
+	// behaviour this server had before capabilities existed, which is what keeps
+	// every already-installed build working — see LegacyCapabilities.
+	caps := ParseCapabilities(r.URL.Query())
 
 	inputPath, err := h.getMediaFilePath(mediaID)
 	if err != nil {
@@ -200,7 +215,7 @@ func (h *Handler) handleStart(w http.ResponseWriter, r *http.Request, mediaID in
 	// browser only ever needed a different container and a different audio codec,
 	// not different frames.
 	bitrate := h.sourceBitrate(mediaID)
-	copyVideo := CanCopyVideo(probe, quality, burnSubtitle >= 0, bitrate, copyBitrateCeiling())
+	videoPlan := PlanVideo(probe, quality, burnSubtitle >= 0, bitrate, copyBitrateCeiling(), caps)
 
 	args := BuildFFmpegArgs(TranscodeOptions{
 		InputPath:              inputPath,
@@ -212,14 +227,15 @@ func (h *Handler) handleStart(w http.ResponseWriter, r *http.Request, mediaID in
 		AudioTypedIndexes:      audioMap,
 		BurnSubtitle:           burnSubtitle >= 0,
 		BurnSubtitleTypedIndex: burnSubtitle,
-		CopyVideo:              copyVideo,
+		Video:                  videoPlan,
+		Caps:                   caps,
 	})
 
 	// Copying the picture means the file's own bitrate goes out on the wire, so
 	// that — not the preset's ceiling, which no encoder is enforcing here — is
 	// what the variant has to be advertised at.
 	advertisedBandwidth := EstimateBandwidth(quality)
-	if copyVideo && bitrate > 0 {
+	if videoPlan.Copy && bitrate > 0 {
 		advertisedBandwidth = int(bitrate)
 	}
 	master := BuildMasterPlaylist(MasterPlaylistOptions{
@@ -228,6 +244,7 @@ func (h *Handler) handleStart(w http.ResponseWriter, r *http.Request, mediaID in
 		AudioTypedIndexes:      audioMap,
 		DefaultAudioTypedIndex: audioIndex,
 		BandwidthBps:           advertisedBandwidth,
+		Caps:                   caps,
 	})
 
 	ctx, cancel := context.WithCancel(context.Background())
@@ -243,6 +260,7 @@ func (h *Handler) handleStart(w http.ResponseWriter, r *http.Request, mediaID in
 		TmpDir:         tmpDir,
 		Probe:          probe,
 		MasterPlaylist: master,
+		SegmentExt:     caps.Container.SegmentExt(),
 		ctx:            ctx,
 		cancel:         cancel,
 		cmd:            cmd,
@@ -281,6 +299,11 @@ func (h *Handler) handleStart(w http.ResponseWriter, r *http.Request, mediaID in
 		return
 	}
 
+	videoMode := "encode"
+	if videoPlan.Copy {
+		videoMode = "copy"
+	}
+
 	baseURL := getBaseURL(r)
 	resp := startResponse{
 		SessionID:      sessionID,
@@ -290,21 +313,20 @@ func (h *Handler) handleStart(w http.ResponseWriter, r *http.Request, mediaID in
 		Quality:        quality,
 		AudioMap:       audioMap,
 		BurnedSubtitle: burnSubtitle,
+		VideoMode:      videoMode,
+		VideoReason:    videoPlan.Reason,
+		Container:      string(caps.Container),
 	}
 
 	w.Header().Set("Content-Type", "application/json")
 	w.Header().Set("Cache-Control", "no-cache")
 	_ = json.NewEncoder(w).Encode(resp)
 
-	videoMode := "encode"
-	if copyVideo {
-		videoMode = "copy"
-	}
 	// "accepted", not "ready": the first segment is still being encoded, and the
 	// client's request for the variant playlist is what waits for it.
-	log.Printf("HLS: session %s media %d quality=%s video=%s (%.1f Mbps) start=%ds audio=%d renditions=%v burnsub=%d accepted in %v",
-		sessionID, mediaID, quality, videoMode, float64(bitrate)/1e6,
-		startSeconds, audioIndex, audioMap, burnSubtitle,
+	log.Printf("HLS: session %s media %d quality=%s container=%s video=%s%s (%.1f Mbps) start=%ds audio=%d renditions=%v burnsub=%d accepted in %v",
+		sessionID, mediaID, quality, caps.Container, videoMode, reasonSuffix(videoPlan),
+		float64(bitrate)/1e6, startSeconds, audioIndex, audioMap, burnSubtitle,
 		time.Since(startedAt))
 }
 
@@ -355,7 +377,7 @@ func (h *Handler) handleServeFile(w http.ResponseWriter, r *http.Request, sessio
 	// Answering 404 is fatal for the HLS demuxer in both cases, so the request is
 	// held open until the file appears.
 	if _, err := os.Stat(filePath); os.IsNotExist(err) {
-		if ext != ".ts" && ext != ".m3u8" {
+		if !isPendingSessionFile(ext) {
 			http.Error(w, "file not ready", http.StatusNotFound)
 			return
 		}
@@ -372,8 +394,14 @@ func (h *Handler) handleServeFile(w http.ResponseWriter, r *http.Request, sessio
 	}
 
 	switch ext {
-	case ".ts":
-		w.Header().Set("Content-Type", "video/mp2t")
+	case ".ts", ".m4s", ".mp4":
+		if ext == ".ts" {
+			w.Header().Set("Content-Type", "video/mp2t")
+		} else {
+			// Both the media segments and the initialisation segment an fMP4
+			// child playlist points at with EXT-X-MAP.
+			w.Header().Set("Content-Type", "video/mp4")
+		}
 		// Segments are immutable for the lifetime of the session: name them once,
 		// never rewrite them. Revalidating each one costs a round-trip per 2s of
 		// video, which matters most on the re-reads a seek triggers.
@@ -390,6 +418,23 @@ func (h *Handler) handleServeFile(w http.ResponseWriter, r *http.Request, sessio
 		w.Header().Set("Cache-Control", "no-cache")
 	}
 	http.ServeFile(w, r, filePath)
+}
+
+// isPendingSessionFile reports the files that are legitimately asked for before
+// the transcoder has written them, and must therefore be waited on rather than
+// answered 404 — which is fatal to an HLS demuxer.
+//
+// Segments, because the JIT throttler SIGSTOPs FFmpeg once it is far enough
+// ahead; variant playlists, because /start no longer waits for the first
+// segment; and the fMP4 initialisation segment, which a player fetches as soon
+// as it has read the child playlist that names it.
+func isPendingSessionFile(ext string) bool {
+	switch ext {
+	case ".ts", ".m4s", ".mp4", ".m3u8":
+		return true
+	default:
+		return false
+	}
 }
 
 // waitForSessionFile polls for a file the transcoder has not written yet,
@@ -440,11 +485,11 @@ func (h *Handler) loadCachedProbe(mediaID int, filePath string) (*ProbeResult, b
 	if err != nil {
 		return nil, false
 	}
-	// Entries written before PixFmt existed carry no pixel format, and the copy
-	// decision cannot tell 8-bit H.264 from High 10 without it — so it refuses,
-	// and an entire pre-existing library stays on the encoding path forever.
-	// Treat those as a miss so they are re-probed once and rewritten.
-	if probe.Video != nil && probe.Video.PixFmt == "" {
+	// An entry written by an older build carries fewer fields than the
+	// copy-or-encode decision now reads, and a missing field is
+	// indistinguishable from a "no" — so it is re-probed once and rewritten
+	// rather than trusted. See probeVersion.
+	if !probe.Current() {
 		return nil, false
 	}
 	return probe, true
@@ -542,17 +587,39 @@ func isBurnableSubtitle(probe *ProbeResult, index int) bool {
 	return false
 }
 
-// parseVideoSegmentIndex extracts N from "stream_0_<N>.ts" (the video rendition).
+// parseVideoSegmentIndex extracts N from "stream_0_<N>.ts" or "stream_0_<N>.m4s"
+// (the video rendition).
+//
+// Both extensions are accepted rather than the session's own, because this is
+// what feeds the JIT throttle: reading the index off a name the session does not
+// produce is harmless, while failing to read one it does produce silently
+// disables the throttle and transcodes the whole film.
 func parseVideoSegmentIndex(name string) (int, bool) {
-	if !strings.HasPrefix(name, "stream_0_") || !strings.HasSuffix(name, ".ts") {
+	if !strings.HasPrefix(name, "stream_0_") {
 		return 0, false
 	}
-	mid := strings.TrimSuffix(strings.TrimPrefix(name, "stream_0_"), ".ts")
+	ext := strings.ToLower(filepath.Ext(name))
+	if ext != ".ts" && ext != ".m4s" {
+		return 0, false
+	}
+	mid := strings.TrimSuffix(strings.TrimPrefix(name, "stream_0_"), filepath.Ext(name))
 	n, err := strconv.Atoi(mid)
 	if err != nil {
 		return 0, false
 	}
 	return n, true
+}
+
+// reasonSuffix renders a refused copy for the session log, and nothing at all
+// for a copy that happened.
+func reasonSuffix(plan VideoPlan) string {
+	if plan.Copy || plan.Reason == "" {
+		return ""
+	}
+	if plan.Tonemap {
+		return fmt.Sprintf(" (%s, tone mapped)", plan.Reason)
+	}
+	return fmt.Sprintf(" (%s)", plan.Reason)
 }
 
 func atoiDefault(s string, def int) int {

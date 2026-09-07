@@ -1,8 +1,11 @@
 package com.projectplayer.onyx_player_android
 
+import androidx.media3.common.C
+import androidx.media3.common.audio.AudioProcessor
 import kotlin.math.abs
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertFalse
 import kotlin.test.assertTrue
 
 /// Le seul morceau du portage ExoPlayer vérifiable sans appareil.
@@ -91,4 +94,39 @@ class DialogueForwardDownmixTest {
         assertTrue(left > 0, "l'arrière gauche doit atteindre la gauche")
         assertEquals(0, right.toInt())
     }
+
+    @Test
+    fun `une sortie qui porte le surround ne replie rien`() {
+        // Le bug que ce paramètre corrige : un boîtier relié à un ampli qui
+        // reçoit du PCM 5.1 se retrouvait en stéréo, parce que le repli ne
+        // consultait jamais ce que la sortie savait porter.
+        val processor = DialogueForwardDownmix(maxOutputChannels = 6)
+        val out = processor.configure(
+            AudioProcessor.AudioFormat(48000, 6, C.ENCODING_PCM_16BIT),
+        )
+        assertEquals(AudioProcessor.AudioFormat.NOT_SET, out)
+        assertFalse(processor.isActive)
+    }
+
+    @Test
+    fun `une sortie stereo replie bien le surround`() {
+        val processor = DialogueForwardDownmix(maxOutputChannels = 2)
+        val out = processor.configure(
+            AudioProcessor.AudioFormat(48000, 6, C.ENCODING_PCM_16BIT),
+        )
+        assertEquals(2, out.channelCount)
+        assertTrue(processor.isActive)
+    }
+
+    @Test
+    fun `une piste stereo se retire de la chaine quelle que soit la sortie`() {
+        for (maxChannels in listOf(2, 6, 8)) {
+            val processor = DialogueForwardDownmix(maxOutputChannels = maxChannels)
+            val out = processor.configure(
+                AudioProcessor.AudioFormat(48000, 2, C.ENCODING_PCM_16BIT),
+            )
+            assertEquals(AudioProcessor.AudioFormat.NOT_SET, out)
+        }
+    }
+
 }

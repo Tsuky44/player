@@ -19,16 +19,39 @@ import java.nio.ByteBuffer
 /// le centre au niveau des frontales corrige exactement ça, sans toucher au
 /// reste du mixage.
 ///
-/// **Inerte quand elle doit l'être.** Un appareil relié à un ampli reçoit ses
-/// six canaux tels quels : le processeur ne s'active que si l'entrée a plus de
-/// deux canaux, donc là où un repli aurait lieu de toute façon.
-internal class DialogueForwardDownmix : BaseAudioProcessor() {
+/// **Inerte quand elle doit l'être**, et c'est [maxOutputChannels] qui le dit.
+///
+/// Le commentaire précédent affirmait qu'« un appareil relié à un ampli reçoit
+/// ses six canaux tels quels ». C'était faux dès que la sortie recevait du PCM :
+/// `onConfigure` retournait deux canaux dès que l'entrée en avait plus de deux,
+/// sans jamais consulter ce que la sortie savait porter. Un boîtier relié en
+/// HDMI à un ampli qui reçoit du PCM 5.1 — le cas classique quand le
+/// passthrough n'est pas disponible pour ce format — se retrouvait donc en
+/// stéréo alors que six canaux passaient.
+///
+/// Le repli n'a de sens que là où il est inévitable : une sortie qui ne porte
+/// que deux canaux. Partout ailleurs ce processeur se retire de la chaîne et
+/// laisse le mixage du film intact. Un flux compressé qui traverse en
+/// passthrough ne l'atteint jamais — il n'est pas décodé en PCM.
+///
+/// @param maxOutputChannels ce que la sortie déclare pouvoir porter, des
+///   `AudioCapabilities` d'ExoPlayer : 2 sur un haut-parleur ou un casque, 6 ou
+///   8 derrière un ampli.
+internal class DialogueForwardDownmix(
+    private val maxOutputChannels: Int,
+) : BaseAudioProcessor() {
 
     override fun onConfigure(
         inputAudioFormat: AudioProcessor.AudioFormat,
     ): AudioProcessor.AudioFormat {
         // Deux canaux ou moins : rien à replier, on se retire de la chaîne.
         if (inputAudioFormat.channelCount <= 2) {
+            return AudioProcessor.AudioFormat.NOT_SET
+        }
+        // La sortie porte ce que le film contient : on n'y touche pas. C'est le
+        // cas de tout ce qui est relié à un ampli, et le repli y était une
+        // perte pure.
+        if (maxOutputChannels > 2) {
             return AudioProcessor.AudioFormat.NOT_SET
         }
         // Seul le PCM 16 bits est traité. Un flux compressé qui traverse en

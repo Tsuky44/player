@@ -69,6 +69,20 @@ type MasterPlaylistOptions struct {
 	// BandwidthBps is what the variant is advertised at. Zero falls back to the
 	// preset's own ceiling.
 	BandwidthBps int
+	// Caps is the client declaration the session was built from. The renditions
+	// have to be described as they are actually being produced, and since
+	// PlanAudio is what decides that, the master has to ask it the same
+	// question with the same inputs.
+	Caps Capabilities
+}
+
+// caps resolves the client declaration, defaulting to the legacy one — for the
+// same reason TranscodeOptions.caps does.
+func (o MasterPlaylistOptions) caps() Capabilities {
+	if o.Caps.VideoCodecs == nil || o.Caps.AudioCodecs == nil {
+		return LegacyCapabilities()
+	}
+	return o.Caps
 }
 
 // BuildMasterPlaylist renders the master playlist for a session.
@@ -90,9 +104,14 @@ func BuildMasterPlaylist(opt MasterPlaylistOptions) string {
 			}
 			// Every rendition is auto-selectable, exactly one is the default.
 			b.WriteString(`,AUTOSELECT=YES,DEFAULT=` + yesNo(k == defaultPos))
-			// Every published rendition is stereo: canCopyAudio only passes a
-			// source that already is, and everything else is downmixed to 2.
-			b.WriteString(`,CHANNELS="2"`)
+			// CHANNELS must be what the rendition actually carries. It used to
+			// be a hard-coded "2", which was true while every rendition was
+			// folded to stereo and became a lie the moment surround could
+			// survive — and it is not a cosmetic lie: a player picks a
+			// rendition partly on this number, so a 5.1 track advertised as
+			// stereo is one a client with an amplifier may pass over.
+			plan := PlanAudio(opt.Probe, srcIdx, opt.caps(), presetFor(opt.Quality))
+			b.WriteString(fmt.Sprintf(`,CHANNELS="%d"`, plan.Channels))
 			b.WriteString(`,URI="` + audioVariantPlaylist(k) + `"` + "\n")
 		}
 	}

@@ -29,11 +29,13 @@ type ProgressRequest struct {
 	ClientUpdatedAt string `json:"client_updated_at,omitempty"`
 }
 
-// sqliteTimeLayout is the shape CURRENT_TIMESTAMP writes. Progress timestamps
-// are compared as text, so anything this handler writes has to match it
-// exactly — same layout, same UTC zone — or the comparison silently degrades
-// to a string ordering that means nothing.
+// sqliteTimeLayout is the legacy UTC shape written by CURRENT_TIMESTAMP.
+// New progress uses the same prefix with fixed fractional precision so both
+// generations remain ordered chronologically by SQLite text comparisons.
 const sqliteTimeLayout = "2006-01-02 15:04:05"
+
+// Fixed precision keeps text ordering while distinguishing rapid play/unwatch events.
+const progressTimeLayout = "2006-01-02 15:04:05.000000000"
 
 // parseClientUpdatedAt reads the client's play time. A value in the future is
 // clamped to now: a device with a wrong clock would otherwise pin the row and
@@ -119,7 +121,7 @@ func UpdateProgress(w http.ResponseWriter, r *http.Request, _ httprouter.Params,
 		guard = 1
 	}
 	_, err := database.DB.Exec(query, userID, req.MediaID, req.CurrentPositionSeconds,
-		isFinished, stamp.Format(sqliteTimeLayout), guard)
+		isFinished, stamp.Format(progressTimeLayout), guard)
 	if err != nil {
 		log.Printf("Progress error: failed to update progression: %v", err)
 		http.Error(w, `{"error": "Internal database error"}`, http.StatusInternalServerError)
@@ -207,12 +209,12 @@ func SetMediaWatched(w http.ResponseWriter, r *http.Request, ps httprouter.Param
 
 		_, err = database.DB.Exec(`
 			INSERT INTO progressions (user_id, media_id, current_position_seconds, is_finished, updated_at)
-			VALUES (?, ?, ?, 1, CURRENT_TIMESTAMP)
+			VALUES (?, ?, ?, 1, ?)
 			ON CONFLICT(user_id, media_id) DO UPDATE SET
 				current_position_seconds = excluded.current_position_seconds,
 				is_finished = 1,
-				updated_at = CURRENT_TIMESTAMP
-		`, userID, mediaID, position)
+				updated_at = excluded.updated_at
+		`, userID, mediaID, position, time.Now().UTC().Format(progressTimeLayout))
 		if err != nil {
 			log.Printf("Watched error: failed to update media %d: %v", mediaID, err)
 			http.Error(w, `{"error": "Internal database error"}`, http.StatusInternalServerError)
@@ -221,9 +223,9 @@ func SetMediaWatched(w http.ResponseWriter, r *http.Request, ps httprouter.Param
 	} else {
 		result, updateErr := database.DB.Exec(`
 			UPDATE progressions
-			SET is_finished = 0, updated_at = CURRENT_TIMESTAMP
+			SET is_finished = 0, updated_at = ?
 			WHERE user_id = ? AND media_id = ?
-		`, userID, mediaID)
+		`, time.Now().UTC().Format(progressTimeLayout), userID, mediaID)
 		if updateErr != nil {
 			log.Printf("Watched error: failed to update media %d: %v", mediaID, updateErr)
 			http.Error(w, `{"error": "Internal database error"}`, http.StatusInternalServerError)

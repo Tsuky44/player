@@ -117,62 +117,34 @@ type TranscodeOptions struct {
 	// BurnSubtitleTypedIndex is the bitmap subtitle stream (the N in 0:s:N) to
 	// render, meaningful only when BurnSubtitle is set.
 	BurnSubtitleTypedIndex int
-	// CopyVideo repackages the source picture instead of re-encoding it.
+	// Video is what happens to the picture: repackaged, or re-encoded and
+	// possibly tone mapped. Produced by PlanVideo, which enforces every
+	// condition that makes a copy safe.
 	//
 	// The expensive half of a transcode is the video: decode every frame, encode
-	// every frame. When the browser can already decode what the file holds, none
+	// every frame. When the client can already decode what the file holds, none
 	// of that is necessary — the compressed bytes only need to move from one
 	// container into another, which costs I/O and nothing else. Measured against
 	// the encoding path it is roughly fifty times cheaper, and the picture comes
 	// out bit-identical to the source instead of a generation down.
-	//
-	// Only ever set by CanCopyVideo, which enforces the conditions that make it
-	// safe. Audio is unaffected and still re-encoded when the browser needs it.
-	CopyVideo bool
+	Video VideoPlan
+	// Caps is what the client declared it can decode. The zero value means a
+	// client that declared nothing, which is treated as the browser this server
+	// was originally written for — see LegacyCapabilities.
+	Caps Capabilities
 }
 
-// CanCopyVideo reports whether the source picture can be repackaged untouched.
+// caps resolves the client declaration, defaulting to the legacy one.
 //
-// Every condition here is a way the copy would reach the viewer broken rather
-// than merely suboptimal, so the answer defaults to no:
-//
-//   - a codec the browser cannot decode is the whole point of transcoding;
-//   - 10-bit and 4:2:2 H.264 decode nowhere in a browser and fail *silently*,
-//     showing a black picture with no error;
-//   - copying bytes cannot resize them, so any scaling rules it out;
-//   - burning a bitmap subtitle means painting on the frames, which means
-//     decoding them;
-//   - and the bitrate ceiling is the one non-technical limit: copying means
-//     sending the file's own bitrate, so past a point the CPU saved is paid for
-//     in stalling on the viewer's connection.
-func CanCopyVideo(probe *ProbeResult, quality string, burn bool, sourceBitrateBps, ceilingBps int64) bool {
-	if probe == nil || probe.Video == nil || burn {
-		return false
+// A zero Capabilities is not a client that can decode nothing — it is a caller
+// that did not fill the field in, which every existing test and every
+// already-installed app build is. Treating it as the legacy browser is what
+// makes this change invisible to them.
+func (o TranscodeOptions) caps() Capabilities {
+	if o.Caps.VideoCodecs == nil || o.Caps.AudioCodecs == nil {
+		return LegacyCapabilities()
 	}
-	// H.264 only, and the container is the reason rather than the browser.
-	//
-	// These segments are MPEG-TS, and MPEG-TS has no stream type for VP8, VP9 or
-	// AV1: `-c:v copy` of one of those makes FFmpeg refuse to write a header
-	// ("codec not currently supported in container") and exit before its first
-	// segment, so /start times out and the media simply never loads. They used to
-	// be on this list, which is what made a WebM or AV1 file unplayable rather
-	// than merely expensive. Re-encoding them is correct until the segments
-	// become fMP4.
-	switch strings.ToLower(probe.Video.Codec) {
-	case "h264", "avc1":
-	default:
-		return false
-	}
-	if !probe.Video.EightBit420() {
-		return false
-	}
-	if buildScaleFilter(probe, presetFor(quality)) != "" {
-		return false
-	}
-	if ceilingBps > 0 && sourceBitrateBps > ceilingBps {
-		return false
-	}
-	return true
+	return o.Caps
 }
 
 // NoBurnedSubtitle is the wire value meaning "no subtitle is burned in".
@@ -259,18 +231,19 @@ func BuildFFmpegArgs(opt TranscodeOptions) []string {
 	// Text subtitles never come through here (-sn below): they are served out of
 	// band as .vtt. Only a bitmap track can be present, painted into the picture.
 	audioIdxs := opt.AudioTypedIndexes
-	scale := buildScaleFilter(opt.Probe, preset)
 	burnIdx := opt.BurnSubtitleTypedIndex
 	burn := opt.BurnSubtitle && burnIdx >= 0
+	chain := videoFilterChain(opt, preset)
 
 	if burn {
 		// sub2video turns the bitmap subtitle stream into video frames that
-		// overlay composites onto the picture. Scaling happens AFTER the overlay:
-		// the subtitle bitmaps are authored against the source resolution, so
-		// compositing first keeps them correctly positioned and sized.
+		// overlay composites onto the picture. Everything else happens AFTER the
+		// overlay: the subtitle bitmaps are authored against the source
+		// resolution, so compositing first keeps them correctly positioned and
+		// sized.
 		graph := fmt.Sprintf("[0:v:0][0:s:%d]overlay", burnIdx)
-		if scale != "" {
-			graph += "[ov];[ov]" + scale + "[vout]"
+		if chain != "" {
+			graph += "[ov];[ov]" + chain + "[vout]"
 		} else {
 			graph += "[vout]"
 		}
@@ -283,12 +256,12 @@ func BuildFFmpegArgs(opt TranscodeOptions) []string {
 		args = append(args, "-map", fmt.Sprintf("0:a:%d?", idx))
 	}
 	// -vf and -filter_complex are mutually exclusive on the same output.
-	if !burn && scale != "" {
-		args = append(args, "-vf", scale)
+	if !burn && chain != "" {
+		args = append(args, "-vf", chain)
 	}
 
 	// --- Video: repackage or re-encode ---
-	if opt.CopyVideo {
+	if opt.Video.Copy {
 		// Nothing to configure. No filter (there is no resize by definition), no
 		// encoder settings, and no keyframe layout to impose: with -c:v copy the
 		// muxer can only cut segments where the source already has a keyframe, so
@@ -314,6 +287,18 @@ func BuildFFmpegArgs(opt TranscodeOptions) []string {
 		"-threads", strconv.Itoa(maxEncoderThreads),
 	)
 
+	// A tone-mapped picture is BT.709 now, and it has to say so. The tags are
+	// not decoration: a player handed untagged frames from an HDR source falls
+	// back to the container's own colour metadata, which still says BT.2020 PQ —
+	// and re-applies a conversion to a picture that has already had one.
+	if opt.Video.Tonemap {
+		args = append(args,
+			"-colorspace", "bt709",
+			"-color_primaries", "bt709",
+			"-color_trc", "bt709",
+		)
+	}
+
 	// --- Keyframe layout ---
 	// GOP is derived from the SOURCE frame rate: a fixed segDur*24 gives a 60fps
 	// source a 1.6s GOP, spending bitrate on keyframes nobody needs.
@@ -338,20 +323,22 @@ func audioAndMuxerArgs(opt TranscodeOptions, preset qualityPreset, audioIdxs []i
 	var args []string
 
 	// --- Audio ---
-	// Stereo AAC is what every client can decode. A track that is already exactly
-	// that gets remuxed instead of re-encoded, decided per rendition.
+	// One decision per rendition, taken by PlanAudio: remux what the client can
+	// already take, keep the channels when it can carry them, and fold to stereo
+	// only when there is nothing else left.
 	for i, idx := range audioIdxs {
-		if canCopyAudio(opt.Probe, idx) {
+		plan := PlanAudio(opt.Probe, idx, opt.caps(), preset)
+		if plan.Copy {
 			args = append(args, fmt.Sprintf("-c:a:%d", i), "copy")
 			continue
 		}
 		args = append(args,
-			fmt.Sprintf("-c:a:%d", i), "aac",
-			fmt.Sprintf("-b:a:%d", i), preset.AudioBitrate,
-			fmt.Sprintf("-ac:a:%d", i), "2",
+			fmt.Sprintf("-c:a:%d", i), plan.Codec,
+			fmt.Sprintf("-b:a:%d", i), plan.Bitrate,
+			fmt.Sprintf("-ac:a:%d", i), strconv.Itoa(plan.Channels),
 		)
-		if f := stereoDownmixFilter(sourceChannels(opt.Probe, idx)); f != "" {
-			args = append(args, fmt.Sprintf("-filter:a:%d", i), f)
+		if plan.Downmix {
+			args = append(args, fmt.Sprintf("-filter:a:%d", i), stereoDownmixFilter())
 		}
 	}
 	args = append(args, "-sn", "-max_muxing_queue_size", "1024")
@@ -368,12 +355,32 @@ func audioAndMuxerArgs(opt TranscodeOptions, preset qualityPreset, audioIdxs []i
 		"-hls_list_size", "0",
 		"-hls_playlist_type", "event",
 		"-hls_flags", "independent_segments+temp_file",
+	)
+
+	// fMP4 rather than MPEG-TS is what lets the copy path exist at all for
+	// anything but H.264. MPEG-TS has no stream type for VP9 or AV1 and no
+	// standard one for FLAC or Opus, so `-c copy` of those makes FFmpeg refuse
+	// to write a header and exit before its first segment. It is also the only
+	// segment format that carries HDR metadata through a copy intact.
+	//
+	// Each variant gets its own initialisation segment, which the child playlist
+	// references with EXT-X-MAP — so the handler has to serve init_%v.mp4 and
+	// .m4s alongside the playlists.
+	caps := opt.caps()
+	if caps.Container == ContainerFMP4 {
+		args = append(args,
+			"-hls_segment_type", "fmp4",
+			"-hls_fmp4_init_filename", "init_%v.mp4",
+		)
+	}
+
+	args = append(args,
 		// Required for -var_stream_map to lay out a rendition group, but the file
 		// it produces is never served: the handler answers master.m3u8 from
 		// BuildMasterPlaylist instead, for the reasons documented there.
 		"-master_pl_name", "master.m3u8",
 		"-var_stream_map", buildVarStreamMap(opt.Probe, audioIdxs),
-		"-hls_segment_filename", opt.TmpDir+"/stream_%v_%03d.ts",
+		"-hls_segment_filename", opt.TmpDir+"/stream_%v_%03d"+caps.Container.SegmentExt(),
 		opt.TmpDir+"/stream_%v.m3u8",
 	)
 
@@ -418,6 +425,31 @@ func audioLanguage(probe *ProbeResult, typedIndex int) string {
 		}
 	}
 	return lang
+}
+
+// videoFilterChain is everything the picture goes through on the encoding path,
+// or "" when it needs nothing.
+//
+// Order is deliberate. Scaling comes first because every filter after it then
+// runs on fewer pixels, and tone mapping is by far the most expensive thing
+// here — on the CPU-only host that difference is the margin between keeping up
+// with playback and not. Scaling in PQ space before the transfer is undone is
+// a known, universally accepted approximation; doing it the other way round is
+// marginally more correct and measurably too slow.
+func videoFilterChain(opt TranscodeOptions, preset qualityPreset) string {
+	if opt.Video.Copy {
+		return "" // copied frames are never filtered, by definition
+	}
+	var parts []string
+	if scale := buildScaleFilter(opt.Probe, preset); scale != "" {
+		parts = append(parts, scale)
+	}
+	if opt.Video.Tonemap {
+		if tm := hdrToSDRFilter(); tm != "" {
+			parts = append(parts, tm)
+		}
+	}
+	return strings.Join(parts, ",")
 }
 
 // buildScaleFilter returns the -vf value, or "" when no scaling is needed.
@@ -539,15 +571,6 @@ func h264LevelFor(preset qualityPreset, probe *ProbeResult) string {
 	}
 }
 
-// sourceChannels is the channel count of one probed audio track, or 0 when the
-// probe says nothing about it.
-func sourceChannels(probe *ProbeResult, typedIndex int) int {
-	if probe == nil || typedIndex < 0 || typedIndex >= len(probe.Audio) {
-		return 0
-	}
-	return probe.Audio[typedIndex].Channels
-}
-
 // stereoDownmixFilter is the -filter:a value that folds a surround track into
 // the two channels every client can play, without burying the dialogue. Empty
 // for a track that is already stereo or mono, which needs no help.
@@ -576,24 +599,11 @@ func sourceChannels(probe *ProbeResult, typedIndex int) int {
 // stereo track passes through untouched. The output layout is deliberately not
 // named here either — `-ac:a:N 2` already supplies it, and the option that
 // spells it has been renamed between FFmpeg releases.
-func stereoDownmixFilter(channels int) string {
-	if channels <= 2 {
-		return ""
-	}
+func stereoDownmixFilter() string {
 	return "aresample=" +
 		"center_mix_level=1.0:" +
 		"surround_mix_level=0.7:" +
 		"lfe_mix_level=0.3"
-}
-
-// canCopyAudio reports whether the selected source track is already a stereo
-// AAC stream that can be remuxed as-is into the HLS segments.
-func canCopyAudio(probe *ProbeResult, typedIndex int) bool {
-	if probe == nil || typedIndex < 0 || typedIndex >= len(probe.Audio) {
-		return false
-	}
-	a := probe.Audio[typedIndex]
-	return strings.EqualFold(a.Codec, "aac") && a.Channels > 0 && a.Channels <= 2
 }
 
 // doubleBitrate turns "8M"/"8000k" into a ~2× VBV buffer size string.

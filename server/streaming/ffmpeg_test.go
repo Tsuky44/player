@@ -83,25 +83,93 @@ func TestGopSize_FollowsSourceFrameRate(t *testing.T) {
 	}
 }
 
-func TestCanCopyAudio(t *testing.T) {
+func TestPlanAudio_LegacyClientStillGetsStereoAAC(t *testing.T) {
 	stereoAAC := AudioStreamInfo{Codec: "aac", Channels: 2}
 	surroundAAC := AudioStreamInfo{Codec: "aac", Channels: 6}
 	dts := AudioStreamInfo{Codec: "dts", Channels: 6}
+	legacy := LegacyCapabilities()
+	preset := presetFor("720p")
 
-	if !canCopyAudio(probeWith(1920, 1080, 24, stereoAAC), 0) {
-		t.Error("stereo AAC should be remuxed, not re-encoded")
+	if p := PlanAudio(probeWith(1920, 1080, 24, stereoAAC), 0, legacy, preset); !p.Copy {
+		t.Error("stereo AAC is exactly what the legacy client takes untouched")
 	}
-	if canCopyAudio(probeWith(1920, 1080, 24, surroundAAC), 0) {
-		t.Error("5.1 AAC must be downmixed, not copied")
+	// 5.1 AAC is still AAC, but the legacy client has nowhere to put six
+	// channels — it has to be folded, and folding means re-encoding.
+	p := PlanAudio(probeWith(1920, 1080, 24, surroundAAC), 0, legacy, preset)
+	if p.Copy || p.Channels != 2 || !p.Downmix {
+		t.Errorf("5.1 AAC to a stereo client = %+v, want a 2-channel downmix", p)
 	}
-	if canCopyAudio(probeWith(1920, 1080, 24, dts), 0) {
-		t.Error("DTS must be transcoded")
+	p = PlanAudio(probeWith(1920, 1080, 24, dts), 0, legacy, preset)
+	if p.Copy || p.Codec != "aac" || p.Channels != 2 {
+		t.Errorf("DTS to a stereo client = %+v, want stereo AAC", p)
 	}
-	if canCopyAudio(probeWith(1920, 1080, 24, stereoAAC), 5) {
-		t.Error("out-of-range track index must not copy")
+	// An index the probe does not have must not panic, and must not claim a copy.
+	if p := PlanAudio(probeWith(1920, 1080, 24, stereoAAC), 5, legacy, preset); p.Copy {
+		t.Error("an out-of-range track cannot be copied")
 	}
-	if canCopyAudio(nil, 0) {
-		t.Error("nil probe must not copy")
+	if p := PlanAudio(nil, 0, legacy, preset); p.Copy {
+		t.Error("no probe means no copy")
+	}
+}
+
+// surroundCaps is a living-room client: fMP4 segments, the Dolby codecs, and an
+// amplifier behind it.
+func surroundCaps() Capabilities {
+	return Capabilities{
+		Container:        ContainerFMP4,
+		VideoCodecs:      map[string]bool{"h264": true, "hevc": true},
+		AudioCodecs:      map[string]bool{"aac": true, "ac3": true, "eac3": true},
+		MaxAudioChannels: 8,
+		MaxVideoBitDepth: 10,
+		HDR:              true,
+	}
+}
+
+func TestPlanAudio_SurroundSurvivesWhenTheClientCanCarryIt(t *testing.T) {
+	preset := presetFor("1080p")
+
+	// Dolby Digital Plus is remuxed untouched — which is the only way Atmos,
+	// which rides inside it as JOC, ever reaches the amplifier.
+	atmos := AudioStreamInfo{
+		Codec: "eac3", Channels: 6,
+		Profile: "Dolby Digital Plus + Dolby Atmos",
+	}
+	p := PlanAudio(probeWith(1920, 1080, 24, atmos), 0, surroundCaps(), preset)
+	if !p.Copy || p.Channels != 6 {
+		t.Errorf("E-AC-3 5.1 to a surround client = %+v, want an untouched copy", p)
+	}
+
+	// DTS has no home in fMP4, so it is re-encoded — but to surround, not to
+	// stereo, because the client said it can take six channels.
+	dts := AudioStreamInfo{Codec: "dts", Channels: 6, Profile: "DTS-HD MA"}
+	p = PlanAudio(probeWith(1920, 1080, 24, dts), 0, surroundCaps(), preset)
+	if p.Copy {
+		t.Fatal("DTS cannot be muxed into fMP4 and must not be copied")
+	}
+	if p.Codec != "eac3" || p.Channels != 6 || p.Downmix {
+		t.Errorf("DTS 5.1 to a surround client = %+v, want 6-channel E-AC-3", p)
+	}
+
+	// 7.1 past what the AC-3 encoders accept folds to 5.1, not to stereo.
+	eight := AudioStreamInfo{Codec: "dts", Channels: 8}
+	p = PlanAudio(probeWith(1920, 1080, 24, eight), 0, surroundCaps(), preset)
+	if p.Channels != maxAC3Channels {
+		t.Errorf("7.1 DTS = %d channels, want %d", p.Channels, maxAC3Channels)
+	}
+}
+
+func TestPlanAudio_ChannelCeilingIsTheClientOutput(t *testing.T) {
+	// Same file, same codecs, a client wired to nothing but its own speakers.
+	caps := surroundCaps()
+	caps.MaxAudioChannels = 2
+	eac3 := AudioStreamInfo{Codec: "eac3", Channels: 6}
+
+	p := PlanAudio(probeWith(1920, 1080, 24, eac3), 0, caps, presetFor("1080p"))
+	if p.Copy {
+		t.Fatal("a stereo output cannot be handed a 5.1 stream")
+	}
+	if p.Channels != 2 || !p.Downmix {
+		t.Errorf("= %+v, want a 2-channel downmix", p)
 	}
 }
 
@@ -410,15 +478,20 @@ func TestBuildFFmpegArgs_SeekIsAnInputOption(t *testing.T) {
 	}
 }
 
-func TestCanCopyVideo_OnlyCodecsThatFitInMpegTS(t *testing.T) {
-	// The segments are .ts, and MPEG-TS has no stream type for VP8/VP9/AV1:
-	// copying one makes FFmpeg refuse to write a header and exit before its first
-	// segment, so /start times out and the media never loads at all.
-	for _, codec := range []string{"vp8", "vp9", "av1", "hevc", "mpeg2video"} {
+func TestPlanVideo_OnlyCodecsThatFitInTheSegmentContainer(t *testing.T) {
+	// MPEG-TS has no stream type for VP8/VP9/AV1: copying one makes FFmpeg refuse
+	// to write a header and exit before its first segment, so /start times out and
+	// the media never loads at all. The client declaring the codec does not change
+	// that — the container is a separate veto.
+	tsClient := LegacyCapabilities()
+	tsClient.VideoCodecs = map[string]bool{
+		"h264": true, "hevc": true, "vp8": true, "vp9": true, "av1": true,
+	}
+	for _, codec := range []string{"vp8", "vp9", "av1"} {
 		probe := &ProbeResult{Video: &VideoStreamInfo{
 			Width: 1920, Height: 1080, Codec: codec, PixFmt: "yuv420p",
 		}}
-		if CanCopyVideo(probe, "1080p", false, 5_000_000, 12_000_000) {
+		if PlanVideo(probe, "1080p", false, 5_000_000, 12_000_000, tsClient).Copy {
 			t.Errorf("%s cannot be copied into MPEG-TS segments", codec)
 		}
 	}
@@ -426,21 +499,104 @@ func TestCanCopyVideo_OnlyCodecsThatFitInMpegTS(t *testing.T) {
 	h264 := &ProbeResult{Video: &VideoStreamInfo{
 		Width: 1920, Height: 1080, Codec: "h264", PixFmt: "yuv420p",
 	}}
-	if !CanCopyVideo(h264, "1080p", false, 5_000_000, 12_000_000) {
+	if !PlanVideo(h264, "1080p", false, 5_000_000, 12_000_000, tsClient).Copy {
 		t.Error("8-bit 4:2:0 H.264 at native resolution is the whole point of the copy path")
+	}
+
+	// The same VP9 file, to the same decoder, over fMP4 segments: now it copies.
+	fmp4Client := tsClient
+	fmp4Client.Container = ContainerFMP4
+	vp9 := &ProbeResult{Video: &VideoStreamInfo{
+		Width: 1920, Height: 1080, Codec: "vp9", PixFmt: "yuv420p",
+	}}
+	if !PlanVideo(vp9, "1080p", false, 5_000_000, 12_000_000, fmp4Client).Copy {
+		t.Error("fMP4 segments are what let VP9 be repackaged instead of re-encoded")
 	}
 }
 
-func TestCanCopyVideo_RejectsChromaNoBrowserDecodes(t *testing.T) {
+func TestPlanVideo_RejectsWhatTheClientCannotDecode(t *testing.T) {
 	// 10-bit and 4:2:2 both fail silently in a browser: the segments append, the
-	// audio plays, and the picture never appears. Neither may reach the copy path.
+	// audio plays, and the picture never appears. Neither may reach the copy path
+	// for a client that declared 8-bit.
 	for _, pixFmt := range []string{"yuv420p10le", "yuv422p", "yuvj422p", "yuv444p", "unknown", ""} {
 		probe := &ProbeResult{Video: &VideoStreamInfo{
 			Width: 1920, Height: 1080, Codec: "h264", PixFmt: pixFmt,
 		}}
-		if CanCopyVideo(probe, "1080p", false, 5_000_000, 12_000_000) {
-			t.Errorf("pix_fmt %q must not be copied through", pixFmt)
+		if PlanVideo(probe, "1080p", false, 5_000_000, 12_000_000, LegacyCapabilities()).Copy {
+			t.Errorf("pix_fmt %q must not be copied through to an 8-bit client", pixFmt)
 		}
+	}
+
+	// A client that declared 10-bit takes Main 10 untouched — that is the single
+	// most common file in a modern library, and it used to be re-encoded always.
+	caps := surroundCaps()
+	main10 := &ProbeResult{Video: &VideoStreamInfo{
+		Width: 1920, Height: 1080, Codec: "hevc", PixFmt: "yuv420p10le", BitDepth: 10,
+	}}
+	if !PlanVideo(main10, "1080p", false, 5_000_000, 12_000_000, caps).Copy {
+		t.Error("10-bit HEVC to a 10-bit client is a copy")
+	}
+	// 4:2:2 is still refused at any declared depth: no consumer decoder takes it.
+	main422 := &ProbeResult{Video: &VideoStreamInfo{
+		Width: 1920, Height: 1080, Codec: "hevc", PixFmt: "yuv422p10le", BitDepth: 10,
+	}}
+	if PlanVideo(main422, "1080p", false, 5_000_000, 12_000_000, caps).Copy {
+		t.Error("4:2:2 must never be copied")
+	}
+}
+
+func TestPlanVideo_HDRIsCopiedOrToneMappedButNeverPassedToAnSDRClient(t *testing.T) {
+	hdr := &ProbeResult{Video: &VideoStreamInfo{
+		Width: 1920, Height: 1080, Codec: "hevc", PixFmt: "yuv420p10le",
+		BitDepth: 10, ColorTransfer: "smpte2084", ColorPrimaries: "bt2020",
+	}}
+	if got := hdr.Video.HDRFormat(); got != "hdr10" {
+		t.Fatalf("HDRFormat() = %q, want hdr10", got)
+	}
+
+	// An HDR display takes it untouched.
+	if p := PlanVideo(hdr, "1080p", false, 5_000_000, 12_000_000, surroundCaps()); !p.Copy {
+		t.Errorf("HDR to an HDR client = %+v, want a copy", p)
+	}
+
+	// A client without one gets a tone-mapped encode, never the raw PQ stream:
+	// PQ code values read as gamma are the washed-out grey picture, not "SDR".
+	sdr := surroundCaps()
+	sdr.HDR = false
+	p := PlanVideo(hdr, "1080p", false, 5_000_000, 12_000_000, sdr)
+	if p.Copy {
+		t.Fatal("an SDR client must not be handed a PQ stream")
+	}
+	if !p.Tonemap {
+		t.Error("an HDR source that is re-encoded has to be tone mapped")
+	}
+}
+
+func TestPlanVideo_DolbyVisionProfile5NeedsItsOwnDecoder(t *testing.T) {
+	// Profile 5's base layer is in a private colour space: anything that decodes
+	// it as HDR10 renders it green. Profile 8.1's base layer *is* HDR10, so an
+	// ordinary HDR client can have it.
+	p5 := &ProbeResult{Video: &VideoStreamInfo{
+		Width: 3840, Height: 2160, Codec: "hevc", PixFmt: "yuv420p10le",
+		BitDepth: 10, ColorTransfer: "smpte2084", DoviProfile: 5,
+	}}
+	p81 := &ProbeResult{Video: &VideoStreamInfo{
+		Width: 3840, Height: 2160, Codec: "hevc", PixFmt: "yuv420p10le",
+		BitDepth: 10, ColorTransfer: "smpte2084", DoviProfile: 8, DoviBLCompatID: 1,
+	}}
+	hdrOnly := surroundCaps()
+
+	if PlanVideo(p5, "2160p", false, 5_000_000, 0, hdrOnly).Copy {
+		t.Error("profile 5 to a client without a Dolby Vision decoder must be re-encoded")
+	}
+	if !PlanVideo(p81, "2160p", false, 5_000_000, 0, hdrOnly).Copy {
+		t.Error("profile 8.1 has an HDR10 base layer — an HDR client can take it")
+	}
+
+	dv := hdrOnly
+	dv.DolbyVision = true
+	if !PlanVideo(p5, "2160p", false, 5_000_000, 0, dv).Copy {
+		t.Error("profile 5 to a Dolby Vision decoder is a copy")
 	}
 }
 
@@ -507,43 +663,38 @@ func TestParseBitrate(t *testing.T) {
 }
 
 func TestStereoDownmixFilter(t *testing.T) {
-	// Mono and stereo need no help: FFmpeg's `-ac 2` alone is already lossless
-	// for them, and a filter would only cost a re-render of the samples.
+	// Whether to fold is PlanAudio's decision now — mono and stereo simply never
+	// set Downmix. What is left here is the value itself, which is the same for
+	// every surround layout: mix levels apply to whatever arrives, so there is no
+	// channel index to get wrong and nothing to know in advance about the track.
+	legacy := LegacyCapabilities()
+	preset := presetFor("720p")
 	for _, ch := range []int{0, 1, 2} {
-		if got := stereoDownmixFilter(ch); got != "" {
-			t.Errorf("%dch should need no filter, got %q", ch, got)
+		p := PlanAudio(probeWith(1280, 720, 24, AudioStreamInfo{Codec: "flac", Channels: ch}), 0, legacy, preset)
+		if p.Downmix {
+			t.Errorf("%dch needs no downmix", ch)
+		}
+	}
+	for _, ch := range []int{3, 4, 6, 7, 8, 12} {
+		p := PlanAudio(probeWith(1280, 720, 24, AudioStreamInfo{Codec: "flac", Channels: ch}), 0, legacy, preset)
+		if !p.Downmix || p.Channels != 2 {
+			t.Errorf("%dch to a stereo client = %+v, want a 2-channel downmix", ch, p)
 		}
 	}
 
-	// Every surround count gets the same value, because mix levels apply to
-	// whatever layout arrives — there is no channel index to get wrong, and
-	// nothing to know in advance about the track.
-	for _, ch := range []int{3, 4, 6, 7, 8, 12} {
-		got := stereoDownmixFilter(ch)
-		if got != stereoDownmixFilter(6) {
-			t.Errorf("%dch should fold down like 5.1, got %q", ch, got)
-		}
-		if !strings.HasPrefix(got, "aresample=") {
-			t.Errorf("%dch: downmix should ride on the resampler, got %q", ch, got)
-		}
-		// The centre carries the dialogue, and the whole point is that it stops
-		// being 3 dB quieter than the fronts it sits between.
-		if !strings.Contains(got, "center_mix_level=1.0") {
-			t.Errorf("%dch does not carry the centre at front level: %q", ch, got)
-		}
-		// `pan` would need the layout to be known before the filter is built,
-		// and needs filters a minimal FFmpeg build does not carry.
-		if strings.Contains(got, "pan=") || strings.Contains(got, "alimiter") {
-			t.Errorf("%dch reintroduces a filter graph: %q", ch, got)
-		}
-		// `-ac:a:N 2` supplies the output layout. The option that spells it has
-		// been renamed between FFmpeg releases, so naming it here would tie the
-		// server to a version range.
-		for _, opt := range []string{"ochl=", "ocl=", "out_chlayout", "out_channel_layout"} {
-			if strings.Contains(got, opt) {
-				t.Errorf("%dch pins an FFmpeg-version-specific option %q: %q", ch, opt, got)
-			}
-		}
+	got := stereoDownmixFilter()
+	if !strings.HasPrefix(got, "aresample=") {
+		t.Errorf("the downmix should ride on the resampler, got %q", got)
+	}
+	// The centre carries the dialogue, and the whole point is that it stops
+	// being 3 dB quieter than the fronts it sits between.
+	if !strings.Contains(got, "center_mix_level=1.0") {
+		t.Errorf("does not carry the centre at front level: %q", got)
+	}
+	// `pan` would need the layout to be known before the filter is built, and
+	// the output layout is `-ac`'s job rather than this string's.
+	if strings.Contains(got, "pan=") || strings.Contains(got, "out_chlayout") {
+		t.Errorf("the downmix must not name channels or layouts: %q", got)
 	}
 }
 
@@ -556,6 +707,7 @@ func TestBuildFFmpegArgs_DownmixFilterOnlyOnSurroundRenditions(t *testing.T) {
 			{Codec: "dts", Channels: 6},  // 5.1 — the case the filter exists for
 		},
 	}
+	// A legacy client, which is the only one that folds everything to stereo.
 	args := BuildFFmpegArgs(TranscodeOptions{
 		InputPath: "/tmp/in.mkv", Quality: "720p", TmpDir: "/tmp/out",
 		Probe: probe, SegmentDuration: 2, AudioTypedIndexes: []int{0, 1, 2},
@@ -572,5 +724,103 @@ func TestBuildFFmpegArgs_DownmixFilterOnlyOnSurroundRenditions(t *testing.T) {
 	}
 	if !strings.Contains(v, "center_mix_level=1.0") {
 		t.Errorf("got %q", v)
+	}
+}
+
+func TestVideoFilterChain_ToneMapsOnlyWhenEncodingAndOnlyWhenPossible(t *testing.T) {
+	setFilterSetForTest("zscale", "tonemap", "scale", "overlay")
+	probe := &ProbeResult{Video: &VideoStreamInfo{
+		Width: 3840, Height: 2160, Codec: "hevc", PixFmt: "yuv420p10le",
+		BitDepth: 10, ColorTransfer: "smpte2084", FrameRate: 24,
+	}}
+
+	// Encoding an HDR source down to 1080p: scale first (everything after it
+	// then runs on a quarter of the pixels), tone map second.
+	chain := videoFilterChain(TranscodeOptions{
+		Probe: probe,
+		Video: VideoPlan{Tonemap: true},
+	}, presetFor("1080p"))
+	if !strings.Contains(chain, "scale=w=1920") {
+		t.Errorf("chain should scale: %q", chain)
+	}
+	if !strings.Contains(chain, "tonemap=tonemap=hable") {
+		t.Errorf("chain should tone map: %q", chain)
+	}
+	if strings.Index(chain, "scale=w=1920") > strings.Index(chain, "tonemap=") {
+		t.Errorf("scaling must come before tone mapping: %q", chain)
+	}
+
+	// A copied picture is never filtered — there is nothing to filter, the
+	// frames are not being decoded.
+	if got := videoFilterChain(TranscodeOptions{
+		Probe: probe,
+		Video: VideoPlan{Copy: true},
+	}, presetFor("2160p")); got != "" {
+		t.Errorf("copy path must carry no filter, got %q", got)
+	}
+
+	// An FFmpeg without zimg gets no tone mapping rather than a filter graph it
+	// would reject — which would kill the session instead of degrading it.
+	setFilterSetForTest("scale", "overlay")
+	got := videoFilterChain(TranscodeOptions{
+		Probe: probe,
+		Video: VideoPlan{Tonemap: true},
+	}, presetFor("2160p"))
+	if strings.Contains(got, "tonemap") || strings.Contains(got, "zscale") {
+		t.Errorf("no zimg means no tone-mapping filter, got %q", got)
+	}
+}
+
+func TestBuildFFmpegArgs_ToneMappedOutputIsTaggedBT709(t *testing.T) {
+	setFilterSetForTest("zscale", "tonemap", "scale")
+	args := BuildFFmpegArgs(TranscodeOptions{
+		InputPath: "/x.mkv", Quality: "1080p", TmpDir: "/tmp/x", SegmentDuration: 2,
+		Probe: &ProbeResult{Video: &VideoStreamInfo{
+			Width: 3840, Height: 2160, Codec: "hevc", PixFmt: "yuv420p10le",
+			BitDepth: 10, ColorTransfer: "smpte2084", FrameRate: 24,
+		}},
+		Video: VideoPlan{Tonemap: true},
+	})
+	// Untagged frames out of an HDR source make a player fall back to the
+	// container's metadata, which still says BT.2020 PQ — and convert a picture
+	// that has already been converted.
+	for flag, want := range map[string]string{
+		"-colorspace": "bt709", "-color_primaries": "bt709", "-color_trc": "bt709",
+	} {
+		if got, _ := argValue(args, flag); got != want {
+			t.Errorf("%s = %q, want %q", flag, got, want)
+		}
+	}
+}
+
+func TestBuildFFmpegArgs_FMP4SessionsPublishAnInitSegment(t *testing.T) {
+	caps := surroundCaps()
+	args := BuildFFmpegArgs(TranscodeOptions{
+		InputPath: "/x.mkv", Quality: "1080p", TmpDir: "/tmp/x", SegmentDuration: 2,
+		Probe:             probeWith(1920, 1080, 24, AudioStreamInfo{Codec: "eac3", Channels: 6}),
+		AudioTypedIndexes: []int{0},
+		Video:             VideoPlan{Copy: true},
+		Caps:              caps,
+	})
+	if got, _ := argValue(args, "-hls_segment_type"); got != "fmp4" {
+		t.Errorf("-hls_segment_type = %q, want fmp4", got)
+	}
+	if got, _ := argValue(args, "-hls_fmp4_init_filename"); got != "init_%v.mp4" {
+		t.Errorf("-hls_fmp4_init_filename = %q", got)
+	}
+	if got, _ := argValue(args, "-hls_segment_filename"); !strings.HasSuffix(got, ".m4s") {
+		t.Errorf("fMP4 segments must be named .m4s, got %q", got)
+	}
+
+	// And a legacy session keeps writing MPEG-TS, with no fMP4 options at all.
+	legacy := BuildFFmpegArgs(TranscodeOptions{
+		InputPath: "/x.mkv", Quality: "1080p", TmpDir: "/tmp/x", SegmentDuration: 2,
+		Probe: probeWith(1920, 1080, 24), Video: VideoPlan{Copy: true},
+	})
+	if hasArg(legacy, "-hls_segment_type") {
+		t.Error("a legacy session must not switch container")
+	}
+	if got, _ := argValue(legacy, "-hls_segment_filename"); !strings.HasSuffix(got, ".ts") {
+		t.Errorf("legacy segments must stay .ts, got %q", got)
 	}
 }

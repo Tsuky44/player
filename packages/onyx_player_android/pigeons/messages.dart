@@ -184,6 +184,49 @@ class OnyxPlaybackStats {
   final int renderedFrames;
 }
 
+/// Ce que l'appareil sait décoder et restituer.
+///
+/// Tout est mesuré, rien n'est supposé : les décodeurs viennent de
+/// `MediaCodecList`, le nombre de canaux et le passthrough des
+/// `AudioCapabilities` d'ExoPlayer — c'est-à-dire de ce que l'ampli branché
+/// déclare — et les formats HDR de l'écran lui-même. Un téléviseur et le
+/// téléphone qui le pilote ne répondent donc pas la même chose, ce qui est
+/// exactement le but.
+class OnyxDeviceCapabilities {
+  OnyxDeviceCapabilities({
+    required this.videoMimeTypes,
+    required this.audioMimeTypes,
+    required this.passthroughAudioMimeTypes,
+    required this.maxAudioChannels,
+    required this.hdrFormats,
+    required this.maxVideoBitDepth,
+  });
+
+  /// Les types MIME vidéo décodables, `video/hevc` et compagnie.
+  final List<String> videoMimeTypes;
+
+  /// Les types MIME audio décodables.
+  final List<String> audioMimeTypes;
+
+  /// Ceux que la sortie peut transmettre **sans les décoder**, jusqu'à l'ampli.
+  ///
+  /// C'est le seul chemin par lequel du Dolby Atmos arrive intact : le lit
+  /// d'objets voyage dans le flux E-AC-3, et tout ce qui le décode le réduit à
+  /// ses canaux. Vide sur un téléphone, garni sur un boîtier relié en HDMI.
+  final List<String> passthroughAudioMimeTypes;
+
+  /// Combien de canaux la sortie peut porter : 2 sur un haut-parleur, 6 ou 8
+  /// derrière un ampli.
+  final int maxAudioChannels;
+
+  /// Les formats que l'écran accepte : `hdr10`, `hlg`, `hdr10plus`,
+  /// `dolbyvision`.
+  final List<String> hdrFormats;
+
+  /// 10 dès qu'un décodeur matériel prend du 10 bits, 8 sinon.
+  final int maxVideoBitDepth;
+}
+
 @HostApi()
 abstract class OnyxPlayerApi {
   /// Crée un lecteur et rend son identifiant. La vue de rendu s'y rattache par
@@ -252,12 +295,13 @@ abstract class OnyxPlayerApi {
 
   void applyTuning(int playerId, OnyxLoadTuning tuning);
 
-  /// Les types MIME audio que la puce sait décoder.
+  /// Ce que cet appareil-ci sait faire, décodeurs et sortie audio compris.
   ///
-  /// mpv décodait tout en logiciel ; ExoPlayer dépend de MediaCodec. Demandé
-  /// une fois, pour que le contrôleur puisse trancher lecture directe ou
-  /// transcodage **avant** d'ouvrir, plutôt que d'échouer devant l'utilisateur.
-  List<String> decodableAudioMimeTypes();
+  /// mpv décodait tout en logiciel ; ExoPlayer dépend de MediaCodec, et la
+  /// sortie audio dépend de ce qu'il y a au bout du HDMI. Demandé une fois, et
+  /// envoyé au serveur : c'est ce qui lui permet de livrer le fichier tel quel
+  /// au lieu d'un ré-encodage stéréo par défaut.
+  OnyxDeviceCapabilities deviceCapabilities();
 
   /// L'état à cet instant. Les changements arrivent par le flux d'événements ;
   /// ceci sert à s'amorcer sans attendre le premier.

@@ -29,6 +29,7 @@ import 'screens/player/display_frame_rate.dart';
 import 'services/picture_in_picture.dart';
 import 'screens/player/hardware_decoding.dart';
 import 'screens/player/playback_profile.dart';
+import 'services/playback_capabilities.dart';
 import 'screens/player/player_engine.dart';
 import 'screens/shell/main_shell.dart';
 import 'theme/app_colors.dart';
@@ -78,6 +79,10 @@ void main() async {
   // like the TV mode above, because it is read when a media opens and the
   // answer never changes for the life of the process.
   await PlaybackProfiles.initialize(isTv: TvMode.detected);
+  // What this device can decode and play back, which the server is told on
+  // every session so it can hand over the file itself instead of a re-encoded,
+  // stereo-folded approximation of it. Asked once: it describes the hardware.
+  await PlaybackCapabilitiesResolver.initialize();
   await HardwareDecoding.initialize();
   await DisplayFrameRate.initialize();
   // Whether this device can carry on with the film in a corner of the home

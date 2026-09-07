@@ -492,6 +492,96 @@ class OnyxPlaybackStats {
   }
 }
 
+/// Ce que l'appareil sait décoder et restituer.
+///
+/// Tout est mesuré, rien n'est supposé : les décodeurs viennent de
+/// `MediaCodecList`, le nombre de canaux et le passthrough des
+/// `AudioCapabilities` d'ExoPlayer — c'est-à-dire de ce que l'ampli branché
+/// déclare — et les formats HDR de l'écran lui-même. Un téléviseur et le
+/// téléphone qui le pilote ne répondent donc pas la même chose, ce qui est
+/// exactement le but.
+class OnyxDeviceCapabilities {
+  OnyxDeviceCapabilities({
+    required this.videoMimeTypes,
+    required this.audioMimeTypes,
+    required this.passthroughAudioMimeTypes,
+    required this.maxAudioChannels,
+    required this.hdrFormats,
+    required this.maxVideoBitDepth,
+  });
+
+  /// Les types MIME vidéo décodables, `video/hevc` et compagnie.
+  List<String> videoMimeTypes;
+
+  /// Les types MIME audio décodables.
+  List<String> audioMimeTypes;
+
+  /// Ceux que la sortie peut transmettre **sans les décoder**, jusqu'à l'ampli.
+  ///
+  /// C'est le seul chemin par lequel du Dolby Atmos arrive intact : le lit
+  /// d'objets voyage dans le flux E-AC-3, et tout ce qui le décode le réduit à
+  /// ses canaux. Vide sur un téléphone, garni sur un boîtier relié en HDMI.
+  List<String> passthroughAudioMimeTypes;
+
+  /// Combien de canaux la sortie peut porter : 2 sur un haut-parleur, 6 ou 8
+  /// derrière un ampli.
+  int maxAudioChannels;
+
+  /// Les formats que l'écran accepte : `hdr10`, `hlg`, `hdr10plus`,
+  /// `dolbyvision`.
+  List<String> hdrFormats;
+
+  /// 10 dès qu'un décodeur matériel prend du 10 bits, 8 sinon.
+  int maxVideoBitDepth;
+
+  List<Object?> _toList() {
+    return <Object?>[
+      videoMimeTypes,
+      audioMimeTypes,
+      passthroughAudioMimeTypes,
+      maxAudioChannels,
+      hdrFormats,
+      maxVideoBitDepth,
+    ];
+  }
+
+  Object encode() {
+    return _toList();  }
+
+  static OnyxDeviceCapabilities decode(Object result) {
+    result as List<Object?>;
+    return OnyxDeviceCapabilities(
+      videoMimeTypes: (result[0]! as List<Object?>).cast<String>(),
+      audioMimeTypes: (result[1]! as List<Object?>).cast<String>(),
+      passthroughAudioMimeTypes: (result[2]! as List<Object?>).cast<String>(),
+      maxAudioChannels: result[3]! as int,
+      hdrFormats: (result[4]! as List<Object?>).cast<String>(),
+      maxVideoBitDepth: result[5]! as int,
+    );
+  }
+
+  @override
+  // ignore: avoid_equals_and_hash_code_on_mutable_classes
+  bool operator ==(Object other) {
+    if (other is! OnyxDeviceCapabilities || other.runtimeType != runtimeType) {
+      return false;
+    }
+    if (identical(this, other)) {
+      return true;
+    }
+    return _deepEquals(videoMimeTypes, other.videoMimeTypes) && _deepEquals(audioMimeTypes, other.audioMimeTypes) && _deepEquals(passthroughAudioMimeTypes, other.passthroughAudioMimeTypes) && _deepEquals(maxAudioChannels, other.maxAudioChannels) && _deepEquals(hdrFormats, other.hdrFormats) && _deepEquals(maxVideoBitDepth, other.maxVideoBitDepth);
+  }
+
+  @override
+  // ignore: avoid_equals_and_hash_code_on_mutable_classes
+  int get hashCode => _deepHash(<Object?>[runtimeType, ..._toList()]);
+
+  @override
+  String toString() {
+    return 'OnyxDeviceCapabilities(videoMimeTypes: $videoMimeTypes, audioMimeTypes: $audioMimeTypes, passthroughAudioMimeTypes: $passthroughAudioMimeTypes, maxAudioChannels: $maxAudioChannels, hdrFormats: $hdrFormats, maxVideoBitDepth: $maxVideoBitDepth)';
+  }
+}
+
 
 class _PigeonCodec extends StandardMessageCodec {
   const _PigeonCodec();
@@ -524,6 +614,9 @@ class _PigeonCodec extends StandardMessageCodec {
     }    else if (value is OnyxPlaybackStats) {
       buffer.putUint8(136);
       writeValue(buffer, value.encode());
+    }    else if (value is OnyxDeviceCapabilities) {
+      buffer.putUint8(137);
+      writeValue(buffer, value.encode());
     } else {
       super.writeValue(buffer, value);
     }
@@ -551,6 +644,8 @@ class _PigeonCodec extends StandardMessageCodec {
         return OnyxPlayerStatus.decode(readValue(buffer)!);
       case 136:
         return OnyxPlaybackStats.decode(readValue(buffer)!);
+      case 137:
+        return OnyxDeviceCapabilities.decode(readValue(buffer)!);
       default:
         return super.readValueOfType(type, buffer);
     }
@@ -906,13 +1001,14 @@ class OnyxPlayerApi {
     ;
   }
 
-  /// Les types MIME audio que la puce sait décoder.
+  /// Ce que cet appareil-ci sait faire, décodeurs et sortie audio compris.
   ///
-  /// mpv décodait tout en logiciel ; ExoPlayer dépend de MediaCodec. Demandé
-  /// une fois, pour que le contrôleur puisse trancher lecture directe ou
-  /// transcodage **avant** d'ouvrir, plutôt que d'échouer devant l'utilisateur.
-  Future<List<String>> decodableAudioMimeTypes() async {
-    final pigeonVar_channelName = 'dev.flutter.pigeon.onyx_player_android.OnyxPlayerApi.decodableAudioMimeTypes$pigeonVar_messageChannelSuffix';
+  /// mpv décodait tout en logiciel ; ExoPlayer dépend de MediaCodec, et la
+  /// sortie audio dépend de ce qu'il y a au bout du HDMI. Demandé une fois, et
+  /// envoyé au serveur : c'est ce qui lui permet de livrer le fichier tel quel
+  /// au lieu d'un ré-encodage stéréo par défaut.
+  Future<OnyxDeviceCapabilities> deviceCapabilities() async {
+    final pigeonVar_channelName = 'dev.flutter.pigeon.onyx_player_android.OnyxPlayerApi.deviceCapabilities$pigeonVar_messageChannelSuffix';
     final pigeonVar_channel = BasicMessageChannel<Object?>(
       pigeonVar_channelName,
       pigeonChannelCodec,
@@ -927,7 +1023,7 @@ class OnyxPlayerApi {
         isNullValid: false,
     )
     ;
-    return (pigeonVar_replyValue! as List<Object?>).cast<String>();
+    return pigeonVar_replyValue! as OnyxDeviceCapabilities;
   }
 
   /// L'état à cet instant. Les changements arrivent par le flux d'événements ;

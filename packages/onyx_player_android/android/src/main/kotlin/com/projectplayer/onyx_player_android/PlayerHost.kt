@@ -141,9 +141,11 @@ internal class PlayerInstance(
             }
         }.build()
 
-        // Le repli stéréo d'Onyx s'insère dans la chaîne audio du puits. Il
-        // ne s'active que sur une entrée à plus de deux canaux — voir
-        // [DialogueForwardDownmix].
+        // Le repli stéréo d'Onyx s'insère dans la chaîne audio du puits. Il ne
+        // s'active que là où le repli est inévitable — une sortie à deux canaux
+        // — et se retire ailleurs, pour ne pas replier un 5.1 que l'ampli
+        // branché savait porter. Voir [DialogueForwardDownmix].
+        val outputChannels = sinkMaxChannelCount(context)
         val renderers = object : DefaultRenderersFactory(context) {
             override fun buildAudioSink(
                 context: Context,
@@ -152,7 +154,7 @@ internal class PlayerInstance(
             ): AudioSink = DefaultAudioSink.Builder(context)
                 .setEnableFloatOutput(enableFloatOutput)
                 .setEnableAudioOutputPlaybackParameters(enableAudioOutputPlaybackParams)
-                .setAudioProcessors(arrayOf(DialogueForwardDownmix()))
+                .setAudioProcessors(arrayOf(DialogueForwardDownmix(outputChannels)))
                 .build()
         }
 
@@ -676,27 +678,128 @@ internal class PlayerHost(private val context: Context) : OnyxPlayerApi {
     override fun stats(playerId: Long): OnyxPlaybackStats =
         players[playerId]?.stats() ?: OnyxPlaybackStats(0, 0)
 
-    /// Ce que la puce sait décoder, demandé une fois.
+    /// Ce que cet appareil-ci sait faire, mesuré et non supposé.
     ///
-    /// mpv décodait DTS-HD et TrueHD en logiciel ; ExoPlayer n'a pas de
-    /// décodeur à lui. Répondre ici permet au contrôleur de choisir la lecture
-    /// directe ou le transcodage **avant** d'ouvrir, au lieu d'échouer sous les
-    /// yeux de l'utilisateur puis de se rattraper.
-    override fun decodableAudioMimeTypes(): List<String> {
-        val out = mutableSetOf<String>()
+    /// Trois sources, parce qu'il y a trois questions différentes :
+    ///
+    ///  * `MediaCodecList` dit ce que la **puce** décode. mpv décodait tout en
+    ///    logiciel ; ExoPlayer n'a pas de décodeur à lui.
+    ///  * `AudioCapabilities` dit ce que la **sortie** accepte — combien de
+    ///    canaux, et quels flux compressés peuvent la traverser sans être
+    ///    décodés. C'est ce que l'ampli branché déclare, donc la réponse change
+    ///    quand on change de câble.
+    ///  * `Display.HdrCapabilities` dit ce que l'**écran** sait afficher.
+    ///
+    /// Le tout part au serveur, qui livre alors le fichier tel quel au lieu du
+    /// ré-encodage stéréo qu'il appliquait à tout le monde par défaut.
+    override fun deviceCapabilities(): OnyxDeviceCapabilities {
+        val video = mutableSetOf<String>()
+        val audio = mutableSetOf<String>()
+        var maxBitDepth = 8L
+
         try {
             val list = MediaCodecList(MediaCodecList.REGULAR_CODECS)
             for (info in list.codecInfos) {
                 if (info.isEncoder) continue
                 for (type in info.supportedTypes) {
-                    if (type.startsWith("audio/")) out.add(type.lowercase())
+                    val mime = type.lowercase()
+                    when {
+                        mime.startsWith("audio/") -> audio.add(mime)
+                        mime.startsWith("video/") -> {
+                            video.add(mime)
+                            if (decodesTenBit(info, type)) maxBitDepth = 10L
+                        }
+                    }
                 }
             }
         } catch (_: Exception) {
             // Une puce qui refuse de s'énumérer est traitée comme ne sachant
             // rien : le transcodage prend le relais, ce qui marche toujours.
         }
-        return out.toList()
+
+        return OnyxDeviceCapabilities(
+            videoMimeTypes = video.toList(),
+            audioMimeTypes = audio.toList(),
+            passthroughAudioMimeTypes = passthroughMimeTypes(),
+            maxAudioChannels = maxAudioChannels().toLong(),
+            hdrFormats = displayHdrFormats(),
+            maxVideoBitDepth = maxBitDepth,
+        )
+    }
+
+    /// Si ce décodeur accepte un profil 10 bits.
+    ///
+    /// C'est ce qui sépare un appareil qui lit du HEVC Main 10 — la quasi
+    /// totalité d'une bibliothèque 4K — d'un qui n'en lit que le Main 8 bits.
+    /// Se tromper ici ne produit pas une erreur : l'image reste noire pendant
+    /// que le son joue.
+    private fun decodesTenBit(info: android.media.MediaCodecInfo, type: String): Boolean {
+        return try {
+            info.getCapabilitiesForType(type).profileLevels.any { level ->
+                level.profile in TEN_BIT_PROFILES
+            }
+        } catch (_: Exception) {
+            false
+        }
+    }
+
+    /// Les flux compressés que la sortie peut transmettre sans les décoder.
+    ///
+    /// Le seul chemin par lequel du Dolby Atmos arrive intact : le lit d'objets
+    /// voyage dans le flux E-AC-3 (en JOC) ou TrueHD, et tout ce qui le décode
+    /// le réduit à ses canaux. Vide sur un téléphone, garni derrière un HDMI.
+    private fun passthroughMimeTypes(): List<String> {
+        val out = mutableListOf<String>()
+        try {
+            val caps = androidx.media3.exoplayer.audio.AudioCapabilities
+                .getCapabilities(context)
+            for (mime in PASSTHROUGH_CANDIDATES) {
+                val encoding = MimeTypes.getEncoding(mime, null)
+                if (encoding != C.ENCODING_INVALID &&
+                    caps.isPassthroughPlaybackSupported(
+                        androidx.media3.common.Format.Builder()
+                            .setSampleMimeType(mime)
+                            .build(),
+                    )
+                ) {
+                    out.add(mime)
+                }
+            }
+        } catch (_: Exception) {
+            // Une sortie qui ne se décrit pas est traitée comme ne sachant que
+            // du PCM, ce qui est vrai partout.
+        }
+        return out
+    }
+
+    /// Combien de canaux la sortie peut porter.
+    ///
+    /// 2 sur un haut-parleur ou un casque, 6 ou 8 derrière un ampli. C'est le
+    /// nombre qui décide si une piste 5.1 survit — aucune valeur par défaut
+    /// côté serveur ne peut le connaître.
+    internal fun maxAudioChannels(): Int = sinkMaxChannelCount(context)
+
+    /// Les formats HDR que l'écran déclare.
+    private fun displayHdrFormats(): List<String> {
+        val out = mutableListOf<String>()
+        try {
+            val display = (context.getSystemService(Context.WINDOW_SERVICE) as WindowManager)
+                .defaultDisplay
+            @Suppress("DEPRECATION")
+            val types = display.hdrCapabilities?.supportedHdrTypes ?: intArrayOf()
+            for (type in types) {
+                when (type) {
+                    android.view.Display.HdrCapabilities.HDR_TYPE_HDR10 -> out.add("hdr10")
+                    android.view.Display.HdrCapabilities.HDR_TYPE_HLG -> out.add("hlg")
+                    android.view.Display.HdrCapabilities.HDR_TYPE_HDR10_PLUS -> out.add("hdr10plus")
+                    android.view.Display.HdrCapabilities.HDR_TYPE_DOLBY_VISION -> out.add("dolbyvision")
+                }
+            }
+        } catch (_: Exception) {
+            // Un écran qui ne se décrit pas est traité comme SDR : le serveur
+            // applique alors son tone mapping, ce qui est toujours regardable.
+        }
+        return out
     }
 
     fun releaseAll() {
@@ -716,6 +819,33 @@ internal class PlayerHost(private val context: Context) : OnyxPlayerApi {
     private companion object {
         const val POSITION_INTERVAL_MS = 250L
 
+        /// Les profils dont le nom dit « 10 bits », toutes familles confondues.
+        /// Les constantes vivent dans des classes différentes selon le codec,
+        /// mais ce sont des entiers et la question posée est la même.
+        val TEN_BIT_PROFILES = setOf(
+            android.media.MediaCodecInfo.CodecProfileLevel.HEVCProfileMain10,
+            android.media.MediaCodecInfo.CodecProfileLevel.HEVCProfileMain10HDR10,
+            android.media.MediaCodecInfo.CodecProfileLevel.HEVCProfileMain10HDR10Plus,
+            android.media.MediaCodecInfo.CodecProfileLevel.VP9Profile2,
+            android.media.MediaCodecInfo.CodecProfileLevel.VP9Profile2HDR,
+            android.media.MediaCodecInfo.CodecProfileLevel.VP9Profile2HDR10Plus,
+            android.media.MediaCodecInfo.CodecProfileLevel.AV1ProfileMain10,
+            android.media.MediaCodecInfo.CodecProfileLevel.AV1ProfileMain10HDR10,
+            android.media.MediaCodecInfo.CodecProfileLevel.AV1ProfileMain10HDR10Plus,
+        )
+
+        /// Ce qu'on demande à la sortie de transmettre tel quel, du plus
+        /// courant au moins courant.
+        val PASSTHROUGH_CANDIDATES = listOf(
+            MimeTypes.AUDIO_E_AC3_JOC,
+            MimeTypes.AUDIO_E_AC3,
+            MimeTypes.AUDIO_AC3,
+            MimeTypes.AUDIO_AC4,
+            MimeTypes.AUDIO_DTS,
+            MimeTypes.AUDIO_DTS_HD,
+            MimeTypes.AUDIO_TRUEHD,
+        )
+
         /// Les hôtes encore vivants dans ce processus.
         ///
         /// Le seul endroit d'où l'on peut atteindre un lecteur dont le moteur
@@ -733,5 +863,24 @@ internal class PlayerHost(private val context: Context) : OnyxPlayerApi {
             live.clear()
             orphans.forEach { it.releaseAll() }
         }
+    }
+}
+
+/// Combien de canaux la sortie audio de cet appareil peut porter.
+///
+/// Deux sur un haut-parleur ou un casque, six ou huit derrière un ampli. C'est
+/// ce que déclare l'appareil branché, donc la réponse change avec le câble —
+/// et c'est le seul chiffre qui dise si une piste 5.1 doit être repliée.
+///
+/// Deux en cas d'échec : se tromper vers le repli coûte du surround qu'on
+/// aurait pu garder, se tromper dans l'autre sens coûte le son.
+internal fun sinkMaxChannelCount(context: Context): Int {
+    return try {
+        androidx.media3.exoplayer.audio.AudioCapabilities
+            .getCapabilities(context)
+            .maxChannelCount
+            .coerceIn(2, 8)
+    } catch (_: Exception) {
+        2
     }
 }

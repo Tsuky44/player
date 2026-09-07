@@ -570,6 +570,92 @@ data class OnyxPlaybackStats (
     return "OnyxPlaybackStats(droppedFrames=$droppedFrames, renderedFrames=$renderedFrames)"
   }
 }
+
+/**
+ * Ce que l'appareil sait décoder et restituer.
+ *
+ * Tout est mesuré, rien n'est supposé : les décodeurs viennent de
+ * `MediaCodecList`, le nombre de canaux et le passthrough des
+ * `AudioCapabilities` d'ExoPlayer — c'est-à-dire de ce que l'ampli branché
+ * déclare — et les formats HDR de l'écran lui-même. Un téléviseur et le
+ * téléphone qui le pilote ne répondent donc pas la même chose, ce qui est
+ * exactement le but.
+ *
+ * Generated class from Pigeon that represents data sent in messages.
+ */
+data class OnyxDeviceCapabilities (
+  /** Les types MIME vidéo décodables, `video/hevc` et compagnie. */
+  val videoMimeTypes: List<String>,
+  /** Les types MIME audio décodables. */
+  val audioMimeTypes: List<String>,
+  /**
+   * Ceux que la sortie peut transmettre **sans les décoder**, jusqu'à l'ampli.
+   *
+   * C'est le seul chemin par lequel du Dolby Atmos arrive intact : le lit
+   * d'objets voyage dans le flux E-AC-3, et tout ce qui le décode le réduit à
+   * ses canaux. Vide sur un téléphone, garni sur un boîtier relié en HDMI.
+   */
+  val passthroughAudioMimeTypes: List<String>,
+  /**
+   * Combien de canaux la sortie peut porter : 2 sur un haut-parleur, 6 ou 8
+   * derrière un ampli.
+   */
+  val maxAudioChannels: Long,
+  /**
+   * Les formats que l'écran accepte : `hdr10`, `hlg`, `hdr10plus`,
+   * `dolbyvision`.
+   */
+  val hdrFormats: List<String>,
+  /** 10 dès qu'un décodeur matériel prend du 10 bits, 8 sinon. */
+  val maxVideoBitDepth: Long
+)
+ {
+  companion object {
+    fun fromList(pigeonVar_list: List<Any?>): OnyxDeviceCapabilities {
+      val videoMimeTypes = pigeonVar_list[0] as List<String>
+      val audioMimeTypes = pigeonVar_list[1] as List<String>
+      val passthroughAudioMimeTypes = pigeonVar_list[2] as List<String>
+      val maxAudioChannels = pigeonVar_list[3] as Long
+      val hdrFormats = pigeonVar_list[4] as List<String>
+      val maxVideoBitDepth = pigeonVar_list[5] as Long
+      return OnyxDeviceCapabilities(videoMimeTypes, audioMimeTypes, passthroughAudioMimeTypes, maxAudioChannels, hdrFormats, maxVideoBitDepth)
+    }
+  }
+  fun toList(): List<Any?> {
+    return listOf(
+      videoMimeTypes,
+      audioMimeTypes,
+      passthroughAudioMimeTypes,
+      maxAudioChannels,
+      hdrFormats,
+      maxVideoBitDepth,
+    )
+  }
+  override fun equals(other: Any?): Boolean {
+    if (other == null || other.javaClass != javaClass) {
+      return false
+    }
+    if (this === other) {
+      return true
+    }
+    val other = other as OnyxDeviceCapabilities
+    return MessagesPigeonUtils.deepEquals(this.videoMimeTypes, other.videoMimeTypes) && MessagesPigeonUtils.deepEquals(this.audioMimeTypes, other.audioMimeTypes) && MessagesPigeonUtils.deepEquals(this.passthroughAudioMimeTypes, other.passthroughAudioMimeTypes) && MessagesPigeonUtils.deepEquals(this.maxAudioChannels, other.maxAudioChannels) && MessagesPigeonUtils.deepEquals(this.hdrFormats, other.hdrFormats) && MessagesPigeonUtils.deepEquals(this.maxVideoBitDepth, other.maxVideoBitDepth)
+  }
+
+  override fun hashCode(): Int {
+    var result = javaClass.hashCode()
+    result = 31 * result + MessagesPigeonUtils.deepHash(this.videoMimeTypes)
+    result = 31 * result + MessagesPigeonUtils.deepHash(this.audioMimeTypes)
+    result = 31 * result + MessagesPigeonUtils.deepHash(this.passthroughAudioMimeTypes)
+    result = 31 * result + MessagesPigeonUtils.deepHash(this.maxAudioChannels)
+    result = 31 * result + MessagesPigeonUtils.deepHash(this.hdrFormats)
+    result = 31 * result + MessagesPigeonUtils.deepHash(this.maxVideoBitDepth)
+    return result
+  }
+  override fun toString(): String {
+    return "OnyxDeviceCapabilities(videoMimeTypes=$videoMimeTypes, audioMimeTypes=$audioMimeTypes, passthroughAudioMimeTypes=$passthroughAudioMimeTypes, maxAudioChannels=$maxAudioChannels, hdrFormats=$hdrFormats, maxVideoBitDepth=$maxVideoBitDepth)"
+  }
+}
 private open class MessagesPigeonCodec : StandardMessageCodec() {
   override fun readValueOfType(type: Byte, buffer: ByteBuffer): Any? {
     return when (type) {
@@ -613,6 +699,11 @@ private open class MessagesPigeonCodec : StandardMessageCodec() {
           OnyxPlaybackStats.fromList(it)
         }
       }
+      137.toByte() -> {
+        return (readValue(buffer) as? List<Any?>)?.let {
+          OnyxDeviceCapabilities.fromList(it)
+        }
+      }
       else -> super.readValueOfType(type, buffer)
     }
   }
@@ -648,6 +739,10 @@ private open class MessagesPigeonCodec : StandardMessageCodec() {
       }
       is OnyxPlaybackStats -> {
         stream.write(136)
+        writeValue(stream, value.toList())
+      }
+      is OnyxDeviceCapabilities -> {
+        stream.write(137)
         writeValue(stream, value.toList())
       }
       else -> super.writeValue(stream, value)
@@ -722,13 +817,14 @@ interface OnyxPlayerApi {
   fun overrideDuration(playerId: Long, totalMs: Long)
   fun applyTuning(playerId: Long, tuning: OnyxLoadTuning)
   /**
-   * Les types MIME audio que la puce sait décoder.
+   * Ce que cet appareil-ci sait faire, décodeurs et sortie audio compris.
    *
-   * mpv décodait tout en logiciel ; ExoPlayer dépend de MediaCodec. Demandé
-   * une fois, pour que le contrôleur puisse trancher lecture directe ou
-   * transcodage **avant** d'ouvrir, plutôt que d'échouer devant l'utilisateur.
+   * mpv décodait tout en logiciel ; ExoPlayer dépend de MediaCodec, et la
+   * sortie audio dépend de ce qu'il y a au bout du HDMI. Demandé une fois, et
+   * envoyé au serveur : c'est ce qui lui permet de livrer le fichier tel quel
+   * au lieu d'un ré-encodage stéréo par défaut.
    */
-  fun decodableAudioMimeTypes(): List<String>
+  fun deviceCapabilities(): OnyxDeviceCapabilities
   /**
    * L'état à cet instant. Les changements arrivent par le flux d'événements ;
    * ceci sert à s'amorcer sans attendre le premier.
@@ -1066,11 +1162,11 @@ interface OnyxPlayerApi {
         }
       }
       run {
-        val channel = BasicMessageChannel<Any?>(binaryMessenger, "dev.flutter.pigeon.onyx_player_android.OnyxPlayerApi.decodableAudioMimeTypes$separatedMessageChannelSuffix", codec)
+        val channel = BasicMessageChannel<Any?>(binaryMessenger, "dev.flutter.pigeon.onyx_player_android.OnyxPlayerApi.deviceCapabilities$separatedMessageChannelSuffix", codec)
         if (api != null) {
           channel.setMessageHandler { _, reply ->
             val wrapped: List<Any?> = try {
-              listOf(api.decodableAudioMimeTypes())
+              listOf(api.deviceCapabilities())
             } catch (exception: Throwable) {
               MessagesPigeonUtils.wrapError(exception)
             }
