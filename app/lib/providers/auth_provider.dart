@@ -274,13 +274,13 @@ class AuthProvider extends ChangeNotifier {
   /// soit : les droits ne sont pas les mêmes des deux côtés, et afficher ceux
   /// du serveur qu'on quitte ouvrirait des écrans sur lesquels tout finirait
   /// en 403.
-  Future<bool> switchServer(String accountId) async {
+  Future<bool> switchServer(String accountId, {bool synchronize = true}) async {
     if (activeServer?.id == accountId) return true;
 
     _isLoading = true;
     notifyListeners();
 
-    if (!await apiClient.activateAccount(accountId)) {
+    if (!await apiClient.activateAccount(accountId, synchronize: synchronize)) {
       _isLoading = false;
       _errorMessage = "Ce serveur n'est plus enregistré sur cet appareil.";
       notifyListeners();

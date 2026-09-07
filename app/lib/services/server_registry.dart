@@ -15,9 +15,9 @@ import '../models/server_account.dart';
 /// « changer de serveur » n'est qu'un changement de pointeur — d'où le fait
 /// qu'on revienne sur l'autre serveur sans retaper quoi que ce soit.
 ///
-/// Ce qui n'est **pas** ici : le moindre lien entre deux comptes. Les serveurs
-/// s'ignorent, et c'est l'app seule qui sait qu'ils appartiennent à la même
-/// personne. Voir ADR-0013.
+/// Les liaisons choisies par la personne sont conservées sur cet appareil.
+/// Chaque serveur garde ses comptes et ses droits ; l'app partage la progression
+/// uniquement entre les comptes explicitement liés.
 class ServerRegistry extends ChangeNotifier {
   static const _storeKey = 'onyx_servers_v1';
   static const _tokenPrefix = 'auth_token_';
@@ -35,6 +35,7 @@ class ServerRegistry extends ChangeNotifier {
   List<PendingAccessRequest> _pendingRequests = const [];
   String? _activeId;
   bool _loaded = false;
+  List<Set<String>> _links = [];
 
   List<ServerAccount> get accounts => List.unmodifiable(_accounts);
   List<PendingAccessRequest> get pendingRequests =>
@@ -53,6 +54,43 @@ class ServerRegistry extends ChangeNotifier {
   /// Vrai dès qu'il y a de quoi basculer — ce qui décide de l'affichage du
   /// sélecteur : un seul serveur n'a pas besoin d'un menu pour en changer.
   bool get hasMultipleServers => _accounts.length > 1;
+
+  /// Explicit groups belonging to one viewer; usernames need not match.
+  List<ServerAccount> linkedAccounts(String id) {
+    final group = _links.where((g) => g.contains(id)).firstOrNull;
+    return accounts
+        .where((a) => a.id == id || (group?.contains(a.id) ?? false))
+        .toList();
+  }
+
+  Future<void> linkAccounts(String first, String second) async {
+    if (first == second ||
+        accountById(first) == null ||
+        accountById(second) == null) {
+      return;
+    }
+    final merged = {
+      ...linkedAccounts(first).map((a) => a.id),
+      ...linkedAccounts(second).map((a) => a.id)
+    };
+    _links.removeWhere((g) => g.any(merged.contains));
+    _links.add(merged);
+    await _persist();
+    notifyListeners();
+  }
+
+  Future<void> unlinkAccount(String id) async {
+    _removeLinks(id);
+    await _persist();
+    notifyListeners();
+  }
+
+  void _removeLinks(String id) {
+    for (final group in _links) {
+      group.remove(id);
+    }
+    _links.removeWhere((g) => g.length < 2);
+  }
 
   ServerAccount? accountById(String id) {
     for (final account in _accounts) {
@@ -89,12 +127,20 @@ class ServerRegistry extends ChangeNotifier {
           .map((e) => PendingAccessRequest.fromJson(e as Map<String, dynamic>))
           .toList();
       _activeId = data['active'] as String?;
+      _links = (data['links'] as List? ?? const [])
+          .map((g) => (g as List)
+              .cast<String>()
+              .where((id) => accountById(id) != null)
+              .toSet())
+          .where((g) => g.length > 1)
+          .toList();
     } catch (_) {
       // Un carnet illisible ne doit pas empêcher l'app de démarrer : elle
       // repart sur l'écran de connexion, ce qui est récupérable.
       _accounts = const [];
       _pendingRequests = const [];
       _activeId = null;
+      _links = [];
     }
     if (accountById(_activeId ?? '') == null) {
       _activeId = _accounts.isEmpty ? null : _accounts.first.id;
@@ -152,6 +198,7 @@ class ServerRegistry extends ChangeNotifier {
       _storeKey,
       jsonEncode({
         'active': _activeId,
+        'links': _links.map((g) => g.toList()).toList(),
         'accounts': _accounts.map((e) => e.toJson()).toList(),
         'requests': _pendingRequests.map((e) => e.toJson()).toList(),
       }),
@@ -222,6 +269,10 @@ class ServerRegistry extends ChangeNotifier {
     final normalized = ServerAccount.normalizeUrl(url);
     if (normalized == account.url) return account;
 
+    final linkedIds = linkedAccounts(id)
+        .map((a) => a.id)
+        .where((other) => other != id)
+        .toSet();
     final token = await tokenFor(id);
     final profile = await readProfile(id);
     await forget(id, persist: false);
@@ -234,6 +285,10 @@ class ServerRegistry extends ChangeNotifier {
       label: account.label,
     );
     _accounts = [..._accounts, moved];
+    if (linkedIds.isNotEmpty) {
+      _links.removeWhere((g) => g.any(linkedIds.contains));
+      _links.add({...linkedIds, moved.id});
+    }
     _activeId = moved.id;
     if (token != null) await _writeToken(moved.id, token);
     if (profile != null) await writeProfile(moved.id, profile);
@@ -253,7 +308,8 @@ class ServerRegistry extends ChangeNotifier {
             url: other.url,
             username: other.username,
             userId: other.userId,
-            label: (label == null || label.trim().isEmpty) ? null : label.trim(),
+            label:
+                (label == null || label.trim().isEmpty) ? null : label.trim(),
           )
         else
           other,
@@ -271,6 +327,7 @@ class ServerRegistry extends ChangeNotifier {
       for (final account in _accounts)
         if (account.id != id) account,
     ];
+    _removeLinks(id);
     await _deleteToken(id);
     await clearProfile(id);
     if (_activeId == id) {

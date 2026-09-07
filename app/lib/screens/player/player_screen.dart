@@ -51,6 +51,9 @@ class PlayerScreen extends StatefulWidget {
   final bool autoAdvance;
   final BoxFit? initialVideoFit;
   final int? seasonNumber;
+  final int? resumeAtSeconds;
+  final bool startPaused;
+  final Map<String, DateTime> relayAttempts;
 
   const PlayerScreen({
     super.key,
@@ -59,6 +62,9 @@ class PlayerScreen extends StatefulWidget {
     this.autoAdvance = false,
     this.initialVideoFit,
     this.seasonNumber,
+    this.resumeAtSeconds,
+    this.startPaused = false,
+    this.relayAttempts = const {},
   });
 
   @override
@@ -98,6 +104,12 @@ class _PlayerScreenState extends State<PlayerScreen> {
   bool _isLeaving = false;
   bool _progressFlushed = false;
   ApiClient? _apiClient;
+  Timer? _relayTimer;
+  bool _findingRelay = false;
+  bool _wantsPlayback = true;
+  String? _sourceAccountId;
+  int _resumePosition = 0;
+
 
   /// How the video is fitted inside the player viewport.
   /// [BoxFit.contain] = original (letterbox possible).
@@ -446,6 +458,7 @@ class _PlayerScreenState extends State<PlayerScreen> {
   void initState() {
     super.initState();
     _showControls = !widget.autoAdvance;
+    _wantsPlayback = !widget.startPaused;
     _videoFit = widget.initialVideoFit ?? BoxFit.contain;
     if (_ownsDeviceOrientation) {
       SystemChrome.setPreferredOrientations([
@@ -470,13 +483,23 @@ class _PlayerScreenState extends State<PlayerScreen> {
       onFastForward: _handleMediaFastForward,
       isPlaying: () => _playerController.isPlaying,
     );
-    _init();
+    _init().catchError((Object error) {
+      debugPrint('Player initialization failed: $error');
+      _safeSetState(() => _startupStalled = true);
+    });
   }
 
   Future<void> _init() async {
     final authProvider = Provider.of<AuthProvider>(context, listen: false);
-    final apiClient = authProvider.apiClient;
+    final sharedApi = authProvider.apiClient;
+    _sourceAccountId = sharedApi.accountId;
+    final apiClient = _sourceAccountId == null ? sharedApi : await sharedApi.pinToAccount(_sourceAccountId!);
+    if (!mounted || _isLeaving) return;
     _apiClient = apiClient;
+    if (_sourceAccountId != null) {
+      unawaited(sharedApi.mediaFailover.refreshIdentities(_sourceAccountId!));
+      _relayTimer = Timer.periodic(const Duration(seconds: 10), (_) => _tryRelay());
+    }
     _seedOfflineDetails();
 
     // Extract the actual Media object (handle both Media and HomeMediaItem)
@@ -493,7 +516,13 @@ class _PlayerScreenState extends State<PlayerScreen> {
       knownDuration = item.effectiveDuration;
     }
 
-    final resumePositionFuture = _loadResumePosition(apiClient, actualMedia);
+    _resumePosition = widget.resumeAtSeconds ??
+        (widget.media is HomeMediaItem && !(widget.media as HomeMediaItem).isFinished
+            ? (widget.media as HomeMediaItem).currentPositionSeconds : 0);
+    final resumePositionFuture = _loadResumePosition(apiClient, actualMedia).then((position) {
+      _resumePosition = position;
+      return position;
+    });
 
     await _playerController.init(
       media: actualMedia,
@@ -539,6 +568,7 @@ class _PlayerScreenState extends State<PlayerScreen> {
       },
     );
 
+    if (!mounted || _isLeaving) return;
     unawaited(_loadMediaLogo(actualMedia));
 
     if (actualMedia.type == MediaType.episode) {
@@ -571,7 +601,7 @@ class _PlayerScreenState extends State<PlayerScreen> {
 
     if (mounted) setState(() {});
     final resumeAt = await resumePositionFuture;
-    if (!mounted) return;
+    if (!mounted || _isLeaving) return;
     await _startPlayback(resumeAtSeconds: resumeAt);
   }
 
@@ -654,6 +684,7 @@ class _PlayerScreenState extends State<PlayerScreen> {
   /// What matters is that a film with nowhere left to play stops playing.
   void _handlePictureInPictureClosed() {
     if (!mounted || !_playerController.isPlaying) return;
+    _wantsPlayback = false;
     unawaited(_playerController.session.pause());
   }
 
@@ -722,6 +753,7 @@ class _PlayerScreenState extends State<PlayerScreen> {
     // An episode reached by auto-advance always starts at zero, and the answer
     // below is discarded — so asking at all would just put an HTTP round-trip
     // in front of the picture, now that the open waits on this.
+    if (widget.resumeAtSeconds != null) return widget.resumeAtSeconds!;
     if (widget.autoAdvance) return 0;
 
     int savedPositionSeconds = 0;
@@ -745,7 +777,7 @@ class _PlayerScreenState extends State<PlayerScreen> {
         final isFinished = progressData["is_finished"] as bool? ?? false;
         if (isFinished) {
           savedPositionSeconds = 0;
-        } else if (fromApi > savedPositionSeconds) {
+        } else {
           savedPositionSeconds = fromApi;
         }
       } catch (e) {
@@ -764,6 +796,7 @@ class _PlayerScreenState extends State<PlayerScreen> {
   }
 
   Future<void> _startPlayback({int resumeAtSeconds = 0}) async {
+    if (!mounted || _isLeaving) return;
     Media actualMedia;
     if (widget.media is HomeMediaItem) {
       actualMedia = (widget.media as HomeMediaItem).media;
@@ -776,7 +809,8 @@ class _PlayerScreenState extends State<PlayerScreen> {
       apiClient: _apiClient!,
       resumeAtSeconds: resumeAtSeconds,
     );
-    if (!mounted) return;
+    if (!mounted || _isLeaving) return;
+    if (widget.startPaused) await _playerController.session.pause();
     setState(() => _isInitialized = true);
     _armStartupWatchdog();
     _scheduleSubtitlePaddingSync();
@@ -799,6 +833,75 @@ class _PlayerScreenState extends State<PlayerScreen> {
       if (_playerController.hasFirstFrame) return;
       setState(() => _startupStalled = true);
     });
+  }
+
+  Future<void> _tryRelay() async {
+    final source = _sourceAccountId;
+    if (!mounted || _isLeaving || _isDisposing || _findingRelay || source == null) return;
+    if (DownloadManager.instance.localVideoPath(_actualMedia.id) != null) return;
+    final auth = context.read<AuthProvider>();
+    if (auth.activeServer?.id != source) return;
+    _findingRelay = true;
+    try {
+      final relay = await auth.apiClient.mediaFailover.findReplacement(
+        sourceAccountId: source, media: _actualMedia,
+        excluded: widget.relayAttempts.entries
+            .where((attempt) => DateTime.now().difference(attempt.value) < const Duration(seconds: 30))
+            .map((attempt) => attempt.key).toSet(),
+      );
+      if (relay == null || !mounted || _isLeaving || auth.activeServer?.id != source) return;
+      var position = _playerController.hasFirstFrame
+          ? _playerController.position.inSeconds : _resumePosition;
+      if (!_playerController.hasFirstFrame && position == 0 &&
+          !widget.autoAdvance && widget.resumeAtSeconds == null) {
+        position = relay.resumeAtSeconds;
+      }
+      final preferences = _playerController.exportPreferences();
+      // The old player remains pinned while the destination authenticates.
+      // Retire it only once the destination is ready.
+      _isLeaving = true;
+      final switched = await auth.switchServer(relay.account.id, synchronize: false);
+      if (!mounted) return;
+      if (!switched) {
+        await auth.switchServer(source, synchronize: false);
+        _isLeaving = false;
+        _safeSetState(() => _startupStalled = true);
+        return;
+      }
+      final targetApi = await auth.apiClient.pinToAccount(relay.account.id);
+      if (!mounted) return;
+      if (_playerController.hasFirstFrame) position = _playerController.position.inSeconds;
+      final paused = !_wantsPlayback;
+      _playerController.cancelStreams();
+      _progressFlushed = true;
+      _relayTimer?.cancel();
+      unawaited(targetApi.sendProgress(mediaId: relay.media.id,
+          currentPositionSeconds: position, duration: relay.media.duration,
+          isFinished: false, clientUpdatedAt: DateTime.now().toUtc())
+          .catchError((Object _) => false));
+      if (!mounted) return;
+      _isEpisodeTransition = true;
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+        content: Text('Lecture reprise sur ${relay.account.displayName}.'),
+      ));
+      Navigator.of(context).pushReplacement(MaterialPageRoute(
+        settings: const RouteSettings(name: SearchRouteObserver.playerRouteName),
+        builder: (_) => PlayerScreen(media: relay.media,
+          inheritedPreferences: preferences, initialVideoFit: _videoFit,
+          seasonNumber: widget.seasonNumber, resumeAtSeconds: position,
+          startPaused: paused, relayAttempts: {...widget.relayAttempts, source: DateTime.now()}),
+      ));
+    } on Object catch (error) {
+      debugPrint('Player relay unavailable: $error');
+      if (mounted && !_progressFlushed) {
+        try {
+          await auth.switchServer(source, synchronize: false);
+        } on Object catch (restoreError) {
+          debugPrint('Player source restoration failed: $restoreError');
+        }
+        _isLeaving = false;
+      }
+    } finally { _findingRelay = false; }
   }
 
   /// Opens this same media again, from scratch.
@@ -1376,6 +1479,7 @@ class _PlayerScreenState extends State<PlayerScreen> {
     _popupFocusScope.dispose();
     _controlsTimer?.cancel();
     _startupWatchdog?.cancel();
+    _relayTimer?.cancel();
     _zoomHintTimer?.cancel();
     _seekHintTimer?.cancel();
     if (!_progressFlushed && _apiClient != null) {
@@ -2051,6 +2155,7 @@ class _PlayerScreenState extends State<PlayerScreen> {
   }
 
   void _togglePlayPause() {
+    _wantsPlayback = !_playerController.isPlaying;
     _playerController.togglePlayPause();
     _hideControlsWithDelay();
   }

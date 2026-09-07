@@ -111,6 +111,50 @@ class _ServersScreenState extends State<ServersScreen> {
     if (mounted) setState(() {});
   }
 
+  Future<void> _link(ServerAccount account) async {
+    final api = context.read<ApiClient>();
+    final linked =
+        api.servers.linkedAccounts(account.id).map((a) => a.id).toSet();
+    final candidates =
+        api.servers.accounts.where((a) => !linked.contains(a.id)).toList();
+    final chosen = await showDialog<String>(
+      context: context,
+      builder: (ctx) => SimpleDialog(
+        title: Text('Lier ${account.username} à un compte'),
+        children: [
+          const Padding(
+            padding: EdgeInsets.fromLTRB(24, 0, 24, 16),
+            child: Text(
+                'Choisissez un autre de vos comptes. Les comptes liés partagent leur historique de lecture et prennent le relais si un serveur est indisponible et possède le même média.'),
+          ),
+          for (final other in candidates)
+            SimpleDialogOption(
+              onPressed: () => Navigator.of(ctx).pop(other.id),
+              child: Padding(
+                padding: const EdgeInsets.symmetric(vertical: 8),
+                child: Text('${other.username} · ${other.displayName}'),
+              ),
+            ),
+          SimpleDialogOption(
+            onPressed: () => Navigator.of(ctx).pop(),
+            child: const Text('Annuler'),
+          ),
+        ],
+      ),
+    );
+    if (chosen == null || !mounted) return;
+    await api.servers.linkAccounts(account.id, chosen);
+    unawaited(api.synchronizeLinkedProgress());
+    if (mounted) setState(() {});
+    _toast('Comptes liés. La progression se synchronise automatiquement.');
+  }
+
+  Future<void> _unlink(ServerAccount account) async {
+    await context.read<ApiClient>().servers.unlinkAccount(account.id);
+    if (mounted) setState(() {});
+    _toast('Compte dissocié. L’historique déjà partagé est conservé.');
+  }
+
   Future<void> _forget(ServerAccount account) async {
     final confirmed = await showDialog<bool>(
       context: context,
@@ -159,11 +203,11 @@ class _ServersScreenState extends State<ServersScreen> {
       body: ListView(
         padding: const EdgeInsets.fromLTRB(20, 12, 20, 40),
         children: [
-          Text(
-            'Un compte par serveur : ils s’ignorent entre eux. Cet appareil les '
-            'garde côte à côte et n’en utilise qu’un à la fois.',
+          const Text(
+            'Sur cet appareil, liez vos comptes, même avec des noms différents, pour partager votre '
+            'progression et reprendre automatiquement sur un serveur disponible.',
             style:
-                const TextStyle(color: AppColors.textSecondary, fontSize: 13),
+                TextStyle(color: AppColors.textSecondary, fontSize: 13),
           ),
           const SizedBox(height: 20),
           for (final account in accounts)
@@ -173,6 +217,21 @@ class _ServersScreenState extends State<ServersScreen> {
               busy: auth.isLoading,
               onSelect: () => _switchTo(account),
               onRename: () => _rename(account),
+              linked: context
+                  .read<ApiClient>()
+                  .servers
+                  .linkedAccounts(account.id)
+                  .where((a) => a.id != account.id)
+                  .toList(),
+              onLink: context
+                          .read<ApiClient>()
+                          .servers
+                          .linkedAccounts(account.id)
+                          .length <
+                      accounts.length
+                  ? () => _link(account)
+                  : null,
+              onUnlink: () => _unlink(account),
               onForget: accounts.length == 1 ? null : () => _forget(account),
             ),
           if (pending.isNotEmpty) ...[
@@ -240,6 +299,9 @@ class _ServerTile extends StatelessWidget {
     required this.busy,
     required this.onSelect,
     required this.onRename,
+    required this.linked,
+    required this.onLink,
+    required this.onUnlink,
     required this.onForget,
   });
 
@@ -248,6 +310,9 @@ class _ServerTile extends StatelessWidget {
   final bool busy;
   final VoidCallback onSelect;
   final VoidCallback onRename;
+  final List<ServerAccount> linked;
+  final VoidCallback? onLink;
+  final VoidCallback onUnlink;
   final VoidCallback? onForget;
 
   @override
@@ -282,14 +347,19 @@ class _ServerTile extends StatelessWidget {
           ),
           title: Text(account.displayName),
           subtitle: Text(
-            isActive
-                ? '${account.username} · serveur actif'
-                : '${account.username} · ${account.prettyHost}',
+            '${account.username} · ${isActive ? 'serveur actif' : account.prettyHost}'
+            '${linked.isEmpty ? '' : '\nLié à ${linked.map((a) => '${a.username} sur ${a.displayName}').join(', ')}'}',
             style: const TextStyle(color: AppColors.textSecondary),
           ),
           trailing: PopupMenuButton<String>(
+            tooltip: 'Options du compte ${account.username}',
+            enabled: !busy,
             onSelected: (value) {
               switch (value) {
+                case 'link':
+                  onLink?.call();
+                case 'unlink':
+                  onUnlink();
                 case 'rename':
                   onRename();
                 case 'forget':
@@ -297,6 +367,12 @@ class _ServerTile extends StatelessWidget {
               }
             },
             itemBuilder: (_) => [
+              if (onLink != null)
+                const PopupMenuItem(
+                    value: 'link', child: Text('Lier un compte')),
+              if (linked.isNotEmpty)
+                const PopupMenuItem(
+                    value: 'unlink', child: Text('Dissocier ce compte')),
               const PopupMenuItem(value: 'rename', child: Text('Renommer')),
               if (onForget != null)
                 const PopupMenuItem(

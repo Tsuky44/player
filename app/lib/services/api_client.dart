@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:convert';
 
 import 'package:dio/dio.dart';
@@ -5,7 +6,10 @@ import 'package:shared_preferences/shared_preferences.dart';
 import '../models/app_download.dart';
 import '../models/device_pairing.dart';
 import '../models/server_account.dart';
+import 'playback_capabilities.dart';
 import 'server_registry.dart';
+import 'progress_sync.dart';
+import 'media_failover.dart';
 import '../models/media_request.dart';
 import '../utils/app_platform.dart';
 import '../models/request_catalog_filters.dart';
@@ -34,6 +38,16 @@ class HlsSession {
   /// burnable, so the client should trust this rather than its own request.
   final int burnedSubtitle;
 
+  /// `copy` when the server is repackaging the picture untouched, `encode` when
+  /// it is re-encoding it. Empty from a server that predates the field.
+  ///
+  /// Worth surfacing rather than guessing: "Direct Stream" and "why is the
+  /// server's CPU at 400%" are the same question, and only the server knows.
+  final String videoMode;
+
+  /// Why a copy was refused, in the server's own words. Empty on the copy path.
+  final String videoReason;
+
   HlsSession({
     required this.sessionId,
     required this.masterUrl,
@@ -41,7 +55,12 @@ class HlsSession {
     required this.startOffset,
     this.audioMap = const [],
     this.burnedSubtitle = -1,
+    this.videoMode = '',
+    this.videoReason = '',
   });
+
+  /// True when the picture is reaching the viewer untouched.
+  bool get isDirectStream => videoMode == 'copy';
 
   factory HlsSession.fromJson(Map<String, dynamic> json) {
     return HlsSession(
@@ -54,6 +73,8 @@ class HlsSession {
               .toList() ??
           const [],
       burnedSubtitle: (json['burned_subtitle'] as num?)?.toInt() ?? -1,
+      videoMode: json['video_mode'] as String? ?? '',
+      videoReason: json['video_reason'] as String? ?? '',
     );
   }
 }
@@ -86,7 +107,11 @@ class ApiClient {
   /// Les serveurs auxquels cet appareil a un compte. Le client ne détient plus
   /// « une » adresse et « un » jeton : il applique ceux du compte actif, et
   /// changer de serveur revient à en désigner un autre. Voir ADR-0013.
-  final ServerRegistry servers = ServerRegistry();
+  final ServerRegistry servers;
+  late final MediaFailover mediaFailover = MediaFailover(servers);
+  String? _pinnedAccountId;
+  String? get accountId => _pinnedAccountId ?? servers.active?.id;
+  late final ProgressSync _progressSync = ProgressSync(servers);
 
   String? _baseUrl;
   String? _token;
@@ -107,7 +132,7 @@ class ApiClient {
     await _loadConfig();
   }
 
-  ApiClient() {
+  ApiClient({ServerRegistry? registry}) : servers = registry ?? ServerRegistry() {
     _dio.interceptors
         .add(InterceptorsWrapper(onRequest: (options, handler) async {
       if (!_configLoaded) {
@@ -127,7 +152,7 @@ class ApiClient {
 
       return handler.next(options);
     }, onResponse: (response, handler) {
-      onConnectionSuccess?.call();
+      if (_pinnedAccountId == null || _pinnedAccountId == servers.active?.id) onConnectionSuccess?.call();
       return handler.next(response);
     }, onError: (DioException e, handler) {
       // Global error logging
@@ -136,13 +161,34 @@ class ApiClient {
       switch (e.type) {
         case DioExceptionType.connectionError:
         case DioExceptionType.connectionTimeout:
-          onConnectionError?.call();
+          if (_pinnedAccountId == null || _pinnedAccountId == servers.active?.id) onConnectionError?.call();
         default:
           // Une réponse, même 500, prouve qu'il y a quelqu'un en face.
-          if (e.response != null) onConnectionSuccess?.call();
+          if (e.response != null) if (_pinnedAccountId == null || _pinnedAccountId == servers.active?.id) onConnectionSuccess?.call();
       }
       return handler.next(e);
     }));
+  }
+
+  /// A running player keeps its source even if the app selects another server.
+  Future<ApiClient> pinToAccount(String id) async {
+    final account = servers.accountById(id);
+    if (account == null) throw StateError('Compte indisponible');
+    final token = await servers.tokenFor(id);
+    final pinned = ApiClient(registry: servers);
+    pinned._pinnedAccountId = id;
+    pinned._baseUrl = account.url;
+    pinned._token = token;
+    pinned._configLoaded = true;
+    pinned._serverChosen = true;
+    return pinned;
+  }
+
+  Future<void> synchronizeLinkedProgress() async {
+    for (final account in servers.accounts) {
+      unawaited(mediaFailover.refreshIdentities(account.id));
+    }
+    await _progressSync.synchronize(force: true);
   }
 
   // Get current active base URL
@@ -215,6 +261,10 @@ class ApiClient {
         // Bitmap subtitles have no out-of-band form, so the transcoder paints
         // the chosen one into the video. -1 means none.
         "burnsub": burnSubtitleIndex,
+        // What this device can decode and play back. Without it the server
+        // assumes the weakest client it has ever had to serve — H.264 8-bit and
+        // stereo AAC — and re-encodes a file this one could have taken as it is.
+        ...PlaybackCapabilitiesResolver.current.toQueryParameters(),
       },
     );
     stopwatch.stop();
@@ -226,6 +276,8 @@ class ApiClient {
     print("ApiClient: startHlsSession took ${stopwatch.elapsedMilliseconds}ms "
         "for media $mediaId quality $quality audio $audioIndex "
         "requestedStart=${startSeconds}s confirmedStart=${session.startOffset}s "
+        "video=${session.videoMode}"
+        "${session.videoReason.isEmpty ? '' : ' (${session.videoReason})'} "
         "session=${session.sessionId}");
     return session;
   }
@@ -340,8 +392,9 @@ class ApiClient {
   }
 
   /// Bascule sur un compte déjà enregistré. Rend faux quand il a disparu.
-  Future<bool> activateAccount(String id) async {
+  Future<bool> activateAccount(String id, {bool synchronize = true}) async {
     await servers.load();
+    if (synchronize) await _progressSync.synchronize(force: true);
     if (!await servers.activate(id)) return false;
     await _applyActiveAccount();
     final active = servers.active;
@@ -831,11 +884,15 @@ class ApiClient {
   }
 
   Future<HomeResponse> getHome() async {
+    final id = accountId;
+    if (id != null) unawaited(mediaFailover.refreshIdentities(id));
+    await _progressSync.synchronize();
     final response = await _dio.get("/api/home");
     return HomeResponse.fromJson(response.data as Map<String, dynamic>);
   }
 
   Future<List<HomeMediaItem>> getMovies() async {
+    await _progressSync.synchronize();
     final response = await _dio.get("/api/movies");
     return (response.data as List<dynamic>)
         .map((e) => HomeMediaItem.fromJson(e as Map<String, dynamic>))
@@ -857,6 +914,7 @@ class ApiClient {
   }
 
   Future<List<HomeMediaItem>> getSeasonEpisodes(int seasonId) async {
+    await _progressSync.synchronize();
     final response = await _dio.get("/api/seasons/$seasonId/episodes");
     return (response.data as List<dynamic>)
         .map((e) => HomeMediaItem.fromJson(e as Map<String, dynamic>))
@@ -864,6 +922,7 @@ class ApiClient {
   }
 
   Future<List<HomeMediaItem>> getShowSeasonEpisodes(int showId, int seasonNumber) async {
+    await _progressSync.synchronize();
     final response =
         await _dio.get("/api/shows/$showId/seasons/$seasonNumber/episodes");
     return (response.data as List<dynamic>)
@@ -872,6 +931,7 @@ class ApiClient {
   }
 
   Future<ShowResumeResponse> getShowResumeEpisode(int showId) async {
+    await _progressSync.synchronize();
     final response = await _dio.get("/api/shows/$showId/resume");
     return ShowResumeResponse.fromJson(response.data as Map<String, dynamic>);
   }
@@ -879,6 +939,7 @@ class ApiClient {
   // ==================== PROGRESSION HEARTBEAT ====================
 
   Future<Map<String, dynamic>> getProgress(int mediaId) async {
+    await _progressSync.synchronize();
     final response = await _dio.get("/api/progress", queryParameters: {
       "media_id": mediaId,
     });
@@ -896,6 +957,7 @@ class ApiClient {
     required bool isFinished,
     DateTime? clientUpdatedAt,
   }) async {
+    final sourceAccountId = accountId;
     final response = await _dio.post("/api/progress", data: {
       "media_id": mediaId,
       "current_position_seconds": currentPositionSeconds,
@@ -905,14 +967,19 @@ class ApiClient {
         "client_updated_at": clientUpdatedAt.toUtc().toIso8601String(),
     });
 
+    unawaited(_progressSync.synchronize(
+      force: true, sourceAccountId: sourceAccountId, mediaId: mediaId));
     return response.data["is_finished"] as bool? ?? isFinished;
   }
 
   Future<Map<String, dynamic>> setMediaWatched(
       int mediaId, bool watched) async {
+    final sourceAccountId = accountId;
     final response = await _dio.post("/api/media/$mediaId/watched", data: {
       "watched": watched,
     });
+    unawaited(_progressSync.synchronize(
+      force: true, sourceAccountId: sourceAccountId, mediaId: mediaId));
     return response.data as Map<String, dynamic>;
   }
 
@@ -948,13 +1015,13 @@ class ApiClient {
   /// La fiche sous sa forme brute, telle que le téléchargement hors ligne la
   /// range sur le disque. Voir [getMediaTracksJson] pour le même raisonnement.
   Future<Map<String, dynamic>> getMediaDetailsJson(int mediaId) async {
+    await _progressSync.synchronize();
     final response = await _dio.get("/api/media/$mediaId/details");
     return response.data as Map<String, dynamic>;
   }
 
   Future<MediaDetails> getMediaDetails(int mediaId) async {
-    final response = await _dio.get("/api/media/$mediaId/details");
-    return MediaDetails.fromJson(response.data as Map<String, dynamic>);
+    return MediaDetails.fromJson(await getMediaDetailsJson(mediaId));
   }
 
   /// Fetches an actor/crew profile with filmography (TMDB person id).

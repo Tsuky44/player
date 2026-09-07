@@ -6,6 +6,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 
 import 'package:onyx/models/server_account.dart';
 import 'package:onyx/services/server_registry.dart';
+import 'package:onyx/services/api_client.dart';
 
 /// Le carnet de serveurs : ce qui permet à un même appareil de tenir plusieurs
 /// comptes et d'en changer sans en perdre un. Voir ADR-0013.
@@ -31,9 +32,8 @@ void main() {
         'http://192.168.1.50:8080/',
         '  http://192.168.1.50:8080  ',
       ];
-      final ids = written
-          .map((url) => ServerAccount.idFor(url, 'mathis'))
-          .toSet();
+      final ids =
+          written.map((url) => ServerAccount.idFor(url, 'mathis')).toSet();
       expect(ids, hasLength(1),
           reason: 'sinon « ajouter un serveur » en crée un par frappe près');
     });
@@ -116,7 +116,8 @@ void main() {
     await registry.forget(paul.id);
 
     expect(registry.active?.id, maison.id,
-        reason: 'se déconnecter d’un serveur n’est pas se déconnecter de l’app');
+        reason:
+            'se déconnecter d’un serveur n’est pas se déconnecter de l’app');
     expect(await registry.tokenFor(paul.id), isNull,
         reason: 'un compte retiré ne laisse pas son jeton derrière lui');
   });
@@ -132,7 +133,8 @@ void main() {
     );
     await registry.writeProfile(before.id, '{"username":"mathis"}');
 
-    final after = await registry.updateUrl(before.id, 'https://onyx.exemple.fr');
+    final after =
+        await registry.updateUrl(before.id, 'https://onyx.exemple.fr');
 
     expect(registry.accounts, hasLength(1));
     expect(after!.url, 'https://onyx.exemple.fr');
@@ -162,7 +164,8 @@ void main() {
 
     final prefs = await SharedPreferences.getInstance();
     expect(prefs.getString('auth_token'), isNull,
-        reason: 'un jeton que plus personne ne lit est un identifiant qui traîne');
+        reason:
+            'un jeton que plus personne ne lit est un identifiant qui traîne');
   });
 
   test('le carnet survit à un redémarrage', () async {
@@ -188,7 +191,8 @@ void main() {
     expect(second.active?.id, maison.id);
   });
 
-  test('une demande en attente survit au redémarrage puis disparaît une fois '
+  test(
+      'une demande en attente survit au redémarrage puis disparaît une fois '
       'satisfaite', () async {
     final registry = ServerRegistry();
     await registry.load();
@@ -256,12 +260,53 @@ void main() {
     );
 
     final prefs = await SharedPreferences.getInstance();
-    final raw = jsonDecode(prefs.getString('onyx_servers_v1')!)
-        as Map<String, dynamic>;
+    final raw =
+        jsonDecode(prefs.getString('onyx_servers_v1')!) as Map<String, dynamic>;
     expect(raw['accounts'], hasLength(1));
     expect((raw['accounts'] as List).first['label'], 'À la maison');
     expect(raw['active'], isNotNull);
     // Le jeton n'a rien à faire dans le carnet lui-même.
     expect(prefs.getString('onyx_servers_v1'), isNot(contains('"a"')));
+  });
+  test('explicit links persist, merge and survive an address change', () async {
+    final registry = ServerRegistry();
+    await registry.load();
+    final a = await registry.remember(
+        url: 'http://a.local', username: 'alice', token: 'a');
+    final b = await registry.remember(
+        url: 'http://b.local', username: 'bob', token: 'b');
+    final c = await registry.remember(
+        url: 'http://c.local', username: 'charlie', token: 'c');
+    expect(registry.linkedAccounts(a.id).map((a) => a.id), [a.id]);
+    await registry.linkAccounts(a.id, b.id);
+    await registry.linkAccounts(b.id, c.id);
+    final restored = ServerRegistry();
+    await restored.load();
+    expect(restored.linkedAccounts(c.id), hasLength(3));
+    final moved = await restored.updateUrl(a.id, 'http://a-new.local');
+    expect(restored.linkedAccounts(b.id).map((a) => a.id), contains(moved!.id));
+    expect(
+        restored.linkedAccounts(b.id).map((a) => a.id), isNot(contains(a.id)));
+    await restored.unlinkAccount(b.id);
+    expect(restored.linkedAccounts(b.id), hasLength(1));
+    expect(restored.linkedAccounts(c.id), hasLength(2));
+    await restored.forget(moved.id);
+    final last = ServerRegistry();
+    await last.load();
+    expect(last.linkedAccounts(c.id), hasLength(1));
+  });
+  test('a player API stays pinned when the active account changes', () async {
+    final registry = ServerRegistry();
+    await registry.load();
+    final a = await registry.remember(
+        url: 'http://a.local', username: 'alice', token: 'a');
+    final b = await registry.remember(
+        url: 'http://b.local', username: 'bob', token: 'b');
+    final api = ApiClient(registry: registry);
+    final player = await api.pinToAccount(a.id);
+    await registry.activate(b.id);
+    expect(player.accountId, a.id);
+    expect(player.getStreamUrl(7), 'http://a.local/stream?media_id=7');
+    expect(player.hasSavedToken, isTrue);
   });
 }
