@@ -26,6 +26,7 @@ import 'tv/tv_focus_guard.dart';
 import 'tv/tv_mode.dart';
 import 'tv/tv_pairing_link.dart';
 import 'screens/player/display_frame_rate.dart';
+import 'services/picture_in_picture.dart';
 import 'screens/player/hardware_decoding.dart';
 import 'screens/player/playback_profile.dart';
 import 'screens/player/player_engine.dart';
@@ -79,6 +80,9 @@ void main() async {
   await PlaybackProfiles.initialize(isTv: TvMode.detected);
   await HardwareDecoding.initialize();
   await DisplayFrameRate.initialize();
+  // Whether this device can carry on with the film in a corner of the home
+  // screen. Asked once: the answer is a property of the hardware.
+  await PictureInPicture.initialize();
 
   // A QR scanned on the TV opens this app with ?tv=CODE. Read it now, act on it
   // once the shell is up and there is a session to approve with.
@@ -116,12 +120,31 @@ void main() async {
   final authProvider = AuthProvider(apiClient);
   final reachability = ServerReachability(apiClient);
 
+  // Un même appareil peut tenir plusieurs serveurs (ADR-0013). Ce qui est en
+  // mémoire appartient à celui qu'on quitte — identifiants de médias compris,
+  // qui sont propres à un serveur — donc tout est vidé avant que l'autre
+  // réponde. Le câblage est ici plutôt que dans [AuthProvider] : savoir qui est
+  // connecté n'oblige pas à connaître la bibliothèque ni les téléchargements.
+  final homeProvider = HomeProvider(apiClient);
+  final libraryProvider = LibraryProvider(apiClient);
+  final mediaRequestsProvider = MediaRequestsProvider(apiClient);
+  authProvider.onServerChanged = () {
+    homeProvider.reset();
+    libraryProvider.reset();
+    mediaRequestsProvider.reset();
+    unawaited(downloads.onServerChanged());
+  };
+
   // Le retour du serveur est le seul moment qui compte pour les deux : la
   // session en cache redevient une vraie session, et ce qui a été regardé hors
   // ligne part enfin vers le serveur.
   reachability.addRestoredListener(() {
     unawaited(authProvider.reconnect());
     unawaited(downloads.onServerReachable());
+    // Une demande d'accès partie ailleurs a pu être acceptée pendant qu'on
+    // était hors ligne : le serveur retrouvé est le bon moment pour aller
+    // chercher le verdict.
+    unawaited(authProvider.refreshAccessRequests());
   });
   reachability.start();
 
@@ -132,9 +155,10 @@ void main() async {
         ChangeNotifierProvider<AuthProvider>.value(value: authProvider),
         ChangeNotifierProvider<DownloadManager>.value(value: downloads),
         ChangeNotifierProvider<ServerReachability>.value(value: reachability),
-        ChangeNotifierProvider(create: (_) => HomeProvider(apiClient)),
-        ChangeNotifierProvider(create: (_) => LibraryProvider(apiClient)),
-        ChangeNotifierProvider(create: (_) => MediaRequestsProvider(apiClient)),
+        ChangeNotifierProvider<HomeProvider>.value(value: homeProvider),
+        ChangeNotifierProvider<LibraryProvider>.value(value: libraryProvider),
+        ChangeNotifierProvider<MediaRequestsProvider>.value(
+            value: mediaRequestsProvider),
         ChangeNotifierProxyProvider<AuthProvider, PlayerLayoutProvider>(
           create: (_) => PlayerLayoutProvider(LayoutStorage(), apiClient),
           update: (_, auth, previous) {
@@ -157,6 +181,9 @@ void main() async {
   // because the point is to use idle time, not to compete for it.
   WidgetsBinding.instance.addPostFrameCallback((_) {
     Future.delayed(const Duration(seconds: 3), PlayerEnginePool.prewarm);
+    // Une demande d'accès approuvée pendant que l'app était fermée n'attend que
+    // d'être relevée : le serveur garde la session prête pendant une semaine.
+    unawaited(authProvider.refreshAccessRequests());
   });
 }
 

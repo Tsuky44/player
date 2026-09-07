@@ -29,6 +29,23 @@ class MediaRequestsProvider extends ChangeNotifier {
   bool get hasMore => _page < _totalPages;
   String? get errorMessage => _errorMessage;
 
+  /// Vide le catalogue de demandes du serveur précédent, chargement en cours
+  /// compris — d'où l'incrément de génération, qui fait retomber dans le vide
+  /// la réponse partie avant la bascule. Voir [HomeProvider.reset].
+  void reset() {
+    _loadGeneration++;
+    _items = const [];
+    _type = 'all';
+    _query = '';
+    _filters = RequestCatalogFilters.defaults;
+    _page = 0;
+    _totalPages = 1;
+    _isLoading = false;
+    _isLoadingMore = false;
+    _errorMessage = null;
+    notifyListeners();
+  }
+
   Future<void> load({
     String? type,
     String? query,

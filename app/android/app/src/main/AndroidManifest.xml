@@ -35,6 +35,13 @@
         android:usesCleartextTraffic="true"
         android:banner="@drawable/tv_banner"
         android:icon="@mipmap/ic_launcher">
+        <!-- `supportsPictureInPicture` and `resizeableActivity` are both
+             required for the film to go on in a corner of the home screen: an
+             activity that is not resizeable cannot be put in the little
+             window. The `screenSize|screenLayout|smallestScreenSize` in
+             `configChanges` below are what stop the activity from being
+             recreated when it is resized into it — which would restart
+             playback rather than continue it. -->
         <activity
             android:name=".MainActivity"
             android:exported="true"
@@ -43,6 +50,8 @@
             android:theme="@style/LaunchTheme"
             android:configChanges="orientation|keyboardHidden|keyboard|screenSize|smallestScreenSize|locale|layoutDirection|fontScale|screenLayout|density|uiMode"
             android:hardwareAccelerated="true"
+            android:supportsPictureInPicture="true"
+            android:resizeableActivity="true"
             android:windowSoftInputMode="adjustResize">
             <!-- Specifies an Android theme to apply to this Activity as soon as
                  the Android process has started. This theme is visible to the user

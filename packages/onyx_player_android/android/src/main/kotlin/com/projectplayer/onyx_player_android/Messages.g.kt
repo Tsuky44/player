@@ -244,8 +244,18 @@ enum class OnyxPlayerErrorKind(val raw: Int) {
 enum class OnyxVideoFit(val raw: Int) {
   /** L'image entière, avec des bandes s'il le faut. */
   CONTAIN(0),
+  /**
+   * Toute la hauteur, quitte à ce que les côtés sortent du cadre.
+   *
+   * C'est ce que « taille d'origine » veut dire sur un téléphone tenu à
+   * l'horizontale : la framing d'origine y arrive sous forme de bandes noires
+   * en haut et en bas dès que le film est plus large que l'écran, ce qui est
+   * le cas de la plupart. Sur un écran qu'on tient, les bandes valent moins
+   * que l'image.
+   */
+  FILL_HEIGHT(1),
   /** La surface entière, en rognant ce qui dépasse. */
-  COVER(1);
+  COVER(2);
 
   companion object {
     fun ofRaw(raw: Int): OnyxVideoFit? {

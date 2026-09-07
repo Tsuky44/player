@@ -46,6 +46,29 @@ class HomeProvider extends ChangeNotifier {
     super.dispose();
   }
 
+  /// Vide ce qui appartenait au serveur précédent.
+  ///
+  /// Rien de ce qui est ici n'a de sens ailleurs : les identifiants de médias
+  /// sont propres à un serveur, et un scan en cours l'était sur celui qu'on
+  /// vient de quitter. Sans cette remise à zéro, changer de serveur afficherait
+  /// la bibliothèque de l'autre le temps du premier chargement — avec des
+  /// affiches pointant vers une adresse qui n'est plus la bonne.
+  void reset() {
+    _statusPollTimer?.cancel();
+    _statusPollTimer = null;
+    _homeData = null;
+    _isLoading = false;
+    _isScanning = false;
+    _isBackfillingMetadata = false;
+    _isRedetectingAll = false;
+    _redetectAllProgress = RedetectAllProgress();
+    _isExtractingSubtitles = false;
+    _subtitleStats = SubtitleExtractionStats();
+    _errorMessage = null;
+    _completionMessage = null;
+    notifyListeners();
+  }
+
   Future<void> loadHome({bool silent = false}) async {
     if (!silent) {
       _isLoading = true;

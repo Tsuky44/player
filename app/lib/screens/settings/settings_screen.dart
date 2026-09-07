@@ -19,8 +19,10 @@ import '../../utils/app_platform.dart';
 import '../../utils/external_url.dart';
 import '../player_studio/player_studio_screen.dart';
 import '../player_studio/widgets/player_layouts_sheet.dart';
+import 'access_requests_section.dart';
 import 'exoplayer_probe_screen.dart';
 import 'playback_preferences_screen.dart';
+import 'servers_screen.dart';
 import 'user_admin_sections.dart';
 
 class SettingsScreen extends StatefulWidget {
@@ -341,7 +343,11 @@ class _SettingsScreenState extends State<SettingsScreen> {
       _success = null;
     });
     try {
-      await api.setConnection(url);
+      // Le même serveur se joint parfois autrement — l'IP locale hier, un nom
+      // de domaine aujourd'hui. Déplacer le compte plutôt que repointer le
+      // client garde sa session : c'est le serveur qui la connaît, pas
+      // l'adresse. Voir ADR-0013.
+      await api.updateActiveServerUrl(url);
       if (!mounted) return;
       setState(() {
         _saving = false;
@@ -513,10 +519,21 @@ class _SettingsScreenState extends State<SettingsScreen> {
                     _Section(
                       title: 'Connexion',
                       subtitle:
-                          'Adresse du serveur Onyx utilisée par cette app.',
+                          'Adresse du serveur Onyx actif, et les autres serveurs '
+                          'de cet appareil.',
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.stretch,
                         children: [
+                          _NavTile(
+                            icon: Icons.swap_horiz_rounded,
+                            title: 'Serveurs',
+                            subtitle: _serversSubtitle(auth),
+                            onTap: () => Navigator.of(context).push(
+                              MaterialPageRoute(
+                                  builder: (_) => const ServersScreen()),
+                            ),
+                          ),
+                          const SizedBox(height: 12),
                           TvDeferredKeyboard(
                             builder: (context, focusNode, canRequestFocus) => TextField(
                               focusNode: focusNode,
@@ -843,6 +860,14 @@ class _SettingsScreenState extends State<SettingsScreen> {
                     // and sees only their own links.
                     if (perms.inviteUsers || perms.manageUsers)
                       const _Section(
+                        title: 'Demandes d’accès',
+                        subtitle:
+                            'Les personnes qui demandent un compte sur ce serveur. '
+                            'Accepter crée le compte et les connecte aussitôt.',
+                        child: AccessRequestsSection(),
+                      ),
+                    if (perms.inviteUsers || perms.manageUsers)
+                      const _Section(
                         title: 'Invitations',
                         subtitle:
                             'Liens à usage unique, valables 7 jours. Les droits accordés sont fixés par un administrateur.',
@@ -1057,6 +1082,16 @@ class _SettingsScreenState extends State<SettingsScreen> {
     final progress = _uploadProgress;
     if (progress == null) return 'Envoi en cours…';
     return 'Envoi ${(progress * 100).clamp(0, 100).toStringAsFixed(0)} %';
+  }
+
+  /// Ce que la ligne « Serveurs » annonce : le serveur actif, et combien
+  /// d'autres attendent derrière.
+  String _serversSubtitle(AuthProvider auth) {
+    final active = auth.activeServer;
+    final others = auth.servers.length - 1;
+    final current = active?.displayName ?? 'Aucun serveur enregistré';
+    if (others <= 0) return current;
+    return '$current · $others autre${others > 1 ? 's' : ''}';
   }
 
   String _downloadSubtitle(AppDownload download) {

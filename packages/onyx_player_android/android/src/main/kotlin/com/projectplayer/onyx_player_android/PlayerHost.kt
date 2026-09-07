@@ -203,7 +203,7 @@ internal class PlayerInstance(
     /// seul.
     private fun applyFit() {
         val f = frame ?: return
-        f.setCover(fit == OnyxVideoFit.COVER)
+        f.setFit(fit)
         val size = player?.videoSize ?: return
         val aspect = VideoFraming.aspectOf(
             size.width,

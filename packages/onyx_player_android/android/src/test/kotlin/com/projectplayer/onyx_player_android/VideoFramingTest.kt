@@ -41,7 +41,7 @@ class VideoFramingTest {
         // Un film large sur un écran moins large : des bandes en haut et en
         // bas, et rien qui dépasse.
         val (width, height) = VideoFraming.sizeFor(
-            screenWidth, screenHeight, aspect = 2.39f, cover = false,
+            screenWidth, screenHeight, aspect = 2.39f, fit = OnyxVideoFit.CONTAIN,
         )
         assertEquals(screenWidth, width)
         assertTrue(height < screenHeight, "hauteur obtenue : $height")
@@ -52,7 +52,7 @@ class VideoFramingTest {
         // Le même film, pincé pour remplir : plus de bandes, et ce qui dépasse
         // sort du cadre au lieu d'y être écrasé.
         val (width, height) = VideoFraming.sizeFor(
-            screenWidth, screenHeight, aspect = 2.39f, cover = true,
+            screenWidth, screenHeight, aspect = 2.39f, fit = OnyxVideoFit.COVER,
         )
         assertEquals(screenHeight, height)
         assertTrue(width > screenWidth, "largeur obtenue : $width")
@@ -62,16 +62,46 @@ class VideoFramingTest {
     fun `le rapport de l'image est tenu dans les deux cadrages`() {
         // La déformation est le seul défaut qu'on ne peut pas rattraper à
         // l'œil : les deux cadrages doivent rendre le rapport demandé.
-        for (cover in listOf(false, true)) {
+        for (fit in OnyxVideoFit.entries) {
             val (width, height) = VideoFraming.sizeFor(
-                screenWidth, screenHeight, aspect = 1.85f, cover = cover,
+                screenWidth, screenHeight, aspect = 1.85f, fit = fit,
             )
             val rendered = width.toFloat() / height
             assertTrue(
                 kotlin.math.abs(rendered - 1.85f) < 0.01f,
-                "cover=$cover, rapport rendu : $rendered",
+                "fit=$fit, rapport rendu : $rendered",
             )
         }
+    }
+
+    @Test
+    fun `taille d'origine prend toute la hauteur, meme pour un scope`() {
+        // Le défaut que ce cadrage corrige : sur un téléphone tenu à
+        // l'horizontale, « taille d'origine » posait des bandes noires en haut
+        // et en bas dès que le film était plus large que l'écran — c'est-à-dire
+        // pour la plupart des films.
+        val (width, height) = VideoFraming.sizeFor(
+            screenWidth, screenHeight, aspect = 2.39f,
+            fit = OnyxVideoFit.FILL_HEIGHT,
+        )
+        assertEquals(screenHeight, height)
+        assertTrue(width > screenWidth, "largeur obtenue : $width")
+    }
+
+    @Test
+    fun `pour un film plus etroit que l'ecran, origine et adaptatif coincident`() {
+        // La différence entre les deux ne porte que sur ce qui déborde en
+        // largeur. Une série en 16:9 sur un écran plus large se cadre pareil
+        // dans les deux cas, et c'est ce qui rend le réglage lisible.
+        val contain = VideoFraming.sizeFor(
+            screenWidth, screenHeight, aspect = 1.78f,
+            fit = OnyxVideoFit.CONTAIN,
+        )
+        val fillHeight = VideoFraming.sizeFor(
+            screenWidth, screenHeight, aspect = 1.78f,
+            fit = OnyxVideoFit.FILL_HEIGHT,
+        )
+        assertEquals(contain, fillHeight)
     }
 
     @Test
@@ -80,7 +110,7 @@ class VideoFramingTest {
         // saut au moment où le décodeur annonce enfin sa taille.
         assertEquals(
             screenWidth to screenHeight,
-            VideoFraming.sizeFor(screenWidth, screenHeight, aspect = 0f, cover = false),
+            VideoFraming.sizeFor(screenWidth, screenHeight, aspect = 0f, fit = OnyxVideoFit.CONTAIN),
         )
     }
 
@@ -89,13 +119,13 @@ class VideoFramingTest {
         // Une vidéo verticale sur un écran horizontal : des bandes sur les
         // côtés en adaptatif, un débordement en haut et en bas sinon.
         val contain = VideoFraming.sizeFor(
-            screenWidth, screenHeight, aspect = 0.5625f, cover = false,
+            screenWidth, screenHeight, aspect = 0.5625f, fit = OnyxVideoFit.CONTAIN,
         )
         assertEquals(screenHeight, contain.second)
         assertTrue(contain.first < screenWidth)
 
         val cover = VideoFraming.sizeFor(
-            screenWidth, screenHeight, aspect = 0.5625f, cover = true,
+            screenWidth, screenHeight, aspect = 0.5625f, fit = OnyxVideoFit.COVER,
         )
         assertEquals(screenWidth, cover.first)
         assertTrue(cover.second > screenHeight)

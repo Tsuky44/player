@@ -1,10 +1,11 @@
 import 'dart:convert';
 
 import 'package:dio/dio.dart';
-import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../models/app_download.dart';
 import '../models/device_pairing.dart';
+import '../models/server_account.dart';
+import 'server_registry.dart';
 import '../models/media_request.dart';
 import '../utils/app_platform.dart';
 import '../models/request_catalog_filters.dart';
@@ -81,7 +82,11 @@ class ApiClient {
   static void Function()? onConnectionSuccess;
 
   final Dio _dio = Dio();
-  final _secureStorage = const FlutterSecureStorage();
+
+  /// Les serveurs auxquels cet appareil a un compte. Le client ne détient plus
+  /// « une » adresse et « un » jeton : il applique ceux du compte actif, et
+  /// changer de serveur revient à en désigner un autre. Voir ADR-0013.
+  final ServerRegistry servers = ServerRegistry();
 
   String? _baseUrl;
   String? _token;
@@ -102,40 +107,6 @@ class ApiClient {
     await _loadConfig();
   }
 
-  Future<String?> _readToken() async {
-    final prefs = await SharedPreferences.getInstance();
-    final fromPrefs = prefs.getString('auth_token');
-    if (fromPrefs != null && fromPrefs.isNotEmpty) {
-      return fromPrefs;
-    }
-
-    try {
-      final fromSecure = await _secureStorage.read(key: 'auth_token');
-      if (fromSecure != null && fromSecure.isNotEmpty) {
-        await prefs.setString('auth_token', fromSecure);
-        return fromSecure;
-      }
-    } catch (_) {}
-
-    return null;
-  }
-
-  Future<void> _writeToken(String token) async {
-    final prefs = await SharedPreferences.getInstance();
-    await prefs.setString('auth_token', token);
-    try {
-      await _secureStorage.write(key: 'auth_token', value: token);
-    } catch (_) {}
-  }
-
-  Future<void> _deleteToken() async {
-    final prefs = await SharedPreferences.getInstance();
-    await prefs.remove('auth_token');
-    try {
-      await _secureStorage.delete(key: 'auth_token');
-    } catch (_) {}
-  }
-
   ApiClient() {
     _dio.interceptors
         .add(InterceptorsWrapper(onRequest: (options, handler) async {
@@ -144,15 +115,11 @@ class ApiClient {
       }
       options.baseUrl = _baseUrl ?? _defaultBaseUrl;
 
-      // Inject Authorization Header
+      // Le jeton envoyé est celui du compte actif, et rien d'autre : pointer
+      // le client sur une autre adresse le met à nul plutôt que de présenter
+      // à un serveur la session ouverte sur un autre.
       if (_token != null) {
         options.headers["Authorization"] = "Bearer $_token";
-      } else {
-        final savedToken = await _readToken();
-        if (savedToken != null) {
-          _token = savedToken;
-          options.headers["Authorization"] = "Bearer $_token";
-        }
       }
 
       options.connectTimeout = const Duration(seconds: 10);
@@ -273,49 +240,154 @@ class ApiClient {
     }
   }
 
-  // Set the server connection settings
+  /// Points the client at an address, without claiming an account there.
+  ///
+  /// C'est le chemin de l'écran de connexion : on désigne un serveur avant de
+  /// savoir si on y a un compte. Si l'adresse correspond à un compte déjà
+  /// enregistré, elle le réactive — sinon la session en cours est **laissée
+  /// intacte en mémoire de registre**, mais le jeton cesse d'être envoyé : le
+  /// présenter à un autre serveur reviendrait à lui confier une session qui ne
+  /// le concerne pas.
   Future<void> setConnection(String serverUrl, {String? token}) async {
-    // Normalize URL
-    String formattedUrl = serverUrl.trim();
-    if (!formattedUrl.startsWith("http://") &&
-        !formattedUrl.startsWith("https://")) {
-      formattedUrl = "http://$formattedUrl";
-    }
-    if (formattedUrl.endsWith("/")) {
-      formattedUrl = formattedUrl.substring(0, formattedUrl.length - 1);
+    final formattedUrl = ServerAccount.normalizeUrl(serverUrl);
+
+    await servers.load();
+    final match = servers.accountForUrl(formattedUrl);
+    if (token == null && match != null) {
+      await servers.activate(match.id);
+      await _applyActiveAccount();
+      await _rememberLastAddress(formattedUrl);
+      return;
     }
 
-    final previousUrl = _baseUrl;
     _baseUrl = formattedUrl;
     _serverChosen = true;
-
-    final prefs = await SharedPreferences.getInstance();
-    await prefs.setString("server_url", formattedUrl);
+    await _rememberLastAddress(formattedUrl);
 
     if (token != null) {
       _token = token;
-      await _writeToken(token);
-    } else if (previousUrl != null && previousUrl != formattedUrl) {
+    } else {
       _token = null;
-      await _deleteToken();
     }
+  }
+
+  /// L'adresse retenue pour préremplir l'écran de connexion au prochain
+  /// lancement — un confort d'affichage, pas une session.
+  Future<void> _rememberLastAddress(String url) async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setString("server_url", url);
   }
 
   Future<void> _loadConfig() async {
     final prefs = await SharedPreferences.getInstance();
+    await servers.load();
     final savedUrl = prefs.getString('server_url');
     // On web the page origin *is* the server, so the default is never a guess.
-    _serverChosen = savedUrl != null || AppPlatform.isWeb;
-    _baseUrl = savedUrl ?? _defaultBaseUrl;
+    _serverChosen = savedUrl != null || AppPlatform.isWeb || servers.active != null;
     _savedUsername = prefs.getString('last_username');
-    _token = await _readToken();
     _configLoaded = true;
+
+    final active = servers.active;
+    if (active != null) {
+      _baseUrl = active.url;
+      _token = await servers.tokenFor(active.id);
+      return;
+    }
+    _baseUrl = savedUrl ?? _defaultBaseUrl;
+    _token = null;
   }
 
+  /// Recopie le compte actif du registre dans l'état du client.
+  Future<void> _applyActiveAccount() async {
+    final active = servers.active;
+    if (active == null) {
+      _token = null;
+      return;
+    }
+    _baseUrl = active.url;
+    _serverChosen = true;
+    _token = await servers.tokenFor(active.id);
+  }
+
+  /// Enregistre la session qui vient d'être ouverte et la rend active.
+  ///
+  /// Tout ce qui produit une session passe par ici — mot de passe, appairage
+  /// TV, demande d'accès approuvée — pour qu'il n'y ait qu'un seul endroit où
+  /// un serveur entre dans le carnet.
+  Future<ServerAccount> rememberSession({
+    required String serverUrl,
+    required String username,
+    required String token,
+    int? userId,
+    bool activate = true,
+  }) async {
+    await servers.load();
+    final account = await servers.remember(
+      url: serverUrl,
+      username: username,
+      token: token,
+      userId: userId,
+      activate: activate,
+    );
+    if (servers.active?.id != account.id) return account;
+
+    _baseUrl = account.url;
+    _serverChosen = true;
+    _token = token;
+    await _rememberLastAddress(account.url);
+    await saveLastUsername(username);
+    return account;
+  }
+
+  /// Bascule sur un compte déjà enregistré. Rend faux quand il a disparu.
+  Future<bool> activateAccount(String id) async {
+    await servers.load();
+    if (!await servers.activate(id)) return false;
+    await _applyActiveAccount();
+    final active = servers.active;
+    if (active != null) {
+      await _rememberLastAddress(active.url);
+      await saveLastUsername(active.username);
+    }
+    return true;
+  }
+
+  /// Change l'adresse du compte actif sans toucher à sa session.
+  Future<void> updateActiveServerUrl(String url) async {
+    await servers.load();
+    final active = servers.active;
+    if (active == null) {
+      await setConnection(url);
+      return;
+    }
+    await servers.updateUrl(active.id, url);
+    await _applyActiveAccount();
+    await _rememberLastAddress(_baseUrl ?? url);
+  }
+
+  /// Retire un compte du carnet et applique celui qui prend sa place.
+  ///
+  /// Passe par ici plutôt que par le registre directement : sans quoi le jeton
+  /// du compte retiré resterait en mémoire du client, prêt à repartir dans une
+  /// requête qui ne le concerne plus.
+  Future<void> forgetAccount(String id) async {
+    await servers.load();
+    await servers.forget(id);
+    await _applyActiveAccount();
+  }
+
+  /// Ferme la session du compte actif **sur cet appareil** et passe au suivant
+  /// s'il y en a un. C'est ce qui fait qu'une déconnexion d'un serveur ne
+  /// renvoie pas à l'écran de connexion tant qu'un autre compte tient.
   Future<void> clearAuth() async {
-    _token = null;
-    await _deleteToken();
-    await clearCachedProfile();
+    await servers.load();
+    final active = servers.active;
+    if (active == null) {
+      _token = null;
+      return;
+    }
+    await servers.forget(active.id);
+    await _applyActiveAccount();
   }
 
   // ==================== PROFIL EN CACHE ====================
@@ -327,17 +399,22 @@ class ApiClient {
   // identité, les mêmes droits, jusqu'à ce que le serveur puisse confirmer ou
   // démentir.
 
+  // Un profil **par compte** : hors ligne, l'app doit rouvrir l'identité du
+  // serveur actif, pas celle du dernier auquel on s'est connecté.
+
   Future<void> cacheProfile(User user) async {
     try {
-      final prefs = await SharedPreferences.getInstance();
-      await prefs.setString('cached_profile', jsonEncode(user.toJson()));
+      final active = servers.active;
+      if (active == null) return;
+      await servers.writeProfile(active.id, jsonEncode(user.toJson()));
     } catch (_) {}
   }
 
   Future<User?> readCachedProfile() async {
     try {
-      final prefs = await SharedPreferences.getInstance();
-      final raw = prefs.getString('cached_profile');
+      final active = servers.active;
+      if (active == null) return null;
+      final raw = await servers.readProfile(active.id);
       if (raw == null || raw.isEmpty) return null;
       return User.fromJson(jsonDecode(raw) as Map<String, dynamic>);
     } catch (_) {
@@ -347,8 +424,9 @@ class ApiClient {
 
   Future<void> clearCachedProfile() async {
     try {
-      final prefs = await SharedPreferences.getInstance();
-      await prefs.remove('cached_profile');
+      final active = servers.active;
+      if (active == null) return;
+      await servers.clearProfile(active.id);
     } catch (_) {}
   }
 
@@ -441,8 +519,17 @@ class ApiClient {
 
   /// Adopts a session minted elsewhere — the pairing approval, in practice.
   /// Skips the login call entirely: there is no password to present.
-  Future<void> adoptSession(String token) async {
-    await setConnection(baseUrl, token: token);
+  Future<void> adoptSession(
+    String token, {
+    required String username,
+    int? userId,
+  }) async {
+    await rememberSession(
+      serverUrl: baseUrl,
+      username: username,
+      token: token,
+      userId: userId,
+    );
   }
 
   Future<void> changeOwnPassword(
@@ -517,6 +604,112 @@ class ApiClient {
     return "$baseUrl/?invite=${invitation.token}";
   }
 
+  // ==================== DEMANDES D'ACCÈS ====================
+  //
+  // Deux moitiés qui ne parlent pas au même serveur.
+  //
+  // Côté demandeur, les appels visent un serveur **autre** que celui où la
+  // session est ouverte, et ils partent donc sur un Dio nu : l'intercepteur
+  // habituel poserait l'en-tête `Authorization` du compte actif, c'est-à-dire
+  // qu'il confierait la session ouverte chez l'un à l'autre. Ces routes sont
+  // ouvertes de toute façon — le demandeur n'a précisément pas de compte là-bas.
+  //
+  // Côté décideur, ce sont des appels ordinaires sur le serveur actif.
+
+  /// Un client sans intercepteur, pour parler à un serveur tiers sans rien lui
+  /// présenter de ce qui appartient au serveur actif.
+  Dio _bareClient() => Dio(BaseOptions(
+        connectTimeout: const Duration(seconds: 10),
+        receiveTimeout: const Duration(seconds: 30),
+      ));
+
+  /// Sonne à la porte d'un serveur : propose un identifiant, attend un verdict.
+  /// Rien n'est créé là-bas tant que personne n'a approuvé.
+  Future<AccessRequestTicket> requestAccess({
+    required String serverUrl,
+    required String username,
+    required String password,
+    String? deviceName,
+    String? message,
+  }) async {
+    final url = ServerAccount.normalizeUrl(serverUrl);
+    final response = await _bareClient().post(
+      "$url/api/auth/access/request",
+      data: {
+        "username": username,
+        "password": password,
+        if (deviceName != null && deviceName.isNotEmpty) "device_name": deviceName,
+        if (message != null && message.isNotEmpty) "message": message,
+      },
+    );
+    return AccessRequestTicket.fromJson(response.data as Map<String, dynamic>);
+  }
+
+  /// Demande le verdict. Sur une approbation, la session est remise une seule
+  /// fois : ce qui en est fait ensuite regarde [rememberSession].
+  Future<AccessRequestVerdict> pollAccessRequest({
+    required String serverUrl,
+    required String requestCode,
+  }) async {
+    final url = ServerAccount.normalizeUrl(serverUrl);
+    final response = await _bareClient().post(
+      "$url/api/auth/access/poll",
+      data: {"request_code": requestCode},
+    );
+    return AccessRequestVerdict.fromJson(response.data as Map<String, dynamic>);
+  }
+
+  /// Ouvre une session sur un serveur tiers sans quitter celui qui est actif.
+  ///
+  /// C'est le cas de l'utilisateur qui a **déjà** un compte ailleurs : rien à
+  /// demander à personne, il suffit de le rentrer au carnet. Sur le Dio nu pour
+  /// la même raison que les demandes d'accès — le jeton du serveur actif n'a
+  /// rien à faire dans cet appel.
+  Future<User> signInAt({
+    required String serverUrl,
+    required String username,
+    required String password,
+    bool activate = false,
+  }) async {
+    final url = ServerAccount.normalizeUrl(serverUrl);
+    final response = await _bareClient().post(
+      "$url/api/auth/login",
+      data: {"username": username, "password": password},
+    );
+    final token = response.data["token"] as String;
+    final user = User.fromJson(response.data["user"] as Map<String, dynamic>);
+    await rememberSession(
+      serverUrl: url,
+      username: user.username,
+      token: token,
+      userId: user.id,
+      activate: activate,
+    );
+    return user;
+  }
+
+  /// Les demandes en attente sur le serveur actif.
+  Future<List<AccessRequest>> getAccessRequests() async {
+    final response = await _dio.get("/api/access-requests");
+    return (response.data as List<dynamic>)
+        .map((e) => AccessRequest.fromJson(e as Map<String, dynamic>))
+        .toList();
+  }
+
+  /// Accepte une demande. [permissions] n'est honoré que pour un titulaire de
+  /// `manage_users` ; un simple inviteur accorde son gabarit, quoi qu'il envoie.
+  Future<User> approveAccessRequest(int id, {Permissions? permissions}) async {
+    final response = await _dio.post(
+      "/api/access-requests/$id/approve",
+      data: permissions == null ? null : {"permissions": permissions.toJson()},
+    );
+    return User.fromJson(response.data as Map<String, dynamic>);
+  }
+
+  Future<void> denyAccessRequest(int id) async {
+    await _dio.post("/api/access-requests/$id/deny");
+  }
+
   Future<User> login(String username, String password) async {
     final response = await _dio.post("/api/auth/login", data: {
       "username": username,
@@ -527,8 +720,12 @@ class ApiClient {
     final userJson = response.data["user"] as Map<String, dynamic>;
     final user = User.fromJson(userJson);
 
-    await setConnection(baseUrl, token: token);
-    await saveLastUsername(user.username);
+    await rememberSession(
+      serverUrl: baseUrl,
+      username: user.username,
+      token: token,
+      userId: user.id,
+    );
     return user;
   }
 

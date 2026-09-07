@@ -26,10 +26,19 @@ internal object VideoFraming {
 
     /// La taille de l'image dans un cadre de [frameWidth] × [frameHeight].
     ///
-    /// [cover] distingue les deux seuls cadrages que le lecteur propose :
-    /// « taille adaptative » fait entrer l'image entière dans le cadre, avec
-    /// des bandes s'il le faut ; « taille d'origine » la fait couvrir le cadre,
-    /// et ce qui dépasse est rogné.
+    /// Les trois cadrages du lecteur, et ce qui les distingue :
+    ///
+    /// - [OnyxVideoFit.CONTAIN] fait entrer l'image entière, avec des bandes
+    ///   s'il le faut. C'est le cadrage d'un téléviseur : un film scope y est
+    ///   letterboxé, et un film scope letterboxé, c'est à ça que ça ressemble.
+    /// - [OnyxVideoFit.FILL_HEIGHT] prend toute la hauteur et laisse les côtés
+    ///   sortir du cadre. C'est ce que « taille d'origine » veut dire sur un
+    ///   téléphone tenu à l'horizontale, où les bandes valent moins que
+    ///   l'image. Pour un film plus étroit que l'écran, c'est exactement
+    ///   [OnyxVideoFit.CONTAIN] — la différence ne porte que sur ce qui est
+    ///   plus large.
+    /// - [OnyxVideoFit.COVER] couvre le cadre entier, et ce qui dépasse est
+    ///   rogné.
     ///
     /// Tant que le rapport est inconnu — avant la première image — le cadre est
     /// rempli tel quel : c'est du noir, et il n'a pas à sauter quand le
@@ -38,16 +47,20 @@ internal object VideoFraming {
         frameWidth: Int,
         frameHeight: Int,
         aspect: Float,
-        cover: Boolean,
+        fit: OnyxVideoFit,
     ): Pair<Int, Int> {
         if (frameWidth <= 0 || frameHeight <= 0 || aspect <= 0f) {
             return frameWidth to frameHeight
         }
         val frameAspect = frameWidth.toFloat() / frameHeight
         // Une image plus large que son cadre y entre en fixant sa largeur, et
-        // le couvre en fixant sa hauteur. Plus étroite, c'est exactement
-        // l'inverse — d'où le seul booléen.
-        val boundByWidth = if (cover) aspect < frameAspect else aspect > frameAspect
+        // le couvre en fixant sa hauteur. Plus étroite, c'est l'inverse. Et
+        // « toute la hauteur » ne se pose pas la question.
+        val boundByWidth = when (fit) {
+            OnyxVideoFit.CONTAIN -> aspect > frameAspect
+            OnyxVideoFit.COVER -> aspect < frameAspect
+            OnyxVideoFit.FILL_HEIGHT -> false
+        }
         return if (boundByWidth) {
             frameWidth to (frameWidth / aspect).roundToInt().coerceAtLeast(1)
         } else {

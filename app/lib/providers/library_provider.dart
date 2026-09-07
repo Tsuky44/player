@@ -34,6 +34,20 @@ class LibraryProvider extends ChangeNotifier {
 
   String? get errorMessage => _errorMessage;
 
+  /// Vide le catalogue du serveur précédent. Voir [HomeProvider.reset].
+  void reset() {
+    _movies = [];
+    _shows = [];
+    _seasons = [];
+    _episodes = [];
+    _isLoadingMovies = false;
+    _isLoadingShows = false;
+    _isLoadingSeasons = false;
+    _isLoadingEpisodes = false;
+    _errorMessage = null;
+    notifyListeners();
+  }
+
   Future<void> ensureCatalogLoaded() async {
     if (_movies.isEmpty && !_isLoadingMovies) {
       await loadMovies();

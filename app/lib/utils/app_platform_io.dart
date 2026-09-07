@@ -14,4 +14,17 @@ abstract final class AppPlatform {
   static bool get isDesktop => isWindows || isMacOS || isLinux;
 
   static bool get isMobile => isAndroid || isIOS;
+
+  /// Comment cet appareil se nomme auprès d'un serveur qui ne le connaît pas
+  /// encore — la ligne que lit l'administrateur d'une demande d'accès. Le nom
+  /// de la machine serait plus parlant, mais le lire coûte une permission sur
+  /// Android et une dépendance partout ailleurs, pour un libellé décoratif.
+  static String get label {
+    if (isMacOS) return 'Mac';
+    if (isWindows) return 'PC Windows';
+    if (isLinux) return 'PC Linux';
+    if (isAndroid) return 'Appareil Android';
+    if (isIOS) return 'iPhone / iPad';
+    return 'Appareil';
+  }
 }

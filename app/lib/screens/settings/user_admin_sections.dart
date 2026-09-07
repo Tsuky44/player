@@ -10,7 +10,7 @@ import '../../services/api_client.dart';
 import '../../theme/app_colors.dart';
 
 /// Human labels for the six administration rights, in the order they are shown.
-const _permissionLabels = <(String, String)>[
+const permissionLabels = <(String, String)>[
   ('manage_settings', 'Gérer les paramètres du serveur'),
   ('manage_library', 'Gérer la bibliothèque (scans, métadonnées)'),
   ('manage_users', 'Gérer les utilisateurs'),
@@ -19,9 +19,9 @@ const _permissionLabels = <(String, String)>[
   ('request_media', 'Demander des médias'),
 ];
 
-bool _read(Permissions p, String key) => p.toJson()[key] == true;
+bool readPermission(Permissions p, String key) => p.toJson()[key] == true;
 
-Permissions _write(Permissions p, String key, bool value) {
+Permissions writePermission(Permissions p, String key, bool value) {
   switch (key) {
     case 'manage_settings':
       return p.copyWith(manageSettings: value);
@@ -41,8 +41,8 @@ Permissions _write(Permissions p, String key, bool value) {
 
 String _summary(Permissions p) {
   if (p.isAdmin) return 'Administrateur';
-  final granted = _permissionLabels
-      .where((entry) => _read(p, entry.$1))
+  final granted = permissionLabels
+      .where((entry) => readPermission(p, entry.$1))
       .map((entry) => entry.$2)
       .toList();
   if (granted.isEmpty) return 'Aucun droit';
@@ -349,15 +349,15 @@ class _PermissionsSheetState extends State<_PermissionsSheet> {
                 }),
               ),
               const Divider(),
-              for (final entry in _permissionLabels)
+              for (final entry in permissionLabels)
                 CheckboxListTile(
                   contentPadding: EdgeInsets.zero,
                   dense: true,
                   title: Text(entry.$2),
-                  value: _read(_permissions, entry.$1),
+                  value: readPermission(_permissions, entry.$1),
                   onChanged: (value) => setState(() {
                     _permissions =
-                        _write(_permissions, entry.$1, value ?? false);
+                        writePermission(_permissions, entry.$1, value ?? false);
                     if (entry.$1 == 'invite_users' && value != true) {
                       _inviteGrants = const Permissions();
                     }
@@ -375,7 +375,7 @@ class _PermissionsSheetState extends State<_PermissionsSheet> {
                   style: textTheme.bodySmall
                       ?.copyWith(color: AppColors.textSecondary),
                 ),
-                for (final entry in _permissionLabels)
+                for (final entry in permissionLabels)
                   CheckboxListTile(
                     contentPadding: EdgeInsets.zero,
                     dense: true,
@@ -385,11 +385,11 @@ class _PermissionsSheetState extends State<_PermissionsSheet> {
                     enabled: entry.$1 != 'manage_users',
                     value: entry.$1 == 'manage_users'
                         ? false
-                        : _read(_inviteGrants, entry.$1),
+                        : readPermission(_inviteGrants, entry.$1),
                     onChanged: entry.$1 == 'manage_users'
                         ? null
                         : (value) => setState(() {
-                              _inviteGrants = _write(
+                              _inviteGrants = writePermission(
                                   _inviteGrants, entry.$1, value ?? false);
                             }),
                   ),

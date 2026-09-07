@@ -14,8 +14,10 @@ import '../../services/api_client.dart';
 import '../../services/download_manager.dart';
 import '../../services/server_reachability.dart';
 import '../../services/media_details_cache.dart';
+import '../../services/picture_in_picture.dart';
 import '../../services/screen_brightness_control.dart';
 import 'display_cutouts.dart';
+import 'video_fit.dart';
 import '../../tv/tv_mode.dart';
 import '../../utils/poster_url.dart';
 import 'hooks/use_player_controller.dart';
@@ -126,6 +128,19 @@ class _PlayerScreenState extends State<PlayerScreen> {
   /// working.
   final Map<int, Offset> _pinchPointers = <int, Offset>{};
   double? _pinchStartSpan;
+
+  /// True while the film is playing in the system's little window, over
+  /// whatever the phone is doing instead.
+  ///
+  /// The chrome is not drawn there — a window that size has no room for it, and
+  /// nothing to tap it with — so the player renders the picture and nothing
+  /// else until it comes back.
+  bool _inPip = false;
+
+  /// The shape last handed to the system, as a thousandth of the aspect ratio.
+  /// Kept so the arming call is made when it changes and not four times a
+  /// second for the life of the film.
+  int _armedShape = 0;
 
   /// Screen brightness override, 0.0 -> 1.0, or null on a screen whose
   /// backlight this app does not drive. Null is what keeps the left-hand bar
@@ -445,6 +460,8 @@ class _PlayerScreenState extends State<PlayerScreen> {
       });
     }
     unawaited(_loadScreenBrightness());
+    PictureInPicture.active.addListener(_handlePictureInPictureChanged);
+    PictureInPicture.closed.addListener(_handlePictureInPictureClosed);
     _keyboardFocusNode.addListener(_handlePlayerFocusChanged);
     _playerController = PlayerController();
     _mediaKeys = PlayerMediaKeysBinding(
@@ -600,8 +617,49 @@ class _PlayerScreenState extends State<PlayerScreen> {
     _safeSetState(() {});
   }
 
+  /// Hands the system the shape of the film, so it knows what the little
+  /// window should look like before the user asks for it.
+  ///
+  /// Android only lets the window be created at the instant the user leaves —
+  /// there is no asking afterwards — so the shape goes over in advance and is
+  /// refreshed only when it actually changes.
+  void _syncPictureInPicture() {
+    if (!PictureInPicture.supported || _isDisposing || _isLeaving) return;
+    final aspect = _playerController.videoAspectRatio;
+    if (aspect <= 0) return;
+    final shape = (aspect * 1000).round();
+    if (shape == _armedShape) return;
+    _armedShape = shape;
+    unawaited(PictureInPicture.arm(width: shape, height: 1000));
+  }
+
+  void _handlePictureInPictureChanged() {
+    final inPip = PictureInPicture.active.value;
+    if (!mounted || _inPip == inPip) return;
+    // A menu open when the window shrinks would be most of the window.
+    if (inPip) {
+      _dismissTopPopup();
+      _controlsTimer?.cancel();
+    }
+    _safeSetState(() {
+      _inPip = inPip;
+      if (inPip) _showControls = false;
+    });
+  }
+
+  /// The window was closed rather than restored.
+  ///
+  /// Pause rather than leave: the activity is already on its way out, and
+  /// navigating from under it would be a route change nobody is there to see.
+  /// What matters is that a film with nowhere left to play stops playing.
+  void _handlePictureInPictureClosed() {
+    if (!mounted || !_playerController.isPlaying) return;
+    unawaited(_playerController.session.pause());
+  }
+
   void _onPositionChanged() {
     if (_isDisposing || !mounted) return;
+    _syncPictureInPicture();
     _episodeNav?.checkPosition(
       _playerController.position.inSeconds,
       mediaDurationSeconds: _playerController.duration.inSeconds,
@@ -813,9 +871,16 @@ class _PlayerScreenState extends State<PlayerScreen> {
     _toggleControls();
   }
 
+  /// A screen held in a hand: a phone or a tablet, and not a television.
+  ///
+  /// Three things turn on it — how a tap is read, whether a pinch can happen at
+  /// all, and what "original" framing means — because all three are answers to
+  /// the same fact: the screen is small, close, and touched.
+  bool get _handheld => AppPlatform.isMobile && !TvMode.isTv;
+
   /// Phones and tablets, but not a television: a remote drives the chrome with
   /// its own keys and never produces a tap.
-  bool get _touchTapRules => AppPlatform.isMobile && !TvMode.isTv;
+  bool get _touchTapRules => _handheld;
 
   /// Reads the brightness the screen is already on, so the bar opens where the
   /// user left it instead of jumping on first touch.
@@ -1298,6 +1363,12 @@ class _PlayerScreenState extends State<PlayerScreen> {
     // would still be on screen after the player is gone.
     _dismissTopPopup();
     unawaited(_mediaKeys.detach());
+    // Disarmed on the way out: the little window is for a film that is playing,
+    // and leaving it armed would put the library in a corner of the home
+    // screen.
+    PictureInPicture.active.removeListener(_handlePictureInPictureChanged);
+    PictureInPicture.closed.removeListener(_handlePictureInPictureClosed);
+    unawaited(PictureInPicture.disarm());
     _keyboardFocusNode.removeListener(_handlePlayerFocusChanged);
     _keyboardFocusNode.dispose();
     _playPauseFocusNode.dispose();
@@ -1667,7 +1738,7 @@ class _PlayerScreenState extends State<PlayerScreen> {
 
   /// Only where two fingers can reach the picture: a television is driven by a
   /// remote and a desktop by a mouse, and neither can produce this gesture.
-  bool get _pinchToZoomEnabled => AppPlatform.isMobile && !TvMode.isTv;
+  bool get _pinchToZoomEnabled => _handheld;
 
   /// How far apart the first two fingers are, or null with fewer than two.
   double? _pinchSpan() {
@@ -2102,7 +2173,12 @@ class _PlayerScreenState extends State<PlayerScreen> {
                           child: _isLeaving
                               ? const ColoredBox(color: Colors.black)
                               : _playerController.session.buildSurface(
-                                  fit: _videoFit,
+                                  // The chosen framing, drawn the way this
+                                  // screen wants it — see [VideoFitRendering].
+                                  fit: VideoFitRendering.resolve(
+                                    _videoFit,
+                                    handheld: _handheld,
+                                  ),
                                   aspectRatio:
                                       _playerController.videoAspectRatio,
                                 ),
@@ -2111,6 +2187,17 @@ class _PlayerScreenState extends State<PlayerScreen> {
                     ),
                   ),
                 ),
+                // Everything above the picture, and only when there is room
+                // for it.
+                //
+                // In the system's little window there is none: no chrome, no
+                // gestures, no overlays — the picture and the sound, which is
+                // what the window is for. Written as one spread rather than a
+                // separate tree so the video widget keeps its place in the
+                // list: rebuilding it there would tear down the platform view
+                // and re-attach the surface, which is a blink in the corner of
+                // the home screen for nothing.
+                if (!_inPip) ...[
                 // Dimming scrim for a session rebuild. It sits here — directly
                 // above the video and BELOW the controls — so it veils the
                 // stale frame without also greying out the buttons the user
@@ -2536,6 +2623,7 @@ class _PlayerScreenState extends State<PlayerScreen> {
                       ),
                     ),
                   ),
+                ],
               ],
             ),
           ),

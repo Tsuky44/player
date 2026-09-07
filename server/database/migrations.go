@@ -269,6 +269,43 @@ var migrations = []migration{
 			`CREATE INDEX IF NOT EXISTS idx_device_pairings_expires_at ON device_pairings(expires_at);`,
 		},
 	},
+	{
+		id:   5,
+		name: "access requests",
+		stmts: []string{
+			// Demandes d'accès : la sonnette du serveur. Quelqu'un qui possède
+			// déjà un compte ailleurs — ou personne du tout — propose un
+			// identifiant, et un administrateur décide. Tant que la demande est
+			// en attente, aucun compte n'existe : la ligne porte le hash du mot
+			// de passe proposé et rien d'autre, et un refus ne laisse rien
+			// derrière lui.
+			//
+			// C'est le pendant tiré de l'invitation, qui est poussée : l'un part
+			// de l'administrateur, l'autre du demandeur.
+			`CREATE TABLE IF NOT EXISTS access_requests (
+				id INTEGER PRIMARY KEY AUTOINCREMENT,
+				request_code TEXT NOT NULL UNIQUE,
+				username TEXT NOT NULL,
+				password_hash TEXT NOT NULL,
+				device_name TEXT NOT NULL DEFAULT '',
+				message TEXT NOT NULL DEFAULT '',
+				status TEXT NOT NULL DEFAULT 'pending' CHECK(status IN ('pending', 'approved', 'denied')),
+				created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+				expires_at TIMESTAMP NOT NULL,
+				decided_at TIMESTAMP,
+				decided_by_user_id INTEGER,
+				created_user_id INTEGER,
+				session_token TEXT,
+				FOREIGN KEY (decided_by_user_id) REFERENCES users(id) ON DELETE SET NULL,
+				FOREIGN KEY (created_user_id) REFERENCES users(id) ON DELETE CASCADE
+			);`,
+			// Le demandeur relève par son code privé ; l'administrateur liste
+			// les demandes en attente ; le balayeur passe par l'échéance.
+			`CREATE UNIQUE INDEX IF NOT EXISTS idx_access_requests_code ON access_requests(request_code);`,
+			`CREATE INDEX IF NOT EXISTS idx_access_requests_status ON access_requests(status, created_at);`,
+			`CREATE INDEX IF NOT EXISTS idx_access_requests_expires_at ON access_requests(expires_at);`,
+		},
+	},
 }
 
 // applyMigrations brings the database up to the latest schema version.

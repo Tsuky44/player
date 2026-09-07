@@ -14,4 +14,7 @@ abstract final class AppPlatform {
 
   static const bool isDesktop = false;
   static const bool isMobile = false;
+
+  /// Voir `app_platform_io.dart` : le navigateur ne dit rien de plus utile.
+  static const String label = 'Navigateur';
 }
