@@ -175,3 +175,33 @@ func GetScanReport(w http.ResponseWriter, r *http.Request, _ httprouter.Params, 
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(indexer.LastScanReport())
 }
+
+// GetMediaReviewQueue returns the persistent set of top-level library entries
+// that still need human attention (GET /api/indexer/review). Unlike the scan
+// report this is rebuilt from the database, so an unmatched film does not
+// disappear from view after a restart or a later idempotent scan.
+func GetMediaReviewQueue(w http.ResponseWriter, r *http.Request, _ httprouter.Params, _ int) {
+	w.Header().Set("Content-Type", "application/json")
+
+	items, err := queryMediaList("Media review queue", `
+		SELECT `+mediaColumns+`
+		FROM medias m
+		WHERE m.type IN ('movie', 'show')
+		  AND (
+			COALESCE(m.tmdb_id, 0) <= 0
+			OR TRIM(COALESCE(m.poster_url, '')) = ''
+			OR TRIM(COALESCE(m.overview, '')) = ''
+			OR TRIM(COALESCE(m.release_date, '')) = ''
+		  )
+		ORDER BY m.created_at DESC, m.title COLLATE NOCASE ASC`)
+	if err != nil {
+		log.Printf("Media review queue: failed to query: %v", err)
+		http.Error(w, `{"error": "Internal database error"}`, http.StatusInternalServerError)
+		return
+	}
+
+	json.NewEncoder(w).Encode(map[string]interface{}{
+		"count": len(items),
+		"items": items,
+	})
+}

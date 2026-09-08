@@ -102,7 +102,7 @@ class ApiClient {
   /// serveur au bout.
   static void Function()? onConnectionSuccess;
 
-  final Dio _dio = Dio();
+  final Dio _dio;
 
   /// Les serveurs auxquels cet appareil a un compte. Le client ne détient plus
   /// « une » adresse et « un » jeton : il applique ceux du compte actif, et
@@ -111,7 +111,8 @@ class ApiClient {
   late final MediaFailover mediaFailover = MediaFailover(servers);
   String? _pinnedAccountId;
   String? get accountId => _pinnedAccountId ?? servers.active?.id;
-  late final ProgressSync _progressSync = ProgressSync(servers);
+  late final ProgressSync _progressSync;
+  void Function()? onProgressSynchronized;
 
   String? _baseUrl;
   String? _token;
@@ -132,7 +133,11 @@ class ApiClient {
     await _loadConfig();
   }
 
-  ApiClient({ServerRegistry? registry}) : servers = registry ?? ServerRegistry() {
+  ApiClient(
+      {ServerRegistry? registry, Dio? httpClient, ProgressSync? progressSync})
+      : servers = registry ?? ServerRegistry(),
+        _dio = httpClient ?? Dio() {
+    _progressSync = progressSync ?? ProgressSync(servers);
     _dio.interceptors
         .add(InterceptorsWrapper(onRequest: (options, handler) async {
       if (!_configLoaded) {
@@ -152,7 +157,8 @@ class ApiClient {
 
       return handler.next(options);
     }, onResponse: (response, handler) {
-      if (_pinnedAccountId == null || _pinnedAccountId == servers.active?.id) onConnectionSuccess?.call();
+      if (_pinnedAccountId == null || _pinnedAccountId == servers.active?.id)
+        onConnectionSuccess?.call();
       return handler.next(response);
     }, onError: (DioException e, handler) {
       // Global error logging
@@ -161,10 +167,13 @@ class ApiClient {
       switch (e.type) {
         case DioExceptionType.connectionError:
         case DioExceptionType.connectionTimeout:
-          if (_pinnedAccountId == null || _pinnedAccountId == servers.active?.id) onConnectionError?.call();
+          if (_pinnedAccountId == null ||
+              _pinnedAccountId == servers.active?.id) onConnectionError?.call();
         default:
           // Une réponse, même 500, prouve qu'il y a quelqu'un en face.
-          if (e.response != null) if (_pinnedAccountId == null || _pinnedAccountId == servers.active?.id) onConnectionSuccess?.call();
+          if (e.response != null) if (_pinnedAccountId == null ||
+              _pinnedAccountId == servers.active?.id)
+            onConnectionSuccess?.call();
       }
       return handler.next(e);
     }));
@@ -335,7 +344,8 @@ class ApiClient {
     await servers.load();
     final savedUrl = prefs.getString('server_url');
     // On web the page origin *is* the server, so the default is never a guess.
-    _serverChosen = savedUrl != null || AppPlatform.isWeb || servers.active != null;
+    _serverChosen =
+        savedUrl != null || AppPlatform.isWeb || servers.active != null;
     _savedUsername = prefs.getString('last_username');
     _configLoaded = true;
 
@@ -394,13 +404,17 @@ class ApiClient {
   /// Bascule sur un compte déjà enregistré. Rend faux quand il a disparu.
   Future<bool> activateAccount(String id, {bool synchronize = true}) async {
     await servers.load();
-    if (synchronize) await _progressSync.synchronize(force: true);
     if (!await servers.activate(id)) return false;
     await _applyActiveAccount();
     final active = servers.active;
     if (active != null) {
       await _rememberLastAddress(active.url);
       await saveLastUsername(active.username);
+    }
+    if (synchronize) {
+      unawaited(_progressSync.synchronize(force: true).then((_) {
+        if (accountId == id) onProgressSynchronized?.call();
+      }));
     }
     return true;
   }
@@ -691,7 +705,8 @@ class ApiClient {
       data: {
         "username": username,
         "password": password,
-        if (deviceName != null && deviceName.isNotEmpty) "device_name": deviceName,
+        if (deviceName != null && deviceName.isNotEmpty)
+          "device_name": deviceName,
         if (message != null && message.isNotEmpty) "message": message,
       },
     );
@@ -886,13 +901,13 @@ class ApiClient {
   Future<HomeResponse> getHome() async {
     final id = accountId;
     if (id != null) unawaited(mediaFailover.refreshIdentities(id));
-    await _progressSync.synchronize();
+    unawaited(_progressSync.synchronize());
     final response = await _dio.get("/api/home");
     return HomeResponse.fromJson(response.data as Map<String, dynamic>);
   }
 
   Future<List<HomeMediaItem>> getMovies() async {
-    await _progressSync.synchronize();
+    unawaited(_progressSync.synchronize());
     final response = await _dio.get("/api/movies");
     return (response.data as List<dynamic>)
         .map((e) => HomeMediaItem.fromJson(e as Map<String, dynamic>))
@@ -921,7 +936,8 @@ class ApiClient {
         .toList();
   }
 
-  Future<List<HomeMediaItem>> getShowSeasonEpisodes(int showId, int seasonNumber) async {
+  Future<List<HomeMediaItem>> getShowSeasonEpisodes(
+      int showId, int seasonNumber) async {
     await _progressSync.synchronize();
     final response =
         await _dio.get("/api/shows/$showId/seasons/$seasonNumber/episodes");
@@ -968,7 +984,7 @@ class ApiClient {
     });
 
     unawaited(_progressSync.synchronize(
-      force: true, sourceAccountId: sourceAccountId, mediaId: mediaId));
+        force: true, sourceAccountId: sourceAccountId, mediaId: mediaId));
     return response.data["is_finished"] as bool? ?? isFinished;
   }
 
@@ -979,7 +995,7 @@ class ApiClient {
       "watched": watched,
     });
     unawaited(_progressSync.synchronize(
-      force: true, sourceAccountId: sourceAccountId, mediaId: mediaId));
+        force: true, sourceAccountId: sourceAccountId, mediaId: mediaId));
     return response.data as Map<String, dynamic>;
   }
 
@@ -1086,8 +1102,7 @@ class ApiClient {
       'type': type,
       'region': region,
     });
-    final providers =
-        response.data['providers'] as List<dynamic>? ?? const [];
+    final providers = response.data['providers'] as List<dynamic>? ?? const [];
     return providers
         .map((e) => RequestWatchProvider.fromJson(e as Map<String, dynamic>))
         .toList();
@@ -1156,6 +1171,17 @@ class ApiClient {
 
   Future<void> triggerRedetectAllMatches() async {
     await _dio.post("/api/indexer/metadata/redetect-all");
+  }
+
+  /// Movies and shows that remain unidentified or have incomplete artwork/text.
+  /// The server rebuilds this queue from its database on every request.
+  Future<List<Media>> getMediaReviewQueue() async {
+    final response = await _dio.get("/api/indexer/review");
+    final data = response.data as Map<String, dynamic>;
+    final items = data["items"] as List? ?? const [];
+    return items
+        .map((e) => Media.fromJson(Map<String, dynamic>.from(e as Map)))
+        .toList();
   }
 
   /// Fetches TMDB poster/overview for a single movie or show.

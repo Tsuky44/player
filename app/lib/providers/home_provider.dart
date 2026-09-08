@@ -20,6 +20,8 @@ class HomeProvider extends ChangeNotifier {
   String? _errorMessage;
   String? _completionMessage;
   Timer? _statusPollTimer;
+  int _generation = 0;
+  int _homeRequest = 0;
 
   HomeProvider(this.apiClient);
 
@@ -42,6 +44,8 @@ class HomeProvider extends ChangeNotifier {
 
   @override
   void dispose() {
+    _generation++;
+    _homeRequest++;
     _statusPollTimer?.cancel();
     super.dispose();
   }
@@ -54,6 +58,8 @@ class HomeProvider extends ChangeNotifier {
   /// la bibliothèque de l'autre le temps du premier chargement — avec des
   /// affiches pointant vers une adresse qui n'est plus la bonne.
   void reset() {
+    _generation++;
+    _homeRequest++;
     _statusPollTimer?.cancel();
     _statusPollTimer = null;
     _homeData = null;
@@ -66,30 +72,43 @@ class HomeProvider extends ChangeNotifier {
     _subtitleStats = SubtitleExtractionStats();
     _errorMessage = null;
     _completionMessage = null;
-    notifyListeners();
+    unawaited(loadHome());
   }
 
   Future<void> loadHome({bool silent = false}) async {
+    final request = ++_homeRequest;
     if (!silent) {
       _isLoading = true;
       _errorMessage = null;
       notifyListeners();
     }
-
     try {
-      _homeData = await apiClient.getHome();
+      final data = await apiClient.getHome();
+      if (request != _homeRequest) return;
+      _homeData = data;
       _errorMessage = null;
-
-      final status = await apiClient.getIndexerStatus();
-      _applyIndexerStatus(status);
-      if (status.isBusy) {
-        _startStatusPolling();
-      }
+      unawaited(_refreshIndexerStatus(_generation));
     } catch (e) {
-      _errorMessage = "Impossible de charger la page d'accueil : ${e.toString()}";
+      if (request != _homeRequest) return;
+      _errorMessage =
+          "Impossible de charger la page d'accueil : ${e.toString()}";
     } finally {
-      _isLoading = false;
+      if (request == _homeRequest) {
+        _isLoading = false;
+        notifyListeners();
+      }
+    }
+  }
+
+  Future<void> _refreshIndexerStatus(int generation) async {
+    try {
+      final status = await apiClient.getIndexerStatus();
+      if (generation != _generation) return;
+      _applyIndexerStatus(status);
+      if (status.isBusy) _startStatusPolling();
       notifyListeners();
+    } catch (_) {
+      // A failed status probe does not hide an already loaded catalog.
     }
   }
 
@@ -99,7 +118,8 @@ class HomeProvider extends ChangeNotifier {
   }) {
     if (positionSeconds <= 0) return false;
     if (durationSeconds <= 0) return true;
-    return (positionSeconds / durationSeconds) * 100 >= _minContinueWatchingPercent;
+    return (positionSeconds / durationSeconds) * 100 >=
+        _minContinueWatchingPercent;
   }
 
   /// Instantly updates the continue-watching row after leaving the player.
@@ -127,9 +147,8 @@ class HomeProvider extends ChangeNotifier {
     }
 
     final index = list.indexWhere((item) => item.media.id == mediaId);
-    final effectiveDuration = durationSeconds > 0
-        ? durationSeconds
-        : (sourceItem?.duration ?? 0);
+    final effectiveDuration =
+        durationSeconds > 0 ? durationSeconds : (sourceItem?.duration ?? 0);
 
     if (!isFinished &&
         !_meetsContinueWatchingThreshold(
@@ -267,7 +286,8 @@ class HomeProvider extends ChangeNotifier {
       notifyListeners();
       _startStatusPolling();
     } catch (e) {
-      _errorMessage = "Erreur lors de l'extraction des sous-titres : ${e.toString()}";
+      _errorMessage =
+          "Erreur lors de l'extraction des sous-titres : ${e.toString()}";
       notifyListeners();
       rethrow;
     }
@@ -282,7 +302,8 @@ class HomeProvider extends ChangeNotifier {
       notifyListeners();
       _startStatusPolling();
     } catch (e) {
-      _errorMessage = "Erreur lors de la mise à jour des affiches : ${e.toString()}";
+      _errorMessage =
+          "Erreur lors de la mise à jour des affiches : ${e.toString()}";
       notifyListeners();
     }
   }
@@ -313,21 +334,24 @@ class HomeProvider extends ChangeNotifier {
   }
 
   void _startStatusPolling() {
+    final generation = _generation;
     _statusPollTimer?.cancel();
     var wasScanning = _isScanning;
     var wasBackfilling = _isBackfillingMetadata;
     var wasRedetecting = _isRedetectingAll;
     var wasExtracting = _isExtractingSubtitles;
 
-    _statusPollTimer = Timer.periodic(const Duration(seconds: 3), (timer) async {
+    _statusPollTimer =
+        Timer.periodic(const Duration(seconds: 3), (timer) async {
       try {
         final status = await apiClient.getIndexerStatus();
+        if (generation != _generation) return;
         final scanJustFinished = wasScanning && !status.isScanning;
         final backfillJustFinished =
             wasBackfilling && !status.isBackfillingMetadata;
-        final redetectJustFinished =
-            wasRedetecting && !status.isRedetectingAll;
-        final extractJustFinished = wasExtracting && !status.isExtractingSubtitles;
+        final redetectJustFinished = wasRedetecting && !status.isRedetectingAll;
+        final extractJustFinished =
+            wasExtracting && !status.isExtractingSubtitles;
 
         _applyIndexerStatus(status);
 
@@ -353,11 +377,14 @@ class HomeProvider extends ChangeNotifier {
         if (!status.isBusy) {
           timer.cancel();
           _statusPollTimer = null;
-          if (scanJustFinished || backfillJustFinished || redetectJustFinished) {
+          if (scanJustFinished ||
+              backfillJustFinished ||
+              redetectJustFinished) {
             await loadHome(silent: true);
           }
         }
       } catch (_) {
+        if (generation != _generation) return;
         _isScanning = false;
         _isBackfillingMetadata = false;
         _isRedetectingAll = false;

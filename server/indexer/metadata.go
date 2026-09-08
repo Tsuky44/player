@@ -287,6 +287,11 @@ func levenshtein(a, b string) int {
 func normalizeForMatch(s string) string {
 	s = strings.ToLower(strings.TrimSpace(s))
 	s = stripDiacritics(s)
+	// TMDB commonly styles English titles with an ampersand while release files
+	// spell the same word as "and" ("Fast and Furious" / "Fast & Furious").
+	// Dropping '&' made those titles look different enough to fail the stricter
+	// no-year automatic-match threshold even though manual search found them.
+	s = strings.ReplaceAll(s, "&", " and ")
 	var b strings.Builder
 	for _, r := range s {
 		if (r >= 'a' && r <= 'z') || (r >= '0' && r <= '9') {

@@ -10,6 +10,7 @@ import '../../theme/app_colors.dart';
 import '../../tv/tv_mode.dart';
 import '../../widgets/global/media_detail_widgets.dart';
 import '../../widgets/global/media_download_button.dart';
+import '../../widgets/global/media_technical_section.dart';
 import '../../widgets/global/metadata_fix_sheet.dart';
 import '../../widgets/global/watched_action_button.dart';
 import '../../navigation/search_route_observer.dart';
@@ -33,6 +34,9 @@ class _MovieDetailScreenState extends State<MovieDetailScreen> {
   late Media _media;
   MediaDetails? _details;
   bool _loadingDetails = false;
+  MediaTracks? _tracks;
+  bool _loadingTracks = true;
+  bool _tracksFailed = false;
   bool _isFinished = false;
   int _currentPosition = 0;
   bool _loadingWatched = false;
@@ -49,6 +53,7 @@ class _MovieDetailScreenState extends State<MovieDetailScreen> {
     // of on a bare backdrop with "Chargement des informations…".
     _adopt(MediaDetailsCache.peek(_media.id));
     _loadDetails();
+    _loadTracks();
     if (widget.movieItem == null) {
       _loadProgress();
     }
@@ -93,6 +98,24 @@ class _MovieDetailScreenState extends State<MovieDetailScreen> {
       // Keep local data on failure (offline / no TMDB key).
     } finally {
       if (mounted && _loadingDetails) setState(() => _loadingDetails = false);
+    }
+  }
+
+  Future<void> _loadTracks() async {
+    setState(() {
+      _loadingTracks = true;
+      _tracksFailed = false;
+    });
+    try {
+      final api = context.read<AuthProvider>().apiClient;
+      final tracks = await api.getMediaTracks(_media.id);
+      if (!mounted) return;
+      setState(() => _tracks = tracks);
+    } catch (_) {
+      if (!mounted) return;
+      setState(() => _tracksFailed = true);
+    } finally {
+      if (mounted) setState(() => _loadingTracks = false);
     }
   }
 
@@ -265,6 +288,14 @@ class _MovieDetailScreenState extends State<MovieDetailScreen> {
                   ],
                 ],
               ),
+            ),
+          ),
+          SliverToBoxAdapter(
+            child: MediaTechnicalSection(
+              tracks: _tracks,
+              loading: _loadingTracks,
+              failed: _tracksFailed,
+              onRetry: _loadTracks,
             ),
           ),
           SliverToBoxAdapter(
