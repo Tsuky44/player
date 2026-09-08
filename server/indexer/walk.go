@@ -54,6 +54,15 @@ func walkVideoFiles(root string, s section, fn func(path string, info os.FileInf
 			name := entry.Name()
 			path := filepath.Join(dir, name)
 
+			// Avoid a stat for every poster, subtitle and NFO on network storage.
+			// Symlinks still need resolving: they may point to a directory.
+			if !entry.IsDir() && entry.Type()&os.ModeSymlink == 0 && !IsVideoFile(name) {
+				if IsUnplayableImageFile(name) {
+					reportSkippedDir(s, path, "image disque (.iso) non lisible en direct play")
+				}
+				continue
+			}
+
 			info, err := entry.Info()
 			if err != nil || info.Mode()&os.ModeSymlink != 0 {
 				// Resolve symlinks (and retry a racing stat) against the target.

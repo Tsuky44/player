@@ -16,6 +16,7 @@ type ScanSectionStats struct {
 	VideoFiles     int    `json:"video_files"`
 	Indexed        int    `json:"indexed"`
 	AlreadyIndexed int    `json:"already_indexed"`
+	Modified       int    `json:"modified"` // subset of already indexed files
 	Skipped        int    `json:"skipped"`
 	SkippedFolders int    `json:"skipped_folders"`
 	Matched        int    `json:"matched"`

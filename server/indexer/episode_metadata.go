@@ -346,7 +346,9 @@ func backfillEpisodeMetadata() {
 
 	rows, err := database.DB.Query(`
 		SELECT ep.id, ep.title, COALESCE(ep.file_path, ''), COALESCE(ep.season_number, 0), COALESCE(ep.episode_number, 0),
-		       season.title, COALESCE(show_m.tmdb_id, 0)
+		       season.title, COALESCE(show_m.tmdb_id, 0),
+		       (COALESCE(ep.tmdb_id, 0) = 0 OR COALESCE(ep.poster_url, '') = ''
+		        OR COALESCE(ep.overview, '') = '' OR COALESCE(ep.release_date, '') = '')
 		FROM medias ep
 		JOIN medias season ON ep.parent_id = season.id AND season.type = 'season'
 		JOIN medias show_m ON season.parent_id = show_m.id AND show_m.type = 'show'
@@ -371,10 +373,13 @@ func backfillEpisodeMetadata() {
 	var queue []item
 	for rows.Next() {
 		var it item
-		if err := rows.Scan(&it.id, &it.title, &it.filePath, &it.seasonNum, &it.episodeNum, &it.seasonTitle, &it.showTMDBID); err != nil {
+		var missing bool
+		if err := rows.Scan(&it.id, &it.title, &it.filePath, &it.seasonNum, &it.episodeNum, &it.seasonTitle, &it.showTMDBID, &missing); err != nil {
 			continue
 		}
-		queue = append(queue, it)
+		if missing || EpisodeNeedsTMDBRefresh(it.title) {
+			queue = append(queue, it)
+		}
 	}
 
 	if len(queue) == 0 {
