@@ -22,6 +22,7 @@ import '../player_studio/widgets/player_layouts_sheet.dart';
 import 'access_requests_section.dart';
 import 'exoplayer_probe_screen.dart';
 import 'playback_preferences_screen.dart';
+import 'media_review_screen.dart';
 import 'servers_screen.dart';
 import 'user_admin_sections.dart';
 
@@ -31,7 +32,6 @@ class SettingsScreen extends StatefulWidget {
   @override
   State<SettingsScreen> createState() => _SettingsScreenState();
 }
-
 class _SettingsScreenState extends State<SettingsScreen> {
   final _serverUrlController = TextEditingController();
   final _mediaHubUrlController = TextEditingController();
@@ -787,6 +787,18 @@ class _SettingsScreenState extends State<SettingsScreen> {
                           const SizedBox(height: 20),
                           ],
                           if (perms.manageLibrary) ...[
+                          _ActionTile(
+                            icon: Icons.fact_check_outlined,
+                            title: 'Médias à vérifier',
+                            subtitle:
+                                'Identifier les films et séries aux fiches incomplètes',
+                            busy: false,
+                            onTap: () => Navigator.of(context).push(
+                              MaterialPageRoute(
+                                builder: (_) => const MediaReviewScreen(),
+                              ),
+                            ),
+                          ),
                           _ActionTile(
                             icon: Icons.sync_rounded,
                             title: 'Synchroniser la bibliothèque',

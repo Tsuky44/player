@@ -197,6 +197,8 @@ func main() {
 	router.GET("/api/indexer/status", handlers.RequireAuth(handlers.GetScanStatus))
 	// Detailed scan accounting (skipped files, unmatched items) for library admins.
 	router.GET("/api/indexer/report", handlers.RequirePermission(models.PermManageLibrary, handlers.GetScanReport))
+	// Persistent queue of indexed movies/shows with no match or incomplete metadata.
+	router.GET("/api/indexer/review", handlers.RequirePermission(models.PermManageLibrary, handlers.GetMediaReviewQueue))
 	router.POST("/api/media/:id/subtitles/extract", handlers.RequirePermission(models.PermManageLibrary, handlers.ForceMediaSubtitleExtract))
 
 	// Delete a show and all its data (episodes, subtitles). Formerly unauthenticated

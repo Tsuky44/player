@@ -1471,9 +1471,25 @@ class MediaVideoTrack {
 
   /// Emby-style resolution label, e.g. "4K", "1080p", "720p".
   String get resolutionLabel {
-    if (height >= 2000) return '4K';
+    // Cinemascope files often omit the black bars: width preserves the tier.
+    if (width >= 7680 || height >= 4320) return '8K';
+    if (width >= 3840 || height >= 2000) return '4K';
+    if (width >= 1920 && height <= 1080 && height > 0) return '1080p';
+    if (width >= 1280 && height <= 720 && height > 0) return '720p';
     if (height <= 0) return '';
     return '${height}p';
+  }
+
+  String get codecLabel {
+    switch (codec.toLowerCase()) {
+      case 'h264':
+        return 'H.264';
+      case 'hevc':
+      case 'h265':
+        return 'HEVC (H.265)';
+      default:
+        return codec.toUpperCase();
+    }
   }
 
   /// True for anything that needs an HDR display to look right.

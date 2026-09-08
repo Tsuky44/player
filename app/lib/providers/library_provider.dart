@@ -19,6 +19,10 @@ class LibraryProvider extends ChangeNotifier {
   bool _isLoadingEpisodes = false;
 
   String? _errorMessage;
+  int _moviesRequest = 0;
+  int _showsRequest = 0;
+  int _seasonsRequest = 0;
+  int _episodesRequest = 0;
 
   LibraryProvider(this.apiClient);
 
@@ -36,6 +40,10 @@ class LibraryProvider extends ChangeNotifier {
 
   /// Vide le catalogue du serveur précédent. Voir [HomeProvider.reset].
   void reset() {
+    _moviesRequest++;
+    _showsRequest++;
+    _seasonsRequest++;
+    _episodesRequest++;
     _movies = [];
     _shows = [];
     _seasons = [];
@@ -45,7 +53,18 @@ class LibraryProvider extends ChangeNotifier {
     _isLoadingSeasons = false;
     _isLoadingEpisodes = false;
     _errorMessage = null;
-    notifyListeners();
+    // The shell keeps its tabs mounted: initState will not run again.
+    unawaited(loadMovies());
+    unawaited(loadShows());
+  }
+
+  @override
+  void dispose() {
+    _moviesRequest++;
+    _showsRequest++;
+    _seasonsRequest++;
+    _episodesRequest++;
+    super.dispose();
   }
 
   Future<void> ensureCatalogLoaded() async {
@@ -112,83 +131,116 @@ class LibraryProvider extends ChangeNotifier {
 
   // Clear sub-tier data (prevents old season/episode flash when clicking another show)
   void clearSeasonsAndEpisodes() {
+    _seasonsRequest++;
+    _episodesRequest++;
+    _isLoadingSeasons = false;
+    _isLoadingEpisodes = false;
     _seasons = [];
     _episodes = [];
     notifyListeners();
   }
 
   // Load movies list
-  Future<void> loadMovies() async {
-    _isLoadingMovies = true;
-    _errorMessage = null;
-    notifyListeners();
+  Future<void> loadMovies({bool silent = false}) async {
+    final request = ++_moviesRequest;
+    if (!silent) {
+      _isLoadingMovies = true;
+      _errorMessage = null;
+      notifyListeners();
+    }
 
     try {
-      _movies = await apiClient.getMovies();
+      final result = await apiClient.getMovies();
+      if (request != _moviesRequest) return;
+      _movies = result;
     } catch (e) {
+      if (request != _moviesRequest) return;
       _errorMessage = "Erreur lors du chargement des films : ${e.toString()}";
     } finally {
-      _isLoadingMovies = false;
-      notifyListeners();
+      if (request == _moviesRequest) {
+        _isLoadingMovies = false;
+        notifyListeners();
+      }
     }
   }
 
   // Load TV shows list
   Future<void> loadShows() async {
+    final request = ++_showsRequest;
     _isLoadingShows = true;
     _errorMessage = null;
     notifyListeners();
 
     try {
-      _shows = await apiClient.getShows();
+      final result = await apiClient.getShows();
+      if (request != _showsRequest) return;
+      _shows = result;
     } catch (e) {
+      if (request != _showsRequest) return;
       _errorMessage = "Erreur lors du chargement des séries : ${e.toString()}";
     } finally {
-      _isLoadingShows = false;
-      notifyListeners();
+      if (request == _showsRequest) {
+        _isLoadingShows = false;
+        notifyListeners();
+      }
     }
   }
 
   // Load seasons for a TV Show
   Future<void> loadSeasons(int showId) async {
+    final request = ++_seasonsRequest;
     _isLoadingSeasons = true;
     _seasons = []; // Reset first
     _errorMessage = null;
     notifyListeners();
 
     try {
-      _seasons = await apiClient.getShowSeasons(showId);
+      final result = await apiClient.getShowSeasons(showId);
+      if (request != _seasonsRequest) return;
+      _seasons = result;
     } catch (e) {
+      if (request != _seasonsRequest) return;
       _errorMessage = "Erreur lors du chargement des saisons : ${e.toString()}";
     } finally {
-      _isLoadingSeasons = false;
-      notifyListeners();
+      if (request == _seasonsRequest) {
+        _isLoadingSeasons = false;
+        notifyListeners();
+      }
     }
   }
 
   // Load episodes of a season (local row or TMDB-only virtual season).
-  Future<void> loadEpisodes({required int showId, required Media season}) async {
+  Future<void> loadEpisodes(
+      {required int showId, required Media season}) async {
+    final request = ++_episodesRequest;
     _isLoadingEpisodes = true;
     _episodes = [];
     _errorMessage = null;
     notifyListeners();
 
     try {
+      List<HomeMediaItem> result;
       if (season.id > 0) {
-        _episodes = await apiClient.getSeasonEpisodes(season.id);
+        result = await apiClient.getSeasonEpisodes(season.id);
       } else {
         final seasonNum = season.effectiveSeasonNumber ?? season.seasonNumber;
         if (seasonNum == null || seasonNum <= 0) {
-          _episodes = [];
+          result = [];
         } else {
-          _episodes = await apiClient.getShowSeasonEpisodes(showId, seasonNum);
+          result = await apiClient.getShowSeasonEpisodes(showId, seasonNum);
         }
       }
+      if (request != _episodesRequest) return;
+      _episodes = result;
     } catch (e) {
-      _errorMessage = "Erreur lors du chargement des épisodes : ${e.toString()}";
+      if (request != _episodesRequest) return;
+      _errorMessage =
+          "Erreur lors du chargement des épisodes : ${e.toString()}";
     } finally {
-      _isLoadingEpisodes = false;
-      notifyListeners();
+      if (request == _episodesRequest) {
+        _isLoadingEpisodes = false;
+        notifyListeners();
+      }
     }
   }
 
@@ -216,9 +268,9 @@ class LibraryProvider extends ChangeNotifier {
     _seasons = [
       for (final season in _seasons)
         if (!season.isAvailable &&
-                season.effectiveSeasonNumber != null &&
-                requested.contains(season.effectiveSeasonNumber))
-            season.copyWith(requestStatus: 'pending', canRequest: false)
+            season.effectiveSeasonNumber != null &&
+            requested.contains(season.effectiveSeasonNumber))
+          season.copyWith(requestStatus: 'pending', canRequest: false)
         else
           season,
     ];
@@ -238,7 +290,8 @@ class LibraryProvider extends ChangeNotifier {
     final result = await apiClient.setMediaWatched(mediaId, watched);
     final isFinished = result['is_finished'] as bool? ?? watched;
     final position = result['current_position_seconds'] as int? ?? 0;
-    _patchLocalProgress(mediaId, isFinished: isFinished, positionSeconds: position);
+    _patchLocalProgress(mediaId,
+        isFinished: isFinished, positionSeconds: position);
     // Le manifeste hors ligne suit le même verdict. Sans ça, un épisode coché
     // « vu » depuis la bibliothèque resterait « à voir » dans l'écran des
     // téléchargements — et échapperait au ménage des médias vus.

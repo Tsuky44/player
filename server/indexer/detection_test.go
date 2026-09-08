@@ -242,6 +242,18 @@ func TestIsConfidentTMDBMatch_RejectsWrongYearAndWeakTitles(t *testing.T) {
 	}
 }
 
+func TestIsConfidentTMDBMatch_TreatsAmpersandAsAnd(t *testing.T) {
+	fastSeven := tmdbSearchResult{
+		ID:          168259,
+		Title:       "Fast & Furious 7",
+		ReleaseDate: "2015-04-01",
+	}
+
+	if !isConfidentTMDBMatch(fastSeven, "fast and furious 7", 0, models.TypeMovie, 0) {
+		t.Fatal("an ampersand title variant offered by manual search must also pass automatic matching")
+	}
+}
+
 func TestIsConfidentTMDBMatch_UsesOriginalTitle(t *testing.T) {
 	// French library, English release name: TMDB answers with the French title.
 	frenchEntry := tmdbSearchResult{

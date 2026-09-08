@@ -24,6 +24,7 @@ class MediaDetailsCache {
   static const Duration ttl = Duration(minutes: 20);
 
   static final Map<int, _Entry> _entries = {};
+  static int _generation = 0;
 
   /// In-flight requests, so several widgets asking at once share one call.
   static final Map<int, Future<MediaDetails>> _pending = {};
@@ -58,6 +59,7 @@ class MediaDetailsCache {
   }
 
   static void clear() {
+    _generation++;
     _entries.clear();
     _pending.clear();
   }
@@ -84,11 +86,15 @@ class MediaDetailsCache {
     // futures, and `whenComplete` waits on any future its callback returns —
     // which here is this very request, so it would deadlock and the caller
     // would hang forever. A block body discards the value.
-    final request = api.getMediaDetails(mediaId).then((details) {
-      remember(mediaId, details);
+    final generation = _generation;
+    late final Future<MediaDetails> request;
+    request = api.getMediaDetails(mediaId).then((details) {
+      if (generation == _generation && identical(_pending[mediaId], request)) {
+        remember(mediaId, details);
+      }
       return details;
     }).whenComplete(() {
-      _pending.remove(mediaId);
+      if (identical(_pending[mediaId], request)) _pending.remove(mediaId);
     });
 
     _pending[mediaId] = request;

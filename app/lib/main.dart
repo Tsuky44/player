@@ -1,3 +1,4 @@
+import 'services/media_details_cache.dart';
 import 'dart:async';
 
 import 'package:flutter/gestures.dart';
@@ -133,7 +134,12 @@ void main() async {
   final homeProvider = HomeProvider(apiClient);
   final libraryProvider = LibraryProvider(apiClient);
   final mediaRequestsProvider = MediaRequestsProvider(apiClient);
+  apiClient.onProgressSynchronized = () {
+    unawaited(homeProvider.loadHome(silent: true));
+    unawaited(libraryProvider.loadMovies(silent: true));
+  };
   authProvider.onServerChanged = () {
+    MediaDetailsCache.clear();
     homeProvider.reset();
     libraryProvider.reset();
     mediaRequestsProvider.reset();

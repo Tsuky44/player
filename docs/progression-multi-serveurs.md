@@ -11,9 +11,11 @@ sa série, son numéro de saison et son numéro d'épisode. Un média sans cette
 reste propre à son serveur. Les titres et les numéros de fichiers locaux ne servent
 jamais à associer deux contenus.
 
-La synchronisation s'effectue avant le changement de serveur et lors du chargement
-de l'accueil, des fiches et de la reprise (au plus une lecture complète toutes les
-30 secondes). Après un enregistrement de progression ou une action vu/non vu,
+La synchronisation s'effectue en arrière-plan lors du changement de serveur et du
+chargement du catalogue, sans retarder l'affichage des films et séries. L'accueil
+et les films sont rafraîchis silencieusement après la synchronisation de la bascule.
+Les appels de reprise et de fiches attendent la synchronisation pour conserver une
+progression à jour (au plus une lecture complète toutes les 30 secondes). Après un enregistrement de progression ou une action vu/non vu,
 l'app transmet en arrière-plan l'état du seul média concerné. La date du visionnage
 est conservée : un historique ancien ne remplace pas une lecture plus récente.
 À date exactement identique, chaque serveur conserve son état existant.
