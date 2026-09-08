@@ -281,11 +281,11 @@ func samePath(a, b string) bool {
 
 type nfoRoot struct {
 	XMLName   xml.Name
-	Title     string     `xml:"title"`
-	Year      string     `xml:"year"`
-	TMDBID    string     `xml:"tmdbid"`
-	IMDbID    string     `xml:"imdbid"`
-	TVDBID    string     `xml:"tvdbid"`
+	Title     string      `xml:"title"`
+	Year      string      `xml:"year"`
+	TMDBID    string      `xml:"tmdbid"`
+	IMDbID    string      `xml:"imdbid"`
+	TVDBID    string      `xml:"tvdbid"`
 	UniqueIDs []nfoUnique `xml:"uniqueid"`
 }
 
@@ -428,8 +428,15 @@ func CollectMovieLocalIdentity(videoPath, moviesRoot string) LocalIdentityHints 
 	lookupName := ResolveMovieLookupName(videoPath, moviesRoot)
 	hints := LocalIdentityHints{Source: "folder", Title: lookupName}
 
-	// 1) Provider IDs in folder + filename (highest local certainty after NFO).
-	for _, part := range []string{filepath.Base(filepath.Dir(videoPath)), filepath.Base(videoPath), lookupName} {
+	// Shared folders must not donate an ID or movie.nfo to every file.
+	parent := filepath.Dir(videoPath)
+	ownsFolder := !samePath(parent, moviesRoot) &&
+		!looksLikeCategoryFolderName(filepath.Base(parent)) && CountDistinctMoviesInDir(parent) <= 1
+	parts := []string{filepath.Base(videoPath)}
+	if ownsFolder {
+		parts = append(parts, filepath.Base(filepath.Dir(videoPath)))
+	}
+	for _, part := range parts {
 		tmdbID, imdbID, tvdbID := ExtractProviderIDs(part)
 		if hints.TMDBID == 0 && tmdbID > 0 {
 			hints.TMDBID = tmdbID
@@ -447,7 +454,11 @@ func CollectMovieLocalIdentity(videoPath, moviesRoot string) LocalIdentityHints 
 	}
 
 	// 2) NFO sidecar overrides / fills IDs.
-	if nfo := ReadNFOIdentity(MovieNFOCandidates(videoPath)...); nfo.Source == "nfo" {
+	nfoPaths := MovieNFOCandidates(videoPath)
+	if !ownsFolder {
+		nfoPaths = nfoPaths[:1]
+	}
+	if nfo := ReadNFOIdentity(nfoPaths...); nfo.Source == "nfo" {
 		if nfo.TMDBID > 0 {
 			hints.TMDBID = nfo.TMDBID
 		}

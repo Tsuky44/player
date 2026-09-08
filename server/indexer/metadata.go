@@ -710,81 +710,8 @@ func backfillMissingMetadata() {
 	}
 
 	backfillEpisodePosters()
-	backfillLocalizedTitles()
 	backfillEpisodeMetadata()
 	log.Printf("TMDB: metadata backfill done in %v (%d updated)", time.Since(start), updated)
-}
-
-func backfillLocalizedTitles() {
-	if tmdbAPIKey() == "" {
-		return
-	}
-
-	rows, err := database.DB.Query(`
-		SELECT id, type, COALESCE(tmdb_id, 0)
-		FROM medias
-		WHERE type IN ('movie', 'show')
-		  AND tmdb_id IS NOT NULL AND tmdb_id > 0
-		ORDER BY type, title`)
-	if err != nil {
-		log.Printf("TMDB: localized title backfill query failed: %v", err)
-		return
-	}
-	defer rows.Close()
-
-	type item struct {
-		id        int
-		mediaType models.MediaType
-		tmdbID    int
-	}
-	var queue []item
-	for rows.Next() {
-		var id, tmdbID int
-		var mediaType string
-		if err := rows.Scan(&id, &mediaType, &tmdbID); err != nil {
-			continue
-		}
-		queue = append(queue, item{id, models.MediaType(mediaType), tmdbID})
-	}
-
-	if len(queue) == 0 {
-		return
-	}
-
-	log.Printf("TMDB: refreshing localized titles for %d items (%s)…", len(queue), tmdbLanguage())
-	updated := 0
-	for i, item := range queue {
-		if refreshLocalizedRecord(item.id, item.tmdbID, item.mediaType) {
-			updated++
-		}
-		if (i+1)%25 == 0 || i+1 == len(queue) {
-			log.Printf("TMDB: localized titles progress %d/%d", i+1, len(queue))
-		}
-		time.Sleep(260 * time.Millisecond)
-	}
-	log.Printf("TMDB: localized titles refreshed (%d updated)", updated)
-}
-
-func refreshLocalizedRecord(id, tmdbID int, mediaType models.MediaType) bool {
-	_, overview, _, displayTitle := fetchTMDBDetailsByID(tmdbID, mediaType)
-	if displayTitle == "" && overview == "" {
-		return false
-	}
-
-	_, err := database.DB.Exec(`
-		UPDATE medias SET
-			title = CASE WHEN ? != '' THEN ? ELSE title END,
-			overview = CASE WHEN ? != '' THEN ? ELSE overview END
-		WHERE id = ?`,
-		displayTitle, displayTitle,
-		overview, overview,
-		id,
-	)
-	if err != nil {
-		log.Printf("TMDB: failed to localize media %d: %v", id, err)
-		return false
-	}
-	return displayTitle != ""
 }
 
 // SearchTMDBCandidates returns up to 20 TMDB matches for a manual query, used
@@ -1046,6 +973,9 @@ func RedetectAllMediaAsync() bool {
 // redetectAllMedia walks all library movies/shows and applies RedetectMediaByID.
 // The run guard belongs to RedetectAllMediaAsync, its only caller.
 func redetectAllMedia() {
+	ResetDirScanCache()
+	ResetSearchCache()
+	RelinkEpisodesToShows(config.SeriesDir())
 	redetectAllMutex.Lock()
 	redetectAllProgress = RedetectAllProgress{}
 	redetectAllMutex.Unlock()

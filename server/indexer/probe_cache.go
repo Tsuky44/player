@@ -92,23 +92,33 @@ func BackfillMissingProbesAsync() bool {
 		}
 		defer rows.Close()
 
-		count := 0
+		// Release the read cursor before ProbeAndPersist writes through SQLite.
+		type pendingProbe struct {
+			id          int
+			title, path string
+		}
+		var queue []pendingProbe
 		for rows.Next() {
-			var id int
-			var title, path string
+			var item pendingProbe
 			var size int64
-			if err := rows.Scan(&id, &title, &path, &size); err != nil {
+			if err := rows.Scan(&item.id, &item.title, &item.path, &size); err != nil {
 				log.Printf("Indexer: probe backfill scan failed: %v", err)
 				continue
 			}
-			info, err := os.Stat(path)
+			queue = append(queue, item)
+		}
+		if err := rows.Err(); err != nil {
+			log.Printf("Indexer: probe backfill read failed: %v", err)
+			return
+		}
+		rows.Close()
+		count := 0
+		for _, item := range queue {
+			info, err := os.Stat(item.path)
 			if err != nil {
 				continue
 			}
-			if size == 0 {
-				size = info.Size()
-			}
-			ProbeAndPersist(id, title, path, size, info.ModTime())
+			ProbeAndPersist(item.id, item.title, item.path, info.Size(), info.ModTime())
 			count++
 		}
 		log.Printf("Indexer: Probe backfill completed (%d files)", count)

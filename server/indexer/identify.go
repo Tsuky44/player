@@ -41,7 +41,21 @@ type IdentityMatch struct {
 // IdentifyMovie resolves a movie file using local IDs/NFO first, then scored TMDB search.
 func IdentifyMovie(videoPath, moviesRoot string) IdentityMatch {
 	hints := CollectMovieLocalIdentity(videoPath, moviesRoot)
-	return identifyFromHints(hints, models.TypeMovie)
+	match := identifyFromHints(hints, models.TypeMovie)
+	if match.Matched || hints.TMDBID > 0 || hints.IMDbID != "" || hints.Source == "nfo" {
+		return match
+	}
+	// A download folder can carry a different name. Try the actual release
+	// filename when the folder search failed, keeping the same confidence gates.
+	base := strings.TrimSuffix(filepath.Base(videoPath), filepath.Ext(videoPath))
+	parsed := ParseReleaseFilename(StripProviderIDs(base), models.TypeMovie)
+	if !looksLikeGenericVideoName(base) && parsed.Title != "" && parsed.Title != hints.Title {
+		fallback := identifyFromHints(LocalIdentityHints{Title: parsed.Title, Year: parsed.Year, Source: "filename"}, models.TypeMovie)
+		if fallback.Matched {
+			return fallback
+		}
+	}
+	return match
 }
 
 // IdentifyShow resolves a series from folder/name hints using the same Emby priority order.
@@ -115,6 +129,19 @@ func identifyFromHints(hints LocalIdentityHints, mediaType models.MediaType) Ide
 				Source:      "imdb_find",
 				Matched:     true,
 			}
+		}
+	}
+
+	// TVDB IDs from series NFO/path tags are also authoritative local signals.
+	if mediaType == models.TypeShow && hints.TVDBID > 0 {
+		if id := findTMDBIDByExternal(strconv.Itoa(hints.TVDBID), "tvdb_id", mediaType); id > 0 {
+			poster, overview, date, title := fetchTMDBDetailsByID(id, mediaType)
+			if title == "" {
+				title = fallbackTitle
+			}
+			return IdentityMatch{TMDBID: id, IMDbID: hints.IMDbID, Title: title,
+				Overview: overview, PosterURL: poster, ReleaseDate: date,
+				Confidence: 1, Source: "tvdb_find", Matched: true}
 		}
 	}
 

@@ -69,13 +69,10 @@ func ScanMedia(moviesDir, seriesDir string) bool {
 		scanMovies(moviesDir)
 		scanSeries(seriesDir)
 
-		// Repair episodes filed under the wrong show by an older scan.
-		RelinkEpisodesToShows(seriesDir)
-
+		// Full identity repair belongs to explicit re-detection. Running it here
+		// re-fetches every series and can undo a user's manual match on refresh.
 		dedupeDuplicateShows()
 		dedupeDuplicateMovies()
-		// Heal films that an earlier scan pinned to the wrong TMDB entry.
-		RedetectAmbiguousMovies()
 
 		// Clean up broken database entries whose physical files have been deleted
 		if err := cleanMissingMedias(moviesDir, seriesDir); err != nil {
@@ -84,12 +81,14 @@ func ScanMedia(moviesDir, seriesDir string) bool {
 
 		logScanSummary()
 
-		InvalidateStreamCaches()
 		BackfillMissingProbesAsync()
 
 		// Intro/outro detection is expensive (IntroDB + ffprobe) — run in the
 		// background so /api/home and browsing stay responsive during startup.
-		go DetectIntrosOutros()
+		seriesStats := LastScanReport().Series
+		if seriesStats.Indexed > 0 || seriesStats.Modified > 0 {
+			go DetectIntrosOutros()
+		}
 
 		BackfillMissingMetadataAsync()
 
@@ -115,20 +114,25 @@ func scanMovies(dir string) {
 		return
 	}
 
+	known, err := loadIndexedFiles()
+	if err != nil {
+		reportError("lecture du catalogue impossible: %v", err)
+		return
+	}
+
 	walkVideoFiles(dir, sectionMovies, func(path string, info os.FileInfo) {
 		// Normalize paths for DB storage (using forward slashes)
 		normalizedPath := filepath.ToSlash(path)
 
-		// Check if already indexed
-		var exists bool
-		if err := database.DB.QueryRow(
-			"SELECT EXISTS(SELECT 1 FROM medias WHERE file_path = ?)", normalizedPath,
-		).Scan(&exists); err != nil {
-			log.Printf("Indexer: lookup failed for %s: %v", normalizedPath, err)
-			reportError("lecture base impossible pour %s (%v)", normalizedPath, err)
-			return
-		}
-		if exists {
+		if existing, ok := known[normalizedPath]; ok {
+			if err := existing.refresh(info); err != nil {
+				reportError("actualisation impossible pour %s (%v)", normalizedPath, err)
+				reportFailed(sectionMovies)
+				return
+			}
+			if existing.changed(info) {
+				withSection(sectionMovies, func(stats *ScanSectionStats) { stats.Modified++ })
+			}
 			reportAlreadyIndexed(sectionMovies)
 			return
 		}
@@ -147,9 +151,9 @@ func scanMovies(dir string) {
 			tmdbID = identity.TMDBID
 		}
 
-		res, err := database.DB.Exec(
-			"INSERT INTO medias (type, title, file_path, duration, file_size, poster_url, overview, release_date, tmdb_id, imdb_id) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
-			models.TypeMovie, displayTitle, normalizedPath, 0, info.Size(), identity.PosterURL, identity.Overview, identity.ReleaseDate, tmdbID, nullIfEmpty(identity.IMDbID),
+		_, err = database.DB.Exec(
+			"INSERT INTO medias (type, title, file_path, duration, file_size, poster_url, overview, release_date, tmdb_id, imdb_id, file_mod_time) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+			models.TypeMovie, displayTitle, normalizedPath, 0, info.Size(), identity.PosterURL, identity.Overview, identity.ReleaseDate, tmdbID, nullIfEmpty(identity.IMDbID), info.ModTime().Unix(),
 		)
 		if err != nil {
 			log.Printf("Indexer: Failed to index movie %s: %v", displayTitle, err)
@@ -165,10 +169,6 @@ func scanMovies(dir string) {
 			log.Printf("Indexer: Indexed Movie -> %s (unmatched — needs review)", displayTitle)
 			reportUnmatched(normalizedPath, displayTitle, string(models.TypeMovie))
 		}
-
-		if id, idErr := res.LastInsertId(); idErr == nil {
-			ProbeAndPersist(int(id), displayTitle, normalizedPath, info.Size(), info.ModTime())
-		}
 	})
 }
 
@@ -180,21 +180,28 @@ func scanSeries(dir string) {
 		return
 	}
 
+	known, err := loadIndexedFiles()
+	if err != nil {
+		reportError("lecture du catalogue impossible: %v", err)
+		return
+	}
+
+	showIDs := make(map[string]int)
+	seasonIDs := make(map[[2]int]int)
 	walkVideoFiles(dir, sectionSeries, func(path string, info os.FileInfo) {
 		normalizedPath := filepath.ToSlash(path)
 
-		// Check if episode already indexed
-		var exists bool
-		if err := database.DB.QueryRow(
-			"SELECT EXISTS(SELECT 1 FROM medias WHERE file_path = ?)", normalizedPath,
-		).Scan(&exists); err != nil {
-			log.Printf("Indexer: lookup failed for %s: %v", normalizedPath, err)
-			reportError("lecture base impossible pour %s (%v)", normalizedPath, err)
-			return
-		}
-		if exists {
+		if existing, ok := known[normalizedPath]; ok {
+			if err := existing.refresh(info); err != nil {
+				reportError("actualisation impossible pour %s (%v)", normalizedPath, err)
+				reportFailed(sectionSeries)
+				return
+			}
+			if existing.changed(info) {
+				withSection(sectionSeries, func(stats *ScanSectionStats) { stats.Modified++ })
+			}
 			reportAlreadyIndexed(sectionSeries)
-			return // Already indexed, skip
+			return
 		}
 
 		// Parse show name, season, and episode
@@ -221,7 +228,14 @@ func scanSeries(dir string) {
 		showFolderPath := resolveShowFolderPath(dir, parts)
 
 		// Find or Create Show (local IDs/NFO before TMDB search)
-		showID, err := findOrCreateShow(showTitle, tmdbSearchKey, showFolderPath)
+		showKey := showFolderPath + "\x00" + tmdbSearchKey
+		showID, cachedShow := showIDs[showKey]
+		if !cachedShow {
+			showID, err = findOrCreateShow(showTitle, tmdbSearchKey, showFolderPath)
+			if err == nil {
+				showIDs[showKey] = showID
+			}
+		}
 		if err != nil {
 			log.Printf("Indexer error: failed to resolve show %s: %v", showTitle, err)
 			reportFailed(sectionSeries)
@@ -230,7 +244,14 @@ func scanSeries(dir string) {
 		}
 
 		// Find or Create Season
-		seasonID, err := findOrCreateSeason(showID, seasonNum)
+		seasonKey := [2]int{showID, seasonNum}
+		seasonID, cachedSeason := seasonIDs[seasonKey]
+		if !cachedSeason {
+			seasonID, err = findOrCreateSeason(showID, seasonNum)
+			if err == nil {
+				seasonIDs[seasonKey] = seasonID
+			}
+		}
 		if err != nil {
 			log.Printf("Indexer error: failed to resolve season %d for show %s: %v", seasonNum, showTitle, err)
 			reportFailed(sectionSeries)
@@ -257,10 +278,10 @@ func scanSeries(dir string) {
 			epTMDBID = tmdbEpID
 		}
 
-		res, err := database.DB.Exec(
-			`INSERT INTO medias (type, title, file_path, duration, file_size, parent_id, poster_url, overview, release_date, tmdb_id, season_number, episode_number)
-			 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-			models.TypeEpisode, epTitle, normalizedPath, 0, info.Size(), seasonID, epPoster, epOverview, epAirDate, epTMDBID, seasonNum, episodeNum,
+		_, err = database.DB.Exec(
+			`INSERT INTO medias (type, title, file_path, duration, file_size, parent_id, poster_url, overview, release_date, tmdb_id, season_number, episode_number, file_mod_time)
+			 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+			models.TypeEpisode, epTitle, normalizedPath, 0, info.Size(), seasonID, epPoster, epOverview, epAirDate, epTMDBID, seasonNum, episodeNum, info.ModTime().Unix(),
 		)
 		if err != nil {
 			log.Printf("Indexer: Failed to index episode %s: %v", epTitle, err)
@@ -274,10 +295,6 @@ func scanSeries(dir string) {
 			reportUnmatched(normalizedPath, showTitle, string(models.TypeEpisode))
 		}
 		log.Printf("Indexer: Successfully indexed Episode -> %s (S%02dE%02d)", showTitle, seasonNum, episodeNum)
-
-		if id, idErr := res.LastInsertId(); idErr == nil {
-			ProbeAndPersist(int(id), epTitle, normalizedPath, info.Size(), info.ModTime())
-		}
 	})
 }
 
@@ -434,4 +451,3 @@ func cleanEmptySeasonsAndShows() {
 		log.Printf("Indexer cleanup error (shows): %v", err)
 	}
 }
-
