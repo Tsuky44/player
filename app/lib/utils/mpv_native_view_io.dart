@@ -8,7 +8,12 @@ abstract final class MpvNativeView {
   /// Un libmpv désigné au lancement, pour en essayer un autre que l'installé.
   static const String _override = String.fromEnvironment('ONYX_LIBMPV');
 
-  /// Là où `build_libmpv.sh` installe le libmpv patché.
+  /// Le libmpv livrable, embarqué dans l'app (`build_release.sh`).
+  static String get bundledPath =>
+      '${File(Platform.resolvedExecutable).parent.parent.path}'
+      '/Frameworks/OnyxMpv.framework/OnyxMpv';
+
+  /// Là où `build_libmpv.sh` installe le libmpv de développement.
   static String get installedPath =>
       '${Platform.environment['HOME'] ?? ''}'
       '/Library/Application Support/Onyx/libmpv/libmpv.2.dylib';
@@ -24,7 +29,7 @@ abstract final class MpvNativeView {
   static void resolve() {
     if (!Platform.isMacOS) return;
     _libmpvPath = pick(
-      [if (_override.isNotEmpty) _override, installedPath],
+      [if (_override.isNotEmpty) _override, bundledPath, installedPath],
       _canLoad,
     );
     debugPrint('MpvNativeView: '
