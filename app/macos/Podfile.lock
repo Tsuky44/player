@@ -33,7 +33,7 @@ SPEC CHECKSUMS:
   FlutterMacOS: d0db08ddef1a9af05a5ec4b724367152bb0500b1
   media_kit_libs_macos_video: 85a23e549b5f480e72cae3e5634b5514bc692f65
   media_kit_video: fa6564e3799a0a28bff39442334817088b7ca758
-  onyx_mpv_macos: 2e4fa57187a3f8392fe4f335b493f62af7946090
+  onyx_mpv_macos: 026fad236be6050708fd603073d3047c0d684b8e
 
 PODFILE CHECKSUM: 346bfb2deb41d4a6ebd6f6799f92188bde2d246f
 

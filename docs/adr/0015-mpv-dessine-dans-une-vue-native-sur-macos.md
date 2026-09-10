@@ -1,8 +1,8 @@
 # ADR-0015 — Sur macOS, mpv dessine lui-même dans une vue native
 
-- **Statut :** accepté sur macOS. Actif par défaut dès que le libmpv patché est installé, texture
-  de media_kit sinon. Le Dolby Vision a été vérifié sur un vrai fichier (profil 8, RPU appliqué,
-  sortie PQ). Le binaire livrable reste à faire (voir « Ce qui reste »).
+- **Statut :** accepté sur macOS. `OnyxMpv.framework`, universel et embarqué dans l'app, en fait le
+  lecteur par défaut sur tous les Mac ; la texture de media_kit ne sert plus que de repli. Le Dolby
+  Vision a été vérifié sur un vrai fichier (profil 8, RPU appliqué, sortie PQ).
 - **Portée :** la surface vidéo de macOS. Le reste de la chaîne mpv (pistes, sous-titres, reprise,
   réglages) ne change pas, et aucune autre plateforme n'est touchée.
 - **Complète** l'ADR-0014, dont elle lève la limite sur le Dolby Vision pour macOS.
@@ -34,9 +34,10 @@ de la 0.41 comme de la branche principale.
 2. **Le plugin `onyx_mpv_macos`**. Il fournit une `AppKitView` dont il donne l'adresse à Dart. Il
    la garde en vie jusqu'à ce que mpv l'ait lâchée : Flutter la libère dès que le widget disparaît,
    alors que mpv peut encore y présenter une image.
-3. **Le branchement dans l'app**, activé dès qu'un libmpv patché se charge : celui que
-   `build_libmpv.sh` installe dans `~/Library/Application Support/Onyx/libmpv/`, ou un autre
-   désigné au lancement (`--dart-define=ONYX_LIBMPV=…`). Un binaire absent ou qui ne se charge pas
+3. **Le branchement dans l'app**, activé dès qu'un libmpv patché se charge : `OnyxMpv.framework`,
+   embarqué dans l'app (voir « Le binaire livrable »), sinon celui que `build_libmpv.sh` installe
+   dans `~/Library/Application Support/Onyx/libmpv/`, ou un autre désigné au lancement
+   (`--dart-define=ONYX_LIBMPV=…`). Un binaire absent ou qui ne se charge pas
    fait retomber l'app sur la texture, sans l'empêcher de démarrer (voir `MpvNativeView`). Le
    moteur est créé sans texture (media_kit coupe alors la piste vidéo : il faut la rouvrir) et
    avec `vo=null`. La surface donne `wid` puis `vo=gpu-next` à mpv, et `vo=null` avant de
@@ -63,13 +64,30 @@ Un banc d'essai charge le libmpv patché, lui donne une vue dans une fenêtre et
 L'app compile avec le plugin. **Le Dolby Vision n'a pas encore été vu sur un vrai fichier** :
 c'est le test qui reste à faire avant d'accepter cet ADR.
 
+## Le binaire livrable
+
+`native/build_release.sh` construit `OnyxMpv.xcframework` : mpv 0.41.0 patché et toutes ses
+dépendances (FFmpeg 8.1, dav1d, freetype, harfbuzz, fribidi, libass, glslang, libplacebo,
+MoltenVK), compilées en statique pour arm64 et x86_64 et liées dans un seul binaire de 67 Mo qui ne
+dépend que du système (macOS 11 minimum). FFmpeg est construit sans `--enable-gpl` et mpv avec
+`-Dgpl=false` : l'ensemble est LGPL. Le podspec du plugin l'embarque dans l'app, qui le cherche
+d'abord dans son propre bundle.
+
+Deux choix qui ne se devinent pas :
+
+- MoltenVK est lié en statique à la place d'un chargeur Vulkan : il n'y a pas d'ICD à installer.
+  libplacebo doit alors être construit avec `vk-proc-addr`, parce que mpv crée son instance Vulkan
+  sans lui fournir `vkGetInstanceProcAddr`.
+- libplacebo cherche glslang dans les chemins par défaut du compilateur : le script lui désigne le
+  dossier de build et corrige deux appels à `find_library`. Un symbole resté non résolu ne fait pas
+  échouer le lien, seulement le chargement chez l'utilisateur : le script le vérifie et fait
+  échouer le build.
+
+Vérifié : chargement, intégration dans la vue et rendu sur arm64 et sur x86_64 (Rosetta), et build
+release de l'app universel, framework compris.
+
 ## Ce qui reste
 
-- **Le binaire livrable.** Le libmpv actuel sert au développement : il est lié aux bibliothèques
-  de Homebrew, n'existe qu'en arm64 et embarque le FFmpeg GPL de Homebrew. Pour livrer, il faut un
-  build universel et relogeable, embarqué dans l'app à la place du `Mpv.framework` de media_kit,
-  avec un FFmpeg compatible LGPL. Tant que ce build n'existe pas, le mode ne s'active que sur un
-  Mac où le libmpv patché est installé ; partout ailleurs l'app garde la texture.
 - **Le patch à maintenir.** Il doit être réappliqué à chaque montée de version de mpv. Il est
   court (4 fichiers) et ne touche que le backend macOS.
 - **Les réglages de qualité de media_kit** (`scale=bilinear`, `dither=no`, …) s'appliquent aussi à
