@@ -1,0 +1,182 @@
+diff --git a/osdep/mac/app_hub.swift b/osdep/mac/app_hub.swift
+index 879b084..d0b1491 100644
+--- a/osdep/mac/app_hub.swift
++++ b/osdep/mac/app_hub.swift
+@@ -57,7 +57,11 @@ class AppHub: NSObject {
+             log.log = mp_log_new(nil, mp_client_get_log(mpv), "app")
+             option = OptionHelper(UnsafeMutablePointer(mpv), mp_client_get_global(mpv))
+             input.option = option
+-            DispatchQueue.main.sync { menu = MenuBar(self) }
++            // Onyx : la barre de menus remplace NSApp.mainMenu. Seul le
++            // lecteur mpv lui-même peut le faire, pas une app qui l'embarque.
++            if isApplication {
++                DispatchQueue.main.sync { menu = MenuBar(self) }
++            }
+         }
+         if let bundlePath = option?.mac.macos_bundle_path, isBundle {
+             let path = TypeHelper.toStringArray(bundlePath).joined(separator: ":") + ":" +
+diff --git a/video/out/mac/common.swift b/video/out/mac/common.swift
+index 77557bb..da1ebb4 100644
+--- a/video/out/mac/common.swift
++++ b/video/out/mac/common.swift
+@@ -135,6 +135,44 @@ class Common: NSObject {
+         layer.delegate = view
+     }
+ 
++    // Onyx : intégration dans la vue passée par --wid, à la place de la
++    // fenêtre que mpv crée d'ordinaire. mpv 0.41 ne lit pas --wid sur macOS.
++    @objc var isEmbedded: Bool { return option.vo.WinID >= 0 }
++    let embedSizeLock = NSLock()
++    var embedPixelSize: CGSize = .zero
++
++    func embedView() {
++        guard let view = self.view,
++              let raw = UnsafeRawPointer(bitPattern: Int(option.vo.WinID)) else {
++            log.error("Invalid --wid, cannot embed the video view")
++            return
++        }
++        let parent = Unmanaged<NSView>.fromOpaque(raw).takeUnretainedValue()
++        view.frame = parent.bounds
++        parent.addSubview(view)
++        updateEmbedSize()
++    }
++
++    func updateEmbedSize() {
++        guard let view = self.view else { return }
++        let scale = view.window?.backingScaleFactor ?? NSScreen.main?.backingScaleFactor ?? 1
++        view.layer?.contentsScale = scale
++        let size = CGSize(width: view.bounds.width * scale, height: view.bounds.height * scale)
++        embedSizeLock.withLock { embedPixelSize = size }
++    }
++
++    func embeddedViewDidResize() {
++        updateEmbedSize()
++        windowDidResize()
++    }
++
++    @objc func drawablePixelSize() -> CGSize {
++        if isEmbedded {
++            return embedSizeLock.withLock { embedPixelSize }
++        }
++        return window?.framePixel.size ?? .zero
++    }
++
+     func initWindowState() {
+         if option.vo.fullscreen {
+             DispatchQueue.main.async {
+diff --git a/video/out/mac/view.swift b/video/out/mac/view.swift
+index 8c9c006..81b5953 100644
+--- a/video/out/mac/view.swift
++++ b/video/out/mac/view.swift
+@@ -26,7 +26,7 @@ class View: NSView, CALayerDelegate {
+     var lastMouseDownEvent: NSEvent?
+ 
+     override var isFlipped: Bool { return true }
+-    override var acceptsFirstResponder: Bool { return true }
++    override var acceptsFirstResponder: Bool { return !common.isEmbedded }
+ 
+     init(frame: NSRect, common com: Common) {
+         common = com
+@@ -34,7 +34,21 @@ class View: NSView, CALayerDelegate {
+         autoresizingMask = [.width, .height]
+         wantsBestResolutionOpenGLSurface = true
+         wantsExtendedDynamicRangeOpenGLSurface = true
+-        registerForDraggedTypes([ .fileURL, .URL, .string ])
++        // Onyx : intégrée dans une app hôte, la vue ne prend ni les fichiers
++        // déposés ni les événements souris — ils appartiennent à l'hôte.
++        if !com.isEmbedded {
++            registerForDraggedTypes([ .fileURL, .URL, .string ])
++        }
++    }
++
++    override func setFrameSize(_ newSize: NSSize) {
++        super.setFrameSize(newSize)
++        if common.isEmbedded { common.embeddedViewDidResize() }
++    }
++
++    override func viewDidChangeBackingProperties() {
++        super.viewDidChangeBackingProperties()
++        if common.isEmbedded { common.embeddedViewDidResize() }
+     }
+ 
+     required init?(coder: NSCoder) {
+@@ -42,6 +56,7 @@ class View: NSView, CALayerDelegate {
+     }
+ 
+     override func updateTrackingAreas() {
++        if common.isEmbedded { return }
+         if let tracker = self.tracker {
+             removeTrackingArea(tracker)
+         }
+diff --git a/video/out/mac_common.swift b/video/out/mac_common.swift
+index 45f922d..c196737 100644
+--- a/video/out/mac_common.swift
++++ b/video/out/mac_common.swift
+@@ -44,8 +44,13 @@ class MacCommon: Common {
+         eventsLock.withLock { self.vo = vo }
+ 
+         DispatchQueue.main.sync {
+-            let previousActiveApp = getActiveApp()
+-            initApp()
++            // Onyx : intégré dans une app hôte (--wid), mpv ne crée pas de
++            // fenêtre et ne touche ni à l'activation ni à l'icône de l'app.
++            let embedded = isEmbedded
++            let previousActiveApp = embedded ? nil : getActiveApp()
++            if !embedded {
++                initApp()
++            }
+ 
+             let (screen, wr, forcePosition) = getInitProperties(vo)
+             guard let layer = self.layer else {
+@@ -53,7 +58,12 @@ class MacCommon: Common {
+                 exit(1)
+             }
+ 
+-            if window == nil {
++            if embedded {
++                if view == nil {
++                    initView(vo, layer)
++                    embedView()
++                }
++            } else if window == nil {
+                 initView(vo, layer)
+                 initWindow(vo, previousActiveApp)
+                 initWindowState()
+@@ -65,7 +75,7 @@ class MacCommon: Common {
+                 window?.updateSize(wr.size)
+             }
+ 
+-            if option.vo.focus_on == 2 {
++            if option.vo.focus_on == 2 && !embedded {
+                 NSApp.activate(ignoringOtherApps: true)
+             }
+ 
+@@ -110,6 +120,8 @@ class MacCommon: Common {
+     }
+ 
+     @objc func isVisible() -> Bool {
++        // Onyx : l'hôte décide de ce qui est visible ; mpv présente toujours.
++        if isEmbedded { return true }
+         return window?.occlusionState.contains(.visible) ?? false ||
+                option.vo.force_render ||
+                needsInitialDraw
+diff --git a/video/out/vulkan/context_mac.m b/video/out/vulkan/context_mac.m
+index 281a4bd..81e6adf 100644
+--- a/video/out/vulkan/context_mac.m
++++ b/video/out/vulkan/context_mac.m
+@@ -114,10 +114,11 @@ static bool resize(struct ra_ctx *ctx)
+ {
+     struct priv *p = ctx->priv;
+ 
+-    if (!p->vo_mac.window) {
+-        return false;
+-    }
+-    CGSize size = p->vo_mac.window.framePixel.size;
++    // Onyx : la taille vient de la fenêtre, ou de la vue hôte quand mpv est
++    // intégré (--wid). Une vue pas encore mise en page n'est pas une erreur.
++    CGSize size = [p->vo_mac drawablePixelSize];
++    if (size.width <= 0 || size.height <= 0)
++        return p->vo_mac.isEmbedded;
+ 
+     return ra_vk_ctx_resize(ctx, (int)size.width, (int)size.height);
+ }

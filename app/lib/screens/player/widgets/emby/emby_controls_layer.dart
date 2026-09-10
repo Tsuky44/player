@@ -1,4 +1,3 @@
-import 'dart:ui' show FontFeature;
 
 import 'package:flutter/material.dart';
 
@@ -891,16 +890,16 @@ class _EmbyVolumeControlState extends State<_EmbyVolumeControl> {
           SizedBox(
             width: m.isCompact ? 90 : 130,
             child: SliderTheme(
-              data: SliderThemeData(
+              data: const SliderThemeData(
                 trackHeight: 3,
                 activeTrackColor: EmbyChromeTheme.progressPlayed,
                 inactiveTrackColor: EmbyChromeTheme.progressTrack,
                 thumbColor: EmbyChromeTheme.progressPlayed,
                 overlayColor: Colors.white24,
                 thumbShape:
-                    const RoundSliderThumbShape(enabledThumbRadius: 6),
+                    RoundSliderThumbShape(enabledThumbRadius: 6),
                 overlayShape:
-                    const RoundSliderOverlayShape(overlayRadius: 14),
+                    RoundSliderOverlayShape(overlayRadius: 14),
               ),
               child: Slider(
                 value: widget.volume.clamp(0, 100),

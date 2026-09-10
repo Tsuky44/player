@@ -1,6 +1,7 @@
 name: onyx
 description: Onyx — client Direct Play pour un serveur média privé auto-hébergé.
 version: 1.0.0+1
+publish_to: none
 
 environment:
   sdk: '>=3.0.0 <4.0.0'
@@ -26,14 +27,14 @@ dependencies:
   path: ^1.9.0
 
   # UI & Media Kit Packages
-  cached_network_image: ^3.3.1
+  cached_network_image: ^4.0.0
   # Already pulled in by cached_network_image; declared so the app can widen the
   # default 200-file image store (see services/app_image_cache.dart).
   flutter_cache_manager: ^3.4.1
-  intl: ^0.19.0
+  intl: ^0.20.2
   audio_video_progress_bar: ^2.0.3
   flutter_animate: ^4.5.0
-  google_fonts: ^6.2.1
+  google_fonts: ^8.2.1
   
   # Media Player (BasÃ© sur MPV via media-kit)
   media_kit: ^1.2.6
@@ -41,26 +42,38 @@ dependencies:
   media_kit_libs_video: ^1.0.7
 
   # Desktop window management
-  window_manager: ^0.3.7
+  window_manager: ^0.5.2
 
   # Browser APIs, used only by the web-side conditional imports in lib/utils/
   web: ^1.1.0
+  # Reste en 9 tant que flutter_secure_storage est en 9 : la 10.1+ exige win32
+  # 6, et le stockage sécurisé 9 (Windows) win32 5. Les deux montent ensemble.
   package_info_plus: ^9.0.1
 
   # Native file dialog, used by the admin to replace the published installers
+  # Reste en 8 pour la même raison que package_info_plus : la 12 exige win32 6.
   file_picker: ^8.1.7
   qr_flutter: ^4.1.0
 
   # Backlight control for the player's brightness bar. Only the *application*
   # override is used, never the system setting — see services/screen_brightness_control.dart.
   screen_brightness: ^2.1.11
-  mobile_scanner: ^7.4.0
+  # Figé en 7.4.0 : la 7.4.1 ne compile plus ses sources Kotlin quand
+  # android.builtInKotlin=false (android/gradle.properties) — la classe du
+  # plugin manque au build Android.
+  mobile_scanner: 7.4.0
 
   # Le lecteur Android (ExoPlayer dans une SurfaceView). Le paquet ne déclare
   # que la plateforme Android : les builds macOS et Windows ne l'embarquent
   # pas, et rien de leur chaîne de lecture n'est touché.
   onyx_player_android:
     path: ../packages/onyx_player_android
+
+  # La surface vidéo native de macOS, où mpv dessine lui-même (gpu-next, donc
+  # Dolby Vision). Active dès qu'un libmpv patché est installé
+  # (native/build_libmpv.sh) — voir lib/utils/mpv_native_view.dart.
+  onyx_mpv_macos:
+    path: ../packages/onyx_mpv_macos
 
 # Les bibliothèques natives de media_kit, avec un FFmpeg complet. Les versions
 # publiées embarquent un FFmpeg réduit à une liste blanche de décodeurs sans
@@ -78,7 +91,7 @@ dependency_overrides:
 dev_dependencies:
   flutter_test:
     sdk: flutter
-  flutter_lints: ^3.0.0
+  flutter_lints: ^6.0.0
 
   # Permet aux tests de pointer le stockage hors ligne vers un dossier
   # temporaire plutôt que vers le conteneur applicatif réel.

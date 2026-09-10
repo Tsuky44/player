@@ -98,7 +98,7 @@ class _ChaptersDebugPanelState extends State<ChaptersDebugPanel> {
                         ? 'Chargement…'
                         : 'Aucun chapitre MKV détecté',
                     style: TextStyle(
-                      color: Colors.white.withOpacity(0.5),
+                      color: Colors.white.withValues(alpha: 0.5),
                       fontSize: 12,
                       fontFamily: 'Manrope',
                     ),
@@ -129,7 +129,7 @@ class _ChaptersDebugPanelState extends State<ChaptersDebugPanel> {
           child: Text(
             'Appuyez sur un chapitre pour seek à son début.',
             style: TextStyle(
-              color: Colors.white.withOpacity(0.35),
+              color: Colors.white.withValues(alpha: 0.35),
               fontSize: 10,
               fontFamily: 'Manrope',
             ),
@@ -170,9 +170,9 @@ class _SummaryCard extends StatelessWidget {
       margin: const EdgeInsets.symmetric(horizontal: 4),
       padding: const EdgeInsets.all(10),
       decoration: BoxDecoration(
-        color: Colors.white.withOpacity(0.05),
+        color: Colors.white.withValues(alpha: 0.05),
         borderRadius: BorderRadius.circular(10),
-        border: Border.all(color: Colors.white.withOpacity(0.08)),
+        border: Border.all(color: Colors.white.withValues(alpha: 0.08)),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -202,7 +202,7 @@ class _SummaryCard extends StatelessWidget {
                       : Icon(
                           Icons.refresh,
                           size: 16,
-                          color: Colors.white.withOpacity(0.6),
+                          color: Colors.white.withValues(alpha: 0.6),
                         ),
                   padding: EdgeInsets.zero,
                   constraints: const BoxConstraints(minWidth: 28, minHeight: 28),
@@ -268,7 +268,7 @@ class _InfoLine extends StatelessWidget {
             child: Text(
               label,
               style: TextStyle(
-                color: Colors.white.withOpacity(0.45),
+                color: Colors.white.withValues(alpha: 0.45),
                 fontSize: 11,
                 fontFamily: 'Manrope',
               ),
@@ -278,7 +278,7 @@ class _InfoLine extends StatelessWidget {
             child: Text(
               value,
               style: TextStyle(
-                color: Colors.white.withOpacity(0.85),
+                color: Colors.white.withValues(alpha: 0.85),
                 fontSize: 11,
                 fontFamily: 'Manrope',
               ),
@@ -333,13 +333,13 @@ class _ChapterRow extends StatelessWidget {
           padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 8),
           decoration: BoxDecoration(
             color: isCurrent
-                ? Colors.white.withOpacity(0.12)
-                : Colors.white.withOpacity(0.03),
+                ? Colors.white.withValues(alpha: 0.12)
+                : Colors.white.withValues(alpha: 0.03),
             borderRadius: BorderRadius.circular(8),
             border: Border.all(
               color: isCurrent
-                  ? const Color(0xFF0A84FF).withOpacity(0.4)
-                  : Colors.white.withOpacity(0.06),
+                  ? const Color(0xFF0A84FF).withValues(alpha: 0.4)
+                  : Colors.white.withValues(alpha: 0.06),
             ),
           ),
           child: Row(
@@ -348,7 +348,7 @@ class _ChapterRow extends StatelessWidget {
               Text(
                 '#$index',
                 style: TextStyle(
-                  color: Colors.white.withOpacity(0.35),
+                  color: Colors.white.withValues(alpha: 0.35),
                   fontSize: 10,
                   fontFamily: 'Geist',
                 ),
@@ -371,7 +371,7 @@ class _ChapterRow extends StatelessWidget {
                     Text(
                       '${formatPlaybackTime(start)} → ${formatPlaybackTime(end)}',
                       style: TextStyle(
-                        color: Colors.white.withOpacity(0.5),
+                        color: Colors.white.withValues(alpha: 0.5),
                         fontSize: 10,
                         fontFamily: 'Geist',
                       ),
@@ -379,9 +379,9 @@ class _ChapterRow extends StatelessWidget {
                   ],
                 ),
               ),
-              if (isIntro) _Badge('INTRO', const Color(0xFF0A84FF)),
-              if (isOutro) _Badge('OUTRO', Colors.orangeAccent),
-              if (isCurrent) _Badge('ACTUEL', Colors.greenAccent),
+              if (isIntro) const _Badge('INTRO', Color(0xFF0A84FF)),
+              if (isOutro) const _Badge('OUTRO', Colors.orangeAccent),
+              if (isCurrent) const _Badge('ACTUEL', Colors.greenAccent),
             ],
           ),
         ),
@@ -402,9 +402,9 @@ class _Badge extends StatelessWidget {
       margin: const EdgeInsets.only(left: 4),
       padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 2),
       decoration: BoxDecoration(
-        color: color.withOpacity(0.15),
+        color: color.withValues(alpha: 0.15),
         borderRadius: BorderRadius.circular(4),
-        border: Border.all(color: color.withOpacity(0.4)),
+        border: Border.all(color: color.withValues(alpha: 0.4)),
       ),
       child: Text(
         label,

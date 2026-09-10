@@ -111,7 +111,7 @@ class _MoviesScreenState extends State<MoviesScreen> {
                       ),
                     ),
                     if (lp.movies.isEmpty)
-                      SliverFillRemaining(
+                      const SliverFillRemaining(
                         child: EmptyStateView(
                           icon: Icons.movie_creation_outlined,
                           title: 'Aucun film',
@@ -120,11 +120,11 @@ class _MoviesScreenState extends State<MoviesScreen> {
                         ),
                       )
                     else if (filtered.isEmpty)
-                      SliverFillRemaining(
+                      const SliverFillRemaining(
                         child: Center(
                           child: Text(
                             'Aucun film trouvé',
-                            style: const TextStyle(color: AppColors.textMuted),
+                            style: TextStyle(color: AppColors.textMuted),
                           ),
                         ),
                       )

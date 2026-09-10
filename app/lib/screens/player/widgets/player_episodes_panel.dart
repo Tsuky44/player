@@ -449,7 +449,7 @@ class _EpisodeCard extends StatelessWidget {
                       ),
                     ),
                   if (isCurrent)
-                    Positioned(
+                    const Positioned(
                       bottom: 8,
                       left: 8,
                       child: _Badge(label: 'En cours', color: _kAccent),

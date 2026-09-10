@@ -30,6 +30,15 @@ void main() {
       // sortirait vert, donc le serveur doit continuer à le tone-mapper.
       expect(caps.dolbyVision, isFalse);
     });
+
+    test('mpv dans une vue native (gpu-next) déclare le Dolby Vision', () {
+      // libplacebo applique la couche RPU : un profil 5 peut être recopié.
+      const caps = PlaybackCapabilities.mpvGpuNext;
+      expect(caps.dolbyVision, isTrue);
+      expect(caps.hdr, isTrue);
+      expect(caps.videoCodecs, PlaybackCapabilities.mpv.videoCodecs);
+      expect(caps.audioCodecs, PlaybackCapabilities.mpv.audioCodecs);
+    });
   });
 
   group('capacités mesurées sur l\'appareil', () {
@@ -65,7 +74,7 @@ void main() {
     test('un téléviseur relié à un ampli garde le surround et le passthrough',
         () {
       final caps = PlaybackCapabilities.fromDevice(device(
-        video: ['video/avc', 'video/hevc', 'video/av01'],
+        video: ['video/avc', 'video/hevc', 'video/av01', 'video/dolby-vision'],
         audio: ['audio/mp4a-latm'],
         // Le boîtier n'a pas de décodeur E-AC-3 mais sait le faire traverser :
         // c'est le seul chemin par lequel l'Atmos arrive intact, et il doit
@@ -83,6 +92,20 @@ void main() {
       expect(caps.hdr, isTrue);
       expect(caps.dolbyVision, isTrue);
       expect(caps.container, 'fmp4');
+    });
+
+    test('un écran Dolby Vision sans puce qui le décode reste hors DV', () {
+      // C'est l'écran qui déclare la compatibilité — un boîtier relié en
+      // HDMI à un téléviseur Dolby Vision sans avoir lui-même la puce qui
+      // comprend la couche RPU. Le serveur doit tone-mapper, pas recopier.
+      final caps = PlaybackCapabilities.fromDevice(device(
+        video: ['video/avc', 'video/hevc'],
+        hdr: ['hdr10', 'dolbyvision'],
+        bitDepth: 10,
+      ));
+
+      expect(caps.hdr, isTrue);
+      expect(caps.dolbyVision, isFalse);
     });
 
     test('les codecs de repli sont toujours déclarés', () {

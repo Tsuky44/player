@@ -139,12 +139,12 @@ class _CaptionButtonState extends State<_CaptionButton> {
           width: 46,
           height: 40,
           color: _hovering
-              ? (widget.hoverColor ?? Colors.white.withOpacity(0.1))
+              ? (widget.hoverColor ?? Colors.white.withValues(alpha: 0.1))
               : Colors.transparent,
           alignment: Alignment.center,
           child: Icon(
             widget.icon,
-            color: widget.iconColor ?? Colors.white.withOpacity(0.85),
+            color: widget.iconColor ?? Colors.white.withValues(alpha: 0.85),
             size: 18,
           ),
         ),

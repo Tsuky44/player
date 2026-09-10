@@ -73,7 +73,7 @@ class LayoutSettingsDrawer extends StatelessWidget {
             contentPadding: EdgeInsets.zero,
             value: snapToGrid,
             onChanged: onSnapToGridChanged,
-            activeColor: const Color(0xFF0A84FF),
+            activeThumbColor: const Color(0xFF0A84FF),
             secondary: Icon(
               snapToGrid ? Icons.auto_fix_normal : Icons.auto_fix_off,
               color: snapToGrid ? const Color(0xFF0A84FF) : Colors.grey,
@@ -94,7 +94,7 @@ class LayoutSettingsDrawer extends StatelessWidget {
             contentPadding: EdgeInsets.zero,
             value: useModularLayout,
             onChanged: onUseModularLayoutChanged,
-            activeColor: const Color(0xFF0A84FF),
+            activeThumbColor: const Color(0xFF0A84FF),
             title: const Text(
               'Utiliser cette disposition dans le lecteur',
               style: TextStyle(color: Colors.white, fontSize: 14),
@@ -109,7 +109,7 @@ class LayoutSettingsDrawer extends StatelessWidget {
             contentPadding: EdgeInsets.zero,
             value: tapToTogglePlayback,
             onChanged: useModularLayout ? onTapToTogglePlaybackChanged : null,
-            activeColor: const Color(0xFF0A84FF),
+            activeThumbColor: const Color(0xFF0A84FF),
             secondary: Icon(
               tapToTogglePlayback ? Icons.touch_app : Icons.touch_app_outlined,
               color: tapToTogglePlayback ? const Color(0xFF0A84FF) : Colors.grey,

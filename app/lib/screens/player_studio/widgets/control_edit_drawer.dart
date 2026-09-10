@@ -82,9 +82,9 @@ class ControlEditDrawer extends StatelessWidget {
                 SliderTheme(
                   data: SliderTheme.of(context).copyWith(
                     activeTrackColor: const Color(0xFF0A84FF),
-                    inactiveTrackColor: Colors.white.withOpacity(0.15),
+                    inactiveTrackColor: Colors.white.withValues(alpha: 0.15),
                     thumbColor: Colors.white,
-                    overlayColor: const Color(0xFF0A84FF).withOpacity(0.2),
+                    overlayColor: const Color(0xFF0A84FF).withValues(alpha: 0.2),
                   ),
                   child: Slider(
                     min: kMinSizePct,
@@ -120,9 +120,9 @@ class ControlEditDrawer extends StatelessWidget {
                   SliderTheme(
                     data: SliderTheme.of(context).copyWith(
                       activeTrackColor: const Color(0xFF0A84FF),
-                      inactiveTrackColor: Colors.white.withOpacity(0.15),
+                      inactiveTrackColor: Colors.white.withValues(alpha: 0.15),
                       thumbColor: Colors.white,
-                      overlayColor: const Color(0xFF0A84FF).withOpacity(0.2),
+                      overlayColor: const Color(0xFF0A84FF).withValues(alpha: 0.2),
                     ),
                     child: Slider(
                       min: 0.1,
@@ -149,7 +149,7 @@ class ControlEditDrawer extends StatelessWidget {
                         },
                     },
                     style: TextStyle(
-                      color: Colors.white.withOpacity(0.55),
+                      color: Colors.white.withValues(alpha: 0.55),
                       fontSize: 12,
                     ),
                   ),

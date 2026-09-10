@@ -269,7 +269,7 @@ class ControlChrome extends StatelessWidget {
         border: Border.all(
           color: selected
               ? flatAccentColor.withValues(alpha: 0.9)
-              : Colors.white.withOpacity(0.08),
+              : Colors.white.withValues(alpha: 0.08),
           width: selected ? 1.5 : 1,
         ),
         boxShadow: _flatShadow(flatElevation),
@@ -310,14 +310,14 @@ class ControlChrome extends StatelessWidget {
       FlatElevation.none => const <BoxShadow>[],
       FlatElevation.light => [
           BoxShadow(
-            color: Colors.black.withOpacity(0.25),
+            color: Colors.black.withValues(alpha: 0.25),
             blurRadius: 6,
             offset: const Offset(0, 2),
           ),
         ],
       FlatElevation.marked => [
           BoxShadow(
-            color: Colors.black.withOpacity(0.35),
+            color: Colors.black.withValues(alpha: 0.35),
             blurRadius: 14,
             offset: const Offset(0, 5),
           ),
@@ -340,12 +340,12 @@ class ControlChrome extends StatelessWidget {
     final blur = 4 + depth * 10;
     return [
       BoxShadow(
-        color: Colors.white.withOpacity(0.06 + depth * 0.05),
+        color: Colors.white.withValues(alpha: 0.06 + depth * 0.05),
         blurRadius: blur,
         offset: Offset(-offset, -offset),
       ),
       BoxShadow(
-        color: Colors.black.withOpacity(0.35 + depth * 0.2),
+        color: Colors.black.withValues(alpha: 0.35 + depth * 0.2),
         blurRadius: blur,
         offset: Offset(offset, offset),
       ),
@@ -365,12 +365,12 @@ class ControlChrome extends StatelessWidget {
               : const Duration(milliseconds: 180),
           curve: Curves.easeOut,
           decoration: BoxDecoration(
-            color: Colors.white.withOpacity(glassOpacity),
+            color: Colors.white.withValues(alpha: glassOpacity),
             borderRadius: radius,
             border: Border.all(
               color: (_studioSelected || _liveSelected)
                   ? _kAccent.withValues(alpha: 0.85)
-                  : Colors.white.withOpacity(borderOpacity),
+                  : Colors.white.withValues(alpha: borderOpacity),
               width: (_studioSelected || _liveSelected) ? 1.5 : 1,
             ),
           ),
@@ -397,8 +397,8 @@ class ControlChrome extends StatelessWidget {
       begin: Alignment.topLeft,
       end: Alignment.bottomRight,
       colors: [
-        Colors.white.withOpacity((o * 2.0 + 0.02).clamp(0.03, 0.55)),
-        Colors.white.withOpacity((o * 0.6).clamp(0.0, 0.25)),
+        Colors.white.withValues(alpha: (o * 2.0 + 0.02).clamp(0.03, 0.55)),
+        Colors.white.withValues(alpha: (o * 0.6).clamp(0.0, 0.25)),
       ],
       stops: const [0.0, 1.0],
     );
@@ -408,8 +408,8 @@ class ControlChrome extends StatelessWidget {
       begin: Alignment.topCenter,
       end: Alignment.center,
       colors: [
-        Colors.white.withOpacity((o * 2.5 + 0.12).clamp(0.12, 0.5)),
-        Colors.white.withOpacity(0.0),
+        Colors.white.withValues(alpha: (o * 2.5 + 0.12).clamp(0.12, 0.5)),
+        Colors.white.withValues(alpha: 0.0),
       ],
     );
 
@@ -419,12 +419,12 @@ class ControlChrome extends StatelessWidget {
       end: Alignment.bottomRight,
       colors: _studioSelected
           ? [
-              _kAccent.withOpacity(0.85),
-              _kAccent.withOpacity(0.35),
+              _kAccent.withValues(alpha: 0.85),
+              _kAccent.withValues(alpha: 0.35),
             ]
           : [
-              Colors.white.withOpacity((o * 3 + 0.30).clamp(0.25, 0.75)),
-              Colors.white.withOpacity((o + 0.02).clamp(0.03, 0.2)),
+              Colors.white.withValues(alpha: (o * 3 + 0.30).clamp(0.25, 0.75)),
+              Colors.white.withValues(alpha: (o + 0.02).clamp(0.03, 0.2)),
             ],
     );
 
@@ -455,7 +455,7 @@ class ControlChrome extends StatelessWidget {
             : null,
         boxShadow: [
           BoxShadow(
-            color: Colors.black.withOpacity(0.28),
+            color: Colors.black.withValues(alpha: 0.28),
             blurRadius: 14,
             offset: const Offset(0, 5),
           ),
@@ -533,7 +533,7 @@ class ControlChrome extends StatelessWidget {
                 Container(
                   height: 4,
                   decoration: BoxDecoration(
-                    color: Colors.white.withOpacity(0.25),
+                    color: Colors.white.withValues(alpha: 0.25),
                     borderRadius: BorderRadius.circular(2),
                   ),
                 ),
@@ -617,7 +617,7 @@ class ControlChrome extends StatelessWidget {
     final frac = totalSec > 0 ? current / totalSec : 0.0;
 
     final timeStyle = TextStyle(
-      color: Colors.white.withOpacity(0.9),
+      color: Colors.white.withValues(alpha: 0.9),
       fontSize: (height * 0.45).clamp(10.0, 16.0),
       fontWeight: FontWeight.w500,
     );
@@ -633,7 +633,7 @@ class ControlChrome extends StatelessWidget {
           Container(
             height: 4,
             decoration: BoxDecoration(
-              color: Colors.white.withOpacity(0.25),
+              color: Colors.white.withValues(alpha: 0.25),
               borderRadius: BorderRadius.circular(2),
             ),
           ),
@@ -757,7 +757,7 @@ class ControlChrome extends StatelessWidget {
                               child: Text(
                                 '-${_formatDuration(Duration(seconds: remaining))} / ${_formatEndTime(remaining)}',
                                 style: timeStyle.copyWith(
-                                  color: Colors.white.withOpacity(0.7),
+                                  color: Colors.white.withValues(alpha: 0.7),
                                   fontSize:
                                       (height * 0.38).clamp(9.0, 13.0),
                                 ),
@@ -812,7 +812,7 @@ class ControlChrome extends StatelessWidget {
     final frac = totalSec > 0 ? current / totalSec : 0.0;
 
     final timeStyle = TextStyle(
-      color: Colors.white.withOpacity(0.85),
+      color: Colors.white.withValues(alpha: 0.85),
       fontSize: (height * 0.42).clamp(9.0, 13.0),
       fontWeight: FontWeight.w500,
       fontFeatures: const [FontFeature.tabularFigures()],
@@ -832,7 +832,7 @@ class ControlChrome extends StatelessWidget {
             width: double.infinity,
             height: barThickness,
             decoration: BoxDecoration(
-              color: Colors.white.withOpacity(0.25),
+              color: Colors.white.withValues(alpha: 0.25),
               borderRadius: BorderRadius.circular(1.5),
             ),
           ),
@@ -951,7 +951,7 @@ class ControlChrome extends StatelessWidget {
               Text(
                 '-${_formatDuration(Duration(seconds: remaining))} / ${_formatEndTime(remaining)}',
                 style: timeStyle.copyWith(
-                  color: Colors.white.withOpacity(0.65),
+                  color: Colors.white.withValues(alpha: 0.65),
                   fontSize: (height * 0.36).clamp(8.0, 12.0),
                 ),
                 overflow: TextOverflow.ellipsis,
@@ -977,7 +977,7 @@ class ControlChrome extends StatelessWidget {
     final frac = totalSec > 0 ? current / totalSec : 0.0;
 
     final timeStyle = TextStyle(
-      color: Colors.white.withOpacity(0.92),
+      color: Colors.white.withValues(alpha: 0.92),
       fontSize: (scale * 0.42).clamp(11.0, 15.0),
       fontWeight: FontWeight.w400,
       fontFeatures: const [FontFeature.tabularFigures()],
@@ -996,7 +996,7 @@ class ControlChrome extends StatelessWidget {
             Container(
               width: double.infinity,
               height: lineHeight,
-              color: Colors.white.withOpacity(0.35),
+              color: Colors.white.withValues(alpha: 0.35),
             ),
             FractionallySizedBox(
               widthFactor: frac.clamp(0.0, 1.0),
@@ -1015,7 +1015,7 @@ class ControlChrome extends StatelessWidget {
                   shape: BoxShape.circle,
                   boxShadow: [
                     BoxShadow(
-                      color: Colors.black.withOpacity(0.4),
+                      color: Colors.black.withValues(alpha: 0.4),
                       blurRadius: 4,
                       offset: const Offset(0, 1),
                     ),
@@ -1129,7 +1129,7 @@ class ControlChrome extends StatelessWidget {
                 Text(
                   '-${_formatDuration(Duration(seconds: remaining))} / ${_formatEndTime(remaining)}',
                   style: timeStyle.copyWith(
-                    color: Colors.white.withOpacity(0.75),
+                    color: Colors.white.withValues(alpha: 0.75),
                   ),
                   overflow: TextOverflow.ellipsis,
                   maxLines: 1,
@@ -1163,7 +1163,7 @@ class ControlChrome extends StatelessWidget {
               maxLines: 1,
               overflow: TextOverflow.ellipsis,
               style: TextStyle(
-                color: Colors.white.withOpacity(0.9),
+                color: Colors.white.withValues(alpha: 0.9),
                 fontSize: (height * 0.45).clamp(12.0, 18.0),
                 fontWeight: FontWeight.w600,
               ),
@@ -1192,7 +1192,7 @@ class ControlChrome extends StatelessWidget {
               maxLines: 1,
               overflow: TextOverflow.ellipsis,
               style: TextStyle(
-                color: Colors.white.withOpacity(0.7),
+                color: Colors.white.withValues(alpha: 0.7),
                 fontSize: (height * 0.22).clamp(11.0, 15.0),
                 fontWeight: FontWeight.w400,
               ),
@@ -1227,12 +1227,12 @@ class ControlChrome extends StatelessWidget {
         mainAxisSize: MainAxisSize.min,
         crossAxisAlignment: CrossAxisAlignment.center,
         children: [
-          Icon(icon, color: Colors.white.withOpacity(0.92), size: iconSize),
+          Icon(icon, color: Colors.white.withValues(alpha: 0.92), size: iconSize),
           SizedBox(width: height * 0.22),
           Text(
             label,
             style: TextStyle(
-              color: Colors.white.withOpacity(0.92),
+              color: Colors.white.withValues(alpha: 0.92),
               fontSize: fontSize,
               fontWeight: FontWeight.w400,
               letterSpacing: 0.1,
@@ -1282,7 +1282,7 @@ class ControlChrome extends StatelessWidget {
 
   Widget _buildSpeedPill() {
     final rate = playbackRate ?? 1.0;
-    final label = rate % 1 == 0 ? '${rate.toInt()}×' : '${rate}×';
+    final label = rate % 1 == 0 ? '${rate.toInt()}×' : '$rate×';
     final double height = (_pixelSize * 1.15).clamp(30.0, 42.0);
     final double fontSize = (_pixelSize * 0.4).clamp(12.0, 15.0);
     return _glass(
@@ -1381,7 +1381,7 @@ class ControlChrome extends StatelessWidget {
               Text(
                 'À suivre',
                 style: TextStyle(
-                  color: Colors.white.withOpacity(0.95),
+                  color: Colors.white.withValues(alpha: 0.95),
                   fontSize: fontSize,
                   fontWeight: FontWeight.w600,
                   letterSpacing: 0.1,
@@ -1517,7 +1517,7 @@ class _VolumeSliderButtonState extends State<_VolumeSliderButton> {
           decoration: BoxDecoration(
             color: const Color(0xFF1C1C1E),
             borderRadius: radius,
-            border: Border.all(color: Colors.white.withOpacity(0.08)),
+            border: Border.all(color: Colors.white.withValues(alpha: 0.08)),
             boxShadow: ControlChrome._flatShadow(widget.flatElevation),
           ),
           child: _volumeRow(vol, iconSize),
@@ -1563,7 +1563,7 @@ class _VolumeSliderButtonState extends State<_VolumeSliderButton> {
               width: _expanded ? widget.width : widget.height,
               height: widget.height,
               decoration: BoxDecoration(
-                color: Colors.white.withOpacity(fillOpacity),
+                color: Colors.white.withValues(alpha: fillOpacity),
                 borderRadius: radius,
               ),
               child: _volumeRow(vol, iconSize),
@@ -1584,16 +1584,16 @@ class _VolumeSliderButtonState extends State<_VolumeSliderButton> {
       begin: Alignment.topLeft,
       end: Alignment.bottomRight,
       colors: [
-        Colors.white.withOpacity((o * 2.0 + 0.08).clamp(0.08, 0.55)),
-        Colors.white.withOpacity((o + 0.02).clamp(0.03, 0.3)),
+        Colors.white.withValues(alpha: (o * 2.0 + 0.08).clamp(0.08, 0.55)),
+        Colors.white.withValues(alpha: (o + 0.02).clamp(0.03, 0.3)),
       ],
     );
     final rim = LinearGradient(
       begin: Alignment.topLeft,
       end: Alignment.bottomRight,
       colors: [
-        Colors.white.withOpacity((o * 3 + 0.30).clamp(0.25, 0.75)),
-        Colors.white.withOpacity((o + 0.02).clamp(0.03, 0.2)),
+        Colors.white.withValues(alpha: (o * 3 + 0.30).clamp(0.25, 0.75)),
+        Colors.white.withValues(alpha: (o + 0.02).clamp(0.03, 0.2)),
       ],
     );
 
@@ -1641,7 +1641,7 @@ class _VolumeSliderButtonState extends State<_VolumeSliderButton> {
                 child: Center(
                   child: Icon(
                     vol == 0 ? Icons.volume_off : vol < 50 ? Icons.volume_down : Icons.volume_up,
-                    color: Colors.white.withOpacity(0.85),
+                    color: Colors.white.withValues(alpha: 0.85),
                     size: iconSize,
                   ),
                 ),
@@ -1657,7 +1657,7 @@ class _VolumeSliderButtonState extends State<_VolumeSliderButton> {
                       thumbShape: const RoundSliderThumbShape(enabledThumbRadius: 5, elevation: 0, pressedElevation: 0),
                       overlayShape: const RoundSliderOverlayShape(overlayRadius: 0),
                       activeTrackColor: const Color(0xFF0A84FF),
-                      inactiveTrackColor: Colors.white.withOpacity(0.25),
+                      inactiveTrackColor: Colors.white.withValues(alpha: 0.25),
                       thumbColor: Colors.white,
                     ),
                     child: Slider(
@@ -1700,7 +1700,7 @@ class _TimelineBarIcon extends StatelessWidget {
           child: Center(
             child: Icon(
               icon,
-              color: Colors.white.withOpacity(0.9),
+              color: Colors.white.withValues(alpha: 0.9),
               size: size,
             ),
           ),
@@ -1788,7 +1788,7 @@ class _EmbyTimelineIcon extends StatelessWidget {
           padding: const EdgeInsets.all(2),
           child: Icon(
             icon,
-            color: Colors.white.withOpacity(0.92),
+            color: Colors.white.withValues(alpha: 0.92),
             size: size,
           ),
         ),

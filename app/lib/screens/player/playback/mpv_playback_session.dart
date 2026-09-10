@@ -5,9 +5,12 @@ import 'package:media_kit/media_kit.dart' as mk;
 import 'package:media_kit_video/media_kit_video.dart';
 
 import '../../../utils/app_platform.dart';
+import '../../../utils/mpv_native_view.dart';
 import '../hardware_decoding.dart';
 import '../player_engine.dart';
 import '../playback_profile.dart';
+import 'mpv_native_surface.dart';
+import 'mpv_subtitle_overlay.dart';
 import 'playback_session.dart';
 
 /// Les niveaux de repli stéréo, dialogue en avant — voir l'ADR-0005.
@@ -34,6 +37,10 @@ class MpvPlaybackSession implements PlaybackSession {
   /// Clé de la vue vidéo, pour lui demander de décaler ses sous-titres.
   final GlobalKey<VideoState> _videoKey = GlobalKey<VideoState>();
 
+  /// Les sous-titres de la vue native, qui n'a pas ceux de media_kit.
+  final GlobalKey<MpvSubtitleOverlayState> _subtitleKey =
+      GlobalKey<MpvSubtitleOverlayState>();
+
   mk.Player get _player => _engine.player;
 
   /// Le moteur mpv sous-jacent.
@@ -55,9 +62,18 @@ class MpvPlaybackSession implements PlaybackSession {
 
   @override
   Widget buildSurface({Key? key, required BoxFit fit, double? aspectRatio}) {
+    if (MpvNativeView.enabled) {
+      return MpvNativeSurface(
+        key: key,
+        engine: _engine,
+        fit: fit,
+        aspectRatio: aspectRatio,
+        subtitleKey: _subtitleKey,
+      );
+    }
     return Video(
       key: _videoKey,
-      controller: _engine.videoController,
+      controller: _engine.videoController!,
       controls: null,
       fit: fit,
       aspectRatio: aspectRatio,
@@ -67,6 +83,7 @@ class MpvPlaybackSession implements PlaybackSession {
   @override
   void setSubtitlePadding(EdgeInsets padding, {Duration duration = Duration.zero}) {
     _videoKey.currentState?.setSubtitleViewPadding(padding, duration: duration);
+    _subtitleKey.currentState?.setPadding(padding, duration: duration);
   }
 
   // --- Commandes ---------------------------------------------------------
@@ -263,7 +280,7 @@ class MpvPlaybackSession implements PlaybackSession {
     // rendu de libmpv qu'utilise media_kit. Android n'utilise pas cette API —
     // il reçoit une vraie Surface — et la copie supplémentaire y est tout sauf
     // négligeable sur une image 4K.
-    if (!AppPlatform.isAndroid) {
+    if (!AppPlatform.isAndroid && !MpvNativeView.enabled) {
       await _set(platform, 'vd-lavc-dr', 'no');
     }
     await _set(platform, 'sub-auto', 'no');
@@ -288,6 +305,29 @@ class MpvPlaybackSession implements PlaybackSession {
       await _set(platform, 'framedrop', 'vo');
       await _set(platform, 'video-sync', 'display-desync');
     }
+    await _applyNativeOutputTuning();
+  }
+
+  /// Ce que la sortie native (gpu-next dans une vue AppKit) demande en plus.
+  ///
+  /// Passe par [MpvNativeOutput] et non par `_set` : ce sont des options de
+  /// la sortie vidéo, appliquées hors du thread de l'interface.
+  Future<void> _applyNativeOutputTuning() async {
+    if (!MpvNativeView.enabled) return;
+    final output = await _engine.nativeOutput;
+    final properties = {
+      // Laisse gpu-next passer l'écran en HDR (EDR) quand la source l'est.
+      'target-colorspace-hint': 'yes',
+      // Les touches média appartiennent au NowPlayingController de l'app.
+      'input-media-keys': 'no',
+    };
+    for (final entry in properties.entries) {
+      try {
+        await output.setProperty(entry.key, entry.value);
+      } catch (e) {
+        debugPrint('mpv: option ${entry.key}=${entry.value} refusée: $e');
+      }
+    }
   }
 
   @override
@@ -306,7 +346,7 @@ class MpvPlaybackSession implements PlaybackSession {
     await _set(platform, 'demuxer-max-bytes', '${profile.hlsDemuxerMaxBytes}');
     await _set(platform, 'demuxer-readahead-secs', '${profile.hlsReadaheadSecs}');
     await _set(platform, 'hwdec', HardwareDecoding.mpvValue);
-    if (!AppPlatform.isAndroid) {
+    if (!AppPlatform.isAndroid && !MpvNativeView.enabled) {
       await _set(platform, 'vd-lavc-dr', 'no');
     }
     if (!profile.allowHdrComputePeak) {
@@ -321,6 +361,7 @@ class MpvPlaybackSession implements PlaybackSession {
       await _set(platform, 'framedrop', 'vo');
       await _set(platform, 'video-sync', 'display-desync');
     }
+    await _applyNativeOutputTuning();
   }
 
   @override
@@ -346,8 +387,39 @@ class MpvPlaybackSession implements PlaybackSession {
   /// Un seul échange de décodeur par lecture.
   bool _softwareDecodeHandled = false;
 
+  /// Dit dans le log si le Dolby Vision est réellement appliqué.
+  ///
+  /// Trois questions, trois réponses de mpv : le fichier en porte-t-il (profil
+  /// et niveau de la piste), la couche RPU est-elle appliquée à l'image (mpv
+  /// passe alors sa matrice en `dolbyvision`), et l'écran est-il piloté en HDR
+  /// (la courbe de sortie de gpu-next).
+  Future<void> _logDolbyVision() async {
+    final platform = _player.platform as dynamic;
+    Future<String?> read(String name) async {
+      final value = await _read(platform, name);
+      return (value == null || value.isEmpty) ? null : value;
+    }
+
+    final profile = await read('current-tracks/video/dolby-vision-profile');
+    final level = await read('current-tracks/video/dolby-vision-level');
+    final matrix = await read('video-params/colormatrix');
+    final source = '${await read('video-params/gamma')}/'
+        '${await read('video-params/primaries')}';
+    final target = '${await read('video-target-params/gamma')}/'
+        '${await read('video-target-params/primaries')}';
+    final peak = await read('video-target-params/max-luma');
+
+    final dolbyVision = profile == null
+        ? 'aucun (le fichier n\'en porte pas)'
+        : 'profil $profile niveau ${level ?? '?'} · RPU '
+            '${matrix == 'dolbyvision' ? 'appliqué' : 'NON appliqué (matrice $matrix)'}';
+    debugPrint('Dolby Vision: $dolbyVision · source $source → écran $target'
+        '${peak != null ? ' ($peak nits)' : ''}');
+  }
+
   @override
   Future<void> onPictureLive() async {
+    if (MpvNativeView.enabled && !AppPlatform.isWeb) await _logDolbyVision();
     if (_softwareDecodeHandled || AppPlatform.isWeb) return;
     if (!AppPlatform.isAndroid) return;
     if (HardwareDecoding.preference != HardwareDecodingPreference.auto) return;

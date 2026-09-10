@@ -2,6 +2,7 @@ import 'package:flutter/foundation.dart';
 import 'package:onyx_player_android/onyx_player_android.dart';
 
 import '../utils/app_platform.dart';
+import '../utils/mpv_native_view.dart';
 import 'media_codec_support.dart';
 
 /// Ce que cet appareil sait décoder et restituer, dit au serveur.
@@ -121,6 +122,20 @@ class PlaybackCapabilities {
     label: 'mpv',
   );
 
+  /// mpv sur macOS quand il dessine lui-même dans une vue native
+  /// ([MpvNativeView], `vo=gpu-next`) : libplacebo y applique la couche RPU,
+  /// donc un profil 5 peut être recopié tel quel. Le reste est [mpv].
+  static const mpvGpuNext = PlaybackCapabilities(
+    container: 'fmp4',
+    videoCodecs: {'h264', 'hevc', 'av1', 'vp9'},
+    audioCodecs: {'aac', 'ac3', 'eac3', 'flac', 'opus', 'alac'},
+    maxAudioChannels: 8,
+    maxVideoBitDepth: 12,
+    hdr: true,
+    dolbyVision: true,
+    label: 'mpv (gpu-next, vue native)',
+  );
+
   /// Ce qu'ExoPlayer a mesuré sur cet appareil.
   ///
   /// Tout vient du natif : les décodeurs de `MediaCodecList`, les canaux et le
@@ -161,7 +176,11 @@ class PlaybackCapabilities {
       maxAudioChannels: device.maxAudioChannels.clamp(2, 8).toInt(),
       maxVideoBitDepth: device.maxVideoBitDepth.clamp(8, 12).toInt(),
       hdr: hdr,
-      dolbyVision: device.hdrFormats.contains('dolbyvision'),
+      // Le décodeur, pas l'écran : un boîtier peut être relié à un
+      // téléviseur Dolby Vision sans avoir la puce qui comprend la couche
+      // RPU, et inversement. Voir `video/dolby-vision` dans MediaCodecList
+      // (PlayerHost.kt), pas `Display.HdrCapabilities`.
+      dolbyVision: device.videoMimeTypes.contains('video/dolby-vision'),
       // Ce que ni MediaCodec, ni le passthrough, ni le FFmpeg de NextLib ne
       // décode — l'AC-4, en pratique. Ne rien supposer d'un codec inconnu
       // garde le Direct Play qui marchait déjà.
@@ -308,6 +327,8 @@ abstract final class PlaybackCapabilitiesResolver {
         debugPrint('PlaybackCapabilities: interrogation impossible ($error)');
         _current = PlaybackCapabilities.legacy;
       }
+    } else if (MpvNativeView.enabled) {
+      _current = PlaybackCapabilities.mpvGpuNext;
     } else {
       _current = PlaybackCapabilities.mpv;
     }
