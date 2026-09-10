@@ -162,7 +162,7 @@ class EpisodeNavigationController extends ChangeNotifier {
         );
       }
     } catch (e) {
-      print("EpisodeNav: Failed to load timestamps from API: $e");
+      debugPrint("EpisodeNav: Failed to load timestamps from API: $e");
       timestamps ??= EpisodeTimestamps(
         introStart: 0,
         introEnd: 0,
@@ -184,7 +184,7 @@ class EpisodeNavigationController extends ChangeNotifier {
       _seasonLookahead =
           nextEpisode != null && (nextSeason?.canRequest ?? false);
     } catch (e) {
-      print("EpisodeNav: Failed to load next episode: $e");
+      debugPrint("EpisodeNav: Failed to load next episode: $e");
     }
 
     // 3. Load dynamic MKV chapters from backend ffprobe (preferred, highly accurate)
@@ -197,18 +197,10 @@ class EpisodeNavigationController extends ChangeNotifier {
   Future<void> _loadChapters() async {
     try {
       final list = await _apiClient.getEpisodeChapters(_episodeId);
-      if (list.isEmpty) {
-        print("EpisodeNav: No chapters returned from backend ffprobe.");
-        return;
-      }
-
+      if (list.isEmpty) return;
       _chapters = list..sort((a, b) => a.startTime.compareTo(b.startTime));
-      print("EpisodeNav: Successfully loaded ${_chapters.length} chapters from backend!");
-      for (final c in _chapters) {
-        print("EpisodeNav: chapter '${c.title}' [${c.startTime} -> ${c.endTime}]");
-      }
     } catch (e) {
-      print("EpisodeNav: Error loading chapters: $e");
+      debugPrint("EpisodeNav: Error loading chapters: $e");
     }
   }
 

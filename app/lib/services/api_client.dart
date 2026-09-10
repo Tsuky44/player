@@ -2,6 +2,7 @@ import 'dart:async';
 import 'dart:convert';
 
 import 'package:dio/dio.dart';
+import 'package:flutter/foundation.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../models/app_download.dart';
 import '../models/device_pairing.dart';
@@ -157,23 +158,28 @@ class ApiClient {
 
       return handler.next(options);
     }, onResponse: (response, handler) {
-      if (_pinnedAccountId == null || _pinnedAccountId == servers.active?.id)
+      if (_pinnedAccountId == null || _pinnedAccountId == servers.active?.id) {
         onConnectionSuccess?.call();
+      }
       return handler.next(response);
     }, onError: (DioException e, handler) {
       // Global error logging
-      print(
+      debugPrint(
           "API Error [${e.requestOptions.method}] ${e.requestOptions.path}: ${e.message}");
       switch (e.type) {
         case DioExceptionType.connectionError:
         case DioExceptionType.connectionTimeout:
           if (_pinnedAccountId == null ||
-              _pinnedAccountId == servers.active?.id) onConnectionError?.call();
+              _pinnedAccountId == servers.active?.id) {
+            onConnectionError?.call();
+          }
         default:
           // Une réponse, même 500, prouve qu'il y a quelqu'un en face.
-          if (e.response != null) if (_pinnedAccountId == null ||
-              _pinnedAccountId == servers.active?.id)
+          if (e.response != null &&
+              (_pinnedAccountId == null ||
+                  _pinnedAccountId == servers.active?.id)) {
             onConnectionSuccess?.call();
+          }
       }
       return handler.next(e);
     }));
@@ -282,7 +288,7 @@ class ApiClient {
     // (session.startOffset) side by side — the fastest way to tell whether a
     // seek landing at the wrong position is a client bug (mismatch here) or
     // something downstream (the two agree, but playback still drifts).
-    print("ApiClient: startHlsSession took ${stopwatch.elapsedMilliseconds}ms "
+    debugPrint("ApiClient: startHlsSession took ${stopwatch.elapsedMilliseconds}ms "
         "for media $mediaId quality $quality audio $audioIndex "
         "requestedStart=${startSeconds}s confirmedStart=${session.startOffset}s "
         "video=${session.videoMode}"

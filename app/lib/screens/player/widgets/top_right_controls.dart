@@ -62,10 +62,10 @@ class _TopRightControlsState extends State<TopRightControls> {
                 width: 40,
                 height: 40,
                 decoration: BoxDecoration(
-                  color: Colors.white.withOpacity(0.1),
+                  color: Colors.white.withValues(alpha: 0.1),
                   borderRadius: BorderRadius.circular(20),
                   border: Border.all(
-                    color: Colors.white.withOpacity(0.15),
+                    color: Colors.white.withValues(alpha: 0.15),
                     width: 1,
                   ),
                 ),
@@ -97,11 +97,11 @@ class _TopRightControlsState extends State<TopRightControls> {
                   height: 40,
                   width: _isVolumeHovering ? 180 : 40,
                   decoration: BoxDecoration(
-                    color: const Color(0xFF1A1A1A).withOpacity(0.6),
+                    color: const Color(0xFF1A1A1A).withValues(alpha: 0.6),
                     borderRadius: BorderRadius.circular(24),
                     border: Border(
                       top: BorderSide(
-                        color: Colors.white.withOpacity(0.15),
+                        color: Colors.white.withValues(alpha: 0.15),
                         width: 1,
                       ),
                     ),
@@ -140,7 +140,7 @@ class _TopRightControlsState extends State<TopRightControls> {
                             child: SliderTheme(
                               data: SliderTheme.of(context).copyWith(
                                 activeTrackColor: const Color(0xFF0A84FF),
-                                inactiveTrackColor: Colors.white.withOpacity(0.2),
+                                inactiveTrackColor: Colors.white.withValues(alpha: 0.2),
                                 thumbColor: Colors.white,
                                 trackHeight: 3,
                                 thumbShape: const RoundSliderThumbShape(

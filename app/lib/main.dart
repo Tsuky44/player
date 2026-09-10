@@ -7,6 +7,7 @@ import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
 import 'package:media_kit/media_kit.dart';
 import 'utils/app_platform.dart';
+import 'utils/mpv_native_view.dart';
 import 'utils/window_controls.dart';
 import 'services/api_client.dart';
 import 'services/app_image_cache.dart';
@@ -69,7 +70,10 @@ Future<void> _configureSystemUi() async {
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
-  MediaKit.ensureInitialized();
+  // Le libmpv patché qui sait dessiner dans une vue native, s'il est installé
+  // et se charge. Sinon, celui que media_kit embarque.
+  MpvNativeView.resolve();
+  MediaKit.ensureInitialized(libmpv: MpvNativeView.libmpvPath);
 
   // Resolved before the first frame: the login screen the user lands on differs
   // entirely between a phone and a television, and flipping it after the fact

@@ -78,7 +78,10 @@ class PlayerHUDOverlay extends StatelessWidget {
     // Clamping keeps a momentary inconsistency cosmetic instead of fatal.
     final currentPos = rawPos > totalDuration ? totalDuration : rawPos;
 
-    return Positioned.fill(
+    // Remplit la place sans être un `Positioned` : l'écran l'enveloppe dans un
+    // `Padding` (les découpes de l'écran), et un `Positioned` n'est valide
+    // qu'en enfant direct d'un `Stack`.
+    return SizedBox.expand(
       child: GestureDetector(
         onTap: onToggleControls,
         child: Container(
@@ -102,11 +105,11 @@ class PlayerHUDOverlay extends StatelessWidget {
                   child: Container(
                     padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
                     decoration: BoxDecoration(
-                      color: const Color(0xFF1A1A1A).withOpacity(0.6),
+                      color: const Color(0xFF1A1A1A).withValues(alpha: 0.6),
                       borderRadius: BorderRadius.circular(24),
                       border: Border(
                         top: BorderSide(
-                          color: Colors.white.withOpacity(0.15),
+                          color: Colors.white.withValues(alpha: 0.15),
                           width: 1,
                         ),
                       ),
@@ -122,7 +125,7 @@ class PlayerHUDOverlay extends StatelessWidget {
                             Text(
                               _formatDuration(currentPos),
                               style: TextStyle(
-                                color: Colors.white.withOpacity(0.7),
+                                color: Colors.white.withValues(alpha: 0.7),
                                 fontSize: 12,
                                 fontFamily: 'Geist',
                                 fontWeight: FontWeight.w500,
@@ -139,10 +142,10 @@ class PlayerHUDOverlay extends StatelessWidget {
                                       : currentPos + const Duration(seconds: 30),
                                   total: totalDuration,
                                   progressBarColor: accentBlue,
-                                  baseBarColor: Colors.white.withOpacity(0.2),
-                                  bufferedBarColor: Colors.white.withOpacity(0.35),
+                                  baseBarColor: Colors.white.withValues(alpha: 0.2),
+                                  bufferedBarColor: Colors.white.withValues(alpha: 0.35),
                                   thumbColor: Colors.white,
-                                  thumbGlowColor: Colors.white.withOpacity(0.3),
+                                  thumbGlowColor: Colors.white.withValues(alpha: 0.3),
                                   thumbRadius: 8,
                                   barHeight: 5,
                                   timeLabelLocation: TimeLabelLocation.none,
@@ -159,7 +162,7 @@ class PlayerHUDOverlay extends StatelessWidget {
                             Text(
                               _formatDuration(duration),
                               style: TextStyle(
-                                color: Colors.white.withOpacity(0.7),
+                                color: Colors.white.withValues(alpha: 0.7),
                                 fontSize: 12,
                                 fontFamily: 'Geist',
                                 fontWeight: FontWeight.w500,
@@ -188,10 +191,10 @@ class PlayerHUDOverlay extends StatelessWidget {
                                   width: 56,
                                   height: 56,
                                   decoration: BoxDecoration(
-                                    color: Colors.white.withOpacity(0.15),
+                                    color: Colors.white.withValues(alpha: 0.15),
                                     borderRadius: BorderRadius.circular(28),
                                     border: Border.all(
-                                      color: Colors.white.withOpacity(0.2),
+                                      color: Colors.white.withValues(alpha: 0.2),
                                       width: 1,
                                     ),
                                   ),
@@ -361,10 +364,10 @@ class _GlassIconButton extends StatelessWidget {
         child: Container(
           padding: const EdgeInsets.all(10),
           decoration: BoxDecoration(
-            color: Colors.white.withOpacity(0.08),
+            color: Colors.white.withValues(alpha: 0.08),
             borderRadius: BorderRadius.circular(12),
             border: Border.all(
-              color: Colors.white.withOpacity(0.12),
+              color: Colors.white.withValues(alpha: 0.12),
               width: 1,
             ),
           ),

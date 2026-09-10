@@ -3,8 +3,10 @@ import 'dart:async';
 import 'package:flutter/foundation.dart';
 import 'package:media_kit/media_kit.dart' as mk;
 import 'package:media_kit_video/media_kit_video.dart';
+import 'package:onyx_mpv_macos/onyx_mpv_macos.dart';
 
 import '../../utils/app_platform.dart';
+import '../../utils/mpv_native_view.dart';
 
 /// A libmpv instance together with the video texture it renders into.
 ///
@@ -13,7 +15,18 @@ import '../../utils/app_platform.dart';
 /// be moved to another one.
 class PlayerEngine {
   final mk.Player player;
-  final VideoController videoController;
+
+  /// La texture de media_kit. Absente quand mpv dessine lui-même dans une vue
+  /// native ([MpvNativeView]) : la créer lui imposerait `vo=libmpv`.
+  final VideoController? videoController;
+
+  /// La sortie de mpv dans une vue native, en mode [MpvNativeView].
+  late final Future<MpvNativeOutput> nativeOutput = player.handle.then(
+    (handle) => MpvNativeOutput(
+      libmpvPath: MpvNativeView.libmpvPath!,
+      mpvHandle: handle,
+    ),
+  );
 
   /// The unload issued when this engine was parked, while it is still running.
   ///
@@ -29,6 +42,22 @@ class PlayerEngine {
   PlayerEngine._(this.player, this.videoController);
 
   factory PlayerEngine._create() {
+    if (MpvNativeView.enabled) {
+      // Aucune sortie vidéo tant qu'aucune vue n'est là : sans `vo=null`, mpv
+      // ouvrirait sa propre fenêtre dès le premier film.
+      final player = mk.Player(
+        configuration: const mk.PlayerConfiguration(vo: 'null'),
+      );
+      // media_kit démarre avec `vid=no` et compte sur le VideoController pour
+      // poser `vid=auto`. Sans lui, la piste vidéo resterait coupée : le son
+      // joue, rien n'est décodé, et l'écran reste noir derrière le spinner.
+      unawaited(
+        player.setVideoTrack(mk.VideoTrack.auto()).catchError((Object e) {
+          debugPrint('PlayerEngine: piste vidéo non réactivée: $e');
+        }),
+      );
+      return PlayerEngine._(player, null);
+    }
     final player = mk.Player();
     return PlayerEngine._(player, VideoController(player));
   }

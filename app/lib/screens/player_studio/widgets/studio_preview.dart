@@ -42,7 +42,7 @@ class StudioPreview extends StatelessWidget {
               child: Padding(
                 padding: const EdgeInsets.all(16),
                 child: Material(
-                  color: Colors.black.withOpacity(0.5),
+                  color: Colors.black.withValues(alpha: 0.5),
                   borderRadius: BorderRadius.circular(24),
                   child: InkWell(
                     borderRadius: BorderRadius.circular(24),
@@ -156,12 +156,12 @@ class _DummyVideoBackground extends StatelessWidget {
           mainAxisSize: MainAxisSize.min,
           children: [
             Icon(Icons.movie_creation_outlined,
-                size: 64, color: Colors.white.withOpacity(0.12)),
+                size: 64, color: Colors.white.withValues(alpha: 0.12)),
             const SizedBox(height: 12),
             Text(
               'APERÇU PLEIN ÉCRAN',
               style: TextStyle(
-                color: Colors.white.withOpacity(0.12),
+                color: Colors.white.withValues(alpha: 0.12),
                 fontSize: 16,
                 letterSpacing: 6,
                 fontWeight: FontWeight.bold,

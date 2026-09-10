@@ -66,7 +66,7 @@ class PlayerLayoutTemplate {
 /// All selectable prefabricated playeurs (+ used by the picker UI).
 abstract final class PlayerLayoutTemplates {
   static List<PlayerLayoutTemplate> get all => [
-        PlayerLayoutTemplate(
+        const PlayerLayoutTemplate(
           id: PlayerTemplateId.cinema,
           name: 'Cinéma',
           tagline: 'Immersion, peu de chrome',
@@ -74,18 +74,18 @@ abstract final class PlayerLayoutTemplates {
               'CORE + muet : HUD bas (transport collé à la timeline), boutons '
               'compacts pensés PC / mobile / TV. Tap image = play/pause.',
           icon: Icons.movie_outlined,
-          extrasLabels: const ['Muet'],
+          extrasLabels: ['Muet'],
           useModular: true,
           build: cinema,
         ),
-        PlayerLayoutTemplate(
+        const PlayerLayoutTemplate(
           id: PlayerTemplateId.series,
           name: 'Séries',
           tagline: 'Binge sans friction',
           description:
               'CORE + épisodes, passer l’intro et à suivre — pensé pour les saisons.',
           icon: Icons.live_tv_outlined,
-          extrasLabels: const [
+          extrasLabels: [
             'Épisode ±',
             'Passer l’intro',
             'À suivre',
@@ -93,14 +93,14 @@ abstract final class PlayerLayoutTemplates {
           useModular: true,
           build: series,
         ),
-        PlayerLayoutTemplate(
+        const PlayerLayoutTemplate(
           id: PlayerTemplateId.pro,
           name: 'Pro',
           tagline: 'Contrôle densifié',
           description:
               'CORE + volume, audio, vitesse, chapitres, cadrage et temps restant.',
           icon: Icons.tune_rounded,
-          extrasLabels: const [
+          extrasLabels: [
             'Volume',
             'Audio',
             'Vitesse',
@@ -111,18 +111,18 @@ abstract final class PlayerLayoutTemplates {
           useModular: true,
           build: pro,
         ),
-        PlayerLayoutTemplate(
+        const PlayerLayoutTemplate(
           id: PlayerTemplateId.classic,
           name: 'Classique',
           tagline: 'Barre dense familière',
           description:
               'CORE dans une timeline Emby : transport et utilitaires regroupés en bas.',
           icon: Icons.view_timeline_outlined,
-          extrasLabels: const [],
+          extrasLabels: [],
           useModular: true,
           build: classic,
         ),
-        PlayerLayoutTemplate(
+        const PlayerLayoutTemplate(
           id: PlayerTemplateId.net,
           name: 'Net',
           tagline: 'Aplats francs, zéro flou',
@@ -130,11 +130,11 @@ abstract final class PlayerLayoutTemplates {
               'CORE dans une barre basse dense, skin Flat : surfaces pleines, '
               'sans transparence ni flou, couleur d’accent au choix.',
           icon: Icons.crop_square_rounded,
-          extrasLabels: const [],
+          extrasLabels: [],
           useModular: true,
           build: net,
         ),
-        PlayerLayoutTemplate(
+        const PlayerLayoutTemplate(
           id: PlayerTemplateId.doux,
           name: 'Doux',
           tagline: 'Boutons moelleux, ombres douces',
@@ -142,7 +142,7 @@ abstract final class PlayerLayoutTemplates {
               'CORE centré et espacé, skin Néomorphique : contrôles extrudés '
               'du fond par de doubles ombres, sans couleur ni flou.',
           icon: Icons.blur_circular_rounded,
-          extrasLabels: const [],
+          extrasLabels: [],
           useModular: true,
           build: doux,
         ),

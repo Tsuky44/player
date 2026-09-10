@@ -115,7 +115,7 @@ class _GlassSection extends StatelessWidget {
           contentPadding: EdgeInsets.zero,
           value: liquidGlass,
           onChanged: onLiquidGlassChanged,
-          activeColor: const Color(0xFF0A84FF),
+          activeThumbColor: const Color(0xFF0A84FF),
           title: const Text(
             'Effet liquide (style Apple)',
             style: TextStyle(color: Colors.white, fontSize: 14),

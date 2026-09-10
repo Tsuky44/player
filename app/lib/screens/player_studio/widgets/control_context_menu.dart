@@ -36,10 +36,10 @@ class ControlContextMenu extends StatelessWidget {
         decoration: BoxDecoration(
           color: const Color(0xFF242424),
           borderRadius: BorderRadius.circular(12),
-          border: Border.all(color: Colors.white.withOpacity(0.1)),
+          border: Border.all(color: Colors.white.withValues(alpha: 0.1)),
           boxShadow: [
             BoxShadow(
-              color: Colors.black.withOpacity(0.45),
+              color: Colors.black.withValues(alpha: 0.45),
               blurRadius: 20,
               offset: const Offset(0, 8),
             ),
@@ -62,13 +62,13 @@ class ControlContextMenu extends StatelessWidget {
                       children: [
                         Icon(
                           Icons.drag_indicator,
-                          color: Colors.white.withOpacity(0.35),
+                          color: Colors.white.withValues(alpha: 0.35),
                           size: 18,
                         ),
                         const SizedBox(width: 4),
                         Icon(
                           placed.type.icon,
-                          color: Colors.white.withOpacity(0.85),
+                          color: Colors.white.withValues(alpha: 0.85),
                           size: 18,
                         ),
                         const SizedBox(width: 8),
@@ -87,7 +87,7 @@ class ControlContextMenu extends StatelessWidget {
                           icon: Icon(
                             Icons.close,
                             size: 18,
-                            color: Colors.white.withOpacity(0.5),
+                            color: Colors.white.withValues(alpha: 0.5),
                           ),
                           padding: EdgeInsets.zero,
                           constraints: const BoxConstraints(
@@ -129,7 +129,7 @@ class ControlContextMenu extends StatelessWidget {
                         Text(
                           'Boutons',
                           style: TextStyle(
-                            color: Colors.white.withOpacity(0.55),
+                            color: Colors.white.withValues(alpha: 0.55),
                             fontSize: 11,
                             fontWeight: FontWeight.w600,
                             letterSpacing: 0.4,
@@ -189,7 +189,7 @@ class ControlContextMenu extends StatelessWidget {
                   ),
                 ),
               ),
-              Divider(height: 1, color: Colors.white.withOpacity(0.08)),
+              Divider(height: 1, color: Colors.white.withValues(alpha: 0.08)),
               InkWell(
                 onTap: () {
                   controller.removeControl(placed.id);
@@ -251,7 +251,7 @@ class _CompactSlider extends StatelessWidget {
             Text(
               label,
               style: TextStyle(
-                color: Colors.white.withOpacity(0.75),
+                color: Colors.white.withValues(alpha: 0.75),
                 fontSize: 12,
               ),
             ),
@@ -259,7 +259,7 @@ class _CompactSlider extends StatelessWidget {
             Text(
               '${(clamped * 100).round()}%',
               style: TextStyle(
-                color: Colors.white.withOpacity(0.45),
+                color: Colors.white.withValues(alpha: 0.45),
                 fontSize: 11,
                 fontFeatures: const [FontFeature.tabularFigures()],
               ),
@@ -270,9 +270,9 @@ class _CompactSlider extends StatelessWidget {
           data: SliderTheme.of(context).copyWith(
             trackHeight: 3,
             activeTrackColor: const Color(0xFF0A84FF),
-            inactiveTrackColor: Colors.white.withOpacity(0.12),
+            inactiveTrackColor: Colors.white.withValues(alpha: 0.12),
             thumbColor: Colors.white,
-            overlayColor: const Color(0xFF0A84FF).withOpacity(0.15),
+            overlayColor: const Color(0xFF0A84FF).withValues(alpha: 0.15),
             thumbShape: const RoundSliderThumbShape(enabledThumbRadius: 6),
             overlayShape: const RoundSliderOverlayShape(overlayRadius: 12),
           ),
@@ -309,7 +309,7 @@ class _CompactToggle extends StatelessWidget {
             child: Text(
               label,
               style: TextStyle(
-                color: Colors.white.withOpacity(0.8),
+                color: Colors.white.withValues(alpha: 0.8),
                 fontSize: 12,
               ),
             ),

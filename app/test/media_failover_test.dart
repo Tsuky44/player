@@ -23,9 +23,10 @@ void main() {
         final source = r.uri.host == 'a.test';
         expect(r.headers['Authorization'],
             source ? 'Bearer token-a' : 'Bearer token-b');
-        if (source && sourceDown)
+        if (source && sourceDown) {
           throw DioException(
               requestOptions: r, type: DioExceptionType.connectionError);
+        }
         dynamic body = {};
         if (r.path == '/api/media-identities') {
           body = {

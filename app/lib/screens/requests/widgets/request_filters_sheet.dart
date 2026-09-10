@@ -282,7 +282,7 @@ class _RequestFiltersSheetState extends State<RequestFiltersSheet> {
           title: 'Langue',
           icon: Icons.language_rounded,
           child: DropdownButtonFormField<String>(
-            value: requestCatalogLanguageOptions
+            initialValue: requestCatalogLanguageOptions
                     .any((e) => e.code == _draft.language)
                 ? _draft.language
                 : 'all',
@@ -399,7 +399,7 @@ class _RequestFiltersSheetState extends State<RequestFiltersSheet> {
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
           DropdownButtonFormField<String>(
-            value: requestCatalogRegions
+            initialValue: requestCatalogRegions
                     .any((r) => r.value == _draft.watchRegion)
                 ? _draft.watchRegion
                 : 'FR',

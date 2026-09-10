@@ -106,7 +106,7 @@ class _ShowsScreenState extends State<ShowsScreen> {
                       ),
                     ),
                     if (lp.shows.isEmpty)
-                      SliverFillRemaining(
+                      const SliverFillRemaining(
                         child: EmptyStateView(
                           icon: Icons.tv_off_rounded,
                           title: 'Aucune série',
@@ -115,11 +115,11 @@ class _ShowsScreenState extends State<ShowsScreen> {
                         ),
                       )
                     else if (filtered.isEmpty)
-                      SliverFillRemaining(
+                      const SliverFillRemaining(
                         child: Center(
                           child: Text(
                             'Aucune série trouvée',
-                            style: const TextStyle(color: AppColors.textMuted),
+                            style: TextStyle(color: AppColors.textMuted),
                           ),
                         ),
                       )

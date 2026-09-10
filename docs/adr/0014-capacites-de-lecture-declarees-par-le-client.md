@@ -140,6 +140,20 @@ inévitable.
   reste prioritaire. Toutes les pistes se lisent en Direct Play, sans être modifiées.
   `PlaybackCapabilities.missingDirectPlayAudio` reste comme filet (l'AC-4 sur Android) : une piste
   qui en fait partie fait passer en HLS à la résolution de la source.
+- **Le Dolby Vision se déclare par décodeur, pas par écran.** Sur Android, `dolbyVision` venait de
+  `Display.HdrCapabilities` — ce qu'annonce le téléviseur, pas ce que la puce locale sait décoder.
+  Un boîtier relié à un téléviseur Dolby Vision sans avoir lui-même de décodeur RPU se faisait donc
+  envoyer un profil 5 en copie, silencieusement vert. Corrigé : le champ vient maintenant de
+  `MediaCodecList` (`video/dolby-vision`), la même source que `deviceCapabilities()` remonte déjà.
+  Sur mpv, `dolbyVision` reste faux partout (macOS, iOS **et** Windows), et ce n'est pas une
+  question de build. Le seul code de mpv qui applique la couche RPU passe par libplacebo
+  (`pl_dovi_metadata`, dans `vo_gpu_next`). Or media_kit dessine dans la texture Flutter par l'API
+  de rendu (`vo=libmpv`), dont le seul moteur est l'ancien renderer (`libmpv_gpu.c`) — vérifié
+  jusqu'à mpv 0.41. Poser `vo=gpu-next` ne l'active pas : ça remplace `vo=libmpv` par une sortie à
+  fenêtre autonome, et l'image quitte l'app. Avoir libplacebo dans le binaire (le build shinchiro
+  de Windows l'a) ne suffit donc pas. Déclarer `dv=1` ferait recopier un profil 5, qui sortirait
+  vert. Sur macOS, l'ADR-0015 lève ce verrou en sortant de la texture : mpv y dessine lui-même
+  dans une vue native.
 
 ## Note pour la suite
 
