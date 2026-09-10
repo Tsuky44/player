@@ -62,6 +62,19 @@ dependencies:
   onyx_player_android:
     path: ../packages/onyx_player_android
 
+# Les bibliothèques natives de media_kit, avec un FFmpeg complet. Les versions
+# publiées embarquent un FFmpeg réduit à une liste blanche de décodeurs sans
+# TrueHD : la piste Atmos d'un Blu-ray était muette en Direct Play sur mac,
+# Windows et iOS. Seule l'URL du binaire change — voir le Makefile (macOS,
+# iOS) ou le CMakeLists.txt (Windows) de chaque paquet sous packages/.
+dependency_overrides:
+  media_kit_libs_macos_video:
+    path: ../packages/media_kit_libs_macos_video
+  media_kit_libs_ios_video:
+    path: ../packages/media_kit_libs_ios_video
+  media_kit_libs_windows_video:
+    path: ../packages/media_kit_libs_windows_video
+
 dev_dependencies:
   flutter_test:
     sdk: flutter

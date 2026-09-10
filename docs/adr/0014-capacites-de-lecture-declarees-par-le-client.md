@@ -131,6 +131,15 @@ inévitable.
 - Le passthrough de bureau (`--audio-spdif`) n'est pas fait. C'est le seul moyen d'obtenir de
   l'Atmos sur un Mac ou un PC relié à un ampli, et ça ne peut pas être activé par défaut : sur un
   périphérique qui déclare mal ses formats, ça donne du silence. Ça demande un réglage explicite.
+- **Le Direct Play n'est pas « tout ce que le moteur ouvre ».** Le FFmpeg que media_kit publie
+  (mac, Windows, iOS) est compilé `--disable-all` avec une liste blanche de décodeurs sans `truehd` ;
+  ExoPlayer n'a rien pour le TrueHD, le DTS ou l'(E-)AC-3 sans MediaCodec ni passthrough. Dans les
+  deux cas la piste était listée et muette. Corrigé à la source : les paquets `media_kit_libs_*`
+  sont surchargés (`packages/`, `dependency_overrides`) pour pointer vers des builds libmpv à FFmpeg
+  complet, et ExoPlayer reçoit le décodeur FFmpeg de NextLib derrière MediaCodec — le passthrough
+  reste prioritaire. Toutes les pistes se lisent en Direct Play, sans être modifiées.
+  `PlaybackCapabilities.missingDirectPlayAudio` reste comme filet (l'AC-4 sur Android) : une piste
+  qui en fait partie fait passer en HLS à la résolution de la source.
 
 ## Note pour la suite
 

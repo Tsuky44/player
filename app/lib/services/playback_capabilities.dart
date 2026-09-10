@@ -28,6 +28,7 @@ class PlaybackCapabilities {
     required this.hdr,
     required this.dolbyVision,
     required this.label,
+    this.missingDirectPlayAudio = const {},
   });
 
   /// `fmp4` ou `ts`. Le format de segment décide autant que le décodeur : le
@@ -59,6 +60,25 @@ class PlaybackCapabilities {
 
   /// De quoi lire la ligne de log au démarrage d'une lecture.
   final String label;
+
+  /// Les codecs audio que le moteur **local** ne sait pas décoder quand il lit
+  /// le fichier lui-même (Direct Play).
+  ///
+  /// Ce n'est pas l'inverse de [audioCodecs], qui dit ce que le serveur peut
+  /// envoyer dans un segment : mpv lit le DTS sans que le fMP4 sache le porter.
+  ///
+  /// Vide partout aujourd'hui — mpv embarque un FFmpeg complet (voir les
+  /// paquets `media_kit_libs_*` sous packages/) et ExoPlayer le décodeur FFmpeg
+  /// de NextLib. Reste le filet pour ce qu'aucun des deux ne décode : une telle
+  /// piste ne produit pas d'erreur, l'image défile sans son, et le seul remède
+  /// est de laisser le serveur la décoder — donc de passer en HLS.
+  final Set<String> missingDirectPlayAudio;
+
+  /// Si le moteur local sait décoder [codec] (nom ffprobe) en Direct Play.
+  bool decodesInDirectPlay(String codec) {
+    final name = canonicalAudioCodec(codec);
+    return name == null || !missingDirectPlayAudio.contains(name);
+  }
 
   /// Ce que le serveur suppose quand le client ne dit rien.
   static const legacy = PlaybackCapabilities(
@@ -114,7 +134,11 @@ class PlaybackCapabilities {
       if (name != null) video.add(name);
     }
 
-    final audio = <String>{'aac'};
+    // L'AAC est décodé partout ; l'(E-)AC-3 l'est aussi, en logiciel, par le
+    // décodeur FFmpeg d'ExoPlayer quand la puce n'en a pas — le serveur peut
+    // donc le recopier plutôt que le ré-encoder. TrueHD et DTS sont décodés de
+    // la même façon mais n'ont pas de place dans un segment fMP4.
+    final audio = <String>{'aac', ..._ffmpegDecodedAudio};
     // Ce que la puce décode…
     for (final mime in device.audioMimeTypes) {
       final name = _canonicalFromMime(mime, _audioMimeNames);
@@ -138,6 +162,10 @@ class PlaybackCapabilities {
       maxVideoBitDepth: device.maxVideoBitDepth.clamp(8, 12).toInt(),
       hdr: hdr,
       dolbyVision: device.hdrFormats.contains('dolbyvision'),
+      // Ce que ni MediaCodec, ni le passthrough, ni le FFmpeg de NextLib ne
+      // décode — l'AC-4, en pratique. Ne rien supposer d'un codec inconnu
+      // garde le Direct Play qui marchait déjà.
+      missingDirectPlayAudio: _needsDeviceSupport.difference(audio),
       label: 'exoplayer '
           '(${device.maxAudioChannels}ch, '
           '${device.maxVideoBitDepth}bit, '
@@ -221,6 +249,36 @@ const _audioMimeNames = <String, String>{
 
 String? _canonicalFromMime(String mime, Map<String, String> table) =>
     table[mime.toLowerCase().trim()];
+
+/// Les formats qu'ExoPlayer ne lit qu'avec de l'aide : un décodeur MediaCodec,
+/// un passthrough HDMI, ou le décodeur FFmpeg de NextLib.
+const _needsDeviceSupport = <String>{'truehd', 'dts', 'ac3', 'eac3', 'ac4'};
+
+/// Ce que le FFmpeg de NextLib décode quel que soit l'appareil (sa build active
+/// `ac3`, `eac3`, `dca`, `mlp` et `truehd`). L'AC-4 n'y est pas.
+const _ffmpegDecodedAudio = <String>{'truehd', 'dts', 'ac3', 'eac3'};
+
+/// Le nom canonique d'un codec audio tel que ffprobe l'écrit, ou null pour un
+/// codec dont cette table ne dit rien.
+@visibleForTesting
+String? canonicalAudioCodec(String codec) {
+  switch (codec.toLowerCase().trim()) {
+    case 'truehd':
+    case 'mlp':
+      return 'truehd';
+    case 'dts':
+    case 'dca':
+      return 'dts';
+    case 'eac3':
+      return 'eac3';
+    case 'ac3':
+      return 'ac3';
+    case 'ac4':
+      return 'ac4';
+    default:
+      return null;
+  }
+}
 
 /// Résout les capacités de cet appareil, une fois par processus.
 abstract final class PlaybackCapabilitiesResolver {

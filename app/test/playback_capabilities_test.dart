@@ -105,6 +105,58 @@ void main() {
     });
   });
 
+  group('pistes muettes en Direct Play', () {
+    // Une piste que le moteur local ne décode pas n'échoue pas : elle est
+    // listée, sélectionnée, et silencieuse. C'est ce qui arrivait au TrueHD
+    // Atmos 7.1 sur mac, Windows et Android.
+    test('mpv (FFmpeg complet) garde toutes les pistes en Direct Play', () {
+      const caps = PlaybackCapabilities.mpv;
+      for (final codec in [
+        'truehd', 'mlp', 'eac3', 'ac3', 'dts', 'aac', 'flac', 'opus',
+      ]) {
+        expect(caps.decodesInDirectPlay(codec), isTrue, reason: codec);
+      }
+    });
+
+    test('ExoPlayer sans décodeur ni passthrough décode via FFmpeg', () {
+      final caps = PlaybackCapabilities.fromDevice(OnyxDeviceCapabilities(
+        videoMimeTypes: ['video/avc'],
+        audioMimeTypes: ['audio/mp4a-latm', 'audio/ac3'],
+        passthroughAudioMimeTypes: [],
+        maxAudioChannels: 2,
+        hdrFormats: [],
+        maxVideoBitDepth: 8,
+      ));
+      for (final codec in ['truehd', 'dts', 'eac3', 'ac3']) {
+        expect(caps.decodesInDirectPlay(codec), isTrue, reason: codec);
+      }
+      // Le seul format que rien ne décode sur cet appareil.
+      expect(caps.decodesInDirectPlay('ac4'), isFalse);
+      // L'(E-)AC-3 décodé en logiciel peut aussi être recopié par le serveur.
+      expect(caps.audioCodecs, containsAll(['ac3', 'eac3']));
+      // Ce que la table ne connaît pas reste en Direct Play, comme avant.
+      expect(caps.decodesInDirectPlay('pcm_s24le'), isTrue);
+      expect(caps.decodesInDirectPlay('vorbis'), isTrue);
+    });
+
+    test('un passthrough TrueHD vers un ampli garde le Direct Play', () {
+      final caps = PlaybackCapabilities.fromDevice(OnyxDeviceCapabilities(
+        videoMimeTypes: ['video/avc'],
+        audioMimeTypes: ['audio/mp4a-latm'],
+        passthroughAudioMimeTypes: ['audio/true-hd', 'audio/eac3-joc'],
+        maxAudioChannels: 8,
+        hdrFormats: [],
+        maxVideoBitDepth: 10,
+      ));
+      expect(caps.decodesInDirectPlay('truehd'), isTrue);
+      expect(caps.decodesInDirectPlay('eac3'), isTrue);
+    });
+
+    test('le repli legacy ne change rien au Direct Play', () {
+      expect(PlaybackCapabilities.legacy.decodesInDirectPlay('truehd'), isTrue);
+    });
+  });
+
   test('les paramètres portent les noms que le serveur lit', () {
     // Les clés sont le contrat avec `streaming.ParseCapabilities`. Un nom qui
     // dérive ne casse rien de visible : le serveur retombe simplement sur son
