@@ -11,6 +11,7 @@ import '../playback_profile.dart';
 import '../web_quality.dart';
 import '../../../services/api_client.dart';
 import '../../../services/download_manager.dart';
+import '../../../services/playback_capabilities.dart';
 import '../../../services/playback_preferences_storage.dart';
 import '../player_playback_preferences.dart';
 
@@ -624,6 +625,12 @@ class PlayerController {
           tracks.audio,
           defaultLang,
         );
+      }
+
+      if (_directPlayCannotDecodeAudio(_selectedAudioIndex)) {
+        _notifyTracksChanged();
+        await _transcodeForUndecodableAudio();
+        return;
       }
 
       _pendingPreferenceReapply = true;
@@ -1393,11 +1400,43 @@ class PlayerController {
       return;
     }
 
+    if (_directPlayCannotDecodeAudio(index)) {
+      await _transcodeForUndecodableAudio();
+      return;
+    }
     if (currentQuality != null && _playerAudioPosition(index) == null) {
       await reloadHlsAtPosition(position.inSeconds);
       return;
     }
     _applyAudioSelection();
+  }
+
+  /// Si la piste [index] serait muette en Direct Play.
+  ///
+  /// Le moteur local la liste et la sélectionne sans broncher — le démuxeur la
+  /// connaît — puis n'a rien pour la décoder : l'image défile, sans son et sans
+  /// erreur. C'est le cas du TrueHD (Atmos compris) sous mpv, et du TrueHD, du
+  /// DTS ou de l'(E-)AC-3 sous ExoPlayer quand l'appareil n'a ni décodeur ni
+  /// passthrough pour eux.
+  bool _directPlayCannotDecodeAudio(int index) {
+    if (AppPlatform.isWeb || currentQuality != null) return false;
+    final audio = mediaTracks?.audio ?? const <MediaAudioTrack>[];
+    if (index < 0 || index >= audio.length) return false;
+    return !PlaybackCapabilitiesResolver.current
+        .decodesInDirectPlay(audio[index].codec);
+  }
+
+  /// Passe en HLS à la résolution de la source, pour que le serveur décode la
+  /// piste que le moteur local ne sait pas lire.
+  ///
+  /// La résolution d'origine est ce qui laisse l'image recopiée plutôt que
+  /// ré-encodée : seul l'audio coûte alors quelque chose au serveur.
+  Future<void> _transcodeForUndecodableAudio() async {
+    final track = mediaTracks!.audio[_selectedAudioIndex];
+    final quality = qualityForSourceHeight(mediaTracks!.video?.height ?? 0);
+    debugPrint("Player: ${track.codec} illisible en Direct Play "
+        "(${PlaybackCapabilitiesResolver.current.label}) — HLS $quality");
+    await switchToQuality(quality);
   }
 
   /// Turn subtitles on (first available track) or off.

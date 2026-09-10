@@ -17,7 +17,7 @@ import androidx.media3.common.Tracks
 import androidx.media3.common.VideoSize
 import androidx.media3.common.text.CueGroup
 import androidx.media3.exoplayer.DefaultLoadControl
-import androidx.media3.exoplayer.DefaultRenderersFactory
+import io.github.anilbeesetti.nextlib.media3ext.ffdecoder.NextRenderersFactory
 import androidx.media3.exoplayer.ExoPlayer
 import androidx.media3.exoplayer.audio.AudioSink
 import androidx.media3.exoplayer.audio.DefaultAudioSink
@@ -146,7 +146,14 @@ internal class PlayerInstance(
         // — et se retire ailleurs, pour ne pas replier un 5.1 que l'ampli
         // branché savait porter. Voir [DialogueForwardDownmix].
         val outputChannels = sinkMaxChannelCount(context)
-        val renderers = object : DefaultRenderersFactory(context) {
+        //
+        // `NextRenderersFactory` ajoute un décodeur audio FFmpeg **derrière**
+        // ceux de MediaCodec : un appareil qui sait décoder ou faire traverser
+        // un format jusqu'à l'ampli (l'Atmos en passthrough) le garde, et ce
+        // qu'il ne sait pas lire — TrueHD, DTS, (E-)AC-3 sur un téléphone — est
+        // décodé en logiciel au lieu d'être muet. La piste n'est pas touchée :
+        // c'est toujours le fichier original, en Direct Play.
+        val renderers = object : NextRenderersFactory(context) {
             override fun buildAudioSink(
                 context: Context,
                 enableFloatOutput: Boolean,

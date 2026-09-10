@@ -88,6 +88,11 @@ dependencies {
     // HLS, ce que couvre `exoplayer-hls`.
     implementation("androidx.media3:media3-exoplayer:$media3Version")
     implementation("androidx.media3:media3-exoplayer-hls:$media3Version")
+    // Un décodeur audio FFmpeg pour ExoPlayer, qui n'a sinon que MediaCodec :
+    // sans lui, TrueHD, DTS et (E-)AC-3 sont muets sur tout appareil qui n'a ni
+    // décodeur matériel ni passthrough vers un ampli. La version suit media3
+    // (`<media3>-<nextlib>`), et doit la suivre à chaque montée.
+    implementation("io.github.anilbeesetti:nextlib-media3ext:$media3Version-0.15.0")
 
     testImplementation("org.jetbrains.kotlin:kotlin-test")
     testImplementation("org.mockito:mockito-core:5.0.0")
