@@ -301,7 +301,11 @@ class MpvPlaybackSession implements PlaybackSession {
     if (!profile.allowHdrComputePeak) {
       await _set(platform, 'hdr-compute-peak', 'no');
     }
-    if (AppPlatform.isMacOS) {
+    // Contournement du pont de texture de media_kit, qui peut bloquer la sortie
+    // vidéo : mpv saute des images au lieu de geler. La vue native n'a pas ce
+    // pont, et display-desync y laisserait le son dériver de l'image — elle
+    // garde le mode par défaut (voir _applyNativeOutputTuning).
+    if (AppPlatform.isMacOS && !MpvNativeView.enabled) {
       await _set(platform, 'framedrop', 'vo');
       await _set(platform, 'video-sync', 'display-desync');
     }
@@ -320,6 +324,9 @@ class MpvPlaybackSession implements PlaybackSession {
       'target-colorspace-hint': 'yes',
       // Les touches média appartiennent au NowPlayingController de l'app.
       'input-media-keys': 'no',
+      // Chaque image calée sur le son : le mode par défaut de mpv, dit
+      // explicitement pour qu'aucun réglage de la texture ne s'y substitue.
+      'video-sync': 'audio',
     };
     for (final entry in properties.entries) {
       try {
@@ -357,7 +364,11 @@ class MpvPlaybackSession implements PlaybackSession {
     await _set(platform, 'cache-pause', 'yes');
     await _set(platform, 'cache-pause-wait', '3');
     await _set(platform, 'cache-pause-initial', 'yes');
-    if (AppPlatform.isMacOS) {
+    // Contournement du pont de texture de media_kit, qui peut bloquer la sortie
+    // vidéo : mpv saute des images au lieu de geler. La vue native n'a pas ce
+    // pont, et display-desync y laisserait le son dériver de l'image — elle
+    // garde le mode par défaut (voir _applyNativeOutputTuning).
+    if (AppPlatform.isMacOS && !MpvNativeView.enabled) {
       await _set(platform, 'framedrop', 'vo');
       await _set(platform, 'video-sync', 'display-desync');
     }
