@@ -25,6 +25,7 @@ import 'screens/auth/login_screen.dart';
 import 'screens/auth/tv_login_screen.dart';
 import 'tv/tv_focus.dart';
 import 'tv/tv_focus_guard.dart';
+import 'tv/tv_key_repeat.dart';
 import 'tv/tv_mode.dart';
 import 'tv/tv_pairing_link.dart';
 import 'screens/player/display_frame_rate.dart';
@@ -79,6 +80,9 @@ void main() async {
   // entirely between a phone and a television, and flipping it after the fact
   // would show the password form for a beat on every TV boot.
   await TvMode.initialize();
+  // Observe les flèches maintenues, pour que le focus ne coure pas plus vite
+  // que les rangées ne défilent. Voir [TvKeyRepeat].
+  TvKeyRepeat.install();
 
   // How much memory playback may spend here. Resolved before the first frame
   // like the TV mode above, because it is read when a media opens and the
@@ -237,6 +241,12 @@ class OnyxApp extends StatelessWidget {
                 shortcuts: <ShortcutActivator, Intent>{
                   ...WidgetsApp.defaultShortcuts,
                   ...tvSelectShortcuts,
+                },
+                // Les flèches maintenues sont régulées, sans quoi le focus
+                // dépasse les cartes qu'une rangée n'a pas encore construites.
+                actions: <Type, Action<Intent>>{
+                  ...WidgetsApp.defaultActions,
+                  DirectionalFocusIntent: TvDirectionalFocusAction(),
                 },
                 builder: (context, child) {
                   return Column(

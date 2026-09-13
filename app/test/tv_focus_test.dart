@@ -127,6 +127,66 @@ void main() {
     expect(menus, 1);
   });
 
+  testWidgets('on a card with a menu, a short OK acts on release',
+      (tester) async {
+    var taps = 0;
+    var menus = 0;
+    final node = FocusNode();
+    addTearDown(node.dispose);
+
+    await tester.pumpWidget(_app(
+      child: TvFocusable(
+        focusNode: node,
+        onSelect: () => taps++,
+        onContextMenu: () => menus++,
+        child: const SizedBox(width: 100, height: 100),
+      ),
+    ));
+
+    node.requestFocus();
+    await tester.pump();
+
+    await tester.sendKeyDownEvent(LogicalKeyboardKey.select);
+    await tester.pump();
+    expect(taps, 0, reason: 'the press may still become a long press');
+
+    await tester.sendKeyUpEvent(LogicalKeyboardKey.select);
+    await tester.pump();
+    expect(taps, 1);
+    expect(menus, 0);
+  });
+
+  testWidgets('holding OK on a card with a menu opens the menu, and only it',
+      (tester) async {
+    var taps = 0;
+    var menus = 0;
+    final node = FocusNode();
+    addTearDown(node.dispose);
+
+    await tester.pumpWidget(_app(
+      child: TvFocusable(
+        focusNode: node,
+        onSelect: () => taps++,
+        onContextMenu: () => menus++,
+        child: const SizedBox(width: 100, height: 100),
+      ),
+    ));
+
+    node.requestFocus();
+    await tester.pump();
+
+    // Android starts repeating a held key after about half a second: the
+    // first repeat is the long press.
+    await tester.sendKeyDownEvent(LogicalKeyboardKey.select);
+    await tester.sendKeyRepeatEvent(LogicalKeyboardKey.select);
+    await tester.sendKeyRepeatEvent(LogicalKeyboardKey.select);
+    await tester.sendKeyUpEvent(LogicalKeyboardKey.select);
+    await tester.pump();
+
+    expect(menus, 1);
+    expect(taps, 0, reason: 'releasing a long press must not also launch it');
+  });
+
   testWidgets('a focused card is scrolled into view', (tester) async {
     final node = FocusNode();
     final controller = ScrollController();

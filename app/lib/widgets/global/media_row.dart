@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import '../../models/models.dart';
 import '../../theme/app_colors.dart';
+import '../../tv/tv_focus_memory.dart';
 import '../../utils/poster_url.dart';
 import '../../utils/responsive.dart';
 import 'continue_watching_card.dart';
@@ -82,38 +83,42 @@ class MediaRow extends StatelessWidget {
           ),
         ),
         const SizedBox(height: 14),
-        SizedBox(
-          height: rowHeight,
-          child: ListView.builder(
-            scrollDirection: Axis.horizontal,
-            padding: EdgeInsets.symmetric(horizontal: horizontalPadding),
-            itemCount: items.length,
-            itemBuilder: (context, index) {
-              final item = items[index];
-              return Padding(
-                padding: EdgeInsets.only(right: index < items.length - 1 ? 12 : 0),
-                child: isContinueWatching
-                    ? ContinueWatchingCard(
-                        item: item as HomeMediaItem,
-                        autofocus: autofocusFirstItem && index == 0,
-                        onTap: () => onItemTap(item),
-                        onTitleTap: onContinueWatchingTitleTap != null
-                            ? () => onContinueWatchingTitleTap!(item)
-                            : null,
-                        onMarkAsWatched: onContinueWatchingMarkWatched,
-                        onRemoveFromRow: onContinueWatchingRemove,
-                      )
-                    : SizedBox(
-                        width: cardWidth,
-                        child: MediaCard(
-                          media: item as Media,
-                          compact: true,
+        // Revenir sur cette rangée ramène à la carte où l'on était, comme sur
+        // Jellyfin — voir [TvFocusMemory].
+        TvFocusMemory(
+          child: SizedBox(
+            height: rowHeight,
+            child: ListView.builder(
+              scrollDirection: Axis.horizontal,
+              padding: EdgeInsets.symmetric(horizontal: horizontalPadding),
+              itemCount: items.length,
+              itemBuilder: (context, index) {
+                final item = items[index];
+                return Padding(
+                  padding: EdgeInsets.only(right: index < items.length - 1 ? 12 : 0),
+                  child: isContinueWatching
+                      ? ContinueWatchingCard(
+                          item: item as HomeMediaItem,
                           autofocus: autofocusFirstItem && index == 0,
                           onTap: () => onItemTap(item),
+                          onTitleTap: onContinueWatchingTitleTap != null
+                              ? () => onContinueWatchingTitleTap!(item)
+                              : null,
+                          onMarkAsWatched: onContinueWatchingMarkWatched,
+                          onRemoveFromRow: onContinueWatchingRemove,
+                        )
+                      : SizedBox(
+                          width: cardWidth,
+                          child: MediaCard(
+                            media: item as Media,
+                            compact: true,
+                            autofocus: autofocusFirstItem && index == 0,
+                            onTap: () => onItemTap(item),
+                          ),
                         ),
-                      ),
-              );
-            },
+                );
+              },
+            ),
           ),
         ),
       ],

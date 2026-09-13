@@ -3,6 +3,7 @@ import 'dart:ui';
 import 'package:flutter/material.dart';
 import '../../theme/app_colors.dart';
 import '../../theme/app_motion.dart';
+import '../../tv/tv_mode.dart';
 import 'onyx_mark.dart';
 
 /// Full-width frosted strip — must float above scrolling content to blur it.
@@ -216,46 +217,80 @@ class GlassBrand extends StatelessWidget {
   }
 }
 
-class GlassNavTab extends StatelessWidget {
+class GlassNavTab extends StatefulWidget {
   final String label;
   final bool selected;
   final VoidCallback onTap;
+
+  /// Fourni par la coquille, pour que la touche Retour d'une télécommande
+  /// puisse ramener le focus sur l'onglet affiché.
+  final FocusNode? focusNode;
 
   const GlassNavTab({
     super.key,
     required this.label,
     required this.selected,
     required this.onTap,
+    this.focusNode,
   });
 
   @override
+  State<GlassNavTab> createState() => _GlassNavTabState();
+}
+
+class _GlassNavTabState extends State<GlassNavTab> {
+  bool _focused = false;
+
+  @override
   Widget build(BuildContext context) {
+    final selected = widget.selected;
+    // Le voile de focus de Material (10 % de blanc) ne se lit pas depuis un
+    // canapé : sur un téléviseur l'onglet visé porte l'anneau de l'app.
+    final ringed = _focused && TvScope.of(context);
+
     return Padding(
       padding: const EdgeInsets.only(right: 4),
-      child: Material(
-        color: Colors.transparent,
-        child: InkWell(
-          onTap: onTap,
-          borderRadius: BorderRadius.circular(16),
-          child: AnimatedContainer(
-            // `move`, not `fade`: this animates padding and decoration, so it
-            // is geometry — the case reduced motion is meant to cancel.
-            duration: AppMotion.move(context, AppMotion.micro),
-            curve: AppMotion.curve,
-            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-            decoration: BoxDecoration(
-              color: selected ? Colors.white.withValues(alpha: 0.14) : Colors.transparent,
-              borderRadius: BorderRadius.circular(16),
-            ),
-            child: Text(
-              label,
-              style: TextStyle(
-                color: selected ? AppColors.textPrimary : AppColors.textSecondary.withValues(alpha: 0.9),
-                fontWeight: selected ? FontWeight.w700 : FontWeight.w500,
-                fontSize: 13,
-                shadows: selected
-                    ? null
-                    : [Shadow(color: Colors.black.withValues(alpha: 0.4), blurRadius: 6)],
+      child: AnimatedScale(
+        scale: ringed ? 1.08 : 1.0,
+        duration: const Duration(milliseconds: 160),
+        curve: Curves.easeOutCubic,
+        child: Material(
+          color: Colors.transparent,
+          child: InkWell(
+            onTap: widget.onTap,
+            focusNode: widget.focusNode,
+            onFocusChange: (focused) {
+              if (_focused != focused) setState(() => _focused = focused);
+            },
+            borderRadius: BorderRadius.circular(16),
+            child: AnimatedContainer(
+              // `move`, not `fade`: this animates padding and decoration, so it
+              // is geometry — the case reduced motion is meant to cancel.
+              duration: AppMotion.move(context, AppMotion.micro),
+              curve: AppMotion.curve,
+              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+              decoration: BoxDecoration(
+                color: selected || ringed
+                    ? Colors.white.withValues(alpha: ringed ? 0.2 : 0.14)
+                    : Colors.transparent,
+                borderRadius: BorderRadius.circular(16),
+                border: Border.all(
+                  color: ringed ? AppColors.accent : Colors.transparent,
+                  width: 2,
+                ),
+              ),
+              child: Text(
+                widget.label,
+                style: TextStyle(
+                  color: selected || ringed
+                      ? AppColors.textPrimary
+                      : AppColors.textSecondary.withValues(alpha: 0.9),
+                  fontWeight: selected ? FontWeight.w700 : FontWeight.w500,
+                  fontSize: 13,
+                  shadows: selected
+                      ? null
+                      : [Shadow(color: Colors.black.withValues(alpha: 0.4), blurRadius: 6)],
+                ),
               ),
             ),
           ),
@@ -265,7 +300,7 @@ class GlassNavTab extends StatelessWidget {
   }
 }
 
-class GlassIconButton extends StatelessWidget {
+class GlassIconButton extends StatefulWidget {
   final Widget child;
   final VoidCallback? onTap;
   final double size;
@@ -278,22 +313,50 @@ class GlassIconButton extends StatelessWidget {
   });
 
   @override
+  State<GlassIconButton> createState() => _GlassIconButtonState();
+}
+
+class _GlassIconButtonState extends State<GlassIconButton> {
+  bool _focused = false;
+
+  @override
   Widget build(BuildContext context) {
-    return Material(
-      color: Colors.transparent,
-      child: InkWell(
-        onTap: onTap,
-        borderRadius: BorderRadius.circular(size / 2),
-        child: Container(
-          width: size,
-          height: size,
-          alignment: Alignment.center,
-          decoration: BoxDecoration(
-            shape: BoxShape.circle,
-            color: Colors.white.withValues(alpha: 0.08),
-            border: Border.all(color: Colors.white.withValues(alpha: 0.12)),
+    final size = widget.size;
+    // Deux façons d'être visé par la télécommande : ce bouton a son propre
+    // geste, ou il sert d'apparence à un menu (le compte) dont le focus est
+    // tenu juste au-dessus de lui.
+    final ancestorFocused = widget.onTap == null &&
+        (Focus.maybeOf(context)?.hasPrimaryFocus ?? false);
+    final ringed = TvScope.of(context) && (_focused || ancestorFocused);
+
+    return AnimatedScale(
+      scale: ringed ? 1.12 : 1.0,
+      duration: const Duration(milliseconds: 160),
+      curve: Curves.easeOutCubic,
+      child: Material(
+        color: Colors.transparent,
+        child: InkWell(
+          onTap: widget.onTap,
+          onFocusChange: (focused) {
+            if (_focused != focused) setState(() => _focused = focused);
+          },
+          borderRadius: BorderRadius.circular(size / 2),
+          child: Container(
+            width: size,
+            height: size,
+            alignment: Alignment.center,
+            decoration: BoxDecoration(
+              shape: BoxShape.circle,
+              color: Colors.white.withValues(alpha: ringed ? 0.18 : 0.08),
+              border: Border.all(
+                color: ringed
+                    ? AppColors.accent
+                    : Colors.white.withValues(alpha: 0.12),
+                width: ringed ? 2 : 1,
+              ),
+            ),
+            child: widget.child,
           ),
-          child: child,
         ),
       ),
     );

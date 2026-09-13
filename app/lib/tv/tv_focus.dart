@@ -2,6 +2,8 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
 import '../theme/app_colors.dart';
+import 'tv_focus_memory.dart';
+import 'tv_key_repeat.dart';
 import 'tv_mode.dart';
 
 /// Keys that mean "activate the thing under the cursor".
@@ -102,6 +104,22 @@ class TvFocusable extends StatefulWidget {
 class _TvFocusableState extends State<TvFocusable> {
   bool _focused = false;
 
+  /// Créé quand l'appelant n'en fournit pas : la mémoire de la rangée a besoin
+  /// d'un nœud à qui rendre le focus.
+  FocusNode? _ownedNode;
+
+  /// La mémoire la plus proche, gardée ici parce qu'on doit pouvoir la prévenir
+  /// depuis [dispose], où l'arbre ne se consulte plus.
+  TvFocusMemoryState? _memory;
+
+  /// OK est enfoncé sur une carte qui a un menu : l'action part au relâchement,
+  /// sauf si l'appui a duré assez longtemps pour devenir un appui long.
+  bool _selectPending = false;
+  bool _longPressFired = false;
+
+  FocusNode get _node =>
+      widget.focusNode ?? (_ownedNode ??= FocusNode(debugLabel: 'tv-focusable'));
+
   /// A node can arrive already holding the focus.
   ///
   /// `onFocusChange` reports a *change*, and there is none: the player's
@@ -116,16 +134,30 @@ class _TvFocusableState extends State<TvFocusable> {
     if (_focused) _scrollIntoView();
   }
 
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    _memory = TvFocusMemory.maybeOf(context);
+  }
+
   /// Same case, one step later: the node was handed to a row that already
   /// exists. No rebuild is needed — [didUpdateWidget] is followed by [build].
   @override
   void didUpdateWidget(TvFocusable oldWidget) {
     super.didUpdateWidget(oldWidget);
     if (widget.focusNode == oldWidget.focusNode) return;
-    final focused = widget.focusNode?.hasFocus ?? false;
+    if (oldWidget.focusNode != null) _memory?.forget(oldWidget.focusNode!);
+    final focused = _node.hasFocus;
     if (focused == _focused) return;
     _focused = focused;
     if (_focused) _scrollIntoView();
+  }
+
+  @override
+  void dispose() {
+    _memory?.forget(_node);
+    _ownedNode?.dispose();
+    super.dispose();
   }
 
   void _handleFocusChange(bool focused) {
@@ -134,7 +166,11 @@ class _TvFocusableState extends State<TvFocusable> {
     }
     widget.onFocusChange?.call(focused);
 
-    if (!focused) return;
+    if (!focused) {
+      _selectPending = false;
+      return;
+    }
+    _memory?.remember(_node);
     _scrollIntoView();
   }
 
@@ -143,14 +179,20 @@ class _TvFocusableState extends State<TvFocusable> {
     // still be laying out (a grid that just built the cell, a page that just
     // pushed), and ensureVisible on a stale geometry scrolls to the wrong spot.
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (!mounted) return;
+      // Plus le focus : une rangée qui se souvient l'a déjà rendu à une autre
+      // carte, et défiler jusqu'à celle-ci ferait un aller-retour visible.
+      if (!mounted || !_node.hasFocus) return;
       Scrollable.ensureVisible(
         context,
         alignment: widget.scrollAlignment,
         // Every scrollable between here and the root, so a poster in a
         // horizontal row inside a vertical page centres on both axes.
         alignmentPolicy: ScrollPositionAlignmentPolicy.explicit,
-        duration: const Duration(milliseconds: 220),
+        // Plus court quand la flèche est maintenue : l'animation doit finir
+        // avant le déplacement suivant, sinon le focus court devant la rangée.
+        duration: TvKeyRepeat.isRepeating
+            ? const Duration(milliseconds: 90)
+            : const Duration(milliseconds: 220),
         curve: Curves.easeOutCubic,
       );
     });
@@ -158,15 +200,50 @@ class _TvFocusableState extends State<TvFocusable> {
 
   KeyEventResult _handleKey(FocusNode node, KeyEvent event) {
     if (!widget.enabled) return KeyEventResult.ignored;
-    // Holding select must not fire the action forty times.
-    if (event is! KeyDownEvent) return KeyEventResult.ignored;
 
     if (kTvSelectKeys.contains(event.logicalKey)) {
       final onSelect = widget.onSelect;
+      final onContextMenu = widget.onContextMenu;
+
+      // Une carte qui a un menu distingue l'appui court de l'appui long, comme
+      // Android TV : l'action part au relâchement, le menu quand la touche est
+      // restée enfoncée assez longtemps pour se répéter.
+      if (onContextMenu != null &&
+          (context.getInheritedWidgetOfExactType<TvScope>()?.isTv ?? false)) {
+        if (event is KeyDownEvent) {
+          _selectPending = true;
+          _longPressFired = false;
+          return KeyEventResult.handled;
+        }
+        if (event is KeyRepeatEvent) {
+          if (_selectPending && !_longPressFired) {
+            _longPressFired = true;
+            onContextMenu();
+          }
+          return KeyEventResult.handled;
+        }
+        if (event is KeyUpEvent) {
+          final fire = _selectPending && !_longPressFired;
+          _selectPending = false;
+          _longPressFired = false;
+          if (!fire || onSelect == null) return KeyEventResult.ignored;
+          onSelect();
+          return KeyEventResult.handled;
+        }
+      }
+
+      // Holding select must not fire the action forty times.
+      if (event is! KeyDownEvent) {
+        return onSelect == null
+            ? KeyEventResult.ignored
+            : KeyEventResult.handled;
+      }
       if (onSelect == null) return KeyEventResult.ignored;
       onSelect();
       return KeyEventResult.handled;
     }
+
+    if (event is! KeyDownEvent) return KeyEventResult.ignored;
 
     if (event.logicalKey == LogicalKeyboardKey.contextMenu ||
         event.logicalKey == LogicalKeyboardKey.gameButtonY) {
@@ -227,7 +304,7 @@ class _TvFocusableState extends State<TvFocusable> {
     }
 
     return Focus(
-      focusNode: widget.focusNode,
+      focusNode: _node,
       // Only on a television. Grabbing the focus on a phone pops the
       // keyboard and paints a ring nobody asked for.
       autofocus: widget.autofocus && widget.enabled && TvMode.isTv,
@@ -240,6 +317,45 @@ class _TvFocusableState extends State<TvFocusable> {
       child: Semantics(
         button: widget.onSelect != null,
         child: content,
+      ),
+    );
+  }
+}
+
+/// Paints the television focus ring on a widget whose focus is held just above
+/// it — the face of a [PopupMenuButton], whose own ink well owns the node.
+///
+/// Material's focus treatment for those is a faint wash of colour, which reads
+/// on a monitor at arm's length and not from a sofa. Off a television this
+/// draws nothing.
+class TvFocusHalo extends StatelessWidget {
+  const TvFocusHalo({
+    super.key,
+    required this.child,
+    this.borderRadius = const BorderRadius.all(Radius.circular(12)),
+  });
+
+  final Widget child;
+  final BorderRadius borderRadius;
+
+  @override
+  Widget build(BuildContext context) {
+    final focused = TvScope.of(context) &&
+        (Focus.maybeOf(context)?.hasPrimaryFocus ?? false);
+    return AnimatedScale(
+      scale: focused ? 1.05 : 1.0,
+      duration: const Duration(milliseconds: 160),
+      curve: Curves.easeOutCubic,
+      child: DecoratedBox(
+        position: DecorationPosition.foreground,
+        decoration: BoxDecoration(
+          borderRadius: borderRadius,
+          border: Border.all(
+            color: focused ? AppColors.accent : Colors.transparent,
+            width: 2.5,
+          ),
+        ),
+        child: child,
       ),
     );
   }

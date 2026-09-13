@@ -10,6 +10,7 @@ import '../../utils/poster_url.dart';
 import '../../utils/responsive.dart';
 import 'app_network_image.dart';
 import 'hero_banner.dart' show MetadataChip;
+import '../../tv/tv_focus_memory.dart';
 import 'media_logo_display.dart';
 import 'poster_card.dart';
 import 'overlay_back_button.dart';
@@ -384,18 +385,22 @@ class CastSection extends StatelessWidget {
                 ),
           ),
         ),
-        SizedBox(
-          height: compact ? 178 : 214,
-          child: ListView.separated(
-            scrollDirection: Axis.horizontal,
-            padding: EdgeInsets.symmetric(horizontal: pad),
-            itemCount: cast.length,
-            separatorBuilder: (_, __) => const SizedBox(width: 14),
-            itemBuilder: (context, index) => _CastCard(
-              member: cast[index],
-              width: cardW,
-              imageHeight: cardH,
-              onTap: onTapMember == null ? null : () => onTapMember!(cast[index]),
+        // La rangée se souvient de la personne sur laquelle la télécommande
+        // était — voir [TvFocusMemory].
+        TvFocusMemory(
+          child: SizedBox(
+            height: compact ? 178 : 214,
+            child: ListView.separated(
+              scrollDirection: Axis.horizontal,
+              padding: EdgeInsets.symmetric(horizontal: pad),
+              itemCount: cast.length,
+              separatorBuilder: (_, __) => const SizedBox(width: 14),
+              itemBuilder: (context, index) => _CastCard(
+                member: cast[index],
+                width: cardW,
+                imageHeight: cardH,
+                onTap: onTapMember == null ? null : () => onTapMember!(cast[index]),
+              ),
             ),
           ),
         ),
@@ -693,20 +698,23 @@ class SimilarTitlesSection extends StatelessWidget {
                 ),
           ),
         ),
-        SizedBox(
-          // The cards size themselves from the cell, so the rail states the
-          // height a poster + two metadata lines need at this width.
-          height: mediaCardHeight(cardWidth),
-          child: ListView.separated(
-            scrollDirection: Axis.horizontal,
-            padding: EdgeInsets.symmetric(horizontal: pad),
-            itemCount: items.length,
-            separatorBuilder: (_, __) => const SizedBox(width: 14),
-            itemBuilder: (context, index) => SizedBox(
-              width: cardWidth,
-              child: CatalogPosterCard(
-                item: items[index],
-                onTap: () => onTapItem(items[index]),
+        // Même mémoire que les rangées de l'accueil — voir [TvFocusMemory].
+        TvFocusMemory(
+          child: SizedBox(
+            // The cards size themselves from the cell, so the rail states the
+            // height a poster + two metadata lines need at this width.
+            height: mediaCardHeight(cardWidth),
+            child: ListView.separated(
+              scrollDirection: Axis.horizontal,
+              padding: EdgeInsets.symmetric(horizontal: pad),
+              itemCount: items.length,
+              separatorBuilder: (_, __) => const SizedBox(width: 14),
+              itemBuilder: (context, index) => SizedBox(
+                width: cardWidth,
+                child: CatalogPosterCard(
+                  item: items[index],
+                  onTap: () => onTapItem(items[index]),
+                ),
               ),
             ),
           ),

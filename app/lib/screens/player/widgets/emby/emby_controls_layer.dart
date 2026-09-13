@@ -18,7 +18,9 @@ import 'emby_progress_bar.dart';
 ///
 /// Two arrangements, one breakpoint ([EmbyChromeTheme.compactBreakpoint]):
 /// wide puts the title block and the utility cluster on one row above the
-/// scrubber, compact stacks them so nothing collides at phone widths.
+/// scrubber, compact stacks them so nothing collides at phone widths. A
+/// television always gets the compact one, at its own sizes — see
+/// [EmbyChromeMetrics.tv].
 class EmbyControlsLayer extends StatelessWidget {
   final bool visible;
 
@@ -38,6 +40,12 @@ class EmbyControlsLayer extends StatelessWidget {
   final VoidCallback onForward;
   final ValueChanged<double> onSeekFraction;
   final ValueChanged<bool>? onScrubbingChanged;
+
+  /// What left and right do on the focused scrubber, on a television. Default
+  /// to [onRewind] / [onForward]; the player passes steps that chain while
+  /// the key is held instead of seeking on each one.
+  final VoidCallback? onScrubStepBack;
+  final VoidCallback? onScrubStepForward;
 
   // --- Identity -----------------------------------------------------------
 
@@ -117,9 +125,12 @@ class EmbyControlsLayer extends StatelessWidget {
 
   /// Driven by a remote rather than a mouse or a finger.
   ///
-  /// Two things follow from it: the volume control goes (a set has its own on
-  /// its own remote, and an in-app slider is one more thing to walk past), and
-  /// the buttons become reachable with the D-pad instead of only clickable.
+  /// The chrome is the phone's — same rows, same places — drawn at television
+  /// size, with what a remote has no use for taken out: the volume control (a
+  /// set has its own on its own remote), the brightness bar (a television's
+  /// backlight is not this app's to drive) and the fullscreen toggle (there is
+  /// no window). The scrubber becomes a focus stop that seeks with left and
+  /// right.
   final bool isTv;
 
   /// Where the remote lands when it enters the control bar. Play/pause is the
@@ -127,8 +138,8 @@ class EmbyControlsLayer extends StatelessWidget {
   /// presses from it.
   final FocusNode? playPauseFocusNode;
 
-  /// The scrubber's node. On a television this is where the remote lands, so
-  /// left and right go on meaning "seek" the way they do with the HUD down —
+  /// The scrubber's node. On a television the remote lands here when it
+  /// brought the HUD up with a seek, so left and right go on meaning "seek" —
   /// only now with an outline saying which control is answering.
   final FocusNode? progressFocusNode;
 
@@ -175,6 +186,8 @@ class EmbyControlsLayer extends StatelessWidget {
     this.playbackRate = 1.0,
     this.timelineAnchorKey,
     this.onScrubbingChanged,
+    this.onScrubStepBack,
+    this.onScrubStepForward,
     this.title,
     this.overline,
     this.logoUrl,
@@ -229,9 +242,9 @@ class EmbyControlsLayer extends StatelessWidget {
     return LayoutBuilder(
       builder: (context, constraints) {
         final width = constraints.maxWidth;
-        final m = EmbyChromeTheme.metricsFor(width, scale: scale);
+        final m = EmbyChromeTheme.metricsFor(width, scale: scale, tv: isTv);
         final hasBrightness =
-            brightness != null && onBrightnessChanged != null;
+            !isTv && brightness != null && onBrightnessChanged != null;
         // Not a Stack.
         //
         // The brightness bar shares the right edge with the utilities cluster
@@ -348,7 +361,7 @@ class EmbyControlsLayer extends StatelessWidget {
       // them instead of underneath.
       padding: EdgeInsets.fromLTRB(
         m.gutter,
-        macOSWindowControlsTopInset + 12,
+        macOSWindowControlsTopInset + m.topInset,
         m.gutter,
         _topBarTail,
       ),
@@ -398,7 +411,7 @@ class EmbyControlsLayer extends StatelessWidget {
         // cached and the decoded frame is still in memory.
         child: AppNetworkImage(
           url: url,
-          height: m.isCompact ? 26 : 38,
+          height: m.logoHeight,
           fit: BoxFit.contain,
           fadeInDuration: const Duration(milliseconds: 120),
           // Shared decode with the detail header rather than one sized to this
@@ -424,7 +437,7 @@ class EmbyControlsLayer extends StatelessWidget {
         overflow: TextOverflow.ellipsis,
         style: TextStyle(
           color: EmbyChromeTheme.title,
-          fontSize: m.isCompact ? 15 : 18,
+          fontSize: m.brandTextSize,
           fontWeight: FontWeight.w600,
         ),
       ),
@@ -458,70 +471,19 @@ class EmbyControlsLayer extends StatelessWidget {
             m.gutter,
             _bottomBarLead,
             m.gutter,
-            m.isCompact ? 16 : 24,
+            m.bottomInset,
           ),
-          child: isTv ? _buildTvBottom(m) : _buildPointerBottom(m),
+          child: _buildBottomRows(m),
         ),
       ],
     );
   }
 
-  /// The television arrangement: title, scrubber, and one single row holding
-  /// every button.
-  ///
-  /// It exists for the D-pad, not for the look. Directional traversal picks a
-  /// target in the band of the control you start from, so a chrome with its
-  /// utilities in a right-aligned cluster above the scrubber and its transport
-  /// centred below it gives the remote no reliable path between the two — which
-  /// is exactly what "I can reach pause but not the settings" was. One row is
-  /// one band: left and right walk all of it. The full-width scrubber above it
-  /// is in the band of every button, so up always lands there, and from there
-  /// up again finds the back button.
-  Widget _buildTvBottom(EmbyChromeMetrics m) {
-    return Column(
-      mainAxisSize: MainAxisSize.min,
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        _dodgeCutouts(_buildTitleBlock(m)),
-        const SizedBox(height: 10),
-        _dodgeCutouts(
-          KeyedSubtree(
-            key: timelineAnchorKey,
-            child: EmbyProgressBar(
-            progress: _progressFraction,
-            buffered: buffered,
-            duration: duration,
-            chapterMarks: chapterMarks,
-            metrics: m,
-            onSeek: onSeekFraction,
-            onScrubbingChanged: onScrubbingChanged,
-            focusable: true,
-            onStepBack: onRewind,
-            onStepForward: onForward,
-            onSelect: onPlayPause,
-              focusNode: progressFocusNode,
-            ),
-          ),
-        ),
-        _dodgeCutouts(_buildTimes(m)),
-        const SizedBox(height: 6),
-        _dodgeCutouts(
-          Center(
-            child: Row(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                _buildTransport(m),
-                SizedBox(width: m.clusterGap + 28),
-                _buildUtilities(m),
-              ],
-            ),
-          ),
-        ),
-      ],
-    );
-  }
-
-  Widget _buildPointerBottom(EmbyChromeMetrics m) {
+  /// On a television this is the phone's arrangement, walked with the D-pad in
+  /// straight lines: every row is centred or full width, so each one is in the
+  /// band of the next. Up from the transport lands on the scrubber, down from
+  /// it on the utilities, and up from the scrubber on the back button.
+  Widget _buildBottomRows(EmbyChromeMetrics m) {
     // Every row dodges the camera on its own: on a phone held sideways this
     // bar is half the height of the screen, so a bubble on the edge lands on
     // one of these rows and not on the others.
@@ -555,6 +517,13 @@ class EmbyControlsLayer extends StatelessWidget {
                 metrics: m,
                 onSeek: onSeekFraction,
                 onScrubbingChanged: onScrubbingChanged,
+                // A remote cannot drag a handle: on a television the bar is a
+                // focus stop, and left and right step through the film.
+                focusable: isTv,
+                onStepBack: isTv ? (onScrubStepBack ?? onRewind) : null,
+                onStepForward: isTv ? (onScrubStepForward ?? onForward) : null,
+                onSelect: isTv ? onPlayPause : null,
+                focusNode: isTv ? progressFocusNode : null,
               ),
             ),
           ),
@@ -649,13 +618,16 @@ class EmbyControlsLayer extends StatelessWidget {
           metrics: m,
           onPressed: onOpenSettings,
         ),
-        SizedBox(width: m.clusterGap),
-        _EmbyIconButton(
-          icon: Icons.fullscreen_rounded,
-          tooltip: 'Plein écran',
-          metrics: m,
-          onPressed: onToggleFullscreen,
-        ),
+        // A television has no window to fill: the button would do nothing.
+        if (!isTv) ...[
+          SizedBox(width: m.clusterGap),
+          _EmbyIconButton(
+            icon: Icons.fullscreen_rounded,
+            tooltip: 'Plein écran',
+            metrics: m,
+            onPressed: onToggleFullscreen,
+          ),
+        ],
       ],
     );
   }
@@ -945,7 +917,7 @@ class _EmbySkipIntroButton extends StatelessWidget {
               'Passer l’intro',
               style: TextStyle(
                 color: EmbyChromeTheme.iconActive,
-                fontSize: metrics.isCompact ? 13 : 14,
+                fontSize: metrics.skipIntroTextSize,
                 fontWeight: FontWeight.w600,
               ),
             ),

@@ -1,6 +1,7 @@
 import 'dart:ui';
 
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
 import '../../utils/app_platform.dart';
 import '../../utils/window_controls.dart';
@@ -16,6 +17,7 @@ import '../../widgets/global/glass_catalog_search.dart';
 import '../../widgets/global/glass_chrome.dart';
 import '../../widgets/global/sticky_glass_search.dart';
 import '../../desktop_window.dart';
+import '../../tv/tv_focus_memory.dart';
 import '../../tv/tv_mode.dart';
 import '../../tv/tv_pairing_link.dart';
 import '../settings/tv_pairing_screen.dart';
@@ -34,6 +36,35 @@ class MainShell extends StatefulWidget {
 
 class _MainShellState extends State<MainShell> {
   int _selectedIndex = 0;
+
+  /// Un nœud par onglet de l'en-tête, pour que Retour puisse y ramener la
+  /// télécommande. Indexés comme les écrans de l'[IndexedStack].
+  final List<FocusNode> _tabNodes = List<FocusNode>.generate(
+    5,
+    (index) => FocusNode(debugLabel: 'nav-tab-$index'),
+  );
+
+  /// Observe l'en-tête entier — onglets, recherche, compte — sans jamais
+  /// prendre le focus lui-même.
+  final FocusNode _headerNode = FocusNode(
+    debugLabel: 'shell-header',
+    canRequestFocus: false,
+    skipTraversal: true,
+  );
+
+  /// Le moment où Retour a été pressé une première fois sur l'accueil. Un
+  /// second appui dans [_exitWindow] quitte l'app.
+  DateTime? _exitArmedAt;
+  static const Duration _exitWindow = Duration(seconds: 3);
+
+  @override
+  void dispose() {
+    for (final node in _tabNodes) {
+      node.dispose();
+    }
+    _headerNode.dispose();
+    super.dispose();
+  }
 
   @override
   void initState() {
@@ -55,6 +86,45 @@ class _MainShellState extends State<MainShell> {
     setState(() => _selectedIndex = index);
   }
 
+  /// La touche Retour d'une télécommande, sur l'écran principal.
+  ///
+  /// Elle remonte d'un cran à la fois, comme sur Android TV : du contenu vers
+  /// l'onglet affiché dans l'en-tête, d'un autre onglet vers l'accueil, et de
+  /// l'accueil vers la sortie — après confirmation, parce qu'un appui de trop
+  /// en remontant ne doit pas fermer l'app.
+  void _handleTvBack() {
+    if (!_headerNode.hasFocus) {
+      _focusTab(_selectedIndex);
+      return;
+    }
+    if (_selectedIndex != 0) {
+      _selectTab(0);
+      _focusTab(0);
+      return;
+    }
+    final now = DateTime.now();
+    final armed = _exitArmedAt;
+    if (armed != null && now.difference(armed) < _exitWindow) {
+      SystemNavigator.pop();
+      return;
+    }
+    _exitArmedAt = now;
+    ScaffoldMessenger.of(context)
+      ..hideCurrentSnackBar()
+      ..showSnackBar(const SnackBar(
+        content: Text('Appuyez de nouveau sur Retour pour quitter'),
+        duration: _exitWindow,
+      ));
+  }
+
+  void _focusTab(int index) {
+    // Un onglet absent de l'en-tête (pas de droit de demande, pas de
+    // téléchargements sur cet appareil) n'a pas de nœud monté : l'accueil, lui,
+    // est toujours là.
+    final node = _tabNodes[index].context != null ? _tabNodes[index] : _tabNodes[0];
+    node.requestFocus();
+  }
+
   @override
   Widget build(BuildContext context) {
     final homeProvider = Provider.of<HomeProvider>(context);
@@ -71,9 +141,10 @@ class _MainShellState extends State<MainShell> {
     // A television always takes the wide chrome: the bottom tab bar is a thumb
     // target, and there is no thumb. Some sticks report barely 960 logical
     // pixels, which would otherwise land them in the phone layout.
-    final isWide = AppLayout.isWide(context) || TvScope.of(context);
+    final isTv = TvScope.of(context);
+    final isWide = AppLayout.isWide(context) || isTv;
 
-    return Scaffold(
+    final shell = Scaffold(
       backgroundColor: AppColors.background,
       body: Stack(
         clipBehavior: Clip.none,
@@ -104,7 +175,9 @@ class _MainShellState extends State<MainShell> {
                       ].indexed)
                         ExcludeFocus(
                           excluding: index != _selectedIndex,
-                          child: screen,
+                          // Redescendre de l'en-tête ramène là où l'on était
+                          // dans cet onglet — voir [TvFocusMemory].
+                          child: TvFocusMemory(child: screen),
                         ),
                     ],
                   ),
@@ -124,12 +197,18 @@ class _MainShellState extends State<MainShell> {
               top: 0,
               left: 0,
               right: 0,
-              child: _DesktopGlassHeader(
-                selectedIndex: _selectedIndex,
-                onTabSelected: _selectTab,
-                homeProvider: homeProvider,
-                authProvider: authProvider,
-                canDownload: downloads.isSupported,
+              child: Focus(
+                focusNode: _headerNode,
+                canRequestFocus: false,
+                skipTraversal: true,
+                child: _DesktopGlassHeader(
+                  selectedIndex: _selectedIndex,
+                  onTabSelected: _selectTab,
+                  homeProvider: homeProvider,
+                  authProvider: authProvider,
+                  canDownload: downloads.isSupported,
+                  tabNodes: _tabNodes,
+                ),
               ),
             ),
           if (!isWide && _selectedIndex != 0)
@@ -159,6 +238,20 @@ class _MainShellState extends State<MainShell> {
         ],
       ),
     );
+
+    if (!isTv) return shell;
+
+    // Sur un téléviseur, Retour sur l'écran principal ne ferme plus l'app du
+    // premier coup : il remonte vers l'en-tête, puis vers l'accueil, puis
+    // demande confirmation. Voir [_handleTvBack].
+    return PopScope(
+      canPop: false,
+      onPopInvokedWithResult: (didPop, _) {
+        if (didPop) return;
+        _handleTvBack();
+      },
+      child: shell,
+    );
   }
 }
 
@@ -172,12 +265,16 @@ class _DesktopGlassHeader extends StatelessWidget {
   /// destination possible, l'onglet n'existe pas.
   final bool canDownload;
 
+  /// Un nœud par onglet, possédés par la coquille.
+  final List<FocusNode> tabNodes;
+
   const _DesktopGlassHeader({
     required this.selectedIndex,
     required this.onTabSelected,
     required this.homeProvider,
     required this.authProvider,
     required this.canDownload,
+    required this.tabNodes,
   });
 
   @override
@@ -199,16 +296,19 @@ class _DesktopGlassHeader extends StatelessWidget {
             GlassNavTab(
               label: 'Accueil',
               selected: selectedIndex == 0,
+              focusNode: tabNodes[0],
               onTap: () => onTabSelected(0),
             ),
             GlassNavTab(
               label: 'Films',
               selected: selectedIndex == 1,
+              focusNode: tabNodes[1],
               onTap: () => onTabSelected(1),
             ),
             GlassNavTab(
               label: 'Séries',
               selected: selectedIndex == 2,
+              focusNode: tabNodes[2],
               onTap: () => onTabSelected(2),
             ),
             // The whole request catalog sits behind request_media server-side,
@@ -217,12 +317,14 @@ class _DesktopGlassHeader extends StatelessWidget {
               GlassNavTab(
                 label: 'Demandes',
                 selected: selectedIndex == 3,
+                focusNode: tabNodes[3],
                 onTap: () => onTabSelected(3),
               ),
             if (canDownload)
               GlassNavTab(
                 label: 'Téléchargements',
                 selected: selectedIndex == 4,
+                focusNode: tabNodes[4],
                 onTap: () => onTabSelected(4),
               ),
             const Spacer(),
