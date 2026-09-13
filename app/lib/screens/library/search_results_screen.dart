@@ -85,6 +85,9 @@ class SearchResultsScreen extends StatelessWidget {
                           final media = results[index];
                           return MediaCard(
                             media: media,
+                            // La télécommande arrive sur le premier résultat,
+                            // pas sur le bouton retour de la barre du haut.
+                            autofocus: index == 0,
                             progress: media.type == MediaType.movie
                                 ? lp.movieProgressFor(media.id)
                                 : null,

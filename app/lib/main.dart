@@ -28,6 +28,7 @@ import 'tv/tv_focus_guard.dart';
 import 'tv/tv_key_repeat.dart';
 import 'tv/tv_mode.dart';
 import 'tv/tv_pairing_link.dart';
+import 'tv/tv_ui_scale.dart';
 import 'screens/player/display_frame_rate.dart';
 import 'services/picture_in_picture.dart';
 import 'screens/player/hardware_decoding.dart';
@@ -231,7 +232,19 @@ class OnyxApp extends StatelessWidget {
                 navigatorKey: rootNavigatorKey,
                 title: 'Onyx',
                 debugShowCheckedModeBanner: false,
-                theme: AppTheme.dark,
+                // Sur un téléviseur, chaque page est mise en page plus large
+                // puis réduite, pour ne pas afficher l'app en « gros plan » —
+                // voir [TvUiScale]. Le lecteur n'est pas concerné.
+                theme: isTv
+                    ? AppTheme.dark.copyWith(
+                        pageTransitionsTheme: PageTransitionsTheme(
+                          builders: <TargetPlatform, PageTransitionsBuilder>{
+                            for (final platform in TargetPlatform.values)
+                              platform: const TvScaledPageTransitionsBuilder(),
+                          },
+                        ),
+                      )
+                    : AppTheme.dark,
                 scrollBehavior: AppScrollBehavior(),
                 navigatorObservers: [searchRouteObserver],
                 // The D-pad's centre button and a controller's A, folded into the

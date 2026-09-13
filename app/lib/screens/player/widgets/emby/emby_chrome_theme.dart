@@ -114,6 +114,9 @@ class EmbyChromeMetrics {
 
   final double skipIntroTextSize;
 
+  /// Width of the timeline still shown above the scrubber.
+  final double previewWidth;
+
   const EmbyChromeMetrics.wide()
       : gutter = 32,
         hitSize = 40,
@@ -131,7 +134,8 @@ class EmbyChromeMetrics {
         brandTextSize = 18,
         bottomInset = 24,
         topInset = 12,
-        skipIntroTextSize = 14;
+        skipIntroTextSize = 14,
+        previewWidth = 320;
 
   const EmbyChromeMetrics.compact()
       : gutter = 16,
@@ -150,7 +154,8 @@ class EmbyChromeMetrics {
         brandTextSize = 15,
         bottomInset = 16,
         topInset = 12,
-        skipIntroTextSize = 13;
+        skipIntroTextSize = 13,
+        previewWidth = 208;
 
   /// Television sizes, for a screen three metres away.
   ///
@@ -177,7 +182,8 @@ class EmbyChromeMetrics {
         brandTextSize = 20,
         bottomInset = 28,
         topInset = 24,
-        skipIntroTextSize = 16;
+        skipIntroTextSize = 16,
+        previewWidth = 400;
 
   const EmbyChromeMetrics._({
     required this.gutter,
@@ -197,6 +203,7 @@ class EmbyChromeMetrics {
     required this.bottomInset,
     required this.topInset,
     required this.skipIntroTextSize,
+    required this.previewWidth,
   });
 
   /// The same chrome, drawn smaller.
@@ -225,5 +232,6 @@ class EmbyChromeMetrics {
         bottomInset: bottomInset,
         topInset: topInset,
         skipIntroTextSize: skipIntroTextSize,
+        previewWidth: previewWidth * factor,
       );
 }

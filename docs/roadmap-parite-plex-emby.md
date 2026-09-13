@@ -4,6 +4,8 @@
 
 Suivi de réalisation : [banc de validation et résultats datés](validation-lecture.md). Phase 0 commencée ; les résultats automatiques ne valent pas validation sur appareils réels.
 
+Phase 1 : [tickets implémentés localement, compatibilité et validation](playback-tickets.md). Tests automatiques réussis ; déploiement et validation sur moteurs réels en attente. Les phases 2 à 8 restent à implémenter.
+
 ## Objectif
 
 Faire d'Onyx un lecteur multimédia privé aussi fiable et agréable au quotidien que Plex ou Emby, sans perdre ses différences : serveur léger, Direct Play prioritaire, confidentialité, Player Studio et prise en charge poussée de mpv.

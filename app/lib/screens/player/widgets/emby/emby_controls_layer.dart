@@ -8,6 +8,7 @@ import '../../../../tv/tv_focus_rows.dart';
 import '../../../../utils/format.dart';
 import '../../../../widgets/global/app_network_image.dart';
 import '../avoid_cutouts.dart';
+import '../../playback/timeline_previews.dart';
 import 'emby_brightness_slider.dart';
 import 'emby_chrome_theme.dart';
 import 'emby_progress_bar.dart';
@@ -167,6 +168,13 @@ class EmbyControlsLayer extends StatelessWidget {
   /// than read from the ambient [MediaQuery].
   final List<Rect> cutouts;
 
+  /// Stills of the timeline for the scrubber; null until the player has them.
+  final TimelinePreviews? previews;
+
+  /// A remote seek is waiting to be committed — the scrubber then shows the
+  /// still of where it will land.
+  final bool remoteSeekPending;
+
   const EmbyControlsLayer({
     super.key,
     required this.visible,
@@ -209,6 +217,8 @@ class EmbyControlsLayer extends StatelessWidget {
     this.playPauseFocusNode,
     this.progressFocusNode,
     this.cutouts = const <Rect>[],
+    this.previews,
+    this.remoteSeekPending = false,
     this.showVolume = true,
     this.scale = 1,
   });
@@ -485,6 +495,8 @@ class EmbyControlsLayer extends StatelessWidget {
                     onStepForward: onScrubStepForward ?? onForward,
                     onSelect: onPlayPause,
                     focusNode: progressFocusNode,
+                    previews: previews,
+                    previewAtProgress: remoteSeekPending,
                   ),
                 ),
               ),
@@ -676,6 +688,7 @@ class EmbyControlsLayer extends StatelessWidget {
                 metrics: m,
                 onSeek: onSeekFraction,
                 onScrubbingChanged: onScrubbingChanged,
+                previews: previews,
               ),
             ),
           ),

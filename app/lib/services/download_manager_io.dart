@@ -12,6 +12,7 @@ import '../models/offline_chrome.dart';
 import '../models/offline_download.dart';
 import '../utils/poster_url.dart';
 import 'api_client.dart';
+import 'playback_access.dart';
 import 'app_image_cache.dart';
 
 /// Le magasin hors ligne : ce qui a été rapatrié sur cet appareil, ce qui est
@@ -140,8 +141,7 @@ class DownloadManager extends ChangeNotifier {
     }
   }
 
-  int get pendingSyncCount =>
-      _entries.values.where((e) => e.needsSync).length;
+  int get pendingSyncCount => _entries.values.where((e) => e.needsSync).length;
 
   int get totalBytesOnDisk =>
       _entries.values.fold<int>(0, (sum, e) => sum + e.bytesReceived);
@@ -163,7 +163,8 @@ class DownloadManager extends ChangeNotifier {
       await _loadShows();
       await _loadChromes();
     } catch (e) {
-      debugPrint('Downloads: initialisation impossible: $e');
+      debugPrint(
+          'Downloads: initialisation impossible: ${redactPlaybackDiagnostic(e)}');
     } finally {
       _ready = true;
       notifyListeners();
@@ -193,7 +194,8 @@ class DownloadManager extends ChangeNotifier {
             : entry;
       }
     } catch (e) {
-      debugPrint('Downloads: manifeste illisible: $e');
+      debugPrint(
+          'Downloads: manifeste illisible: ${redactPlaybackDiagnostic(e)}');
     }
   }
 
@@ -214,7 +216,8 @@ class DownloadManager extends ChangeNotifier {
         final raw = jsonDecode(await file.readAsString());
         _shows[id] = MediaDetails.fromJson(raw as Map<String, dynamic>);
       } catch (e) {
-        debugPrint('Downloads: fiche $id illisible: $e');
+        debugPrint(
+            'Downloads: fiche $id illisible: ${redactPlaybackDiagnostic(e)}');
       }
     }
   }
@@ -232,7 +235,8 @@ class DownloadManager extends ChangeNotifier {
             OfflineChrome.fromJson(Map<String, dynamic>.from(value));
       }
     } catch (e) {
-      debugPrint('Downloads: playeurs hors ligne illisibles: $e');
+      debugPrint(
+          'Downloads: playeurs hors ligne illisibles: ${redactPlaybackDiagnostic(e)}');
     }
   }
 
@@ -300,7 +304,8 @@ class DownloadManager extends ChangeNotifier {
       await tmp.writeAsString(payload, flush: true);
       await tmp.rename(file.path);
     } catch (e) {
-      debugPrint('Downloads: écriture du manifeste impossible: $e');
+      debugPrint(
+          'Downloads: écriture du manifeste impossible: ${redactPlaybackDiagnostic(e)}');
     }
   }
 
@@ -352,7 +357,8 @@ class DownloadManager extends ChangeNotifier {
 
   void _notifyThrottled({bool force = false}) {
     final now = DateTime.now();
-    if (!force && now.difference(_lastNotify) < const Duration(milliseconds: 400)) {
+    if (!force &&
+        now.difference(_lastNotify) < const Duration(milliseconds: 400)) {
       return;
     }
     _lastNotify = now;
@@ -456,7 +462,8 @@ class DownloadManager extends ChangeNotifier {
       await tmp.writeAsString(payload, flush: true);
       await tmp.rename(file.path);
     } catch (e) {
-      debugPrint('Downloads: écriture des playeurs impossible: $e');
+      debugPrint(
+          'Downloads: écriture des playeurs impossible: ${redactPlaybackDiagnostic(e)}');
     }
   }
 
@@ -488,7 +495,9 @@ class DownloadManager extends ChangeNotifier {
     String? showPosterUrl,
   }) async {
     final media = item.media;
-    if (media.type != MediaType.movie && media.type != MediaType.episode) return;
+    if (media.type != MediaType.movie && media.type != MediaType.episode) {
+      return;
+    }
     final existing = _entries[media.id];
     if (existing != null && existing.status != DownloadStatus.failed) {
       // Déjà là, en cours, ou en pause — reprendre est le seul sens possible.
@@ -574,7 +583,8 @@ class DownloadManager extends ChangeNotifier {
         final dir = Directory(p.join(root.path, '$mediaId'));
         if (await dir.exists()) await dir.delete(recursive: true);
       } catch (e) {
-        debugPrint('Downloads: suppression de $mediaId impossible: $e');
+        debugPrint(
+            'Downloads: suppression de $mediaId impossible: ${redactPlaybackDiagnostic(e)}');
       }
     }
     if (entry != null) await _dropOrphanShowInfo(entry.infoId);
@@ -596,7 +606,8 @@ class DownloadManager extends ChangeNotifier {
     try {
       if (await dir.exists()) await dir.delete(recursive: true);
     } catch (e) {
-      debugPrint('Downloads: suppression de la fiche $infoId impossible: $e');
+      debugPrint(
+          'Downloads: suppression de la fiche $infoId impossible: ${redactPlaybackDiagnostic(e)}');
     }
   }
 
@@ -674,9 +685,11 @@ class DownloadManager extends ChangeNotifier {
     _cancelTokens[mediaId] = cancelToken;
 
     IOSink? sink;
+    PlaybackAccess? access;
     try {
+      access = await api.openPlaybackAccess(mediaId);
       final response = await _transferDio.get<ResponseBody>(
-        api.getStreamUrl(mediaId),
+        api.getStreamUrl(mediaId, access: access),
         cancelToken: cancelToken,
         options: Options(
           responseType: ResponseType.stream,
@@ -768,13 +781,14 @@ class DownloadManager extends ChangeNotifier {
         _entries[mediaId] = current.copyWith(
           status: DownloadStatus.failed,
           bytesReceived: received,
-          error: '$e',
+          error: redactPlaybackDiagnostic(e),
         );
         _markDirty();
         notifyListeners();
       }
       return false;
     } finally {
+      await access?.close();
       _cancelTokens.remove(mediaId);
       if (_activeMediaId == mediaId) _activeMediaId = null;
     }
@@ -850,7 +864,8 @@ class DownloadManager extends ChangeNotifier {
         _entries[mediaId] = _entries[mediaId]!.copyWith(tracks: tracks);
         _markDirty();
       } catch (e) {
-        debugPrint('Downloads: pistes de $mediaId indisponibles: $e');
+        debugPrint(
+            'Downloads: pistes de $mediaId indisponibles: ${redactPlaybackDiagnostic(e)}');
       }
     }
 
@@ -914,7 +929,8 @@ class DownloadManager extends ChangeNotifier {
       }
       notifyListeners();
     } catch (e) {
-      debugPrint('Downloads: fiche de $infoId indisponible: $e');
+      debugPrint(
+          'Downloads: fiche de $infoId indisponible: ${redactPlaybackDiagnostic(e)}');
     }
   }
 
@@ -945,11 +961,13 @@ class DownloadManager extends ChangeNotifier {
           fileExtension: p.extension(target.path).replaceFirst('.', ''),
         );
       } catch (e) {
-        debugPrint('Downloads: mise en cache de $url impossible: $e');
+        debugPrint(
+            'Downloads: mise en cache de $url impossible: ${redactPlaybackDiagnostic(e)}');
       }
       return true;
     } catch (e) {
-      debugPrint('Downloads: image indisponible ($url): $e');
+      debugPrint(
+          'Downloads: image indisponible ($url): ${redactPlaybackDiagnostic(e)}');
       return false;
     }
   }
@@ -960,7 +978,8 @@ class DownloadManager extends ChangeNotifier {
   /// fichier et le moteur les trouve tout seul. Ce sont celles que le lecteur
   /// injecte par leur contenu qui, sans copie locale, disparaîtraient hors
   /// ligne. Les pistes bitmap n'ont pas de `.vtt` du tout.
-  Future<void> _fetchSubtitles(ApiClient api, int mediaId, Directory dir) async {
+  Future<void> _fetchSubtitles(
+      ApiClient api, int mediaId, Directory dir) async {
     final entry = _entries[mediaId];
     final tracks = entry?.tracks;
     if (entry == null || tracks == null) return;
@@ -983,7 +1002,8 @@ class DownloadManager extends ChangeNotifier {
           fileName: fileName,
         ));
       } catch (e) {
-        debugPrint('Downloads: sous-titre $lang de $mediaId indisponible: $e');
+        debugPrint(
+            'Downloads: sous-titre $lang de $mediaId indisponible: ${redactPlaybackDiagnostic(e)}');
       }
     }
     if (saved.isEmpty) return;
@@ -1088,7 +1108,8 @@ class DownloadManager extends ChangeNotifier {
       );
       return true;
     } catch (e) {
-      debugPrint('Downloads: resynchronisation de ${entry.mediaId} impossible: $e');
+      debugPrint(
+          'Downloads: resynchronisation de ${entry.mediaId} impossible: ${redactPlaybackDiagnostic(e)}');
       return false;
     }
   }

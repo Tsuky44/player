@@ -2,6 +2,7 @@ package streaming
 
 import (
 	"log"
+	"project-player/server/playbackauth"
 	"sync"
 	"time"
 )
@@ -10,12 +11,14 @@ import (
 type SessionManager struct {
 	mu       sync.RWMutex
 	sessions map[string]*TranscodeSession
+	tickets  *playbackauth.Store
 }
 
 // NewSessionManager creates a new SessionManager and starts the background reaper.
-func NewSessionManager() *SessionManager {
+func NewSessionManager(tickets *playbackauth.Store) *SessionManager {
 	m := &SessionManager{
 		sessions: make(map[string]*TranscodeSession),
+		tickets:  tickets,
 	}
 	go m.reaper()
 	return m
@@ -61,7 +64,7 @@ func (m *SessionManager) reaper() {
 		m.mu.RLock()
 		var toKill []string
 		for id, s := range m.sessions {
-			if time.Since(s.LastAccess()) > 5*time.Minute {
+			if time.Since(s.LastAccess()) > 5*time.Minute || (m.tickets != nil && !m.tickets.IsLive(s.TicketHash, s.MediaID)) {
 				toKill = append(toKill, id)
 			}
 		}

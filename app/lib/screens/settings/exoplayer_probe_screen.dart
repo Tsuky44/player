@@ -9,6 +9,7 @@ import '../../providers/auth_provider.dart';
 import '../../providers/home_provider.dart';
 import '../../theme/app_colors.dart';
 import '../../tv/tv_focus.dart';
+import '../../services/playback_access.dart';
 
 /// Banc d'essai du lecteur ExoPlayer — **temporaire, à supprimer**.
 ///
@@ -40,9 +41,11 @@ class _ExoPlayerProbeScreenState extends State<ExoPlayerProbeScreen> {
   Timer? _statsTimer;
   String? _openError;
   String? _playingTitle;
+  PlaybackAccess? _access;
 
   @override
   void dispose() {
+    unawaited(_access?.close());
     _statsTimer?.cancel();
     unawaited(_statusSubscription?.cancel());
     unawaited(_player?.release());
@@ -51,9 +54,15 @@ class _ExoPlayerProbeScreenState extends State<ExoPlayerProbeScreen> {
 
   Future<void> _playMedia(Media media) async {
     final apiClient = context.read<AuthProvider>().apiClient;
-    final url = apiClient.getStreamUrl(media.id);
-
     try {
+      await _access?.close();
+      final access = await apiClient.openPlaybackAccess(media.id);
+      if (!mounted) {
+        await access.close();
+        return;
+      }
+      _access = access;
+      final url = apiClient.getStreamUrl(media.id, access: access);
       final player = _player ?? await OnyxPlayer.create();
       if (!mounted) return;
 
@@ -79,7 +88,9 @@ class _ExoPlayerProbeScreenState extends State<ExoPlayerProbeScreen> {
       await player.open(url);
       await player.play();
     } catch (error) {
-      if (mounted) setState(() => _openError = '$error');
+      if (mounted) {
+        setState(() => _openError = redactPlaybackDiagnostic(error));
+      }
     }
   }
 
@@ -184,13 +195,15 @@ class _ExoPlayerProbeScreenState extends State<ExoPlayerProbeScreen> {
         children: [
           _probeButton(Icons.replay_10_rounded, () async {
             final at = _status?.positionMs ?? 0;
-            await player.seekTo(Duration(milliseconds: (at - 10000).clamp(0, at)));
+            await player
+                .seekTo(Duration(milliseconds: (at - 10000).clamp(0, at)));
           }),
           _probeButton(
             (_status?.isPlaying ?? false)
                 ? Icons.pause_rounded
                 : Icons.play_arrow_rounded,
-            () => (_status?.isPlaying ?? false) ? player.pause() : player.play(),
+            () =>
+                (_status?.isPlaying ?? false) ? player.pause() : player.play(),
           ),
           _probeButton(Icons.forward_10_rounded, () async {
             final at = _status?.positionMs ?? 0;

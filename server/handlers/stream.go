@@ -12,6 +12,7 @@ import (
 
 	"project-player/server/database"
 	"project-player/server/models"
+	"project-player/server/playbackauth"
 	"project-player/server/streamcache"
 
 	"github.com/julienschmidt/httprouter"
@@ -59,6 +60,10 @@ func StreamMedia(w http.ResponseWriter, r *http.Request, _ httprouter.Params) {
 		return
 	}
 
+	w, allowed := playbackauth.Protect(w, r, PlaybackTickets, mediaID)
+	if !allowed {
+		return
+	}
 	entry, err := resolveStreamEntry(mediaID)
 	if err != nil {
 		switch {

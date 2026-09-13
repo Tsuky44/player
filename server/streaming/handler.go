@@ -11,6 +11,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"project-player/server/playbackauth"
 	"strconv"
 	"strings"
 	"time"
@@ -65,15 +66,19 @@ const startupProbe = 300 * time.Millisecond
 
 // Handler wires the HLS transcoding endpoints to their dependencies.
 type Handler struct {
-	manager *SessionManager
-	db      *sql.DB
+	manager  *SessionManager
+	db       *sql.DB
+	tickets  *playbackauth.Store
+	previews *previewGenerator
 }
 
 // NewHandler creates a streaming handler.
-func NewHandler(db *sql.DB) *Handler {
+func NewHandler(db *sql.DB, tickets *playbackauth.Store) *Handler {
 	return &Handler{
-		manager: NewSessionManager(),
-		db:      db,
+		manager:  NewSessionManager(tickets),
+		db:       db,
+		tickets:  tickets,
+		previews: newPreviewGenerator(previewRoot(), tickets),
 	}
 }
 
@@ -109,6 +114,21 @@ func (h *Handler) Dispatch(w http.ResponseWriter, r *http.Request, _ httprouter.
 		return
 	}
 
+	if h.tickets == nil {
+		http.Error(w, "playback authorization unavailable", http.StatusServiceUnavailable)
+		return
+	}
+	w, allowed := playbackauth.Protect(w, r, h.tickets, mediaID)
+	if !allowed {
+		return
+	}
+	if len(parts) >= 2 && parts[1] != "start" {
+		session, ok := h.manager.GetSession(parts[1])
+		if !ok || session.MediaID != mediaID || session.TicketHash != playbackauth.Digest(r.URL.Query().Get("ticket")) {
+			http.Error(w, "session not found", http.StatusNotFound)
+			return
+		}
+	}
 	switch {
 	case len(parts) == 2 && parts[1] == "start" && r.Method == http.MethodPost:
 		h.handleStart(w, r, mediaID)
@@ -125,7 +145,7 @@ func (h *Handler) Dispatch(w http.ResponseWriter, r *http.Request, _ httprouter.
 
 // startResponse is the JSON body returned when a session is created. The client
 // opens MasterURL directly with media_kit (mpv resolves child playlists/segments
-// relative to it — no server-side rewriting needed).
+// relative to it; the server propagates its ticket into every playlist).
 type startResponse struct {
 	SessionID   string  `json:"session_id"`
 	MasterURL   string  `json:"master_url"`
@@ -252,6 +272,7 @@ func (h *Handler) handleStart(w http.ResponseWriter, r *http.Request, mediaID in
 
 	sessionID := uuid.New().String()
 	session := &TranscodeSession{
+		TicketHash:     playbackauth.Digest(r.URL.Query().Get("ticket")),
 		ID:             sessionID,
 		MediaID:        mediaID,
 		Quality:        quality,
@@ -300,6 +321,12 @@ func (h *Handler) handleStart(w http.ResponseWriter, r *http.Request, mediaID in
 	}
 
 	videoMode := "encode"
+	// The screen may have closed while FFmpeg was starting. Do not publish an
+	// orphan session after its ticket was revoked in the meantime.
+	if _, valid := h.tickets.Validate(r.URL.Query().Get("ticket"), mediaID); !valid || r.Context().Err() != nil {
+		h.manager.DestroySession(sessionID)
+		return
+	}
 	if videoPlan.Copy {
 		videoMode = "copy"
 	}
@@ -307,7 +334,7 @@ func (h *Handler) handleStart(w http.ResponseWriter, r *http.Request, mediaID in
 	baseURL := getBaseURL(r)
 	resp := startResponse{
 		SessionID:      sessionID,
-		MasterURL:      fmt.Sprintf("%s/api/v1/stream/%d/%s/master.m3u8", baseURL, mediaID, sessionID),
+		MasterURL:      fmt.Sprintf("%s/api/v1/stream/%d/%s/master.m3u8?ticket=%s", baseURL, mediaID, sessionID, r.URL.Query().Get("ticket")),
 		Duration:       probe.Duration,
 		StartOffset:    startSeconds,
 		Quality:        quality,
@@ -319,7 +346,7 @@ func (h *Handler) handleStart(w http.ResponseWriter, r *http.Request, mediaID in
 	}
 
 	w.Header().Set("Content-Type", "application/json")
-	w.Header().Set("Cache-Control", "no-cache")
+	w.Header().Set("Cache-Control", "private, no-store")
 	_ = json.NewEncoder(w).Encode(resp)
 
 	// "accepted", not "ready": the first segment is still being encoded, and the
@@ -332,10 +359,9 @@ func (h *Handler) handleStart(w http.ResponseWriter, r *http.Request, mediaID in
 
 // handleServeFile serves one playlist or segment of a session.
 //
-// The master is rendered here; everything below it comes straight off the
-// session's temp dir. Child URIs stay relative in both, so a player resolves
-// them against the master URL it fetched and no rewriting is needed on the way
-// out.
+// The master is rendered here. Variant playlists come from the session temp
+// directory and every resource URI receives the same ticket; segments themselves
+// are streamed without modification.
 func (h *Handler) handleServeFile(w http.ResponseWriter, r *http.Request, sessionID, filename string) {
 	session, ok := h.manager.GetSession(sessionID)
 	if !ok {
@@ -356,8 +382,13 @@ func (h *Handler) handleServeFile(w http.ResponseWriter, r *http.Request, sessio
 	// the session exists, before FFmpeg has written anything at all.
 	if filename == "master.m3u8" {
 		w.Header().Set("Content-Type", "application/vnd.apple.mpegurl")
-		w.Header().Set("Cache-Control", "no-cache")
-		_, _ = w.Write([]byte(session.MasterPlaylist))
+		w.Header().Set("Cache-Control", "private, no-store")
+		playlist, err := ProtectPlaylist(session.MasterPlaylist, r.URL.Query().Get("ticket"))
+		if err != nil {
+			http.Error(w, "invalid playlist", http.StatusInternalServerError)
+			return
+		}
+		_, _ = w.Write([]byte(playlist))
 		return
 	}
 
@@ -402,20 +433,31 @@ func (h *Handler) handleServeFile(w http.ResponseWriter, r *http.Request, sessio
 			// child playlist points at with EXT-X-MAP.
 			w.Header().Set("Content-Type", "video/mp4")
 		}
-		// Segments are immutable for the lifetime of the session: name them once,
-		// never rewrite them. Revalidating each one costs a round-trip per 2s of
-		// video, which matters most on the re-reads a seek triggers.
-		w.Header().Set("Cache-Control", "private, max-age=31536000, immutable")
+		// Reauthorize every request, including seeks. A cache must not continue
+		// serving personal media after ticket expiry or revocation.
+		w.Header().Set("Cache-Control", "private, no-store")
 	case ".m3u8":
 		w.Header().Set("Content-Type", "application/vnd.apple.mpegurl")
 		// The variant playlist grows as segments land — never cache it.
-		w.Header().Set("Cache-Control", "no-cache")
+		w.Header().Set("Cache-Control", "private, no-store")
+		data, err := os.ReadFile(filePath)
+		if err != nil {
+			http.Error(w, "playlist unavailable", http.StatusServiceUnavailable)
+			return
+		}
+		playlist, err := ProtectPlaylist(string(data), r.URL.Query().Get("ticket"))
+		if err != nil {
+			http.Error(w, "invalid playlist", http.StatusInternalServerError)
+			return
+		}
+		_, _ = w.Write([]byte(playlist))
+		return
 	case ".vtt":
 		w.Header().Set("Content-Type", "text/vtt")
-		w.Header().Set("Cache-Control", "private, max-age=3600")
+		w.Header().Set("Cache-Control", "private, no-store")
 	default:
 		w.Header().Set("Content-Type", "application/octet-stream")
-		w.Header().Set("Cache-Control", "no-cache")
+		w.Header().Set("Cache-Control", "private, no-store")
 	}
 	http.ServeFile(w, r, filePath)
 }

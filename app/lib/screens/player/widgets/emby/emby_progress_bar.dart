@@ -5,11 +5,13 @@ import 'package:flutter/services.dart';
 import '../../../../theme/app_colors.dart';
 import '../../../../tv/tv_focus.dart';
 import '../../../../utils/format.dart';
+import '../../playback/timeline_previews.dart';
 import 'emby_chrome_theme.dart';
 
 /// The Emby scrubber: thin white bar that thickens on hover, a handle that
 /// only appears once pointed at, chapter ticks, and a time bubble following
-/// the cursor.
+/// the cursor — which grows into a still of that moment once the player has
+/// [previews].
 ///
 /// Seeking is committed on release, not while dragging: the parent owns the
 /// HLS session and a mid-drag seek to a not-yet-served segment stalls it.
@@ -58,6 +60,14 @@ class EmbyProgressBar extends StatefulWidget {
   /// comes up, instead of leaving traversal to pick a starting point.
   final FocusNode? focusNode;
 
+  /// Stills of the timeline, shown above the pointer. Null, or not ready yet,
+  /// leaves the plain time bubble.
+  final TimelinePreviews? previews;
+
+  /// Television: a remote seek is pending, so the still follows the handle —
+  /// the remote has no pointer to follow.
+  final bool previewAtProgress;
+
   const EmbyProgressBar({
     super.key,
     required this.progress,
@@ -72,6 +82,8 @@ class EmbyProgressBar extends StatefulWidget {
     this.onStepForward,
     this.onSelect,
     this.focusNode,
+    this.previews,
+    this.previewAtProgress = false,
   });
 
   @override
@@ -176,8 +188,9 @@ class _EmbyProgressBarState extends State<EmbyProgressBar> {
                 children: [
                   _buildBar(width),
                   if (_active) _buildHandle(width),
-                  if (_pointerFraction != null && widget.duration > Duration.zero)
-                    _buildTimeBubble(width, rowHeight),
+                  if (_previewFraction != null &&
+                      widget.duration > Duration.zero)
+                    _buildPointerLabel(width, rowHeight),
                 ],
               ),
             ),
@@ -281,10 +294,113 @@ class _EmbyProgressBarState extends State<EmbyProgressBar> {
     );
   }
 
+  /// Where the still or bubble points: the mouse or finger, or on a
+  /// television the pending seek.
+  double? get _previewFraction =>
+      _pointerFraction ??
+      (_focused && widget.previewAtProgress ? _shownFraction : null);
+
+  Widget _buildPointerLabel(double width, double rowHeight) {
+    final previews = widget.previews;
+    if (previews == null) return _buildTimeBubble(width, rowHeight);
+    // Only the label rebuilds as stills arrive, not the whole bar.
+    return ListenableBuilder(
+      listenable: previews,
+      builder: (context, _) => previews.isReady
+          ? _buildPreview(width, rowHeight, previews)
+          : _buildTimeBubble(width, rowHeight),
+    );
+  }
+
+  Widget _buildPreview(
+    double width,
+    double rowHeight,
+    TimelinePreviews previews,
+  ) {
+    final manifest = previews.manifest!;
+    final fraction = _previewFraction!;
+    final position = Duration(
+      milliseconds: (widget.duration.inMilliseconds * fraction).round(),
+    );
+    final index = manifest.indexFor(position);
+    // Asynchronous by contract: the fetch it may start notifies later.
+    previews.request(index);
+    final image = previews.imageFor(index);
+
+    final boxWidth = widget.metrics.previewWidth.clamp(0.0, width);
+    final boxHeight = boxWidth / manifest.aspectRatio;
+    final left =
+        (fraction * width - boxWidth / 2).clamp(0.0, width - boxWidth);
+    final radius = BorderRadius.circular(8);
+
+    return Positioned(
+      left: left,
+      bottom: rowHeight / 2 + 12,
+      child: IgnorePointer(
+        child: Container(
+          width: boxWidth,
+          decoration: BoxDecoration(
+            color: EmbyChromeTheme.tooltipSurface,
+            borderRadius: radius,
+            boxShadow: const [
+              BoxShadow(
+                color: Color(0x80000000),
+                blurRadius: 16,
+                offset: Offset(0, 4),
+              ),
+            ],
+          ),
+          // Drawn over the still rather than around it, so the picture keeps
+          // its full width.
+          foregroundDecoration: BoxDecoration(
+            borderRadius: radius,
+            border: Border.all(color: const Color(0x40FFFFFF)),
+          ),
+          child: ClipRRect(
+            borderRadius: radius,
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                SizedBox(
+                  width: boxWidth,
+                  height: boxHeight,
+                  child: image == null
+                      ? null
+                      : Image(
+                          image: image,
+                          fit: BoxFit.cover,
+                          // Holds the previous still until the next one is
+                          // decoded, so a scrub never flashes to empty.
+                          gaplessPlayback: true,
+                          filterQuality: FilterQuality.medium,
+                        ),
+                ),
+                Padding(
+                  padding: const EdgeInsets.symmetric(vertical: 5),
+                  child: _timeLabel(position.inSeconds),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _timeLabel(int seconds) {
+    return Text(
+      formatPlaybackTime(seconds),
+      style: TextStyle(
+        color: Colors.white,
+        fontSize: widget.metrics.timeSize,
+        fontFeatures: const [FontFeature.tabularFigures()],
+      ),
+    );
+  }
+
   Widget _buildTimeBubble(double width, double rowHeight) {
-    final fraction = _pointerFraction!;
+    final fraction = _previewFraction!;
     final seconds = (widget.duration.inSeconds * fraction).round();
-    final label = formatPlaybackTime(seconds);
     // Clamped so the bubble never hangs off either end of the bar.
     const bubbleWidth = 68.0;
     final left =
@@ -302,14 +418,7 @@ class _EmbyProgressBarState extends State<EmbyProgressBar> {
             color: EmbyChromeTheme.tooltipSurface,
             borderRadius: BorderRadius.circular(6),
           ),
-          child: Text(
-            label,
-            style: TextStyle(
-              color: Colors.white,
-              fontSize: widget.metrics.timeSize,
-              fontFeatures: const [FontFeature.tabularFigures()],
-            ),
-          ),
+          child: _timeLabel(seconds),
         ),
       ),
     );
