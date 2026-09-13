@@ -9,6 +9,7 @@ import '../../screens/library/search_results_screen.dart';
 import '../../screens/library/show_detail_screen.dart';
 import '../../theme/app_colors.dart';
 import '../../tv/tv_deferred_keyboard.dart';
+import '../../tv/tv_mode.dart';
 import '../../utils/poster_url.dart';
 import 'app_network_image.dart';
 import 'glass_chrome.dart';
@@ -67,6 +68,21 @@ class _GlassCatalogSearchState extends State<GlassCatalogSearch> {
 
   void _onFocusChanged() {
     context.read<SearchProvider>().setExpanded(_focusNode.hasFocus);
+
+    // Sur un téléviseur, la liste déroulante sous le champ est hors d'atteinte
+    // de la télécommande : elle vit dans une couche au-dessus de la page, où le
+    // parcours du focus n'entre pas. On voyait les résultats sans pouvoir en
+    // ouvrir un. Quand le clavier se referme sur une recherche, on ouvre donc la
+    // page de résultats, qui se parcourt comme une grille. Valider au clavier y
+    // mène aussi, par [GlassSearchInput.onSubmitted] — le champ est alors déjà
+    // vidé, et on ne l'ouvre pas deux fois.
+    if (!_focusNode.hasFocus &&
+        TvMode.isTv &&
+        _controller.text.trim().isNotEmpty) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted && _controller.text.trim().isNotEmpty) _showAllResults();
+      });
+    }
   }
 
   void _onQueryChanged(String value) {
@@ -129,7 +145,8 @@ class _GlassCatalogSearchState extends State<GlassCatalogSearch> {
     final search = overlayContext.watch<SearchProvider>();
     final library = overlayContext.watch<LibraryProvider>();
 
-    if (!search.isActive) return const SizedBox.shrink();
+    // Pas de liste déroulante sur un téléviseur : voir [_onFocusChanged].
+    if (!search.isActive || TvMode.isTv) return const SizedBox.shrink();
 
     final results = library.searchCatalog(search.query);
     final loading = library.isLoadingMovies || library.isLoadingShows;

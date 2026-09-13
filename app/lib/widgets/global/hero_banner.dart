@@ -5,6 +5,7 @@ import '../../services/api_client.dart';
 import '../../theme/app_colors.dart';
 import '../../utils/format.dart';
 import '../../utils/poster_url.dart';
+import '../../tv/tv_mode.dart';
 import 'app_network_image.dart';
 
 class HeroBanner extends StatelessWidget {
@@ -36,6 +37,21 @@ class HeroBanner extends StatelessWidget {
     this.autofocusPlay = false,
   });
 
+  /// The banner's height, shared with [HeroCarousel] so the pages and the
+  /// carousel agree.
+  ///
+  /// Shorter on a television: the rows are what a remote browses, and a
+  /// banner over two thirds of the screen left one row in view.
+  static double heightFor(BuildContext context) {
+    final size = MediaQuery.sizeOf(context);
+    final fraction = TvScope.of(context)
+        ? 0.55
+        : size.width < 600
+            ? 0.55
+            : 0.65;
+    return (size.height * fraction).clamp(360.0, 580.0);
+  }
+
   @override
   Widget build(BuildContext context) {
     final apiClient = Provider.of<ApiClient>(context, listen: false);
@@ -43,11 +59,10 @@ class HeroBanner extends StatelessWidget {
         resolveHeroImageUrl(media.posterUrl, serverBaseUrl: apiClient.baseUrl);
     final title = titleOverride ?? media.title;
     final year = extractYear(media.releaseDate);
-    final screenHeight = MediaQuery.sizeOf(context).height;
     final screenWidth = MediaQuery.sizeOf(context).width;
     final isCompact = screenWidth < 600;
     final horizontalPadding = isCompact ? 16.0 : 48.0;
-    final bannerHeight = (screenHeight * (isCompact ? 0.55 : 0.65)).clamp(360.0, 580.0);
+    final bannerHeight = HeroBanner.heightFor(context);
 
     return SizedBox(
       height: bannerHeight,

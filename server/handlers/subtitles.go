@@ -9,6 +9,7 @@ import (
 	"strconv"
 	"strings"
 
+	"project-player/server/playbackauth"
 	"project-player/server/subtitles"
 
 	"github.com/julienschmidt/httprouter"
@@ -23,7 +24,7 @@ import (
 // the subtitle parser from the URL extension — without it the track silently
 // fails to load. It reads the .vtt file registered at scan time. `start`
 // rebases the cues to match an HLS stream that begins at an offset (Direct Play
-// uses 0). The route is unauthenticated so media_kit/mpv can fetch it directly.
+// uses 0). A temporary query ticket lets native engines fetch without headers.
 func GetMediaSubtitle(w http.ResponseWriter, r *http.Request, ps httprouter.Params) {
 	w.Header().Set("Access-Control-Allow-Origin", "*")
 	w.Header().Set("Access-Control-Allow-Methods", "GET, OPTIONS")
@@ -41,6 +42,10 @@ func GetMediaSubtitle(w http.ResponseWriter, r *http.Request, ps httprouter.Para
 
 	// Language comes from the path (".../subtitles/fr.vtt") or, for the legacy
 	// form, the ?lang= query parameter.
+	w, allowed := playbackauth.Protect(w, r, PlaybackTickets, mediaID)
+	if !allowed {
+		return
+	}
 	lang := strings.TrimSuffix(ps.ByName("file"), ".vtt")
 	if lang == "" {
 		lang = r.URL.Query().Get("lang")
@@ -76,7 +81,7 @@ func GetMediaSubtitle(w http.ResponseWriter, r *http.Request, ps httprouter.Para
 	}
 
 	w.Header().Set("Content-Type", "text/vtt; charset=utf-8")
-	w.Header().Set("Cache-Control", "public, max-age=3600")
+	w.Header().Set("Cache-Control", "private, no-store")
 	_, _ = w.Write(data)
 }
 
@@ -148,9 +153,9 @@ func ForceMediaSubtitleExtract(w http.ResponseWriter, r *http.Request, ps httpro
 
 	tracks, _ := subtitles.List(mediaID)
 	_ = json.NewEncoder(w).Encode(map[string]interface{}{
-		"status":  "success",
-		"media_id": mediaID,
-		"tracks":   count,
+		"status":    "success",
+		"media_id":  mediaID,
+		"tracks":    count,
 		"subtitles": tracks,
 	})
 }

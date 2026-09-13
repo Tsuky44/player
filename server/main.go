@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"flag"
 	"log"
 	"net/http"
@@ -53,6 +54,9 @@ func main() {
 	// Unclaimed TV pairing codes are short-lived; sweep the dead rows.
 	handlers.StartDevicePairingReaper()
 	handlers.StartAccessRequestReaper()
+	playbackContext, stopPlaybackReaper := context.WithCancel(context.Background())
+	defer stopPlaybackReaper()
+	go handlers.PlaybackTickets.RunReaper(playbackContext)
 
 	// Initialize router
 	router := httprouter.New()
@@ -64,7 +68,7 @@ func main() {
 	// Base API route
 	router.GET("/api/ping", func(w http.ResponseWriter, r *http.Request, _ httprouter.Params) {
 		w.Header().Set("Content-Type", "application/json")
-		w.Write([]byte(`{"status": "ok", "message": "Project Player Server is running"}`))
+		w.Write([]byte(`{"status": "ok", "message": "Project Player Server is running", "playback_ticket_version": 1}`))
 	})
 
 	// Intro/outro inspection and forced re-detection. These were open to anyone
@@ -83,6 +87,9 @@ func main() {
 	router.POST("/api/auth/login", handlers.Login)
 	router.POST("/api/auth/logout", handlers.Logout)
 	router.GET("/api/auth/me", handlers.RequireAuth(handlers.Me))
+	router.POST("/api/playback/tickets", handlers.RequireAuth(handlers.CreatePlaybackTicket))
+	router.PUT("/api/playback/tickets", handlers.RequireAuth(handlers.UpdatePlaybackTicket))
+	router.DELETE("/api/playback/tickets", handlers.RequireAuth(handlers.UpdatePlaybackTicket))
 	router.POST("/api/auth/password", handlers.RequireAuth(handlers.ChangePassword))
 
 	// TV pairing (RFC 8628-shaped device flow). start/poll are unauthenticated
@@ -218,17 +225,26 @@ func main() {
 	router.POST("/api/downloads", handlers.RequirePermission(models.PermManageSettings, handlers.UploadDownload))
 	router.DELETE("/api/downloads/:file", handlers.RequirePermission(models.PermManageSettings, handlers.DeleteDownload))
 
-	// 5. Streaming Endpoint (Unauthenticated for video player compatibility)
+	// 5. Temporary query tickets work with native players without custom headers.
 	router.GET("/stream", handlers.StreamMedia)
+	router.HEAD("/stream", handlers.StreamMedia)
+	router.OPTIONS("/stream", handlers.StreamMedia)
 
-	// 6. HLS Transcoding + Subtitle Endpoints (Unauthenticated for media_kit / mpv
-	// compatibility — the player fetches playlists, segments and WebVTT directly).
+	// 6. HLS sessions require the same ticket on start, playlists and segments.
 	// Dispatch parses the path manually to avoid httprouter wildcard conflicts.
-	hlsHandler := streaming.NewHandler(db)
+	hlsHandler := streaming.NewHandler(db, handlers.PlaybackTickets)
 	router.POST("/api/v1/stream/*path", hlsHandler.Dispatch)
 	router.GET("/api/v1/stream/*path", hlsHandler.Dispatch)
 	router.DELETE("/api/v1/stream/*path", hlsHandler.Dispatch)
 	router.OPTIONS("/api/v1/stream/*path", hlsHandler.Dispatch)
+
+	// Timeline previews (the still above the scrubber). Same ticket as the
+	// stream itself; generation only starts once the client asks, after its
+	// first frame.
+	router.POST("/api/v1/media/:id/previews", hlsHandler.PreviewManifest)
+	router.OPTIONS("/api/v1/media/:id/previews", hlsHandler.PreviewManifest)
+	router.GET("/api/v1/media/:id/previews/:file", hlsHandler.PreviewImage)
+	router.OPTIONS("/api/v1/media/:id/previews/:file", hlsHandler.PreviewImage)
 
 	// 7. Web UI — the Flutter bundle embedded in the binary. Registered as the
 	// router's NotFound handler so it picks up every path the API did not claim,

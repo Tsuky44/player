@@ -7,9 +7,11 @@ import '../display_frame_rate.dart';
 import '../hardware_decoding.dart';
 import '../playback/playback_engine.dart';
 import '../playback/playback_session.dart';
+import '../playback/timeline_previews.dart';
 import '../playback_profile.dart';
 import '../web_quality.dart';
 import '../../../services/api_client.dart';
+import '../../../services/playback_access.dart';
 import '../../../services/download_manager.dart';
 import '../../../services/playback_capabilities.dart';
 import '../../../services/playback_preferences_storage.dart';
@@ -31,6 +33,12 @@ import '../player_playback_preferences.dart';
 ///     selected by language code. They work identically in both modes; the only
 ///     HLS-specific concern is a time-shift so cues align with the stream offset.
 class PlayerController {
+  PlaybackAccess? _playbackAccess;
+
+  /// The stills above the scrubber. Null until the first frame is on screen,
+  /// and for good on a downloaded file, which has no server to draw them.
+  TimelinePreviews? timelinePreviews;
+
   /// Le moteur de lecture, derrière son port.
   ///
   /// mpv sur macOS, Windows et le web ; ExoPlayer sur Android. Tout ce qui suit
@@ -84,9 +92,32 @@ class PlayerController {
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (_disposed || hasFirstFrame) return;
       hasFirstFrame = true;
+      _startTimelinePreviews();
       _onFirstFrame?.call();
       unawaited(_onPictureLive());
     });
+  }
+
+  /// Starts the timeline stills — never earlier than the first frame, so the
+  /// server's extraction work cannot slow down the start of playback.
+  void _startTimelinePreviews() {
+    final access = _playbackAccess;
+    final media = _media;
+    final api = _apiClient;
+    if (timelinePreviews != null ||
+        access == null ||
+        access.isLegacy ||
+        media == null ||
+        api == null) {
+      return;
+    }
+    final previews = TimelinePreviews(
+      open: () => api.openTimelinePreviews(media.id, access: access),
+      fetch: (index) =>
+          api.fetchTimelinePreview(media.id, index, access: access),
+    );
+    timelinePreviews = previews;
+    unawaited(previews.start());
   }
 
   /// Runs once the picture is actually on screen.
@@ -289,8 +320,9 @@ class PlayerController {
     } else {
       _selectedSubtitleLang = _resolveCarriedSubtitleLang(prefs.subtitleLang);
       // The mpv id only means anything within the media it came from.
-      _selectedInternalSubId =
-          _selectedSubtitleLang == prefs.subtitleLang ? prefs.internalSubId : null;
+      _selectedInternalSubId = _selectedSubtitleLang == prefs.subtitleLang
+          ? prefs.internalSubId
+          : null;
     }
   }
 
@@ -424,7 +456,8 @@ class PlayerController {
     try {
       await session.applyDirectPlayTuning(PlaybackProfiles.current);
     } catch (e) {
-      debugPrint("Player: failed to apply native MPV properties: $e");
+      debugPrint(
+          "Player: failed to apply native MPV properties: ${redactPlaybackDiagnostic(e)}");
     }
 
     if (_disposed) return;
@@ -508,6 +541,14 @@ class PlayerController {
     _onTracksChanged = onTracksChanged;
 
     _localFilePath = DownloadManager.instance.localVideoPath(media.id);
+    if (_localFilePath == null) {
+      final access = await apiClient.openPlaybackAccess(media.id);
+      if (_disposed) {
+        await access.close();
+        return;
+      }
+      _playbackAccess = access;
+    }
     final streamUrl = _directPlaySource(apiClient, media.id);
 
     if (inheritedPreferences != null) {
@@ -574,7 +615,8 @@ class PlayerController {
           if (startAt > 0) position = Duration(seconds: startAt);
         }
       } catch (e) {
-        debugPrint("Player: failed to open stream: $e");
+        debugPrint(
+            "Player: failed to open stream: ${redactPlaybackDiagnostic(e)}");
       }
       _mark('opened');
     }
@@ -597,7 +639,8 @@ class PlayerController {
   /// là, l'URL de flux sinon. Un seul endroit décide, pour que le retour depuis
   /// le transcodage retombe sur la même source que l'ouverture initiale.
   String _directPlaySource(ApiClient apiClient, int mediaId) =>
-      _localFilePath ?? apiClient.getStreamUrl(mediaId);
+      _localFilePath ??
+      apiClient.getStreamUrl(mediaId, access: _playbackAccess);
 
   Future<void> _loadMediaTracksAndPreferences({
     required ApiClient apiClient,
@@ -641,7 +684,8 @@ class PlayerController {
         _scheduleDeferredSubtitleExtraction();
       }
     } catch (e) {
-      debugPrint("Player: failed to load media tracks: $e");
+      debugPrint(
+          "Player: failed to load media tracks: ${redactPlaybackDiagnostic(e)}");
     }
   }
 
@@ -672,10 +716,12 @@ class PlayerController {
   /// pas à une session HLS commençant en cours de route.
   Future<String> _loadSubtitleVtt(int mediaId, String lang, int start) async {
     if (_localFilePath != null && start == 0) {
-      final local = await DownloadManager.instance.offlineSubtitle(mediaId, lang);
+      final local =
+          await DownloadManager.instance.offlineSubtitle(mediaId, lang);
       if (local != null && local.contains('-->')) return local;
     }
-    return _apiClient!.fetchSubtitleContent(mediaId, lang, start: start);
+    return _apiClient!.fetchSubtitleContent(mediaId, lang,
+        start: start, access: _playbackAccess);
   }
 
   /// The second a web session should begin at, or 0.
@@ -687,8 +733,7 @@ class PlayerController {
     final future = _resumePositionFuture;
     if (future == null) return 0;
     try {
-      final seconds =
-          await future.timeout(const Duration(milliseconds: 1500));
+      final seconds = await future.timeout(const Duration(milliseconds: 1500));
       return seconds > 0 ? seconds : 0;
     } catch (_) {
       return 0;
@@ -723,7 +768,8 @@ class PlayerController {
     // position. It used to depend on which of those two finished first — the
     // track list normally won, and the resume point was simply dropped.
     final startSeconds = await _resolveWebResumeSeconds();
-    debugPrint("Player: web session — source ${height}px, surface ${surface}px, "
+    debugPrint(
+        "Player: web session — source ${height}px, surface ${surface}px, "
         "asking $quality from ${startSeconds}s (video=${tracks.video?.codec})");
     await switchToQuality(quality, startSeconds: startSeconds);
     return true;
@@ -844,7 +890,8 @@ class PlayerController {
       mediaTracks = await _apiClient!.getMediaTracks(_media!.id);
       _notifyTracksChanged();
     } catch (e) {
-      debugPrint("SUB: failed to refresh tracks: $e");
+      debugPrint(
+          "SUB: failed to refresh tracks: ${redactPlaybackDiagnostic(e)}");
     }
   }
 
@@ -914,7 +961,8 @@ class PlayerController {
           "SUB: background extraction done, ${mediaTracks?.subtitles.length ?? 0} tracks");
     }).catchError((e) {
       _isExtractingSubtitles = false;
-      debugPrint("SUB: background extraction failed: $e");
+      debugPrint(
+          "SUB: background extraction failed: ${redactPlaybackDiagnostic(e)}");
     });
   }
 
@@ -965,7 +1013,9 @@ class PlayerController {
       // i.e. before the file is loaded, so the offset is part of the load
       // instead of a seek that undoes it. Nothing left to do but play.
       await session.play();
-    } else if (resumeAtSeconds > 0 && currentQuality == null && _media != null) {
+    } else if (resumeAtSeconds > 0 &&
+        currentQuality == null &&
+        _media != null) {
       // Fallback when the resume point arrived too late to be part of the open
       // (slow /progress response). Start playing, wait for the first buffering
       // cycle to complete, then seek. Setting the mpv `start` property by hand
@@ -1054,7 +1104,8 @@ class PlayerController {
       );
       synced = true;
     } catch (e) {
-      debugPrint("Player: failed to sync progress: $e");
+      debugPrint(
+          "Player: failed to sync progress: ${redactPlaybackDiagnostic(e)}");
     }
 
     // The old server may answer after a relay changed the download catalog.
@@ -1132,7 +1183,9 @@ class PlayerController {
     required String quality,
     required int startSeconds,
   }) async {
-    if (_media == null || _apiClient == null) return;
+    if (_media == null || _apiClient == null || _disposed || _hlsSwapInFlight) {
+      return;
+    }
 
     isSwitchingQuality = true;
     _hlsSwapInFlight = true;
@@ -1147,19 +1200,35 @@ class PlayerController {
 
     final mediaId = _media!.id;
     final oldSessionId = _hlsSessionId;
+    final api = _apiClient!;
+    PlaybackAccess? access = _playbackAccess;
+    HlsSession? pendingSession;
+    var adopted = false;
 
     try {
-      final hls = await _apiClient!.startHlsSession(
+      if (access == null) {
+        access = await api.openPlaybackAccess(mediaId);
+        if (_disposed) {
+          await access.close();
+          return;
+        }
+        _playbackAccess = access;
+      }
+      final hls = await api.startHlsSession(
         mediaId,
         quality,
         startSeconds: startSeconds,
         audioIndex: _selectedAudioIndex,
         burnSubtitleIndex: _hlsBurnedSubTypedIndex,
+        access: access,
       );
+      pendingSession = hls;
+      if (_disposed) return;
 
       // Tear down the previous session only once the new one is ready.
       if (oldSessionId != null) {
-        _apiClient!.destroyHlsSession(mediaId, oldSessionId);
+        _apiClient!
+            .destroyHlsSession(mediaId, oldSessionId, access: _playbackAccess);
       }
 
       await session.applyStreamingTuning(PlaybackProfiles.current);
@@ -1168,9 +1237,11 @@ class PlayerController {
       // language preference left over from Direct Play would only give mpv a
       // second, disagreeing opinion about which one to play.
       await _applyPreferredAudioLanguage(null);
+      if (_disposed) return;
       // No longer a Direct Play stream opened at a known second.
       _openedAtSeconds = -1;
       await session.open(hls.masterUrl, play: true);
+      if (_disposed) return;
       // Two defects to undo on web. media_kit trusts `canPlayType` to decide
       // whether the browser speaks HLS — Chromium says "maybe" and cannot — so
       // hls.js has to be put back in charge. And it builds a fresh hls.js per
@@ -1188,6 +1259,7 @@ class PlayerController {
       // where I clicked". Every field the position/seek math depends on is
       // assigned only once we know player.open() has actually taken effect.
       _hlsSessionId = hls.sessionId;
+      adopted = true;
       currentQuality = quality;
       _hlsStartOffset = startSeconds;
       _hlsAudioMap = hls.audioMap;
@@ -1212,12 +1284,18 @@ class PlayerController {
         _startSubtitleWatch();
       }
     } catch (e) {
-      debugPrint("Player: failed to open HLS session: $e");
+      debugPrint(
+          "Player: failed to open HLS session: ${redactPlaybackDiagnostic(e)}");
       isSwitchingQuality = false;
       // Must reopen even on failure: leaving the gate shut would freeze the
       // reported position for the rest of the session.
       _hlsSwapInFlight = false;
-      _onQualitySwitchingChanged?.call();
+      if (!_disposed) _onQualitySwitchingChanged?.call();
+    } finally {
+      if (!adopted && pendingSession != null) {
+        await api.destroyHlsSession(mediaId, pendingSession.sessionId,
+            access: access);
+      }
     }
   }
 
@@ -1544,9 +1622,8 @@ class PlayerController {
     }
   }
 
-  List<PlaybackTrack> _realAudioTracks() => session.audioTracks
-      .where((t) => t.id != 'auto' && t.id != 'no')
-      .toList();
+  List<PlaybackTrack> _realAudioTracks() =>
+      session.audioTracks.where((t) => t.id != 'auto' && t.id != 'no').toList();
 
   /// Position of a canonical audio index in the player's track list.
   ///
@@ -1660,7 +1737,8 @@ class PlayerController {
           // sound carries on. Handing the cues to the browser also keeps them
           // visible in native full screen.
           WebPlayback.showSubtitleVtt(vtt, language: lang, label: title);
-          debugPrint("SUB: #$reqId applied via browser text track (lang=$lang)");
+          debugPrint(
+              "SUB: #$reqId applied via browser text track (lang=$lang)");
           return;
         }
         await session.setSubtitles(
@@ -1674,10 +1752,12 @@ class PlayerController {
         debugPrint("SUB: #$reqId applied. engine subtitle tracks: $subs, "
             "active=${session.currentSubtitleTrack?.id}");
       } catch (e) {
-        debugPrint("SUB: #$reqId failed to attach data: $e");
+        debugPrint(
+            "SUB: #$reqId failed to attach data: ${redactPlaybackDiagnostic(e)}");
       }
     }).catchError((e) {
-      debugPrint("SUB: #$reqId failed to fetch lang=$lang: $e");
+      debugPrint(
+          "SUB: #$reqId failed to fetch lang=$lang: ${redactPlaybackDiagnostic(e)}");
     });
   }
 
@@ -1744,7 +1824,9 @@ class PlayerController {
   String? _canonicalLangForEmbedded(PlaybackTrack? track) {
     if (track == null) return null;
     final sid = int.tryParse(track.id);
-    if (sid == null) return null; // "no" / "auto" / a track we attached ourselves
+    if (sid == null) {
+      return null; // "no" / "auto" / a track we attached ourselves
+    }
     final typedIndex = sid - 1;
     for (final s in mediaTracks?.subtitles ?? const <MediaSubtitleTrack>[]) {
       if (s.typedIndex == typedIndex) return s.lang;
@@ -1768,8 +1850,8 @@ class PlayerController {
     }
 
     _reapplySubscription = session.trackChanges.listen((_) {
-      final hasAudio = session.audioTracks
-          .any((e) => e.id != 'auto' && e.id != 'no');
+      final hasAudio =
+          session.audioTracks.any((e) => e.id != 'auto' && e.id != 'no');
       if (hasAudio) apply();
     });
     Timer(const Duration(milliseconds: 1500), apply);
@@ -1811,13 +1893,33 @@ class PlayerController {
 
   Future<void> _destroyHlsSession() async {
     if (_hlsSessionId == null || _media == null || _apiClient == null) return;
-    await _apiClient!.destroyHlsSession(_media!.id, _hlsSessionId!);
+    await _apiClient!
+        .destroyHlsSession(_media!.id, _hlsSessionId!, access: _playbackAccess);
     _hlsSessionId = null;
   }
 
   // ==================== Teardown ====================
 
+  Future<void> _releasePlaybackAccess() async {
+    final access = _playbackAccess;
+    final sessionId = _hlsSessionId;
+    _playbackAccess = null;
+    _hlsSessionId = null;
+    if (sessionId != null && _media != null && _apiClient != null) {
+      await _apiClient!
+          .destroyHlsSession(_media!.id, sessionId, access: access);
+    }
+    await access?.close();
+  }
+
+  void _disposeTimelinePreviews() {
+    timelinePreviews?.dispose();
+    timelinePreviews = null;
+  }
+
   void cancelStreams() {
+    _disposeTimelinePreviews();
+    unawaited(_releasePlaybackAccess());
     _disposed = true;
     _deferredSubtitleExtractTimer?.cancel();
     _deferredSubtitleExtractTimer = null;
@@ -1837,13 +1939,11 @@ class PlayerController {
     _videoParamsSubscription = null;
     _bufferingSubscription = null;
     _reapplySubscription = null;
-    if (_hlsSessionId != null && _media != null && _apiClient != null) {
-      _apiClient!.destroyHlsSession(_media!.id, _hlsSessionId!);
-    }
-    _hlsSessionId = null;
   }
 
   void dispose() {
+    _disposeTimelinePreviews();
+    unawaited(_releasePlaybackAccess());
     // Before `_disposed`, so the property reads still go through.
     unawaited(_logDropCounters());
     // The catalogue is not 24 fps: a panel left at a film's rate makes every
@@ -1864,10 +1964,6 @@ class PlayerController {
     _videoParamsSubscription?.cancel();
     _bufferingSubscription?.cancel();
     _reapplySubscription?.cancel();
-    if (_hlsSessionId != null && _media != null && _apiClient != null) {
-      _apiClient!.destroyHlsSession(_media!.id, _hlsSessionId!);
-    }
-    _hlsSessionId = null;
     // Leaving the player screen must not leave hls.js segment loaders running
     // against a <video> that is about to disappear.
     WebPlayback.clearSubtitles();

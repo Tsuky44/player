@@ -49,6 +49,7 @@ func (b *lockedBuffer) String() string {
 
 // TranscodeSession represents a single active HLS transcoding session.
 type TranscodeSession struct {
+	TicketHash  [32]byte // binds this HLS session to its playback ticket
 	ID          string
 	MediaID     int
 	Quality     string

@@ -1,3 +1,4 @@
+import '../../../services/playback_access.dart';
 import 'dart:async';
 import 'dart:js_interop';
 
@@ -377,7 +378,7 @@ abstract final class WebPlayback {
       final engine = _takeOverHls(masterUrl);
       debugPrint('WebPlayback: HLS engine = $engine');
     } catch (e) {
-      debugPrint('WebPlayback: takeOverHls failed: $e');
+      debugPrint('WebPlayback: takeOverHls failed: ${redactPlaybackDiagnostic(e)}');
       return;
     }
     // Which engine ended up in charge, and whether it has hit anything, is the

@@ -88,11 +88,9 @@ class _HeroCarouselState extends State<HeroCarousel> {
   Widget build(BuildContext context) {
     if (widget.slides.isEmpty) return const SizedBox.shrink();
 
-    final screenHeight = MediaQuery.sizeOf(context).height;
     final screenWidth = MediaQuery.sizeOf(context).width;
     final isCompact = screenWidth < 600;
-    final bannerHeight =
-        (screenHeight * (isCompact ? 0.55 : 0.65)).clamp(360.0, 580.0);
+    final bannerHeight = HeroBanner.heightFor(context);
 
     return Focus(
       // A pure observer: it reports that something below it holds the focus,

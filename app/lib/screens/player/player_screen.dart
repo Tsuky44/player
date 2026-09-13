@@ -1,3 +1,4 @@
+import '../../services/playback_access.dart';
 import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -500,7 +501,7 @@ class _PlayerScreenState extends State<PlayerScreen> {
       isPlaying: () => _playerController.isPlaying,
     );
     _init().catchError((Object error) {
-      debugPrint('Player initialization failed: $error');
+      debugPrint('Player initialization failed: ${redactPlaybackDiagnostic(error)}');
       _safeSetState(() => _startupStalled = true);
     });
   }
@@ -797,7 +798,7 @@ class _PlayerScreenState extends State<PlayerScreen> {
           savedPositionSeconds = fromApi;
         }
       } catch (e) {
-        debugPrint("Player: Failed to query progress: $e");
+        debugPrint("Player: Failed to query progress: ${redactPlaybackDiagnostic(e)}");
         // Serveur injoignable : le manifeste local est tout ce qui reste, et
         // pour un média téléchargé c'est exactement ce qu'il faut.
         if (offline != null) {
@@ -908,7 +909,7 @@ class _PlayerScreenState extends State<PlayerScreen> {
           startPaused: paused, relayAttempts: {...widget.relayAttempts, source: DateTime.now()}),
       ));
     } on Object catch (error) {
-      debugPrint('Player relay unavailable: $error');
+      debugPrint('Player relay unavailable: ${redactPlaybackDiagnostic(error)}');
       if (mounted && !_progressFlushed) {
         try {
           await auth.switchServer(source, synchronize: false);
@@ -2560,6 +2561,9 @@ class _PlayerScreenState extends State<PlayerScreen> {
                     // on. Padding the layer would have stepped the whole
                     // interface aside for something in the way of one control.
                     cutouts: DisplayCutouts.rects(context),
+                    // Only non-null once the first frame is on screen.
+                    previews: _playerController.timelinePreviews,
+                    remoteSeekPending: _remoteSeekTarget != null,
                     // The phone has volume keys; the desktop has nothing but
                     // this.
                     showVolume: !AppPlatform.isMobile,
