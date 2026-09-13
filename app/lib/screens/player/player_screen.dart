@@ -204,14 +204,30 @@ class _PlayerScreenState extends State<PlayerScreen> {
   final FocusNode _playPauseFocusNode =
       FocusNode(debugLabel: 'player-play-pause');
 
-  /// The scrubber — where the remote actually lands when the HUD comes up.
+  /// The scrubber — where the remote lands when it came in seeking.
   ///
-  /// Emby's television player never leaves the viewer guessing: the instant
-  /// the HUD is on screen something is outlined, and that something is the
-  /// bar. Left and right therefore keep meaning "seek", exactly as they did
-  /// with the HUD down, and now the screen says so. Play/pause is one press
-  /// away, and OK on the bar itself toggles it.
+  /// Left and right with the HUD down seek straight away, as on Jellyfin, and
+  /// put the outline on the bar so the next press goes on seeking from it with
+  /// the screen saying so. OK on the bar itself toggles playback.
   final FocusNode _progressFocusNode = FocusNode(debugLabel: 'player-progress');
+
+  /// Which control the remote is handed the next time the HUD comes up: the
+  /// scrubber when it arrived with a seek, play/pause otherwise.
+  _RemoteEntry _remoteEntry = _RemoteEntry.playPause;
+
+  /// Where a run of remote seeks is heading, before it is committed.
+  ///
+  /// Each press or auto-repeat of left/right moves this target and restarts a
+  /// short countdown; the seek itself only happens once the presses stop. The
+  /// bar and the times show the target meanwhile. Seeking on every press used
+  /// to compute each step from a position that had not moved yet — ten presses
+  /// went ten seconds — and, over a transcode, rebuilt the session each time.
+  int? _remoteSeekTarget;
+  Timer? _remoteSeekCommit;
+  DateTime? _remoteSeekLastStep;
+  int _remoteSeekChain = 0;
+
+  static const Duration _remoteSeekSettle = Duration(milliseconds: 650);
 
   /// The settings / subtitles / info popup currently on the overlay, with the
   /// closure that dismisses it. Back goes through this before it reaches the
@@ -1141,7 +1157,59 @@ class _PlayerScreenState extends State<PlayerScreen> {
   }
 
   /// Hands the remote to the control bar, and puts the chrome up to receive it.
-  void _enterControlBar() => _showControlsTransient();
+  void _enterControlBar([_RemoteEntry entry = _RemoteEntry.playPause]) {
+    _remoteEntry = entry;
+    _showControlsTransient();
+  }
+
+  /// One step of a remote seek: left or right, pressed or held.
+  ///
+  /// Steps chain while they keep coming, and a long run goes faster — 10 s a
+  /// step, then 30 s, then a minute — so a held key crosses a film in a few
+  /// seconds instead of a few minutes. Nothing is sent to the player until the
+  /// presses stop; see [_remoteSeekTarget].
+  void _remoteSeekStep(int direction) {
+    final now = DateTime.now();
+    final last = _remoteSeekLastStep;
+    final chained =
+        last != null && now.difference(last) < _remoteSeekSettle;
+    _remoteSeekChain = chained ? _remoteSeekChain + 1 : 0;
+    _remoteSeekLastStep = now;
+
+    final step = _remoteSeekChain < 10
+        ? 10
+        : _remoteSeekChain < 30
+            ? 30
+            : 60;
+    final total = _playerController.duration.inSeconds;
+    var target = (_remoteSeekTarget ?? _playerController.position.inSeconds) +
+        direction * step;
+    if (target < 0) target = 0;
+    if (total > 0 && target > total) target = total;
+
+    _remoteSeekTarget = target;
+    _remoteSeekCommit?.cancel();
+    _remoteSeekCommit = Timer(_remoteSeekSettle, _commitRemoteSeek);
+    _showControlsTransient();
+  }
+
+  void _commitRemoteSeek() {
+    final target = _remoteSeekTarget;
+    if (target == null || !mounted || _isDisposing) return;
+    // Both seek paths move the reported position to the target before they
+    // return, so letting go of the target here does not flash the old time.
+    _playerController.seekToAbsoluteSeconds(target);
+    _remoteSeekTarget = null;
+    _remoteSeekChain = 0;
+    _safeSetState(() {});
+  }
+
+  /// The position the chrome shows: a remote seek's target while one is
+  /// pending, the player's own otherwise.
+  Duration get _displayedPosition {
+    final target = _remoteSeekTarget;
+    return target != null ? Duration(seconds: target) : _playerController.position;
+  }
 
   /// The invariant that makes the remote legible: on a television, chrome on
   /// screen means something on it is outlined.
@@ -1151,8 +1219,9 @@ class _PlayerScreenState extends State<PlayerScreen> {
   /// them nothing was highlighted and the arrows scrubbed, and in the other a
   /// button was highlighted and the arrows walked. Which one you were in
   /// depended on whether the HUD had been woken by OK or by a seek. This
-  /// collapses them into one: the HUD is up, the scrubber is outlined, left and
-  /// right seek from it.
+  /// collapses them into one: the HUD is up, something is outlined — the
+  /// scrubber if the remote came in seeking, play/pause otherwise (see
+  /// [_remoteEntry]).
   void _ensureRemoteInChrome() {
     if (!TvMode.isTv) return;
     if (_isDisposing || _isLeaving || !_showControls) return;
@@ -1168,16 +1237,18 @@ class _PlayerScreenState extends State<PlayerScreen> {
       // Already standing on a control — including one the user walked to.
       // Re-requesting would drag them back to the scrubber on every seek.
       if (_remoteBrowsingControls) return;
-      if (_progressFocusNode.context != null) {
-        _progressFocusNode.requestFocus();
-        return;
+      final preferred = _remoteEntry == _RemoteEntry.scrubber
+          ? [_progressFocusNode, _playPauseFocusNode]
+          : [_playPauseFocusNode, _progressFocusNode];
+      _remoteEntry = _RemoteEntry.playPause;
+      for (final node in preferred) {
+        if (node.context != null) {
+          node.requestFocus();
+          return;
+        }
       }
-      // Chromes with no scrubber node of their own fall back to play/pause,
-      // then to whatever traversal reaches first.
-      if (_playPauseFocusNode.context != null) {
-        _playPauseFocusNode.requestFocus();
-        return;
-      }
+      // Chromes with neither node fall back to whatever traversal reaches
+      // first.
       _keyboardFocusNode.nextFocus();
     });
   }
@@ -1215,12 +1286,12 @@ class _PlayerScreenState extends State<PlayerScreen> {
       // A focused button answers for itself — the app-wide shortcut turns this
       // very key into its activation.
       if (browsingControls) return KeyEventResult.ignored;
-      // On a television OK never toggles playback from here: it wakes the HUD
-      // and hands the remote to the scrubber, which answers the next OK with
-      // play/pause. Reaching this branch with the HUD already up means the
-      // focus slipped, and putting it back is the repair.
+      // On a television OK never toggles playback from here: as on Jellyfin it
+      // wakes the HUD with the remote on play/pause, so the next OK pauses.
+      // Reaching this branch with the HUD already up means the focus slipped,
+      // and putting it back is the repair.
       if (TvMode.isTv) {
-        _enterControlBar();
+        _enterControlBar(_RemoteEntry.playPause);
       } else {
         _togglePlayPause();
       }
@@ -1241,14 +1312,21 @@ class _PlayerScreenState extends State<PlayerScreen> {
         key == LogicalKeyboardKey.arrowDown;
 
     if (!browsingControls && isArrow) {
-      // A television never scrubs blind. Any direction wakes the HUD and puts
-      // the outline on the scrubber; from there the very same key seeks — and
-      // now the screen shows what it is seeking. Volume is untouched in either
-      // direction: the set owns it and its remote has the keys for it.
+      // As on Jellyfin: left and right seek at once — the press is not spent
+      // waking the HUD — and the HUD comes up on the scrubber, showing where
+      // the seek is going, so the next press goes on from there. Up and down
+      // only bring the HUD up, on play/pause. Volume is untouched: the set owns
+      // it and its remote has the keys for it.
       if (TvMode.isTv) {
+        if (key == LogicalKeyboardKey.arrowLeft ||
+            key == LogicalKeyboardKey.arrowRight) {
+          _remoteEntry = _RemoteEntry.scrubber;
+          _remoteSeekStep(key == LogicalKeyboardKey.arrowLeft ? -1 : 1);
+          return KeyEventResult.handled;
+        }
         // Held down, the wake-up press must not queue forty more of itself.
         if (event is KeyRepeatEvent) return KeyEventResult.handled;
-        _enterControlBar();
+        _enterControlBar(_RemoteEntry.playPause);
         return KeyEventResult.handled;
       }
 
@@ -1482,6 +1560,7 @@ class _PlayerScreenState extends State<PlayerScreen> {
     _relayTimer?.cancel();
     _zoomHintTimer?.cancel();
     _seekHintTimer?.cancel();
+    _remoteSeekCommit?.cancel();
     if (!_progressFlushed && _apiClient != null) {
       unawaited(_syncProgressOnExit(popAfter: false));
     }
@@ -2403,12 +2482,16 @@ class _PlayerScreenState extends State<PlayerScreen> {
                     visible: _controlsVisible,
                     timelineAnchorKey: _timelineAnchorKey,
                     isPlaying: _playerController.isPlaying,
-                    position: _playerController.position,
+                    position: _displayedPosition,
                     duration: _playerController.duration,
                     buffered: _bufferedFraction,
                     onPlayPause: _togglePlayPause,
                     onRewind: () => _seekRelative(-10),
                     onForward: () => _seekRelative(10),
+                    // The scrubber under the remote chains its steps instead
+                    // of seeking on each one — see [_remoteSeekStep].
+                    onScrubStepBack: () => _remoteSeekStep(-1),
+                    onScrubStepForward: () => _remoteSeekStep(1),
                     onSeekFraction: _seekToFraction,
                     onScrubbingChanged: (scrubbing) {
                       // Hold the chrome open for the whole drag, then start
@@ -2874,3 +2957,6 @@ class _ResolvedChrome {
 
   FixedChromeId? get fixedChrome => config.fixedChrome;
 }
+
+/// Where the remote lands when the player's HUD comes up.
+enum _RemoteEntry { playPause, scrubber }

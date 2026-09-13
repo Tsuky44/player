@@ -765,14 +765,15 @@ void main() {
       expect(backs, 1);
     });
 
-    testWidgets('the settings button is reachable going right along the row',
-        (tester) async {
+    testWidgets('down from the transport row reaches the utilities, and right '
+        'walks them to the settings', (tester) async {
       final playPause = FocusNode();
       addTearDown(playPause.dispose);
 
       await pumpChrome(
         tester,
-        width: 1280,
+        width: 960,
+        height: 540,
         isTv: true,
         playPauseFocusNode: playPause,
       );
@@ -780,26 +781,79 @@ void main() {
       playPause.requestFocus();
       await tester.pump();
 
-      // The utilities live on the transport row in this arrangement, so the
-      // remote reaches them by walking right — never by guessing a jump
-      // upwards into a cluster that is not in its band.
-      var reached = false;
-      for (var press = 0; press < 12 && !reached; press++) {
-        await tester.sendKeyEvent(LogicalKeyboardKey.arrowRight);
-        await tester.pump();
+      bool focusedOn(IconData icon) {
         final context = primaryFocus?.context;
-        if (context == null) continue;
-        reached = find
+        if (context == null) return false;
+        return find
             .descendant(
               of: find.byWidget(context.widget),
-              matching: find.byIcon(Icons.settings_rounded),
+              matching: find.byIcon(icon),
             )
             .evaluate()
             .isNotEmpty;
       }
 
+      // The phone's arrangement: the utilities sit on their own centred row
+      // under the transport, so the remote goes down to them, not sideways.
+      await tester.sendKeyEvent(LogicalKeyboardKey.arrowDown);
+      await tester.pump();
+      expect(focusedOn(Icons.pause_rounded), isFalse,
+          reason: 'down from play/pause must leave the transport row');
+
+      var reached = focusedOn(Icons.settings_rounded);
+      for (var press = 0; press < 8 && !reached; press++) {
+        await tester.sendKeyEvent(LogicalKeyboardKey.arrowRight);
+        await tester.pump();
+        reached = focusedOn(Icons.settings_rounded);
+      }
+
       expect(reached, isTrue,
-          reason: 'the settings button was never reached going right');
+          reason: 'the settings button was never reached along the row');
+    });
+  });
+
+  group('the television chrome is the phone chrome, at television size', () {
+    testWidgets('utilities are stacked under the transport, as on a phone',
+        (tester) async {
+      await pumpChrome(tester, width: 960, height: 540, isTv: true);
+
+      final play = tester.getCenter(find.byIcon(Icons.pause_rounded));
+      final settings = tester.getCenter(find.byIcon(Icons.settings_rounded));
+
+      expect(settings.dy, greaterThan(play.dy),
+          reason: 'the utilities row belongs under the transport');
+      // Both rows centred, like the phone's.
+      expect((play.dx - 480).abs(), lessThan(40));
+    });
+
+    testWidgets('drawn larger than the phone chrome', (tester) async {
+      await pumpChrome(tester, width: 960, height: 540, isTv: true);
+      final tvIcon = tester.getSize(find.byIcon(Icons.settings_rounded));
+
+      await pumpChrome(tester, width: 700, height: 400, showVolume: false);
+      final phoneIcon = tester.getSize(find.byIcon(Icons.settings_rounded));
+
+      expect(tvIcon.height, greaterThan(phoneIcon.height));
+    });
+
+    testWidgets('no brightness bar, even when a brightness is supplied',
+        (tester) async {
+      await pumpChrome(
+        tester,
+        width: 960,
+        height: 540,
+        isTv: true,
+        brightness: 0.5,
+        onBrightnessChanged: (_) {},
+      );
+
+      expect(find.byType(EmbyBrightnessSlider), findsNothing);
+    });
+
+    testWidgets('no fullscreen toggle: there is no window', (tester) async {
+      await pumpChrome(tester, width: 960, height: 540, isTv: true);
+
+      expect(find.byIcon(Icons.fullscreen_rounded), findsNothing);
     });
   });
 }

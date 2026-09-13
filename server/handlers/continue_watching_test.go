@@ -71,6 +71,11 @@ func setupContinueWatchingTestDB(t *testing.T) (cleanup func()) {
 func TestBuildShowContinueWatching_InProgressEpisode(t *testing.T) {
 	cleanup := setupContinueWatchingTestDB(t)
 	defer cleanup()
+	// This fixture starts below the 10% threshold; this scenario requires an
+	// episode that has actually crossed it. Keep the shared sync fixture intact.
+	if _, err := database.DB.Exec("UPDATE progressions SET current_position_seconds = 300 WHERE user_id = 1"); err != nil {
+		t.Fatal(err)
+	}
 
 	items, err := buildShowContinueWatching(1, nil)
 	if err != nil {
@@ -85,8 +90,8 @@ func TestBuildShowContinueWatching_InProgressEpisode(t *testing.T) {
 	if items[0].EpisodeTitle != "Cinq cent enfants" {
 		t.Fatalf("EpisodeTitle = %q", items[0].EpisodeTitle)
 	}
-	if items[0].CurrentPositionSeconds != 254 {
-		t.Fatalf("position = %d, want 254", items[0].CurrentPositionSeconds)
+	if items[0].CurrentPositionSeconds != 300 {
+		t.Fatalf("position = %d, want 300", items[0].CurrentPositionSeconds)
 	}
 }
 
@@ -275,6 +280,9 @@ func TestBuildContinueWatching_HiddenEntries(t *testing.T) {
 func TestBuildContinueWatching_MovieAndShow(t *testing.T) {
 	cleanup := setupContinueWatchingTestDB(t)
 	defer cleanup()
+	if _, err := database.DB.Exec("UPDATE progressions SET current_position_seconds = 300 WHERE user_id = 1"); err != nil {
+		t.Fatal(err)
+	}
 
 	res, err := database.DB.Exec(
 		`INSERT INTO medias (type, title, file_path, duration) VALUES (?, ?, ?, ?)`,

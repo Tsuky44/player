@@ -9,6 +9,7 @@ import '../../providers/library_provider.dart';
 import '../../services/api_client.dart';
 import '../../services/media_details_cache.dart';
 import '../../theme/app_colors.dart';
+import '../../tv/tv_focus.dart';
 import '../../tv/tv_mode.dart';
 import '../../utils/responsive.dart';
 import '../../widgets/global/episode_tile.dart';
@@ -614,35 +615,39 @@ class _ShowDetailScreenState extends State<ShowDetailScreen> {
                               ),
                             ))
                         .toList(),
-                    child: Container(
-                      padding: const EdgeInsets.symmetric(
-                          horizontal: 14, vertical: 9),
-                      decoration: BoxDecoration(
-                        color: AppColors.surfaceElevated,
-                        borderRadius: BorderRadius.circular(12),
-                        border: Border.all(color: AppColors.border),
-                      ),
-                      child: Row(
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          Text(
-                            selectedSeason == null
-                                ? 'Saison'
-                                : seasonLabel(selectedSeason),
-                            style: Theme.of(context)
-                                .textTheme
-                                .bodyMedium
-                                ?.copyWith(
-                                  color: selectedSeason == null
-                                      ? AppColors.textSecondary
-                                      : AppColors.textPrimary,
-                                  fontWeight: FontWeight.w600,
-                                ),
-                          ),
-                          const SizedBox(width: 8),
-                          const Icon(Icons.expand_more_rounded,
-                              size: 18, color: AppColors.textSecondary),
-                        ],
+                    // The popup's ink well holds the focus; the halo is how a
+                    // remote sees it landed here.
+                    child: TvFocusHalo(
+                      child: Container(
+                        padding: const EdgeInsets.symmetric(
+                            horizontal: 14, vertical: 9),
+                        decoration: BoxDecoration(
+                          color: AppColors.surfaceElevated,
+                          borderRadius: BorderRadius.circular(12),
+                          border: Border.all(color: AppColors.border),
+                        ),
+                        child: Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Text(
+                              selectedSeason == null
+                                  ? 'Saison'
+                                  : seasonLabel(selectedSeason),
+                              style: Theme.of(context)
+                                  .textTheme
+                                  .bodyMedium
+                                  ?.copyWith(
+                                    color: selectedSeason == null
+                                        ? AppColors.textSecondary
+                                        : AppColors.textPrimary,
+                                    fontWeight: FontWeight.w600,
+                                  ),
+                            ),
+                            const SizedBox(width: 8),
+                            const Icon(Icons.expand_more_rounded,
+                                size: 18, color: AppColors.textSecondary),
+                          ],
+                        ),
                       ),
                     ),
                   ),

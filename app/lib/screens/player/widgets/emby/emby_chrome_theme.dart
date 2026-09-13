@@ -57,7 +57,15 @@ abstract final class EmbyChromeTheme {
   /// [scale] trims what is *drawn* without touching what is touched — see
   /// [EmbyChromeMetrics.scaledBy]. It is how an iPhone gets a slightly smaller
   /// chrome than the same widget on Android.
-  static EmbyChromeMetrics metricsFor(double width, {double scale = 1}) {
+  ///
+  /// A television ignores the width: it always gets the phone's arrangement,
+  /// drawn at [EmbyChromeMetrics.tv] sizes. See [EmbyChromeMetrics.tv].
+  static EmbyChromeMetrics metricsFor(
+    double width, {
+    double scale = 1,
+    bool tv = false,
+  }) {
+    if (tv) return const EmbyChromeMetrics.tv();
     final base = width < compactBreakpoint
         ? const EmbyChromeMetrics.compact()
         : const EmbyChromeMetrics.wide();
@@ -91,7 +99,20 @@ class EmbyChromeMetrics {
   /// Gap between two icons in a cluster.
   final double clusterGap;
 
+  /// Stacked arrangement: title block, scrubber, transport, then utilities on
+  /// their own row — the phone's layout.
   final bool isCompact;
+
+  /// Height of the TMDB logo in the top bar, and the size of the title text
+  /// standing in for it.
+  final double logoHeight;
+  final double brandTextSize;
+
+  /// Space kept free under the last row of the chrome and above the top bar.
+  final double bottomInset;
+  final double topInset;
+
+  final double skipIntroTextSize;
 
   const EmbyChromeMetrics.wide()
       : gutter = 32,
@@ -105,7 +126,12 @@ class EmbyChromeMetrics {
         barThicknessActive = 6,
         handleSize = 13,
         clusterGap = 4,
-        isCompact = false;
+        isCompact = false,
+        logoHeight = 38,
+        brandTextSize = 18,
+        bottomInset = 24,
+        topInset = 12,
+        skipIntroTextSize = 14;
 
   const EmbyChromeMetrics.compact()
       : gutter = 16,
@@ -119,7 +145,41 @@ class EmbyChromeMetrics {
         barThicknessActive = 6,
         handleSize = 13,
         clusterGap = 0,
-        isCompact = true;
+        isCompact = true,
+        logoHeight = 26,
+        brandTextSize = 15,
+        bottomInset = 16,
+        topInset = 12,
+        skipIntroTextSize = 13;
+
+  /// The phone's arrangement at television sizes.
+  ///
+  /// Same rows, same order, same centred transport and utilities as on a phone
+  /// held sideways — only drawn for a screen three metres away. Most sets
+  /// report around 960 logical pixels across, so the width-based pick would
+  /// hand them the wide desktop layout; it is the phone's that stacks the
+  /// controls in rows a D-pad walks straight up and down.
+  ///
+  /// The insets keep every control inside the title-safe area: a good share of
+  /// televisions still crop a few percent off each edge.
+  const EmbyChromeMetrics.tv()
+      : gutter = 48,
+        hitSize = 52,
+        iconSize = 28,
+        playIconSize = 46,
+        titleSize = 24,
+        metaSize = 15,
+        timeSize = 15,
+        barThickness = 5,
+        barThicknessActive = 8,
+        handleSize = 16,
+        clusterGap = 12,
+        isCompact = true,
+        logoHeight = 40,
+        brandTextSize = 20,
+        bottomInset = 28,
+        topInset = 24,
+        skipIntroTextSize = 16;
 
   const EmbyChromeMetrics._({
     required this.gutter,
@@ -134,6 +194,11 @@ class EmbyChromeMetrics {
     required this.handleSize,
     required this.clusterGap,
     required this.isCompact,
+    required this.logoHeight,
+    required this.brandTextSize,
+    required this.bottomInset,
+    required this.topInset,
+    required this.skipIntroTextSize,
   });
 
   /// The same chrome, drawn smaller.
@@ -156,5 +221,11 @@ class EmbyChromeMetrics {
         handleSize: handleSize,
         clusterGap: clusterGap * factor,
         isCompact: isCompact,
+        // Left as they were before the scale existed.
+        logoHeight: logoHeight,
+        brandTextSize: brandTextSize,
+        bottomInset: bottomInset,
+        topInset: topInset,
+        skipIntroTextSize: skipIntroTextSize,
       );
 }
