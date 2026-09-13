@@ -186,35 +186,22 @@ class _EmbyProgressBarState extends State<EmbyProgressBar> {
 
         if (!widget.focusable) return bar;
 
+        // No frame around a focused bar: the bar itself says it. It thickens
+        // and turns to the accent, which is what the eye is already on.
         return Focus(
           focusNode: widget.focusNode,
           onKeyEvent: _handleKey,
           onFocusChange: (focused) => setState(() => _focused = focused),
-          child: Stack(
-            clipBehavior: Clip.none,
-            children: [
-              bar,
-              // The bar is four pixels tall; the ring the rest of the chrome
-              // draws around a button would be a line on a line. It gets a
-              // frame around its whole hit row instead, which is what reads
-              // from a sofa.
-              if (_focused)
-                Positioned.fill(
-                  child: IgnorePointer(
-                    child: DecoratedBox(
-                      decoration: BoxDecoration(
-                        borderRadius: BorderRadius.circular(8),
-                        border: Border.all(color: AppColors.accent, width: 2),
-                      ),
-                    ),
-                  ),
-                ),
-            ],
-          ),
+          child: bar,
         );
       },
     );
   }
+
+  /// The played part and the handle: the accent under the remote, white
+  /// otherwise.
+  Color get _playedColor =>
+      _focused ? AppColors.accent : EmbyChromeTheme.progressPlayed;
 
   Widget _buildBar(double width) {
     final m = widget.metrics;
@@ -242,7 +229,7 @@ class _EmbyProgressBarState extends State<EmbyProgressBar> {
             ),
             _fill(
               width: _shownFraction * width,
-              color: EmbyChromeTheme.progressPlayed,
+              color: _playedColor,
               radius: radius,
             ),
             // Ticks sit on top of the fills, so a chapter boundary stays
@@ -286,8 +273,8 @@ class _EmbyProgressBarState extends State<EmbyProgressBar> {
       child: Container(
         width: size,
         height: size,
-        decoration: const BoxDecoration(
-          color: EmbyChromeTheme.progressPlayed,
+        decoration: BoxDecoration(
+          color: _playedColor,
           shape: BoxShape.circle,
         ),
       ),

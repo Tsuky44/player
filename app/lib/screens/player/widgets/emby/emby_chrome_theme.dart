@@ -152,13 +152,11 @@ class EmbyChromeMetrics {
         topInset = 12,
         skipIntroTextSize = 13;
 
-  /// The phone's arrangement at television sizes.
+  /// Television sizes, for a screen three metres away.
   ///
-  /// Same rows, same order, same centred transport and utilities as on a phone
-  /// held sideways — only drawn for a screen three metres away. Most sets
-  /// report around 960 logical pixels across, so the width-based pick would
-  /// hand them the wide desktop layout; it is the phone's that stacks the
-  /// controls in rows a D-pad walks straight up and down.
+  /// Most sets report around 960 logical pixels across, so the width-based
+  /// pick would hand them the desktop sizes, drawn for a monitor at arm's
+  /// length.
   ///
   /// The insets keep every control inside the title-safe area: a good share of
   /// televisions still crop a few percent off each edge.
@@ -166,7 +164,7 @@ class EmbyChromeMetrics {
       : gutter = 48,
         hitSize = 52,
         iconSize = 28,
-        playIconSize = 46,
+        playIconSize = 56,
         titleSize = 24,
         metaSize = 15,
         timeSize = 15,

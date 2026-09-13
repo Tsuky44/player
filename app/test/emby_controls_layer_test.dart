@@ -4,6 +4,8 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:onyx/screens/player/widgets/emby/emby_brightness_slider.dart';
 import 'package:onyx/screens/player/widgets/emby/emby_chrome_theme.dart';
 import 'package:onyx/screens/player/widgets/emby/emby_controls_layer.dart';
+import 'package:onyx/screens/player/widgets/emby/emby_progress_bar.dart';
+import 'package:onyx/theme/app_colors.dart';
 
 /// Mounts the chrome at a given viewport width.
 Future<void> pumpChrome(
@@ -628,14 +630,14 @@ void main() {
         onOpenEpisodes: () {},
       );
 
-      // One per button: back, episodes, subtitles, audio, speed, settings,
-      // fullscreen, previous, rewind, play/pause, forward, next. A count is
-      // what catches a control added later without a way to reach it.
+      // One per control: back, episodes, subtitles, audio, settings,
+      // previous, rewind, play/pause, forward, next, and the scrubber. A count
+      // is what catches a control added later without a way to reach it.
       final focusable = tester
           .widgetList<Focus>(find.byType(Focus))
           .where((f) => f.canRequestFocus)
           .length;
-      expect(focusable, greaterThanOrEqualTo(12));
+      expect(focusable, greaterThanOrEqualTo(11));
     });
 
     testWidgets('a hidden chrome holds no focus', (tester) async {
@@ -660,116 +662,175 @@ void main() {
   });
 
   group('the D-pad walks the television chrome', () {
-    testWidgets('up from the transport row lands on the scrubber, which seeks',
-        (tester) async {
-      var rewound = 0;
-      final playPause = FocusNode();
+    /// Mounts the television chrome at a set's usual logical size, with the
+    /// remote on play/pause.
+    Future<FocusNode> pumpTv(
+      WidgetTester tester, {
+      FocusNode? progress,
+      VoidCallback? onRewind,
+      VoidCallback? onSkipNext,
+    }) async {
+      final playPause = FocusNode(debugLabel: 'play-pause');
       addTearDown(playPause.dispose);
-
       await pumpChrome(
         tester,
-        width: 1280,
+        width: 960,
+        height: 540,
         isTv: true,
         playPauseFocusNode: playPause,
-        onRewind: () => rewound++,
+        progressFocusNode: progress,
+        onRewind: onRewind,
+        onSkipNext: onSkipNext,
       );
-
       playPause.requestFocus();
       await tester.pump();
+      return playPause;
+    }
 
-      await tester.sendKeyEvent(LogicalKeyboardKey.arrowUp);
-      await tester.pump();
-      // Left on the scrubber seeks instead of moving the focus: that is how we
-      // know the focus landed there and not on a button that ignores it.
-      await tester.sendKeyEvent(LogicalKeyboardKey.arrowLeft);
-      await tester.pump();
+    bool focusedOn(WidgetTester tester, IconData icon) {
+      final context = primaryFocus?.context;
+      if (context == null) return false;
+      return find
+          .descendant(
+            of: find.byWidget(context.widget),
+            matching: find.byIcon(icon),
+          )
+          .evaluate()
+          .isNotEmpty;
+    }
 
-      expect(rewound, 1);
-    });
-
-    testWidgets('the scrubber takes the node the player hands it',
+    testWidgets('down from play/pause lands on the timeline, which seeks',
         (tester) async {
       var rewound = 0;
-      final progress = FocusNode();
+      final progress = FocusNode(debugLabel: 'progress');
       addTearDown(progress.dispose);
+      await pumpTv(tester, progress: progress, onRewind: () => rewound++);
 
-      await pumpChrome(
-        tester,
-        width: 1280,
-        isTv: true,
-        progressFocusNode: progress,
-        onRewind: () => rewound++,
-      );
-
-      // The player puts the remote here the moment the HUD comes up, so it
-      // has to be reachable by node and not only by traversal.
-      progress.requestFocus();
+      await tester.sendKeyEvent(LogicalKeyboardKey.arrowDown);
       await tester.pump();
       expect(progress.hasFocus, isTrue);
 
       await tester.sendKeyEvent(LogicalKeyboardKey.arrowLeft);
       await tester.pump();
       expect(rewound, 1);
+      expect(progress.hasFocus, isTrue,
+          reason: 'left on the timeline seeks, it does not leave it');
     });
 
-    testWidgets('OK on the scrubber is play/pause', (tester) async {
-      var toggled = 0;
-      final progress = FocusNode();
+    testWidgets('up from the timeline comes back to play/pause',
+        (tester) async {
+      final progress = FocusNode(debugLabel: 'progress');
       addTearDown(progress.dispose);
-
-      await pumpChrome(
-        tester,
-        width: 1280,
-        isTv: true,
-        progressFocusNode: progress,
-        onPlayPause: () => toggled++,
-      );
+      final playPause = await pumpTv(tester, progress: progress);
 
       progress.requestFocus();
       await tester.pump();
-
-      // The bar is where the remote lands, so the most common press of all
-      // has to work from it without walking down to the transport row.
-      await tester.sendKeyEvent(LogicalKeyboardKey.select);
+      await tester.sendKeyEvent(LogicalKeyboardKey.arrowUp);
       await tester.pump();
-      expect(toggled, 1);
 
-      await tester.sendKeyEvent(LogicalKeyboardKey.enter);
-      await tester.pump();
-      expect(toggled, 2);
+      expect(playPause.hasFocus, isTrue);
     });
 
-    testWidgets('up from the scrubber reaches the back button', (tester) async {
+    testWidgets('up from play/pause reaches the top row, where right walks to '
+        'the settings and stops there', (tester) async {
+      await pumpTv(tester);
+
+      await tester.sendKeyEvent(LogicalKeyboardKey.arrowUp);
+      await tester.pump();
+
+      var reached = focusedOn(tester, Icons.settings_rounded);
+      for (var press = 0; press < 6 && !reached; press++) {
+        await tester.sendKeyEvent(LogicalKeyboardKey.arrowRight);
+        await tester.pump();
+        reached = focusedOn(tester, Icons.settings_rounded);
+      }
+      expect(reached, isTrue, reason: 'the settings button was never reached');
+
+      await tester.sendKeyEvent(LogicalKeyboardKey.arrowRight);
+      await tester.pump();
+      expect(focusedOn(tester, Icons.settings_rounded), isTrue,
+          reason: 'the edge of a row is a wall');
+    });
+
+    testWidgets('left and right stay on the transport row', (tester) async {
+      await pumpTv(tester, onSkipNext: () {});
+
+      for (var press = 0; press < 4; press++) {
+        await tester.sendKeyEvent(LogicalKeyboardKey.arrowLeft);
+        await tester.pump();
+      }
+      expect(focusedOn(tester, Icons.replay_10_rounded), isTrue);
+
+      for (var press = 0; press < 6; press++) {
+        await tester.sendKeyEvent(LogicalKeyboardKey.arrowRight);
+        await tester.pump();
+      }
+      expect(focusedOn(tester, Icons.skip_next_rounded), isTrue);
+    });
+
+    testWidgets('up from the top row goes nowhere', (tester) async {
       var backs = 0;
       final playPause = FocusNode();
       addTearDown(playPause.dispose);
-
       await pumpChrome(
         tester,
-        width: 1280,
+        width: 960,
+        height: 540,
         isTv: true,
         playPauseFocusNode: playPause,
         onBack: () => backs++,
       );
-
       playPause.requestFocus();
       await tester.pump();
 
-      await tester.sendKeyEvent(LogicalKeyboardKey.arrowUp); // scrubber
+      await tester.sendKeyEvent(LogicalKeyboardKey.arrowUp);
       await tester.pump();
-      await tester.sendKeyEvent(LogicalKeyboardKey.arrowUp); // back button
+      for (var press = 0; press < 6; press++) {
+        await tester.sendKeyEvent(LogicalKeyboardKey.arrowLeft);
+        await tester.pump();
+      }
+      expect(focusedOn(tester, Icons.arrow_back_ios_new_rounded), isTrue);
+
+      await tester.sendKeyEvent(LogicalKeyboardKey.arrowUp);
       await tester.pump();
       await tester.sendKeyEvent(LogicalKeyboardKey.enter);
       await tester.pump();
-
       expect(backs, 1);
     });
+  });
 
-    testWidgets('down from the transport row reaches the utilities, and right '
-        'walks them to the settings', (tester) async {
+  group('the television chrome is laid out like Crunchyroll', () {
+    testWidgets('menus at the top right, transport in the middle, timeline '
+        'at the bottom', (tester) async {
+      await pumpChrome(tester, width: 960, height: 540, isTv: true);
+
+      final play = tester.getCenter(find.byIcon(Icons.pause_rounded));
+      final settings = tester.getCenter(find.byIcon(Icons.settings_rounded));
+      final subtitles =
+          tester.getCenter(find.byIcon(Icons.closed_caption_rounded));
+      final audio = tester.getCenter(find.byIcon(Icons.graphic_eq_rounded));
+      final elapsed = tester.getCenter(find.text('42:00'));
+
+      expect((play.dx - 480).abs(), lessThan(4));
+      expect((play.dy - 270).abs(), lessThan(4),
+          reason: 'the transport sits in the middle of the picture');
+      for (final menu in [settings, subtitles, audio]) {
+        expect(menu.dy, lessThan(100));
+        expect(menu.dx, greaterThan(600));
+      }
+      expect(elapsed.dy, greaterThan(play.dy));
+    });
+
+    testWidgets('no speed button: the rate is in the settings menu',
+        (tester) async {
+      await pumpChrome(tester, width: 960, height: 540, isTv: true);
+      expect(find.byIcon(Icons.speed_rounded), findsNothing);
+    });
+
+    testWidgets('the button under the remote is filled with the accent',
+        (tester) async {
       final playPause = FocusNode();
       addTearDown(playPause.dispose);
-
       await pumpChrome(
         tester,
         width: 960,
@@ -778,52 +839,64 @@ void main() {
         playPauseFocusNode: playPause,
       );
 
+      bool filled(IconData icon) => tester
+          .widgetList<AnimatedContainer>(find.ancestor(
+            of: find.byIcon(icon),
+            matching: find.byType(AnimatedContainer),
+          ))
+          .any((box) =>
+              (box.decoration as BoxDecoration?)?.color == AppColors.accent);
+
+      expect(filled(Icons.pause_rounded), isFalse);
+
       playPause.requestFocus();
-      await tester.pump();
+      await tester.pumpAndSettle();
+      expect(filled(Icons.pause_rounded), isTrue);
 
-      bool focusedOn(IconData icon) {
-        final context = primaryFocus?.context;
-        if (context == null) return false;
-        return find
-            .descendant(
-              of: find.byWidget(context.widget),
-              matching: find.byIcon(icon),
-            )
-            .evaluate()
-            .isNotEmpty;
-      }
-
-      // The phone's arrangement: the utilities sit on their own centred row
-      // under the transport, so the remote goes down to them, not sideways.
-      await tester.sendKeyEvent(LogicalKeyboardKey.arrowDown);
-      await tester.pump();
-      expect(focusedOn(Icons.pause_rounded), isFalse,
-          reason: 'down from play/pause must leave the transport row');
-
-      var reached = focusedOn(Icons.settings_rounded);
-      for (var press = 0; press < 8 && !reached; press++) {
-        await tester.sendKeyEvent(LogicalKeyboardKey.arrowRight);
-        await tester.pump();
-        reached = focusedOn(Icons.settings_rounded);
-      }
-
-      expect(reached, isTrue,
-          reason: 'the settings button was never reached along the row');
+      // Moved to the next button: the fill follows.
+      await tester.sendKeyEvent(LogicalKeyboardKey.arrowRight);
+      await tester.pumpAndSettle();
+      expect(filled(Icons.pause_rounded), isFalse);
+      expect(filled(Icons.forward_10_rounded), isTrue);
     });
-  });
 
-  group('the television chrome is the phone chrome, at television size', () {
-    testWidgets('utilities are stacked under the transport, as on a phone',
-        (tester) async {
-      await pumpChrome(tester, width: 960, height: 540, isTv: true);
+    testWidgets('the focused timeline thickens and turns to the accent, with '
+        'no frame around it', (tester) async {
+      final progress = FocusNode();
+      addTearDown(progress.dispose);
+      await pumpChrome(
+        tester,
+        width: 960,
+        height: 540,
+        isTv: true,
+        progressFocusNode: progress,
+      );
 
-      final play = tester.getCenter(find.byIcon(Icons.pause_rounded));
-      final settings = tester.getCenter(find.byIcon(Icons.settings_rounded));
+      final bar = find.byType(EmbyProgressBar);
+      bool accentFill() => tester
+          .widgetList<DecoratedBox>(
+              find.descendant(of: bar, matching: find.byType(DecoratedBox)))
+          .any((box) =>
+              (box.decoration as BoxDecoration).color == AppColors.accent);
+      bool framed() => tester
+          .widgetList<DecoratedBox>(
+              find.descendant(of: bar, matching: find.byType(DecoratedBox)))
+          .any((box) => (box.decoration as BoxDecoration).border != null);
+      double thickness() => tester
+          .getSize(find
+              .descendant(of: bar, matching: find.byType(AnimatedContainer))
+              .first)
+          .height;
 
-      expect(settings.dy, greaterThan(play.dy),
-          reason: 'the utilities row belongs under the transport');
-      // Both rows centred, like the phone's.
-      expect((play.dx - 480).abs(), lessThan(40));
+      final restingThickness = thickness();
+      expect(accentFill(), isFalse);
+
+      progress.requestFocus();
+      await tester.pumpAndSettle();
+
+      expect(accentFill(), isTrue);
+      expect(framed(), isFalse);
+      expect(thickness(), greaterThan(restingThickness));
     });
 
     testWidgets('drawn larger than the phone chrome', (tester) async {

@@ -2492,6 +2492,9 @@ class _PlayerScreenState extends State<PlayerScreen> {
                     // of seeking on each one — see [_remoteSeekStep].
                     onScrubStepBack: () => _remoteSeekStep(-1),
                     onScrubStepForward: () => _remoteSeekStep(1),
+                    // Walking the chrome is using it: the countdown that
+                    // hides it starts over.
+                    onRemoteNavigate: _hideControlsWithDelay,
                     onSeekFraction: _seekToFraction,
                     onScrubbingChanged: (scrubbing) {
                       // Hold the chrome open for the whole drag, then start

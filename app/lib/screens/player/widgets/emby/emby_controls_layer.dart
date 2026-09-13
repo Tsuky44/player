@@ -2,7 +2,9 @@
 import 'package:flutter/material.dart';
 
 import '../../../../desktop_window.dart';
+import '../../../../theme/app_colors.dart';
 import '../../../../tv/tv_focus.dart';
+import '../../../../tv/tv_focus_rows.dart';
 import '../../../../utils/format.dart';
 import '../../../../widgets/global/app_network_image.dart';
 import '../avoid_cutouts.dart';
@@ -19,8 +21,8 @@ import 'emby_progress_bar.dart';
 /// Two arrangements, one breakpoint ([EmbyChromeTheme.compactBreakpoint]):
 /// wide puts the title block and the utility cluster on one row above the
 /// scrubber, compact stacks them so nothing collides at phone widths. A
-/// television always gets the compact one, at its own sizes — see
-/// [EmbyChromeMetrics.tv].
+/// television gets its own, laid out like Crunchyroll's — see
+/// [_buildTvChrome].
 class EmbyControlsLayer extends StatelessWidget {
   final bool visible;
 
@@ -46,6 +48,10 @@ class EmbyControlsLayer extends StatelessWidget {
   /// the key is held instead of seeking on each one.
   final VoidCallback? onScrubStepBack;
   final VoidCallback? onScrubStepForward;
+
+  /// Television only: the remote moved between the chrome's controls. The
+  /// player uses it to hold the chrome on screen while someone is using it.
+  final VoidCallback? onRemoteNavigate;
 
   // --- Identity -----------------------------------------------------------
 
@@ -125,12 +131,12 @@ class EmbyControlsLayer extends StatelessWidget {
 
   /// Driven by a remote rather than a mouse or a finger.
   ///
-  /// The chrome is the phone's — same rows, same places — drawn at television
-  /// size, with what a remote has no use for taken out: the volume control (a
-  /// set has its own on its own remote), the brightness bar (a television's
-  /// backlight is not this app's to drive) and the fullscreen toggle (there is
-  /// no window). The scrubber becomes a focus stop that seeks with left and
-  /// right.
+  /// The chrome takes its television arrangement ([_buildTvChrome]), without
+  /// what a remote has no use for: the volume control (a set has its own on
+  /// its own remote), the brightness bar (a television's backlight is not this
+  /// app's to drive), the fullscreen toggle (there is no window) and the speed
+  /// button (the rate is in the settings menu). The scrubber becomes a focus
+  /// stop that seeks with left and right.
   final bool isTv;
 
   /// Where the remote lands when it enters the control bar. Play/pause is the
@@ -188,6 +194,7 @@ class EmbyControlsLayer extends StatelessWidget {
     this.onScrubbingChanged,
     this.onScrubStepBack,
     this.onScrubStepForward,
+    this.onRemoteNavigate,
     this.title,
     this.overline,
     this.logoUrl,
@@ -243,8 +250,9 @@ class EmbyControlsLayer extends StatelessWidget {
       builder: (context, constraints) {
         final width = constraints.maxWidth;
         final m = EmbyChromeTheme.metricsFor(width, scale: scale, tv: isTv);
+        if (isTv) return _buildTvChrome(m);
         final hasBrightness =
-            !isTv && brightness != null && onBrightnessChanged != null;
+            brightness != null && onBrightnessChanged != null;
         // Not a Stack.
         //
         // The brightness bar shares the right edge with the utilities cluster
@@ -330,6 +338,161 @@ class EmbyControlsLayer extends StatelessWidget {
           ],
         );
       },
+    );
+  }
+
+  // --- Television ---------------------------------------------------------
+
+  /// The television arrangement, after Crunchyroll's: the title and the track
+  /// menus along the top, the transport in the middle of the picture, the
+  /// timeline along the bottom.
+  ///
+  /// Three rows, walked in straight lines ([TvFocusRows]): left and right stay
+  /// on the row, up and down go to the next one — onto play/pause in the
+  /// middle, onto the timeline at the bottom, onto the nearest button at the
+  /// top.
+  Widget _buildTvChrome(EmbyChromeMetrics m) {
+    return TvFocusRows(
+      onNavigate: onRemoteNavigate,
+      child: Stack(
+        fit: StackFit.expand,
+        children: [
+          // A soft shade behind the middle row, so white icons still read over
+          // a bright scene. Part of the fade like everything else.
+          Positioned.fill(
+            child: IgnorePointer(
+              child: _fadeWithChrome(
+                const DecoratedBox(
+                  decoration: BoxDecoration(
+                    gradient: RadialGradient(
+                      radius: 0.6,
+                      colors: [Color(0x59000000), Color(0x00000000)],
+                    ),
+                  ),
+                ),
+              ),
+            ),
+          ),
+          Positioned(
+            top: 0,
+            left: 0,
+            right: 0,
+            child: _fadeWithChrome(_buildTvTop(m)),
+          ),
+          Positioned.fill(
+            child: Center(
+              child: _fadeWithChrome(
+                TvFocusRow(
+                  preferredFocus: playPauseFocusNode,
+                  child: _buildTransport(m),
+                ),
+              ),
+            ),
+          ),
+          Positioned(
+            left: 0,
+            right: 0,
+            bottom: 0,
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                // Outside the fade, as on the other chromes: the offer is
+                // time-limited and must not expire behind a hidden chrome.
+                if (onSkipIntro != null)
+                  Padding(
+                    padding: EdgeInsets.fromLTRB(m.gutter, 0, m.gutter, 14),
+                    child: Align(
+                      alignment: Alignment.centerRight,
+                      child: TvFocusRow(
+                        child: _EmbySkipIntroButton(
+                          onPressed: onSkipIntro!,
+                          metrics: m,
+                        ),
+                      ),
+                    ),
+                  ),
+                _fadeWithChrome(_buildTvBottom(m)),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildTvTop(EmbyChromeMetrics m) {
+    return Container(
+      padding: EdgeInsets.fromLTRB(m.gutter, m.topInset, m.gutter, _topBarTail),
+      decoration: const BoxDecoration(gradient: EmbyChromeTheme.topScrim),
+      child: TvFocusRow(
+        child: Row(
+          children: [
+            _EmbyIconButton(
+              key: const ValueKey('emby-back'),
+              icon: Icons.arrow_back_ios_new_rounded,
+              tooltip: 'Retour',
+              metrics: m,
+              isTv: true,
+              onPressed: onBack,
+            ),
+            const SizedBox(width: 8),
+            Flexible(child: _buildBrand(m)),
+            const SizedBox(width: 24),
+            _buildUtilities(m),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildTvBottom(EmbyChromeMetrics m) {
+    return Stack(
+      children: [
+        const Positioned.fill(
+          child: IgnorePointer(
+            child: DecoratedBox(
+              decoration: BoxDecoration(gradient: EmbyChromeTheme.bottomScrim),
+            ),
+          ),
+        ),
+        Padding(
+          padding: EdgeInsets.fromLTRB(
+            m.gutter,
+            _bottomBarLead,
+            m.gutter,
+            m.bottomInset,
+          ),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              _buildTitleBlock(m),
+              const SizedBox(height: 10),
+              TvFocusRow(
+                preferredFocus: progressFocusNode,
+                child: KeyedSubtree(
+                  key: timelineAnchorKey,
+                  child: EmbyProgressBar(
+                    progress: _progressFraction,
+                    buffered: buffered,
+                    duration: duration,
+                    chapterMarks: chapterMarks,
+                    metrics: m,
+                    onSeek: onSeekFraction,
+                    onScrubbingChanged: onScrubbingChanged,
+                    focusable: true,
+                    onStepBack: onScrubStepBack ?? onRewind,
+                    onStepForward: onScrubStepForward ?? onForward,
+                    onSelect: onPlayPause,
+                    focusNode: progressFocusNode,
+                  ),
+                ),
+              ),
+              _buildTimes(m),
+            ],
+          ),
+        ),
+      ],
     );
   }
 
@@ -479,10 +642,6 @@ class EmbyControlsLayer extends StatelessWidget {
     );
   }
 
-  /// On a television this is the phone's arrangement, walked with the D-pad in
-  /// straight lines: every row is centred or full width, so each one is in the
-  /// band of the next. Up from the transport lands on the scrubber, down from
-  /// it on the utilities, and up from the scrubber on the back button.
   Widget _buildBottomRows(EmbyChromeMetrics m) {
     // Every row dodges the camera on its own: on a phone held sideways this
     // bar is half the height of the screen, so a bubble on the edge lands on
@@ -517,13 +676,6 @@ class EmbyControlsLayer extends StatelessWidget {
                 metrics: m,
                 onSeek: onSeekFraction,
                 onScrubbingChanged: onScrubbingChanged,
-                // A remote cannot drag a handle: on a television the bar is a
-                // focus stop, and left and right step through the film.
-                focusable: isTv,
-                onStepBack: isTv ? (onScrubStepBack ?? onRewind) : null,
-                onStepForward: isTv ? (onScrubStepForward ?? onForward) : null,
-                onSelect: isTv ? onPlayPause : null,
-                focusNode: isTv ? progressFocusNode : null,
               ),
             ),
           ),
@@ -580,48 +732,62 @@ class EmbyControlsLayer extends StatelessWidget {
         // Series only: a movie has no episode list to browse.
         if (onOpenEpisodes != null) ...[
           _EmbyIconButton(
+            key: const ValueKey('emby-episodes'),
             icon: Icons.playlist_play_rounded,
             tooltip: 'Épisodes suivants',
             metrics: m,
+            isTv: isTv,
             onPressed: onOpenEpisodes!,
           ),
           SizedBox(width: m.clusterGap),
         ],
         _EmbyIconButton(
+          key: const ValueKey('emby-subtitles'),
           buttonKey: subtitlesButtonKey,
           icon: Icons.closed_caption_rounded,
           tooltip: 'Sous-titres',
           metrics: m,
+          isTv: isTv,
           onPressed: onToggleSubtitles,
         ),
         SizedBox(width: m.clusterGap),
         _EmbyIconButton(
+          key: const ValueKey('emby-audio'),
           icon: Icons.graphic_eq_rounded,
           tooltip: 'Pistes audio',
           metrics: m,
+          isTv: isTv,
           onPressed: onOpenAudio,
         ),
+        // Not on a television: the rate lives in the settings menu, and one
+        // button fewer is one press fewer to reach the settings.
+        if (!isTv) ...[
+          SizedBox(width: m.clusterGap),
+          _EmbyIconButton(
+            key: const ValueKey('emby-speed'),
+            icon: Icons.speed_rounded,
+            // The current rate is the whole point of the control, so it goes
+            // in the tooltip rather than making the user open a menu to read it.
+            tooltip: 'Vitesse ×${_formatRate(playbackRate)}',
+            metrics: m,
+            onPressed: onCycleSpeed,
+          ),
+        ],
         SizedBox(width: m.clusterGap),
         _EmbyIconButton(
-          icon: Icons.speed_rounded,
-          // The current rate is the whole point of the control, so it goes in
-          // the tooltip rather than making the user open a menu to read it.
-          tooltip: 'Vitesse ×${_formatRate(playbackRate)}',
-          metrics: m,
-          onPressed: onCycleSpeed,
-        ),
-        SizedBox(width: m.clusterGap),
-        _EmbyIconButton(
+          key: const ValueKey('emby-settings'),
           buttonKey: settingsButtonKey,
           icon: Icons.settings_rounded,
           tooltip: 'Réglages',
           metrics: m,
+          isTv: isTv,
           onPressed: onOpenSettings,
         ),
         // A television has no window to fill: the button would do nothing.
         if (!isTv) ...[
           SizedBox(width: m.clusterGap),
           _EmbyIconButton(
+            key: const ValueKey('emby-fullscreen'),
             icon: Icons.fullscreen_rounded,
             tooltip: 'Plein écran',
             metrics: m,
@@ -661,49 +827,70 @@ class EmbyControlsLayer extends StatelessWidget {
   }
 
   Widget _buildTransport(EmbyChromeMetrics m) {
+    // Keyed, because the episode buttons come and go — the neighbours load
+    // after playback starts — and without keys every button after them would
+    // inherit the state, and the focus, of the one that used to sit there.
+    //
+    // On a television the seek buttons are drawn larger: they sit alone in the
+    // middle of the picture, next to a play button that is larger still.
+    final sideSize = isTv ? m.iconSize + 8 : null;
+    final gap = SizedBox(width: m.clusterGap + (isTv ? 16 : 4));
     return Row(
       mainAxisSize: MainAxisSize.min,
       children: [
         // Same rule as the next button: only when there is somewhere to go.
         if (onSkipPrevious != null) ...[
           _EmbyIconButton(
+            key: const ValueKey('emby-previous'),
             icon: Icons.skip_previous_rounded,
             tooltip: 'Épisode précédent',
             metrics: m,
+            isTv: isTv,
             onPressed: onSkipPrevious!,
           ),
-          SizedBox(width: m.clusterGap + 4),
+          gap,
         ],
         _EmbyIconButton(
+          key: const ValueKey('emby-rewind'),
           icon: Icons.replay_10_rounded,
           tooltip: 'Reculer de 10 s',
           metrics: m,
+          size: sideSize,
+          isTv: isTv,
           onPressed: onRewind,
         ),
-        SizedBox(width: m.clusterGap + 4),
+        gap,
         _EmbyIconButton(
+          key: const ValueKey('emby-play-pause'),
           icon: isPlaying ? Icons.pause_rounded : Icons.play_arrow_rounded,
           tooltip: isPlaying ? 'Pause' : 'Lecture',
           metrics: m,
           size: m.playIconSize,
           focusNode: playPauseFocusNode,
+          isTv: isTv,
+          prominent: isTv,
           onPressed: onPlayPause,
         ),
-        SizedBox(width: m.clusterGap + 4),
+        gap,
         _EmbyIconButton(
+          key: const ValueKey('emby-forward'),
           icon: Icons.forward_10_rounded,
           tooltip: 'Avancer de 10 s',
           metrics: m,
+          size: sideSize,
+          isTv: isTv,
           onPressed: onForward,
         ),
         // Series only: on a movie, or at the end of a season, there is nothing
         // to go to and the button would sit there doing nothing.
         if (onSkipNext != null) ...[
-          SizedBox(width: m.clusterGap + 4),
+          gap,
           _EmbyIconButton(
+            key: const ValueKey('emby-next'),
             icon: Icons.skip_next_rounded,
             tooltip: 'Épisode suivant',
             metrics: m,
+            isTv: isTv,
             onPressed: onSkipNext!,
           ),
         ],
@@ -712,8 +899,6 @@ class EmbyControlsLayer extends StatelessWidget {
   }
 }
 
-/// Flat Emby icon button: no chrome, no background — only the icon brightening
-/// on hover.
 /// Flat Emby icon button, reachable three ways: pointer, finger, and D-pad.
 ///
 /// The remote is the reason this is wrapped in a [TvFocusable] rather than
@@ -735,7 +920,16 @@ class _EmbyIconButton extends StatefulWidget {
   /// Supplied for the one button the remote is sent to on entry.
   final FocusNode? focusNode;
 
+  /// Television treatment: the button under the remote is filled with the
+  /// accent, which reads from across a room where a brighter icon does not.
+  final bool isTv;
+
+  /// Television only: a translucent disc even at rest, for the one button the
+  /// transport is built around.
+  final bool prominent;
+
   const _EmbyIconButton({
+    super.key,
     required this.icon,
     required this.tooltip,
     required this.onPressed,
@@ -743,6 +937,8 @@ class _EmbyIconButton extends StatefulWidget {
     this.size,
     this.buttonKey,
     this.focusNode,
+    this.isTv = false,
+    this.prominent = false,
   });
 
   @override
@@ -751,11 +947,22 @@ class _EmbyIconButton extends StatefulWidget {
 
 class _EmbyIconButtonState extends State<_EmbyIconButton> {
   bool _hovered = false;
-  bool _focused = false;
 
-  /// Hover and focus are the same state to this button: the pointer is over it,
-  /// or the remote is on it. Either way it is the one being aimed at.
-  bool get _active => _hovered || _focused;
+  /// Owned when the chrome does not hand one in. The highlight is read from
+  /// the node itself rather than from a flag kept in step with focus
+  /// callbacks: a callback reports a *change*, and a node that arrives already
+  /// focused, or moves between buttons, never produces one — which is how a
+  /// button could hold the remote without lighting up.
+  FocusNode? _ownedNode;
+
+  FocusNode get _node =>
+      widget.focusNode ?? (_ownedNode ??= FocusNode(debugLabel: 'emby-button'));
+
+  @override
+  void dispose() {
+    _ownedNode?.dispose();
+    super.dispose();
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -768,17 +975,16 @@ class _EmbyIconButtonState extends State<_EmbyIconButton> {
       message: widget.tooltip,
       waitDuration: const Duration(milliseconds: 500),
       child: TvFocusable(
-        focusNode: widget.focusNode,
+        focusNode: _node,
         onSelect: widget.onPressed,
         // A circle, so the ring hugs a round icon instead of boxing it.
         borderRadius: BorderRadius.circular(box / 2),
+        // The television fill replaces the ring.
+        showRing: !widget.isTv,
         // Slightly more than the app's cards get: an icon is a much smaller
         // thing to spot from a sofa, and the box has enough padding around it
         // that growing it never reaches its neighbour.
-        focusScale: 1.12,
-        onFocusChange: (focused) {
-          if (_focused != focused) setState(() => _focused = focused);
-        },
+        focusScale: widget.isTv ? 1.15 : 1.12,
         child: MouseRegion(
           cursor: SystemMouseCursors.click,
           onEnter: (_) => setState(() => _hovered = true),
@@ -787,15 +993,43 @@ class _EmbyIconButtonState extends State<_EmbyIconButton> {
             key: widget.buttonKey,
             behavior: HitTestBehavior.opaque,
             onTap: widget.onPressed,
-            child: SizedBox(
-              width: box,
-              height: box,
-              child: Icon(
-                widget.icon,
-                size: iconSize,
-                color:
-                    _active ? EmbyChromeTheme.iconActive : EmbyChromeTheme.icon,
-              ),
+            child: ListenableBuilder(
+              listenable: _node,
+              builder: (context, _) {
+                final focused = _node.hasFocus;
+                final active = _hovered || focused;
+                final filled = widget.isTv && focused;
+                final Color? disc = filled
+                    ? AppColors.accent
+                    : widget.prominent
+                        ? Colors.white.withValues(alpha: 0.16)
+                        : null;
+                return AnimatedContainer(
+                  duration: const Duration(milliseconds: 140),
+                  curve: Curves.easeOut,
+                  width: box,
+                  height: box,
+                  decoration: BoxDecoration(
+                    shape: BoxShape.circle,
+                    color: disc ?? Colors.transparent,
+                    boxShadow: filled
+                        ? [
+                            BoxShadow(
+                              color: AppColors.accent.withValues(alpha: 0.45),
+                              blurRadius: 18,
+                            ),
+                          ]
+                        : null,
+                  ),
+                  child: Icon(
+                    widget.icon,
+                    size: iconSize,
+                    color: active
+                        ? EmbyChromeTheme.iconActive
+                        : EmbyChromeTheme.icon,
+                  ),
+                );
+              },
             ),
           ),
         ),
