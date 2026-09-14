@@ -268,32 +268,77 @@ void main() {
     // Le jeton n'a rien à faire dans le carnet lui-même.
     expect(prefs.getString('onyx_servers_v1'), isNot(contains('"a"')));
   });
-  test('explicit links persist, merge and survive an address change', () async {
+  test('server-declared links group accounts, persist and survive an address change',
+      () async {
     final registry = ServerRegistry();
     await registry.load();
     final a = await registry.remember(
-        url: 'http://a.local', username: 'alice', token: 'a');
+        url: 'http://a.local', username: 'alice', token: 'a', userId: 1);
     final b = await registry.remember(
-        url: 'http://b.local', username: 'bob', token: 'b');
+        url: 'http://b.local', username: 'bob', token: 'b', userId: 2);
     final c = await registry.remember(
-        url: 'http://c.local', username: 'charlie', token: 'c');
+        url: 'http://c.local', username: 'charlie', token: 'c', userId: 3);
+    await registry.setServerId(b.id, 'server-b');
     expect(registry.linkedAccounts(a.id).map((a) => a.id), [a.id]);
-    await registry.linkAccounts(a.id, b.id);
-    await registry.linkAccounts(b.id, c.id);
+    // Le serveur de A déclare B — reconnu à son identité, pas à l'adresse que
+    // l'appareil qui a fait le lien utilisait.
+    await registry.setServerLinks(a.id, const [
+      AccountLink(
+          id: 1,
+          serverId: 'server-b',
+          serverName: 'B',
+          url: 'http://192.168.1.9:8080',
+          remoteUserId: 2,
+          remoteUsername: 'bob'),
+    ]);
+    // Le serveur de C déclare B par son adresse seulement.
+    await registry.setServerLinks(c.id, const [
+      AccountLink(
+          id: 2,
+          serverId: '',
+          serverName: '',
+          url: 'http://b.local',
+          remoteUserId: 2,
+          remoteUsername: 'bob'),
+    ]);
     final restored = ServerRegistry();
     await restored.load();
-    expect(restored.linkedAccounts(c.id), hasLength(3));
+    expect(restored.linkedAccounts(a.id), hasLength(3));
     final moved = await restored.updateUrl(a.id, 'http://a-new.local');
-    expect(restored.linkedAccounts(b.id).map((a) => a.id), contains(moved!.id));
-    expect(
-        restored.linkedAccounts(b.id).map((a) => a.id), isNot(contains(a.id)));
-    await restored.unlinkAccount(b.id);
-    expect(restored.linkedAccounts(b.id), hasLength(1));
-    expect(restored.linkedAccounts(c.id), hasLength(2));
+    expect(restored.linkedAccounts(c.id).map((a) => a.id), contains(moved!.id));
+    // Un autre compte sur le serveur de B n'est pas la même personne.
+    final other = await restored.remember(
+        url: 'http://b.local', username: 'eve', token: 'e', userId: 9);
+    expect(restored.linkedAccounts(a.id).map((a) => a.id),
+        isNot(contains(other.id)));
     await restored.forget(moved.id);
     final last = ServerRegistry();
     await last.load();
-    expect(last.linkedAccounts(c.id), hasLength(1));
+    expect(last.linkedAccounts(b.id), hasLength(2));
+  });
+
+  test('device links from previous versions are kept for migration', () async {
+    mockStorage({
+      'onyx_servers_v1': jsonEncode({
+        'active': 'a',
+        'links': [
+          ['a', 'b']
+        ],
+        'accounts': [
+          {'id': 'a', 'url': 'http://a.local', 'username': 'alice'},
+          {'id': 'b', 'url': 'http://b.local', 'username': 'bob'},
+        ],
+      }),
+    });
+    final registry = ServerRegistry();
+    await registry.load();
+    expect(registry.legacyLinkGroups, [
+      {'a', 'b'}
+    ]);
+    await registry.clearLegacyLinks();
+    final restored = ServerRegistry();
+    await restored.load();
+    expect(restored.legacyLinkGroups, isEmpty);
   });
   test('a player API stays pinned when the active account changes', () async {
     final registry = ServerRegistry();

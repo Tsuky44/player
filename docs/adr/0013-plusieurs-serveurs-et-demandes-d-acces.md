@@ -1,6 +1,7 @@
 # ADR-0013 — Plusieurs serveurs dans l'app, et la demande d'accès
 
-- **Statut :** accepté
+- **Statut :** accepté — la partie « aucune fédération entre serveurs » est remplacée par
+  [ADR-0017](0017-serveurs-lies-et-progression-entre-serveurs.md) (serveurs liés).
 - **Date :** 2026-09-07
 - **Portée :** app cliente (carnet de comptes, bascule) et serveur (demandes d'accès).
   Aucune fédération entre serveurs : ils continuent de s'ignorer.

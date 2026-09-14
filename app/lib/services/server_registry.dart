@@ -15,9 +15,9 @@ import '../models/server_account.dart';
 /// « changer de serveur » n'est qu'un changement de pointeur — d'où le fait
 /// qu'on revienne sur l'autre serveur sans retaper quoi que ce soit.
 ///
-/// Les liaisons choisies par la personne sont conservées sur cet appareil.
-/// Chaque serveur garde ses comptes et ses droits ; l'app partage la progression
-/// uniquement entre les comptes explicitement liés.
+/// Les liens entre comptes vivent sur les serveurs (ADR-0017) : le carnet n'en
+/// garde qu'une copie, relue à chaque rafraîchissement, pour que le relais de
+/// lecture sache encore vers qui se tourner quand un serveur ne répond plus.
 class ServerRegistry extends ChangeNotifier {
   static const _storeKey = 'onyx_servers_v1';
   static const _tokenPrefix = 'auth_token_';
@@ -35,7 +35,13 @@ class ServerRegistry extends ChangeNotifier {
   List<PendingAccessRequest> _pendingRequests = const [];
   String? _activeId;
   bool _loaded = false;
-  List<Set<String>> _links = [];
+
+  /// Liens déclarés par le serveur de chaque compte, indexés par compte.
+  Map<String, List<AccountLink>> _serverLinks = {};
+
+  /// Groupes choisis sur l'appareil par les versions précédentes. Ils sont
+  /// remontés aux serveurs une fois, puis oubliés.
+  List<Set<String>> _legacyLinks = [];
 
   List<ServerAccount> get accounts => List.unmodifiable(_accounts);
   List<PendingAccessRequest> get pendingRequests =>
@@ -55,41 +61,90 @@ class ServerRegistry extends ChangeNotifier {
   /// sélecteur : un seul serveur n'a pas besoin d'un menu pour en changer.
   bool get hasMultipleServers => _accounts.length > 1;
 
-  /// Explicit groups belonging to one viewer; usernames need not match.
+  /// Les comptes de cet appareil liés à [id], lui compris, de proche en
+  /// proche : A lié à B et B lié à C mettent les trois dans le même groupe.
+  /// Les noms d'utilisateur n'ont pas à correspondre.
   List<ServerAccount> linkedAccounts(String id) {
-    final group = _links.where((g) => g.contains(id)).firstOrNull;
-    return accounts
-        .where((a) => a.id == id || (group?.contains(a.id) ?? false))
-        .toList();
-  }
-
-  Future<void> linkAccounts(String first, String second) async {
-    if (first == second ||
-        accountById(first) == null ||
-        accountById(second) == null) {
-      return;
+    if (accountById(id) == null) return const [];
+    final group = <String>{id};
+    var grew = true;
+    while (grew) {
+      grew = false;
+      for (final account in _accounts) {
+        if (group.contains(account.id)) continue;
+        if (group.any((member) => _directlyLinked(member, account.id))) {
+          group.add(account.id);
+          grew = true;
+        }
+      }
     }
-    final merged = {
-      ...linkedAccounts(first).map((a) => a.id),
-      ...linkedAccounts(second).map((a) => a.id)
-    };
-    _links.removeWhere((g) => g.any(merged.contains));
-    _links.add(merged);
+    return accounts.where((a) => group.contains(a.id)).toList();
+  }
+
+  bool _directlyLinked(String first, String second) {
+    final a = accountById(first);
+    final b = accountById(second);
+    if (a == null || b == null) return false;
+    return serverLinksFor(first).any((link) => linkMatches(link, b)) ||
+        serverLinksFor(second).any((link) => linkMatches(link, a));
+  }
+
+  /// Vrai quand [link] désigne [account] : même serveur — reconnu à son
+  /// identité, à défaut à son adresse — et même compte.
+  static bool linkMatches(AccountLink link, ServerAccount account) {
+    final sameServer = account.serverId != null && link.serverId.isNotEmpty
+        ? account.serverId == link.serverId
+        : ServerAccount.normalizeUrl(link.url) == account.url;
+    if (!sameServer) return false;
+    return account.userId != null
+        ? account.userId == link.remoteUserId
+        : account.username.toLowerCase() == link.remoteUsername.toLowerCase();
+  }
+
+  /// Le compte de cet appareil que désigne [link], s'il y en a un.
+  ServerAccount? accountForLink(AccountLink link) {
+    for (final account in _accounts) {
+      if (linkMatches(link, account)) return account;
+    }
+    return null;
+  }
+
+  List<AccountLink> serverLinksFor(String id) =>
+      List.unmodifiable(_serverLinks[id] ?? const []);
+
+  Future<void> setServerLinks(String id, List<AccountLink> links) async {
+    if (accountById(id) == null) return;
+    _serverLinks[id] = List.of(links);
     await _persist();
     notifyListeners();
   }
 
-  Future<void> unlinkAccount(String id) async {
-    _removeLinks(id);
+  Future<void> setServerId(String id, String serverId) async {
+    final account = accountById(id);
+    if (account == null || account.serverId == serverId) return;
+    _accounts = [
+      for (final other in _accounts)
+        if (other.id == id) other.copyWith(serverId: serverId) else other,
+    ];
     await _persist();
     notifyListeners();
+  }
+
+  List<Set<String>> get legacyLinkGroups =>
+      _legacyLinks.map((g) => Set.of(g)).toList();
+
+  Future<void> clearLegacyLinks() async {
+    if (_legacyLinks.isEmpty) return;
+    _legacyLinks = [];
+    await _persist();
   }
 
   void _removeLinks(String id) {
-    for (final group in _links) {
+    _serverLinks.remove(id);
+    for (final group in _legacyLinks) {
       group.remove(id);
     }
-    _links.removeWhere((g) => g.length < 2);
+    _legacyLinks.removeWhere((g) => g.length < 2);
   }
 
   ServerAccount? accountById(String id) {
@@ -127,20 +182,29 @@ class ServerRegistry extends ChangeNotifier {
           .map((e) => PendingAccessRequest.fromJson(e as Map<String, dynamic>))
           .toList();
       _activeId = data['active'] as String?;
-      _links = (data['links'] as List? ?? const [])
+      _legacyLinks = (data['links'] as List? ?? const [])
           .map((g) => (g as List)
               .cast<String>()
               .where((id) => accountById(id) != null)
               .toSet())
           .where((g) => g.length > 1)
           .toList();
+      _serverLinks = {
+        for (final entry
+            in (data['server_links'] as Map? ?? const {}).entries)
+          if (accountById(entry.key as String) != null)
+            entry.key as String: (entry.value as List)
+                .map((e) => AccountLink.fromJson(e as Map<String, dynamic>))
+                .toList(),
+      };
     } catch (_) {
       // Un carnet illisible ne doit pas empêcher l'app de démarrer : elle
       // repart sur l'écran de connexion, ce qui est récupérable.
       _accounts = const [];
       _pendingRequests = const [];
       _activeId = null;
-      _links = [];
+      _legacyLinks = [];
+      _serverLinks = {};
     }
     if (accountById(_activeId ?? '') == null) {
       _activeId = _accounts.isEmpty ? null : _accounts.first.id;
@@ -198,7 +262,12 @@ class ServerRegistry extends ChangeNotifier {
       _storeKey,
       jsonEncode({
         'active': _activeId,
-        'links': _links.map((g) => g.toList()).toList(),
+        if (_legacyLinks.isNotEmpty)
+          'links': _legacyLinks.map((g) => g.toList()).toList(),
+        'server_links': {
+          for (final entry in _serverLinks.entries)
+            entry.key: entry.value.map((l) => l.toJson()).toList(),
+        },
         'accounts': _accounts.map((e) => e.toJson()).toList(),
         'requests': _pendingRequests.map((e) => e.toJson()).toList(),
       }),
@@ -231,6 +300,7 @@ class ServerRegistry extends ChangeNotifier {
       username: username,
       userId: userId ?? existing?.userId,
       label: label ?? existing?.label,
+      serverId: existing?.serverId,
     );
 
     _accounts = [
@@ -269,10 +339,9 @@ class ServerRegistry extends ChangeNotifier {
     final normalized = ServerAccount.normalizeUrl(url);
     if (normalized == account.url) return account;
 
-    final linkedIds = linkedAccounts(id)
-        .map((a) => a.id)
-        .where((other) => other != id)
-        .toSet();
+    final legacyGroups =
+        _legacyLinks.where((g) => g.contains(id)).map(Set.of).toList();
+    final links = serverLinksFor(id);
     final token = await tokenFor(id);
     final profile = await readProfile(id);
     await forget(id, persist: false);
@@ -283,11 +352,13 @@ class ServerRegistry extends ChangeNotifier {
       username: account.username,
       userId: account.userId,
       label: account.label,
+      serverId: account.serverId,
     );
     _accounts = [..._accounts, moved];
-    if (linkedIds.isNotEmpty) {
-      _links.removeWhere((g) => g.any(linkedIds.contains));
-      _links.add({...linkedIds, moved.id});
+    if (links.isNotEmpty) _serverLinks[moved.id] = List.of(links);
+    for (final group in legacyGroups) {
+      _legacyLinks.removeWhere((g) => g.any(group.contains));
+      _legacyLinks.add({...group..remove(id), moved.id});
     }
     _activeId = moved.id;
     if (token != null) await _writeToken(moved.id, token);
@@ -310,6 +381,7 @@ class ServerRegistry extends ChangeNotifier {
             userId: other.userId,
             label:
                 (label == null || label.trim().isEmpty) ? null : label.trim(),
+            serverId: other.serverId,
           )
         else
           other,
@@ -443,6 +515,8 @@ class ServerRegistry extends ChangeNotifier {
     _accounts = const [];
     _pendingRequests = const [];
     _activeId = null;
+    _serverLinks = {};
+    _legacyLinks = [];
     _loaded = false;
   }
 }

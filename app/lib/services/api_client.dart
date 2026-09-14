@@ -7,13 +7,14 @@ import 'package:shared_preferences/shared_preferences.dart';
 import '../models/app_download.dart';
 import '../models/device_pairing.dart';
 import '../models/server_account.dart';
+import 'client_identity.dart';
 import 'playback_capabilities.dart';
 import 'playback_access.dart';
 
 import 'server_registry.dart';
-import 'progress_sync.dart';
 import 'media_failover.dart';
 import '../models/media_request.dart';
+import '../models/server_activity.dart';
 import '../utils/app_platform.dart';
 import '../models/request_catalog_filters.dart';
 import '../models/models.dart';
@@ -120,8 +121,6 @@ class ApiClient {
   late final MediaFailover mediaFailover = MediaFailover(servers);
   String? _pinnedAccountId;
   String? get accountId => _pinnedAccountId ?? servers.active?.id;
-  late final ProgressSync _progressSync;
-  void Function()? onProgressSynchronized;
 
   String? _baseUrl;
   String? _token;
@@ -142,11 +141,9 @@ class ApiClient {
     await _loadConfig();
   }
 
-  ApiClient(
-      {ServerRegistry? registry, Dio? httpClient, ProgressSync? progressSync})
+  ApiClient({ServerRegistry? registry, Dio? httpClient})
       : servers = registry ?? ServerRegistry(),
         _dio = httpClient ?? Dio() {
-    _progressSync = progressSync ?? ProgressSync(servers);
     _dio.interceptors
         .add(InterceptorsWrapper(onRequest: (options, handler) async {
       if (!_configLoaded) {
@@ -168,6 +165,10 @@ class ApiClient {
       } else {
         options.headers.remove('Authorization');
       }
+
+      // Ce que cet appareil annonce de lui-même : son nom et son application,
+      // pour la liste des appareils connectés et le tableau de bord.
+      options.headers.addAll(ClientIdentity.headers);
 
       options.connectTimeout = const Duration(seconds: 10);
       options.receiveTimeout = const Duration(seconds: 30);
@@ -215,11 +216,169 @@ class ApiClient {
     return pinned;
   }
 
-  Future<void> synchronizeLinkedProgress() async {
+  // ==================== COMPTES LIÉS (ADR-0017) ====================
+  //
+  // Les liens vivent sur les serveurs, et ce sont eux qui se transmettent la
+  // progression. L'app ne fait plus que deux choses : présenter à chaque
+  // serveur le jeton qui est le sien — jamais celui d'un autre — et relire les
+  // liens pour les afficher et savoir vers qui se tourner en cas de panne.
+
+  /// Un client lié à un compte du carnet, quel que soit le compte actif.
+  Future<Dio?> _accountClient(String id) async {
+    final account = servers.accountById(id);
+    final token = await servers.tokenFor(id);
+    if (account == null || token == null || token.isEmpty) return null;
+    return _clientFactory(BaseOptions(
+      baseUrl: account.url,
+      headers: {'Authorization': 'Bearer $token'},
+      followRedirects: false,
+      connectTimeout: const Duration(seconds: 5),
+      receiveTimeout: const Duration(seconds: 30),
+      sendTimeout: const Duration(seconds: 10),
+    ));
+  }
+
+  @visibleForTesting
+  Dio Function(BaseOptions) clientFactory = (options) => Dio(options);
+  Dio Function(BaseOptions) get _clientFactory => clientFactory;
+
+  Future<void>? _refreshingLinks;
+
+  /// Relit les liens de chaque compte du carnet et l'identité de son serveur.
+  /// Un serveur injoignable garde ses liens connus : c'est précisément quand
+  /// il ne répond plus que le relais de lecture en a besoin.
+  Future<void> refreshAccountLinks() {
+    return _refreshingLinks ??= _refreshAccountLinks().whenComplete(() {
+      _refreshingLinks = null;
+    });
+  }
+
+  Future<void> _refreshAccountLinks() async {
+    await servers.load();
+    await Future.wait(servers.accounts.map((account) async {
+      final client = await _accountClient(account.id);
+      if (client == null) return;
+      try {
+        if (account.serverId == null) {
+          try {
+            final info = await client.get('/api/federation/info');
+            final serverId = (info.data as Map?)?['server_id'] as String?;
+            if (serverId != null && serverId.isNotEmpty) {
+              await servers.setServerId(account.id, serverId);
+            }
+          } on Object {/* Serveur ancien ou injoignable. */}
+        }
+        final response = await client.get('/api/links');
+        final links = (response.data as List)
+            .map((e) => AccountLink.fromJson(Map<String, dynamic>.from(e as Map)))
+            .toList();
+        await servers.setServerLinks(account.id, links);
+      } on Object {
+        // Hors ligne, session expirée ou serveur d'une version précédente.
+      } finally {
+        client.close();
+      }
+    }));
+    await _migrateDeviceLinks();
     for (final account in servers.accounts) {
       unawaited(mediaFailover.refreshIdentities(account.id));
     }
-    await _progressSync.synchronize(force: true);
+  }
+
+  /// Les versions précédentes gardaient les liens sur l'appareil. Ils sont
+  /// remontés une fois aux serveurs, puis oubliés quand tous ont abouti.
+  Future<void> _migrateDeviceLinks() async {
+    final groups = servers.legacyLinkGroups;
+    if (groups.isEmpty) return;
+    var complete = true;
+    for (final group in groups) {
+      final ids = group.where((id) => servers.accountById(id) != null).toList();
+      for (final other in ids.skip(1)) {
+        if (servers.linkedAccounts(ids.first).any((a) => a.id == other)) {
+          continue;
+        }
+        try {
+          await linkAccounts(ids.first, other, refresh: false);
+        } on Object {
+          complete = false;
+        }
+      }
+    }
+    if (complete) await servers.clearLegacyLinks();
+  }
+
+  /// Lie le compte [fromId] au compte [toId]. Le serveur de [toId] émet un
+  /// code qui prouve qu'on détient ce compte ; le serveur de [fromId] le
+  /// présente lui-même à l'autre. Aucun jeton ne passe d'un serveur à l'autre.
+  ///
+  /// Le lien est en attente tant que les administrateurs des deux serveurs
+  /// n'ont pas accepté la paire — une seule fois pour ces deux serveurs.
+  Future<AccountLink> linkAccounts(String fromId, String toId,
+      {bool refresh = true}) async {
+    final from = servers.accountById(fromId);
+    final to = servers.accountById(toId);
+    if (from == null || to == null || fromId == toId) {
+      throw StateError('Compte indisponible');
+    }
+    final toClient = await _accountClient(toId);
+    final fromClient = await _accountClient(fromId);
+    if (toClient == null || fromClient == null) {
+      toClient?.close();
+      fromClient?.close();
+      throw StateError('Session expirée : reconnectez-vous à ce serveur.');
+    }
+    try {
+      final code = await toClient.post('/api/links/code');
+      final response = await fromClient.post('/api/links', data: {
+        'url': to.url,
+        'self_url': from.url,
+        'code': (code.data as Map)['code'],
+      });
+      final link =
+          AccountLink.fromJson(Map<String, dynamic>.from(response.data as Map));
+      if (refresh) await refreshAccountLinks();
+      return link;
+    } finally {
+      toClient.close();
+      fromClient.close();
+    }
+  }
+
+  /// Dissocie un lien déclaré par le serveur du compte [accountId]. Les deux
+  /// serveurs arrêtent de se transmettre la progression ; l'historique déjà
+  /// partagé reste de chaque côté.
+  Future<void> unlinkAccount(String accountId, AccountLink link) async {
+    final client = await _accountClient(accountId);
+    if (client == null) throw StateError('Session expirée');
+    try {
+      await client.delete('/api/links/${link.id}');
+    } finally {
+      client.close();
+    }
+    await refreshAccountLinks();
+  }
+
+  // Côté administrateur : les serveurs liés au serveur actif.
+
+  Future<List<PeerServer>> getPeerServers() async {
+    final response = await _dio.get('/api/peers');
+    return (response.data as List)
+        .map((e) => PeerServer.fromJson(Map<String, dynamic>.from(e as Map)))
+        .toList();
+  }
+
+  Future<PeerServer> approvePeerServer(int id) async {
+    final response = await _dio.post('/api/peers/$id/approve');
+    return PeerServer.fromJson(Map<String, dynamic>.from(response.data as Map));
+  }
+
+  Future<PeerServer> updatePeerServerUrl(int id, String url) async {
+    final response = await _dio.put('/api/peers/$id', data: {'url': url});
+    return PeerServer.fromJson(Map<String, dynamic>.from(response.data as Map));
+  }
+
+  Future<void> removePeerServer(int id) async {
+    await _dio.delete('/api/peers/$id');
   }
 
   // Get current active base URL
@@ -537,11 +696,7 @@ class ApiClient {
       await _rememberLastAddress(active.url);
       await saveLastUsername(active.username);
     }
-    if (synchronize) {
-      unawaited(_progressSync.synchronize(force: true).then((_) {
-        if (accountId == id) onProgressSynchronized?.call();
-      }));
-    }
+    if (synchronize) unawaited(refreshAccountLinks());
     return true;
   }
 
@@ -1027,13 +1182,11 @@ class ApiClient {
   Future<HomeResponse> getHome() async {
     final id = accountId;
     if (id != null) unawaited(mediaFailover.refreshIdentities(id));
-    unawaited(_progressSync.synchronize());
     final response = await _dio.get("/api/home");
     return HomeResponse.fromJson(response.data as Map<String, dynamic>);
   }
 
   Future<List<HomeMediaItem>> getMovies() async {
-    unawaited(_progressSync.synchronize());
     final response = await _dio.get("/api/movies");
     return (response.data as List<dynamic>)
         .map((e) => HomeMediaItem.fromJson(e as Map<String, dynamic>))
@@ -1055,7 +1208,6 @@ class ApiClient {
   }
 
   Future<List<HomeMediaItem>> getSeasonEpisodes(int seasonId) async {
-    await _progressSync.synchronize();
     final response = await _dio.get("/api/seasons/$seasonId/episodes");
     return (response.data as List<dynamic>)
         .map((e) => HomeMediaItem.fromJson(e as Map<String, dynamic>))
@@ -1064,7 +1216,6 @@ class ApiClient {
 
   Future<List<HomeMediaItem>> getShowSeasonEpisodes(
       int showId, int seasonNumber) async {
-    await _progressSync.synchronize();
     final response =
         await _dio.get("/api/shows/$showId/seasons/$seasonNumber/episodes");
     return (response.data as List<dynamic>)
@@ -1073,7 +1224,6 @@ class ApiClient {
   }
 
   Future<ShowResumeResponse> getShowResumeEpisode(int showId) async {
-    await _progressSync.synchronize();
     final response = await _dio.get("/api/shows/$showId/resume");
     return ShowResumeResponse.fromJson(response.data as Map<String, dynamic>);
   }
@@ -1081,7 +1231,6 @@ class ApiClient {
   // ==================== PROGRESSION HEARTBEAT ====================
 
   Future<Map<String, dynamic>> getProgress(int mediaId) async {
-    await _progressSync.synchronize();
     final response = await _dio.get("/api/progress", queryParameters: {
       "media_id": mediaId,
     });
@@ -1099,7 +1248,6 @@ class ApiClient {
     required bool isFinished,
     DateTime? clientUpdatedAt,
   }) async {
-    final sourceAccountId = accountId;
     final response = await _dio.post("/api/progress", data: {
       "media_id": mediaId,
       "current_position_seconds": currentPositionSeconds,
@@ -1109,19 +1257,14 @@ class ApiClient {
         "client_updated_at": clientUpdatedAt.toUtc().toIso8601String(),
     });
 
-    unawaited(_progressSync.synchronize(
-        force: true, sourceAccountId: sourceAccountId, mediaId: mediaId));
     return response.data["is_finished"] as bool? ?? isFinished;
   }
 
   Future<Map<String, dynamic>> setMediaWatched(
       int mediaId, bool watched) async {
-    final sourceAccountId = accountId;
     final response = await _dio.post("/api/media/$mediaId/watched", data: {
       "watched": watched,
     });
-    unawaited(_progressSync.synchronize(
-        force: true, sourceAccountId: sourceAccountId, mediaId: mediaId));
     return response.data as Map<String, dynamic>;
   }
 
@@ -1157,7 +1300,6 @@ class ApiClient {
   /// La fiche sous sa forme brute, telle que le téléchargement hors ligne la
   /// range sur le disque. Voir [getMediaTracksJson] pour le même raisonnement.
   Future<Map<String, dynamic>> getMediaDetailsJson(int mediaId) async {
-    await _progressSync.synchronize();
     final response = await _dio.get("/api/media/$mediaId/details");
     return response.data as Map<String, dynamic>;
   }
@@ -1417,6 +1559,103 @@ class ApiClient {
       if (seriesDir != null) 'series_dir': seriesDir,
     });
     return ServerSettings.fromJson(response.data as Map<String, dynamic>);
+  }
+
+  // ==================== ACTIVITÉ, APPAREILS, STATISTIQUES ====================
+
+  /// Signal de lecture : ce que ce lecteur lit, où il en est, en pause ou non.
+  /// Le serveur en tire les lectures en cours du tableau de bord et
+  /// l'historique. Voir `server/handlers/activity.go`.
+  Future<void> reportPlayback({
+    required int mediaId,
+    required int positionSeconds,
+    required int durationSeconds,
+    required bool paused,
+    required PlayMethod playMethod,
+    String quality = '',
+    String event = 'progress',
+  }) async {
+    await _dio.post('/api/playing', data: {
+      'media_id': mediaId,
+      'position_seconds': positionSeconds,
+      'duration_seconds': durationSeconds,
+      'paused': paused,
+      'play_method': playMethod.wire,
+      if (quality.isNotEmpty) 'quality': quality,
+      'event': event,
+    });
+  }
+
+  Future<List<NowPlayingSession>> getNowPlaying() async {
+    final response = await _dio.get('/api/admin/activity');
+    return (response.data as List)
+        .map((e) => NowPlayingSession.fromJson(e as Map<String, dynamic>))
+        .toList();
+  }
+
+  Future<List<PlaybackHistoryEntry>> getPlaybackHistory({
+    int limit = 50,
+    int? beforeId,
+    int? userId,
+  }) async {
+    final response = await _dio.get('/api/admin/history', queryParameters: {
+      'limit': limit,
+      if (beforeId != null) 'before_id': beforeId,
+      if (userId != null) 'user_id': userId,
+    });
+    return (response.data as List)
+        .map((e) => PlaybackHistoryEntry.fromJson(e as Map<String, dynamic>))
+        .toList();
+  }
+
+  Future<void> clearPlaybackHistory() async {
+    await _dio.delete('/api/admin/history');
+  }
+
+  /// Statistiques du serveur entier, ou d'un compte avec [userId]. Les jours
+  /// sont découpés dans le fuseau de cet appareil.
+  Future<PlaybackStats> getPlaybackStats({int days = 30, int? userId}) async {
+    final response = await _dio.get('/api/admin/stats', queryParameters: {
+      'days': days,
+      'tz_offset': DateTime.now().timeZoneOffset.inMinutes,
+      if (userId != null) 'user_id': userId,
+    });
+    return PlaybackStats.fromJson(response.data as Map<String, dynamic>);
+  }
+
+  Future<PlaybackStats> getMyPlaybackStats({int days = 30}) async {
+    final response = await _dio.get('/api/me/stats', queryParameters: {
+      'days': days,
+      'tz_offset': DateTime.now().timeZoneOffset.inMinutes,
+    });
+    return PlaybackStats.fromJson(response.data as Map<String, dynamic>);
+  }
+
+  Future<List<ConnectedDevice>> getMyDevices() async {
+    final response = await _dio.get('/api/me/devices');
+    return (response.data as List)
+        .map((e) => ConnectedDevice.fromJson(e as Map<String, dynamic>))
+        .toList();
+  }
+
+  Future<void> revokeMyDevice(int id) async {
+    await _dio.delete('/api/me/devices/$id');
+  }
+
+  Future<List<ConnectedDevice>> getAllDevices() async {
+    final response = await _dio.get('/api/admin/devices');
+    return (response.data as List)
+        .map((e) => ConnectedDevice.fromJson(e as Map<String, dynamic>))
+        .toList();
+  }
+
+  Future<void> revokeAnyDevice(int id) async {
+    await _dio.delete('/api/admin/devices/$id');
+  }
+
+  Future<ServerInfo> getServerInfo() async {
+    final response = await _dio.get('/api/admin/server');
+    return ServerInfo.fromJson(response.data as Map<String, dynamic>);
   }
 
   // ==================== PLAYER STUDIO LAYOUTS ====================

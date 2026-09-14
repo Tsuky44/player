@@ -12,6 +12,9 @@ import (
 
 var DB *sql.DB
 
+// Path is the file DB was opened from, for the dashboard's storage figures.
+var Path string
+
 // InitDB initializes the SQLite database, runs migrations, and enables WAL mode
 func InitDB(dbPath string) (*sql.DB, error) {
 	// Ensure directory exists
@@ -19,6 +22,8 @@ func InitDB(dbPath string) (*sql.DB, error) {
 	if err := os.MkdirAll(dir, 0755); err != nil {
 		return nil, fmt.Errorf("failed to create database directory: %w", err)
 	}
+
+	Path = dbPath
 
 	// Open connection
 	var err error

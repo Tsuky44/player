@@ -2,7 +2,6 @@ import 'package:flutter/material.dart';
 
 import '../../providers/auth_provider.dart';
 import '../../screens/player_studio/player_studio_screen.dart';
-import '../../screens/settings/servers_screen.dart';
 import '../../screens/settings/settings_screen.dart';
 import '../../screens/settings/tv_link_scanner_screen.dart';
 import '../../theme/app_colors.dart';
@@ -99,7 +98,11 @@ class AccountMenu extends StatelessWidget {
         switch (value) {
           case 'servers':
             Navigator.of(context).push(
-              MaterialPageRoute(builder: (_) => const ServersScreen()),
+              MaterialPageRoute(
+                builder: (_) => const SettingsScreen(
+                  initialSection: SettingsSections.servers,
+                ),
+              ),
             );
           case 'settings':
             Navigator.of(context).push(

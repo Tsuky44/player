@@ -60,12 +60,23 @@ func buildMovieContinueWatching(userID int, hidden map[string]struct{}) ([]model
 	defer rows.Close()
 
 	var items []models.HomeMediaItem
+	// Several files of the same film (4K and 1080p, a re-rip…) are distinct media
+	// rows sharing a TMDB id, and portable progress lands on all of them. Only
+	// the most recently touched copy stands for the film; the rows arrive newest
+	// first, so the first one seen wins.
+	seenTMDB := make(map[int]struct{})
 	for rows.Next() {
 		var updatedAt time.Time
 		item, err := scanLibraryItem(rows, &updatedAt)
 		if err != nil {
 			log.Printf("ContinueWatching: movie scan error: %v", err)
 			continue
+		}
+		if item.TMDBID > 0 {
+			if _, dup := seenTMDB[item.TMDBID]; dup {
+				continue
+			}
+			seenTMDB[item.TMDBID] = struct{}{}
 		}
 		item.UpdatedAt = updatedAt
 		if !meetsContinueWatchingThreshold(item.CurrentPositionSeconds, item.Duration) {

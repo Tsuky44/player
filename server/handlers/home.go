@@ -28,12 +28,19 @@ func Home(w http.ResponseWriter, r *http.Request, _ httprouter.Params, userID in
 		SELECT `+mediaColumns+`
 		FROM medias m
 		WHERE m.type = 'movie'
-		ORDER BY m.created_at DESC
-		LIMIT 15`)
+		ORDER BY m.created_at DESC`)
 	if err != nil {
 		log.Printf("Home error: failed to query recent movies: %v", err)
 		http.Error(w, `{"error": "Internal database error"}`, http.StatusInternalServerError)
 		return
+	}
+	recentMovies, err = groupMovieCards(recentMovies)
+	if err != nil {
+		http.Error(w, `{"error":"Unable to load versions"}`, http.StatusInternalServerError)
+		return
+	}
+	if len(recentMovies) > 15 {
+		recentMovies = recentMovies[:15]
 	}
 
 	// 3. Get "Recent Shows" (TV Series)
@@ -78,6 +85,21 @@ func Home(w http.ResponseWriter, r *http.Request, _ httprouter.Params, userID in
 // queryRandomLibraryItems picks a random sample of titles that have artwork,
 // for the home "discovery" rows.
 func queryRandomLibraryItems(mediaType models.MediaType, limit int) ([]models.Media, error) {
+	if mediaType == models.TypeMovie {
+		items, err := queryMediaList("Discovery movies", `SELECT `+mediaColumns+` FROM medias m
+		WHERE m.type = 'movie' AND COALESCE(m.poster_url, '') != '' ORDER BY RANDOM()`)
+		if err != nil {
+			return nil, err
+		}
+		items, err = groupMovieCards(items)
+		if err != nil {
+			return nil, err
+		}
+		if len(items) > limit {
+			items = items[:limit]
+		}
+		return items, nil
+	}
 	return queryMediaList("Discovery "+string(mediaType), `
 		SELECT `+mediaColumns+`
 		FROM medias m

@@ -306,6 +306,119 @@ var migrations = []migration{
 			`CREATE INDEX IF NOT EXISTS idx_access_requests_expires_at ON access_requests(expires_at);`,
 		},
 	},
+	{
+		id:   6,
+		name: "server federation",
+		stmts: []string{
+			// Serveurs liés (ADR-0017). Une ligne par serveur distant, reconnu à
+			// son identité et non à son adresse : le même serveur se joint parfois
+			// par l'IP locale, parfois par un nom de domaine. Le secret est partagé
+			// par la paire et présenté à chaque appel entre serveurs. Le lien n'a
+			// cours que lorsque les deux administrateurs ont accepté.
+			`CREATE TABLE IF NOT EXISTS peer_servers (
+				id INTEGER PRIMARY KEY AUTOINCREMENT,
+				server_id TEXT NOT NULL UNIQUE,
+				name TEXT NOT NULL DEFAULT '',
+				url TEXT NOT NULL,
+				secret TEXT NOT NULL,
+				local_approved INTEGER NOT NULL DEFAULT 0,
+				remote_approved INTEGER NOT NULL DEFAULT 0,
+				approval_sent INTEGER NOT NULL DEFAULT 1,
+				last_error TEXT NOT NULL DEFAULT '',
+				last_contact_at TIMESTAMP,
+				created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
+			);`,
+			// Un compte d'ici et le compte de la même personne sur un serveur lié.
+			// pushed_seq est ce qui a déjà été transmis de progress_changes.
+			`CREATE TABLE IF NOT EXISTS account_links (
+				id INTEGER PRIMARY KEY AUTOINCREMENT,
+				user_id INTEGER NOT NULL,
+				peer_id INTEGER NOT NULL,
+				remote_user_id INTEGER NOT NULL,
+				remote_username TEXT NOT NULL DEFAULT '',
+				pushed_seq INTEGER NOT NULL DEFAULT 0,
+				created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+				UNIQUE(peer_id, user_id),
+				UNIQUE(peer_id, remote_user_id),
+				FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
+				FOREIGN KEY (peer_id) REFERENCES peer_servers(id) ON DELETE CASCADE
+			);`,
+			`CREATE INDEX IF NOT EXISTS idx_account_links_user ON account_links(user_id);`,
+			// La preuve qu'une personne détient ce compte, remise à l'autre serveur
+			// par l'appareil : à usage unique et de courte durée.
+			`CREATE TABLE IF NOT EXISTS link_codes (
+				code TEXT PRIMARY KEY,
+				user_id INTEGER NOT NULL,
+				expires_at TIMESTAMP NOT NULL,
+				FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+			);`,
+			// Le journal des progressions modifiées. Tenu par déclencheurs pour
+			// que toute écriture — lecture, vu/non vu, rejeu hors ligne, import
+			// d'un serveur lié — soit transmise sans qu'aucun handler n'ait à y
+			// penser. Une ligne par (compte, média) : le numéro est repris à
+			// chaque modification, donc la table ne grossit pas avec le temps.
+			`CREATE TABLE IF NOT EXISTS progress_changes (
+				seq INTEGER PRIMARY KEY AUTOINCREMENT,
+				user_id INTEGER NOT NULL,
+				media_id INTEGER NOT NULL,
+				UNIQUE(user_id, media_id)
+			);`,
+			`CREATE TRIGGER IF NOT EXISTS trg_progress_changes_insert AFTER INSERT ON progressions BEGIN
+				DELETE FROM progress_changes WHERE user_id = NEW.user_id AND media_id = NEW.media_id;
+				INSERT INTO progress_changes(user_id, media_id) VALUES (NEW.user_id, NEW.media_id);
+			END;`,
+			`CREATE TRIGGER IF NOT EXISTS trg_progress_changes_update AFTER UPDATE ON progressions BEGIN
+				DELETE FROM progress_changes WHERE (user_id = OLD.user_id AND media_id = OLD.media_id)
+					OR (user_id = NEW.user_id AND media_id = NEW.media_id);
+				INSERT INTO progress_changes(user_id, media_id) VALUES (NEW.user_id, NEW.media_id);
+			END;`,
+			`CREATE TRIGGER IF NOT EXISTS trg_progress_changes_delete AFTER DELETE ON progressions BEGIN
+				DELETE FROM progress_changes WHERE user_id = OLD.user_id AND media_id = OLD.media_id;
+			END;`,
+			// L'historique existant entre au journal, pour qu'un premier lien
+			// transmette tout ce qui a déjà été regardé.
+			`INSERT OR IGNORE INTO progress_changes(user_id, media_id)
+				SELECT user_id, media_id FROM progressions ORDER BY updated_at;`,
+		},
+	},
+	{
+		id:   7,
+		name: "devices and playback history",
+		stmts: []string{
+			// Ce que l'appareil annonce de lui-même (en-têtes X-Onyx-Device et
+			// X-Onyx-Client), pour que la liste des appareils connectés dise
+			// « Salon · Android TV » plutôt qu'un jeton anonyme.
+			`ALTER TABLE sessions ADD COLUMN device_name TEXT NOT NULL DEFAULT '';`,
+			`ALTER TABLE sessions ADD COLUMN client TEXT NOT NULL DEFAULT '';`,
+
+			// Une ligne par lecture : qui a regardé quoi, sur quel appareil, et
+			// combien de temps réellement (les pauses ne comptent pas). Le titre
+			// est figé à l'écriture — un média supprimé ou réindexé sous un autre
+			// id ne doit pas effacer l'historique ni ses statistiques.
+			`CREATE TABLE IF NOT EXISTS playback_history (
+				id INTEGER PRIMARY KEY AUTOINCREMENT,
+				user_id INTEGER NOT NULL,
+				media_id INTEGER,
+				media_type TEXT NOT NULL DEFAULT '',
+				title TEXT NOT NULL DEFAULT '',
+				subtitle TEXT NOT NULL DEFAULT '',
+				show_id INTEGER,
+				show_title TEXT NOT NULL DEFAULT '',
+				device_name TEXT NOT NULL DEFAULT '',
+				client TEXT NOT NULL DEFAULT '',
+				play_method TEXT NOT NULL DEFAULT '',
+				started_at TIMESTAMP NOT NULL,
+				ended_at TIMESTAMP NOT NULL,
+				watched_seconds INTEGER NOT NULL DEFAULT 0,
+				position_seconds INTEGER NOT NULL DEFAULT 0,
+				duration_seconds INTEGER NOT NULL DEFAULT 0,
+				FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
+				FOREIGN KEY (media_id) REFERENCES medias(id) ON DELETE SET NULL
+			);`,
+			`CREATE INDEX IF NOT EXISTS idx_playback_history_started ON playback_history(started_at);`,
+			`CREATE INDEX IF NOT EXISTS idx_playback_history_user ON playback_history(user_id, started_at);`,
+		},
+	},
 }
 
 // applyMigrations brings the database up to the latest schema version.

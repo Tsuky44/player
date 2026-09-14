@@ -4,7 +4,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:onyx/models/models.dart';
 import 'package:onyx/services/media_failover.dart';
-import 'progress_sync_test.dart' show Registry, Adapter;
+import 'test_doubles.dart' show Registry, Adapter;
 
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();

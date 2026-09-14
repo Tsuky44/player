@@ -82,6 +82,9 @@ func NewHandler(db *sql.DB, tickets *playbackauth.Store) *Handler {
 	}
 }
 
+// ActiveSessions reports the HLS sessions running right now, for the dashboard.
+func (h *Handler) ActiveSessions() int { return h.manager.Count() }
+
 func writeCORS(w http.ResponseWriter) {
 	w.Header().Set("Access-Control-Allow-Origin", "*")
 	w.Header().Set("Access-Control-Allow-Methods", "GET, POST, DELETE, OPTIONS")

@@ -74,22 +74,42 @@ func ImportProgress(w http.ResponseWriter, r *http.Request, _ httprouter.Params,
 		http.Error(w, "Invalid progress batch", 400)
 		return
 	}
+	if msg := validatePortableProgress(entries); msg != "" {
+		http.Error(w, msg, 400)
+		return
+	}
+	if err := importPortableProgress(userID, entries); err != nil {
+		http.Error(w, "Unable to save progress", 500)
+		return
+	}
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(map[string]string{"status": "success"})
+}
+
+// validatePortableProgress returns a non-empty message for the first entry
+// that cannot be matched against a library by content identity.
+func validatePortableProgress(entries []PortableProgress) string {
 	for _, e := range entries {
 		if (e.Type != "movie" && e.Type != "episode") || e.TMDBID <= 0 || e.Position < 0 ||
 			(e.Type == "episode" && (e.Season < 0 || e.Episode <= 0)) ||
 			(e.Type == "movie" && (e.Season != 0 || e.Episode != 0)) {
-			http.Error(w, "Invalid content identity", 400)
-			return
+			return "Invalid content identity"
 		}
 		if _, err := time.Parse(time.RFC3339Nano, e.UpdatedAt); err != nil {
-			http.Error(w, "Invalid progress date", 400)
-			return
+			return "Invalid progress date"
 		}
 	}
+	return ""
+}
+
+// importPortableProgress merges validated entries into one user's history.
+// Only strictly newer entries are written, which is also what stops a linked
+// server from echoing a change back and forth forever: the echo carries the
+// same date and changes nothing, so nothing is queued again.
+func importPortableProgress(userID int, entries []PortableProgress) error {
 	tx, err := database.DB.Begin()
 	if err != nil {
-		http.Error(w, "Unable to save progress", 500)
-		return
+		return err
 	}
 	defer tx.Rollback()
 	for _, e := range entries {
@@ -103,14 +123,8 @@ func ImportProgress(w http.ResponseWriter, r *http.Request, _ httprouter.Params,
    WHERE progressions.updated_at IS NULL OR progressions.updated_at < excluded.updated_at`,
 			userID, e.Position, e.Finished, stamp.Format(progressTimeLayout), e.Type, e.TMDBID, e.Season, e.Episode)
 		if err != nil {
-			http.Error(w, "Unable to save progress", 500)
-			return
+			return err
 		}
 	}
-	if err := tx.Commit(); err != nil {
-		http.Error(w, "Unable to save progress", 500)
-		return
-	}
-	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(map[string]string{"status": "success"})
+	return tx.Commit()
 }

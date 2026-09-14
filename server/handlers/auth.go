@@ -55,6 +55,8 @@ func RequireAuth(next AuthenticatedHandle) httprouter.Handle {
 			return
 		}
 
+		noteSessionClient(parts[1], r)
+
 		// Proceed to actual handler with userID
 		next(w, r, ps, userID)
 	}
@@ -306,6 +308,8 @@ func Logout(w http.ResponseWriter, r *http.Request, _ httprouter.Params) {
 		http.Error(w, `{"error": "Internal server error"}`, http.StatusInternalServerError)
 		return
 	}
+	forgetSessionClient(token)
+	playbackActivity.dropSession(sessionKey(token))
 
 	w.Write([]byte(`{"status": "success", "message": "Logged out successfully"}`))
 }

@@ -41,11 +41,19 @@ class _MovieDetailScreenState extends State<MovieDetailScreen> {
   int _currentPosition = 0;
   bool _loadingWatched = false;
   bool _loadingProgress = false;
+  MediaVersion? _selectedVersion;
+
+  List<MediaVersion> get _versions => _details?.versions.isNotEmpty == true
+      ? _details!.versions
+      : _media.versions;
 
   @override
   void initState() {
     super.initState();
     _media = widget.movieItem?.media ?? widget.movie!;
+    if (_media.versions.isNotEmpty) {
+      _selectedVersion = _media.versions.first;
+    }
     _isFinished = widget.movieItem?.isFinished ?? false;
     _currentPosition = widget.movieItem?.currentPositionSeconds ?? 0;
     // Paint from the shared cache before the first frame when this film has
@@ -64,7 +72,15 @@ class _MovieDetailScreenState extends State<MovieDetailScreen> {
   void _adopt(MediaDetails? details) {
     if (details == null) return;
     _details = details;
+    if (details.versions.isNotEmpty) {
+      final selectedId = _selectedVersion?.item.media.id;
+      _selectedVersion = details.versions.firstWhere(
+        (v) => v.item.media.id == selectedId,
+        orElse: () => details.versions.first,
+      );
+    }
     _media = Media(
+      versions: _media.versions,
       id: _media.id,
       type: _media.type,
       title: details.title.isNotEmpty ? details.title : _media.title,
@@ -94,6 +110,8 @@ class _MovieDetailScreenState extends State<MovieDetailScreen> {
       );
       if (!mounted) return;
       setState(() => _adopt(details));
+      await _loadTracks();
+      await _loadProgress();
     } catch (_) {
       // Keep local data on failure (offline / no TMDB key).
     } finally {
@@ -102,36 +120,42 @@ class _MovieDetailScreenState extends State<MovieDetailScreen> {
   }
 
   Future<void> _loadTracks() async {
+    final mediaId = _playbackMedia.id;
     setState(() {
       _loadingTracks = true;
       _tracksFailed = false;
     });
     try {
       final api = context.read<AuthProvider>().apiClient;
-      final tracks = await api.getMediaTracks(_media.id);
-      if (!mounted) return;
+      final tracks = await api.getMediaTracks(mediaId);
+      if (!mounted || mediaId != _playbackMedia.id) return;
       setState(() => _tracks = tracks);
     } catch (_) {
-      if (!mounted) return;
+      if (!mounted || mediaId != _playbackMedia.id) return;
       setState(() => _tracksFailed = true);
     } finally {
-      if (mounted) setState(() => _loadingTracks = false);
+      if (mounted && mediaId == _playbackMedia.id) {
+        setState(() => _loadingTracks = false);
+      }
     }
   }
 
   Future<void> _loadProgress() async {
+    final mediaId = _playbackMedia.id;
     setState(() => _loadingProgress = true);
     try {
       final api = Provider.of<AuthProvider>(context, listen: false).apiClient;
-      final data = await api.getProgress(_media.id);
-      if (!mounted) return;
+      final data = await api.getProgress(mediaId);
+      if (!mounted || mediaId != _playbackMedia.id) return;
       setState(() {
         _isFinished = data['is_finished'] as bool? ?? false;
         _currentPosition = data['current_position_seconds'] as int? ?? 0;
       });
     } catch (_) {
     } finally {
-      if (mounted) setState(() => _loadingProgress = false);
+      if (mounted && mediaId == _playbackMedia.id) {
+        setState(() => _loadingProgress = false);
+      }
     }
   }
 
@@ -140,19 +164,21 @@ class _MovieDetailScreenState extends State<MovieDetailScreen> {
     try {
       final library = Provider.of<LibraryProvider>(context, listen: false);
       final home = Provider.of<HomeProvider>(context, listen: false);
-      final watched = await library.setMediaWatched(_media.id, !_isFinished);
+      final watched =
+          await library.setMediaWatched(_playbackMedia.id, !_isFinished);
       await home.loadHome(silent: true);
       if (!mounted) return;
       setState(() {
         _isFinished = watched;
-        if (watched && _media.duration > 0) {
-          _currentPosition = _media.duration;
+        if (watched && _playbackMedia.duration > 0) {
+          _currentPosition = _playbackMedia.duration;
         }
       });
     } catch (_) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Impossible de mettre à jour le statut')),
+          const SnackBar(
+              content: Text('Impossible de mettre à jour le statut')),
         );
       }
     } finally {
@@ -161,7 +187,7 @@ class _MovieDetailScreenState extends State<MovieDetailScreen> {
   }
 
   double? get _progress {
-    final duration = _media.duration;
+    final duration = _playbackMedia.duration;
     if (duration <= 0 || _isFinished) return null;
     if (_currentPosition <= 0) return null;
     return (_currentPosition / duration).clamp(0.0, 1.0);
@@ -198,6 +224,7 @@ class _MovieDetailScreenState extends State<MovieDetailScreen> {
       setState(() {
         _media = updated;
         _details = null;
+        _selectedVersion = null;
       });
       await _loadDetails(forceRefresh: true);
       await home.loadHome(silent: true);
@@ -215,20 +242,42 @@ class _MovieDetailScreenState extends State<MovieDetailScreen> {
   /// Le film tel que le lecteur et le téléchargement le voient, progression
   /// locale comprise. Un seul point de construction, pour que les deux boutons
   /// ne divergent pas.
-  HomeMediaItem get _playbackItem =>
-      widget.movieItem ??
-      HomeMediaItem(
-        media: _media,
+  Media get _playbackMedia => _selectedVersion?.item.media ?? _media;
+
+  void _selectVersion(MediaVersion version) {
+    setState(() {
+      _selectedVersion = version;
+      _tracks = null;
+      _currentPosition = version.item.currentPositionSeconds;
+      _isFinished = version.item.isFinished;
+    });
+    _loadTracks();
+    _loadProgress();
+  }
+
+  HomeMediaItem get _playbackItem => HomeMediaItem(
+        media: _playbackMedia,
         currentPositionSeconds: _currentPosition,
-        duration: _media.duration,
+        duration: _playbackMedia.duration,
         isFinished: _isFinished,
+        introStart: _selectedVersion?.item.introStart ??
+            widget.movieItem?.introStart ??
+            0,
+        introEnd:
+            _selectedVersion?.item.introEnd ?? widget.movieItem?.introEnd ?? 0,
+        outroStart: _selectedVersion?.item.outroStart ??
+            widget.movieItem?.outroStart ??
+            0,
+        outroEnd:
+            _selectedVersion?.item.outroEnd ?? widget.movieItem?.outroEnd ?? 0,
       );
 
   void _play() {
     final item = _playbackItem;
     Navigator.of(context).push(
       MaterialPageRoute(
-        settings: const RouteSettings(name: SearchRouteObserver.playerRouteName),
+        settings:
+            const RouteSettings(name: SearchRouteObserver.playerRouteName),
         builder: (_) => PlayerScreen(media: item),
       ),
     );
@@ -240,7 +289,7 @@ class _MovieDetailScreenState extends State<MovieDetailScreen> {
       type: MediaType.movie,
       releaseDate: _details?.releaseDate ?? _media.releaseDate,
       runtimeMinutes: _details?.runtime ?? 0,
-      durationSeconds: _media.duration,
+      durationSeconds: _playbackMedia.duration,
       rating: _details?.voteAverage ?? 0,
     );
 
@@ -283,13 +332,44 @@ class _MovieDetailScreenState extends State<MovieDetailScreen> {
                     const SizedBox(width: 16),
                     Text(
                       '${(_progress! * 100).round()}% visionné',
-                      style: const TextStyle(color: AppColors.textMuted, fontSize: 13),
+                      style: const TextStyle(
+                          color: AppColors.textMuted, fontSize: 13),
                     ),
                   ],
                 ],
               ),
             ),
           ),
+          if (_versions.length > 1)
+            SliverToBoxAdapter(
+              child: Padding(
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 24, vertical: 16),
+                child: DropdownButtonFormField<int>(
+                  key: ValueKey(_selectedVersion?.item.media.id),
+                  initialValue: _selectedVersion?.item.media.id,
+                  isExpanded: true,
+                  decoration: const InputDecoration(
+                    labelText: 'Version',
+                    helperText:
+                        'La meilleure qualité est sélectionnée par défaut.',
+                  ),
+                  items: _versions
+                      .map((version) => DropdownMenuItem(
+                            value: version.item.media.id,
+                            child: Text(version.label,
+                                overflow: TextOverflow.ellipsis),
+                          ))
+                      .toList(),
+                  onChanged: (id) {
+                    if (id != null) {
+                      _selectVersion(
+                          _versions.firstWhere((v) => v.item.media.id == id));
+                    }
+                  },
+                ),
+              ),
+            ),
           SliverToBoxAdapter(
             child: MediaTechnicalSection(
               tracks: _tracks,
@@ -320,7 +400,8 @@ class _MovieDetailScreenState extends State<MovieDetailScreen> {
                 padding: const EdgeInsets.only(top: 16),
                 child: CastSection(
                   cast: _details!.cast,
-                  onTapMember: (member) => openPerson(context, member.tmdbId, name: member.name),
+                  onTapMember: (member) =>
+                      openPerson(context, member.tmdbId, name: member.name),
                 ),
               ),
             ),

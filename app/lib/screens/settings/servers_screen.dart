@@ -17,8 +17,15 @@ import '../../tv/tv_deferred_keyboard.dart';
 /// Basculer ne renégocie rien — chaque compte garde son jeton — donc l'écran
 /// n'a pas de formulaire de connexion : ce sont des comptes déjà ouverts. Voir
 /// ADR-0013.
+///
+/// Les liens entre comptes, eux, sont tenus par les serveurs (ADR-0017) : un
+/// serveur lié depuis un autre appareil apparaît ici, et il suffit d'y entrer
+/// son mot de passe une fois pour l'ajouter à cet appareil.
 class ServersScreen extends StatefulWidget {
-  const ServersScreen({super.key});
+  const ServersScreen({super.key, this.embedded = false});
+
+  /// Sans barre ni défilement propre, pour vivre dans une page des paramètres.
+  final bool embedded;
 
   @override
   State<ServersScreen> createState() => _ServersScreenState();
@@ -35,6 +42,12 @@ class _ServersScreenState extends State<ServersScreen> {
     super.initState();
     _checkPending();
     _poll = Timer.periodic(const Duration(seconds: 5), (_) => _checkPending());
+    _refreshLinks();
+  }
+
+  Future<void> _refreshLinks() async {
+    await context.read<ApiClient>().refreshAccountLinks();
+    if (mounted) setState(() {});
   }
 
   @override
@@ -113,10 +126,7 @@ class _ServersScreenState extends State<ServersScreen> {
 
   Future<void> _link(ServerAccount account) async {
     final api = context.read<ApiClient>();
-    final linked =
-        api.servers.linkedAccounts(account.id).map((a) => a.id).toSet();
-    final candidates =
-        api.servers.accounts.where((a) => !linked.contains(a.id)).toList();
+    final candidates = _linkCandidates(api, account);
     final chosen = await showDialog<String>(
       context: context,
       builder: (ctx) => SimpleDialog(
@@ -125,7 +135,9 @@ class _ServersScreenState extends State<ServersScreen> {
           const Padding(
             padding: EdgeInsets.fromLTRB(24, 0, 24, 16),
             child: Text(
-                'Choisissez un autre de vos comptes. Les comptes liés partagent leur historique de lecture et prennent le relais si un serveur est indisponible et possède le même média.'),
+                'Choisissez un autre de vos comptes. Les deux serveurs se transmettront votre progression, '
+                'et chacun apparaîtra sur vos autres appareils. Les administrateurs des deux serveurs '
+                'doivent accepter le lien une première fois.'),
           ),
           for (final other in candidates)
             SimpleDialogOption(
@@ -143,16 +155,58 @@ class _ServersScreenState extends State<ServersScreen> {
       ),
     );
     if (chosen == null || !mounted) return;
-    await api.servers.linkAccounts(account.id, chosen);
-    unawaited(api.synchronizeLinkedProgress());
+    await linkAndReport(context, account.id, chosen);
     if (mounted) setState(() {});
-    _toast('Comptes liés. La progression se synchronise automatiquement.');
   }
 
   Future<void> _unlink(ServerAccount account) async {
-    await context.read<ApiClient>().servers.unlinkAccount(account.id);
+    final api = context.read<ApiClient>();
+    final links = api.servers.serverLinksFor(account.id);
+    if (links.isEmpty) return;
+    final link = links.length == 1
+        ? links.single
+        : await showDialog<AccountLink>(
+            context: context,
+            builder: (ctx) => SimpleDialog(
+              title: const Text('Dissocier quel compte ?'),
+              children: [
+                for (final link in links)
+                  SimpleDialogOption(
+                    onPressed: () => Navigator.of(ctx).pop(link),
+                    child: Padding(
+                      padding: const EdgeInsets.symmetric(vertical: 8),
+                      child:
+                          Text('${link.remoteUsername} · ${link.displayName}'),
+                    ),
+                  ),
+                SimpleDialogOption(
+                  onPressed: () => Navigator.of(ctx).pop(),
+                  child: const Text('Annuler'),
+                ),
+              ],
+            ),
+          );
+    if (link == null || !mounted) return;
+    try {
+      await api.unlinkAccount(account.id, link);
+      _toast('Compte dissocié. L’historique déjà partagé est conservé.');
+    } catch (e) {
+      _toast(_errorText(e), error: true);
+    }
     if (mounted) setState(() {});
-    _toast('Compte dissocié. L’historique déjà partagé est conservé.');
+  }
+
+  Future<void> _signInToLinked(AccountLink link) async {
+    final added = await Navigator.of(context).push<bool>(
+      MaterialPageRoute(
+        builder: (_) => AddServerScreen(
+          initialUrl: link.url,
+          initialUsername: link.remoteUsername,
+          signIn: true,
+        ),
+      ),
+    );
+    if (added == true && mounted) setState(() {});
   }
 
   Future<void> _forget(ServerAccount account) async {
@@ -196,97 +250,126 @@ class _ServersScreenState extends State<ServersScreen> {
     final accounts = auth.servers;
     final activeId = auth.activeServer?.id;
     final pending = auth.pendingAccessRequests;
+    final api = context.read<ApiClient>();
+    final elsewhere = _serversNotOnThisDevice(api);
 
+    final children = <Widget>[
+      if (!widget.embedded) ...[
+        const Text(
+          'Liez vos comptes, même avec des noms différents : les serveurs se transmettent votre '
+          'progression, vos serveurs vous suivent sur tous vos appareils, et la lecture reprend '
+          'sur un serveur disponible.',
+          style: TextStyle(color: AppColors.textSecondary, fontSize: 13),
+        ),
+        const SizedBox(height: 20),
+      ],
+      for (final account in accounts)
+        _ServerTile(
+          account: account,
+          isActive: account.id == activeId,
+          busy: auth.isLoading,
+          onSelect: () => _switchTo(account),
+          onRename: () => _rename(account),
+          links: api.servers.serverLinksFor(account.id),
+          onLink: _linkCandidates(api, account).isNotEmpty
+              ? () => _link(account)
+              : null,
+          onUnlink: () => _unlink(account),
+          onForget: accounts.length == 1 ? null : () => _forget(account),
+        ),
+      if (elsewhere.isNotEmpty) ...[
+        const SizedBox(height: 24),
+        const Text(
+          'Vos autres serveurs',
+          style: TextStyle(fontWeight: FontWeight.w600),
+        ),
+        const SizedBox(height: 4),
+        const Text(
+          'Liés à votre compte, mais pas encore ouverts sur cet appareil. '
+          'Entrez votre mot de passe une fois pour pouvoir y basculer.',
+          style: TextStyle(color: AppColors.textSecondary, fontSize: 12),
+        ),
+        for (final link in elsewhere)
+          ListTile(
+            contentPadding: EdgeInsets.zero,
+            leading: const Icon(Icons.dns_outlined),
+            title: Text(link.displayName),
+            subtitle: Text(
+              link.remoteUsername,
+              style: const TextStyle(color: AppColors.textSecondary),
+            ),
+            trailing: TextButton(
+              onPressed: () => _signInToLinked(link),
+              child: const Text('Se connecter'),
+            ),
+          ),
+      ],
+      if (pending.isNotEmpty) ...[
+        const SizedBox(height: 24),
+        const Text(
+          'Demandes en attente',
+          style: TextStyle(fontWeight: FontWeight.w600),
+        ),
+        const SizedBox(height: 4),
+        const Text(
+          'Un administrateur du serveur doit accepter. La réponse est '
+          'récupérée toute seule, y compris après un redémarrage de l’app.',
+          style: TextStyle(color: AppColors.textSecondary, fontSize: 12),
+        ),
+        for (final request in pending)
+          ListTile(
+            contentPadding: EdgeInsets.zero,
+            leading: const SizedBox(
+              width: 24,
+              height: 24,
+              child: Center(
+                child: SizedBox(
+                  width: 16,
+                  height: 16,
+                  child: CircularProgressIndicator(strokeWidth: 2),
+                ),
+              ),
+            ),
+            title: Text(request.prettyHost),
+            subtitle: Text(
+              'En attente · ${request.username}',
+              style: const TextStyle(color: AppColors.textSecondary),
+            ),
+            trailing: IconButton(
+              tooltip: 'Abandonner',
+              icon: const Icon(Icons.close_rounded),
+              onPressed: () async {
+                await context
+                    .read<AuthProvider>()
+                    .abandonAccessRequest(request);
+                if (mounted) setState(() {});
+              },
+            ),
+          ),
+      ],
+      const SizedBox(height: 24),
+      Align(
+        alignment: Alignment.centerLeft,
+        child: FilledButton.tonalIcon(
+          onPressed: _addServer,
+          icon: const Icon(Icons.add_rounded),
+          label: const Text('Ajouter un serveur'),
+        ),
+      ),
+    ];
+
+    if (widget.embedded) {
+      return Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: children,
+      );
+    }
     return Scaffold(
       backgroundColor: AppColors.background,
       appBar: AppBar(title: const Text('Serveurs')),
       body: ListView(
         padding: const EdgeInsets.fromLTRB(20, 12, 20, 40),
-        children: [
-          const Text(
-            'Sur cet appareil, liez vos comptes, même avec des noms différents, pour partager votre '
-            'progression et reprendre automatiquement sur un serveur disponible.',
-            style:
-                TextStyle(color: AppColors.textSecondary, fontSize: 13),
-          ),
-          const SizedBox(height: 20),
-          for (final account in accounts)
-            _ServerTile(
-              account: account,
-              isActive: account.id == activeId,
-              busy: auth.isLoading,
-              onSelect: () => _switchTo(account),
-              onRename: () => _rename(account),
-              linked: context
-                  .read<ApiClient>()
-                  .servers
-                  .linkedAccounts(account.id)
-                  .where((a) => a.id != account.id)
-                  .toList(),
-              onLink: context
-                          .read<ApiClient>()
-                          .servers
-                          .linkedAccounts(account.id)
-                          .length <
-                      accounts.length
-                  ? () => _link(account)
-                  : null,
-              onUnlink: () => _unlink(account),
-              onForget: accounts.length == 1 ? null : () => _forget(account),
-            ),
-          if (pending.isNotEmpty) ...[
-            const SizedBox(height: 24),
-            const Text(
-              'Demandes en attente',
-              style: TextStyle(fontWeight: FontWeight.w600),
-            ),
-            const SizedBox(height: 4),
-            const Text(
-              'Un administrateur du serveur doit accepter. La réponse est '
-              'récupérée toute seule, y compris après un redémarrage de l’app.',
-              style: TextStyle(color: AppColors.textSecondary, fontSize: 12),
-            ),
-            for (final request in pending)
-              ListTile(
-                contentPadding: EdgeInsets.zero,
-                leading: const SizedBox(
-                  width: 24,
-                  height: 24,
-                  child: Center(
-                    child: SizedBox(
-                      width: 16,
-                      height: 16,
-                      child: CircularProgressIndicator(strokeWidth: 2),
-                    ),
-                  ),
-                ),
-                title: Text(request.prettyHost),
-                subtitle: Text(
-                  'En attente · ${request.username}',
-                  style: const TextStyle(color: AppColors.textSecondary),
-                ),
-                trailing: IconButton(
-                  tooltip: 'Abandonner',
-                  icon: const Icon(Icons.close_rounded),
-                  onPressed: () async {
-                    await context
-                        .read<AuthProvider>()
-                        .abandonAccessRequest(request);
-                    if (mounted) setState(() {});
-                  },
-                ),
-              ),
-          ],
-          const SizedBox(height: 24),
-          Align(
-            alignment: Alignment.centerLeft,
-            child: FilledButton.tonalIcon(
-              onPressed: _addServer,
-              icon: const Icon(Icons.add_rounded),
-              label: const Text('Ajouter un serveur'),
-            ),
-          ),
-        ],
+        children: children,
       ),
     );
   }
@@ -299,7 +382,7 @@ class _ServerTile extends StatelessWidget {
     required this.busy,
     required this.onSelect,
     required this.onRename,
-    required this.linked,
+    required this.links,
     required this.onLink,
     required this.onUnlink,
     required this.onForget,
@@ -310,7 +393,7 @@ class _ServerTile extends StatelessWidget {
   final bool busy;
   final VoidCallback onSelect;
   final VoidCallback onRename;
-  final List<ServerAccount> linked;
+  final List<AccountLink> links;
   final VoidCallback? onLink;
   final VoidCallback onUnlink;
   final VoidCallback? onForget;
@@ -348,7 +431,7 @@ class _ServerTile extends StatelessWidget {
           title: Text(account.displayName),
           subtitle: Text(
             '${account.username} · ${isActive ? 'serveur actif' : account.prettyHost}'
-            '${linked.isEmpty ? '' : '\nLié à ${linked.map((a) => '${a.username} sur ${a.displayName}').join(', ')}'}',
+            '${links.isEmpty ? '' : '\nLié à ${links.map((l) => '${l.remoteUsername} sur ${l.displayName}${l.isActive ? '' : ' (en attente des administrateurs)'}').join(', ')}'}',
             style: const TextStyle(color: AppColors.textSecondary),
           ),
           trailing: PopupMenuButton<String>(
@@ -370,7 +453,7 @@ class _ServerTile extends StatelessWidget {
               if (onLink != null)
                 const PopupMenuItem(
                     value: 'link', child: Text('Lier un compte')),
-              if (linked.isNotEmpty)
+              if (links.isNotEmpty)
                 const PopupMenuItem(
                     value: 'unlink', child: Text('Dissocier ce compte')),
               const PopupMenuItem(value: 'rename', child: Text('Renommer')),
@@ -392,7 +475,18 @@ class _ServerTile extends StatelessWidget {
 /// Les deux chemins sont sur le même écran parce que la personne, elle, ne sait
 /// pas toujours lequel la concerne avant d'avoir tapé l'adresse.
 class AddServerScreen extends StatefulWidget {
-  const AddServerScreen({super.key});
+  const AddServerScreen({
+    super.key,
+    this.initialUrl,
+    this.initialUsername,
+    this.signIn = false,
+  });
+
+  /// Pré-remplis quand on vient d'un serveur lié à son compte : il ne reste
+  /// que le mot de passe à taper.
+  final String? initialUrl;
+  final String? initialUsername;
+  final bool signIn;
 
   @override
   State<AddServerScreen> createState() => _AddServerScreenState();
@@ -407,10 +501,17 @@ class _AddServerScreenState extends State<AddServerScreen> {
   final _passwordController = TextEditingController();
   final _messageController = TextEditingController();
 
-  _AddMode _mode = _AddMode.request;
+  late _AddMode _mode = widget.signIn ? _AddMode.signIn : _AddMode.request;
   bool _busy = false;
   bool _discovering = false;
   String? _error;
+
+  @override
+  void initState() {
+    super.initState();
+    _serverController.text = widget.initialUrl ?? '';
+    _usernameController.text = widget.initialUsername ?? '';
+  }
 
   @override
   void dispose() {
@@ -459,6 +560,7 @@ class _AddServerScreenState extends State<AddServerScreen> {
       _error = null;
     });
 
+    final previous = auth.activeServer;
     try {
       if (_mode == _AddMode.signIn) {
         final account = await auth.addServerWithPassword(
@@ -468,6 +570,9 @@ class _AddServerScreenState extends State<AddServerScreen> {
         );
         if (!mounted) return;
         _snack('${account.displayName} ajouté.');
+        if (previous != null && previous.id != account.id) {
+          await _offerLink(previous, account);
+        }
       } else {
         await auth.requestAccess(
           serverUrl: url,
@@ -489,6 +594,45 @@ class _AddServerScreenState extends State<AddServerScreen> {
       return;
     }
     if (mounted) setState(() => _busy = false);
+  }
+
+  /// Juste après l'ajout, le bon moment pour demander si c'est la même
+  /// personne : sur un appareil partagé, ce n'est pas toujours le cas, donc
+  /// rien n'est lié sans le demander.
+  Future<void> _offerLink(ServerAccount previous, ServerAccount added) async {
+    final api = context.read<ApiClient>();
+    await api.refreshAccountLinks();
+    if (!mounted ||
+        api.servers.linkedAccounts(previous.id).any((a) => a.id == added.id)) {
+      return;
+    }
+    final link = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        backgroundColor: AppColors.surface,
+        title:
+            Text('Lier à ${previous.username} sur ${previous.displayName} ?'),
+        content: const Text(
+          'Si ces deux comptes sont à vous, vos serveurs se transmettront votre '
+          'progression et chacun apparaîtra sur vos autres appareils. Les '
+          'administrateurs des deux serveurs doivent accepter le lien une '
+          'première fois.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(ctx).pop(false),
+            child: const Text('Plus tard'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.of(ctx).pop(true),
+            child: const Text('Lier'),
+          ),
+        ],
+      ),
+    );
+    if (link == true && mounted) {
+      await linkAndReport(context, previous.id, added.id);
+    }
   }
 
   @override
@@ -647,6 +791,54 @@ class _AddServerScreenState extends State<AddServerScreen> {
   }
 }
 
+/// Les autres comptes de cet appareil qu'on peut lier à [account] : sur un
+/// autre serveur, et pas déjà liés.
+List<ServerAccount> _linkCandidates(ApiClient api, ServerAccount account) {
+  final linked =
+      api.servers.linkedAccounts(account.id).map((a) => a.id).toSet();
+  return api.servers.accounts
+      .where((a) =>
+          !linked.contains(a.id) &&
+          a.url != account.url &&
+          (a.serverId == null || a.serverId != account.serverId))
+      .toList();
+}
+
+/// Les serveurs liés à un compte de cet appareil sur lesquels il n'a pas
+/// encore de session, une fois chacun.
+List<AccountLink> _serversNotOnThisDevice(ApiClient api) {
+  final seen = <String>{};
+  final result = <AccountLink>[];
+  for (final account in api.servers.accounts) {
+    for (final link in api.servers.serverLinksFor(account.id)) {
+      if (api.servers.accountForLink(link) != null) continue;
+      final key = link.serverId.isEmpty ? link.url : link.serverId;
+      if (seen.add(key)) result.add(link);
+    }
+  }
+  return result;
+}
+
+/// Lie deux comptes et dit où en est le lien.
+Future<void> linkAndReport(
+    BuildContext context, String fromId, String toId) async {
+  final messenger = ScaffoldMessenger.of(context);
+  final api = context.read<ApiClient>();
+  try {
+    final link = await api.linkAccounts(fromId, toId);
+    messenger.showSnackBar(SnackBar(
+      content: Text(link.isActive
+          ? 'Comptes liés. Les serveurs se transmettent désormais votre progression.'
+          : 'Lien demandé. Il sera actif dès que les administrateurs des deux serveurs l’auront accepté.'),
+    ));
+  } catch (e) {
+    messenger.showSnackBar(SnackBar(
+      content: Text(_errorText(e)),
+      backgroundColor: AppColors.error,
+    ));
+  }
+}
+
 /// Message d'erreur lisible : le serveur en écrit un français, sinon on parle
 /// de réseau.
 String _errorText(Object error) {
@@ -663,5 +855,6 @@ String _errorText(Object error) {
         break;
     }
   }
+  if (error is StateError) return error.message;
   return 'Une erreur est survenue : $error';
 }

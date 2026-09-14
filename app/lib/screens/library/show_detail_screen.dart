@@ -222,7 +222,57 @@ class _ShowDetailScreenState extends State<ShowDetailScreen> {
     return null;
   }
 
-  void _playEpisode(HomeMediaItem episode) {
+  Future<void> _playEpisode(HomeMediaItem episode) async {
+    var versions = episode.media.versions;
+    if (versions.isEmpty) {
+      for (final item in context.read<LibraryProvider>().episodes) {
+        if (item.media.id == episode.media.id ||
+            item.media.versions
+                .any((v) => v.item.media.id == episode.media.id)) {
+          versions = item.media.versions;
+          break;
+        }
+      }
+    }
+    if (versions.length > 1) {
+      var selected = versions.first;
+      final chosen = await showDialog<MediaVersion>(
+        context: context,
+        builder: (context) => StatefulBuilder(
+            builder: (context, update) => AlertDialog(
+                  title: const Text('Choisir une version'),
+                  content: SizedBox(
+                    width: 480,
+                    child: DropdownButtonFormField<int>(
+                      initialValue: selected.item.media.id,
+                      isExpanded: true,
+                      decoration: const InputDecoration(labelText: 'Version'),
+                      items: versions
+                          .map((v) => DropdownMenuItem(
+                                value: v.item.media.id,
+                                child: Text(v.label,
+                                    overflow: TextOverflow.ellipsis),
+                              ))
+                          .toList(),
+                      onChanged: (id) => update(() {
+                        selected =
+                            versions.firstWhere((v) => v.item.media.id == id);
+                      }),
+                    ),
+                  ),
+                  actions: [
+                    TextButton(
+                        onPressed: () => Navigator.pop(context),
+                        child: const Text('Annuler')),
+                    FilledButton(
+                        onPressed: () => Navigator.pop(context, selected),
+                        child: const Text('Lecture')),
+                  ],
+                )),
+      );
+      if (chosen == null || !mounted) return;
+      episode = chosen.item;
+    }
     Navigator.of(context).push(
       MaterialPageRoute(
         settings: const RouteSettings(
@@ -242,7 +292,8 @@ class _ShowDetailScreenState extends State<ShowDetailScreen> {
         .loadEpisodes(showId: _show.id, season: season);
   }
 
-  Future<void> _toggleEpisodeWatched(HomeMediaItem episode, bool watched) async {
+  Future<void> _toggleEpisodeWatched(
+      HomeMediaItem episode, bool watched) async {
     if (!episode.isAvailable) return;
     final library = Provider.of<LibraryProvider>(context, listen: false);
     final home = Provider.of<HomeProvider>(context, listen: false);
@@ -258,7 +309,8 @@ class _ShowDetailScreenState extends State<ShowDetailScreen> {
     } catch (_) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Impossible de mettre à jour le statut')),
+          const SnackBar(
+              content: Text('Impossible de mettre à jour le statut')),
         );
       }
     }
@@ -340,9 +392,8 @@ class _ShowDetailScreenState extends State<ShowDetailScreen> {
     final local = await _fetchLocalLibraryContext(api, lp);
     if (!mounted) return;
 
-    final folderLine = local.folder?.isNotEmpty == true
-        ? local.folder!
-        : 'dossier inconnu';
+    final folderLine =
+        local.folder?.isNotEmpty == true ? local.folder! : 'dossier inconnu';
 
     final confirmed = await showDialog<bool>(
       context: context,
@@ -461,10 +512,12 @@ class _ShowDetailScreenState extends State<ShowDetailScreen> {
   Widget build(BuildContext context) {
     final lp = Provider.of<LibraryProvider>(context);
     final selectedSeason = _resolveSelectedSeason(lp.seasons);
-    final resumeEp =
-        _resumeEpisode != null && _resumeEpisode!.isAvailable ? _resumeEpisode : null;
-    final seasonsCount =
-        lp.seasons.isNotEmpty ? lp.seasons.length : (_details?.numberOfSeasons ?? 0);
+    final resumeEp = _resumeEpisode != null && _resumeEpisode!.isAvailable
+        ? _resumeEpisode
+        : null;
+    final seasonsCount = lp.seasons.isNotEmpty
+        ? lp.seasons.length
+        : (_details?.numberOfSeasons ?? 0);
     final availableCount = lp.episodes.where((e) => e.isAvailable).length;
     final totalCount = lp.episodes.length;
     final selectedMissing = selectedSeason != null &&
@@ -503,7 +556,8 @@ class _ShowDetailScreenState extends State<ShowDetailScreen> {
                       onPressed: () => _playEpisode(resumeEp),
                       icon: const Icon(Icons.play_arrow_rounded),
                       label: Text(
-                        resumeEp.currentPositionSeconds > 0 && !resumeEp.isFinished
+                        resumeEp.currentPositionSeconds > 0 &&
+                                !resumeEp.isFinished
                             ? 'REPRENDRE'
                             : 'LECTURE',
                       ),
@@ -556,7 +610,6 @@ class _ShowDetailScreenState extends State<ShowDetailScreen> {
               ),
             ),
           ),
-
           SliverToBoxAdapter(
             child: DetailInfoSection(
               details: _details,
@@ -566,7 +619,6 @@ class _ShowDetailScreenState extends State<ShowDetailScreen> {
                   : 'Synopsis indisponible pour cette série.',
             ),
           ),
-
           if (_details?.cast.isNotEmpty ?? false)
             SliverToBoxAdapter(
               child: Padding(
@@ -578,12 +630,12 @@ class _ShowDetailScreenState extends State<ShowDetailScreen> {
                 ),
               ),
             ),
-
           if (lp.isLoadingSeasons)
             SliverToBoxAdapter(
               child: Padding(
                 padding: EdgeInsets.all(AppLayout.pagePadding(context)),
-                child: const Center(child: CircularProgressIndicator(strokeWidth: 2.5)),
+                child: const Center(
+                    child: CircularProgressIndicator(strokeWidth: 2.5)),
               ),
             )
           else if (lp.seasons.isNotEmpty)
@@ -654,7 +706,6 @@ class _ShowDetailScreenState extends State<ShowDetailScreen> {
                 ),
               ),
             ),
-
           if (selectedMissing)
             SliverToBoxAdapter(
               child: Padding(
@@ -670,7 +721,6 @@ class _ShowDetailScreenState extends State<ShowDetailScreen> {
                 ),
               ),
             ),
-
           SliverToBoxAdapter(
             child: Padding(
               padding: AppLayout.pageInsets(context, top: 16, bottom: 8),
@@ -695,12 +745,12 @@ class _ShowDetailScreenState extends State<ShowDetailScreen> {
               ),
             ),
           ),
-
           if (lp.isLoadingEpisodes)
             SliverToBoxAdapter(
               child: Padding(
                 padding: EdgeInsets.all(AppLayout.pagePadding(context)),
-                child: const Center(child: CircularProgressIndicator(strokeWidth: 2.5)),
+                child: const Center(
+                    child: CircularProgressIndicator(strokeWidth: 2.5)),
               ),
             )
           else if (lp.episodes.isEmpty)
@@ -722,8 +772,7 @@ class _ShowDetailScreenState extends State<ShowDetailScreen> {
                   final episode = lp.episodes[index];
                   return EpisodeTile(
                     episode: episode,
-                    episodeNumber:
-                        episode.media.episodeNumber ?? index + 1,
+                    episodeNumber: episode.media.episodeNumber ?? index + 1,
                     showTitle: _show.title,
                     showId: _show.id,
                     showPosterUrl: _show.posterUrl,
@@ -731,14 +780,14 @@ class _ShowDetailScreenState extends State<ShowDetailScreen> {
                     onToggleWatched: episode.isAvailable
                         ? (watched) => _toggleEpisodeWatched(episode, watched)
                         : null,
-                    onTap:
-                        episode.isAvailable ? () => _playEpisode(episode) : null,
+                    onTap: episode.isAvailable
+                        ? () => _playEpisode(episode)
+                        : null,
                   );
                 },
                 childCount: lp.episodes.length,
               ),
             ),
-
           if (_details?.similarTitles.isNotEmpty ?? false)
             SliverToBoxAdapter(
               child: Padding(
@@ -790,7 +839,8 @@ class _SeasonMenuLabel extends StatelessWidget {
               ? Icons.hourglass_top_rounded
               : Icons.cloud_off_outlined,
           size: 15,
-          color: season.isRequested ? AppColors.accentMuted : AppColors.textMuted,
+          color:
+              season.isRequested ? AppColors.accentMuted : AppColors.textMuted,
         ),
         const SizedBox(width: 6),
         Text(

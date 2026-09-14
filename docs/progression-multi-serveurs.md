@@ -1,38 +1,49 @@
 # Progression entre serveurs
 
-Dans **Serveurs → menu du compte → Lier un compte**, la personne choisit les comptes
-qui lui appartiennent. Leurs noms d'utilisateur peuvent être différents. L'app
-synchronise uniquement les comptes explicitement liés sur cet appareil, en groupes
-séparés. Les liaisons survivent au redémarrage et au changement d'adresse d'un serveur.
-**Dissocier ce compte** arrête les échanges futurs ; l'historique déjà partagé reste
-sur chaque serveur. Les comptes existants ne sont pas liés automatiquement.
+Voir [ADR-0017](adr/0017-serveurs-lies-et-progression-entre-serveurs.md).
+
+## Lier ses comptes
+
+Dans **Serveurs → menu du compte → Lier un compte**, la personne choisit un autre de
+ses comptes, sur un autre serveur. Les noms d'utilisateur peuvent être différents.
+Juste après avoir ajouté un serveur avec un mot de passe, l'app propose aussi de le
+lier au compte actif ; rien n'est lié sans le demander.
+
+Le lien est enregistré **sur les deux serveurs**, pas sur l'appareil : un autre
+appareil connecté à l'un des deux comptes voit l'autre serveur dans **Vos autres
+serveurs** et s'y connecte en tapant son mot de passe une fois.
+
+**Dissocier ce compte** arrête les échanges ; l'historique déjà partagé reste sur
+chaque serveur.
+
+## Accord des administrateurs
+
+La première fois que deux serveurs sont liés, un administrateur de chaque serveur
+(droit « gérer les paramètres ») doit l'autoriser dans **Paramètres → Serveurs liés**.
+Tant que ce n'est pas fait, le lien est affiché « en attente des administrateurs ».
+L'accord vaut pour la paire : les comptes liés ensuite entre ces deux mêmes serveurs
+sont actifs immédiatement. Retirer un serveur lié dissocie tous les comptes qui en
+dépendent.
+
+Les deux serveurs doivent pouvoir se joindre. Si l'adresse transmise par l'appareil
+n'est pas joignable depuis l'autre serveur, l'administrateur la corrige avec
+**Modifier l'adresse** ; la dernière erreur de transmission est affichée sous le serveur.
+
+## Transmission
+
+Chaque modification de progression — lecture, vu/non vu, rejeu d'une lecture hors
+ligne, progression reçue d'un autre serveur — est notée par le serveur et transmise
+en arrière-plan aux serveurs liés, en quelques secondes, sans qu'aucune app n'ait
+besoin d'être ouverte. Un serveur injoignable reçoit tout à son retour. Le premier
+lien transmet l'historique existant.
+
 Un film est reconnu par son identifiant TMDB ; un épisode par l'identifiant TMDB de
 sa série, son numéro de saison et son numéro d'épisode. Un média sans cette identité
 reste propre à son serveur. Les titres et les numéros de fichiers locaux ne servent
-jamais à associer deux contenus.
-
-La synchronisation s'effectue en arrière-plan lors du changement de serveur et du
-chargement du catalogue, sans retarder l'affichage des films et séries. L'accueil
-et les films sont rafraîchis silencieusement après la synchronisation de la bascule.
-Les appels de reprise et de fiches attendent la synchronisation pour conserver une
-progression à jour (au plus une lecture complète toutes les 30 secondes). Après un enregistrement de progression ou une action vu/non vu,
-l'app transmet en arrière-plan l'état du seul média concerné. La date du visionnage
-est conservée : un historique ancien ne remplace pas une lecture plus récente.
-À date exactement identique, chaque serveur conserve son état existant.
-
-Les serveurs doivent disposer des routes authentifiées GET/POST `/api/progress/sync`.
-Chaque requête utilise uniquement le jeton du compte du serveur destinataire.
-L'import affecte seulement cet utilisateur, retrouve les médias de sa bibliothèque
-et conserve leurs durées et leurs fichiers. Les épisodes terminés alimentent le
-calcul existant du prochain épisode à reprendre.
-
-Les serveurs restent autonomes : l'app assure le transfert, sans service central.
-Un serveur indisponible ou d'une ancienne version n'empêche pas l'utilisation de
-l'app. Une prochaine synchronisation retente le transfert depuis les historiques
-conservés sur les serveurs. L'app n'entretient pas de copie locale supplémentaire :
-la source doit redevenir accessible si sa progression n'a encore été transmise à
-aucun autre serveur. Le rejeu des lectures téléchargées hors ligne reste assuré par
-le mécanisme existant, puis déclenche ce même partage.
+jamais à associer deux contenus. La date du visionnage est conservée : un historique
+ancien ne remplace pas une lecture plus récente, et à date identique chaque serveur
+garde son état. Les épisodes terminés alimentent le calcul existant du prochain
+épisode à reprendre.
 
 Pour utiliser cette fonction, mettre à jour l'app et les serveurs concernés.
 
@@ -56,8 +67,7 @@ requêtes tardives ni ses identifiants locaux ne sont redirigés vers le nouveau
 Une source quittée est écartée pendant trente secondes pour éviter les allers-retours
 en cas de panne intermittente. Une lecture téléchargée localement reste locale.
 
-Les liaisons sont conservées sur le client, sans fédération ni transfert des mots de
-passe entre serveurs. La synchronisation nécessite que l'app s'exécute ; un autre
-appareil doit également enregistrer et lier les comptes concernés. Les serveurs et
-l'app doivent être mis à jour. Le relais est automatique avec une interruption de
+Le relais utilise les liens déclarés par les serveurs, dont l'app garde une copie pour
+les retrouver quand un serveur ne répond plus. Il suppose que l'appareil ait une
+session sur le serveur de secours ; aucun mot de passe ne passe d'un serveur à l'autre. Le relais est automatique avec une interruption de
 réouverture du flux, pas une commutation vidéo sans coupure.

@@ -52,7 +52,7 @@ func writeMediaByID(w http.ResponseWriter, mediaID int) {
 // (GET /api/media/:id/details). Local library data (id, title, poster, overview,
 // release date) is merged with live TMDB metadata (cast, genres, rating,
 // backdrop, crew). Degrades gracefully to local-only when TMDB is unavailable.
-func GetMediaDetails(w http.ResponseWriter, r *http.Request, ps httprouter.Params, _ int) {
+func GetMediaDetails(w http.ResponseWriter, r *http.Request, ps httprouter.Params, userID int) {
 	w.Header().Set("Content-Type", "application/json")
 
 	mediaID, err := strconv.Atoi(ps.ByName("id"))
@@ -132,6 +132,13 @@ func GetMediaDetails(w http.ResponseWriter, r *http.Request, ps httprouter.Param
 	}
 	if tmdbID.Valid {
 		details.TMDBID = int(tmdbID.Int64)
+	}
+	if mt == models.TypeMovie {
+		details.Versions, err = movieVersions(mediaID, userID)
+		if err != nil {
+			http.Error(w, `{"error":"Unable to load versions"}`, http.StatusInternalServerError)
+			return
+		}
 	}
 
 	if catalog := indexer.FetchMediaCatalogDetails(details.TMDBID, mt); catalog != nil {
