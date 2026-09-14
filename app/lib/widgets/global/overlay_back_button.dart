@@ -1,3 +1,5 @@
+import 'dart:math' as math;
+
 import 'package:flutter/material.dart';
 import '../../desktop_window.dart';
 import '../../utils/app_platform.dart';
@@ -14,10 +16,19 @@ class OverlayBackButton extends StatelessWidget {
   static double get leadingWidth => _buttonSize;
 
   static double toolbarHeightFor(BuildContext context) {
-    final top = AppPlatform.isMacOS
-        ? macOSWindowControlsTopInset
-        : MediaQuery.paddingOf(context).top;
+    final top = _topInset(context);
     return kToolbarHeight + top;
+  }
+
+  /// The window's own controls on macOS, or whatever the screen reserves at
+  /// the top — the status bar, or the app's nav bar when the page opens
+  /// under it (see `MainShell`). The larger wins: on macOS under the nav bar,
+  /// the padding already includes the traffic lights.
+  static double _topInset(BuildContext context) {
+    final padding = MediaQuery.paddingOf(context).top;
+    return AppPlatform.isMacOS
+        ? math.max(macOSWindowControlsTopInset, padding)
+        : padding;
   }
 
   static double get toolbarHeight =>
@@ -25,9 +36,7 @@ class OverlayBackButton extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final topInset = AppPlatform.isMacOS
-        ? macOSWindowControlsTopInset
-        : MediaQuery.paddingOf(context).top;
+    final topInset = _topInset(context);
 
     return SizedBox(
       width: _buttonSize,

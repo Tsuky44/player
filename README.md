@@ -262,6 +262,10 @@ n'affecte que les liens futurs.
 
 ### 🔄 4. Indexation & Scan
 
+#### ➡️ Surveillance automatique
+* **Comportement :** Le serveur surveille les dossiers Films et Séries. Un fichier déposé (nouveau film, nouvel épisode) est indexé en quelques secondes, et un fichier supprimé est retiré, sans scan manuel. Seul le dossier modifié est scanné.
+* **Configuration :** `LIBRARY_WATCH` (`true` par défaut) active les notifications du système de fichiers ; `LIBRARY_POLL_INTERVAL` (`5m` par défaut, `0` pour désactiver) règle la vérification périodique des dossiers, qui rattrape ce que les notifications ne voient pas sur un partage réseau. Détails : `docs/adr/0018-surveillance-de-la-mediatheque.md`.
+
 #### ➡️ Lancer un scan de la bibliothèque
 * **Route :** `POST /api/indexer/scan`
 * **Comportement :** Lance un scan de dossiers asynchrone (en arrière-plan) et renvoie immédiatement un accusé de réception.
@@ -269,7 +273,7 @@ n'affecte que les liens futurs.
 
 #### ➡️ Récupérer l'état du scan
 * **Route :** `GET /api/indexer/status`
-* **Réponse (JSON) :** `{"is_scanning": true/false}`
+* **Réponse (JSON) :** `{"is_scanning": true/false, …, "library_monitor": {"running": true, "notifications": true, "folders": 1234, "pending_folders": 0, "pending_files": 0, …}}`
 
 ---
 

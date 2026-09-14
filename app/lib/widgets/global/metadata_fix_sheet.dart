@@ -42,6 +42,8 @@ class MetadataFixSheet extends StatefulWidget {
   }) {
     return showModalBottomSheet<TmdbCandidate>(
       context: context,
+      // Over the app's nav bar too, like the dialogs.
+      useRootNavigator: true,
       isScrollControlled: true,
       backgroundColor: Colors.transparent,
       builder: (_) => MetadataFixSheet(

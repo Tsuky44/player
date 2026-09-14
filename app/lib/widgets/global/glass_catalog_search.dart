@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../../models/models.dart';
+import '../../navigation/shell_navigator.dart';
 import '../../providers/auth_provider.dart';
 import '../../providers/library_provider.dart';
 import '../../providers/search_provider.dart';
@@ -100,7 +101,7 @@ class _GlassCatalogSearchState extends State<GlassCatalogSearch> {
     _clear();
 
     if (media.type == MediaType.movie) {
-      Navigator.of(context).push(
+      shellNavigatorOf(context).push(
         MaterialPageRoute(
           builder: (_) => MovieDetailScreen(
             movie: media,
@@ -112,7 +113,7 @@ class _GlassCatalogSearchState extends State<GlassCatalogSearch> {
     }
 
     if (media.type == MediaType.show) {
-      Navigator.of(context).push(
+      shellNavigatorOf(context).push(
         MaterialPageRoute(builder: (_) => ShowDetailScreen(show: media)),
       );
     }
@@ -122,7 +123,7 @@ class _GlassCatalogSearchState extends State<GlassCatalogSearch> {
     final query = (explicitQuery ?? _controller.text).trim();
     if (query.isEmpty) return;
     _clear();
-    Navigator.of(context).push(
+    shellNavigatorOf(context).push(
       MaterialPageRoute(builder: (_) => SearchResultsScreen(query: query)),
     );
   }

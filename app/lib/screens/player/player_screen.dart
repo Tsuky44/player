@@ -177,6 +177,10 @@ class _PlayerScreenState extends State<PlayerScreen> {
   bool _seekHintMounted = false;
   Timer? _seekHintTimer;
 
+  /// When the last side-zone seek landed; see [_handleSideZoneTap].
+  DateTime? _lastSideSeekAt;
+  static const _sideSeekBurstWindow = Duration(milliseconds: 1000);
+
   /// Pack Cinéma — playback rate cycle for studio control.
   double _playbackRate = 1.0;
   static const _playbackRates = [0.75, 1.0, 1.25, 1.5, 2.0];
@@ -997,6 +1001,9 @@ class _PlayerScreenState extends State<PlayerScreen> {
   /// all, and what "original" framing means — because all three are answers to
   /// the same fact: the screen is small, close, and touched.
   bool get _handheld => AppPlatform.isMobile && !TvMode.isTv;
+
+  /// A window to move: see [_startWindowDrag].
+  bool get _windowDragEnabled => AppPlatform.isDesktop;
 
   /// Phones and tablets, but not a television: a remote drives the chrome with
   /// its own keys and never produces a tap.
@@ -1992,8 +1999,26 @@ class _PlayerScreenState extends State<PlayerScreen> {
   /// visible chrome to read the result off; a double-tap has neither, and is
   /// the only seek that can arrive several times in a second.
   void _handleDoubleTapSeek(int seconds) {
+    _lastSideSeekAt = DateTime.now();
     _seekRelative(seconds);
     _showSeekHint(seconds);
+  }
+
+  /// A single tap on a side zone: the same as a tap in the middle, so play and
+  /// pause do not depend on aiming for the centre of the picture.
+  ///
+  /// Except in a seek burst. The double-tap recognizer pairs taps two by two,
+  /// so the third tap of a quick run arrives here alone — and pausing the film
+  /// in the middle of a rewind is not what that tap meant. While the last seek
+  /// is still recent, a lone tap keeps seeking the same way instead.
+  void _handleSideZoneTap(int seconds) {
+    final last = _lastSideSeekAt;
+    if (last != null &&
+        DateTime.now().difference(last) < _sideSeekBurstWindow) {
+      _handleDoubleTapSeek(seconds);
+      return;
+    }
+    _handleVideoTap(togglePlayback: true);
   }
 
   void _showSeekHint(int seconds) {
@@ -2228,6 +2253,18 @@ class _PlayerScreenState extends State<PlayerScreen> {
     await WindowControls.setFullScreen(!isFullScreen);
   }
 
+  /// The player hides the caption bar, which was the only handle the window
+  /// had: without this, a film started on one screen could not be carried to
+  /// another. Dragging the picture moves the window instead — a click that
+  /// does not move stays a tap, since the pan only claims a moving pointer.
+  ///
+  /// Not in full screen, where the window covers a display and moving it
+  /// would only tear it off the edges.
+  Future<void> _startWindowDrag() async {
+    if (await WindowControls.isFullScreen()) return;
+    await WindowControls.startDragging();
+  }
+
   Future<void> _exitFullscreenIfActive() async {
     if (await WindowControls.isFullScreen()) {
       await WindowControls.setFullScreen(false);
@@ -2433,7 +2470,10 @@ class _PlayerScreenState extends State<PlayerScreen> {
                           child: GestureDetector(
                             behavior: HitTestBehavior.opaque,
                             onDoubleTap: () => _handleDoubleTapSeek(-10),
-                            onTap: _handleVideoTap,
+                            onTap: () => _handleSideZoneTap(-10),
+                            onPanStart: _windowDragEnabled
+                                ? (_) => _startWindowDrag()
+                                : null,
                             child: Container(color: Colors.transparent),
                           ),
                         ),
@@ -2442,6 +2482,9 @@ class _PlayerScreenState extends State<PlayerScreen> {
                           child: GestureDetector(
                             behavior: HitTestBehavior.opaque,
                             onTap: () => _handleVideoTap(togglePlayback: true),
+                            onPanStart: _windowDragEnabled
+                                ? (_) => _startWindowDrag()
+                                : null,
                             child: Container(color: Colors.transparent),
                           ),
                         ),
@@ -2450,7 +2493,10 @@ class _PlayerScreenState extends State<PlayerScreen> {
                           child: GestureDetector(
                             behavior: HitTestBehavior.opaque,
                             onDoubleTap: () => _handleDoubleTapSeek(10),
-                            onTap: _handleVideoTap,
+                            onTap: () => _handleSideZoneTap(10),
+                            onPanStart: _windowDragEnabled
+                                ? (_) => _startWindowDrag()
+                                : null,
                             child: Container(color: Colors.transparent),
                           ),
                         ),

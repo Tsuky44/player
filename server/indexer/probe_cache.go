@@ -25,6 +25,11 @@ func ProbeAndPersist(mediaID int, title, filePath string, fileSize int64, modTim
 	probe, err := streaming.ProbeTracks(filePath)
 	if err != nil {
 		log.Printf("Indexer: probe failed for media %d (%s): %v", mediaID, title, err)
+		// Only a file that is there counts as unreadable: an unmounted share
+		// fails the same way, and must not keep the file out of later passes.
+		if _, statErr := os.Stat(filePath); statErr == nil {
+			_, _ = database.DB.Exec(`UPDATE medias SET probe_failed_at = CURRENT_TIMESTAMP WHERE id = ?`, mediaID)
+		}
 		return
 	}
 
@@ -43,6 +48,7 @@ func ProbeAndPersist(mediaID int, title, filePath string, fileSize int64, modTim
 			file_size = ?,
 			tracks_json = ?,
 			probed_at = CURRENT_TIMESTAMP,
+			probe_failed_at = NULL,
 			file_mod_time = ?,
 			duration = CASE WHEN ? > 0 THEN ? ELSE duration END,
 			gop_seconds = ?
@@ -85,7 +91,8 @@ func BackfillMissingProbesAsync() bool {
 			FROM medias
 			WHERE type IN ('movie', 'episode')
 			  AND file_path IS NOT NULL AND file_path != ''
-			  AND (tracks_json IS NULL OR tracks_json = '')`)
+			  AND (tracks_json IS NULL OR tracks_json = '')
+			  AND (probe_failed_at IS NULL OR probe_failed_at < datetime('now', '-7 days'))`)
 		if err != nil {
 			log.Printf("Indexer: probe backfill query failed: %v", err)
 			return
@@ -185,6 +192,7 @@ func PersistProbeAfterLiveProbe(mediaID int, filePath string, probe *streaming.P
 			file_size = ?,
 			tracks_json = ?,
 			probed_at = CURRENT_TIMESTAMP,
+			probe_failed_at = NULL,
 			file_mod_time = ?,
 			duration = CASE WHEN ? > 0 THEN ? ELSE duration END,
 			gop_seconds = ?

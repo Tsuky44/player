@@ -350,7 +350,7 @@ func DetectIntrosOutros() {
 		SELECT DISTINCT parent_id
 		FROM medias
 		WHERE type = 'episode'
-		  AND (intro_end = 0 AND outro_start = 0)
+		  AND ` + introPendingCondition + `
 	`)
 	if err != nil {
 		log.Printf("Detection error: failed to query seasons: %v", err)
@@ -369,7 +369,7 @@ func DetectIntrosOutros() {
 
 	for _, seasonID := range seasonIDs {
 		log.Printf("Detection: Starting analysis for Season ID %d...", seasonID)
-		if err := AnalyzeSeason(seasonID); err != nil {
+		if err := AnalyzeSeasonPending(seasonID); err != nil {
 			log.Printf("Detection error on Season ID %d: %v", seasonID, err)
 		}
 	}
@@ -481,7 +481,37 @@ type EpisodeInfo struct {
 	Episode  int
 }
 
+// introPendingCondition selects the episodes intro detection still owes a
+// look: no markers, and no attempt recorded in the last 30 days. The retry
+// window is what lets IntroDB, which fills in over time, eventually answer for
+// an episode it knew nothing about.
+const introPendingCondition = `(intro_end = 0 AND outro_start = 0
+		AND (intro_checked_at IS NULL OR intro_checked_at < datetime('now', '-30 days')))`
+
+// AnalyzeSeason detects intro/outro markers for every episode of a season,
+// whatever was found before. It is the explicit re-detection.
 func AnalyzeSeason(seasonID int) error {
+	return analyzeSeason(seasonID, false, nil)
+}
+
+// AnalyzeSeasonPending detects markers only for the episodes of a season that
+// still need them — see introPendingCondition. A season whose episodes were
+// all looked at costs one query.
+func AnalyzeSeasonPending(seasonID int) error {
+	return analyzeSeason(seasonID, true, nil)
+}
+
+// AnalyzeEpisodesPending is AnalyzeSeasonPending restricted to some episodes:
+// the ones a scan just added.
+func AnalyzeEpisodesPending(seasonID int, episodeIDs []int) error {
+	only := make(map[int]bool, len(episodeIDs))
+	for _, id := range episodeIDs {
+		only[id] = true
+	}
+	return analyzeSeason(seasonID, true, only)
+}
+
+func analyzeSeason(seasonID int, pendingOnly bool, only map[int]bool) error {
 	var seasonNumber int
 	var showID int
 	err := database.DB.QueryRow(`
@@ -497,6 +527,50 @@ func AnalyzeSeason(seasonID int) error {
 		if err := database.DB.QueryRow("SELECT title FROM medias WHERE id = ?", seasonID).Scan(&seasonTitle); err == nil {
 			seasonNumber = parseSeasonNumberFromTitle(seasonTitle)
 		}
+	}
+
+	// Fetch all episodes in this season with their episode numbers
+	rows, err := database.DB.Query(`
+		SELECT id, title, file_path, duration, COALESCE(episode_number, 0),
+		       `+introPendingCondition+`
+		FROM medias
+		WHERE type = 'episode' AND parent_id = ?
+		ORDER BY COALESCE(NULLIF(episode_number, 0), 9999), id ASC
+	`, seasonID)
+	if err != nil {
+		return err
+	}
+	defer rows.Close()
+
+	var episodes []EpisodeInfo
+	for rows.Next() {
+		var ep EpisodeInfo
+		var filePath sql.NullString
+		var epNum int
+		var pending bool
+		if err := rows.Scan(&ep.ID, &ep.Title, &filePath, &ep.Duration, &epNum, &pending); err == nil {
+			if (pendingOnly && !pending) || (only != nil && !only[ep.ID]) {
+				continue
+			}
+			if filePath.Valid && filePath.String != "" {
+				ep.FilePath = filePath.String
+				ep.Episode = epNum
+				if ep.Episode <= 0 {
+					if s, e, ok := ParseEpisodeNumbers(filepath.Base(ep.FilePath)); ok && s == seasonNumber {
+						ep.Episode = e
+					} else if s, e, ok := ParseEpisodeNumbers(ep.Title); ok && s == seasonNumber {
+						ep.Episode = e
+					}
+				}
+				ep.Season = seasonNumber
+				episodes = append(episodes, ep)
+			}
+		}
+	}
+	rows.Close()
+
+	if len(episodes) == 0 {
+		return nil
 	}
 
 	// Get the show's TMDB ID (tmdb_id is stored on the show, not the season)
@@ -525,44 +599,10 @@ func AnalyzeSeason(seasonID int) error {
 		log.Printf("Detection: Using cached IMDb ID %s for show ID %d", imdbID, showID)
 	}
 
-	// Fetch all episodes in this season with their episode numbers
-	rows, err := database.DB.Query(`
-		SELECT id, title, file_path, duration, COALESCE(episode_number, 0)
-		FROM medias
-		WHERE type = 'episode' AND parent_id = ?
-		ORDER BY COALESCE(NULLIF(episode_number, 0), 9999), id ASC
-	`, seasonID)
-	if err != nil {
-		return err
-	}
-	defer rows.Close()
-
-	var episodes []EpisodeInfo
-	for rows.Next() {
-		var ep EpisodeInfo
-		var filePath sql.NullString
-		var epNum int
-		if err := rows.Scan(&ep.ID, &ep.Title, &filePath, &ep.Duration, &epNum); err == nil {
-			if filePath.Valid && filePath.String != "" {
-				ep.FilePath = filePath.String
-				ep.Episode = epNum
-				if ep.Episode <= 0 {
-					if s, e, ok := ParseEpisodeNumbers(filepath.Base(ep.FilePath)); ok && s == seasonNumber {
-						ep.Episode = e
-					} else if s, e, ok := ParseEpisodeNumbers(ep.Title); ok && s == seasonNumber {
-						ep.Episode = e
-					}
-				}
-				ep.Season = seasonNumber
-				episodes = append(episodes, ep)
-			}
-		}
-	}
-	rows.Close()
-
-	if len(episodes) == 0 {
-		return nil
-	}
+	// An episode is marked as checked once every source answered for it, even
+	// with "nothing". A source that failed — IntroDB unreachable, ffprobe unable
+	// to read the file — leaves it unmarked, so the next pass tries again.
+	unanswered := map[int]bool{}
 
 	// Try TheIntroDB first if we have an IMDb ID
 	if imdbID != "" {
@@ -577,6 +617,7 @@ func AnalyzeSeason(seasonID int) error {
 			segments, err := FetchSegmentsFromIntroDB(imdbID, ep.Season, ep.Episode)
 			if err != nil {
 				log.Printf("Detection: Failed to fetch segments for S%dE%d: %v", ep.Season, ep.Episode, err)
+				unanswered[ep.ID] = true
 				continue
 			}
 
@@ -626,9 +667,18 @@ func AnalyzeSeason(seasonID int) error {
 		}
 
 		found, err := DetectFromChapters(ep.ID, ep.FilePath)
-		if err == nil && found {
+		if err != nil {
+			unanswered[ep.ID] = true
+		} else if found {
 			log.Printf("Detection: Episode %d successfully mapped using FFprobe chapters as fallback.", ep.ID)
 		}
+	}
+
+	for _, ep := range episodes {
+		if unanswered[ep.ID] {
+			continue
+		}
+		_, _ = database.DB.Exec(`UPDATE medias SET intro_checked_at = CURRENT_TIMESTAMP WHERE id = ?`, ep.ID)
 	}
 
 	return nil

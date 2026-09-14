@@ -13,16 +13,20 @@ bool get useHiddenNativeTitleBar =>
 /// Vertical space for macOS traffic lights — UI controls sit just below.
 double get macOSWindowControlsTopInset => AppPlatform.isMacOS ? 40 : 0;
 
-/// Top padding for tab bodies when the desktop glass nav overlaps content (≥900px).
-double embeddedShellContentTopInset(BuildContext context) {
+/// Height of the desktop glass nav (≥900px), from the top of the window.
+double shellHeaderHeight(BuildContext context) {
   const headerVerticalPadding = 16.0; // matches _DesktopGlassHeader (6 + 10)
   const navRowHeight = 44.0;
-  const gapBelowHeader = 12.0;
   return MediaQuery.paddingOf(context).top +
       macOSWindowControlsTopInset +
       headerVerticalPadding +
-      navRowHeight +
-      gapBelowHeader;
+      navRowHeight;
+}
+
+/// Top padding for tab bodies when the desktop glass nav overlaps content (≥900px).
+double embeddedShellContentTopInset(BuildContext context) {
+  const gapBelowHeader = 12.0;
+  return shellHeaderHeight(context) + gapBelowHeader;
 }
 
 /// Controls visibility of the custom desktop caption bar (Windows only).

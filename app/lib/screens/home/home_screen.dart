@@ -117,7 +117,7 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 
   void _playMedia(BuildContext context, dynamic media) async {
-    await Navigator.of(context).push(
+    await Navigator.of(context, rootNavigator: true).push(
       MaterialPageRoute(
         settings: const RouteSettings(name: SearchRouteObserver.playerRouteName),
         builder: (_) => PlayerScreen(media: media),

@@ -5,6 +5,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"time"
 )
 
 // maxWalkDepth stops runaway recursion on pathological trees.
@@ -17,6 +18,18 @@ var discStructureDirNames = map[string]bool{
 	"stream": true, "playlist": true, "clipinf": true, "backup": true,
 }
 
+// walkOptions narrows a walk to part of a library. The zero value is the full
+// recursive walk a library scan does.
+type walkOptions struct {
+	// shallow reads only the start folder: its videos, not its sub-folders.
+	shallow bool
+	// onDir, when set, is told about every folder the walk reads, with the
+	// modification time it had just before being read and the sub-folders the
+	// walk would descend into. The library monitor builds its picture of the
+	// tree from it — see monitor.go.
+	onDir func(dir string, modTime time.Time, childDirs []string)
+}
+
 // walkVideoFiles walks a library root and calls fn for every indexable video.
 //
 // Unlike filepath.Walk it never aborts: an unreadable folder or a broken
@@ -24,7 +37,12 @@ var discStructureDirNames = map[string]bool{
 // hide the rest of the library. Directory symlinks are followed (NAS/mergerfs
 // layouts rely on them) with a loop guard on resolved paths.
 func walkVideoFiles(root string, s section, fn func(path string, info os.FileInfo)) {
-	if strings.TrimSpace(root) == "" {
+	walkVideoFilesWith(root, s, walkOptions{}, fn)
+}
+
+// walkVideoFilesWith is walkVideoFiles starting from any folder, with options.
+func walkVideoFilesWith(start string, s section, opts walkOptions, fn func(path string, info os.FileInfo)) {
+	if strings.TrimSpace(start) == "" {
 		return
 	}
 	visited := map[string]bool{}
@@ -42,6 +60,15 @@ func walkVideoFiles(root string, s section, fn func(path string, info os.FileInf
 			visited[resolved] = true
 		}
 
+		// Stamped before the read, so a change landing while the folder is
+		// being listed leaves it looking modified rather than seen.
+		var modTime time.Time
+		if opts.onDir != nil {
+			if info, err := os.Stat(dir); err == nil {
+				modTime = info.ModTime()
+			}
+		}
+
 		entries, err := os.ReadDir(dir)
 		if err != nil {
 			log.Printf("Indexer: cannot read directory %s: %v", dir, err)
@@ -49,6 +76,11 @@ func walkVideoFiles(root string, s section, fn func(path string, info os.FileInf
 			return
 		}
 		reportDirSeen(s)
+
+		var childDirs []string
+		if opts.onDir != nil {
+			defer func() { opts.onDir(dir, modTime, childDirs) }()
+		}
 
 		for _, entry := range entries {
 			name := entry.Name()
@@ -84,7 +116,10 @@ func walkVideoFiles(root string, s section, fn func(path string, info os.FileInf
 				case IsExtrasDirName(name):
 					reportSkippedDir(s, path, "dossier de bonus (extras/trailers)")
 				default:
-					walk(path, depth+1)
+					childDirs = append(childDirs, path)
+					if !opts.shallow {
+						walk(path, depth+1)
+					}
 				}
 				continue
 			}
@@ -109,5 +144,5 @@ func walkVideoFiles(root string, s section, fn func(path string, info os.FileInf
 		}
 	}
 
-	walk(filepath.Clean(root), 0)
+	walk(filepath.Clean(start), 0)
 }

@@ -537,7 +537,7 @@ class _DownloadRow extends StatelessWidget {
   }
 
   void _play(BuildContext context) {
-    Navigator.of(context).push(
+    Navigator.of(context, rootNavigator: true).push(
       MaterialPageRoute(
         settings: const RouteSettings(
           name: SearchRouteObserver.playerRouteName,

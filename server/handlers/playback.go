@@ -48,7 +48,7 @@ func GetEpisodeTimestamps(w http.ResponseWriter, r *http.Request, ps httprouter.
 	if introEnd == 0 && outroStart == 0 && seasonID > 0 {
 		go func(sID int) {
 			log.Printf("Timestamps: Triggering background detection for season %d (episode %d)", sID, episodeID)
-			if err := indexer.AnalyzeSeason(sID); err != nil {
+			if err := indexer.AnalyzeSeasonPending(sID); err != nil {
 				log.Printf("Timestamps: Background detection failed for season %d: %v", sID, err)
 			}
 		}(seasonID)

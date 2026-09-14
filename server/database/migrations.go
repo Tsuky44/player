@@ -419,6 +419,21 @@ var migrations = []migration{
 			`CREATE INDEX IF NOT EXISTS idx_playback_history_user ON playback_history(user_id, started_at);`,
 		},
 	},
+	{
+		id:   8,
+		name: "scan attempt bookkeeping",
+		stmts: []string{
+			// Quand la détection du générique a été tentée sur un épisode. Sans
+			// elle, un épisode sur lequel ni IntroDB ni les chapitres ne trouvent
+			// rien — le cas le plus courant — était réanalysé à chaque scan, et
+			// avec lui toute sa saison.
+			`ALTER TABLE medias ADD COLUMN intro_checked_at TIMESTAMP;`,
+			// Quand ffprobe a échoué sur un fichier présent. Même raison : un
+			// fichier illisible était relu à chaque scan. Les deux marques sont
+			// effacées quand le fichier change.
+			`ALTER TABLE medias ADD COLUMN probe_failed_at TIMESTAMP;`,
+		},
+	},
 }
 
 // applyMigrations brings the database up to the latest schema version.

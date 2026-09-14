@@ -8,6 +8,7 @@ import (
 	"regexp"
 	"strconv"
 	"strings"
+	"sync"
 	"sync/atomic"
 	"time"
 
@@ -20,6 +21,11 @@ import (
 // to be atomic: the previous bool-plus-mutex pair only locked on the write side
 // and left every reader racing.
 var scanning atomic.Bool
+
+// scanRun serialises everything that walks the library and writes what it
+// finds: the library scan and the monitor's targeted scans. Two of them at once
+// would race on "is this file indexed yet?" and insert it twice.
+var scanRun sync.Mutex
 
 // IsScanning reports whether a media scan is currently running.
 func IsScanning() bool { return scanning.Load() }
@@ -55,6 +61,8 @@ func ScanMedia(moviesDir, seriesDir string) bool {
 
 	go func() {
 		defer scanning.Store(false)
+		scanRun.Lock()
+		defer scanRun.Unlock()
 
 		log.Println("Indexer: Starting media scan...")
 		startTime := time.Now()
@@ -66,8 +74,17 @@ func ScanMedia(moviesDir, seriesDir string) bool {
 		// Fix existing duplicate shows immediately (don't wait for a long filesystem walk).
 		dedupeDuplicateShows()
 
-		scanMovies(moviesDir)
-		scanSeries(seriesDir)
+		// The monitor, when it runs, learns the library's folders from this
+		// walk instead of listing them a second time.
+		movieScope, seriesScope := fullScope(moviesDir), fullScope(seriesDir)
+		if m := activeMonitor(); m != nil {
+			m.beginObserving()
+			movieScope.opts.onDir = m.recordDir
+			seriesScope.opts.onDir = m.recordDir
+			defer m.pruneUnseenDirs()
+		}
+		movies := scanMovieScope(movieScope)
+		series := scanSeriesScope(seriesScope)
 
 		// Full identity repair belongs to explicit re-detection. Running it here
 		// re-fetches every series and can undo a user's manual match on refresh.
@@ -75,7 +92,11 @@ func ScanMedia(moviesDir, seriesDir string) bool {
 		dedupeDuplicateMovies()
 
 		// Clean up broken database entries whose physical files have been deleted
-		if err := cleanMissingMedias(moviesDir, seriesDir); err != nil {
+		seen := movies.seen
+		for path := range series.seen {
+			seen[path] = true
+		}
+		if err := cleanMissingMediasSeen(seen, moviesDir, seriesDir); err != nil {
 			log.Printf("Indexer error cleaning up missing medias: %v", err)
 		}
 
@@ -106,34 +127,102 @@ func nullIfEmpty(s string) interface{} {
 	return s
 }
 
+// scanScope is the part of a library one scan pass covers: the whole root for
+// a library scan, a single folder for the monitor's targeted scans.
+type scanScope struct {
+	// root is the library root the folder belongs to. Relative paths — and so
+	// show, season and film identities — are always read against it, never
+	// against the folder being scanned.
+	root string
+	// start is the folder to walk; the root itself for a library scan.
+	start string
+	opts  walkOptions
+	// ready says whether a file found on disk can be indexed now. A file still
+	// being copied is left for later: indexing it would record the size and
+	// probe of a half-written file. nil means every file is ready.
+	ready func(path string, info os.FileInfo) bool
+}
+
+func fullScope(root string) scanScope {
+	return scanScope{root: root, start: root}
+}
+
+// scanOutcome is what a scan pass found and changed.
+type scanOutcome struct {
+	// seen holds every indexable video found on disk, ready or not, by its
+	// stored path. Cleanup only has to stat the rows missing from it.
+	seen map[string]bool
+	// added and refreshed are the rows inserted, and the rows whose file
+	// changed. Both need a probe; new episodes also need intro detection.
+	added     []int
+	refreshed []int
+	// deferred is set when a file was not ready, so the folder has to be
+	// looked at again.
+	deferred bool
+}
+
+func newScanOutcome() *scanOutcome {
+	return &scanOutcome{seen: map[string]bool{}}
+}
+
+// visitKnownFile handles a file that already has a row: refresh its
+// fingerprint if it changed. It reports whether the file was known.
+func (o *scanOutcome) visitKnownFile(s section, known map[string]indexedFile, normalizedPath string, info os.FileInfo) bool {
+	existing, ok := known[normalizedPath]
+	if !ok {
+		return false
+	}
+	changed := existing.changed(info)
+	if err := existing.refresh(info); err != nil {
+		reportError("actualisation impossible pour %s (%v)", normalizedPath, err)
+		reportFailed(s)
+		return true
+	}
+	if changed {
+		o.refreshed = append(o.refreshed, existing.id)
+		withSection(s, func(stats *ScanSectionStats) { stats.Modified++ })
+	}
+	reportAlreadyIndexed(s)
+	return true
+}
+
 // scanMovies indexes all video files in the movies directory
-func scanMovies(dir string) {
+func scanMovies(dir string) *scanOutcome {
+	return scanMovieScope(fullScope(dir))
+}
+
+// scanMovieScope indexes the video files of one part of the movies library.
+func scanMovieScope(scope scanScope) *scanOutcome {
+	outcome := newScanOutcome()
+	dir := scope.root
 	if _, err := os.Stat(dir); err != nil {
 		log.Printf("Indexer: Movies directory '%s' is not reachable (%v). Skipping.", dir, err)
 		reportError("dossier films inaccessible: %s (%v)", dir, err)
-		return
+		return outcome
 	}
 
-	known, err := loadIndexedFiles()
+	known, err := loadIndexedFilesUnder(scope.start, scope.opts.shallow)
 	if err != nil {
 		reportError("lecture du catalogue impossible: %v", err)
-		return
+		return outcome
 	}
 
-	walkVideoFiles(dir, sectionMovies, func(path string, info os.FileInfo) {
+	walkVideoFilesWith(scope.start, sectionMovies, scope.opts, func(path string, info os.FileInfo) {
 		// Normalize paths for DB storage (using forward slashes)
 		normalizedPath := filepath.ToSlash(path)
+		outcome.seen[normalizedPath] = true
 
-		if existing, ok := known[normalizedPath]; ok {
-			if err := existing.refresh(info); err != nil {
-				reportError("actualisation impossible pour %s (%v)", normalizedPath, err)
-				reportFailed(sectionMovies)
-				return
-			}
-			if existing.changed(info) {
-				withSection(sectionMovies, func(stats *ScanSectionStats) { stats.Modified++ })
-			}
+		// An indexed file that has not changed is the common case of every
+		// pass; it needs neither a readiness check nor a write.
+		if existing, ok := known[normalizedPath]; ok && !existing.changed(info) {
 			reportAlreadyIndexed(sectionMovies)
+			return
+		}
+		if scope.ready != nil && !scope.ready(path, info) {
+			outcome.deferred = true
+			return
+		}
+		if outcome.visitKnownFile(sectionMovies, known, normalizedPath, info) {
 			return
 		}
 
@@ -151,7 +240,7 @@ func scanMovies(dir string) {
 			tmdbID = identity.TMDBID
 		}
 
-		_, err = database.DB.Exec(
+		res, err := database.DB.Exec(
 			"INSERT INTO medias (type, title, file_path, duration, file_size, poster_url, overview, release_date, tmdb_id, imdb_id, file_mod_time) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
 			models.TypeMovie, displayTitle, normalizedPath, 0, info.Size(), identity.PosterURL, identity.Overview, identity.ReleaseDate, tmdbID, nullIfEmpty(identity.IMDbID), info.ModTime().Unix(),
 		)
@@ -160,6 +249,9 @@ func scanMovies(dir string) {
 			reportFailed(sectionMovies)
 			reportError("insertion impossible pour %s (%v)", normalizedPath, err)
 			return
+		}
+		if id, err := res.LastInsertId(); err == nil {
+			outcome.added = append(outcome.added, int(id))
 		}
 
 		reportIndexed(sectionMovies, identity.Matched)
@@ -170,37 +262,47 @@ func scanMovies(dir string) {
 			reportUnmatched(normalizedPath, displayTitle, string(models.TypeMovie))
 		}
 	})
+	return outcome
 }
 
 // scanSeries indexes TV shows, seasons, and episodes
-func scanSeries(dir string) {
+func scanSeries(dir string) *scanOutcome {
+	return scanSeriesScope(fullScope(dir))
+}
+
+// scanSeriesScope indexes the episodes of one part of the series library.
+func scanSeriesScope(scope scanScope) *scanOutcome {
+	outcome := newScanOutcome()
+	dir := scope.root
 	if _, err := os.Stat(dir); err != nil {
 		log.Printf("Indexer: Series directory '%s' is not reachable (%v). Skipping.", dir, err)
 		reportError("dossier séries inaccessible: %s (%v)", dir, err)
-		return
+		return outcome
 	}
 
-	known, err := loadIndexedFiles()
+	known, err := loadIndexedFilesUnder(scope.start, scope.opts.shallow)
 	if err != nil {
 		reportError("lecture du catalogue impossible: %v", err)
-		return
+		return outcome
 	}
 
 	showIDs := make(map[string]int)
 	seasonIDs := make(map[[2]int]int)
-	walkVideoFiles(dir, sectionSeries, func(path string, info os.FileInfo) {
+	walkVideoFilesWith(scope.start, sectionSeries, scope.opts, func(path string, info os.FileInfo) {
 		normalizedPath := filepath.ToSlash(path)
+		outcome.seen[normalizedPath] = true
 
-		if existing, ok := known[normalizedPath]; ok {
-			if err := existing.refresh(info); err != nil {
-				reportError("actualisation impossible pour %s (%v)", normalizedPath, err)
-				reportFailed(sectionSeries)
-				return
-			}
-			if existing.changed(info) {
-				withSection(sectionSeries, func(stats *ScanSectionStats) { stats.Modified++ })
-			}
+		// An indexed file that has not changed is the common case of every
+		// pass; it needs neither a readiness check nor a write.
+		if existing, ok := known[normalizedPath]; ok && !existing.changed(info) {
 			reportAlreadyIndexed(sectionSeries)
+			return
+		}
+		if scope.ready != nil && !scope.ready(path, info) {
+			outcome.deferred = true
+			return
+		}
+		if outcome.visitKnownFile(sectionSeries, known, normalizedPath, info) {
 			return
 		}
 
@@ -278,7 +380,7 @@ func scanSeries(dir string) {
 			epTMDBID = tmdbEpID
 		}
 
-		_, err = database.DB.Exec(
+		res, err := database.DB.Exec(
 			`INSERT INTO medias (type, title, file_path, duration, file_size, parent_id, poster_url, overview, release_date, tmdb_id, season_number, episode_number, file_mod_time)
 			 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
 			models.TypeEpisode, epTitle, normalizedPath, 0, info.Size(), seasonID, epPoster, epOverview, epAirDate, epTMDBID, seasonNum, episodeNum, info.ModTime().Unix(),
@@ -289,6 +391,9 @@ func scanSeries(dir string) {
 			reportError("insertion impossible pour %s (%v)", normalizedPath, err)
 			return
 		}
+		if id, err := res.LastInsertId(); err == nil {
+			outcome.added = append(outcome.added, int(id))
+		}
 
 		reportIndexed(sectionSeries, showTMDBID > 0)
 		if showTMDBID <= 0 {
@@ -296,6 +401,7 @@ func scanSeries(dir string) {
 		}
 		log.Printf("Indexer: Successfully indexed Episode -> %s (S%02dE%02d)", showTitle, seasonNum, episodeNum)
 	})
+	return outcome
 }
 
 // findOrCreateSeason gets the ID of a season or creates it under a show
@@ -345,6 +451,14 @@ func findOrCreateSeason(showID int, seasonNum int) (int, error) {
 // deletion would wipe a large share of the library: an unmounted NAS or a
 // network hiccup must not empty the catalog.
 func cleanMissingMedias(roots ...string) error {
+	return cleanMissingMediasSeen(nil, roots...)
+}
+
+// cleanMissingMediasSeen is cleanMissingMedias told which files the walk just
+// found. Those are known to exist, so only the rest is stat'ed — on network
+// storage that turns a second pass over the whole library into a handful of
+// calls.
+func cleanMissingMediasSeen(seen map[string]bool, roots ...string) error {
 	for _, root := range roots {
 		if strings.TrimSpace(root) == "" {
 			continue
@@ -378,6 +492,9 @@ func cleanMissingMedias(roots ...string) error {
 			return err
 		}
 		total++
+		if seen[it.filePath] {
+			continue
+		}
 
 		// Verify if file still exists on disk. Only a definitive "not found"
 		// deletes: permission errors or I/O timeouts leave the entry alone.
@@ -397,21 +514,117 @@ func cleanMissingMedias(roots ...string) error {
 		return nil
 	}
 
+	removedEpisode := false
 	for _, it := range itemsToDelete {
 		log.Printf("Indexer: Physical file missing, deleting media %s from database (Path: %s)", it.title, it.filePath)
 		_, err := database.DB.Exec("DELETE FROM medias WHERE id = ?", it.id)
 		if err != nil {
 			log.Printf("Indexer: Error deleting orphaned media: %v", err)
 		}
-
-		// If it's an episode, check if we should delete parent seasons/shows that might now be empty
 		if it.mediaType == string(models.TypeEpisode) {
-			// SQLite cascading deletion handles deleting children, but we might have empty seasons/shows left
-			cleanEmptySeasonsAndShows()
+			removedEpisode = true
 		}
 	}
 
+	// SQLite cascading deletion handles deleting children, but we might have
+	// empty seasons/shows left. Once for the whole batch: the sweep reads every
+	// season and show, and used to run once per deleted episode.
+	if removedEpisode {
+		cleanEmptySeasonsAndShows()
+	}
+
 	return nil
+}
+
+// removeMissingUnder is the cleanup of a targeted scan: the rows stored beneath
+// dir (only directly in it when shallow, and dir itself when it was a file)
+// whose file is gone. seen lists the files the scan just found there.
+//
+// The guards are those of the library cleanup, applied to a smaller set. The
+// library root must be reachable and not empty — an unmounted share looks like
+// a folder whose content vanished — and a single pass may not remove more than a
+// quarter of the library.
+func removeMissingUnder(root, dir string, shallow bool, seen map[string]bool) int {
+	if !libraryRootLooksMounted(root) {
+		log.Printf("Indexer: skipping cleanup under %s — library root %s looks offline", dir, root)
+		return 0
+	}
+
+	normalizedDir := filepath.ToSlash(filepath.Clean(dir))
+	lower, upper := pathPrefixRange(dir)
+	rows, err := database.DB.Query(`SELECT id, title, file_path, type FROM medias
+		WHERE file_path = ? OR (file_path >= ? AND file_path < ?)`, normalizedDir, lower, upper)
+	if err != nil {
+		log.Printf("Indexer: cleanup query under %s failed: %v", dir, err)
+		return 0
+	}
+	type item struct {
+		id                         int
+		title, filePath, mediaType string
+	}
+	var missing []item
+	for rows.Next() {
+		var it item
+		if err := rows.Scan(&it.id, &it.title, &it.filePath, &it.mediaType); err != nil {
+			continue
+		}
+		if seen[it.filePath] {
+			continue
+		}
+		if shallow && it.filePath != normalizedDir && strings.Contains(it.filePath[len(lower):], "/") {
+			continue
+		}
+		missing = append(missing, it)
+	}
+	rows.Close()
+
+	var gone []item
+	for _, it := range missing {
+		if _, err := os.Stat(it.filePath); err != nil && os.IsNotExist(err) {
+			gone = append(gone, it)
+		}
+	}
+	if len(gone) == 0 {
+		return 0
+	}
+
+	if len(gone) > 20 {
+		var total int
+		_ = database.DB.QueryRow(`SELECT COUNT(*) FROM medias WHERE file_path IS NOT NULL AND file_path != ''`).Scan(&total)
+		if float64(len(gone)) > 0.25*float64(total) {
+			log.Printf("Indexer: SAFETY — refusing to delete %d/%d entries under %s (storage probably offline)", len(gone), total, dir)
+			return 0
+		}
+	}
+
+	removedEpisode := false
+	for _, it := range gone {
+		log.Printf("Indexer: Physical file missing, deleting media %s from database (Path: %s)", it.title, it.filePath)
+		if _, err := database.DB.Exec("DELETE FROM medias WHERE id = ?", it.id); err != nil {
+			log.Printf("Indexer: Error deleting orphaned media: %v", err)
+			continue
+		}
+		if it.mediaType == string(models.TypeEpisode) {
+			removedEpisode = true
+		}
+	}
+	if removedEpisode {
+		cleanEmptySeasonsAndShows()
+	}
+	return len(gone)
+}
+
+// libraryRootLooksMounted reports whether a library root can be trusted to
+// tell a deleted file from an absent storage: it must exist and hold at least
+// one entry.
+func libraryRootLooksMounted(root string) bool {
+	f, err := os.Open(root)
+	if err != nil {
+		return false
+	}
+	defer f.Close()
+	names, err := f.Readdirnames(1)
+	return err == nil && len(names) > 0
 }
 
 // logScanSummary prints the file-vs-library accounting so a gap between "510

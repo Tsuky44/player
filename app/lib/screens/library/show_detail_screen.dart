@@ -273,7 +273,7 @@ class _ShowDetailScreenState extends State<ShowDetailScreen> {
       if (chosen == null || !mounted) return;
       episode = chosen.item;
     }
-    Navigator.of(context).push(
+    Navigator.of(context, rootNavigator: true).push(
       MaterialPageRoute(
         settings: const RouteSettings(
           name: SearchRouteObserver.playerRouteName,
