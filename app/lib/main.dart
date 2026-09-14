@@ -11,6 +11,7 @@ import 'utils/mpv_native_view.dart';
 import 'utils/window_controls.dart';
 import 'services/api_client.dart';
 import 'services/app_image_cache.dart';
+import 'services/client_identity.dart';
 import 'services/download_manager.dart';
 import 'services/server_reachability.dart';
 import 'providers/auth_provider.dart';
@@ -81,6 +82,7 @@ void main() async {
   // entirely between a phone and a television, and flipping it after the fact
   // would show the password form for a beat on every TV boot.
   await TvMode.initialize();
+  await ClientIdentity.initialize();
   // Observe les flèches maintenues, pour que le focus ne coure pas plus vite
   // que les rangées ne défilent. Voir [TvKeyRepeat].
   TvKeyRepeat.install();
@@ -143,10 +145,6 @@ void main() async {
   final homeProvider = HomeProvider(apiClient);
   final libraryProvider = LibraryProvider(apiClient);
   final mediaRequestsProvider = MediaRequestsProvider(apiClient);
-  apiClient.onProgressSynchronized = () {
-    unawaited(homeProvider.loadHome(silent: true));
-    unawaited(libraryProvider.loadMovies(silent: true));
-  };
   authProvider.onServerChanged = () {
     MediaDetailsCache.clear();
     homeProvider.reset();
@@ -165,8 +163,12 @@ void main() async {
     // était hors ligne : le serveur retrouvé est le bon moment pour aller
     // chercher le verdict.
     unawaited(authProvider.refreshAccessRequests());
+    // Les liens de comptes vivent sur les serveurs (ADR-0017) : un lien fait
+    // depuis un autre appareil apparaît ici au retour du réseau.
+    unawaited(apiClient.refreshAccountLinks());
   });
   reachability.start();
+  unawaited(apiClient.refreshAccountLinks());
 
   runApp(
     MultiProvider(

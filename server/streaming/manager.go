@@ -40,6 +40,13 @@ func (m *SessionManager) GetSession(id string) (*TranscodeSession, bool) {
 	return s, ok
 }
 
+// Count reports how many transcoding sessions are running.
+func (m *SessionManager) Count() int {
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+	return len(m.sessions)
+}
+
 // DestroySession kills the FFmpeg process, cleans up temp files, and removes the session.
 func (m *SessionManager) DestroySession(id string) {
 	m.mu.Lock()

@@ -23,12 +23,18 @@ class ServerAccount {
   /// deux serveurs de mémoire.
   final String? label;
 
+  /// Identité du serveur (`/api/federation/info`), qui ne change pas avec son
+  /// adresse. C'est elle qui rapproche ce compte des liens déclarés par les
+  /// autres serveurs — voir ADR-0017.
+  final String? serverId;
+
   const ServerAccount({
     required this.id,
     required this.url,
     required this.username,
     this.userId,
     this.label,
+    this.serverId,
   });
 
   /// Ce que l'interface affiche en premier : le nom donné, sinon l'hôte.
@@ -50,6 +56,7 @@ class ServerAccount {
     String? username,
     int? userId,
     String? label,
+    String? serverId,
   }) {
     return ServerAccount(
       id: id,
@@ -57,6 +64,7 @@ class ServerAccount {
       username: username ?? this.username,
       userId: userId ?? this.userId,
       label: label ?? this.label,
+      serverId: serverId ?? this.serverId,
     );
   }
 
@@ -66,6 +74,7 @@ class ServerAccount {
         'username': username,
         if (userId != null) 'user_id': userId,
         if (label != null && label!.isNotEmpty) 'label': label,
+        if (serverId != null) 'server_id': serverId,
       };
 
   factory ServerAccount.fromJson(Map<String, dynamic> json) {
@@ -75,6 +84,7 @@ class ServerAccount {
       username: json['username'] as String? ?? '',
       userId: (json['user_id'] as num?)?.toInt(),
       label: json['label'] as String?,
+      serverId: json['server_id'] as String?,
     );
   }
 
@@ -268,4 +278,98 @@ class AccessRequest {
       expiresAt: parse('expires_at'),
     );
   }
+}
+
+/// Un compte de la même personne sur un autre serveur, tel que le serveur le
+/// déclare (`GET /api/links`). Le lien vit sur les serveurs, pas sur cet
+/// appareil : un autre appareil connecté au même compte le retrouve. Voir
+/// ADR-0017.
+class AccountLink {
+  final int id;
+  final String serverId;
+  final String serverName;
+
+  /// Adresse de l'autre serveur, telle que l'appareil qui a fait le lien la
+  /// joignait.
+  final String url;
+  final int remoteUserId;
+  final String remoteUsername;
+
+  /// `active`, ou `pending` tant qu'un administrateur n'a pas accepté.
+  final String status;
+
+  const AccountLink({
+    required this.id,
+    required this.serverId,
+    required this.serverName,
+    required this.url,
+    required this.remoteUserId,
+    required this.remoteUsername,
+    this.status = 'pending',
+  });
+
+  bool get isActive => status == 'active';
+
+  String get displayName {
+    if (serverName.trim().isNotEmpty) return serverName.trim();
+    final uri = Uri.tryParse(url);
+    if (uri == null || uri.host.isEmpty) return url;
+    return uri.hasPort ? '${uri.host}:${uri.port}' : uri.host;
+  }
+
+  factory AccountLink.fromJson(Map<String, dynamic> json) => AccountLink(
+        id: (json['id'] as num?)?.toInt() ?? 0,
+        serverId: json['server_id'] as String? ?? '',
+        serverName: json['server_name'] as String? ?? '',
+        url: json['url'] as String? ?? '',
+        remoteUserId: (json['remote_user_id'] as num?)?.toInt() ?? 0,
+        remoteUsername: json['remote_username'] as String? ?? '',
+        status: json['status'] as String? ?? 'pending',
+      );
+
+  Map<String, dynamic> toJson() => {
+        'id': id,
+        'server_id': serverId,
+        'server_name': serverName,
+        'url': url,
+        'remote_user_id': remoteUserId,
+        'remote_username': remoteUsername,
+        'status': status,
+      };
+}
+
+/// Un serveur lié, vu par un administrateur (`GET /api/peers`).
+class PeerServer {
+  final int id;
+  final String serverId;
+  final String name;
+  final String url;
+  final bool localApproved;
+  final bool remoteApproved;
+  final int accounts;
+  final String lastError;
+
+  const PeerServer({
+    required this.id,
+    required this.serverId,
+    required this.name,
+    required this.url,
+    this.localApproved = false,
+    this.remoteApproved = false,
+    this.accounts = 0,
+    this.lastError = '',
+  });
+
+  bool get isActive => localApproved && remoteApproved;
+
+  factory PeerServer.fromJson(Map<String, dynamic> json) => PeerServer(
+        id: (json['id'] as num?)?.toInt() ?? 0,
+        serverId: json['server_id'] as String? ?? '',
+        name: json['name'] as String? ?? '',
+        url: json['url'] as String? ?? '',
+        localApproved: json['local_approved'] as bool? ?? false,
+        remoteApproved: json['remote_approved'] as bool? ?? false,
+        accounts: (json['accounts'] as num?)?.toInt() ?? 0,
+        lastError: json['last_error'] as String? ?? '',
+      );
 }

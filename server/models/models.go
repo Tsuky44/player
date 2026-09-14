@@ -137,6 +137,7 @@ type User struct {
 
 // Media represents any media entity (movie, show, season, episode)
 type Media struct {
+	Versions []MediaVersion `json:"versions,omitempty"`
 	ID          int       `json:"id"`
 	Type        MediaType `json:"type"` // "movie", "show", "season", "episode"
 	Title       string    `json:"title"`
@@ -232,6 +233,7 @@ type CatalogCrewMember struct {
 // GET /api/media/:id/details. It merges the local library record (ID, poster)
 // with live TMDB catalog metadata (cast, genres, rating, backdrop…).
 type MediaDetails struct {
+	Versions []MediaVersion `json:"versions,omitempty"`
 	ID            int       `json:"id"`
 	TMDBID        int       `json:"tmdb_id,omitempty"`
 	Type          MediaType `json:"type"`
@@ -326,4 +328,10 @@ type HomeMediaItem struct {
 	// one — the weekly drop the user has not watched yet. Continue watching
 	// only.
 	HasNewEpisode bool `json:"has_new_episode,omitempty"`
+}
+
+// MediaVersion keeps the concrete file handle and its own playback markers.
+type MediaVersion struct {
+	HomeMediaItem
+	Label string `json:"label"`
 }

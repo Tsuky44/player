@@ -17,4 +17,7 @@ abstract final class AppPlatform {
 
   /// Voir `app_platform_io.dart` : le navigateur ne dit rien de plus utile.
   static const String label = 'Navigateur';
+
+  /// Un navigateur ne donne pas le nom de la machine.
+  static const String hostName = '';
 }

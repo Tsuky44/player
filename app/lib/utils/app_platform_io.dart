@@ -27,4 +27,16 @@ abstract final class AppPlatform {
     if (isIOS) return 'iPhone / iPad';
     return 'Appareil';
   }
+
+  /// Le nom de la machine (« MacBook-Pro-de-Lea »), sans le suffixe réseau.
+  /// Vide quand le système refuse de le dire.
+  static String get hostName {
+    try {
+      final name = io.Platform.localHostname.trim();
+      final dot = name.indexOf('.');
+      return dot > 0 ? name.substring(0, dot) : name;
+    } catch (_) {
+      return '';
+    }
+  }
 }

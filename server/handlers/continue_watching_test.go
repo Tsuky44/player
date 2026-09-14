@@ -246,6 +246,44 @@ func TestBuildMovieContinueWatching_AtStartThreshold(t *testing.T) {
 	}
 }
 
+func TestBuildMovieContinueWatching_SameFilmTwoFiles(t *testing.T) {
+	cleanup := setupContinueWatchingTestDB(t)
+	defer cleanup()
+
+	now := time.Now().UTC()
+	var newestID int64
+	for i, path := range []string{"/avatar-1080p.mkv", "/avatar-2160p.mkv"} {
+		res, err := database.DB.Exec(
+			`INSERT INTO medias (type, title, file_path, duration, tmdb_id) VALUES (?, ?, ?, ?, ?)`,
+			models.TypeMovie, "Avatar : De feu et de cendres", path, 11820, 83533,
+		)
+		if err != nil {
+			t.Fatalf("insert movie: %v", err)
+		}
+		movieID, _ := res.LastInsertId()
+		newestID = movieID
+		_, err = database.DB.Exec(
+			`INSERT INTO progressions (user_id, media_id, current_position_seconds, is_finished, updated_at)
+			 VALUES (1, ?, 1800, 0, ?)`,
+			movieID, now.Add(time.Duration(i)*time.Minute).Format("2006-01-02 15:04:05"),
+		)
+		if err != nil {
+			t.Fatalf("insert movie progression: %v", err)
+		}
+	}
+
+	items, err := buildMovieContinueWatching(1, nil)
+	if err != nil {
+		t.Fatalf("buildMovieContinueWatching: %v", err)
+	}
+	if len(items) != 1 {
+		t.Fatalf("expected the film once, got %d items", len(items))
+	}
+	if items[0].ID != int(newestID) {
+		t.Fatalf("expected the most recently watched copy %d, got %d", newestID, items[0].ID)
+	}
+}
+
 func TestBuildContinueWatching_HiddenEntries(t *testing.T) {
 	cleanup := setupContinueWatchingTestDB(t)
 	defer cleanup()

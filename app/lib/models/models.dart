@@ -195,6 +195,7 @@ String serializeMediaType(MediaType type) {
 }
 
 class Media {
+  final List<MediaVersion> versions;
   final int id;
   final MediaType type;
   final String title;
@@ -225,6 +226,7 @@ class Media {
   final DateTime createdAt;
 
   Media({
+    this.versions = const [],
     required this.id,
     required this.type,
     required this.title,
@@ -254,6 +256,7 @@ class Media {
     bool? canRequest,
   }) {
     return Media(
+      versions: versions,
       id: id,
       type: type,
       title: title,
@@ -291,6 +294,7 @@ class Media {
     }
 
     return Media(
+      versions: MediaVersion.parseList(json['versions']),
       id: id,
       type: type,
       title: json['title'] as String? ?? '',
@@ -804,7 +808,25 @@ class PersonDetails {
 /// Rich, Emby-style catalog details for a movie/show, returned by
 /// GET /api/media/:id/details. Merges local library data with live TMDB
 /// metadata (cast, genres, rating, backdrop, crew…).
+class MediaVersion {
+  final HomeMediaItem item;
+  final String label;
+
+  MediaVersion({required this.item, required this.label});
+
+  static List<MediaVersion> parseList(dynamic value) => value is List
+      ? value.map((entry) {
+          final json = entry as Map<String, dynamic>;
+          return MediaVersion(
+            item: HomeMediaItem.fromJson(json),
+            label: json['label'] as String? ?? 'Version',
+          );
+        }).toList()
+      : const [];
+}
+
 class MediaDetails {
+  final List<MediaVersion> versions;
   final int id;
   final int? tmdbId;
   final MediaType type;
@@ -839,6 +861,7 @@ class MediaDetails {
   final List<CatalogItem> similarTitles;
 
   MediaDetails({
+    this.versions = const [],
     required this.id,
     this.tmdbId,
     required this.type,
@@ -879,6 +902,7 @@ class MediaDetails {
     }
 
     return MediaDetails(
+      versions: MediaVersion.parseList(json['versions']),
       id: json['id'] as int,
       tmdbId: json['tmdb_id'] as int?,
       type: parseMediaType(json['type'] as String),

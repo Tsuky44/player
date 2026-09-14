@@ -40,6 +40,12 @@ func GetMovies(w http.ResponseWriter, r *http.Request, _ httprouter.Params, user
 		results = append(results, item)
 	}
 
+	rows.Close()
+	results, err = groupMediaVersions(results)
+	if err != nil {
+		http.Error(w, `{"error":"Unable to load versions"}`, http.StatusInternalServerError)
+		return
+	}
 	json.NewEncoder(w).Encode(results)
 }
 
@@ -99,5 +105,11 @@ func GetSeasonEpisodes(w http.ResponseWriter, r *http.Request, ps httprouter.Par
 		results = append(results, item)
 	}
 
+	rows.Close()
+	results, err = groupMediaVersions(results)
+	if err != nil {
+		http.Error(w, `{"error":"Unable to load versions"}`, http.StatusInternalServerError)
+		return
+	}
 	json.NewEncoder(w).Encode(results)
 }

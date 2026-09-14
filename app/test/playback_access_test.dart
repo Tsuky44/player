@@ -5,7 +5,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'package:onyx/models/server_account.dart';
 import 'package:onyx/services/api_client.dart';
 import 'package:onyx/services/playback_access.dart';
-import 'progress_sync_test.dart' show Adapter, Registry;
+import 'test_doubles.dart' show Adapter, Registry;
 
 class _Registry extends Registry {
   @override

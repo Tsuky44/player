@@ -57,6 +57,8 @@ func main() {
 	playbackContext, stopPlaybackReaper := context.WithCancel(context.Background())
 	defer stopPlaybackReaper()
 	go handlers.PlaybackTickets.RunReaper(playbackContext)
+	go handlers.RunFederation(playbackContext)
+	go handlers.RunPlaybackActivity(playbackContext)
 
 	// Initialize router
 	router := httprouter.New()
@@ -153,10 +155,42 @@ func main() {
 	router.POST("/api/media-resolve", handlers.RequireAuth(handlers.ResolveMedia))
 	router.GET("/api/progress/sync", handlers.RequireAuth(handlers.ExportProgress))
 	router.POST("/api/progress/sync", handlers.RequireAuth(handlers.ImportProgress))
+
+	// Serveurs liés (ADR-0017) : la progression passe d'un serveur à l'autre
+	// sans dépendre d'une app ouverte.
+	router.GET("/api/federation/info", handlers.GetFederationInfo)
+	router.POST("/api/federation/claim", handlers.ClaimAccountLink)
+	router.POST("/api/federation/approval", handlers.RequirePeer(handlers.PeerApproval))
+	router.POST("/api/federation/progress", handlers.RequirePeer(handlers.PeerProgress))
+	router.POST("/api/federation/unlink", handlers.RequirePeer(handlers.PeerUnlink))
+	router.POST("/api/federation/forget", handlers.RequirePeer(handlers.PeerForget))
+	router.GET("/api/links", handlers.RequireAuth(handlers.ListAccountLinks))
+	router.POST("/api/links", handlers.RequireAuth(handlers.CreateAccountLink))
+	router.POST("/api/links/code", handlers.RequireAuth(handlers.CreateLinkCode))
+	router.DELETE("/api/links/:id", handlers.RequireAuth(handlers.DeleteAccountLink))
+	router.GET("/api/peers", handlers.RequirePermission(models.PermManageSettings, handlers.ListPeerServers))
+	router.PUT("/api/peers/:id", handlers.RequirePermission(models.PermManageSettings, handlers.UpdatePeerServer))
+	router.DELETE("/api/peers/:id", handlers.RequirePermission(models.PermManageSettings, handlers.RemovePeerServer))
+	router.POST("/api/peers/:id/approve", handlers.RequirePermission(models.PermManageSettings, handlers.ApprovePeerServer))
 	router.GET("/api/progress", handlers.RequireAuth(handlers.GetProgress))
 	router.POST("/api/progress", handlers.RequireAuth(handlers.UpdateProgress))
 	router.POST("/api/continue-watching/hide", handlers.RequireAuth(handlers.HideFromContinueWatching))
 	router.POST("/api/media/:id/watched", handlers.RequireAuth(handlers.SetMediaWatched))
+
+	// Activité : le lecteur signale ce qu'il lit, les administrateurs voient
+	// qui regarde quoi, l'historique et les statistiques. Voir activity.go.
+	router.POST("/api/playing", handlers.RequireAuth(handlers.ReportPlayback))
+	router.GET("/api/me/stats", handlers.RequireAuth(handlers.GetMyPlaybackStats))
+	router.GET("/api/me/devices", handlers.RequireAuth(handlers.ListMyDevices))
+	router.DELETE("/api/me/devices/:id", handlers.RequireAuth(handlers.RevokeMyDevice))
+	router.GET("/api/admin/activity", handlers.RequirePermission(models.PermManageUsers, handlers.ListNowPlaying))
+	router.GET("/api/admin/history", handlers.RequirePermission(models.PermManageUsers, handlers.ListPlaybackHistory))
+	router.DELETE("/api/admin/history", handlers.RequirePermission(models.PermManageUsers, handlers.ClearPlaybackHistory))
+	router.GET("/api/admin/stats", handlers.RequirePermission(models.PermManageUsers, handlers.GetPlaybackStats))
+	router.GET("/api/admin/devices", handlers.RequirePermission(models.PermManageUsers, handlers.ListAllDevices))
+	router.DELETE("/api/admin/devices/:id", handlers.RequirePermission(models.PermManageUsers, handlers.RevokeAnyDevice))
+	adminPerms := []models.Permission{models.PermManageSettings, models.PermManageLibrary, models.PermManageUsers}
+	router.GET("/api/admin/server", handlers.RequireAnyPermission(adminPerms, handlers.GetServerInfo))
 
 	// 3. Media Browsing Routes
 	router.GET("/api/movies", handlers.RequireAuth(handlers.GetMovies))
@@ -233,6 +267,7 @@ func main() {
 	// 6. HLS sessions require the same ticket on start, playlists and segments.
 	// Dispatch parses the path manually to avoid httprouter wildcard conflicts.
 	hlsHandler := streaming.NewHandler(db, handlers.PlaybackTickets)
+	handlers.ActiveTranscodes = hlsHandler.ActiveSessions
 	router.POST("/api/v1/stream/*path", hlsHandler.Dispatch)
 	router.GET("/api/v1/stream/*path", hlsHandler.Dispatch)
 	router.DELETE("/api/v1/stream/*path", hlsHandler.Dispatch)
@@ -300,7 +335,7 @@ func setupCORS(router http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Access-Control-Allow-Origin", "*")
 		w.Header().Set("Access-Control-Allow-Methods", "POST, GET, OPTIONS, PUT, DELETE")
-		w.Header().Set("Access-Control-Allow-Headers", "Accept, Content-Type, Content-Length, Accept-Encoding, X-CSRF-Token, Authorization")
+		w.Header().Set("Access-Control-Allow-Headers", "Accept, Content-Type, Content-Length, Accept-Encoding, X-CSRF-Token, Authorization, X-Onyx-Device, X-Onyx-Client")
 
 		// Handle preflight OPTIONS request
 		if r.Method == "OPTIONS" {

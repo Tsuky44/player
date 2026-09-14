@@ -7,7 +7,7 @@ import '../playback/playback_session.dart';
 import '../../../models/models.dart';
 import '../../../services/playback_preferences_storage.dart';
 import '../../../theme/app_colors.dart';
-import '../../settings/playback_preferences_screen.dart';
+import '../../settings/pages/playback_page.dart';
 import '../hooks/use_episode_navigation.dart';
 import '../hooks/use_player_controller.dart';
 import 'chapters_debug_panel.dart';
@@ -262,7 +262,10 @@ class _SettingsMenuState extends State<SettingsMenu> {
             widget.onClose();
             Navigator.of(context).push(
               MaterialPageRoute(
-                builder: (_) => const PlaybackPreferencesScreen(),
+                builder: (_) => Scaffold(
+                  appBar: AppBar(title: const Text('Lecture')),
+                  body: const PlaybackPage(),
+                ),
               ),
             );
           },

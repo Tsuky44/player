@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
 import '../../../models/models.dart';
+import '../../../models/server_activity.dart';
 import '../../../utils/app_platform.dart';
 import '../web/web_playback.dart';
 import '../display_frame_rate.dart';
@@ -176,6 +177,12 @@ class PlayerController {
   /// Current transcoding quality. null = Direct Play.
   String? currentQuality;
   String? _hlsSessionId;
+
+  /// `copy` or `encode`, as the server reported for the current HLS session.
+  String _hlsVideoMode = '';
+
+  /// The stop signal is sent once, whichever of finish/cancel/dispose runs first.
+  bool _activityStopped = false;
 
   /// Chemin du fichier local quand ce média est téléchargé, sinon null.
   ///
@@ -1065,12 +1072,57 @@ class PlayerController {
 
   void startHeartbeat({required int mediaId, required ApiClient apiClient}) {
     _heartbeatTimer?.cancel();
+    _activityStopped = false;
+    _reportActivity(mediaId: mediaId, apiClient: apiClient, event: 'start');
     _heartbeatTimer = Timer.periodic(const Duration(seconds: 15), (_) {
+      // The activity signal goes out paused too: a film on pause is still
+      // someone watching, and the dashboard says so.
+      _reportActivity(mediaId: mediaId, apiClient: apiClient);
       if (session.isPlaying) {
         _sendProgress(
             mediaId: mediaId, apiClient: apiClient, isFinished: false);
       }
     });
+  }
+
+  PlayMethod get playMethod {
+    if (_localFilePath != null) return PlayMethod.local;
+    if (currentQuality == null) return PlayMethod.direct;
+    return _hlsVideoMode == 'copy' ? PlayMethod.directStream : PlayMethod.transcode;
+  }
+
+  /// Tells the server what this player is doing, for its dashboard and
+  /// history. Best effort: an older server has no such route, and playback
+  /// never waits on it.
+  void _reportActivity({
+    required int mediaId,
+    required ApiClient apiClient,
+    String event = 'progress',
+  }) {
+    if (_activityStopped) return;
+    if (event == 'stop') _activityStopped = true;
+    var durSeconds = duration.inSeconds;
+    if (durSeconds <= 0 && _knownDurationSeconds > 0) {
+      durSeconds = _knownDurationSeconds;
+    }
+    unawaited(apiClient
+        .reportPlayback(
+          mediaId: mediaId,
+          positionSeconds: position.inSeconds,
+          durationSeconds: durSeconds,
+          paused: !session.isPlaying,
+          playMethod: playMethod,
+          quality: currentQuality ?? '',
+          event: event,
+        )
+        .catchError((_) {}));
+  }
+
+  void _reportActivityStopped() {
+    final media = _media;
+    final api = _apiClient;
+    if (media == null || api == null) return;
+    _reportActivity(mediaId: media.id, apiClient: api, event: 'stop');
   }
 
   Future<void> _sendProgress({
@@ -1126,6 +1178,7 @@ class PlayerController {
   }) async {
     _heartbeatTimer?.cancel();
     _heartbeatTimer = null;
+    _reportActivity(mediaId: mediaId, apiClient: apiClient, event: 'stop');
 
     final posSeconds = position.inSeconds;
     var durSeconds = duration.inSeconds;
@@ -1259,6 +1312,7 @@ class PlayerController {
       // where I clicked". Every field the position/seek math depends on is
       // assigned only once we know player.open() has actually taken effect.
       _hlsSessionId = hls.sessionId;
+      _hlsVideoMode = hls.videoMode;
       adopted = true;
       currentQuality = quality;
       _hlsStartOffset = startSeconds;
@@ -1918,6 +1972,7 @@ class PlayerController {
   }
 
   void cancelStreams() {
+    _reportActivityStopped();
     _disposeTimelinePreviews();
     unawaited(_releasePlaybackAccess());
     _disposed = true;
@@ -1942,6 +1997,7 @@ class PlayerController {
   }
 
   void dispose() {
+    _reportActivityStopped();
     _disposeTimelinePreviews();
     unawaited(_releasePlaybackAccess());
     // Before `_disposed`, so the property reads still go through.
