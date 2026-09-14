@@ -80,6 +80,24 @@ class _RequestsScreenState extends State<RequestsScreen> {
     }
   }
 
+  /// Sur un grand écran, une page de résultats peut tenir sans débordement :
+  /// aucun événement de défilement n'arrive alors jamais à [_onScroll]. On
+  /// enchaîne donc les pages tant que la grille ne remplit pas la vue.
+  void _fillViewportIfNeeded() {
+    if (!mounted || !_scrollController.hasClients) return;
+    final provider = context.read<MediaRequestsProvider>();
+    if (provider.isLoading ||
+        provider.isLoadingMore ||
+        !provider.hasMore ||
+        provider.errorMessage != null ||
+        provider.items.isEmpty) {
+      return;
+    }
+    if (_scrollController.position.extentAfter < 900) {
+      provider.loadMore();
+    }
+  }
+
   Future<void> _reloadCatalog() async {
     final provider = context.read<MediaRequestsProvider>();
     await provider.load(
@@ -107,6 +125,8 @@ class _RequestsScreenState extends State<RequestsScreen> {
     final provider = context.watch<MediaRequestsProvider>();
     final horizontalPadding = AppLayout.pagePadding(context);
     final compact = AppLayout.isCompact(context);
+    WidgetsBinding.instance
+        .addPostFrameCallback((_) => _fillViewportIfNeeded());
 
     return Scaffold(
       backgroundColor: AppColors.background,
