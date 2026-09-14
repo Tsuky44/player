@@ -165,6 +165,7 @@ func GetScanStatus(w http.ResponseWriter, r *http.Request, _ httprouter.Params, 
 		"is_extracting_subtitles": subtitles.IsExtracting(),
 		"subtitle_extraction":     subtitles.LastExtractStats(),
 		"last_scan":               indexer.LastScanReport(),
+		"library_monitor":         indexer.LibraryMonitorStatus(),
 	})
 }
 

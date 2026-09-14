@@ -97,7 +97,7 @@ class AccountMenu extends StatelessWidget {
         }
         switch (value) {
           case 'servers':
-            Navigator.of(context).push(
+            Navigator.of(context, rootNavigator: true).push(
               MaterialPageRoute(
                 builder: (_) => const SettingsScreen(
                   initialSection: SettingsSections.servers,
@@ -105,15 +105,15 @@ class AccountMenu extends StatelessWidget {
               ),
             );
           case 'settings':
-            Navigator.of(context).push(
+            Navigator.of(context, rootNavigator: true).push(
               MaterialPageRoute(builder: (_) => const SettingsScreen()),
             );
           case 'studio':
-            Navigator.of(context).push(
+            Navigator.of(context, rootNavigator: true).push(
               MaterialPageRoute(builder: (_) => const PlayerStudioScreen()),
             );
           case 'tv':
-            Navigator.of(context).push(
+            Navigator.of(context, rootNavigator: true).push(
               MaterialPageRoute(builder: (_) => const TvLinkScannerScreen()),
             );
           case 'logout':

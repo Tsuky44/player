@@ -17,6 +17,7 @@ import '../../widgets/global/glass_catalog_search.dart';
 import '../../widgets/global/glass_chrome.dart';
 import '../../widgets/global/sticky_glass_search.dart';
 import '../../desktop_window.dart';
+import '../../navigation/shell_navigator.dart';
 import '../../tv/tv_focus_memory.dart';
 import '../../tv/tv_mode.dart';
 import '../../tv/tv_pairing_link.dart';
@@ -81,9 +82,70 @@ class _MainShellState extends State<MainShell> {
     });
   }
 
+  /// Vrai quand une page (fiche d'un média, d'une personne…) est ouverte
+  /// par-dessus les onglets, dans [shellNavigatorKey].
+  bool _pageOpen = false;
+
   void _selectTab(int index) {
+    // Un onglet choisi depuis une fiche ramène aux onglets, y compris celui
+    // qui était déjà sélectionné : c'est le chemin du retour à la liste.
+    if (_pageOpen) {
+      shellNavigatorKey.currentState?.popUntil((route) => route.isFirst);
+    }
     if (_selectedIndex == index) return;
     setState(() => _selectedIndex = index);
+  }
+
+  /// Les onglets dans un navigateur à eux, pour que les fiches s'ouvrent sous
+  /// la barre de navigation au lieu de la recouvrir. Le lecteur, lui, part
+  /// dans le navigateur racine : il doit couvrir tout l'écran.
+  ///
+  /// Sur grand écran la barre flotte au-dessus du contenu. Les pages ouvertes
+  /// reçoivent sa hauteur comme marge du haut — c'est ce que leurs boutons
+  /// retour et leurs SafeArea lisent déjà pour éviter la barre d'état. Les
+  /// onglets gardent la marge d'origine : ils réservent la place eux-mêmes,
+  /// voir [embeddedShellContentTopInset].
+  Widget _buildPageNavigator(
+    BuildContext context, {
+    required Widget tabs,
+    required bool isWide,
+  }) {
+    final media = MediaQuery.of(context);
+    Widget navigator = Navigator(
+      key: shellNavigatorKey,
+      pages: [
+        MaterialPage<void>(
+          key: const ValueKey('tabs'),
+          child: MediaQuery(data: media, child: tabs),
+        ),
+      ],
+      // La page des onglets n'est jamais retirée : il n'y a rien à mettre à
+      // jour quand une fiche s'en va.
+      onDidRemovePage: (_) {},
+    );
+    if (isWide) {
+      final headerHeight = shellHeaderHeight(context);
+      navigator = MediaQuery(
+        data: media.copyWith(
+          padding: media.padding.copyWith(top: headerHeight),
+          viewPadding: media.viewPadding.copyWith(top: headerHeight),
+        ),
+        child: navigator,
+      );
+    }
+    return NavigatorPopHandler<Object?>(
+      // Retour (Android, souris, clavier) ferme d'abord la fiche ouverte.
+      onPopWithResult: (_) => shellNavigatorKey.currentState?.maybePop(),
+      child: NotificationListener<NavigationNotification>(
+        onNotification: (notification) {
+          if (notification.canHandlePop != _pageOpen) {
+            setState(() => _pageOpen = notification.canHandlePop);
+          }
+          return false;
+        },
+        child: navigator,
+      ),
+    );
   }
 
   /// La touche Retour d'une télécommande, sur l'écran principal.
@@ -144,6 +206,35 @@ class _MainShellState extends State<MainShell> {
     final isTv = TvScope.of(context);
     final isWide = AppLayout.isWide(context) || isTv;
 
+    final tabs = IndexedStack(
+      index: _selectedIndex,
+      // An IndexedStack keeps every tab in the tree and paints
+      // one. That is what makes switching instant, and it is also
+      // what would let the D-pad walk into posters nobody can
+      // see: focus traversal reads the widget tree, not what is
+      // on screen. Excluding the hidden tabs keeps the remote
+      // inside the tab the user is actually looking at.
+      children: [
+        for (final (index, screen) in <Widget>[
+          HomeScreen(
+            embedded: isWide,
+            onNavigateToMovies: () => _selectTab(1),
+            onNavigateToShows: () => _selectTab(2),
+          ),
+          MoviesScreen(embedded: isWide),
+          ShowsScreen(embedded: isWide),
+          RequestsScreen(embedded: isWide),
+          DownloadsScreen(embedded: isWide),
+        ].indexed)
+          ExcludeFocus(
+            excluding: index != _selectedIndex,
+            // Redescendre de l'en-tête ramène là où l'on était
+            // dans cet onglet — voir [TvFocusMemory].
+            child: TvFocusMemory(child: screen),
+          ),
+      ],
+    );
+
     final shell = Scaffold(
       backgroundColor: AppColors.background,
       body: Stack(
@@ -153,34 +244,12 @@ class _MainShellState extends State<MainShell> {
             child: Column(
               children: [
                 Expanded(
-                  child: IndexedStack(
-                    index: _selectedIndex,
-                    // An IndexedStack keeps every tab in the tree and paints
-                    // one. That is what makes switching instant, and it is also
-                    // what would let the D-pad walk into posters nobody can
-                    // see: focus traversal reads the widget tree, not what is
-                    // on screen. Excluding the hidden tabs keeps the remote
-                    // inside the tab the user is actually looking at.
-                    children: [
-                      for (final (index, screen) in <Widget>[
-                        HomeScreen(
-                          embedded: isWide,
-                          onNavigateToMovies: () => _selectTab(1),
-                          onNavigateToShows: () => _selectTab(2),
-                        ),
-                        MoviesScreen(embedded: isWide),
-                        ShowsScreen(embedded: isWide),
-                        RequestsScreen(embedded: isWide),
-                        DownloadsScreen(embedded: isWide),
-                      ].indexed)
-                        ExcludeFocus(
-                          excluding: index != _selectedIndex,
-                          // Redescendre de l'en-tête ramène là où l'on était
-                          // dans cet onglet — voir [TvFocusMemory].
-                          child: TvFocusMemory(child: screen),
-                        ),
-                    ],
-                  ),
+                  // Pas de navigateur imbriqué sur un téléviseur : les fiches
+                  // y restent en plein écran, avec le parcours au D-pad et le
+                  // Retour de [_handleTvBack] tels qu'ils sont réglés.
+                  child: isTv
+                      ? tabs
+                      : _buildPageNavigator(context, tabs: tabs, isWide: isWide),
                 ),
                 if (!isWide)
                   _MobileBottomNav(
@@ -211,7 +280,8 @@ class _MainShellState extends State<MainShell> {
                 ),
               ),
             ),
-          if (!isWide && _selectedIndex != 0)
+          // Hidden over an open page: it would sit on top of its back button.
+          if (!isWide && _selectedIndex != 0 && !_pageOpen)
             Positioned(
               top: 0,
               left: 0,

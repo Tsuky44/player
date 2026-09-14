@@ -3,6 +3,7 @@ module project-player/server
 go 1.21
 
 require (
+	github.com/fsnotify/fsnotify v1.7.0
 	github.com/google/uuid v1.3.0
 	github.com/julienschmidt/httprouter v1.3.0
 	github.com/u2takey/ffmpeg-go v0.5.0

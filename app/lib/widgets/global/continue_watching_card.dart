@@ -56,6 +56,9 @@ class _ContinueWatchingCardState extends State<ContinueWatchingCard> {
 
     final action = await showMenu<String>(
       context: context,
+      // The position is in screen coordinates: measured against the root
+      // overlay, not the shell's navigator.
+      useRootNavigator: true,
       position: RelativeRect.fromRect(
         Rect.fromLTWH(globalPosition.dx, globalPosition.dy, 0, 0),
         Offset.zero & MediaQuery.sizeOf(context),

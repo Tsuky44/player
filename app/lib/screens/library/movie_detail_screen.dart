@@ -274,7 +274,7 @@ class _MovieDetailScreenState extends State<MovieDetailScreen> {
 
   void _play() {
     final item = _playbackItem;
-    Navigator.of(context).push(
+    Navigator.of(context, rootNavigator: true).push(
       MaterialPageRoute(
         settings:
             const RouteSettings(name: SearchRouteObserver.playerRouteName),

@@ -160,6 +160,25 @@ func ResetDirScanCache() {
 	movieDirCountCacheMu.Unlock()
 }
 
+// forgetDirScanCache drops the cached movie counts of dir, and of everything
+// beneath it when recursive: a targeted scan runs because those folders
+// changed, so what was counted in them may no longer hold.
+func forgetDirScanCache(dir string, recursive bool) {
+	dir = filepath.Clean(dir)
+	prefix := dir + string(filepath.Separator)
+	movieDirCountCacheMu.Lock()
+	defer movieDirCountCacheMu.Unlock()
+	delete(movieDirCountCache, dir)
+	if !recursive {
+		return
+	}
+	for cached := range movieDirCountCache {
+		if strings.HasPrefix(cached, prefix) {
+			delete(movieDirCountCache, cached)
+		}
+	}
+}
+
 // CountDistinctMoviesInDir counts how many different films a directory holds
 // directly: samples/trailers are ignored and multi-part rips count once. A
 // count above 1 means the folder groups films instead of naming one.

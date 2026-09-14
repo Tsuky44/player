@@ -7,6 +7,8 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"strconv"
+	"strings"
 	"time"
 
 	"project-player/server/config"
@@ -294,6 +296,18 @@ func main() {
 		log.Println("WebUI: no bundle embedded — run scripts/build-web.sh before building to serve the web client.")
 	}
 
+	// Watch the library, so new files are indexed as they land instead of at
+	// the next scan. Started before the startup scan, which hands it the folder
+	// map — see indexer/monitor.go.
+	indexer.StartLibraryMonitor(indexer.MonitorOptions{
+		Watch:        envBool("LIBRARY_WATCH", true),
+		PollInterval: envDuration("LIBRARY_POLL_INTERVAL", 5*time.Minute),
+		Roots: func() (string, string) {
+			return config.MoviesDir(), config.SeriesDir()
+		},
+		Bootstrap: !*scanOnStartup,
+	})
+
 	// Trigger startup scan if configured
 	if *scanOnStartup {
 		moviesDir := config.MoviesDir()
@@ -345,4 +359,32 @@ func setupCORS(router http.Handler) http.Handler {
 
 		router.ServeHTTP(w, r)
 	})
+}
+
+// envBool reads a boolean environment variable ("true", "0", …), falling back
+// when it is unset or unreadable.
+func envBool(key string, fallback bool) bool {
+	value, err := strconv.ParseBool(strings.TrimSpace(os.Getenv(key)))
+	if err != nil {
+		return fallback
+	}
+	return value
+}
+
+// envDuration reads a duration environment variable ("5m", "30s"; "0" turns
+// the feature off), falling back when it is unset or unreadable.
+func envDuration(key string, fallback time.Duration) time.Duration {
+	raw := strings.TrimSpace(os.Getenv(key))
+	if raw == "" {
+		return fallback
+	}
+	if raw == "0" {
+		return 0
+	}
+	value, err := time.ParseDuration(raw)
+	if err != nil || value < 0 {
+		log.Printf("Warning: %s=%q is not a duration (e.g. 5m) — using %v", key, raw, fallback)
+		return fallback
+	}
+	return value
 }
