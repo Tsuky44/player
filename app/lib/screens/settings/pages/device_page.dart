@@ -89,18 +89,19 @@ class _DevicePageState extends State<DevicePage> {
             ),
           ],
         ),
-        // Le lien se fait en scannant le code du téléviseur : il faut une
-        // caméra, donc un téléphone.
+        // Le lien se fait en scannant le code affiché par l'autre écran
+        // (téléviseur, navigateur, ordinateur) : il faut une caméra, donc un
+        // téléphone.
         if (AppPlatform.isMobile && !isTv)
           SettingsGroup(
-            title: 'Téléviseur',
+            title: 'Autres appareils',
             children: [
               SettingsTile(
                 icon: Icons.qr_code_scanner_rounded,
                 iconColor: AppColors.primary,
-                title: 'Connecter un téléviseur',
+                title: 'Connecter un appareil',
                 subtitle:
-                    'Scannez le code affiché par Onyx sur le téléviseur : il se connecte à votre compte, sans clavier.',
+                    'Scannez le code QR affiché par Onyx sur un téléviseur, un ordinateur ou un navigateur : il se connecte à votre compte, sans mot de passe.',
                 onTap: () => Navigator.of(context).push(
                   MaterialPageRoute(
                       builder: (_) => const TvLinkScannerScreen()),

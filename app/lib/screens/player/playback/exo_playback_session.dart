@@ -360,7 +360,7 @@ class ExoPlaybackSession implements PlaybackSession {
       // image à chaque ouverture. mpv posait `cache-pause-initial=no` pour la
       // même raison.
       bufferForPlaybackMs: 1000,
-      backBufferMs: 15000,
+      backBufferMs: profile.backBufferMs,
     );
   }
 

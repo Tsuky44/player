@@ -4,16 +4,19 @@ import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
 
 import '../../models/device_pairing.dart';
+import '../../models/server_account.dart';
 import '../../providers/auth_provider.dart';
 import '../../services/api_client.dart';
 import '../../theme/app_colors.dart';
 
-/// The phone's half of the TV sign-in.
+/// The phone's half of a server pairing — a browser, a desktop app or a
+/// television asking to be signed in.
 ///
-/// Reached two ways, and they are the same screen because they end in the same
-/// decision. Scanning the QR opens the web app with `?tv=CODE`, which lands
-/// here with the code already filled; anyone without a camera handy opens it
-/// from the account menu and types the eight characters off the television.
+/// Reached three ways, and they are the same screen because they end in the
+/// same decision. The in-app scanner reads the QR of a web or desktop sign-in
+/// screen and lands here with the code filled (ADR-0020); the camera app opens
+/// the web app with `?tv=CODE`, which does the same; and anyone whose camera
+/// will not cooperate types the eight characters.
 ///
 /// Approving mints a session for *this* account on the server. That is the
 /// whole security model: the TV never sees a password, and it can never get an
@@ -22,7 +25,11 @@ class TvPairingScreen extends StatefulWidget {
   /// Code lifted from the scanned link, when there was one.
   final String? initialCode;
 
-  const TvPairingScreen({super.key, this.initialCode});
+  /// The server the scanned link pointed at. Only used to explain a lookup
+  /// that fails because the code lives on another server than this phone's.
+  final String? linkOrigin;
+
+  const TvPairingScreen({super.key, this.initialCode, this.linkOrigin});
 
   @override
   State<TvPairingScreen> createState() => _TvPairingScreenState();
@@ -94,9 +101,26 @@ class _TvPairingScreenState extends State<TvPairingScreen> {
       if (!mounted) return;
       setState(() {
         _phase = _ApprovalPhase.entering;
-        _error = 'Code inconnu ou expiré. Vérifiez ce qui est affiché sur la TV.';
+        _error = _otherServerHint() ??
+            'Code inconnu ou expiré. Vérifiez ce qui est affiché sur l’appareil.';
       });
     }
+  }
+
+  /// Explains a miss on a code that came from another address. Not proof of
+  /// another server — a proxy and a LAN address can front the same one — so it
+  /// is worded as the thing to check, not as the verdict.
+  String? _otherServerHint() {
+    final origin = widget.linkOrigin;
+    if (origin == null) return null;
+    final linked = Uri.tryParse(ServerAccount.normalizeUrl(origin));
+    final current = Uri.tryParse(
+        ServerAccount.normalizeUrl(context.read<ApiClient>().baseUrl));
+    if (linked == null || current == null) return null;
+    if (linked.host == current.host && linked.port == current.port) return null;
+    return 'Code introuvable. Il vient de ${linked.host}, alors que ce '
+        'téléphone est connecté à ${current.host} : vérifiez que les deux '
+        'appareils utilisent le même serveur.';
   }
 
   Future<void> _approve() async {
@@ -137,7 +161,7 @@ class _TvPairingScreenState extends State<TvPairingScreen> {
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: AppColors.background,
-      appBar: AppBar(title: const Text('Connecter une TV')),
+      appBar: AppBar(title: const Text('Connecter un appareil')),
       body: SafeArea(
         child: Center(
           child: SingleChildScrollView(
@@ -164,9 +188,9 @@ class _TvPairingScreenState extends State<TvPairingScreen> {
         return _outcome(
           icon: Icons.check_circle_rounded,
           color: AppColors.success,
-          title: 'Téléviseur connecté',
+          title: 'Appareil connecté',
           detail:
-              'Votre compte est maintenant actif sur ${_request?.deviceName ?? 'la TV'}.',
+              'Votre compte est maintenant actif sur ${_request?.deviceName ?? 'l’appareil'}.',
         );
       case _ApprovalPhase.denied:
         return _outcome(
@@ -184,10 +208,11 @@ class _TvPairingScreenState extends State<TvPairingScreen> {
       mainAxisSize: MainAxisSize.min,
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        const Icon(Icons.tv_rounded, size: 52, color: AppColors.textSecondary),
+        const Icon(Icons.devices_rounded,
+            size: 52, color: AppColors.textSecondary),
         const SizedBox(height: 18),
         Text(
-          'Saisissez le code affiché sur votre téléviseur',
+          'Saisissez le code affiché sur l’appareil à connecter',
           textAlign: TextAlign.center,
           style: Theme.of(context).textTheme.titleMedium,
         ),
@@ -289,8 +314,9 @@ class _TvPairingScreenState extends State<TvPairingScreen> {
                 Border.all(color: AppColors.warning.withValues(alpha: 0.3)),
           ),
           child: const Text(
-            'N\'acceptez que si ce code vient bien de votre téléviseur, '
-            'et qu\'il est affiché en ce moment.',
+            'N\'acceptez que si ce code est affiché en ce moment sur un '
+            'appareil devant vous. Quelqu\'un qui vous envoie un code QR '
+            'cherche à entrer dans votre compte.',
             style: TextStyle(color: AppColors.textSecondary, fontSize: 13),
           ),
         ),
@@ -317,7 +343,7 @@ class _TvPairingScreenState extends State<TvPairingScreen> {
                     color: AppColors.background,
                   ),
                 )
-              : const Text('Autoriser ce téléviseur'),
+              : const Text('Autoriser cet appareil'),
         ),
         const SizedBox(height: 8),
         TextButton(

@@ -7,6 +7,7 @@ import '../../../../tv/tv_focus.dart';
 import '../../../../tv/tv_focus_rows.dart';
 import '../../../../utils/format.dart';
 import '../../../../widgets/global/app_network_image.dart';
+import '../../../../widgets/global/optimistic_volume.dart';
 import '../avoid_cutouts.dart';
 import '../../playback/timeline_previews.dart';
 import 'emby_brightness_slider.dart';
@@ -1076,34 +1077,41 @@ class _EmbyVolumeControl extends StatefulWidget {
 
 class _EmbyVolumeControlState extends State<_EmbyVolumeControl> {
   double _lastAudible = 100;
+  final OptimisticVolume _shown = OptimisticVolume();
 
-  IconData get _icon {
-    if (widget.volume <= 0) return Icons.volume_off_rounded;
-    if (widget.volume < 50) return Icons.volume_down_rounded;
+  IconData _icon(double volume) {
+    if (volume <= 0) return Icons.volume_off_rounded;
+    if (volume < 50) return Icons.volume_down_rounded;
     return Icons.volume_up_rounded;
   }
 
-  void _toggleMute() {
-    if (widget.volume > 0) {
-      _lastAudible = widget.volume;
-      widget.onChanged(0);
+  void _setVolume(double v) {
+    setState(() => _shown.request(v));
+    widget.onChanged(v);
+  }
+
+  void _toggleMute(double volume) {
+    if (volume > 0) {
+      _lastAudible = volume;
+      _setVolume(0);
     } else {
-      widget.onChanged(_lastAudible <= 0 ? 100 : _lastAudible);
+      _setVolume(_lastAudible <= 0 ? 100 : _lastAudible);
     }
   }
 
   @override
   Widget build(BuildContext context) {
     final m = widget.metrics;
+    final volume = _shown.resolve(widget.volume);
 
     return Row(
       mainAxisSize: MainAxisSize.min,
       children: [
         _EmbyIconButton(
-          icon: _icon,
-          tooltip: widget.volume <= 0 ? 'Rétablir le son' : 'Couper le son',
+          icon: _icon(volume),
+          tooltip: volume <= 0 ? 'Rétablir le son' : 'Couper le son',
           metrics: m,
-          onPressed: _toggleMute,
+          onPressed: () => _toggleMute(volume),
         ),
         if (widget.showSlider)
           SizedBox(
@@ -1121,11 +1129,11 @@ class _EmbyVolumeControlState extends State<_EmbyVolumeControl> {
                     RoundSliderOverlayShape(overlayRadius: 14),
               ),
               child: Slider(
-                value: widget.volume.clamp(0, 100),
+                value: volume,
                 max: 100,
                 onChanged: (v) {
                   if (v > 0) _lastAudible = v;
-                  widget.onChanged(v);
+                  _setVolume(v);
                 },
               ),
             ),

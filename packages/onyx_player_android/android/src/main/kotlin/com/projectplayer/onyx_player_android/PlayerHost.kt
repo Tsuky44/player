@@ -17,6 +17,7 @@ import androidx.media3.common.Tracks
 import androidx.media3.common.VideoSize
 import androidx.media3.common.text.CueGroup
 import androidx.media3.exoplayer.DefaultLoadControl
+import androidx.media3.exoplayer.DefaultRenderersFactory
 import io.github.anilbeesetti.nextlib.media3ext.ffdecoder.NextRenderersFactory
 import androidx.media3.exoplayer.ExoPlayer
 import androidx.media3.exoplayer.audio.AudioSink
@@ -153,6 +154,14 @@ internal class PlayerInstance(
         // qu'il ne sait pas lire — TrueHD, DTS, (E-)AC-3 sur un téléphone — est
         // décodé en logiciel au lieu d'être muet. La piste n'est pas touchée :
         // c'est toujours le fichier original, en Direct Play.
+        //
+        // Encore faut-il l'allumer : `DefaultRenderersFactory` part en
+        // `EXTENSION_RENDERER_MODE_OFF`, et NextLib n'ajoute alors rien. Sans
+        // la ligne `setExtensionRendererMode`, un boîtier sans décodeur Dolby
+        // ni passthrough déclaré — un Google TV sur les haut-parleurs du
+        // téléviseur — n'avait aucun rendu pour la piste : ExoPlayer ne lève
+        // pas d'erreur dans ce cas, il lit l'image sans le son. `ON` et non
+        // `PREFER` : le passthrough et les décodeurs de la puce passent avant.
         val renderers = object : NextRenderersFactory(context) {
             override fun buildAudioSink(
                 context: Context,
@@ -163,10 +172,13 @@ internal class PlayerInstance(
                 .setEnableAudioOutputPlaybackParameters(enableAudioOutputPlaybackParams)
                 .setAudioProcessors(arrayOf(DialogueForwardDownmix(outputChannels)))
                 .build()
-        }
+        }.setExtensionRendererMode(DefaultRenderersFactory.EXTENSION_RENDERER_MODE_ON)
 
         val created = ExoPlayer.Builder(context)
-            .setLoadControl(load)
+            // Voir [StallGuardLoadControl] : sans lui, un remux 4K reste bloqué
+            // en mise en mémoire tampon dès que son tampon arrière remplit la
+            // cible d'octets.
+            .setLoadControl(StallGuardLoadControl(load))
             .setRenderersFactory(renderers)
             .build()
         created.addListener(listener)
