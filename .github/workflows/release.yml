@@ -1,7 +1,7 @@
 name: Release
 
-# Publie une version complete d'Onyx : les trois installateurs clients, le
-# bundle web, et l'image Docker qui embarque les deux.
+# Publie une version complete d'Onyx : les installateurs clients (Windows,
+# macOS, Android, iOS), le bundle web, et l'image Docker qui embarque le tout.
 #
 # Ce workflow remplace publish-image.sh. Le script local doit recuperer les
 # artefacts de l'image precedente parce qu'un Mac ne produit jamais l'EXE
@@ -9,8 +9,11 @@ name: Release
 # propre runner, donc chaque publication repart d'artefacts frais.
 #
 # Declenchement :
-#   - `git tag v1.0.1 && git push --tags`
-#   - ou l'onglet Actions -> Release -> Run workflow (saisie de la version)
+#   - Actions -> Release -> Run workflow, en choisissant patch / minor / major :
+#     la version est calculee a partir du dernier tag vX.Y.Z, et le tag est cree
+#     par la GitHub Release. Rien a taper, rien a retenir.
+#   - en ligne de commande : `gh workflow run release.yml -f bump=patch`
+#   - ou, comme avant, `git tag v1.0.1 && git push origin v1.0.1`
 
 on:
   push:
@@ -18,10 +21,25 @@ on:
       - "v*"
   workflow_dispatch:
     inputs:
-      version:
-        description: "Version a publier, sans le v (ex: 1.0.1)"
+      bump:
+        description: "Increment par rapport au dernier tag"
         required: true
+        default: patch
+        type: choice
+        options:
+          - patch
+          - minor
+          - major
+      version:
+        description: "Version explicite, sans le v (optionnel, ignore le bump)"
+        required: false
         type: string
+
+# Deux publications simultanees calculeraient la meme version a partir du meme
+# dernier tag : la seconde attend la fin de la premiere.
+concurrency:
+  group: release
+  cancel-in-progress: false
 
 permissions:
   contents: write # creer la GitHub Release
@@ -35,7 +53,7 @@ env:
 
 jobs:
   # ---------------------------------------------------------------------------
-  # Resout la version une seule fois, pour que les quatre jobs suivants nomment
+  # Resout la version une seule fois, pour que tous les jobs suivants nomment
   # leurs artefacts de facon identique.
   # ---------------------------------------------------------------------------
   prepare:
@@ -46,25 +64,55 @@ jobs:
       minor_tag: ${{ steps.resolve.outputs.minor_tag }}
       image: ${{ steps.resolve.outputs.image }}
     steps:
+      # Historique complet : sans les tags, impossible de trouver la derniere
+      # version publiee.
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
       - id: resolve
         env:
           # Passe par l'environnement plutot que par une interpolation dans le
           # corps du script : une saisie manuelle ne doit jamais pouvoir devenir
           # du shell.
+          EVENT_NAME: ${{ github.event_name }}
           VERSION_INPUT: ${{ inputs.version }}
+          BUMP_INPUT: ${{ inputs.bump }}
           REF_NAME: ${{ github.ref_name }}
           OWNER: ${{ github.repository_owner }}
         run: |
           set -euo pipefail
-          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
-            VERSION="$VERSION_INPUT"
+
+          # Tri semantique (-v:refname) : un tri alphabetique placerait v1.0.9
+          # apres v1.0.34.
+          LATEST="$(git tag -l 'v*' --sort=-v:refname \
+            | grep -E '^v[0-9]+\.[0-9]+\.[0-9]+$' | head -1 || true)"
+          LATEST="${LATEST#v}"
+          echo "Dernier tag : ${LATEST:-aucun}"
+
+          if [ "$EVENT_NAME" = "push" ]; then
+            VERSION="${REF_NAME#v}"
+          elif [ -n "${VERSION_INPUT// /}" ]; then
+            VERSION="${VERSION_INPUT#v}"
           else
-            VERSION="$REF_NAME"
+            IFS=. read -r MAJOR MINOR PATCH <<< "${LATEST:-0.0.0}"
+            case "$BUMP_INPUT" in
+              major) MAJOR=$((MAJOR + 1)); MINOR=0; PATCH=0 ;;
+              minor) MINOR=$((MINOR + 1)); PATCH=0 ;;
+              *)     PATCH=$((PATCH + 1)) ;;
+            esac
+            VERSION="$MAJOR.$MINOR.$PATCH"
           fi
-          VERSION="${VERSION#v}"
 
           if ! printf '%s' "$VERSION" | grep -Eq '^[0-9]+\.[0-9]+\.[0-9]+$'; then
             echo "::error::Version invalide : '$VERSION' (format attendu : X.Y.Z)"
+            exit 1
+          fi
+
+          # Lance a la main, le tag ne doit pas encore exister : sinon la Release
+          # ecraserait silencieusement les installateurs d'une version publiee.
+          if [ "$EVENT_NAME" != "push" ] && git rev-parse -q --verify "refs/tags/v$VERSION" >/dev/null; then
+            echo "::error::Le tag v$VERSION existe deja. Choisissez un autre bump ou une version explicite."
             exit 1
           fi
 
@@ -79,7 +127,7 @@ jobs:
             echo "image=ghcr.io/$OWNER_LC/$IMAGE_NAME"
           } >> "$GITHUB_OUTPUT"
 
-          echo "### Onyx $VERSION" >> "$GITHUB_STEP_SUMMARY"
+          echo "### Onyx $VERSION (precedente : ${LATEST:-aucune})" >> "$GITHUB_STEP_SUMMARY"
 
   # ---------------------------------------------------------------------------
   # Android — APK
@@ -212,6 +260,71 @@ jobs:
           if-no-files-found: error
 
   # ---------------------------------------------------------------------------
+  # iOS — IPA non signe (sideloading)
+  # ---------------------------------------------------------------------------
+  # Meme sortie que `scripts/build-ios-ipa.sh` sans --signed. Signer demande un
+  # compte Apple Developer, un certificat et un profil de provisionnement ; sans
+  # eux, le .ipa est resigne a l'installation par Sideloadly ou AltStore.
+  build-ios:
+    needs: prepare
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: subosito/flutter-action@v2
+        with:
+          flutter-version: ${{ env.FLUTTER_VERSION }}
+          channel: stable
+          cache: true
+
+      - name: flutter pub get
+        working-directory: app
+        run: flutter pub get
+
+      - name: Build iOS
+        working-directory: app
+        env:
+          # CocoaPods refuse de tourner sous une locale non UTF-8, et c'est le
+          # build Flutter qui lance `pod install`.
+          LANG: en_US.UTF-8
+        run: |
+          flutter build ios --release --no-codesign \
+            --build-name="${{ needs.prepare.outputs.version }}" \
+            --build-number="${{ github.run_number }}"
+
+      # Un .ipa n'est qu'un zip contenant `Payload/Runner.app`.
+      - name: Packager l'IPA
+        env:
+          VERSION: ${{ needs.prepare.outputs.version }}
+        run: |
+          set -euo pipefail
+          APP_BUNDLE="app/build/ios/iphoneos/Runner.app"
+          if [ ! -d "$APP_BUNDLE" ]; then
+            echo "::error::Runner.app introuvable dans app/build/ios/iphoneos/"
+            exit 1
+          fi
+
+          STAGE="$(mktemp -d)"
+          mkdir -p "$STAGE/Payload"
+          cp -R "$APP_BUNDLE" "$STAGE/Payload/"
+          # La signature ad-hoc residuelle fait parfois echouer la resignature
+          # par l'outil de sideloading.
+          rm -rf "$STAGE/Payload/Runner.app/_CodeSignature"
+
+          mkdir -p out
+          OUT="$PWD/out/Onyx-${VERSION}-ios.ipa"
+          (cd "$STAGE" && zip -qry "$OUT" Payload)
+          rm -rf "$STAGE"
+          ls -lh out
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: installer-ios
+          path: out/*.ipa
+          retention-days: 7
+          if-no-files-found: error
+
+  # ---------------------------------------------------------------------------
   # Windows — EXE (installeur Inno Setup) + ZIP portable
   # ---------------------------------------------------------------------------
   build-windows:
@@ -288,7 +401,7 @@ jobs:
   # Bundle web + image Docker + GitHub Release
   # ---------------------------------------------------------------------------
   publish:
-    needs: [prepare, build-android, build-macos, build-windows]
+    needs: [prepare, build-android, build-macos, build-ios, build-windows]
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -362,6 +475,9 @@ jobs:
         uses: softprops/action-gh-release@v2
         with:
           tag_name: ${{ needs.prepare.outputs.version_tag }}
+          # Lance a la main, le tag n'existe pas encore : la Release le cree sur
+          # le commit exact qui a ete construit, pas sur la tete de main.
+          target_commitish: ${{ github.sha }}
           name: Onyx ${{ needs.prepare.outputs.version }}
           generate_release_notes: true
           files: |
@@ -369,6 +485,7 @@ jobs:
             server/downloads/*.zip
             server/downloads/*.dmg
             server/downloads/*.apk
+            server/downloads/*.ipa
           body: |
             ## Image Docker
 

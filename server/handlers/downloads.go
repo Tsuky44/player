@@ -52,6 +52,7 @@ var platformForExt = map[string]struct {
 	".zip": {"windows-portable", "Windows (portable)", 1},
 	".dmg": {"macos", "macOS", 2},
 	".apk": {"android", "Android (APK)", 3},
+	".ipa": {"ios", "iOS (IPA)", 4},
 }
 
 // versionInName pulls 1.0.0 out of "Onyx-1.0.0-macos.dmg". Artifacts staged by
@@ -270,7 +271,7 @@ func UploadDownload(w http.ResponseWriter, r *http.Request, _ httprouter.Params,
 			originalName = filepath.Base(part.FileName())
 			ext = strings.ToLower(filepath.Ext(originalName))
 			if _, known := platformForExt[ext]; !known {
-				writeJSONError(w, http.StatusBadRequest, "Extension non prise en charge (.exe, .zip, .dmg, .apk)")
+				writeJSONError(w, http.StatusBadRequest, "Extension non prise en charge (.exe, .zip, .dmg, .apk, .ipa)")
 				return
 			}
 
