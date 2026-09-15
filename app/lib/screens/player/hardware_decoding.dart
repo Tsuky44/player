@@ -89,6 +89,7 @@ abstract final class HardwareDecoding {
         preference: _preference,
         isAndroid: AppPlatform.isAndroid,
         isMacOS: AppPlatform.isMacOS,
+        isWindows: AppPlatform.isWindows,
         zeroCopyFailed: _zeroCopyFailed,
       );
 
@@ -98,6 +99,7 @@ abstract final class HardwareDecoding {
     required HardwareDecodingPreference preference,
     required bool isAndroid,
     required bool isMacOS,
+    bool isWindows = false,
     bool zeroCopyFailed = false,
   }) {
     switch (preference) {
@@ -124,6 +126,13 @@ abstract final class HardwareDecoding {
         // continues; the copy is compatible with the CVPixelBuffer/Metal path.
         // The two settings deliberately coincide there.
         if (isMacOS) return 'videotoolbox-copy';
+        // Windows : `auto-safe` essaie d3d11va sans copie en premier — possible
+        // depuis le correctif de libmpv, voir l'ADR-0019 — et prend la copie
+        // quand l'interop ne se charge pas. Mais une interop chargée qui échoue
+        // ensuite, sur un pilote qui refuse le flux EGL, fait tomber mpv sur le
+        // logiciel et non sur la copie : c'est le même piège qu'Android, et la
+        // même sortie.
+        if (isWindows && zeroCopyFailed) return 'd3d11va-copy';
         return 'auto-safe';
     }
   }

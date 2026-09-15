@@ -1,6 +1,7 @@
 import 'services/media_details_cache.dart';
 import 'dart:async';
 
+import 'package:flutter/foundation.dart';
 import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -40,6 +41,7 @@ import 'screens/shell/main_shell.dart';
 import 'theme/app_colors.dart';
 import 'theme/app_theme.dart';
 import 'desktop_window.dart';
+import 'widgets/global/middle_click_autoscroll.dart';
 
 /// Enables trackpad / mouse drag scrolling on desktop (required on macOS).
 class AppScrollBehavior extends MaterialScrollBehavior {
@@ -50,9 +52,36 @@ class AppScrollBehavior extends MaterialScrollBehavior {
         PointerDeviceKind.trackpad,
         PointerDeviceKind.stylus,
       };
+
+  // Every scrollable passes through here, which is what lets the middle click
+  // reach whichever of them sits under the mouse.
+  @override
+  Widget buildScrollbar(
+      BuildContext context, Widget child, ScrollableDetails details) {
+    return MiddleClickAutoScroll(
+      details: details,
+      child: super.buildScrollbar(context, child, details),
+    );
+  }
 }
 
 final GlobalKey<NavigatorState> rootNavigatorKey = GlobalKey<NavigatorState>();
+
+/// The mouse's back side button does what the system back does: close the
+/// dialog, the player or the page on top.
+///
+/// Going through the root navigator is enough for pages opened under the nav
+/// bar too: the shell's route refuses the pop while one is open, and hands it
+/// to its own navigator — see `MainShell`. Not on the web, where the browser
+/// already turns that button into its own history back.
+void _handleMouseBackButton(PointerDownEvent event) {
+  if (kIsWeb ||
+      event.kind != PointerDeviceKind.mouse ||
+      event.buttons & kBackMouseButton == 0) {
+    return;
+  }
+  rootNavigatorKey.currentState?.maybePop();
+}
 
 Future<void> _configureSystemUi() async {
   // A television has no status bar and no navigation bar to blend into, and
@@ -264,26 +293,30 @@ class OnyxApp extends StatelessWidget {
                   DirectionalFocusIntent: TvDirectionalFocusAction(),
                 },
                 builder: (context, child) {
-                  return Column(
-                    children: [
-                      if (useDesktopCaptionBar)
-                        ValueListenableBuilder<bool>(
-                          valueListenable: showDesktopCaption,
-                          builder: (context, visible, _) {
-                            return Visibility(
-                              visible: visible,
-                              maintainState: false,
-                              child: const WindowCaptionBar(),
-                            );
-                          },
+                  return Listener(
+                    behavior: HitTestBehavior.translucent,
+                    onPointerDown: _handleMouseBackButton,
+                    child: Column(
+                      children: [
+                        if (useDesktopCaptionBar)
+                          ValueListenableBuilder<bool>(
+                            valueListenable: showDesktopCaption,
+                            builder: (context, visible, _) {
+                              return Visibility(
+                                visible: visible,
+                                maintainState: false,
+                                child: const WindowCaptionBar(),
+                              );
+                            },
+                          ),
+                        Expanded(
+                          child: ColoredBox(
+                            color: AppColors.background,
+                            child: child ?? const SizedBox.shrink(),
+                          ),
                         ),
-                      Expanded(
-                        child: ColoredBox(
-                          color: AppColors.background,
-                          child: child ?? const SizedBox.shrink(),
-                        ),
-                      ),
-                    ],
+                      ],
+                    ),
                   );
                 },
                 home: Consumer<AuthProvider>(

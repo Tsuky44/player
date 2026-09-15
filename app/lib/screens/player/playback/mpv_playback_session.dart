@@ -432,7 +432,9 @@ class MpvPlaybackSession implements PlaybackSession {
   Future<void> onPictureLive() async {
     if (MpvNativeView.enabled && !AppPlatform.isWeb) await _logDolbyVision();
     if (_softwareDecodeHandled || AppPlatform.isWeb) return;
-    if (!AppPlatform.isAndroid) return;
+    // Les deux plateformes où le chemin sans copie peut échouer vers le
+    // logiciel : MediaCodec sur Android, l'interop d3d11-egl sur Windows.
+    if (!AppPlatform.isAndroid && !AppPlatform.isWindows) return;
     if (HardwareDecoding.preference != HardwareDecodingPreference.auto) return;
 
     final platform = _player.platform as dynamic;
@@ -449,7 +451,7 @@ class MpvPlaybackSession implements PlaybackSession {
     _softwareDecodeHandled = true;
     HardwareDecoding.noteZeroCopyFailure();
     debugPrint('mpv: ${height}p décodé en logiciel — bascule sur '
-        'mediacodec-copy');
+        '${HardwareDecoding.mpvValue}');
     await _set(platform, 'hwdec', HardwareDecoding.mpvValue);
   }
 
