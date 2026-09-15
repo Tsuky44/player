@@ -9,7 +9,10 @@ import '../../providers/auth_provider.dart';
 import '../../services/api_client.dart';
 import '../../services/server_discovery.dart';
 import '../../theme/app_colors.dart';
+import '../../tv/tv_mode.dart';
+import '../../utils/app_platform.dart';
 import '../../widgets/global/onyx_mark.dart';
+import 'phone_sign_in_panel.dart';
 
 /// Les trois façons d'arriver sur un serveur.
 ///
@@ -71,6 +74,14 @@ class _LoginScreenState extends State<LoginScreen> {
   /// an account can be created without an invitation, and it produces the owner.
   bool _setupRequired = false;
 
+  /// The address the QR sign-in opens its pairing on: set once that server has
+  /// answered, and only when it has accounts — a pristine server has nobody
+  /// with a phone to approve anything.
+  String? _pairingServer;
+
+  /// True while the address in the field is being checked.
+  bool _probing = true;
+
   @override
   void didChangeDependencies() {
     super.didChangeDependencies();
@@ -131,13 +142,98 @@ class _LoginScreenState extends State<LoginScreen> {
   /// on failure we simply keep the sign-up form hidden.
   Future<void> _probeSetupState() async {
     final apiClient = context.read<ApiClient>();
+    // Assigned, not set: the first probe runs from didChangeDependencies, and
+    // the answer below rebuilds either way.
+    _probing = true;
     try {
       await apiClient.setConnection(_serverController.text.trim());
       final required = await apiClient.getSetupRequired();
-      if (mounted) setState(() => _setupRequired = required);
+      if (mounted) {
+        setState(() {
+          _setupRequired = required;
+          _pairingServer = required ? null : apiClient.baseUrl;
+          _probing = false;
+        });
+      }
     } catch (_) {
-      if (mounted) setState(() => _setupRequired = false);
+      if (mounted) {
+        setState(() {
+          _setupRequired = false;
+          _pairingServer = null;
+          _probing = false;
+        });
+      }
     }
+  }
+
+  /// Whether this screen offers the QR sign-in at all.
+  ///
+  /// Not on a phone: the phone is what scans. Not on a television either, which
+  /// has its own linking screen and reaches this form only as the fallback.
+  bool _offersPhoneSignIn(BuildContext context) {
+    if (TvScope.of(context)) return false;
+    if (_mode != _LoginMode.signIn) return false;
+    return AppPlatform.isDesktop ||
+        MediaQuery.sizeOf(context).shortestSide >= 600;
+  }
+
+  /// The form alone, or the form beside the QR — side by side when there is
+  /// room, the QR under the form when there is not.
+  Widget _layout(BuildContext context, Widget form) {
+    if (!_offersPhoneSignIn(context)) {
+      return ConstrainedBox(
+        constraints: const BoxConstraints(maxWidth: 420),
+        child: form,
+      );
+    }
+
+    final panel = PhoneSignInPanel(
+      serverUrl: _pairingServer,
+      probing: _probing,
+    );
+
+    if (MediaQuery.sizeOf(context).width >= 880) {
+      return Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Flexible(
+            child: ConstrainedBox(
+              constraints: const BoxConstraints(maxWidth: 420),
+              child: form,
+            ),
+          ),
+          const SizedBox(width: 48),
+          Container(width: 1, height: 300, color: AppColors.glassBorder),
+          const SizedBox(width: 48),
+          SizedBox(width: 280, child: panel),
+        ],
+      );
+    }
+
+    return ConstrainedBox(
+      constraints: const BoxConstraints(maxWidth: 420),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          form,
+          const SizedBox(height: 28),
+          Row(
+            children: [
+              Expanded(child: Divider(color: AppColors.glassBorder)),
+              const Padding(
+                padding: EdgeInsets.symmetric(horizontal: 12),
+                child: Text('ou',
+                    style: TextStyle(color: AppColors.textMuted)),
+              ),
+              Expanded(child: Divider(color: AppColors.glassBorder)),
+            ],
+          ),
+          const SizedBox(height: 24),
+          panel,
+        ],
+      ),
+    );
   }
 
   @override
@@ -308,9 +404,9 @@ class _LoginScreenState extends State<LoginScreen> {
                 padding: const EdgeInsets.all(24),
                 keyboardDismissBehavior:
                     ScrollViewKeyboardDismissBehavior.onDrag,
-                child: ConstrainedBox(
-                  constraints: const BoxConstraints(maxWidth: 420),
-                  child: Form(
+                child: _layout(
+                  context,
+                  Form(
                   key: _formKey,
                   child: Column(
                     mainAxisSize: MainAxisSize.min,

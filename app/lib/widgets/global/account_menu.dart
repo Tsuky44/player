@@ -18,9 +18,9 @@ class AccountMenu extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    // A television linking another television is a flow nobody has, and the
-    // entry point is a QR scanner — so it belongs on the device that holds a
-    // camera, which is the phone and only the phone.
+    // The entry point is a QR scanner — for a television, a browser or a
+    // desktop app (ADR-0020) — so it belongs on the device that holds a camera,
+    // which is the phone and only the phone.
     final canLinkTv = AppPlatform.isMobile && !TvScope.of(context);
 
     // Un seul serveur n'a pas besoin d'un sélecteur ; à partir de deux, c'est
@@ -85,7 +85,7 @@ class AccountMenu extends StatelessWidget {
         if (canLinkTv)
           const PopupMenuItem(
             value: 'tv',
-            child: Text('Connecter un téléviseur'),
+            child: Text('Connecter un appareil'),
           ),
         const PopupMenuDivider(),
         const PopupMenuItem(value: 'logout', child: Text('Se déconnecter')),

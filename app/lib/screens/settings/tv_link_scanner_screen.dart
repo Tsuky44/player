@@ -7,8 +7,14 @@ import 'package:provider/provider.dart';
 
 import '../../services/api_client.dart';
 import '../../theme/app_colors.dart';
+import 'tv_pairing_screen.dart';
 
-/// The phone's half of direct linking: point the camera at the television.
+/// The phone's half of every QR sign-in: point the camera at the other screen.
+///
+/// Two codes land here. A television shows a direct-linking offer, handled
+/// below. A browser or a desktop app shows a server pairing link (ADR-0020),
+/// which is handed to [TvPairingScreen] for the same confirmation as a typed
+/// code.
 ///
 /// The television is offering, not asking. Its QR carries its own address on
 /// the local network and a one-time code; everything the TV is missing — which
@@ -48,6 +54,24 @@ class _TvLinkScannerScreenState extends State<TvLinkScannerScreen> {
     for (final barcode in capture.barcodes) {
       final raw = barcode.rawValue;
       if (raw == null || raw.isEmpty) continue;
+
+      final pairing = PairingLink.parse(raw);
+      if (pairing != null) {
+        if (!mounted) return;
+        _phase = _LinkPhase.sending;
+        unawaited(_controller.stop());
+        // Replaced, not stacked: once the code is read, the camera has nothing
+        // left to do, and "back" from the confirmation should leave the flow.
+        await Navigator.of(context).pushReplacement(
+          MaterialPageRoute(
+            builder: (_) => TvPairingScreen(
+              initialCode: pairing.code,
+              linkOrigin: pairing.origin,
+            ),
+          ),
+        );
+        return;
+      }
 
       final offer = _TvOffer.parse(raw);
       if (offer == null) continue;
@@ -133,7 +157,7 @@ class _TvLinkScannerScreenState extends State<TvLinkScannerScreen> {
     return Scaffold(
       backgroundColor: AppColors.background,
       appBar: AppBar(
-        title: const Text('Connecter un téléviseur'),
+        title: const Text('Connecter un appareil'),
         backgroundColor: Colors.transparent,
       ),
       body: switch (_phase) {
@@ -151,8 +175,8 @@ class _TvLinkScannerScreenState extends State<TvLinkScannerScreen> {
         const Padding(
           padding: EdgeInsets.fromLTRB(24, 8, 24, 20),
           child: Text(
-            'Sur le téléviseur, ouvrez Onyx et laissez le code affiché. '
-            'Cadrez-le ci-dessous.',
+            'Ouvrez Onyx sur le téléviseur, l’ordinateur ou le navigateur à '
+            'connecter, et cadrez le code QR affiché.',
             textAlign: TextAlign.center,
             style: TextStyle(color: AppColors.textSecondary, height: 1.4),
           ),
@@ -167,7 +191,13 @@ class _TvLinkScannerScreenState extends State<TvLinkScannerScreen> {
             ),
           ),
         ),
-        const SizedBox(height: 24),
+        TextButton(
+          onPressed: () => Navigator.of(context).pushReplacement(
+            MaterialPageRoute(builder: (_) => const TvPairingScreen()),
+          ),
+          child: const Text('Saisir le code à la main'),
+        ),
+        const SizedBox(height: 12),
       ],
     );
   }
@@ -219,6 +249,35 @@ class _TvLinkScannerScreenState extends State<TvLinkScannerScreen> {
         onPressed: _retry,
         child: const Text('Réessayer'),
       ),
+    );
+  }
+}
+
+/// A server pairing link, as shown by the web and desktop sign-in screens:
+/// `<server>/?tv=CODE`.
+///
+/// Only the code is acted on, and only against the server this phone is
+/// signed in to — approving never sends anything to the address in the link.
+class PairingLink {
+  final String code;
+
+  /// The server that issued the code, for telling the user when it is not the
+  /// one this phone is on.
+  final String? origin;
+
+  const PairingLink({required this.code, this.origin});
+
+  static PairingLink? parse(String raw) {
+    final uri = Uri.tryParse(raw.trim());
+    if (uri == null) return null;
+    if (uri.scheme != 'http' && uri.scheme != 'https') return null;
+    final code = (uri.queryParameters['tv'] ?? '')
+        .toUpperCase()
+        .replaceAll(RegExp('[^A-Z0-9]'), '');
+    if (code.length != 8) return null;
+    return PairingLink(
+      code: code,
+      origin: uri.host.isEmpty ? null : uri.origin,
     );
   }
 }

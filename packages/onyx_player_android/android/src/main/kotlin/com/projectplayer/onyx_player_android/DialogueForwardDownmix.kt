@@ -108,11 +108,15 @@ internal class DialogueForwardDownmix(
         /// d'écraser les crêtes.
         const val NORMALISATION = 1.0 / (1.0 + CENTER + SURROUND + LFE)
 
+        /// La même chose en 7.1, où chaque côté reçoit deux surrounds.
+        const val NORMALISATION_7_1 = 1.0 / (1.0 + CENTER + 2 * SURROUND + LFE)
+
         /// Replie une trame vers un couple stéréo.
         ///
-        /// L'ordre des canaux est celui de PCM/WAVE, que MediaCodec produit :
-        /// avant-gauche, avant-droit, centre, LFE, arrière-gauche,
-        /// arrière-droit. Une disposition inconnue tombe sur les deux premiers
+        /// L'ordre des canaux est celui de PCM/WAVE, que MediaCodec et FFmpeg
+        /// produisent : avant-gauche, avant-droit, centre, LFE, arrière-gauche,
+        /// arrière-droit, puis en 7.1 côté-gauche, côté-droit. Une disposition
+        /// inconnue tombe sur les deux premiers
         /// canaux, qui sont les frontales dans toutes les dispositions
         /// courantes — se tromper vers un stéréo plat vaut mieux que se tromper
         /// vers un mélange incohérent.
@@ -128,6 +132,18 @@ internal class DialogueForwardDownmix(
             val lfe = if (channels >= 6) samples[3].toDouble() else 0.0
             val backLeft = samples[if (channels >= 6) 4 else 3].toDouble()
             val backRight = samples[if (channels >= 6) 5 else 4].toDouble()
+
+            // Un TrueHD 7.1 porte la moitié de son ambiance dans les côtés : les
+            // ignorer ferait disparaître une partie du mixage au repli.
+            if (channels >= 8) {
+                val sideLeft = samples[6].toDouble()
+                val sideRight = samples[7].toDouble()
+                val left = (frontLeft + CENTER * centre +
+                    SURROUND * (backLeft + sideLeft) + LFE * lfe) * NORMALISATION_7_1
+                val right = (frontRight + CENTER * centre +
+                    SURROUND * (backRight + sideRight) + LFE * lfe) * NORMALISATION_7_1
+                return clamp(left) to clamp(right)
+            }
 
             val left =
                 (frontLeft + CENTER * centre + SURROUND * backLeft + LFE * lfe) *

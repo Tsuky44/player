@@ -40,6 +40,16 @@ class PlaybackProfile {
   /// one that budget was written for.
   final bool allowHdrComputePeak;
 
+  /// ExoPlayer's rewind window, in milliseconds (Android only).
+  ///
+  /// ExoPlayer has no byte-bounded back buffer, only a time-bounded one — and
+  /// it counts against the same byte target as the forward buffer. Fifteen
+  /// seconds of a 4K remux weigh 150 MB: on a streaming stick that fills the
+  /// whole target with media already watched, and big films sit buffering
+  /// forever. Where RAM is scarce the window is dropped; a rewind then costs
+  /// one range request to the server.
+  final int backBufferMs;
+
   /// Human-readable reason, for the log line when a playback starts.
   final String label;
 
@@ -51,6 +61,7 @@ class PlaybackProfile {
     required this.hlsReadaheadSecs,
     required this.allowHdrComputePeak,
     required this.label,
+    this.backBufferMs = 15000,
   });
 
   static const int _mb = 1024 * 1024;
@@ -80,8 +91,8 @@ class PlaybackProfile {
   );
 
   /// Streaming sticks, cheap boxes, and any Android device that calls itself
-  /// low-RAM. The back buffer still covers the ten seconds the rewind button
-  /// asks for, which is the one seek that must not hit the network.
+  /// low-RAM. mpv's back buffer still covers the ten seconds the rewind button
+  /// asks for; ExoPlayer's is off — see [backBufferMs].
   static const PlaybackProfile constrained = PlaybackProfile(
     demuxerMaxBytes: 48 * _mb,
     demuxerBackBytes: 16 * _mb,
@@ -90,6 +101,7 @@ class PlaybackProfile {
     hlsReadaheadSecs: 30,
     allowHdrComputePeak: false,
     label: 'constrained',
+    backBufferMs: 0,
   );
 
   /// Picks a profile from what the device reported.

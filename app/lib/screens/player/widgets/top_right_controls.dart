@@ -1,5 +1,6 @@
 import 'dart:ui';
 import 'package:flutter/material.dart';
+import '../../../widgets/global/optimistic_volume.dart';
 import '../playback/playback_session.dart';
 import '../hooks/use_player_controller.dart';
 import '../hooks/use_episode_navigation.dart';
@@ -30,6 +31,12 @@ class TopRightControls extends StatefulWidget {
 
 class _TopRightControlsState extends State<TopRightControls> {
   bool _isVolumeHovering = false;
+  final OptimisticVolume _shownVolume = OptimisticVolume();
+
+  void _setVolume(double v) {
+    setState(() => _shownVolume.request(v));
+    widget.session.setVolume(v);
+  }
   bool _showSettings = false;
   final GlobalKey _settingsButtonKey = GlobalKey();
 
@@ -43,7 +50,7 @@ class _TopRightControlsState extends State<TopRightControls> {
 
   @override
   Widget build(BuildContext context) {
-    final volume = widget.session.volume;
+    final volume = _shownVolume.resolve(widget.session.volume);
     final isMuted = volume <= 0;
 
     return Stack(
@@ -112,14 +119,7 @@ class _TopRightControlsState extends State<TopRightControls> {
                       Material(
                         color: Colors.transparent,
                         child: InkWell(
-                          onTap: () {
-                            if (isMuted) {
-                              widget.session.setVolume(100);
-                            } else {
-                              widget.session.setVolume(0);
-                            }
-                            setState(() {});
-                          },
+                          onTap: () => _setVolume(isMuted ? 100 : 0),
                           borderRadius: BorderRadius.circular(20),
                           child: Container(
                             width: 40,
@@ -151,13 +151,10 @@ class _TopRightControlsState extends State<TopRightControls> {
                                 overlayShape: const RoundSliderOverlayShape(overlayRadius: 0),
                               ),
                               child: Slider(
-                                value: volume.clamp(0.0, 100.0),
+                                value: volume,
                                 min: 0,
                                 max: 100,
-                                onChanged: (v) {
-                                  widget.session.setVolume(v);
-                                  setState(() {});
-                                },
+                                onChanged: _setVolume,
                               ),
                             ),
                           ),

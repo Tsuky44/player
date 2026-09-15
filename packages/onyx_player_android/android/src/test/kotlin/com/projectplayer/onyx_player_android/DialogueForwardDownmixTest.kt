@@ -96,6 +96,29 @@ class DialogueForwardDownmixTest {
     }
 
     @Test
+    fun `le sept-un replie aussi les cotes`() {
+        // Un TrueHD 7.1 décodé par FFmpeg : les canaux 6 et 7 sont les côtés.
+        // Les lire à tort ou les ignorer ferait disparaître une part du mixage.
+        val (left, right) = DialogueForwardDownmix.mix(
+            frame(0, 0, 0, 0, 0, 0, 10000, 0), 8,
+        )
+        val expected = 10000 * DialogueForwardDownmix.SURROUND *
+            DialogueForwardDownmix.NORMALISATION_7_1
+        assertTrue(abs(left - expected) <= 1, "attendu ~$expected, obtenu $left")
+        assertEquals(0, right.toInt())
+    }
+
+    @Test
+    fun `huit canaux a pleine echelle n'ecretent pas`() {
+        val max = Short.MAX_VALUE.toInt()
+        val (left, right) = DialogueForwardDownmix.mix(
+            ShortArray(8) { max.toShort() }, 8,
+        )
+        assertTrue(left <= Short.MAX_VALUE && left > 0, "gauche=$left")
+        assertTrue(right <= Short.MAX_VALUE && right > 0, "droite=$right")
+    }
+
+    @Test
     fun `une sortie qui porte le surround ne replie rien`() {
         // Le bug que ce paramètre corrige : un boîtier relié à un ampli qui
         // reçoit du PCM 5.1 se retrouvait en stéréo, parce que le repli ne

@@ -4,6 +4,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:provider/provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
+import 'package:onyx/models/device_pairing.dart';
 import 'package:onyx/models/models.dart';
 import 'package:onyx/providers/auth_provider.dart';
 import 'package:onyx/screens/auth/login_screen.dart';
@@ -15,6 +16,12 @@ class _FakeApiClient extends ApiClient {
 
   @override
   Future<bool> getSetupRequired() async => false;
+
+  /// The QR sign-in beside the form opens a pairing; refused here, it shows its
+  /// failure state and stays off the network.
+  @override
+  Future<DevicePairing> startDevicePairing({required String deviceName}) async =>
+      throw Exception('offline');
 
   @override
   Future<User> login(String username, String password) async {

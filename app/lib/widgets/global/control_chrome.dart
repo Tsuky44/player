@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import '../../models/player_layout.dart';
 import '../../theme/app_colors.dart';
 import 'media_logo_display.dart';
+import 'optimistic_volume.dart';
 
 /// Rendering mode for [ControlChrome].
 ///
@@ -1494,12 +1495,20 @@ class _VolumeSliderButton extends StatefulWidget {
 
 class _VolumeSliderButtonState extends State<_VolumeSliderButton> {
   bool _hovering = false;
+  final OptimisticVolume _shown = OptimisticVolume();
 
   bool get _expanded => widget.forceExpanded || _hovering;
 
+  void _setVolume(double v) {
+    final apply = widget.onVolumeChanged;
+    if (apply == null) return;
+    setState(() => _shown.request(v));
+    apply(v);
+  }
+
   @override
   Widget build(BuildContext context) {
-    final vol = (widget.volume ?? 50.0).clamp(0.0, 100.0);
+    final vol = _shown.resolve(widget.volume);
     final iconSize = (widget.height * 0.55).clamp(14.0, 22.0);
 
     final radius = BorderRadius.circular(widget.height / 2 + 6);
@@ -1632,11 +1641,7 @@ class _VolumeSliderButtonState extends State<_VolumeSliderButton> {
               width: widget.height,
               height: widget.height,
               child: InkWell(
-                onTap: () {
-                  if (widget.onVolumeChanged != null) {
-                    widget.onVolumeChanged!(vol <= 0 ? 100 : 0);
-                  }
-                },
+                onTap: () => _setVolume(vol <= 0 ? 100 : 0),
                 borderRadius: BorderRadius.circular(widget.height / 2),
                 child: Center(
                   child: Icon(
@@ -1664,7 +1669,8 @@ class _VolumeSliderButtonState extends State<_VolumeSliderButton> {
                       value: vol,
                       min: 0,
                       max: 100,
-                      onChanged: widget.onVolumeChanged,
+                      onChanged:
+                          widget.onVolumeChanged == null ? null : _setVolume,
                     ),
                   ),
                 ),
