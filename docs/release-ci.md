@@ -5,9 +5,10 @@
 - `Onyx-<version>-android.apk`
 - `Onyx-<version>-macos.dmg`
 - `Onyx-<version>-windows.exe` + `-windows-portable.zip`
+- `Onyx-<version>-ios.ipa` (non signé, pour sideloading)
 - le bundle Flutter Web, embarqué dans le binaire Go
 - l'image `ghcr.io/tsuky44/playeur-server` taguée `latest`, `v<version>`, `v<majeur.mineur>`
-- une GitHub Release portant les quatre installateurs
+- une GitHub Release portant tous les installateurs
 
 Les installateurs sont copiés dans `server/downloads/` avant le build Docker.
 `server/handlers/downloads.go` scanne ce dossier au runtime : les liens
@@ -16,12 +17,35 @@ supplémentaire.
 
 ## Déclencher
 
+**Actions → Release → Run workflow**, puis choisir l'incrément :
+
+| Bump | Dernier tag `v1.0.34` → |
+|---|---|
+| `patch` (défaut) | `v1.0.35` |
+| `minor` | `v1.1.0` |
+| `major` | `v2.0.0` |
+
+La version est calculée à partir du dernier tag `vX.Y.Z` (tri sémantique), et
+le tag est créé par la GitHub Release sur le commit construit : plus besoin de
+retenir le dernier numéro ni de pousser un tag à la main. Le champ **version**
+permet de forcer un numéro précis ; il est refusé si le tag existe déjà.
+
+Depuis un terminal, avec la CLI GitHub :
+
+```bash
+gh workflow run release.yml -f bump=patch
+```
+
+Pousser un tag reste possible :
+
 ```bash
 git tag v1.0.1 && git push origin v1.0.1
 ```
 
-Ou l'onglet **Actions → Release → Run workflow**, en saisissant la version.
-Le bouton n'apparaît qu'une fois le workflow présent sur la branche par défaut.
+`app/pubspec.yaml` n'a pas à être modifié : la CI passe `--build-name` (la
+version) et `--build-number` (le numéro du run, toujours croissant) à Flutter.
+Après une Release lancée depuis l'UI, `git fetch --tags` récupère le tag en
+local.
 
 Si un seul job échoue (toolchain Windows capricieuse, par exemple), relancer ce
 job depuis l'UI : les autres artefacts sont conservés le temps du run.
@@ -82,11 +106,12 @@ write` — pas de PAT à créer, contrairement au script local.
   Developer à 99 $/an. Même situation qu'avec le script local.
 - **DMG arm64.** `macos-latest` est un runner Apple Silicon. Les Mac Intel ne
   sont pas couverts sans un job supplémentaire sur `macos-13`.
-- **Pas d'`.ipa`.** `app/ios/` n'existe pas. Au-delà du CI, il faudrait
-  conditionner `window_manager` (pas de support iOS), valider `media_kit` sur
-  iOS, et disposer d'un compte Apple Developer : hors App Store, la
-  distribution est limitée à l'Ad Hoc (100 appareils, UDID à enregistrer) ou au
-  sideloading.
+- **IPA non signé.** Il ne s'installe pas tel quel : Sideloadly ou AltStore
+  le resignent avec un identifiant Apple à l'installation. Sans compte
+  développeur payant, l'app expire au bout de 7 jours. Un IPA signé (Ad Hoc,
+  TestFlight) demanderait un compte Apple Developer, un certificat et un profil
+  de provisionnement en secrets — voir `scripts/build-ios-ipa.sh --signed` pour
+  le build local.
 - **Minutes CI.** Le dépôt est privé : les minutes macOS comptent ×10 et les
   minutes Windows ×2. Un run complet consomme de l'ordre de 150–250 minutes du
   quota mensuel gratuit (2000).

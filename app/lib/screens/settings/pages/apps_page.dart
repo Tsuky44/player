@@ -58,7 +58,7 @@ class _AppsPageState extends State<AppsPage> {
     if (_uploadingLabel != null) return;
     final extensions = replacing != null
         ? [_extensionOf(replacing.file)]
-        : const ['exe', 'zip', 'dmg', 'apk'];
+        : const ['exe', 'zip', 'dmg', 'apk', 'ipa'];
 
     FilePickerResult? picked;
     try {
@@ -197,6 +197,7 @@ class _AppsPageState extends State<AppsPage> {
         'windows-portable' => Icons.folder_zip_outlined,
         'macos' => Icons.laptop_mac_rounded,
         'android' => Icons.android_rounded,
+        'ios' => Icons.phone_iphone_rounded,
         _ => Icons.download_rounded,
       };
 
@@ -255,7 +256,7 @@ class _AppsPageState extends State<AppsPage> {
                     ? 'Ajouter ou remplacer un installeur'
                     : 'Envoi de $_uploadingLabel…',
                 subtitle: _uploadingLabel == null
-                    ? 'Fichier .exe, .zip, .dmg ou .apk'
+                    ? 'Fichier .exe, .zip, .dmg, .apk ou .ipa'
                     : _uploadProgress == null
                         ? 'Envoi en cours…'
                         : 'Envoi ${(_uploadProgress! * 100).clamp(0, 100).toStringAsFixed(0)} %',
