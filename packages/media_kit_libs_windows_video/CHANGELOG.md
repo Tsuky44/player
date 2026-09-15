@@ -1,3 +1,8 @@
+## Onyx
+
+- **PERF**(windows): `libmpv-2.dll` is patched at configure time (`windows/patch_libmpv.ps1`) so that mpv loads its `d3d11-egl` interop and keeps D3D11-decoded frames on the GPU instead of `d3d11va-copy`. See `docs/adr/0019-decodage-sans-copie-sous-windows.md`.
+- **FIX**(windows): the pinned libmpv archive is re-extracted whenever it changes; an existing build used to keep the previous DLL.
+
 ## 1.0.11
 
  - **FIX**(windows): do not bundle MSVCP/UCRT DLLs.

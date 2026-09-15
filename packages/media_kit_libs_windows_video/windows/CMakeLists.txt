@@ -76,6 +76,11 @@ set(LIBMPV "mpv-dev-x86_64-20260830-git-e8673660ab.7z")
 set(LIBMPV_URL "https://downloads.sourceforge.net/project/mpv-player-windows/libmpv/${LIBMPV}")
 set(LIBMPV_MD5 "3acdcd86e237cd2bbfbbeb8d2745358a")
 
+# MD5 of libmpv-2.dll inside that archive, and once patched by patch_libmpv.ps1
+# so that mpv keeps D3D11-decoded frames on the GPU (see that script).
+set(LIBMPV_DLL_MD5 "af0ae02f511d8cbbebb1079113743524")
+set(LIBMPV_PATCHED_MD5 "9dfea39217b3f282070b2eed6d1186e6")
+
 # Download location of the libmpv archive.
 set(LIBMPV_ARCHIVE "${CMAKE_BINARY_DIR}/${LIBMPV}")
 set(LIBMPV_SRC "${CMAKE_BINARY_DIR}/libmpv")
@@ -86,21 +91,54 @@ download_and_verify(
   ${LIBMPV_ARCHIVE}
 )
 
-check_directory_exists_and_not_empty(${LIBMPV_SRC} LIBMPV_SRC_VALID)
+# Onyx : extraction à la configuration, et refaite dès que le dossier ne
+# correspond plus à l'archive épinglée. L'ancienne version n'extrayait que dans
+# un dossier vide : un build existant gardait la DLL de l'archive précédente,
+# si bien qu'un changement de libmpv (le FFmpeg complet, pour le TrueHD) n'avait
+# jamais atteint les builds locaux. Le chemin reste ${CMAKE_BINARY_DIR}/libmpv,
+# que media_kit_video lit en dur.
+set(LIBMPV_STAMP "${LIBMPV_SRC}/onyx-libmpv.stamp")
+set(LIBMPV_STAMP_CONTENT "${LIBMPV} ${LIBMPV_PATCHED_MD5}")
+set(LIBMPV_CURRENT_STAMP "")
+if(EXISTS "${LIBMPV_STAMP}")
+  file(READ "${LIBMPV_STAMP}" LIBMPV_CURRENT_STAMP)
+endif()
 
-# Extract the libmpv archive.
-if(NOT LIBMPV_SRC_VALID)
+if(NOT LIBMPV_CURRENT_STAMP STREQUAL LIBMPV_STAMP_CONTENT)
   message(STATUS "Extracting ${LIBMPV}...")
-  make_directory("${LIBMPV_SRC}")
-  add_custom_target("${PROJECT_NAME}_LIBMPV_EXTRACT" ALL)
-  add_custom_command(
-    TARGET "${PROJECT_NAME}_LIBMPV_EXTRACT"
-    COMMAND "${CMAKE_COMMAND}" -E tar xzf "\"${LIBMPV_ARCHIVE}\""
-    COMMAND xcopy "\"${LIBMPV_SRC}/include/mpv\"" "\"${LIBMPV_SRC}/mpv\"" /E /H /C /I
-    COMMAND rmdir "\"${LIBMPV_SRC}/include\"" /S /Q
-    COMMAND ren "\"${LIBMPV_SRC}/mpv\"" "\"include\""
+  file(REMOVE_RECURSE "${LIBMPV_SRC}")
+  file(MAKE_DIRECTORY "${LIBMPV_SRC}")
+  execute_process(
+    COMMAND "${CMAKE_COMMAND}" -E tar xzf "${LIBMPV_ARCHIVE}"
     WORKING_DIRECTORY "${LIBMPV_SRC}"
+    RESULT_VARIABLE LIBMPV_EXTRACT_RESULT
   )
+  if(NOT LIBMPV_EXTRACT_RESULT EQUAL 0)
+    message(FATAL_ERROR "Unable to extract ${LIBMPV_ARCHIVE}.")
+  endif()
+
+  # media_kit_video includes <client.h>, <render.h>…: headers straight in include/.
+  file(GLOB LIBMPV_HEADERS "${LIBMPV_SRC}/include/mpv/*")
+  file(COPY ${LIBMPV_HEADERS} DESTINATION "${LIBMPV_SRC}/include")
+  file(REMOVE_RECURSE "${LIBMPV_SRC}/include/mpv")
+
+  execute_process(
+    COMMAND powershell -NoProfile -ExecutionPolicy Bypass
+      -File "${CMAKE_CURRENT_SOURCE_DIR}/patch_libmpv.ps1"
+      -Source "${LIBMPV_SRC}/libmpv-2.dll"
+      -Destination "${LIBMPV_SRC}/libmpv-2.dll"
+      -ExpectedSourceMd5 "${LIBMPV_DLL_MD5}"
+      -ExpectedPatchedMd5 "${LIBMPV_PATCHED_MD5}"
+    RESULT_VARIABLE LIBMPV_PATCH_RESULT
+    OUTPUT_VARIABLE LIBMPV_PATCH_OUTPUT
+    ERROR_VARIABLE LIBMPV_PATCH_ERROR
+  )
+  if(NOT LIBMPV_PATCH_RESULT EQUAL 0)
+    message(FATAL_ERROR "Unable to patch libmpv-2.dll: ${LIBMPV_PATCH_OUTPUT} ${LIBMPV_PATCH_ERROR}")
+  endif()
+  message(STATUS "${LIBMPV_PATCH_OUTPUT}")
+
+  file(WRITE "${LIBMPV_STAMP}" "${LIBMPV_STAMP_CONTENT}")
 endif()
 
 # ------------------------------------------------------------------------------

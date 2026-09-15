@@ -41,6 +41,30 @@ void main() {
     }
   });
 
+  String windows(HardwareDecodingPreference preference,
+          {bool zeroCopyFailed = false}) =>
+      HardwareDecoding.resolve(
+        preference: preference,
+        isAndroid: false,
+        isMacOS: false,
+        isWindows: true,
+        zeroCopyFailed: zeroCopyFailed,
+      );
+
+  // mpv's own whitelist tries d3d11va without a copy first, and takes the
+  // copy when the interop does not load — which is the order Windows wants.
+  test('Windows lets mpv try the zero-copy decoder first', () {
+    expect(windows(HardwareDecodingPreference.auto), 'auto-safe');
+  });
+
+  test('Windows caught decoding in software falls back to the copy, not the CPU',
+      () {
+    expect(
+      windows(HardwareDecodingPreference.auto, zeroCopyFailed: true),
+      'd3d11va-copy',
+    );
+  });
+
   test('software decoding is the one unambiguous value', () {
     HardwareDecoding.overrideWith(HardwareDecodingPreference.off);
     expect(HardwareDecoding.mpvValue, 'no');

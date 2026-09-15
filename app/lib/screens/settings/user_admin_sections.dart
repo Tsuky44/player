@@ -1,3 +1,5 @@
+import 'dart:convert';
+
 import 'package:dio/dio.dart';
 import '../../tv/tv_deferred_keyboard.dart';
 import 'package:flutter/material.dart';
@@ -704,10 +706,29 @@ Future<String?> _promptPassword(BuildContext context,
 
 /// Surfaces the server's own message — notably "Droits insuffisants" — rather
 /// than a generic failure.
+///
+/// When there is no such message, it still says what happened. A bare "Action
+/// impossible." hid whether the server refused, answered something else (a
+/// proxy's error page), or could not be reached — which is the whole diagnosis.
 String _errorText(Object error) {
+  debugPrint('Users admin: $error');
   if (error is DioException) {
-    final data = error.response?.data;
+    final response = error.response;
+    var data = response?.data;
+    // Part of the server's errors are JSON sent as text/plain (Go's
+    // http.Error), which Dio leaves as a string.
+    if (data is String) {
+      try {
+        data = jsonDecode(data);
+      } on FormatException {
+        // Not JSON: an error page, most likely from a proxy.
+      }
+    }
     if (data is Map && data['error'] != null) return data['error'].toString();
+    if (response == null) {
+      return 'Serveur injoignable (${error.type.name}).';
+    }
+    return 'Action impossible (HTTP ${response.statusCode}).';
   }
-  return 'Action impossible.';
+  return 'Action impossible : $error';
 }
