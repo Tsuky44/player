@@ -5,6 +5,9 @@ import (
 	"log"
 	"math"
 	"os"
+	"runtime"
+	"strconv"
+	"sync"
 	"sync/atomic"
 	"time"
 
@@ -119,16 +122,33 @@ func BackfillMissingProbesAsync() bool {
 			return
 		}
 		rows.Close()
-		count := 0
-		for _, item := range queue {
-			info, err := os.Stat(item.path)
-			if err != nil {
-				continue
-			}
-			ProbeAndPersist(item.id, item.title, item.path, info.Size(), info.ModTime())
-			count++
+
+		workers := probeWorkers()
+		jobs := make(chan pendingProbe)
+		var count atomic.Int64
+		var wg sync.WaitGroup
+		for i := 0; i < workers; i++ {
+			wg.Add(1)
+			go func() {
+				defer wg.Done()
+				for item := range jobs {
+					info, err := os.Stat(item.path)
+					if err != nil {
+						continue
+					}
+					ProbeAndPersist(item.id, item.title, item.path, info.Size(), info.ModTime())
+					count.Add(1)
+				}
+			}()
 		}
-		log.Printf("Indexer: Probe backfill completed (%d files)", count)
+		started := time.Now()
+		for _, item := range queue {
+			jobs <- item
+		}
+		close(jobs)
+		wg.Wait()
+		log.Printf("Indexer: Probe backfill completed (%d files, %d workers, %s)",
+			count.Load(), workers, time.Since(started).Round(time.Millisecond))
 	}()
 
 	return true
@@ -205,4 +225,29 @@ func PersistProbeAfterLiveProbe(mediaID int, filePath string, probe *streaming.P
 		mediaID,
 	)
 	streamcache.Global().Invalidate(mediaID)
+}
+
+// defaultProbeWorkers is how many files the backfill probes at once.
+//
+// The backfill used to run one file at a time, which left the machine idle:
+// probing is waiting on the disk far more than it is computing, so a single
+// worker spends most of a scan blocked on read(). Four is deliberately modest —
+// past that, a spinning disk or a network share starts losing more to seeking
+// between files than it gains from the overlap, and the four writes still share
+// a four-connection pool with the API.
+const defaultProbeWorkers = 4
+
+// probeWorkers resolves the backfill's concurrency, overridable for the shares
+// that want more overlap or the small boxes that want less.
+func probeWorkers() int {
+	if raw := os.Getenv("PROBE_WORKERS"); raw != "" {
+		if n, err := strconv.Atoi(raw); err == nil && n > 0 {
+			return n
+		}
+		log.Printf("Indexer: ignoring invalid PROBE_WORKERS=%q", raw)
+	}
+	if n := runtime.NumCPU(); n < defaultProbeWorkers {
+		return n
+	}
+	return defaultProbeWorkers
 }

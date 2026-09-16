@@ -74,12 +74,29 @@ func mp4LikelyFastStart(path string) bool {
 
 // estimateMaxGOPSeconds reads keyframe timestamps in the first 60s of video.
 //
+// The container already knows the answer — MP4 keeps a sync sample table,
+// Matroska keeps cues — so that index is read directly whenever the file is one
+// of those, which is nearly every file in a library. ffprobe stays as the
+// fallback for the formats keyframes.go does not parse and for anything it
+// finds malformed; it is never wrong, only expensive.
+func estimateMaxGOPSeconds(path string) (float64, error) {
+	if times, err := keyframeTimesFromIndex(path); err == nil {
+		return maxGapSeconds(times), nil
+	}
+	return probeMaxGOPSeconds(path)
+}
+
+// probeMaxGOPSeconds is the ffprobe fallback.
+//
 // This inspects PACKETS, not frames: keyframe positions are carried by the
 // container's packet flags, so ffprobe only has to demux — never decode. The
 // previous `-show_frames` form decoded 60s of video (~20s of CPU on a 1080p
 // file) and asked for `pkt_pts_time`, a field removed from ffprobe in 5.x, so
 // it always parsed to nothing. Packet flags are ~290x cheaper and actually work.
-func estimateMaxGOPSeconds(path string) (float64, error) {
+//
+// Demuxing still means pulling sixty seconds of video off the disk, which is
+// why the container index above is tried first.
+func probeMaxGOPSeconds(path string) (float64, error) {
 	cmd := exec.Command("ffprobe",
 		"-v", "error",
 		"-select_streams", "v:0",
@@ -114,16 +131,5 @@ func estimateMaxGOPSeconds(path string) (float64, error) {
 		}
 		keyTimes = append(keyTimes, t)
 	}
-	if len(keyTimes) < 2 {
-		return 0, nil
-	}
-
-	maxGap := 0.0
-	for i := 1; i < len(keyTimes); i++ {
-		gap := keyTimes[i] - keyTimes[i-1]
-		if gap > maxGap {
-			maxGap = gap
-		}
-	}
-	return maxGap, nil
+	return maxGapSeconds(keyTimes), nil
 }
