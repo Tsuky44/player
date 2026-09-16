@@ -28,31 +28,6 @@ type qualityPreset struct {
 	EncoderPreset string
 }
 
-// qualityPresets maps quality labels to resolution / bitrate profiles.
-var qualityPresets = map[string]qualityPreset{
-	"360p":  {W: 640, H: 360, VideoBitrate: "1M", AudioBitrate: "128k"},
-	"480p":  {W: 854, H: 480, VideoBitrate: "1800k", AudioBitrate: "128k"},
-	"720p":  {W: 1280, H: 720, VideoBitrate: "3500k", AudioBitrate: "160k"},
-	"1080p": {W: 1920, H: 1080, VideoBitrate: "6M", AudioBitrate: "160k"},
-	// 4K Light: full UHD resolution but capped so a medium connection
-	// (~10–15 Mbps) can keep up without constant underruns.
-	//
-	// EncoderPreset is forced to "ultrafast" here, unlike every other tier.
-	// Measured on the same 4K source, same CRF: veryfast completes 30s of
-	// content in 23.1s (1.30x real-time) vs ultrafast's 8.5s (3.55x). 1.30x
-	// looks fine until you subtract the decode cost of a real 10-bit HEVC
-	// source and the weaker per-core throughput of an older CPU-only Xeon —
-	// at which point it measures out below 1.0x, and a below-1.0x encoder can
-	// never refill a buffer it has already fallen behind on. That is exactly
-	// the failure mode a cold-started session hits right after a seek: no
-	// buffer cushion, so it has to be faster than real-time from frame one or
-	// it stalls forever. veryfast's extra ~2.4x bitrate cost at equal CRF
-	// (measured on 1080p) is already absorbed by the VBV cap below, so
-	// ultrafast's lower quality-per-bit here mostly shows up as "closer to the
-	// bitrate ceiling more often", not as a broken stream.
-	"2160p": {W: 3840, H: 2160, VideoBitrate: "12M", AudioBitrate: "192k", EncoderPreset: "ultrafast"},
-}
-
 // presetFor returns the profile for a quality label, defaulting to 720p.
 func presetFor(quality string) qualityPreset {
 	if p, ok := qualityPresets[quality]; ok {

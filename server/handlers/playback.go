@@ -217,9 +217,19 @@ func GetMediaTracks(w http.ResponseWriter, r *http.Request, ps httprouter.Params
 		subs = append(subs, t)
 	}
 
+	// The transcoding ladder travels with the track list because that is what
+	// the quality menu is built from, and it is fetched before playback starts —
+	// the menu has to be right the first time it is opened, not after a session
+	// exists. It is per-media so the rungs above the source can be left out.
+	sourceHeight := 0
+	if probe.Video != nil {
+		sourceHeight = probe.Video.Height
+	}
+
 	json.NewEncoder(w).Encode(map[string]interface{}{
 		"video":     probe.Video,
 		"audio":     probe.Audio,
 		"subtitles": subs,
+		"qualities": streaming.QualityLadderFor(sourceHeight),
 	})
 }
