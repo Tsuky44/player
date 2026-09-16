@@ -235,6 +235,14 @@ class _PlayerSettingsSheetState extends State<PlayerSettingsSheet> {
     );
   }
 
+  /// L'icône qui va avec une hauteur d'image.
+  static IconData _qualityIcon(int height) {
+    if (height >= 2000) return Icons.four_k_rounded;
+    if (height >= 1000) return Icons.hd_outlined;
+    if (height >= 700) return Icons.hd_rounded;
+    return Icons.sd_rounded;
+  }
+
   Widget _buildQualityOptions() {
     final controller = widget.playerController;
     final currentQuality = controller?.currentQuality;
@@ -242,6 +250,10 @@ class _PlayerSettingsSheetState extends State<PlayerSettingsSheet> {
     // Direct Play is native-only: it hands the player the file itself, which a
     // browser cannot open. Listing it on the web would offer a mode that plays
     // the picture without any sound and says nothing about why.
+    // L'échelle vient du serveur : lui seul sait à quel débit il encode, et le
+    // sous-titre « ~8 Mb/s » écrit ici à la main annonçait 8 pour un barreau
+    // encodé à 12. Un serveur plus ancien ne renvoie rien, d'où le repli.
+    final tiers = controller?.mediaTracks?.qualities ?? const <QualityTier>[];
     final qualities = <(String, String?, IconData, String)>[
       if (!AppPlatform.isWeb)
         (
@@ -250,11 +262,22 @@ class _PlayerSettingsSheetState extends State<PlayerSettingsSheet> {
           Icons.bolt_rounded,
           'Lecture directe, aucune transcodation'
         ),
-      ('360p', '360p', Icons.sd_rounded, '640×360 — faible consommation'),
-      ('480p', '480p', Icons.sd_rounded, '854×480 — qualité standard'),
-      ('720p', '720p', Icons.hd_rounded, '1280×720 — HD'),
-      ('1080p', '1080p', Icons.hd_outlined, '1920×1080 — Full HD'),
-      ('4K', '2160p', Icons.four_k_rounded, '3840×2160 — débit réduit (~8 Mb/s)'),
+      if (tiers.isEmpty)
+        ...[
+          ('360p', '360p', Icons.sd_rounded, '640×360'),
+          ('480p', '480p', Icons.sd_rounded, '854×480'),
+          ('720p', '720p', Icons.hd_rounded, '1280×720'),
+          ('1080p', '1080p', Icons.hd_outlined, '1920×1080'),
+          ('4K', '2160p', Icons.four_k_rounded, '3840×2160'),
+        ]
+      else
+        for (final tier in tiers)
+          (
+            tier.resolutionLabel,
+            tier.key,
+            _qualityIcon(tier.height),
+            tier.sizeAndBitrateLabel,
+          ),
     ];
 
     return ListView.builder(
