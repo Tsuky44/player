@@ -268,6 +268,12 @@ func main() {
 
 	// 6. HLS sessions require the same ticket on start, playlists and segments.
 	// Dispatch parses the path manually to avoid httprouter wildcard conflicts.
+	//
+	// Resolve the encoder here rather than on the first session: picking one
+	// means running FFmpeg to see whether it actually encodes on this host, and
+	// that second belongs to boot, not to the first viewer to press play. It
+	// also puts the answer in the log before anything has been served.
+	streaming.SelectedVideoEncoder()
 	hlsHandler := streaming.NewHandler(db, handlers.PlaybackTickets)
 	handlers.ActiveTranscodes = hlsHandler.ActiveSessions
 	router.POST("/api/v1/stream/*path", hlsHandler.Dispatch)

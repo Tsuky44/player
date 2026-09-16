@@ -243,6 +243,7 @@ func (h *Handler) handleStart(w http.ResponseWriter, r *http.Request, mediaID in
 	args := BuildFFmpegArgs(TranscodeOptions{
 		InputPath:              inputPath,
 		Quality:                quality,
+		Encoder:                SelectedVideoEncoder(),
 		StartSeconds:           startSeconds,
 		TmpDir:                 tmpDir,
 		Probe:                  probe,
