@@ -9,9 +9,11 @@ import '../../../utils/mpv_native_view.dart';
 import '../hardware_decoding.dart';
 import '../player_engine.dart';
 import '../playback_profile.dart';
+import 'cache_pause_policy.dart';
 import 'mpv_native_surface.dart';
 import 'mpv_subtitle_overlay.dart';
 import 'playback_session.dart';
+import 'seek_timeline.dart';
 
 /// Les niveaux de repli stéréo, dialogue en avant — voir l'ADR-0005.
 ///
@@ -55,6 +57,8 @@ class MpvPlaybackSession implements PlaybackSession {
 
   @override
   Future<void> dispose() async {
+    _endSeekWatch(log: false);
+    await _stopObserving();
     // Rendu plutôt que détruit : la lecture suivante réutilise cette instance
     // libmpv et sa texture au lieu de payer leur construction.
     PlayerEnginePool.release(_engine);
@@ -100,7 +104,10 @@ class MpvPlaybackSession implements PlaybackSession {
   Future<void> pause() => _player.pause();
 
   @override
-  Future<void> seek(Duration position) => _player.seek(position);
+  Future<void> seek(Duration position) {
+    _watchSeek(position);
+    return _player.seek(position);
+  }
 
   @override
   Future<void> setVolume(double volume) => _player.setVolume(volume);
@@ -276,6 +283,7 @@ class MpvPlaybackSession implements PlaybackSession {
     await _set(platform, 'demuxer-max-back-bytes', '${profile.demuxerBackBytes}');
     await _set(platform, 'hr-seek', 'yes');
     await _set(platform, 'hwdec', HardwareDecoding.mpvValue);
+    await _resetZeroCopyCrop(platform);
     // Le rendu direct est une source connue de gels périodiques avec l'API de
     // rendu de libmpv qu'utilise media_kit. Android n'utilise pas cette API —
     // il reçoit une vraie Surface — et la copie supplémentaire y est tout sauf
@@ -287,12 +295,16 @@ class MpvPlaybackSession implements PlaybackSession {
     await _set(platform, 'network-timeout', '60');
     await _set(platform, 'stream-lavf-o',
         'reconnect=1,reconnect_streamed=1,reconnect_delay_max=5');
+    _adaptCachePause = true;
+    await _startObserving();
     await _set(platform, 'cache-pause', 'yes');
-    await _set(platform, 'cache-pause-wait', '3');
-    // ...mais pas au démarrage : `cache-pause-initial` retient la première
-    // image jusqu'à ce que `cache-pause-wait` secondes soient en mémoire, ce
-    // qui coûtait trois secondes fixes avant que quoi que ce soit n'apparaisse.
-    await _set(platform, 'cache-pause-initial', 'no');
+    await _set(platform, 'cache-pause-wait', '${_cachePause.waitSeconds}');
+    // Pas au démarrage : l'écran couvre la vidéo jusqu'à ce que l'horloge
+    // tourne, donc la première image que mpv montre pendant qu'il remplit son
+    // cache restait cachée, et l'attente se voyait comme un démarrage lent.
+    // Après la première image, en revanche, c'est ce qu'on veut — voir
+    // [onPictureLive]. Posé ici aussi pour un retour du transcodage.
+    await _set(platform, 'cache-pause-initial', _pictureLive ? 'yes' : 'no');
     await _set(platform, 'demuxer-cache-wait', 'no');
     // Plafonne le sondage du conteneur. FFmpeg analyse jusqu'à 5 s de média
     // avant de déclarer ses flux, et sur le réseau chacun de ces octets est de
@@ -353,6 +365,7 @@ class MpvPlaybackSession implements PlaybackSession {
     await _set(platform, 'demuxer-max-bytes', '${profile.hlsDemuxerMaxBytes}');
     await _set(platform, 'demuxer-readahead-secs', '${profile.hlsReadaheadSecs}');
     await _set(platform, 'hwdec', HardwareDecoding.mpvValue);
+    await _resetZeroCopyCrop(platform);
     if (!AppPlatform.isAndroid && !MpvNativeView.enabled) {
       await _set(platform, 'vd-lavc-dr', 'no');
     }
@@ -361,6 +374,10 @@ class MpvPlaybackSession implements PlaybackSession {
     }
     await _set(platform, 'stream-lavf-o',
         'reconnect=1,reconnect_streamed=1,reconnect_delay_max=5');
+    // En transcodage, une coupure vient le plus souvent de l'encodeur et non
+    // du réseau : l'attente reste fixe.
+    _adaptCachePause = false;
+    await _startObserving();
     await _set(platform, 'cache-pause', 'yes');
     await _set(platform, 'cache-pause-wait', '3');
     await _set(platform, 'cache-pause-initial', 'yes');
@@ -373,6 +390,121 @@ class MpvPlaybackSession implements PlaybackSession {
       await _set(platform, 'video-sync', 'display-desync');
     }
     await _applyNativeOutputTuning();
+  }
+
+  // --- Reprise après un seek ou une coupure --------------------------------
+
+  /// L'attente du cache suit ce que la connexion a montré — voir
+  /// [CachePausePolicy]. Seulement en lecture directe.
+  final CachePausePolicy _cachePause = CachePausePolicy();
+  bool _adaptCachePause = false;
+
+  /// La première image de cette lecture a été vue ([onPictureLive]).
+  bool _pictureLive = false;
+
+  bool _observing = false;
+  SeekTimeline? _seekTimeline;
+  StreamSubscription<Duration>? _seekPositions;
+  Timer? _seekTimeout;
+
+  static const _observed = ['seeking', 'paused-for-cache'];
+
+  Future<void> _startObserving() async {
+    if (_observing) return;
+    _observing = true;
+    final platform = _player.platform as dynamic;
+    for (final name in _observed) {
+      Future<void> listener(String value) async => _onObserved(name, value);
+      try {
+        await platform.observeProperty(name, listener);
+      } on ArgumentError {
+        // Le moteur est mis en commun : une session qui n'a pas été rendue
+        // proprement a laissé son observateur. On prend sa place.
+        try {
+          await platform.unobserveProperty(name);
+          await platform.observeProperty(name, listener);
+        } catch (e) {
+          debugPrint('mpv: observation de $name impossible: $e');
+        }
+      } catch (e) {
+        debugPrint('mpv: observation de $name impossible: $e');
+      }
+    }
+  }
+
+  Future<void> _stopObserving() async {
+    if (!_observing) return;
+    _observing = false;
+    final platform = _player.platform as dynamic;
+    for (final name in _observed) {
+      try {
+        await platform.unobserveProperty(name);
+      } catch (_) {}
+    }
+  }
+
+  void _onObserved(String name, String value) {
+    final on = value == 'yes';
+    final timeline = _seekTimeline;
+    if (name == 'seeking') {
+      timeline?.noteSeeking(on);
+      return;
+    }
+    timeline?.notePausedForCache(on);
+    // Une mise en pause pendant qu'un seek repart est l'attente voulue, pas une
+    // coupure : seule celle qui interrompt une lecture en cours compte.
+    if (!on || timeline != null || !_adaptCachePause || !_pictureLive) return;
+    if (!_cachePause.noteUnderrun(DateTime.now())) return;
+    final wait = _cachePause.waitSeconds;
+    debugPrint('mpv: la connexion ne suit pas le débit — reprise après '
+        '${wait}s en mémoire');
+    unawaited(
+        _set(_player.platform as dynamic, 'cache-pause-wait', '$wait'));
+  }
+
+  /// Suit le seek vers [target] jusqu'à ce que la lecture reparte, et le dit
+  /// dans le log.
+  void _watchSeek(Duration target) {
+    if (AppPlatform.isWeb) return;
+    if (_adaptCachePause && _cachePause.relaxIfCalm(DateTime.now())) {
+      unawaited(_set(_player.platform as dynamic, 'cache-pause-wait',
+          '${_cachePause.waitSeconds}'));
+    }
+    // Un glissement de la tête de lecture enchaîne les seeks : seul le
+    // dernier a une reprise à mesurer.
+    _endSeekWatch(log: false);
+    final clock = Stopwatch()..start();
+    final timeline = SeekTimeline(
+      target: target,
+      startPosition: _player.state.position,
+      elapsed: () => clock.elapsed,
+    );
+    _seekTimeline = timeline;
+    _seekPositions = _player.stream.position.listen((position) {
+      if (timeline.notePosition(position)) _endSeekWatch(log: true);
+    });
+    _seekTimeout = Timer(const Duration(seconds: 30), () {
+      // Mis en pause par l'utilisateur : rien à mesurer.
+      _endSeekWatch(log: _player.state.playing);
+    });
+  }
+
+  void _endSeekWatch({required bool log}) {
+    final timeline = _seekTimeline;
+    _seekTimeline = null;
+    _seekPositions?.cancel();
+    _seekPositions = null;
+    _seekTimeout?.cancel();
+    _seekTimeout = null;
+    if (!log || timeline == null) return;
+    final ahead = _player.state.buffer - _player.state.position;
+    unawaited(_read(_player.platform as dynamic, 'cache-speed').then((speed) {
+      final bytes = int.tryParse(speed ?? '');
+      debugPrint(timeline.describe(
+        cacheAhead: ahead.isNegative ? Duration.zero : ahead,
+        bitsPerSecond: bytes == null ? null : bytes * 8,
+      ));
+    }));
   }
 
   @override
@@ -428,10 +560,45 @@ class MpvPlaybackSession implements PlaybackSession {
         '${peak != null ? ' ($peak nits)' : ''}');
   }
 
+  /// Le moteur est mis en commun : un rognage posé pour la lecture précédente
+  /// ne doit pas survivre à la suivante. `""` rend le rognage du conteneur.
+  Future<void> _resetZeroCopyCrop(dynamic platform) async {
+    if (AppPlatform.isWindows) await _set(platform, 'video-crop', '');
+  }
+
+  /// Cache la bande verte que le décodage sans copie laisse au bord de l'image
+  /// — voir [HardwareDecoding.zeroCopyEdgeCrop].
+  Future<void> _cropZeroCopyPadding() async {
+    if (!AppPlatform.isWindows) return;
+    final platform = _player.platform as dynamic;
+    // `d3d11va` seul : `d3d11va-copy` et le logiciel n'exposent que l'image.
+    final decoded = (await _read(platform, 'hwdec-current') ?? '').trim();
+    if (decoded != 'd3d11va') return;
+    final params = _player.state.videoParams;
+    final width = params.w;
+    final height = params.h;
+    if (width == null || height == null) return;
+    final crop = HardwareDecoding.zeroCopyEdgeCrop(width, height);
+    if (crop == null) return;
+    await _set(platform, 'video-crop', crop);
+  }
+
   @override
   Future<void> onPictureLive() async {
+    if (!AppPlatform.isWeb) {
+      _pictureLive = true;
+      // Désormais, un seek hors du cache montre sa première image tout de suite
+      // puis attend d'avoir de quoi lire avant de repartir. Sans ça, mpv
+      // repartait sur la seule image décodée, tombait à sec une demi-seconde
+      // plus loin et se mettait en pause : image, blocage, image.
+      if (_adaptCachePause) {
+        await _set(_player.platform as dynamic, 'cache-pause-initial', 'yes');
+      }
+    }
     if (MpvNativeView.enabled && !AppPlatform.isWeb) await _logDolbyVision();
-    if (_softwareDecodeHandled || AppPlatform.isWeb) return;
+    if (AppPlatform.isWeb) return;
+    await _cropZeroCopyPadding();
+    if (_softwareDecodeHandled) return;
     // Les deux plateformes où le chemin sans copie peut échouer vers le
     // logiciel : MediaCodec sur Android, l'interop d3d11-egl sur Windows.
     if (!AppPlatform.isAndroid && !AppPlatform.isWindows) return;
