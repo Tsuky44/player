@@ -4,6 +4,7 @@ import 'package:onyx/screens/player/hardware_decoding.dart';
 
 void main() {
   _zeroCopyFallback();
+  _zeroCopyEdgeCrop();
   tearDown(() =>
       HardwareDecoding.overrideWith(HardwareDecodingPreference.auto));
 
@@ -153,5 +154,25 @@ void _zeroCopyFallback() {
         'auto-safe',
       );
     });
+  });
+}
+
+void _zeroCopyEdgeCrop() {
+  // A 4K frame lives in a 2176-line D3D11 surface: the scaler must not reach
+  // the 16 lines the decoder never writes.
+  test('4K trims the bottom edge only', () {
+    expect(HardwareDecoding.zeroCopyEdgeCrop(3840, 2160), '3840x2152+0+0');
+  });
+
+  test('a scope film trims the bottom edge too', () {
+    expect(HardwareDecoding.zeroCopyEdgeCrop(3840, 1600), '3840x1592+0+0');
+  });
+
+  test('an unaligned width trims the right edge', () {
+    expect(HardwareDecoding.zeroCopyEdgeCrop(3832, 1024), '3824x1024+0+0');
+  });
+
+  test('a surface-aligned frame is left alone', () {
+    expect(HardwareDecoding.zeroCopyEdgeCrop(3840, 2176), isNull);
   });
 }

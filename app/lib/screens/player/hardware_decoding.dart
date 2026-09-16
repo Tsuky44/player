@@ -137,6 +137,29 @@ abstract final class HardwareDecoding {
     }
   }
 
+  /// Le `video-crop` qui cache la bande verte du décodage sans copie sous
+  /// Windows, ou `null` quand l'image n'en a pas besoin.
+  ///
+  /// FFmpeg alloue les surfaces D3D11 alignées (128 pixels en HEVC et AV1) :
+  /// une image 3840x2160 vit dans une texture de 2176 lignes, dont les 16
+  /// dernières ne sont jamais écrites — du YUV à zéro, donc du vert. Avec
+  /// `d3d11va-copy` seule l'image utile est recopiée. Sans copie, le scaler de
+  /// mpv lit la texture du décodeur elle-même, et ses échantillons du bord
+  /// débordent dans ce remplissage : une bande verte en bas (ou à droite),
+  /// visible dès que le pilote y laisse autre chose que du noir.
+  ///
+  /// Rogner quelques lignes garde les lectures du scaler dans l'image. Huit
+  /// pixels couvrent le rayon d'un filtre à une réduction 2x, restent pairs pour
+  /// la chrominance 4:2:0, et ne font que 0,4 % d'une image 4K.
+  static String? zeroCopyEdgeCrop(int width, int height) {
+    const alignment = 128;
+    const trim = 8;
+    final cropWidth = width % alignment == 0 ? width : width - trim;
+    final cropHeight = height % alignment == 0 ? height : height - trim;
+    if (cropWidth == width && cropHeight == height) return null;
+    return '${cropWidth}x$cropHeight+0+0';
+  }
+
   static String describe() => '${_preference.name} → $mpvValue';
 
   @visibleForTesting

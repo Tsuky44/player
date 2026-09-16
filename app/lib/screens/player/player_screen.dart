@@ -2701,14 +2701,18 @@ class _PlayerScreenState extends State<PlayerScreen> {
                     },
                     onSliderChangeEnd: (value) async {
                       _playerController.isDraggingSlider = false;
+                      // Exactness back BEFORE the final seek: mpv reads
+                      // `hr-seek` when it executes a seek, and restoring it
+                      // afterwards left the one seek that matters landing on
+                      // the previous keyframe instead of the frame asked for.
+                      if (_playerController.currentQuality == null) {
+                        await _playerController.session.setExactSeek(true);
+                      }
                       // One decision point: this rebuilds the HLS session only
                       // if the target is outside what it can serve. Rewinding
                       // stays a plain seek.
                       await _playerController
                           .seekToAbsoluteSeconds(value.toInt());
-                      if (_playerController.currentQuality == null) {
-                        await _playerController.session.setExactSeek(true);
-                      }
                       _hideControlsWithDelay();
                     },
                     onNextEpisode: (_episodeNav?.nextEpisode != null)
