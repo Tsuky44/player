@@ -1546,16 +1546,88 @@ class MediaVideoTrack {
   }
 }
 
+/// Un barreau de l'échelle de transcodage, tel que le serveur l'annonce.
+///
+/// Le débit voyage avec le barreau parce que c'est contre lui que le choix se
+/// fait : une lecture qui se coupe est une lecture qui demande plus que la ligne
+/// ne porte, et « descendre d'un cran » doit vouloir dire « demander moins »,
+/// pas « perdre des lignes ». Un menu qui n'affiche que des résolutions oblige à
+/// deviner.
+class QualityTier {
+  /// Ce que le client renvoie en `?quality=`. Stable, y compris entre versions.
+  final String key;
+
+  /// L'entrée de menu, débit compris, p. ex. « 1080p · 6 Mbit/s ».
+  final String label;
+
+  /// La taille d'image du barreau.
+  final int width;
+  final int height;
+
+  /// Vidéo plus audio : ce que la ligne doit réellement porter.
+  final int bitrateBps;
+
+  const QualityTier({
+    required this.key,
+    required this.label,
+    required this.height,
+    required this.bitrateBps,
+    this.width = 0,
+  });
+
+  /// « 1080p » — la moitié gauche du libellé serveur.
+  String get resolutionLabel => _labelParts.$1;
+
+  /// « 6 Mbit/s » — la moitié droite, ou null si le serveur n'en a pas mis.
+  String? get bitrateLabel => _labelParts.$2;
+
+  /// « 1920×1080 · 6 Mbit/s », pour les menus qui décrivent le barreau.
+  String get sizeAndBitrateLabel {
+    final size = (width > 0 && height > 0) ? '$width×$height' : null;
+    final parts = [if (size != null) size, if (bitrateLabel != null) bitrateLabel!];
+    return parts.isEmpty ? label : parts.join(' · ');
+  }
+
+  /// Le serveur compose le libellé entier pour qu'un débit ne soit écrit qu'à
+  /// un seul endroit : un client qui reformaterait le nombre pourrait finir par
+  /// annoncer autre chose que ce qui est encodé. Le séparateur fait partie de
+  /// ce contrat, et un libellé sans séparateur s'affiche tel quel.
+  (String, String?) get _labelParts {
+    final parts = label.split(' · ');
+    if (parts.length < 2) return (label, null);
+    return (parts.first, parts.sublist(1).join(' · '));
+  }
+
+  factory QualityTier.fromJson(Map<String, dynamic> json) {
+    return QualityTier(
+      key: json['key'] as String? ?? '',
+      label: json['label'] as String? ?? '',
+      width: json['width'] as int? ?? 0,
+      height: json['height'] as int? ?? 0,
+      bitrateBps: json['bitrate_bps'] as int? ?? 0,
+    );
+  }
+}
+
 /// Combined video/audio/subtitle tracks returned by the tracks API.
 class MediaTracks {
   final MediaVideoTrack? video;
   final List<MediaAudioTrack> audio;
   final List<MediaSubtitleTrack> subtitles;
 
+  /// L'échelle de transcodage que ce serveur propose pour ce fichier, du plus
+  /// exigeant au moins exigeant.
+  ///
+  /// Vide quand le serveur est plus ancien que l'échelle — le menu retombe alors
+  /// sur sa liste figée. La médiathèque peut être servie par plusieurs serveurs
+  /// (voir ADR-0013), donc « le serveur est à jour » ne se suppose jamais.
+  final List<QualityTier> qualities;
+
   MediaTracks({
     this.video,
     required this.audio,
     required this.subtitles,
+    this.qualities = const [],
   });
 
   factory MediaTracks.fromJson(Map<String, dynamic> json) {
@@ -1571,6 +1643,12 @@ class MediaTracks {
               ?.map((e) => MediaSubtitleTrack.fromJson(e as Map<String, dynamic>))
               .toList() ??
           [],
+      qualities: (json['qualities'] as List<dynamic>?)
+              ?.whereType<Map<String, dynamic>>()
+              .map(QualityTier.fromJson)
+              .where((tier) => tier.key.isNotEmpty && tier.label.isNotEmpty)
+              .toList() ??
+          const [],
     );
   }
 }

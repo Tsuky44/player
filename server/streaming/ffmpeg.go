@@ -28,31 +28,6 @@ type qualityPreset struct {
 	EncoderPreset string
 }
 
-// qualityPresets maps quality labels to resolution / bitrate profiles.
-var qualityPresets = map[string]qualityPreset{
-	"360p":  {W: 640, H: 360, VideoBitrate: "1M", AudioBitrate: "128k"},
-	"480p":  {W: 854, H: 480, VideoBitrate: "1800k", AudioBitrate: "128k"},
-	"720p":  {W: 1280, H: 720, VideoBitrate: "3500k", AudioBitrate: "160k"},
-	"1080p": {W: 1920, H: 1080, VideoBitrate: "6M", AudioBitrate: "160k"},
-	// 4K Light: full UHD resolution but capped so a medium connection
-	// (~10–15 Mbps) can keep up without constant underruns.
-	//
-	// EncoderPreset is forced to "ultrafast" here, unlike every other tier.
-	// Measured on the same 4K source, same CRF: veryfast completes 30s of
-	// content in 23.1s (1.30x real-time) vs ultrafast's 8.5s (3.55x). 1.30x
-	// looks fine until you subtract the decode cost of a real 10-bit HEVC
-	// source and the weaker per-core throughput of an older CPU-only Xeon —
-	// at which point it measures out below 1.0x, and a below-1.0x encoder can
-	// never refill a buffer it has already fallen behind on. That is exactly
-	// the failure mode a cold-started session hits right after a seek: no
-	// buffer cushion, so it has to be faster than real-time from frame one or
-	// it stalls forever. veryfast's extra ~2.4x bitrate cost at equal CRF
-	// (measured on 1080p) is already absorbed by the VBV cap below, so
-	// ultrafast's lower quality-per-bit here mostly shows up as "closer to the
-	// bitrate ceiling more often", not as a broken stream.
-	"2160p": {W: 3840, H: 2160, VideoBitrate: "12M", AudioBitrate: "192k", EncoderPreset: "ultrafast"},
-}
-
 // presetFor returns the profile for a quality label, defaulting to 720p.
 func presetFor(quality string) qualityPreset {
 	if p, ok := qualityPresets[quality]; ok {
@@ -117,6 +92,10 @@ type TranscodeOptions struct {
 	// BurnSubtitleTypedIndex is the bitmap subtitle stream (the N in 0:s:N) to
 	// render, meaningful only when BurnSubtitle is set.
 	BurnSubtitleTypedIndex int
+	// Encoder is which H.264 encoder to drive. The zero value means libx264, so
+	// a caller that does not care — every test that predates hardware encoding —
+	// gets exactly the command this server has always built.
+	Encoder VideoEncoder
 	// Video is what happens to the picture: repackaged, or re-encoded and
 	// possibly tone mapped. Produced by PlanVideo, which enforces every
 	// condition that makes a copy safe.
@@ -273,19 +252,16 @@ func BuildFFmpegArgs(opt TranscodeOptions) []string {
 	}
 
 	// Force 8-bit 4:2:0 so 10-bit HEVC sources don't yield a "High 10" H.264
-	// stream most clients can't decode.
+	// stream most clients can't decode. The pixel format comes from the encoder
+	// because Quick Sync wants NV12 and would otherwise convert every frame.
+	encoder := opt.encoder()
 	args = append(args,
-		"-c:v", "libx264",
-		"-preset", encoderPresetFor(preset),
-		"-pix_fmt", "yuv420p",
+		"-c:v", encoder.Name,
+		"-pix_fmt", encoder.PixelFormat,
 		"-profile:v", "high",
 		"-level", h264LevelFor(preset, opt.Probe),
-		"-crf", "23",
-		"-b:v", "0",
-		"-maxrate", preset.VideoBitrate,
-		"-bufsize", doubleBitrate(preset.VideoBitrate),
-		"-threads", strconv.Itoa(maxEncoderThreads),
 	)
+	args = append(args, encoder.rateControl(preset)...)
 
 	// A tone-mapped picture is BT.709 now, and it has to say so. The tags are
 	// not decoration: a player handed untagged frames from an HDR source falls
@@ -305,10 +281,18 @@ func BuildFFmpegArgs(opt TranscodeOptions) []string {
 	// sc_threshold=0 stops scene cuts from inserting extra IDRs that would
 	// desynchronise the segment boundaries.
 	gop := gopSize(opt.Probe, segDur)
+	args = append(args, "-g", strconv.Itoa(gop))
+	// keyint_min and sc_threshold are x264's spelling of "do not put an IDR
+	// anywhere I did not ask for one". The hardware encoders take neither and
+	// decide it themselves; force_key_frames is FFmpeg's own and reaches all of
+	// them, which is what actually pins the segment boundaries.
+	if !encoder.Hardware {
+		args = append(args,
+			"-keyint_min", strconv.Itoa(gop),
+			"-sc_threshold", "0",
+		)
+	}
 	args = append(args,
-		"-g", strconv.Itoa(gop),
-		"-keyint_min", strconv.Itoa(gop),
-		"-sc_threshold", "0",
 		"-force_key_frames", fmt.Sprintf("expr:gte(t,n_forced*%d)", segDur),
 	)
 

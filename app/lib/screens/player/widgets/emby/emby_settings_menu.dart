@@ -177,6 +177,11 @@ class _EmbySettingsMenuState extends State<EmbySettingsMenu> {
   String get _qualityValue {
     final quality = _controller?.currentQuality;
     if (quality == null) return 'Direct';
+    // La ligne de résumé est étroite : la résolution seule, sans le débit qui
+    // l'accompagne dans le menu déroulé.
+    for (final tier in _qualityTiers) {
+      if (tier.key == quality) return tier.resolutionLabel;
+    }
     return quality == '2160p' ? '4K' : quality;
   }
 
@@ -351,35 +356,54 @@ class _EmbySettingsMenuState extends State<EmbySettingsMenu> {
 
   // --- Sections ------------------------------------------------------------
 
+  /// Les barreaux figés d'avant l'échelle annoncée par le serveur.
+  ///
+  /// Un serveur plus ancien ne renvoie pas de `qualities`, et la médiathèque
+  /// peut en réunir plusieurs (ADR-0013) : le menu doit rester utilisable en
+  /// face de celui qui ne sait pas encore répondre. Ces cinq clés existent
+  /// toujours côté serveur et gardent leurs débits d'origine.
+  static const _legacyQualities = <QualityTier>[
+    QualityTier(key: '2160p', label: '4K', height: 2160, bitrateBps: 0),
+    QualityTier(key: '1080p', label: '1080p', height: 1080, bitrateBps: 0),
+    QualityTier(key: '720p', label: '720p', height: 720, bitrateBps: 0),
+    QualityTier(key: '480p', label: '480p', height: 480, bitrateBps: 0),
+    QualityTier(key: '360p', label: '360p', height: 360, bitrateBps: 0),
+  ];
+
+  List<QualityTier> get _qualityTiers {
+    final offered = _controller?.mediaTracks?.qualities ?? const <QualityTier>[];
+    return offered.isEmpty ? _legacyQualities : offered;
+  }
+
   Widget _buildQuality() {
     final controller = _controller;
     if (controller == null) return const _EmbyMenuEmpty();
 
-    // Direct Play is native-only: it hands the player the file itself, which a
-    // browser cannot open.
-    final qualities = <(String, String?)>[
-      if (!AppPlatform.isWeb) ('Direct', null),
-      ('360p', '360p'),
-      ('480p', '480p'),
-      ('720p', '720p'),
-      ('1080p', '1080p'),
-      ('4K', '2160p'),
-    ];
-
     return _sectionList([
-      for (final (label, quality) in qualities)
+      // Direct Play is native-only: it hands the player the file itself, which
+      // a browser cannot open.
+      if (!AppPlatform.isWeb)
         _EmbyMenuOption(
-          label: label,
-          selected: controller.currentQuality == quality,
+          label: 'Direct',
+          subtitle: 'Le fichier tel quel',
+          selected: controller.currentQuality == null,
           onTap: () {
             widget.onClose();
-            if (quality == null) {
-              controller.switchToDirectPlay();
-            } else {
-              controller.switchToQuality(quality);
-            }
+            controller.switchToDirectPlay();
           },
         ),
+      for (final tier in _qualityTiers)
+        () {
+          return _EmbyMenuOption(
+            label: tier.resolutionLabel,
+            subtitle: tier.bitrateLabel,
+            selected: controller.currentQuality == tier.key,
+            onTap: () {
+              widget.onClose();
+              controller.switchToQuality(tier.key);
+            },
+          );
+        }(),
     ]);
   }
 
