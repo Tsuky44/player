@@ -434,6 +434,29 @@ var migrations = []migration{
 			`ALTER TABLE medias ADD COLUMN probe_failed_at TIMESTAMP;`,
 		},
 	},
+	{
+		id:   9,
+		name: "emby progress sync",
+		stmts: []string{
+			// Un compte Emby par utilisateur, dont la progression est échangée
+			// dans les deux sens. Le mot de passe n'est jamais gardé : seul le
+			// jeton rendu par Emby l'est. pushed_seq suit progress_changes comme
+			// account_links.pushed_seq.
+			`CREATE TABLE IF NOT EXISTS emby_links (
+				user_id INTEGER PRIMARY KEY,
+				url TEXT NOT NULL,
+				emby_user_id TEXT NOT NULL,
+				emby_username TEXT NOT NULL DEFAULT '',
+				access_token TEXT NOT NULL,
+				device_id TEXT NOT NULL,
+				pushed_seq INTEGER NOT NULL DEFAULT 0,
+				last_sync_at TIMESTAMP,
+				last_error TEXT NOT NULL DEFAULT '',
+				created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+				FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+			);`,
+		},
+	},
 }
 
 // applyMigrations brings the database up to the latest schema version.

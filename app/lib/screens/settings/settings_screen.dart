@@ -12,6 +12,7 @@ import 'pages/admin_devices_page.dart';
 import 'pages/apps_page.dart';
 import 'pages/dashboard_page.dart';
 import 'pages/device_page.dart';
+import 'pages/emby_sync_page.dart';
 import 'pages/integrations_page.dart';
 import 'pages/library_page.dart';
 import 'pages/linked_servers_page.dart';
@@ -26,6 +27,7 @@ abstract final class SettingsSections {
   static const account = 'account';
   static const playback = 'playback';
   static const servers = 'servers';
+  static const emby = 'emby';
   static const device = 'device';
   static const apps = 'apps';
   static const dashboard = 'dashboard';
@@ -87,6 +89,14 @@ List<_Category> _categoriesFor(Permissions p) {
       hint: 'Serveur actif, comptes et comptes liés',
       admin: false,
       builder: (_) => const ServersPage(),
+    ),
+    _Category(
+      id: SettingsSections.emby,
+      label: 'Synchro Emby',
+      icon: Icons.sync_rounded,
+      hint: 'Reprendre là où vous en êtes sur Emby',
+      admin: false,
+      builder: (_) => const EmbySyncPage(),
     ),
     _Category(
       id: SettingsSections.device,

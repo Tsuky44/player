@@ -60,6 +60,7 @@ func main() {
 	defer stopPlaybackReaper()
 	go handlers.PlaybackTickets.RunReaper(playbackContext)
 	go handlers.RunFederation(playbackContext)
+	go handlers.RunEmbySync(playbackContext)
 	go handlers.RunPlaybackActivity(playbackContext)
 
 	// Initialize router
@@ -170,6 +171,11 @@ func main() {
 	router.POST("/api/links", handlers.RequireAuth(handlers.CreateAccountLink))
 	router.POST("/api/links/code", handlers.RequireAuth(handlers.CreateLinkCode))
 	router.DELETE("/api/links/:id", handlers.RequireAuth(handlers.DeleteAccountLink))
+	// Synchronisation de la progression avec un compte Emby de l'utilisateur.
+	router.GET("/api/me/emby", handlers.RequireAuth(handlers.GetEmbyLink))
+	router.PUT("/api/me/emby", handlers.RequireAuth(handlers.LinkEmby))
+	router.DELETE("/api/me/emby", handlers.RequireAuth(handlers.UnlinkEmby))
+	router.POST("/api/me/emby/sync", handlers.RequireAuth(handlers.SyncEmbyNow))
 	router.GET("/api/peers", handlers.RequirePermission(models.PermManageSettings, handlers.ListPeerServers))
 	router.PUT("/api/peers/:id", handlers.RequirePermission(models.PermManageSettings, handlers.UpdatePeerServer))
 	router.DELETE("/api/peers/:id", handlers.RequirePermission(models.PermManageSettings, handlers.RemovePeerServer))
