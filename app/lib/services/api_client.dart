@@ -1561,6 +1561,48 @@ class ApiClient {
     return ServerSettings.fromJson(response.data as Map<String, dynamic>);
   }
 
+  // ==================== SYNCHRONISATION EMBY ====================
+
+  /// Le compte Emby lié à ce compte, dont la progression est synchronisée
+  /// dans les deux sens par le serveur. Voir `server/handlers/emby_sync.go`.
+  Future<EmbyLinkStatus> getEmbyLink() async {
+    final response = await _dio.get('/api/me/emby');
+    return EmbyLinkStatus.fromJson(Map<String, dynamic>.from(response.data as Map));
+  }
+
+  /// Le mot de passe ne sert qu'à obtenir un jeton : le serveur ne le garde pas.
+  Future<EmbyLinkStatus> linkEmby({
+    required String url,
+    required String username,
+    required String password,
+  }) async {
+    final response = await _dio.put('/api/me/emby', data: {
+      'url': url,
+      'username': username,
+      'password': password,
+    });
+    return EmbyLinkStatus.fromJson(Map<String, dynamic>.from(response.data as Map));
+  }
+
+  Future<EmbyLinkStatus> unlinkEmby() async {
+    final response = await _dio.delete('/api/me/emby');
+    return EmbyLinkStatus.fromJson(Map<String, dynamic>.from(response.data as Map));
+  }
+
+  /// Relit Emby et envoie ce qui a changé ici, sans attendre la tâche de fond.
+  /// Renvoie le nombre de progressions reçues et envoyées.
+  Future<({int pulled, int pushed})> syncEmbyNow() async {
+    final response = await _dio.post(
+      '/api/me/emby/sync',
+      options: Options(receiveTimeout: const Duration(minutes: 5)),
+    );
+    final data = Map<String, dynamic>.from(response.data as Map);
+    return (
+      pulled: (data['pulled'] as num?)?.toInt() ?? 0,
+      pushed: (data['pushed'] as num?)?.toInt() ?? 0,
+    );
+  }
+
   // ==================== ACTIVITÉ, APPAREILS, STATISTIQUES ====================
 
   /// Signal de lecture : ce que ce lecteur lit, où il en est, en pause ou non.
@@ -1704,6 +1746,34 @@ class ApiClient {
 
   Future<void> deletePlayerLayout(String id) async {
     await _dio.delete('/api/me/player-layouts/$id');
+  }
+}
+
+/// État du lien Emby d'un compte (GET/PUT/DELETE /api/me/emby).
+class EmbyLinkStatus {
+  final bool linked;
+  final String url;
+  final String username;
+  final DateTime? lastSyncAt;
+  final String lastError;
+
+  const EmbyLinkStatus({
+    required this.linked,
+    this.url = '',
+    this.username = '',
+    this.lastSyncAt,
+    this.lastError = '',
+  });
+
+  factory EmbyLinkStatus.fromJson(Map<String, dynamic> json) {
+    final stamp = json['last_sync_at'] as String?;
+    return EmbyLinkStatus(
+      linked: json['linked'] as bool? ?? false,
+      url: json['url'] as String? ?? '',
+      username: json['username'] as String? ?? '',
+      lastSyncAt: stamp == null ? null : DateTime.tryParse(stamp)?.toLocal(),
+      lastError: json['last_error'] as String? ?? '',
+    );
   }
 }
 
