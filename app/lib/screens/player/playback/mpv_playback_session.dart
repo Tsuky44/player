@@ -14,6 +14,7 @@ import 'mpv_native_surface.dart';
 import 'mpv_subtitle_overlay.dart';
 import 'playback_session.dart';
 import 'seek_timeline.dart';
+import 'texture_video_surface.dart';
 
 /// Les niveaux de repli stéréo, dialogue en avant — voir l'ADR-0005.
 ///
@@ -75,10 +76,10 @@ class MpvPlaybackSession implements PlaybackSession {
         subtitleKey: _subtitleKey,
       );
     }
-    return Video(
-      key: _videoKey,
+    return TextureVideoSurface(
+      key: key,
       controller: _engine.videoController!,
-      controls: null,
+      videoKey: _videoKey,
       fit: fit,
       aspectRatio: aspectRatio,
     );

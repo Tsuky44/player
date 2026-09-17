@@ -34,7 +34,6 @@ dependencies:
   intl: ^0.20.2
   audio_video_progress_bar: ^2.0.3
   flutter_animate: ^4.5.0
-  google_fonts: ^8.2.1
   
   # Media Player (BasÃ© sur MPV via media-kit)
   media_kit: ^1.2.6
@@ -100,3 +99,27 @@ dev_dependencies:
 
 flutter:
   uses-material-design: true
+
+  # Manrope est embarquée plutôt que rapatriée au lancement — voir l'ADR-0025.
+  # `google_fonts` allait chercher ces mêmes fichiers sur fonts.gstatic.com au
+  # premier démarrage, puis les relisait depuis un cache disque à chacun des
+  # suivants : une requête réseau et une lecture asynchrone entre l'app et son
+  # premier texte, sur une application qui doit démarrer hors ligne.
+  assets:
+    - assets/fonts/OFL.txt
+
+  fonts:
+    - family: Manrope
+      fonts:
+        - asset: assets/fonts/Manrope-300.ttf
+          weight: 300
+        - asset: assets/fonts/Manrope-400.ttf
+          weight: 400
+        - asset: assets/fonts/Manrope-500.ttf
+          weight: 500
+        - asset: assets/fonts/Manrope-600.ttf
+          weight: 600
+        - asset: assets/fonts/Manrope-700.ttf
+          weight: 700
+        - asset: assets/fonts/Manrope-800.ttf
+          weight: 800

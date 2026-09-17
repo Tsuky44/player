@@ -21,7 +21,7 @@ class SkipIntroButton extends StatelessWidget {
           borderRadius: BorderRadius.circular(12),
           child: ClipRRect(
             borderRadius: BorderRadius.circular(12),
-            child: BackdropFilter(
+            child: BackdropFilter.grouped(
               filter: ImageFilter.blur(sigmaX: 18, sigmaY: 18),
               child: Container(
                 padding:

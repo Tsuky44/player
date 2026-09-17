@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import '../../../models/player_layout.dart';
 import '../hooks/use_studio_controller.dart';
+import '../../../widgets/global/app_slider.dart';
 
 /// Compact floating menu shown on right-click over a canvas control.
 class ControlContextMenu extends StatelessWidget {
@@ -276,7 +277,7 @@ class _CompactSlider extends StatelessWidget {
             thumbShape: const RoundSliderThumbShape(enabledThumbRadius: 6),
             overlayShape: const RoundSliderOverlayShape(overlayRadius: 12),
           ),
-          child: Slider(
+          child: AppSlider(
             min: min,
             max: max,
             value: clamped,

@@ -6,6 +6,7 @@ import 'package:onyx/screens/player/widgets/emby/emby_chrome_theme.dart';
 import 'package:onyx/screens/player/widgets/emby/emby_controls_layer.dart';
 import 'package:onyx/screens/player/widgets/emby/emby_progress_bar.dart';
 import 'package:onyx/theme/app_colors.dart';
+import 'package:onyx/widgets/global/app_slider.dart';
 
 /// Mounts the chrome at a given viewport width.
 Future<void> pumpChrome(
@@ -248,14 +249,14 @@ void main() {
     testWidgets('the volume slider gives way to the mute button when narrow',
         (tester) async {
       await pumpChrome(tester, width: 375);
-      expect(find.byType(Slider), findsNothing);
+      expect(find.byType(AppSlider), findsNothing);
       expect(find.byIcon(Icons.volume_up_rounded), findsOneWidget);
     });
 
     testWidgets('the volume slider is permanent when there is room',
         (tester) async {
       await pumpChrome(tester, width: 1280);
-      expect(find.byType(Slider), findsOneWidget);
+      expect(find.byType(AppSlider), findsOneWidget);
     });
 
     testWidgets('compact keeps touch targets at 44px', (tester) async {
@@ -583,7 +584,7 @@ void main() {
       // Both halves of it: the set owns the volume, and the slider was the one
       // focusable widget in this chrome — the remote landed on it and stayed.
       expect(find.byIcon(Icons.volume_up_rounded), findsNothing);
-      expect(find.byType(Slider), findsNothing);
+      expect(find.byType(AppSlider), findsNothing);
     });
 
     testWidgets('the volume control stays everywhere else', (tester) async {
@@ -599,7 +600,7 @@ void main() {
       await pumpChrome(tester, width: 420, showVolume: false);
 
       expect(find.byIcon(Icons.volume_up_rounded), findsNothing);
-      expect(find.byType(Slider), findsNothing);
+      expect(find.byType(AppSlider), findsNothing);
     });
 
     testWidgets('the remote is handed play/pause on the way in',
