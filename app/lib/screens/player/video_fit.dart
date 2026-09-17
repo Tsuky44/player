@@ -17,9 +17,23 @@ import 'package:flutter/widgets.dart';
 /// For anything *narrower* than the screen — a 16:9 episode, an old 4:3 film —
 /// the two are the same thing, so the setting still reads as one idea rather
 /// than two: nothing is cropped that would not have been cropped anyway.
+///
+/// A tablet is held in a hand too, but it is not a phone. Its screen is 4:3 or
+/// close to it, so filling the height of a 16:9 episode threw away a quarter of
+/// the picture on each side — "original" looked like a zoom. There the
+/// letterbox is back, as on a television.
 abstract final class VideoFitRendering {
   const VideoFitRendering._();
 
-  static BoxFit resolve(BoxFit chosen, {required bool handheld}) =>
-      handheld && chosen == BoxFit.contain ? BoxFit.fitHeight : chosen;
+  /// Below this shortest side (logical pixels) a handheld screen is a phone.
+  static const double tabletShortestSide = 600;
+
+  static BoxFit resolve(
+    BoxFit chosen, {
+    required bool handheld,
+    required Size screen,
+  }) {
+    final phone = handheld && screen.shortestSide < tabletShortestSide;
+    return phone && chosen == BoxFit.contain ? BoxFit.fitHeight : chosen;
+  }
 }
