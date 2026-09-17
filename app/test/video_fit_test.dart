@@ -3,10 +3,12 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:onyx/screens/player/video_fit.dart';
 
 void main() {
-  BoxFit onPhone(BoxFit chosen) =>
-      VideoFitRendering.resolve(chosen, handheld: true);
-  BoxFit onTelevision(BoxFit chosen) =>
-      VideoFitRendering.resolve(chosen, handheld: false);
+  BoxFit onPhone(BoxFit chosen) => VideoFitRendering.resolve(chosen,
+      handheld: true, screen: const Size(874, 402));
+  BoxFit onTablet(BoxFit chosen) => VideoFitRendering.resolve(chosen,
+      handheld: true, screen: const Size(1180, 820));
+  BoxFit onTelevision(BoxFit chosen) => VideoFitRendering.resolve(chosen,
+      handheld: false, screen: const Size(960, 540));
 
   group('what "original" is drawn as', () {
     test('a screen held in a hand fills its height', () {
@@ -14,6 +16,13 @@ void main() {
       // black bars across the top and bottom of an already small screen — the
       // framing paid for in the one place where the picture is scarce.
       expect(onPhone(BoxFit.contain), BoxFit.fitHeight);
+    });
+
+    test('a tablet keeps the letterbox', () {
+      // On a 4:3 iPad, filling the height of a 16:9 episode cropped a quarter
+      // of each side: original looked like a zoom.
+      expect(onTablet(BoxFit.contain), BoxFit.contain);
+      expect(onTablet(BoxFit.cover), BoxFit.cover);
     });
 
     test('a television keeps the letterbox', () {

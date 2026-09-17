@@ -2400,6 +2400,7 @@ class _PlayerScreenState extends State<PlayerScreen> {
                                   fit: VideoFitRendering.resolve(
                                     _videoFit,
                                     handheld: _handheld,
+                                    screen: MediaQuery.sizeOf(context),
                                   ),
                                   aspectRatio:
                                       _playerController.videoAspectRatio,
