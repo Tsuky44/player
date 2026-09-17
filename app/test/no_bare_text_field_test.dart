@@ -33,9 +33,12 @@ void main() {
 
       final wrapped = 'canRequestFocus) =>'.allMatches(source).length;
       if (wrapped >= fields) continue;
-      if (_allowed.containsKey(entity.path)) continue;
+      // La liste blanche est écrite en barres obliques ; Windows rend des
+      // barres inverses.
+      final path = entity.path.replaceAll('\\', '/');
+      if (_allowed.containsKey(path)) continue;
 
-      offenders.add('${entity.path} : $fields champ(s), $wrapped enveloppé(s)');
+      offenders.add('$path : $fields champ(s), $wrapped enveloppé(s)');
     }
 
     expect(

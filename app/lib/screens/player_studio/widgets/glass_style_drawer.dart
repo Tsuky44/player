@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import '../../../models/player_layout.dart';
 import 'studio_drawer_shell.dart';
+import '../../../widgets/global/app_slider.dart';
 
 /// Side drawer for choosing the preset's control skin (Verre/Net/Doux) and
 /// tuning that skin's own parameters (glass blur/opacity/liquid, flat accent
@@ -319,7 +320,7 @@ class _GlassSliderRow extends StatelessWidget {
             inactiveTrackColor: const Color(0xFF2A2A2A),
             thumbColor: Colors.white,
           ),
-          child: Slider(
+          child: AppSlider(
             value: value.clamp(min, max),
             min: min,
             max: max,

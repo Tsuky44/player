@@ -100,7 +100,7 @@ class PlayerHUDOverlay extends StatelessWidget {
               // BOTTOM GLASS PANEL
               ClipRRect(
                 borderRadius: BorderRadius.circular(24),
-                child: BackdropFilter(
+                child: BackdropFilter.grouped(
                   filter: ImageFilter.blur(sigmaX: 24, sigmaY: 24),
                   child: Container(
                     padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),

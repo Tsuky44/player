@@ -43,6 +43,15 @@ import 'theme/app_theme.dart';
 import 'desktop_window.dart';
 import 'widgets/global/middle_click_autoscroll.dart';
 
+/// La licence OFL de Manrope, lue depuis le paquet.
+///
+/// Rendu paresseux : `LicenseRegistry` ne tire ce flux que si quelqu'un ouvre
+/// la page des licences, donc le fichier n'est pas lu au démarrage.
+Stream<LicenseEntry> _bundledFontLicenses() async* {
+  final license = await rootBundle.loadString('assets/fonts/OFL.txt');
+  yield LicenseEntryWithLineBreaks(const ['Manrope'], license);
+}
+
 /// Enables trackpad / mouse drag scrolling on desktop (required on macOS).
 class AppScrollBehavior extends MaterialScrollBehavior {
   @override
@@ -107,44 +116,60 @@ void main() async {
   MpvNativeView.resolve();
   MediaKit.ensureInitialized(libmpv: MpvNativeView.libmpvPath);
 
-  // Resolved before the first frame: the login screen the user lands on differs
-  // entirely between a phone and a television, and flipping it after the fact
-  // would show the password form for a beat on every TV boot.
-  await TvMode.initialize();
-  await ClientIdentity.initialize();
+  // La licence de la police embarquée, que `google_fonts` déclarait pour nous
+  // avant l'ADR-0025.
+  LicenseRegistry.addLicense(_bundledFontLicenses);
+
+  AppImageCache.configure();
+  // A QR scanned on the TV opens this app with ?tv=CODE. Read it now, act on it
+  // once the shell is up and there is a session to approve with.
+  TvPairingLink.capture();
   // Observe les flèches maintenues, pour que le focus ne coure pas plus vite
   // que les rangées ne défilent. Voir [TvKeyRepeat].
   TvKeyRepeat.install();
 
+  final apiClient = ApiClient();
+
+  // Tout ce qui précède la première image, lancé ensemble.
+  //
+  // Chacune de ces initialisations est une question posée à la plateforme —
+  // les préférences, la version du paquet, la fenêtre, le trousseau — et
+  // aucune ne dépend de la réponse d'une autre. Enchaînées par `await`, leurs
+  // allers-retours s'additionnaient devant l'écran de démarrage ; lancées
+  // ensemble, c'est la plus lente qui donne le tempo. Seul le mode TV reste
+  // devant : le profil de lecture a besoin de sa réponse.
+  final independent = <Future<void>>[
+    // The device's own name and app version, sent on every request.
+    ClientIdentity.initialize(),
+    // What this device can decode and play back, which the server is told on
+    // every session so it can hand over the file itself instead of a
+    // re-encoded, stereo-folded approximation of it. Asked once: it describes
+    // the hardware.
+    PlaybackCapabilitiesResolver.initialize(),
+    HardwareDecoding.initialize(),
+    DisplayFrameRate.initialize(),
+    // Whether this device can carry on with the film in a corner of the home
+    // screen. Asked once: the answer is a property of the hardware.
+    PictureInPicture.initialize(),
+    WindowControls.initializeDesktopWindow(
+      hiddenTitleBar: useHiddenNativeTitleBar,
+      showWindowButtons: AppPlatform.isMacOS,
+    ),
+    apiClient.initialize(),
+  ];
+
+  // Resolved before the first frame: the login screen the user lands on differs
+  // entirely between a phone and a television, and flipping it after the fact
+  // would show the password form for a beat on every TV boot.
+  await TvMode.initialize();
+
   // How much memory playback may spend here. Resolved before the first frame
   // like the TV mode above, because it is read when a media opens and the
   // answer never changes for the life of the process.
-  await PlaybackProfiles.initialize(isTv: TvMode.detected);
-  // What this device can decode and play back, which the server is told on
-  // every session so it can hand over the file itself instead of a re-encoded,
-  // stereo-folded approximation of it. Asked once: it describes the hardware.
-  await PlaybackCapabilitiesResolver.initialize();
-  await HardwareDecoding.initialize();
-  await DisplayFrameRate.initialize();
-  // Whether this device can carry on with the film in a corner of the home
-  // screen. Asked once: the answer is a property of the hardware.
-  await PictureInPicture.initialize();
+  independent.add(PlaybackProfiles.initialize(isTv: TvMode.detected));
+  independent.add(_configureSystemUi());
 
-  // A QR scanned on the TV opens this app with ?tv=CODE. Read it now, act on it
-  // once the shell is up and there is a session to approve with.
-  TvPairingLink.capture();
-
-  await _configureSystemUi();
-
-  await WindowControls.initializeDesktopWindow(
-    hiddenTitleBar: useHiddenNativeTitleBar,
-    showWindowButtons: AppPlatform.isMacOS,
-  );
-
-  AppImageCache.configure();
-
-  final apiClient = ApiClient();
-  await apiClient.initialize();
+  await Future.wait(independent);
 
   // A scanned pairing link names its own server. Point the client at it before
   // anything else runs: the phone that scans may have been signed in to another

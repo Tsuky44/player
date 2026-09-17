@@ -1,8 +1,17 @@
 import 'package:flutter/material.dart';
-import 'package:google_fonts/google_fonts.dart';
 import 'app_colors.dart';
 
 abstract final class AppTheme {
+  /// La police de l'application, embarquée dans le paquet — voir l'ADR-0025.
+  ///
+  /// Elle l'était auparavant par `google_fonts`, qui allait chercher les mêmes
+  /// fichiers sur le réseau au premier lancement et les relisait depuis un
+  /// cache disque aux suivants. Entre les deux, le texte s'affichait dans la
+  /// police du système puis sautait : une application qui doit ouvrir un film
+  /// sans serveur joignable ne peut pas dépendre de Google pour écrire un
+  /// titre.
+  static const String fontFamily = 'Manrope';
+
   /// The outline a focused control wears.
   ///
   /// Material's own focus treatment is a ten-percent wash of the primary
@@ -18,10 +27,23 @@ abstract final class AppTheme {
     });
   }
 
-  static ThemeData get dark {
+  /// Le thème, construit une fois.
+  ///
+  /// C'était un getter : chaque lecture reconstruisait `ThemeData` et toutes
+  /// ses déclinaisons — et en rendait une *autre instance*, ce qui fait
+  /// reconstruire tout ce qui lit `Theme.of(context)`. La racine le lit deux
+  /// fois sur un téléviseur.
+  static ThemeData? _dark;
+  static ThemeData get dark => _dark ??= _buildDark();
+
+  static ThemeData _buildDark() {
     final base = ThemeData(
       brightness: Brightness.dark,
       useMaterial3: true,
+      // Posé sur le thème et non sur le seul `textTheme` : un `TextStyle`
+      // construit à la main, sans partir d'un style du thème, hérite alors de
+      // la police lui aussi au lieu de retomber sur celle du système.
+      fontFamily: fontFamily,
       scaffoldBackgroundColor: AppColors.background,
       primaryColor: AppColors.primary,
       colorScheme: const ColorScheme.dark(
@@ -36,7 +58,7 @@ abstract final class AppTheme {
       ),
     );
 
-    final textTheme = GoogleFonts.manropeTextTheme(base.textTheme).apply(
+    final textTheme = base.textTheme.apply(
       bodyColor: AppColors.textPrimary,
       displayColor: AppColors.textPrimary,
     );

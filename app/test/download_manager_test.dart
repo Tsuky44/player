@@ -58,6 +58,14 @@ Map<String, dynamic> _entry({
   };
 }
 
+/// Un bout de chemin écrit avec le séparateur de la plateforme.
+///
+/// Windows rend `dossierichier` là où le reste du monde rend
+/// `dossier/fichier` : une attente écrite en dur avec des barres obliques ne
+/// passait que sur macOS et Linux.
+String _path(List<String> parts) =>
+    '${Platform.pathSeparator}${parts.join(Platform.pathSeparator)}';
+
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
 
@@ -112,7 +120,7 @@ void main() {
 
   test('ne propose à la lecture que ce qui est vraiment sur le disque', () {
     final manager = DownloadManager.instance;
-    expect(manager.localVideoPath(1), endsWith('/1/video.mkv'));
+    expect(manager.localVideoPath(1), endsWith(_path(['1', 'video.mkv'])));
     // Au manifeste mais pas sur le disque : le lecteur doit repasser par le
     // réseau plutôt qu'ouvrir un chemin qui n'existe pas.
     expect(manager.localVideoPath(2), isNull);
@@ -182,7 +190,7 @@ void main() {
     expect(manager.offlineDetails(2)?.id, 7);
     expect(manager.entryFor(1)?.infoId, 7);
 
-    expect(manager.showPosterPath(7), endsWith('/shows/7/poster.jpg'));
+    expect(manager.showPosterPath(7), endsWith(_path(['shows', '7', 'poster.jpg'])));
     // Aucun logo n'a été rapatrié : l'appelant retombe sur le titre écrit.
     expect(manager.showLogoPath(7), isNull);
   });

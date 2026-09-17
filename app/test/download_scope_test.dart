@@ -81,7 +81,14 @@ void main() {
   });
 
   tearDownAll(() {
-    if (root.existsSync()) root.deleteSync(recursive: true);
+    // Un fichier encore ouvert empêche Windows de supprimer son dossier, et le
+    // ménage d'un dossier temporaire n'est pas ce que ces tests vérifient : le
+    // système le reprendra.
+    try {
+      if (root.existsSync()) root.deleteSync(recursive: true);
+    } on FileSystemException {
+      // Rien à faire de plus ici.
+    }
   });
 
   test('seul le serveur actif est listé', () {

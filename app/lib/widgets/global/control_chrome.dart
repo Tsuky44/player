@@ -4,6 +4,7 @@ import '../../models/player_layout.dart';
 import '../../theme/app_colors.dart';
 import 'media_logo_display.dart';
 import 'optimistic_volume.dart';
+import 'app_slider.dart';
 
 /// Rendering mode for [ControlChrome].
 ///
@@ -354,11 +355,17 @@ class ControlChrome extends StatelessWidget {
   }
 
   /// Lightweight path: blur + flat tint only (one BackdropFilter, no extras).
+  ///
+  /// `.grouped` et non `BackdropFilter` : une disposition modulaire pose autant
+  /// de ces panneaux que l'utilisateur a placé de contrôles, et chacun relisait
+  /// l'image derrière lui — soit, à chaque image d'un film 4K, une copie de la
+  /// zone par contrôle. Le [BackdropGroup] du lecteur leur fait partager une
+  /// seule lecture. Voir l'ADR-0025.
   Widget _simpleGlass({required Widget child, required BorderRadius radius}) {
     final borderOpacity = (glassOpacity * 1.5 + 0.05).clamp(0.05, 0.4);
     return ClipRRect(
       borderRadius: radius,
-      child: BackdropFilter(
+      child: BackdropFilter.grouped(
         filter: ImageFilter.blur(sigmaX: blurSigma, sigmaY: blurSigma),
         child: AnimatedContainer(
           duration: variant == ControlChromeVariant.studio
@@ -431,7 +438,7 @@ class ControlChrome extends StatelessWidget {
 
     Widget glass = ClipRRect(
       borderRadius: radius,
-      child: BackdropFilter(
+      child: BackdropFilter.grouped(
         filter: backdrop,
         child: Container(
           decoration: BoxDecoration(gradient: sheen, borderRadius: radius),
@@ -1561,7 +1568,7 @@ class _VolumeSliderButtonState extends State<_VolumeSliderButton> {
         onExit: (_) => setState(() => _hovering = false),
         child: ClipRRect(
           borderRadius: radius,
-          child: BackdropFilter(
+          child: BackdropFilter.grouped(
             filter: ImageFilter.blur(
               sigmaX: widget.blurSigma,
               sigmaY: widget.blurSigma,
@@ -1614,7 +1621,7 @@ class _VolumeSliderButtonState extends State<_VolumeSliderButton> {
         decoration: BoxDecoration(gradient: rim, borderRadius: radius),
         child: ClipRRect(
           borderRadius: radius,
-          child: BackdropFilter(
+          child: BackdropFilter.grouped(
             filter: backdrop,
             child: AnimatedContainer(
               duration: const Duration(milliseconds: 200),
@@ -1665,7 +1672,7 @@ class _VolumeSliderButtonState extends State<_VolumeSliderButton> {
                       inactiveTrackColor: Colors.white.withValues(alpha: 0.25),
                       thumbColor: Colors.white,
                     ),
-                    child: Slider(
+                    child: AppSlider(
                       value: vol,
                       min: 0,
                       max: 100,

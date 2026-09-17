@@ -1053,12 +1053,26 @@ class _PlayerScreenState extends State<PlayerScreen> {
   /// the chrome stutter under the very gesture meant to summon it. When the
   /// chrome is already up there is nothing to show, so re-arming the countdown
   /// is the entire job.
+  ///
+  /// Et ce travail-là est lui-même espacé. Une souris de jeu rapporte jusqu'à
+  /// mille positions par seconde : réarmer à chaque échantillon détruisait et
+  /// reconstruisait mille `Timer` par seconde de mouvement, au-dessus d'une
+  /// image 4K. Le compte à rebours dure quatre secondes — le décaler de deux
+  /// dixièmes ne se voit pas, et c'est tout ce que coûte ce filtre.
+  static const Duration _hoverRearmInterval = Duration(milliseconds: 200);
+  DateTime? _lastHoverRearm;
+
   void _handlePointerHover() {
     _episodeNav?.onMouseMove();
     if (_showControls) {
+      final now = DateTime.now();
+      final last = _lastHoverRearm;
+      if (last != null && now.difference(last) < _hoverRearmInterval) return;
+      _lastHoverRearm = now;
       _hideControlsWithDelay();
       return;
     }
+    _lastHoverRearm = DateTime.now();
     _showControlsTransient();
   }
 
@@ -2298,6 +2312,20 @@ class _PlayerScreenState extends State<PlayerScreen> {
 
   @override
   Widget build(BuildContext context) {
+    // Un seul fond partagé pour tout le verre posé sur le film — voir
+    // l'ADR-0025.
+    //
+    // Chaque `BackdropFilter.grouped` en dessous lit la même image du film au
+    // lieu d'en demander une copie pour lui seul : une disposition modulaire
+    // de huit contrôles passe de huit relectures par image à une. Ce que le
+    // groupe couvre est le chrome, dont les pièces ne se recouvrent pas ; les
+    // panneaux qui viennent par-dessus (réglages, fiche, épisodes) gardent un
+    // `BackdropFilter` ordinaire, pour continuer de flouter le chrome qu'ils
+    // couvrent et non le film derrière lui.
+    return BackdropGroup(child: _buildPlayer(context));
+  }
+
+  Widget _buildPlayer(BuildContext context) {
     final layoutProvider = Provider.of<PlayerLayoutProvider>(context);
     final chrome = _resolveChrome(layoutProvider);
     final isTv = TvScope.of(context);

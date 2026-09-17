@@ -6,6 +6,7 @@ import '../hooks/use_player_controller.dart';
 import '../hooks/use_episode_navigation.dart';
 import 'settings_menu.dart';
 import 'player_settings_anchor.dart';
+import '../../../widgets/global/app_slider.dart';
 
 class TopRightControls extends StatefulWidget {
   final PlaybackSession session;
@@ -96,7 +97,7 @@ class _TopRightControlsState extends State<TopRightControls> {
             onExit: (_) => setState(() => _isVolumeHovering = false),
             child: ClipRRect(
               borderRadius: BorderRadius.circular(24),
-              child: BackdropFilter(
+              child: BackdropFilter.grouped(
                 filter: ImageFilter.blur(sigmaX: 24, sigmaY: 24),
                 child: AnimatedContainer(
                   duration: const Duration(milliseconds: 250),
@@ -150,7 +151,7 @@ class _TopRightControlsState extends State<TopRightControls> {
                                 ),
                                 overlayShape: const RoundSliderOverlayShape(overlayRadius: 0),
                               ),
-                              child: Slider(
+                              child: AppSlider(
                                 value: volume,
                                 min: 0,
                                 max: 100,

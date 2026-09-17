@@ -13,6 +13,7 @@ import '../../playback/timeline_previews.dart';
 import 'emby_brightness_slider.dart';
 import 'emby_chrome_theme.dart';
 import 'emby_progress_bar.dart';
+import '../../../../widgets/global/app_slider.dart';
 
 /// Hand-written clone of the Emby player chrome.
 ///
@@ -1128,7 +1129,7 @@ class _EmbyVolumeControlState extends State<_EmbyVolumeControl> {
                 overlayShape:
                     RoundSliderOverlayShape(overlayRadius: 14),
               ),
-              child: Slider(
+              child: AppSlider(
                 value: volume,
                 max: 100,
                 onChanged: (v) {

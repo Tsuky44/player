@@ -86,6 +86,13 @@ class _StudioCanvasState extends State<StudioCanvas> {
 
   @override
   Widget build(BuildContext context) {
+    // Le même fond partagé que le lecteur : la toile pose les mêmes panneaux
+    // de verre, et l'aperçu doit coûter ce que coûtera la disposition une fois
+    // sur un film. Voir l'ADR-0025.
+    return BackdropGroup(child: _buildCanvas(context));
+  }
+
+  Widget _buildCanvas(BuildContext context) {
     final controller = widget.controller;
 
     return LayoutBuilder(

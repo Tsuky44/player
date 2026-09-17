@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:ui';
 
 import 'package:flutter/material.dart';
@@ -58,8 +59,39 @@ class _MainShellState extends State<MainShell> {
   DateTime? _exitArmedAt;
   static const Duration _exitWindow = Duration(seconds: 3);
 
+  /// Les onglets réellement montés dans l'[IndexedStack].
+  ///
+  /// La pile les gardait tous les cinq vivants dès la première image. Aucun
+  /// n'est gratuit : films et séries construisent chacun la grille de toute la
+  /// médiathèque, et films, séries et demandes lancent chacun leur requête
+  /// depuis `initState` — quatre écrans et trois appels réseau derrière
+  /// l'accueil, pendant que l'accueil, lui, attend sa réponse sur la même
+  /// connexion. Les onglets non visités arrivent donc plus tard
+  /// ([_warmOtherTabs]), et une fois montés ils le restent : c'est ce qui rend
+  /// le changement d'onglet instantané, et c'était la seule raison de les
+  /// monter tôt.
+  final Set<int> _mountedTabs = {0};
+  Timer? _warmTimer;
+
+  /// Monte les autres onglets une fois l'accueil passé.
+  ///
+  /// Le délai est celui de [PlayerEnginePool.prewarm], et pour la même raison :
+  /// le but est d'occuper un moment creux, pas de disputer le démarrage à ce
+  /// que l'utilisateur regarde.
+  static const Duration _warmDelay = Duration(seconds: 3);
+
+  void _warmOtherTabs() {
+    if (_mountedTabs.length == _tabNodes.length) return;
+    setState(() {
+      for (var index = 0; index < _tabNodes.length; index++) {
+        _mountedTabs.add(index);
+      }
+    });
+  }
+
   @override
   void dispose() {
+    _warmTimer?.cancel();
     for (final node in _tabNodes) {
       node.dispose();
     }
@@ -74,8 +106,12 @@ class _MainShellState extends State<MainShell> {
     // anyone is signed in. This is the first moment there is both a session and
     // a navigator, so it is where the approval screen opens.
     WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      _warmTimer = Timer(_warmDelay, () {
+        if (mounted) _warmOtherTabs();
+      });
       final code = TvPairingLink.take();
-      if (code == null || !mounted) return;
+      if (code == null) return;
       Navigator.of(context).push(
         MaterialPageRoute(builder: (_) => TvPairingScreen(initialCode: code)),
       );
@@ -93,7 +129,12 @@ class _MainShellState extends State<MainShell> {
       shellNavigatorKey.currentState?.popUntil((route) => route.isFirst);
     }
     if (_selectedIndex == index) return;
-    setState(() => _selectedIndex = index);
+    // Un onglet choisi avant son tour se monte maintenant : l'attente d'une
+    // image vaut mieux que celle de la fin du délai.
+    setState(() {
+      _mountedTabs.add(index);
+      _selectedIndex = index;
+    });
   }
 
   /// Les onglets dans un navigateur à eux, pour que les fiches s'ouvrent sous
@@ -189,6 +230,15 @@ class _MainShellState extends State<MainShell> {
 
   @override
   Widget build(BuildContext context) {
+    // L'en-tête et la barre d'onglets sont deux verres posés sur la même
+    // page, l'un en haut l'autre en bas : ils lisent la même image et n'ont
+    // donc besoin de la lire qu'une fois. Voir l'ADR-0025. Ce qui vient en
+    // surimpression — le menu de compte, la recherche du catalogue — n'entre
+    // pas dans le groupe : il couvre le chrome et doit le flouter.
+    return BackdropGroup(child: _buildShell(context));
+  }
+
+  Widget _buildShell(BuildContext context) {
     final homeProvider = Provider.of<HomeProvider>(context);
     final authProvider = Provider.of<AuthProvider>(context);
     final downloads = Provider.of<DownloadManager>(context);
@@ -230,7 +280,9 @@ class _MainShellState extends State<MainShell> {
             excluding: index != _selectedIndex,
             // Redescendre de l'en-tête ramène là où l'on était
             // dans cet onglet — voir [TvFocusMemory].
-            child: TvFocusMemory(child: screen),
+            child: _mountedTabs.contains(index)
+                ? TvFocusMemory(child: screen)
+                : const SizedBox.shrink(),
           ),
       ],
     );
@@ -445,7 +497,7 @@ class _MobileBottomNav extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return ClipRRect(
-      child: BackdropFilter(
+      child: BackdropFilter.grouped(
         filter: ImageFilter.blur(sigmaX: 20, sigmaY: 20),
         child: Container(
           decoration: BoxDecoration(

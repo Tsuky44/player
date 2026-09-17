@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import '../../../tv/tv_deferred_keyboard.dart';
 import '../../../models/player_layout.dart';
 import 'studio_drawer_shell.dart';
+import '../../../widgets/global/app_slider.dart';
 
 /// Side drawer to tune size/width of the selected control on the canvas.
 class ControlEditDrawer extends StatelessWidget {
@@ -86,7 +87,7 @@ class ControlEditDrawer extends StatelessWidget {
                     thumbColor: Colors.white,
                     overlayColor: const Color(0xFF0A84FF).withValues(alpha: 0.2),
                   ),
-                  child: Slider(
+                  child: AppSlider(
                     min: kMinSizePct,
                     max: kMaxSizePct,
                     value: sizePercentage!.clamp(kMinSizePct, kMaxSizePct),
@@ -124,7 +125,7 @@ class ControlEditDrawer extends StatelessWidget {
                       thumbColor: Colors.white,
                       overlayColor: const Color(0xFF0A84FF).withValues(alpha: 0.2),
                     ),
-                    child: Slider(
+                    child: AppSlider(
                       min: 0.1,
                       max: 1.0,
                       value: widthPercentage!.clamp(0.1, 1.0),

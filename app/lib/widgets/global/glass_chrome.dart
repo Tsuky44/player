@@ -7,6 +7,9 @@ import '../../tv/tv_mode.dart';
 import 'onyx_mark.dart';
 
 /// Full-width frosted strip — must float above scrolling content to blur it.
+///
+/// Partage le fond du [BackdropGroup] ambiant quand il y en a un, et se
+/// comporte comme un flou ordinaire sinon — voir l'ADR-0025.
 class GlassHeaderStrip extends StatelessWidget {
   final Widget child;
 
@@ -15,7 +18,7 @@ class GlassHeaderStrip extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return ClipRect(
-      child: BackdropFilter(
+      child: BackdropFilter.grouped(
         filter: ImageFilter.blur(sigmaX: 30, sigmaY: 30),
         child: DecoratedBox(
           decoration: BoxDecoration(
