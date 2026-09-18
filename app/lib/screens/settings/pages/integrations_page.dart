@@ -139,7 +139,7 @@ class _IntegrationsPageState extends State<IntegrationsPage> {
     } catch (e) {
       if (mounted) {
         showSettingsSnack(
-            context, settingsErrorText(e, 'Échec de l'enregistrement.'),
+            context, settingsErrorText(e, "Échec de l'enregistrement."),
             error: true);
       }
     }
@@ -252,7 +252,7 @@ class _IntegrationsPageState extends State<IntegrationsPage> {
           SettingsGroup(
             title: 'Logs des lectures',
             footer:
-                'Gardez les journaux des 10 dernières sessions. Utile pour diagnostiquer les pannes de lecture. Les journaux peuvent être lus depuis l'historique de chaque lecture.',
+                "Gardez les journaux des 10 dernières sessions. Utile pour diagnostiquer les pannes de lecture. Les journaux peuvent être lus depuis l'historique de chaque lecture.",
             children: [
               SettingsSwitchTile(
                 icon: Icons.receipt_long_rounded,
