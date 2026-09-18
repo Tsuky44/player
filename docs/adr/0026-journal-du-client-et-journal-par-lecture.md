@@ -58,9 +58,24 @@ client n'a pas à pouvoir épingler une séance dans l'historique en le déclara
 
 ## Ce que cet ADR ne résout pas
 
-Il ne dit pas pourquoi la lecture échouait sur Android. Il rend la panne visible et la répare dans
-le seul cas qu'il sait réparer, celui du conteneur refusé. La cause réelle se lira dans le premier
-journal remonté.
+Il ne disait pas pourquoi la lecture échouait sur Android. Le premier journal remonté l'a dit, et
+c'est le meilleur argument qu'on puisse donner pour tout ce qui précède :
+
+```
+Erreur non rattrapée : PlatformException(IllegalStateException,
+  java.lang.IllegalStateException: getBackBufferDurationUs not implemented
+```
+
+`StallGuardLoadControl` (ADR non écrit, commit 0382c8f) enveloppait `DefaultLoadControl` avec la
+délégation Kotlin, `: LoadControl by delegate`. Or `LoadControl` n'a qu'**un** membre abstrait,
+`getAllocator` ; ses dix autres sont des méthodes `default` Java, que la délégation Kotlin ne
+relaie pas. La classe compilée n'avait donc que deux méthodes, et les huit restantes tombaient sur
+les corps par défaut de l'interface — dont celui de `getBackBufferDurationUs`, qui lève. Appelé à
+la construction du lecteur, donc avant le moindre octet de vidéo : toutes les lectures, tous les
+appareils Android.
+
+Le passe-plat est désormais écrit à la main, méthode par méthode, et un test compare la valeur
+rendue à celle du délégué. Vérifié à la compilation : la classe expose bien ses dix méthodes.
 
 Le journal reste réservé à qui administre le serveur (`manage_users`), comme l'historique qui le
 porte. Un utilisateur ne peut pas relire le journal de ses propres lectures passées ailleurs que
