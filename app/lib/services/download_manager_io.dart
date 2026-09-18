@@ -102,6 +102,43 @@ class DownloadManager extends ChangeNotifier {
   int? _activeMediaId;
   bool _pumping = false;
 
+  /// « A-t-on le droit de faire passer des octets maintenant ? »
+  ///
+  /// Posée à chaque tour de file, et posée dehors : ce qui décide est le
+  /// croisement d'un état réseau et d'un réglage utilisateur, deux choses dont
+  /// le magasin hors ligne n'a pas à connaître l'existence. Null vaut oui — un
+  /// test, ou un appareil qui n'a rien à arbitrer.
+  bool Function()? transferGate;
+
+  bool _heldForNetwork = false;
+
+  /// La file est pleine mais rien ne descend : le réseau du moment ne convient
+  /// pas. C'est un état à montrer, pas une panne — d'où l'absence de statut
+  /// « en pause automatique » sur les entrées, qui restent en file (voir
+  /// [DownloadStatus]).
+  bool get isHeldForNetwork => _heldForNetwork && queuedCount > 0;
+
+  /// Combien d'entrées attendent leur tour, transfert en cours compris.
+  int get queuedCount => _entries.values.where((e) => e.isActive).length;
+
+  /// Les médias que l'utilisateur a effacés sans les avoir vus, sous la forme
+  /// `serveur|identifiant`.
+  ///
+  /// Sans cette liste, le réapprovisionnement automatique reprendrait au tour
+  /// suivant exactement l'épisode qu'on vient de supprimer pour faire de la
+  /// place — et la place ne se ferait jamais. Un effacement est une réponse à
+  /// « celui-ci, non », et elle survit au redémarrage : c'est le lendemain,
+  /// disque plein, qu'elle compte le plus.
+  ///
+  /// Redemander le média explicitement annule la réponse.
+  final Set<String> _declined = {};
+
+  String _declineKey(int mediaId, String serverUrl) =>
+      '${serverUrl.isEmpty ? _scope : serverUrl}|$mediaId';
+
+  /// Ce média a-t-il été écarté à la main ?
+  bool isDeclined(int mediaId) => _declined.contains(_declineKey(mediaId, _scope));
+
   /// Le manifeste n'est pas réécrit à chaque paquet reçu : on marque, et une
   /// écriture groupée suit.
   bool _manifestDirty = false;
@@ -180,6 +217,11 @@ class DownloadManager extends ChangeNotifier {
     if (file == null || !await file.exists()) return;
     try {
       final raw = jsonDecode(await file.readAsString());
+      if (raw is Map) {
+        for (final key in (raw['declined'] as List?) ?? const []) {
+          if (key is String) _declined.add(key);
+        }
+      }
       final items = (raw is Map ? raw['items'] : raw) as List? ?? const [];
       for (final item in items) {
         final entry = OfflineDownload.fromJson(item as Map<String, dynamic>);
@@ -291,6 +333,7 @@ class DownloadManager extends ChangeNotifier {
     try {
       final payload = jsonEncode({
         'version': 1,
+        if (_declined.isNotEmpty) 'declined': _declined.toList()..sort(),
         'items': [
           for (final entry in _entries.values) _stamped(entry).toJson(),
           // Ce qui appartient aux autres serveurs est réécrit intact : le
@@ -370,6 +413,30 @@ class DownloadManager extends ChangeNotifier {
   OfflineDownload? entryFor(int mediaId) => _entries[mediaId];
 
   bool isDownloaded(int mediaId) => _entries[mediaId]?.isCompleted ?? false;
+
+  /// Tout ce qui est sur l'appareil pour cette série, dans l'ordre de lecture.
+  ///
+  /// C'est la vue dont le réapprovisionnement automatique se sert : ce qu'il
+  /// reste d'avance, et jusqu'où on est allé, se lisent tous les deux là-dedans.
+  List<OfflineDownload> entriesForShow(int showId) {
+    final list =
+        _entries.values.where((e) => e.showId == showId).toList()
+          ..sort((a, b) {
+            final season = (a.seasonNumber ?? 0).compareTo(b.seasonNumber ?? 0);
+            if (season != 0) return season;
+            return (a.episodeNumber ?? 0).compareTo(b.episodeNumber ?? 0);
+          });
+    return list;
+  }
+
+  /// Les séries dont au moins un épisode est sur l'appareil.
+  Set<int> get downloadedShowIds => {
+        for (final entry in _entries.values)
+          if (entry.type == MediaType.episode &&
+              entry.showId != null &&
+              entry.showId! > 0)
+            entry.showId!,
+      };
 
   /// Chemin du fichier local, ou null si le média n'est pas (entièrement) là.
   ///
@@ -494,15 +561,81 @@ class DownloadManager extends ChangeNotifier {
     int? seasonNumber,
     String? showPosterUrl,
   }) async {
+    final queued = await _enqueue(
+      item,
+      showTitle: showTitle,
+      showId: showId,
+      seasonNumber: seasonNumber,
+      showPosterUrl: showPosterUrl,
+    );
+    if (!queued) return;
+    _markDirty();
+    notifyListeners();
+    unawaited(_pump());
+  }
+
+  /// Met une fournée en file d'un coup — une saison, le reste d'une série, la
+  /// réserve d'avance. Renvoie le nombre d'entrées réellement ajoutées.
+  ///
+  /// La différence avec [download] appelé en boucle n'est pas cosmétique : une
+  /// saison de vingt épisodes produirait vingt notifications, vingt écritures
+  /// de manifeste et vingt démarrages de file, chacun recalculant l'ordre de
+  /// la file entière. Ici, une seule de chaque, à la fin.
+  Future<int> downloadAll(
+    Iterable<HomeMediaItem> items, {
+    String? showTitle,
+    int? showId,
+    int? seasonNumber,
+    String? showPosterUrl,
+    bool automatic = false,
+  }) async {
+    var queued = 0;
+    for (final item in items) {
+      final added = await _enqueue(
+        item,
+        automatic: automatic,
+        showTitle: showTitle,
+        showId: showId,
+        // Un lot peut traverser plusieurs saisons (la réserve d'avance passe la
+        // fin d'une saison) : le numéro de l'épisode lui-même l'emporte sur
+        // celui du lot, qui n'est qu'un repli.
+        seasonNumber: item.media.effectiveSeasonNumber ?? seasonNumber,
+        showPosterUrl: showPosterUrl,
+      );
+      if (added) queued++;
+    }
+    if (queued == 0) return 0;
+    _markDirty();
+    notifyListeners();
+    unawaited(_pump());
+    return queued;
+  }
+
+  /// Écrit l'entrée dans la carte, sans rien annoncer ni rien démarrer.
+  /// Renvoie vrai quand quelque chose de neuf est entré en file.
+  Future<bool> _enqueue(
+    HomeMediaItem item, {
+    String? showTitle,
+    int? showId,
+    int? seasonNumber,
+    String? showPosterUrl,
+
+    /// Vrai quand la demande vient de la réserve automatique et non d'un geste :
+    /// elle s'incline alors devant un effacement précédent.
+    bool automatic = false,
+  }) async {
     final media = item.media;
     if (media.type != MediaType.movie && media.type != MediaType.episode) {
-      return;
+      return false;
     }
+    if (!item.isAvailable) return false;
+    if (automatic && isDeclined(media.id)) return false;
+    _declined.remove(_declineKey(media.id, _scope));
     final existing = _entries[media.id];
     if (existing != null && existing.status != DownloadStatus.failed) {
       // Déjà là, en cours, ou en pause — reprendre est le seul sens possible.
       if (existing.status == DownloadStatus.paused) await resume(media.id);
-      return;
+      return false;
     }
 
     final entry = OfflineDownload(
@@ -531,9 +664,7 @@ class DownloadManager extends ChangeNotifier {
     );
 
     _entries[media.id] = entry;
-    _markDirty();
-    notifyListeners();
-    unawaited(_pump());
+    return true;
   }
 
   /// Extension du fichier d'origine. Le conteneur compte : mpv comme ExoPlayer
@@ -573,6 +704,12 @@ class DownloadManager extends ChangeNotifier {
   Future<void> delete(int mediaId) async {
     _cancelTokens.remove(mediaId)?.cancel('deleted');
     final entry = _entries.remove(mediaId);
+    // Effacer un épisode déjà vu ne dit rien de plus que « c'est vu » ; effacer
+    // un épisode qu'on n'a pas regardé dit « pas celui-là », et c'est ce qui
+    // doit tenir la réserve automatique à distance.
+    if (entry != null && !entry.isFinished) {
+      _declined.add(_declineKey(mediaId, entry.serverUrl));
+    }
     if (entry != null && entry.needsSync) {
       unawaited(_pushProgress(entry));
     }
@@ -635,6 +772,15 @@ class DownloadManager extends ChangeNotifier {
             .toList()
           ..sort((a, b) => a.addedAt.compareTo(b.addedAt));
         if (next.isEmpty) return;
+        // La question est posée ici, entre deux médias, et pas à la mise en
+        // file : ce qui a été demandé reste demandé, et part dès que le réseau
+        // s'y prête. Passer en 4G au milieu d'une saison arrête la suite sans
+        // rien perdre de ce qui était prévu.
+        if (!_mayTransfer()) {
+          _setHeld(true);
+          return;
+        }
+        _setHeld(false);
         final ok = await _run(next.first);
         // Un échec réseau vide la file d'un coup : insister média après média
         // ne ferait qu'aligner les timeouts. La reprise viendra du retour du
@@ -645,6 +791,24 @@ class DownloadManager extends ChangeNotifier {
       _pumping = false;
       await _saveManifest();
     }
+  }
+
+  bool _mayTransfer() {
+    final gate = transferGate;
+    return gate == null || gate();
+  }
+
+  void _setHeld(bool held) {
+    if (_heldForNetwork == held) return;
+    _heldForNetwork = held;
+    notifyListeners();
+  }
+
+  /// Le réseau a changé, ou l'utilisateur vient d'autoriser celui-ci : ce qui
+  /// attendait repart.
+  void onNetworkChanged() {
+    if (_heldForNetwork && _mayTransfer()) _setHeld(false);
+    unawaited(_pump());
   }
 
   /// Rapatrie un média. Renvoie false quand l'échec vient du réseau, ce qui

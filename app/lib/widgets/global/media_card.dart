@@ -6,10 +6,15 @@ import '../../theme/app_colors.dart';
 import '../../utils/format.dart';
 import '../../utils/poster_url.dart';
 import 'poster_card.dart';
+import 'watch_badge.dart';
 
 class MediaCard extends StatelessWidget {
   final Media media;
   final double? progress;
+
+  /// Film déjà vu — la pastille verte. Ignoré pour les séries, qui déduisent la
+  /// leur du décompte d'épisodes porté par [media].
+  final bool watched;
   final VoidCallback onTap;
   final bool compact;
 
@@ -20,6 +25,7 @@ class MediaCard extends StatelessWidget {
     super.key,
     required this.media,
     this.progress,
+    this.watched = false,
     required this.onTap,
     this.compact = false,
     this.autofocus = false,
@@ -34,6 +40,7 @@ class MediaCard extends StatelessWidget {
         media.type == MediaType.season ||
         media.type == MediaType.episode;
     final inProgress = progress != null && progress! > 0 && progress! < 0.99;
+    final badge = WatchBadge.forMedia(media, watched: watched);
 
     return PosterCard(
       posterUrl: url,
@@ -44,6 +51,9 @@ class MediaCard extends StatelessWidget {
       autofocus: autofocus,
       showPlayOnHover: true,
       placeholderIcon: isShow ? Icons.tv_rounded : Icons.movie_rounded,
+      overlays: [
+        if (badge != null) Positioned(top: 8, right: 8, child: badge),
+      ],
       footerOverlay: inProgress
           ? LinearProgressIndicator(
               value: progress,

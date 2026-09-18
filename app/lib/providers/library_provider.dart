@@ -165,11 +165,13 @@ class LibraryProvider extends ChangeNotifier {
   }
 
   // Load TV shows list
-  Future<void> loadShows() async {
+  Future<void> loadShows({bool silent = false}) async {
     final request = ++_showsRequest;
-    _isLoadingShows = true;
-    _errorMessage = null;
-    notifyListeners();
+    if (!silent) {
+      _isLoadingShows = true;
+      _errorMessage = null;
+      notifyListeners();
+    }
 
     try {
       final result = await apiClient.getShows();
@@ -284,6 +286,16 @@ class LibraryProvider extends ChangeNotifier {
     if (posterUrl.startsWith('/')) return posterUrl;
     final marker = RegExp(r'image\.tmdb\.org/t/p/[^/]+(/.+)$');
     return marker.firstMatch(posterUrl)?.group(1);
+  }
+
+  /// Recharge le catalogue sans vider l'écran : les pastilles « vu / en cours »
+  /// viennent du serveur, et une série finie doit se marquer au retour du
+  /// lecteur, pas au prochain lancement de l'application.
+  Future<void> refreshCatalogSilently() async {
+    await Future.wait([
+      loadMovies(silent: true),
+      loadShows(silent: true),
+    ]);
   }
 
   Future<bool> setMediaWatched(int mediaId, bool watched) async {

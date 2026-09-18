@@ -91,6 +91,8 @@ class SearchResultsScreen extends StatelessWidget {
                             progress: media.type == MediaType.movie
                                 ? lp.movieProgressFor(media.id)
                                 : null,
+                            watched: media.type == MediaType.movie &&
+                                (lp.movieItemFor(media.id)?.isFinished ?? false),
                             onTap: () => _openMedia(context, media, lp),
                           );
                         },

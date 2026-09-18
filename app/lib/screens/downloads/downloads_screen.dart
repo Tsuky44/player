@@ -14,6 +14,7 @@ import '../../utils/responsive.dart';
 import '../../widgets/global/empty_state.dart';
 import '../../widgets/global/local_file_image.dart';
 import '../../widgets/global/media_download_button.dart';
+import '../../widgets/global/metered_download_dialog.dart';
 import '../player/player_screen.dart';
 
 /// Ce qui est sur l'appareil, et rien d'autre.
@@ -59,6 +60,8 @@ class DownloadsScreen extends StatelessWidget {
                 watchedCount: watchedCount,
                 offline: reachability.isOffline,
                 pendingSync: manager.pendingSyncCount,
+                heldForNetwork: manager.isHeldForNetwork,
+                queuedCount: manager.queuedCount,
               ),
             ),
           ),
@@ -288,6 +291,10 @@ class _Header extends StatelessWidget {
   final bool offline;
   final int pendingSync;
 
+  /// La file est pleine, mais le réseau du moment se paie à l'octet.
+  final bool heldForNetwork;
+  final int queuedCount;
+
   const _Header({
     required this.compact,
     required this.itemCount,
@@ -295,6 +302,8 @@ class _Header extends StatelessWidget {
     required this.watchedCount,
     required this.offline,
     required this.pendingSync,
+    required this.heldForNetwork,
+    required this.queuedCount,
   });
 
   @override
@@ -334,6 +343,22 @@ class _Header extends StatelessWidget {
             style: const TextStyle(
               color: AppColors.textMuted,
               fontSize: 13,
+            ),
+          ),
+        ],
+        if (heldForNetwork) ...[
+          const SizedBox(height: 16),
+          _Banner(
+            icon: Icons.wifi_off_rounded,
+            color: AppColors.warning,
+            text: queuedCount > 1
+                ? '$queuedCount téléchargements attendent le Wi-Fi : le réseau '
+                    'actuel se paie à l’octet.'
+                : 'Un téléchargement attend le Wi-Fi : le réseau actuel se paie '
+                    'à l’octet.',
+            action: TextButton(
+              onPressed: () => allowMeteredDownloadsNow(context),
+              child: const Text('Quand même'),
             ),
           ),
         ],
@@ -397,7 +422,16 @@ class _Banner extends StatelessWidget {
   final Color color;
   final String text;
 
-  const _Banner({required this.icon, required this.color, required this.text});
+  /// La sortie du bandeau, quand il y en a une — « télécharger quand même »
+  /// n'a de sens qu'à côté de la phrase qui explique pourquoi rien ne descend.
+  final Widget? action;
+
+  const _Banner({
+    required this.icon,
+    required this.color,
+    required this.text,
+    this.action,
+  });
 
   @override
   Widget build(BuildContext context) {
@@ -422,6 +456,10 @@ class _Banner extends StatelessWidget {
               ),
             ),
           ),
+          if (action != null) ...[
+            const SizedBox(width: 8),
+            action!,
+          ],
         ],
       ),
     );

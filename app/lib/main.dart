@@ -14,7 +14,10 @@ import 'services/api_client.dart';
 import 'services/app_image_cache.dart';
 import 'services/client_identity.dart';
 import 'services/client_log.dart';
+import 'services/auto_download.dart';
 import 'services/download_manager.dart';
+import 'services/download_preferences.dart';
+import 'services/network_status.dart';
 import 'services/server_reachability.dart';
 import 'providers/auth_provider.dart';
 import 'providers/home_provider.dart';
@@ -37,6 +40,7 @@ import 'services/picture_in_picture.dart';
 import 'screens/player/hardware_decoding.dart';
 import 'screens/player/playback_profile.dart';
 import 'services/playback_capabilities.dart';
+import 'services/playback_preferences_storage.dart';
 import 'screens/player/player_engine.dart';
 import 'screens/shell/main_shell.dart';
 import 'theme/app_colors.dart';
@@ -154,6 +158,12 @@ void main() async {
     PlaybackCapabilitiesResolver.initialize(),
     HardwareDecoding.initialize(),
     DisplayFrameRate.initialize(),
+    // Les réglages de lecture que le player consulte sans attendre — le saut
+    // d'intro automatique — chargés une fois pour toutes.
+    PlaybackPreferencesStorage.initialize(),
+    // Ce que cet appareil rapatrie tout seul, et sur quel réseau il a le droit
+    // de le faire. Lus une fois : le premier tour de file les consulte.
+    DownloadPreferences.instance.initialize(),
     // Whether this device can carry on with the film in a corner of the home
     // screen. Asked once: the answer is a property of the hardware.
     PictureInPicture.initialize(),
@@ -197,6 +207,36 @@ void main() async {
   final authProvider = AuthProvider(apiClient);
   final reachability = ServerReachability(apiClient);
 
+  // Sur quoi passent les octets. Une question distincte de celle que pose
+  // [ServerReachability] : un NAS joignable en 4G est joignable, et rapatrier
+  // une saison dessus vide un forfait.
+  final network = NetworkStatus();
+  final downloadPreferences = DownloadPreferences.instance;
+
+  // Le seul endroit où le réseau et le réglage se croisent. Le magasin hors
+  // ligne pose la question à chaque média de la file, sans rien savoir des deux.
+  downloads.transferGate = () =>
+      !network.isMetered || downloadPreferences.allowsMeteredNow;
+
+  final autoDownloads = AutoDownloadService(
+    manager: downloads,
+    api: apiClient,
+    preferences: downloadPreferences,
+    isOnline: () => reachability.isOnline,
+  );
+  autoDownloads.start();
+
+  // Le retour d'un réseau libre est le rendez-vous de ce qui attendait : la
+  // réserve prévue dans le métro descend en rentrant, sans rien rouvrir.
+  network.addUnmeteredListener(() {
+    downloads.onNetworkChanged();
+    autoDownloads.refresh();
+  });
+  // Un changement de réseau dans l'autre sens compte aussi : passer en 4G au
+  // milieu d'une saison doit arrêter la suite, pas la laisser filer.
+  network.addListener(downloads.onNetworkChanged);
+  unawaited(network.start());
+
   // Un même appareil peut tenir plusieurs serveurs (ADR-0013). Ce qui est en
   // mémoire appartient à celui qu'on quitte — identifiants de médias compris,
   // qui sont propres à un serveur — donc tout est vidé avant que l'autre
@@ -211,6 +251,9 @@ void main() async {
     libraryProvider.reset();
     mediaRequestsProvider.reset();
     unawaited(downloads.onServerChanged());
+    // Les plans de réserve sont indexés par identifiant de série, et un
+    // identifiant ne veut rien dire sur un autre serveur : on repart de zéro.
+    autoDownloads.refresh();
   };
 
   // Le retour du serveur est le seul moment qui compte pour les deux : la
@@ -219,6 +262,10 @@ void main() async {
   reachability.addRestoredListener(() {
     unawaited(authProvider.reconnect());
     unawaited(downloads.onServerReachable());
+    // Sans serveur il n'y a pas de « prochain épisode » à demander : ce qui n'a
+    // pas pu être planifié hors ligne se planifie maintenant.
+    autoDownloads.refresh();
+    unawaited(network.refresh());
     // Une demande d'accès partie ailleurs a pu être acceptée pendant qu'on
     // était hors ligne : le serveur retrouvé est le bon moment pour aller
     // chercher le verdict.
@@ -236,6 +283,9 @@ void main() async {
         Provider<ApiClient>.value(value: apiClient),
         ChangeNotifierProvider<AuthProvider>.value(value: authProvider),
         ChangeNotifierProvider<DownloadManager>.value(value: downloads),
+        ChangeNotifierProvider<DownloadPreferences>.value(
+            value: downloadPreferences),
+        ChangeNotifierProvider<NetworkStatus>.value(value: network),
         ChangeNotifierProvider<ServerReachability>.value(value: reachability),
         ChangeNotifierProvider<HomeProvider>.value(value: homeProvider),
         ChangeNotifierProvider<LibraryProvider>.value(value: libraryProvider),

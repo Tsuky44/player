@@ -26,6 +26,13 @@ dependencies:
   path_provider: ^2.1.4
   path: ^1.9.0
 
+  # De quel réseau l'appareil dispose — Wi-Fi, Ethernet, données mobiles, rien.
+  # Sert au seul arbitrage des téléchargements : un forfait ne paie pas un
+  # épisode de 4 Go sans qu'on l'ait demandé. La joignabilité du serveur, elle,
+  # continue de se mesurer sur `GET /api/ping` (ADR-0010 §6) — avoir du réseau
+  # n'est pas avoir *ce* serveur.
+  connectivity_plus: ^7.3.1
+
   # UI & Media Kit Packages
   cached_network_image: ^4.0.0
   # Already pulled in by cached_network_image; declared so the app can widen the

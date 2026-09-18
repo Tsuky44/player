@@ -5,6 +5,39 @@ import '../models/models.dart';
 /// Persisted playback preferences (default audio language, etc.).
 class PlaybackPreferencesStorage {
   static const String _defaultAudioLangKey = 'playback_default_audio_lang';
+  static const String _autoSkipIntroKey = 'playback_auto_skip_intro';
+
+  /// Whether an intro skips itself when the skip button has been up for a few
+  /// seconds without anyone touching anything.
+  ///
+  /// Off by default, unlike the next episode: advancing at the end of an
+  /// episode continues what was asked for, while jumping over an intro skips
+  /// part of the thing being watched — a recap is sometimes the point. Anyone
+  /// who never wants to see one turns this on once.
+  static bool _autoSkipIntro = false;
+
+  static bool get autoSkipIntro => _autoSkipIntro;
+
+  /// Reads the cached preferences the player needs synchronously. Call once at
+  /// startup, before a media opens.
+  static Future<void> initialize() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      _autoSkipIntro = prefs.getBool(_autoSkipIntroKey) ?? false;
+    } catch (_) {
+      _autoSkipIntro = false;
+    }
+  }
+
+  static Future<void> setAutoSkipIntro(bool value) async {
+    _autoSkipIntro = value;
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setBool(_autoSkipIntroKey, value);
+    } catch (_) {
+      // A preference that could not be stored still applies to this session.
+    }
+  }
 
   /// Two-letter ISO code (e.g. "fr"), or null for file default track.
   Future<String?> loadDefaultAudioLang() async {

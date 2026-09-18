@@ -9,6 +9,7 @@ import '../../models/models.dart';
 import '../../models/player_layout.dart';
 import '../../providers/auth_provider.dart';
 import '../../providers/home_provider.dart';
+import '../../providers/library_provider.dart';
 import '../../providers/player_layout_provider.dart';
 import '../../navigation/search_route_observer.dart';
 import '../../services/api_client.dart';
@@ -623,6 +624,7 @@ class _PlayerScreenState extends State<PlayerScreen> {
         initialTimestamps: initialTimestamps,
         session: _playerController.session,
         onAutoPlay: _goToNextEpisode,
+        onAutoSkipIntro: _autoSkipIntro,
       );
       _episodeNav!.addListener(_episodeNavListener!);
       unawaited(_episodeNav!.load());
@@ -980,6 +982,9 @@ class _PlayerScreenState extends State<PlayerScreen> {
 
   void _handleVideoTap({bool togglePlayback = false}) {
     _keyboardFocusNode.requestFocus();
+    // A finger on the picture counts as being there, exactly like a mouse move:
+    // no countdown gets to act on a player someone is holding.
+    _episodeNav?.onUserActivity();
 
     // Touch: one rule for all three zones, so the middle of the screen is not
     // a different player from its edges — and that rule is only ever about the
@@ -1013,6 +1018,16 @@ class _PlayerScreenState extends State<PlayerScreen> {
 
   /// A window to move: see [_startWindowDrag].
   bool get _windowDragEnabled => AppPlatform.isDesktop;
+
+  /// A double-click anywhere on the picture opens and closes full screen,
+  /// instead of moving the film ten seconds.
+  ///
+  /// Only where there is a window to enlarge. On that kind of screen the
+  /// double-click already means "take the whole display" in every other
+  /// player, and the ±10 s jump has buttons a pointer can aim at. A thumb
+  /// cannot aim, which is why a touchscreen keeps the double-tap that seeks:
+  /// there the side zones *are* the buttons.
+  bool get _doubleTapTogglesFullscreen => AppPlatform.isDesktop;
 
   /// Phones and tablets, but not a television: a remote drives the chrome with
   /// its own keys and never produces a tap.
@@ -1072,7 +1087,7 @@ class _PlayerScreenState extends State<PlayerScreen> {
   DateTime? _lastHoverRearm;
 
   void _handlePointerHover() {
-    _episodeNav?.onMouseMove();
+    _episodeNav?.onUserActivity();
     if (_showControls) {
       final now = DateTime.now();
       final last = _lastHoverRearm;
@@ -1090,6 +1105,10 @@ class _PlayerScreenState extends State<PlayerScreen> {
   bool get _endCardVisible => _episodeNav?.showEndCard ?? false;
 
   void _showControlsTransient() {
+    // Everything that raises the chrome does so because someone asked for it —
+    // a seek, the volume, the remote entering the control bar. A countdown
+    // started for an empty room has no business surviving that.
+    _episodeNav?.onUserActivity();
     // The end card owns the screen: waking the HUD on every mouse move would
     // stack a progress bar and a play button over it.
     if (_endCardVisible) return;
@@ -1295,6 +1314,11 @@ class _PlayerScreenState extends State<PlayerScreen> {
     if (event is! KeyDownEvent && event is! KeyRepeatEvent) {
       return KeyEventResult.ignored;
     }
+
+    // Whatever the key turns out to do — even nothing at all — pressing one
+    // means someone is watching, so the intro and the next episode stop
+    // counting down.
+    _episodeNav?.onUserActivity();
 
     final mediaResult = _mediaKeys.handleKeyboardEvent(event);
     if (mediaResult != null) return mediaResult;
@@ -1527,8 +1551,10 @@ class _PlayerScreenState extends State<PlayerScreen> {
         durSeconds > 0 && (posSeconds / durSeconds) * 100 >= 90.0;
 
     HomeProvider? homeProvider;
+    LibraryProvider? libraryProvider;
     if (mounted) {
       homeProvider = Provider.of<HomeProvider>(context, listen: false);
+      libraryProvider = Provider.of<LibraryProvider>(context, listen: false);
       if (posSeconds > 0) {
         homeProvider.updateContinueWatchingProgress(
           mediaId: actualMedia.id,
@@ -1549,6 +1575,10 @@ class _PlayerScreenState extends State<PlayerScreen> {
     }
 
     homeProvider?.loadHome(silent: true);
+    // Les pastilles « vu / en cours » de la bibliothèque sont calculées côté
+    // serveur : sans ce rafraîchissement, l'épisode qu'on vient de finir n'y
+    // compterait qu'au prochain démarrage.
+    unawaited(libraryProvider?.refreshCatalogSilently() ?? Future.value());
 
     if (popAfter && mounted) Navigator.of(context).pop();
   }
@@ -2027,6 +2057,17 @@ class _PlayerScreenState extends State<PlayerScreen> {
     _showSeekHint(seconds);
   }
 
+  /// A double-click on the picture, on a desktop: full screen on, full screen
+  /// off — see [_doubleTapTogglesFullscreen].
+  ///
+  /// The focus request is the same one every tap path makes: the keyboard
+  /// shortcuts are on this screen's focus node, and a click that leaves it
+  /// behind would take space and arrows with it.
+  void _handleDoubleTapFullscreen() {
+    _keyboardFocusNode.requestFocus();
+    unawaited(_toggleFullscreen());
+  }
+
   /// A single tap on a side zone: the same as a tap in the middle, so play and
   /// pause do not depend on aiming for the centre of the picture.
   ///
@@ -2077,6 +2118,16 @@ class _PlayerScreenState extends State<PlayerScreen> {
         _videoFit == BoxFit.contain ? BoxFit.cover : BoxFit.contain;
     _updateVideoFit(next);
     _showControlsTransient();
+  }
+
+  /// The intro skipping itself: the countdown ran out with nobody touching
+  /// anything. The controller has already put the button away, so all that is
+  /// left is the seek — done quietly, without waking the chrome, since there is
+  /// by definition nobody in front of it.
+  Future<void> _autoSkipIntro() async {
+    final nav = _episodeNav;
+    if (nav == null || _isDisposing || !mounted) return;
+    await _playerController.seekToAbsoluteSeconds(nav.introSkipTarget);
   }
 
   Future<void> _skipIntroFromControl() async {
@@ -2507,7 +2558,9 @@ class _PlayerScreenState extends State<PlayerScreen> {
                           flex: 3,
                           child: GestureDetector(
                             behavior: HitTestBehavior.opaque,
-                            onDoubleTap: () => _handleDoubleTapSeek(-10),
+                            onDoubleTap: _doubleTapTogglesFullscreen
+                                ? _handleDoubleTapFullscreen
+                                : () => _handleDoubleTapSeek(-10),
                             onTap: () => _handleSideZoneTap(-10),
                             onPanStart: _windowDragEnabled
                                 ? (_) => _startWindowDrag()
@@ -2520,6 +2573,12 @@ class _PlayerScreenState extends State<PlayerScreen> {
                           child: GestureDetector(
                             behavior: HitTestBehavior.opaque,
                             onTap: () => _handleVideoTap(togglePlayback: true),
+                            // The middle never had a double-tap: there is no
+                            // ±10 s zone at the centre of the picture. Full
+                            // screen, though, is taken from anywhere.
+                            onDoubleTap: _doubleTapTogglesFullscreen
+                                ? _handleDoubleTapFullscreen
+                                : null,
                             onPanStart: _windowDragEnabled
                                 ? (_) => _startWindowDrag()
                                 : null,
@@ -2530,7 +2589,9 @@ class _PlayerScreenState extends State<PlayerScreen> {
                           flex: 3,
                           child: GestureDetector(
                             behavior: HitTestBehavior.opaque,
-                            onDoubleTap: () => _handleDoubleTapSeek(10),
+                            onDoubleTap: _doubleTapTogglesFullscreen
+                                ? _handleDoubleTapFullscreen
+                                : () => _handleDoubleTapSeek(10),
                             onTap: () => _handleSideZoneTap(10),
                             onPanStart: _windowDragEnabled
                                 ? (_) => _startWindowDrag()
@@ -2775,6 +2836,9 @@ class _PlayerScreenState extends State<PlayerScreen> {
                     !(useModular &&
                         chrome.config.hasControl(PlayerControlType.skipIntro)))
                   SkipIntroButton(
+                    autoSkipActive: _episodeNav!.introAutoSkipActive,
+                    frozen: _episodeNav!.introAutoSkipFrozen,
+                    countdownSeconds: _episodeNav!.introCountdownSeconds,
                     onSkip: () async {
                       final end = _episodeNav!.introSkipTarget;
                       await _playerController.seekToAbsoluteSeconds(end);

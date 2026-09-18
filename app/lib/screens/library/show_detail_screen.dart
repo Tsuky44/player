@@ -15,6 +15,7 @@ import '../../utils/responsive.dart';
 import '../../widgets/global/episode_tile.dart';
 import '../../widgets/global/media_detail_widgets.dart';
 import '../../widgets/global/metadata_fix_sheet.dart';
+import '../../widgets/global/season_download_button.dart';
 import '../player/player_screen.dart';
 import '../requests/widgets/season_selector_dialog.dart';
 import '../../navigation/search_route_observer.dart';
@@ -300,6 +301,9 @@ class _ShowDetailScreenState extends State<ShowDetailScreen> {
     try {
       await library.setMediaWatched(episode.media.id, watched);
       await home.loadHome(silent: true);
+      // La pastille de la grille des séries compte les épisodes vus côté
+      // serveur : elle ne bouge que si la liste est relue.
+      await library.loadShows(silent: true);
       if (episode.media.id == _resumeEpisode?.media.id) {
         setState(() => _resumeEpisode = library.episodes.firstWhere(
               (e) => e.media.id == episode.media.id,
@@ -734,13 +738,26 @@ class _ShowDetailScreenState extends State<ShowDetailScreen> {
                   ),
                   if (totalCount > 0) ...[
                     const SizedBox(width: 12),
-                    Text(
-                      '$availableCount/$totalCount disponibles',
-                      style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                            color: AppColors.textMuted,
-                          ),
+                    Flexible(
+                      child: Text(
+                        '$availableCount/$totalCount disponibles',
+                        overflow: TextOverflow.ellipsis,
+                        style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                              color: AppColors.textMuted,
+                            ),
+                      ),
                     ),
                   ],
+                  const Spacer(),
+                  // Le geste qu'on fait avant de partir : toute la saison d'un
+                  // coup, plutôt que vingt appuis sur vingt lignes.
+                  SeasonDownloadButton(
+                    episodes: lp.episodes,
+                    showTitle: _show.title,
+                    showId: _show.id,
+                    showPosterUrl: _show.posterUrl,
+                    seasonNumber: _playerSeasonNumber,
+                  ),
                 ],
               ),
             ),

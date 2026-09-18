@@ -163,3 +163,121 @@ func TestHomeDiscoverySkipsArtworkless(t *testing.T) {
 		t.Fatalf("RecentMovies = %d, want 4 (the recent row has no artwork filter)", len(resp.RecentMovies))
 	}
 }
+
+// seedShow inserts a series whose show row, and whose episodes, were indexed on
+// the given days (as offsets from 2020-01-01). An empty episodeDays leaves the
+// series without a single file.
+func seedShow(t *testing.T, title string, tmdbID, showDay int, episodeDays ...int) {
+	t.Helper()
+	res, err := database.DB.Exec(`
+		INSERT INTO medias (type, title, tmdb_id, poster_url, created_at)
+		VALUES ('show', ?, ?, '/p.jpg', datetime('2020-01-01', '+' || ? || ' days'))`,
+		title, tmdbID, showDay)
+	if err != nil {
+		t.Fatalf("insert show %q: %v", title, err)
+	}
+	showID, _ := res.LastInsertId()
+
+	res, err = database.DB.Exec(`
+		INSERT INTO medias (type, title, parent_id, season_number, created_at)
+		VALUES ('season', 'Saison 1', ?, 1, datetime('2020-01-01', '+' || ? || ' days'))`,
+		showID, showDay)
+	if err != nil {
+		t.Fatalf("insert season of %q: %v", title, err)
+	}
+	seasonID, _ := res.LastInsertId()
+
+	for i, day := range episodeDays {
+		_, err = database.DB.Exec(`
+			INSERT INTO medias (type, title, file_path, duration, parent_id, season_number, episode_number, created_at)
+			VALUES ('episode', ?, ?, 2400, ?, 1, ?, datetime('2020-01-01', '+' || ? || ' days'))`,
+			fmt.Sprintf("%s S01E%02d", title, i+1),
+			fmt.Sprintf("%s.S01E%02d.mkv", title, i+1),
+			seasonID, i+1, day)
+		if err != nil {
+			t.Fatalf("insert episode of %q: %v", title, err)
+		}
+	}
+}
+
+func showTitles(shows []models.Media) []string {
+	titles := make([]string, 0, len(shows))
+	for _, s := range shows {
+		titles = append(titles, s.Title)
+	}
+	return titles
+}
+
+// TestHomeRecentShowsFollowNewFiles is the row's whole point: a series that was
+// added long ago but just received episodes is news, and the show row's own
+// created_at cannot say so.
+func TestHomeRecentShowsFollowNewFiles(t *testing.T) {
+	cleanup := setupContinueWatchingTestDB(t)
+	defer cleanup()
+	// Lioness comes from the fixture, with an episode indexed "now"; the days
+	// below stay in 2020 so it cannot jump between the series under test.
+	seedShow(t, "Ancienne avec saison neuve", 2001, 10, 11, 12, 900)
+	seedShow(t, "Ajoutee recemment", 2002, 800, 801)
+	seedShow(t, "Ancienne et figee", 2003, 20, 21)
+
+	resp := decodeHome(t)
+
+	got := showTitles(resp.RecentShows)
+	want := []string{"Lioness", "Ancienne avec saison neuve", "Ajoutee recemment", "Ancienne et figee"}
+	if len(got) != len(want) {
+		t.Fatalf("RecentShows = %v, want %v", got, want)
+	}
+	for i := range want {
+		if got[i] != want[i] {
+			t.Fatalf("RecentShows = %v, want %v", got, want)
+		}
+	}
+}
+
+// TestHomeRecentShowsOrderIsStable guards the display dedupe, which used to
+// iterate a Go map and hand the home screen a different order on every load.
+func TestHomeRecentShowsOrderIsStable(t *testing.T) {
+	cleanup := setupContinueWatchingTestDB(t)
+	defer cleanup()
+	for i := 0; i < 12; i++ {
+		seedShow(t, fmt.Sprintf("Serie %02d", i), 3000+i, i, i)
+	}
+
+	first := showTitles(decodeHome(t).RecentShows)
+	for attempt := 0; attempt < 5; attempt++ {
+		got := showTitles(decodeHome(t).RecentShows)
+		for i := range first {
+			if got[i] != first[i] {
+				t.Fatalf("RecentShows reordered between requests: %v then %v", first, got)
+			}
+		}
+	}
+	// Newest first, the fixture's Lioness ahead of every 2020 series.
+	want := []string{"Lioness", "Serie 11", "Serie 10", "Serie 09"}
+	for i, title := range want {
+		if first[i] != title {
+			t.Fatalf("RecentShows = %v, want it to start with %v", first, want)
+		}
+	}
+}
+
+// TestHomeRecentShowsKeepSeriesWithoutEpisodes covers the floor of the
+// ordering: a show row with no file falls back to its own created_at instead of
+// dropping out of the row.
+func TestHomeRecentShowsKeepSeriesWithoutEpisodes(t *testing.T) {
+	cleanup := setupContinueWatchingTestDB(t)
+	defer cleanup()
+	seedShow(t, "Sans episode", 4001, 500)
+	seedShow(t, "Avec episodes", 4002, 100, 101)
+
+	got := showTitles(decodeHome(t).RecentShows)
+	want := []string{"Lioness", "Sans episode", "Avec episodes"}
+	if len(got) != len(want) {
+		t.Fatalf("RecentShows = %v, want %v", got, want)
+	}
+	for i := range want {
+		if got[i] != want[i] {
+			t.Fatalf("RecentShows = %v, want %v", got, want)
+		}
+	}
+}
