@@ -4,6 +4,7 @@ import 'package:flutter/widgets.dart';
 import 'package:onyx_player_android/onyx_player_android.dart';
 
 import '../playback_profile.dart';
+import '../../../services/client_log.dart';
 import 'playback_session.dart';
 import 'subtitle_overlay.dart';
 
@@ -49,6 +50,14 @@ class ExoPlaybackSession implements PlaybackSession {
   final _tracks = StreamController<void>.broadcast();
   final _videoParams = StreamController<PlaybackVideoParams>.broadcast();
 
+  /// Les pannes, une fois chacune.
+  ///
+  /// ExoPlayer republie son erreur dans chaque instantané tant qu'elle tient :
+  /// sans ce filtre, une ouverture ratée en émettrait quatre par seconde, et le
+  /// repli en transcodage serait relancé à chaque fois.
+  final _failures = StreamController<PlaybackFailure>.broadcast();
+  PlaybackFailure? _lastFailure;
+
   Duration _lastPosition = Duration.zero;
   Duration _lastDuration = Duration.zero;
   bool _lastPlaying = false;
@@ -66,6 +75,7 @@ class ExoPlaybackSession implements PlaybackSession {
   /// l'habillage pour rien.
   void _onStatus(OnyxPlayerStatus status) {
     _status = status;
+    _reportFailure(status);
 
     final position = Duration(milliseconds: status.positionMs);
     if (position != _lastPosition) {
@@ -119,6 +129,31 @@ class ExoPlaybackSession implements PlaybackSession {
     if (!_sameLines(status.subtitleCues, cues.value)) {
       cues.value = List<String>.unmodifiable(status.subtitleCues);
     }
+  }
+
+  /// Traduit l'erreur du natif, et ne la dit qu'une fois.
+  ///
+  /// `errorKind` revient à null dès qu'ExoPlayer repart (voir
+  /// `onPlayerErrorChanged` dans PlayerHost.kt), ce qui réarme ce filtre : une
+  /// seconde panne après une reprise réussie est une vraie seconde panne.
+  void _reportFailure(OnyxPlayerStatus status) {
+    final kind = status.errorKind;
+    if (kind == null) {
+      _lastFailure = null;
+      return;
+    }
+    final failure = PlaybackFailure(
+      switch (kind) {
+        OnyxPlayerErrorKind.unsupported => PlaybackFailureKind.unsupported,
+        OnyxPlayerErrorKind.source => PlaybackFailureKind.source,
+        OnyxPlayerErrorKind.unknown => PlaybackFailureKind.unknown,
+      },
+      status.errorMessage ?? kind.name,
+    );
+    if (failure == _lastFailure) return;
+    _lastFailure = failure;
+    ClientLog.error('ExoPlayer: $failure');
+    _failures.add(failure);
   }
 
   @override
@@ -318,6 +353,9 @@ class ExoPlaybackSession implements PlaybackSession {
   @override
   Stream<PlaybackVideoParams> get videoParamChanges => _videoParams.stream;
 
+  @override
+  Stream<PlaybackFailure> get failures => _failures.stream;
+
   // --- Réglages ----------------------------------------------------------
 
   @override
@@ -402,6 +440,7 @@ class ExoPlaybackSession implements PlaybackSession {
     await _completions.close();
     await _tracks.close();
     await _videoParams.close();
+    await _failures.close();
     cues.dispose();
     subtitleInset.dispose();
     await (await _ready).release();

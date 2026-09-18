@@ -8,6 +8,7 @@ import '../models/app_download.dart';
 import '../models/device_pairing.dart';
 import '../models/server_account.dart';
 import 'client_identity.dart';
+import 'client_log.dart';
 import 'playback_capabilities.dart';
 import 'playback_access.dart';
 
@@ -181,7 +182,7 @@ class ApiClient {
       return handler.next(response);
     }, onError: (DioException e, handler) {
       // Global error logging
-      debugPrint(
+      ClientLog.error(
           "API Error [${e.requestOptions.method}] ${redactPlaybackDiagnostic(e.requestOptions.path)}: ${e.type.name} (${e.response?.statusCode ?? '-'})");
       switch (e.type) {
         case DioExceptionType.connectionError:
@@ -1652,6 +1653,33 @@ class ApiClient {
 
   Future<void> clearPlaybackHistory() async {
     await _dio.delete('/api/admin/history');
+  }
+
+  /// Envoie le journal de la lecture en cours.
+  ///
+  /// Le serveur le rattache à la séance ouverte pour cette session, donc
+  /// l'appel doit précéder le signal d'arrêt. Un serveur plus ancien n'a pas
+  /// cette route : l'appelant traite l'échec comme sans conséquence, une
+  /// lecture ne dépend pas de son journal.
+  Future<void> uploadPlaybackLogs(List<LogEntry> lines) async {
+    if (lines.isEmpty) return;
+    await _dio.post('/api/playing/logs', data: {
+      'lines': [
+        for (final line in lines)
+          {
+            'at': line.time.toUtc().toIso8601String(),
+            'level': line.level == LogLevel.error ? 'error' : 'info',
+            'message': line.message,
+          },
+      ],
+    });
+  }
+
+  /// Ce qu'une lecture passée a enregistré. Vide pour une lecture faite par un
+  /// client qui n'envoyait pas encore son journal.
+  Future<PlaybackLogs> getPlaybackLogs(int historyId) async {
+    final response = await _dio.get('/api/admin/history/$historyId/logs');
+    return PlaybackLogs.fromJson(response.data as Map<String, dynamic>);
   }
 
   /// Statistiques du serveur entier, ou d'un compte avec [userId]. Les jours

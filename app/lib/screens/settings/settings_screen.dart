@@ -16,6 +16,7 @@ import 'pages/emby_sync_page.dart';
 import 'pages/integrations_page.dart';
 import 'pages/library_page.dart';
 import 'pages/linked_servers_page.dart';
+import 'pages/logs_page.dart';
 import 'pages/playback_page.dart';
 import 'pages/servers_page.dart';
 import 'pages/stats_page.dart';
@@ -38,6 +39,7 @@ abstract final class SettingsSections {
   static const library = 'library';
   static const integrations = 'integrations';
   static const linkedServers = 'linked-servers';
+  static const logs = 'logs';
 }
 
 class _Category {
@@ -113,6 +115,14 @@ List<_Category> _categoriesFor(Permissions p) {
       hint: 'Installer Onyx sur un autre appareil',
       admin: false,
       builder: (_) => const AppsPage(),
+    ),
+    _Category(
+      id: SettingsSections.logs,
+      label: 'Journal',
+      icon: Icons.receipt_long_rounded,
+      hint: 'Ce que l’app enregistre, pour comprendre une erreur',
+      admin: false,
+      builder: (_) => const LogsPage(),
     ),
     if (anyAdmin)
       _Category(

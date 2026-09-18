@@ -7,10 +7,14 @@ import 'settings_ui.dart';
 
 /// Une lecture de l'historique : le titre, qui, où, quand et combien de temps.
 class HistoryTile extends StatelessWidget {
-  const HistoryTile(this.entry, {super.key, this.showUser = true});
+  const HistoryTile(this.entry, {super.key, this.showUser = true, this.onTap});
 
   final PlaybackHistoryEntry entry;
   final bool showUser;
+
+  /// Ouvre le journal de cette lecture. Null là où il n'y a rien à ouvrir —
+  /// le tableau de bord montre les mêmes lignes sans cette destination.
+  final VoidCallback? onTap;
 
   @override
   Widget build(BuildContext context) {
@@ -20,7 +24,7 @@ class HistoryTile extends StatelessWidget {
     final clock =
         '${entry.startedAt.hour.toString().padLeft(2, '0')}:${entry.startedAt.minute.toString().padLeft(2, '0')}';
 
-    return Padding(
+    final row = Padding(
       padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
       child: Row(
         children: [
@@ -110,5 +114,8 @@ class HistoryTile extends StatelessWidget {
         ],
       ),
     );
+
+    if (onTap == null) return row;
+    return InkWell(onTap: onTap, child: row);
   }
 }

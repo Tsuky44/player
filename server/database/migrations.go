@@ -457,6 +457,32 @@ var migrations = []migration{
 			);`,
 		},
 	},
+	{
+		id:   10,
+		name: "per-play client logs",
+		stmts: []string{
+			// Ce que le client a écrit pendant une lecture, rattaché à la ligne
+			// d'historique de cette lecture-là.
+			//
+			// Une seule ligne par lecture, remplacée en bloc : le client envoie
+			// la tranche entière à la fin plutôt que ligne à ligne, ce qui évite
+			// autant une accumulation à dédupliquer qu'un aller-retour toutes
+			// les quelques secondes depuis un téléphone.
+			//
+			// has_error est extrait à l'écriture parce que c'est ce qui décide
+			// si la ligne d'historique survit : une lecture de trois secondes
+			// est normalement effacée comme une ouverture accidentelle, sauf
+			// quand ces trois secondes sont précisément la panne qu'on cherche.
+			`CREATE TABLE IF NOT EXISTS playback_logs (
+				history_id INTEGER PRIMARY KEY,
+				has_error INTEGER NOT NULL DEFAULT 0,
+				line_count INTEGER NOT NULL DEFAULT 0,
+				body TEXT NOT NULL DEFAULT '',
+				updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+				FOREIGN KEY (history_id) REFERENCES playback_history(id) ON DELETE CASCADE
+			);`,
+		},
+	},
 }
 
 // applyMigrations brings the database up to the latest schema version.

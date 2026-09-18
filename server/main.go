@@ -188,12 +188,15 @@ func main() {
 	// Activité : le lecteur signale ce qu'il lit, les administrateurs voient
 	// qui regarde quoi, l'historique et les statistiques. Voir activity.go.
 	router.POST("/api/playing", handlers.RequireAuth(handlers.ReportPlayback))
+	// Le journal du client pour la lecture en cours, envoyé avant son arrêt.
+	router.POST("/api/playing/logs", handlers.RequireAuth(handlers.AttachPlaybackLogs))
 	router.GET("/api/me/stats", handlers.RequireAuth(handlers.GetMyPlaybackStats))
 	router.GET("/api/me/devices", handlers.RequireAuth(handlers.ListMyDevices))
 	router.DELETE("/api/me/devices/:id", handlers.RequireAuth(handlers.RevokeMyDevice))
 	router.GET("/api/admin/activity", handlers.RequirePermission(models.PermManageUsers, handlers.ListNowPlaying))
 	router.GET("/api/admin/history", handlers.RequirePermission(models.PermManageUsers, handlers.ListPlaybackHistory))
 	router.DELETE("/api/admin/history", handlers.RequirePermission(models.PermManageUsers, handlers.ClearPlaybackHistory))
+	router.GET("/api/admin/history/:id/logs", handlers.RequirePermission(models.PermManageUsers, handlers.GetPlaybackLogs))
 	router.GET("/api/admin/stats", handlers.RequirePermission(models.PermManageUsers, handlers.GetPlaybackStats))
 	router.GET("/api/admin/devices", handlers.RequirePermission(models.PermManageUsers, handlers.ListAllDevices))
 	router.DELETE("/api/admin/devices/:id", handlers.RequirePermission(models.PermManageUsers, handlers.RevokeAnyDevice))

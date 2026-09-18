@@ -107,6 +107,49 @@ class PlaybackDiagnostics {
   static const PlaybackDiagnostics none = PlaybackDiagnostics();
 }
 
+/// Pourquoi le moteur a renoncé à lire.
+///
+/// La distinction porte une décision, elle n'est pas décorative : un conteneur
+/// que l'appareil ne sait pas décoder se rattrape en laissant le serveur le
+/// transcoder, alors qu'une source injoignable ne se rattrape pas ici.
+enum PlaybackFailureKind {
+  /// Le conteneur, le codec ou le profil dépasse ce que cet appareil décode.
+  /// C'est le cas qui bascule sur le transcodage.
+  unsupported,
+
+  /// La source n'a pas pu être lue : réseau, 404, ticket périmé, connexion
+  /// coupée en route.
+  source,
+
+  /// Tout le reste, y compris ce que le moteur n'a pas su nommer.
+  unknown,
+}
+
+/// Une panne de lecture, telle que le moteur la rapporte.
+///
+/// [message] est le texte du moteur, non traduit et non nettoyé : il est écrit
+/// dans le journal et montré tel quel dans l'écran d'échec. Une panne qu'on ne
+/// sait pas nommer reste plus utile qu'un écran qui n'en dit rien — c'est
+/// exactement ce que coûtait l'absence de ce flux sur Android, où chaque panne
+/// se présentait comme vingt-cinq secondes d'indicateur puis le même texte.
+@immutable
+class PlaybackFailure {
+  const PlaybackFailure(this.kind, this.message);
+
+  final PlaybackFailureKind kind;
+  final String message;
+
+  @override
+  bool operator ==(Object other) =>
+      other is PlaybackFailure && other.kind == kind && other.message == message;
+
+  @override
+  int get hashCode => Object.hash(kind, message);
+
+  @override
+  String toString() => 'PlaybackFailure(${kind.name}, $message)';
+}
+
 /// Le moteur de lecture, vu par le reste de l'application.
 ///
 /// C'est la seule frontière entre le contrôleur — reprise, sessions HLS,
@@ -196,6 +239,13 @@ abstract interface class PlaybackSession {
   Stream<void> get completions;
   Stream<void> get trackChanges;
   Stream<PlaybackVideoParams> get videoParamChanges;
+
+  /// Les pannes que le moteur rapporte.
+  ///
+  /// Un moteur qui se tait sur ce flux n'est pas un moteur qui ne tombe jamais
+  /// en panne : c'est un moteur dont l'appelant ne saura la panne qu'au bout du
+  /// délai de démarrage, sans savoir laquelle. Voir [PlaybackFailure].
+  Stream<PlaybackFailure> get failures;
 
   // --- Réglages propres au moteur ----------------------------------------
 
