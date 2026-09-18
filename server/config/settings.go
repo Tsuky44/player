@@ -11,12 +11,13 @@ import (
 )
 
 const (
-	KeyMediaHubURL    = "mediahub_url"
-	KeyMediaHubAPIKey = "mediahub_api_key"
-	KeyTMDBAPIKey     = "tmdb_api_key"
-	KeyTMDBLanguage   = "tmdb_language"
-	KeyMoviesDir      = "movies_dir"
-	KeySeriesDir      = "series_dir"
+	KeyMediaHubURL         = "mediahub_url"
+	KeyMediaHubAPIKey      = "mediahub_api_key"
+	KeyTMDBAPIKey          = "tmdb_api_key"
+	KeyTMDBLanguage        = "tmdb_language"
+	KeyMoviesDir           = "movies_dir"
+	KeySeriesDir           = "series_dir"
+	KeyPlaybackLogsEnabled = "playback_logs_enabled"
 )
 
 var (
@@ -168,16 +169,29 @@ func SeriesDir() string {
 	return envOr("SERIES_DIR", "/media/Series")
 }
 
+// PlaybackLogsEnabled returns whether playback logs are enabled (db → env → true).
+func PlaybackLogsEnabled() bool {
+	if v, ok := getStored(KeyPlaybackLogsEnabled); ok {
+		return v == "true" || v == "1" || v == "yes"
+	}
+	env := strings.TrimSpace(os.Getenv("PLAYBACK_LOGS_ENABLED"))
+	if env != "" {
+		return env == "true" || env == "1" || env == "yes"
+	}
+	return true
+}
+
 // PublicSettings is the safe API payload (secrets never returned in clear).
 type PublicSettings struct {
-	MediaHubURL       string `json:"mediahub_url"`
-	MediaHubAPIKeySet bool   `json:"mediahub_api_key_set"`
+	MediaHubURL        string `json:"mediahub_url"`
+	MediaHubAPIKeySet  bool   `json:"mediahub_api_key_set"`
 	MediaHubAPIKeyHint string `json:"mediahub_api_key_hint,omitempty"`
-	TMDBAPIKeySet     bool   `json:"tmdb_api_key_set"`
-	TMDBAPIKeyHint    string `json:"tmdb_api_key_hint,omitempty"`
-	TMDBLanguage      string `json:"tmdb_language"`
-	MoviesDir         string `json:"movies_dir"`
-	SeriesDir         string `json:"series_dir"`
+	TMDBAPIKeySet      bool   `json:"tmdb_api_key_set"`
+	TMDBAPIKeyHint     string `json:"tmdb_api_key_hint,omitempty"`
+	TMDBLanguage       string `json:"tmdb_language"`
+	MoviesDir          string `json:"movies_dir"`
+	SeriesDir          string `json:"series_dir"`
+	PlaybackLogsEnabled bool  `json:"playback_logs_enabled"`
 }
 
 func maskSecret(secret string) string {
@@ -196,27 +210,29 @@ func Snapshot() PublicSettings {
 	mhKey := MediaHubAPIKey()
 	tmdbKey := TMDBAPIKey()
 	return PublicSettings{
-		MediaHubURL:        MediaHubURL(),
-		MediaHubAPIKeySet:  mhKey != "",
-		MediaHubAPIKeyHint: maskSecret(mhKey),
-		TMDBAPIKeySet:      tmdbKey != "",
-		TMDBAPIKeyHint:     maskSecret(tmdbKey),
-		TMDBLanguage:       TMDBLanguage(),
-		MoviesDir:          MoviesDir(),
-		SeriesDir:          SeriesDir(),
+		MediaHubURL:         MediaHubURL(),
+		MediaHubAPIKeySet:   mhKey != "",
+		MediaHubAPIKeyHint:  maskSecret(mhKey),
+		TMDBAPIKeySet:       tmdbKey != "",
+		TMDBAPIKeyHint:      maskSecret(tmdbKey),
+		TMDBLanguage:        TMDBLanguage(),
+		MoviesDir:           MoviesDir(),
+		SeriesDir:           SeriesDir(),
+		PlaybackLogsEnabled: PlaybackLogsEnabled(),
 	}
 }
 
 // UpdateRequest is the PUT /api/settings body. Omitted/blank secrets keep current values.
 type UpdateRequest struct {
-	MediaHubURL         *string `json:"mediahub_url"`
-	MediaHubAPIKey      *string `json:"mediahub_api_key"`
-	ClearMediaHubAPIKey bool    `json:"clear_mediahub_api_key"`
-	TMDBAPIKey          *string `json:"tmdb_api_key"`
-	ClearTMDBAPIKey     bool    `json:"clear_tmdb_api_key"`
-	TMDBLanguage        *string `json:"tmdb_language"`
-	MoviesDir           *string `json:"movies_dir"`
-	SeriesDir           *string `json:"series_dir"`
+	MediaHubURL          *string `json:"mediahub_url"`
+	MediaHubAPIKey       *string `json:"mediahub_api_key"`
+	ClearMediaHubAPIKey  bool    `json:"clear_mediahub_api_key"`
+	TMDBAPIKey           *string `json:"tmdb_api_key"`
+	ClearTMDBAPIKey      bool    `json:"clear_tmdb_api_key"`
+	TMDBLanguage         *string `json:"tmdb_language"`
+	MoviesDir            *string `json:"movies_dir"`
+	SeriesDir            *string `json:"series_dir"`
+	PlaybackLogsEnabled  *bool   `json:"playback_logs_enabled"`
 }
 
 // ApplyUpdate persists partial updates and returns the new public snapshot.
@@ -262,6 +278,15 @@ func ApplyUpdate(req UpdateRequest) (PublicSettings, error) {
 	}
 	if req.SeriesDir != nil {
 		if err := setStored(KeySeriesDir, *req.SeriesDir); err != nil {
+			return PublicSettings{}, err
+		}
+	}
+	if req.PlaybackLogsEnabled != nil {
+		value := "false"
+		if *req.PlaybackLogsEnabled {
+			value = "true"
+		}
+		if err := setStored(KeyPlaybackLogsEnabled, value); err != nil {
 			return PublicSettings{}, err
 		}
 	}

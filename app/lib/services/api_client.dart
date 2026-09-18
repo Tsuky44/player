@@ -1548,6 +1548,7 @@ class ApiClient {
     String? tmdbLanguage,
     String? moviesDir,
     String? seriesDir,
+    bool? playbackLogsEnabled,
   }) async {
     final response = await _dio.put('/api/settings', data: {
       if (mediaHubUrl != null) 'mediahub_url': mediaHubUrl,
@@ -1558,6 +1559,7 @@ class ApiClient {
       if (tmdbLanguage != null) 'tmdb_language': tmdbLanguage,
       if (moviesDir != null) 'movies_dir': moviesDir,
       if (seriesDir != null) 'series_dir': seriesDir,
+      if (playbackLogsEnabled != null) 'playback_logs_enabled': playbackLogsEnabled,
     });
     return ServerSettings.fromJson(response.data as Map<String, dynamic>);
   }
@@ -1661,8 +1663,10 @@ class ApiClient {
   /// l'appel doit précéder le signal d'arrêt. Un serveur plus ancien n'a pas
   /// cette route : l'appelant traite l'échec comme sans conséquence, une
   /// lecture ne dépend pas de son journal.
-  Future<void> uploadPlaybackLogs(List<LogEntry> lines) async {
-    if (lines.isEmpty) return;
+  ///
+  /// Si [enabled] est false, les logs ne sont pas envoyés au serveur.
+  Future<void> uploadPlaybackLogs(List<LogEntry> lines, {bool enabled = true}) async {
+    if (lines.isEmpty || !enabled) return;
     await _dio.post('/api/playing/logs', data: {
       'lines': [
         for (final line in lines)
@@ -1815,6 +1819,7 @@ class ServerSettings {
   final String tmdbLanguage;
   final String moviesDir;
   final String seriesDir;
+  final bool playbackLogsEnabled;
 
   ServerSettings({
     required this.mediaHubUrl,
@@ -1825,6 +1830,7 @@ class ServerSettings {
     required this.tmdbLanguage,
     required this.moviesDir,
     required this.seriesDir,
+    required this.playbackLogsEnabled,
   });
 
   factory ServerSettings.fromJson(Map<String, dynamic> json) {
@@ -1837,6 +1843,7 @@ class ServerSettings {
       tmdbLanguage: json['tmdb_language'] as String? ?? 'fr-FR',
       moviesDir: json['movies_dir'] as String? ?? '',
       seriesDir: json['series_dir'] as String? ?? '',
+      playbackLogsEnabled: json['playback_logs_enabled'] as bool? ?? true,
     );
   }
 }

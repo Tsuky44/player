@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/julienschmidt/httprouter"
+	"project-player/server/config"
 	"project-player/server/database"
 )
 
@@ -41,10 +42,9 @@ const (
 	// Combien de lectures gardent leur journal, au total.
 	//
 	// Sans ce plafond, rien ne bornerait la table : un journal disparaît avec sa
-	// ligne d'historique, et l'historique ne s'efface qu'à la main. Trois cents
-	// séances couvrent largement « la panne d'hier » — ce pour quoi tout ceci
-	// existe — et bornent la table à quelques mégaoctets en usage ordinaire.
-	playbackLogMaxRows = 300
+	// ligne d'historique, et l'historique ne s'efface qu'à la main. Dix séances
+	// couvrent largement « la panne d'hier » — ce pour quoi tout ceci existe.
+	playbackLogMaxRows = 10
 )
 
 // PlaybackLogLine is one line of a client's log.
@@ -73,6 +73,11 @@ type PlaybackLogs struct {
 // « la dernière ligne de cet appareil » — reviendrait à deviner, et à écrire le
 // journal d'une séance sur une autre le jour où deux se suivent de près.
 func AttachPlaybackLogs(w http.ResponseWriter, r *http.Request, _ httprouter.Params, userID int) {
+	if !config.PlaybackLogsEnabled() {
+		w.WriteHeader(http.StatusNoContent)
+		return
+	}
+
 	var body struct {
 		Lines []PlaybackLogLine `json:"lines"`
 	}
