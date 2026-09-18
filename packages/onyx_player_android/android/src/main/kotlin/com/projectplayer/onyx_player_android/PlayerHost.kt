@@ -785,8 +785,18 @@ internal class PlayerHost(private val context: Context) : OnyxPlayerApi {
             subtitleCues = emptyList(),
         )
 
+    // Le repli d'un lecteur qu'on ne connaît pas : rien n'a été mesuré, et les
+    // compteurs à zéro le disent aussi bien qu'une exception, sans faire tomber
+    // l'appelant pour un identifiant périmé. Nommés plutôt que positionnels —
+    // un champ ajouté au contrat doit casser ici à la compilation, pas glisser
+    // une valeur dans la mauvaise case.
     override fun stats(playerId: Long): OnyxPlaybackStats =
-        players[playerId]?.stats() ?: OnyxPlaybackStats(0, 0)
+        players[playerId]?.stats()
+            ?: OnyxPlaybackStats(
+                droppedFrames = 0,
+                renderedFrames = 0,
+                bytesLoaded = 0,
+            )
 
     /// Ce que cet appareil-ci sait faire, mesuré et non supposé.
     ///
