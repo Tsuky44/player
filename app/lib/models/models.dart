@@ -223,6 +223,19 @@ class Media {
   /// Episode count announced by TMDB for a missing season.
   final int? episodeCount;
 
+  /// Séries uniquement — décompte d'avancement renseigné par `/api/shows`.
+  ///
+  /// [availableEpisodeCount] ne compte que les épisodes réellement présents sur
+  /// le serveur : « vu en entier » veut dire « tout ce que le serveur a », pas
+  /// « tout ce que TMDB annonce ».
+  final int? availableEpisodeCount;
+
+  /// Épisodes disponibles terminés par l'utilisateur courant.
+  final int? watchedEpisodeCount;
+
+  /// Épisodes commencés mais pas terminés.
+  final int? startedEpisodeCount;
+
   final DateTime createdAt;
 
   Media({
@@ -243,12 +256,32 @@ class Media {
     this.requestStatus,
     this.canRequest = false,
     this.episodeCount,
+    this.availableEpisodeCount,
+    this.watchedEpisodeCount,
+    this.startedEpisodeCount,
     required this.createdAt,
   });
 
   /// True once a request has been sent but the season is not downloaded yet.
   bool get isRequested =>
       requestStatus == 'pending' || requestStatus == 'processing';
+
+  /// Série vue en entier : tous les épisodes que le serveur possède sont
+  /// terminés. Une série sans épisode indexé n'est jamais « vue ».
+  bool get isFullyWatched =>
+      (availableEpisodeCount ?? 0) > 0 &&
+      (watchedEpisodeCount ?? 0) >= availableEpisodeCount!;
+
+  /// Série entamée : au moins un épisode vu ou commencé, mais pas tous.
+  bool get isPartiallyWatched =>
+      !isFullyWatched &&
+      ((watchedEpisodeCount ?? 0) > 0 || (startedEpisodeCount ?? 0) > 0);
+
+  /// Épisodes disponibles qu'il reste à voir.
+  int get remainingEpisodeCount {
+    final remaining = (availableEpisodeCount ?? 0) - (watchedEpisodeCount ?? 0);
+    return remaining > 0 ? remaining : 0;
+  }
 
   Media copyWith({
     bool? isAvailable,
@@ -273,6 +306,9 @@ class Media {
       requestStatus: requestStatus ?? this.requestStatus,
       canRequest: canRequest ?? this.canRequest,
       episodeCount: episodeCount,
+      availableEpisodeCount: availableEpisodeCount,
+      watchedEpisodeCount: watchedEpisodeCount,
+      startedEpisodeCount: startedEpisodeCount,
       createdAt: createdAt,
     );
   }
@@ -311,6 +347,9 @@ class Media {
       requestStatus: json['request_status'] as String?,
       canRequest: json['can_request'] as bool? ?? false,
       episodeCount: json['episode_count'] as int?,
+      availableEpisodeCount: json['available_episode_count'] as int?,
+      watchedEpisodeCount: json['watched_episode_count'] as int?,
+      startedEpisodeCount: json['started_episode_count'] as int?,
       createdAt: _parseOptionalDateTime(json['created_at']) ?? DateTime.now(),
     );
   }
@@ -333,6 +372,9 @@ class Media {
       'request_status': requestStatus,
       'can_request': canRequest,
       'episode_count': episodeCount,
+      'available_episode_count': availableEpisodeCount,
+      'watched_episode_count': watchedEpisodeCount,
+      'started_episode_count': startedEpisodeCount,
       'created_at': createdAt.toIso8601String(),
     };
   }

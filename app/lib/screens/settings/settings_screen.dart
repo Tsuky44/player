@@ -6,12 +6,14 @@ import '../../providers/auth_provider.dart';
 import '../../services/client_identity.dart';
 import '../../theme/app_colors.dart';
 import '../../tv/tv_mode.dart';
+import '../../utils/app_platform.dart';
 import 'pages/account_page.dart';
 import 'pages/activity_page.dart';
 import 'pages/admin_devices_page.dart';
 import 'pages/apps_page.dart';
 import 'pages/dashboard_page.dart';
 import 'pages/device_page.dart';
+import 'pages/downloads_page.dart';
 import 'pages/emby_sync_page.dart';
 import 'pages/integrations_page.dart';
 import 'pages/library_page.dart';
@@ -27,6 +29,7 @@ import 'widgets/settings_ui.dart';
 abstract final class SettingsSections {
   static const account = 'account';
   static const playback = 'playback';
+  static const downloads = 'downloads';
   static const servers = 'servers';
   static const emby = 'emby';
   static const device = 'device';
@@ -84,6 +87,17 @@ List<_Category> _categoriesFor(Permissions p) {
       admin: false,
       builder: (_) => const PlaybackPage(),
     ),
+    // Un navigateur n'a pas de dossier privé où garder un film : la catégorie
+    // n'aurait que des réglages sans effet à proposer.
+    if (!AppPlatform.isWeb)
+      _Category(
+        id: SettingsSections.downloads,
+        label: 'Téléchargements',
+        icon: Icons.download_rounded,
+        hint: 'Épisodes d’avance, réseau autorisé, place occupée',
+        admin: false,
+        builder: (_) => const DownloadsPage(),
+      ),
     _Category(
       id: SettingsSections.servers,
       label: 'Serveurs',

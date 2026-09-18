@@ -3,11 +3,16 @@ import 'package:flutter/material.dart';
 import '../playback/playback_session.dart';
 import '../../../models/models.dart';
 import '../../../services/api_client.dart';
+import '../../../services/playback_preferences_storage.dart';
 
 class EpisodeNavigationController extends ChangeNotifier {
   final ApiClient _apiClient;
   final int _episodeId;
   final VoidCallback? onAutoPlay;
+
+  /// Called when the intro has been skipped on its own, the countdown having
+  /// run out untouched.
+  final VoidCallback? onAutoSkipIntro;
 
   EpisodeTimestamps? timestamps;
   HomeMediaItem? nextEpisode;
@@ -108,10 +113,26 @@ class EpisodeNavigationController extends ChangeNotifier {
   bool outroAutoPlayActive = false;
   bool outroAutoPlayFrozen = false;
 
+  /// Whether the intro is counting down to skipping itself. Only ever true when
+  /// the preference is on and the skip button just came up.
+  bool introAutoSkipActive = false;
+
+  /// Set the moment anything is touched during that countdown. Like the outro's
+  /// own freeze it never thaws: someone is watching, and the intro they are
+  /// watching is not one to jump over behind their back.
+  bool introAutoSkipFrozen = false;
+
   // Timer for outro auto-play
   Timer? _outroTimer;
   int _outroCountdownSeconds = 10;
   int get outroCountdownSeconds => _outroCountdownSeconds;
+
+  /// Same delay as the next episode, so both countdowns read as one behaviour.
+  static const int autoSkipIntroSeconds = 5;
+
+  Timer? _introTimer;
+  int _introCountdownSeconds = autoSkipIntroSeconds;
+  int get introCountdownSeconds => _introCountdownSeconds;
 
   EpisodeNavigationController({
     required ApiClient apiClient,
@@ -119,6 +140,7 @@ class EpisodeNavigationController extends ChangeNotifier {
     EpisodeTimestamps? initialTimestamps,
     PlaybackSession? session,
     this.onAutoPlay,
+    this.onAutoSkipIntro,
   })  : _apiClient = apiClient,
         _episodeId = episodeId {
     if (initialTimestamps != null) {
@@ -343,13 +365,22 @@ class EpisodeNavigationController extends ChangeNotifier {
     }
 
     if (inIntro) {
-      if (!showSkipIntro || _introSkipTarget != introTarget) {
+      if (!showSkipIntro) {
         showSkipIntro = true;
+        _introSkipTarget = introTarget;
+        // The countdown starts with the button, not with the intro: the two
+        // appear together, so what is on screen always says how long is left.
+        _startIntroAutoSkip();
+        notifyListeners();
+      } else if (_introSkipTarget != introTarget) {
+        // A better target for the same intro — the countdown already running
+        // keeps running, it is the same offer.
         _introSkipTarget = introTarget;
         notifyListeners();
       }
     } else if (showSkipIntro) {
       showSkipIntro = false;
+      _cancelIntroAutoSkip();
       notifyListeners();
     }
 
@@ -372,6 +403,36 @@ class EpisodeNavigationController extends ChangeNotifier {
       }
       notifyListeners();
     }
+  }
+
+  /// Arms the countdown that skips the intro by itself. Does nothing unless the
+  /// preference is on — the button then simply waits to be pressed.
+  void _startIntroAutoSkip() {
+    if (!PlaybackPreferencesStorage.autoSkipIntro) return;
+    introAutoSkipActive = true;
+    introAutoSkipFrozen = false;
+    _introCountdownSeconds = autoSkipIntroSeconds;
+    _introTimer?.cancel();
+    _introTimer = Timer.periodic(const Duration(seconds: 1), (timer) {
+      _introCountdownSeconds--;
+      if (_introCountdownSeconds <= 0) {
+        timer.cancel();
+        introAutoSkipActive = false;
+        showSkipIntro = false;
+        onAutoSkipIntro?.call();
+        notifyListeners();
+        return;
+      }
+      notifyListeners();
+    });
+  }
+
+  void _cancelIntroAutoSkip() {
+    introAutoSkipActive = false;
+    introAutoSkipFrozen = false;
+    _introTimer?.cancel();
+    _introTimer = null;
+    _introCountdownSeconds = autoSkipIntroSeconds;
   }
 
   void _startOutroAutoPlay() {
@@ -482,16 +543,31 @@ class EpisodeNavigationController extends ChangeNotifier {
     _outroCountdownSeconds = 5;
   }
 
-  void onMouseMove() {
+  /// Any sign of someone at the controls — a mouse moved, a key or a remote
+  /// button pressed, the picture tapped. Both countdowns stop where they are:
+  /// they exist for the viewer who has left the room, not the one watching.
+  void onUserActivity() {
+    var changed = false;
+
     if (outroAutoPlayActive && !outroAutoPlayFrozen && nextEpisode != null) {
       outroAutoPlayFrozen = true;
       _outroTimer?.cancel();
-      notifyListeners();
+      changed = true;
     }
+
+    if (introAutoSkipActive && !introAutoSkipFrozen) {
+      introAutoSkipFrozen = true;
+      _introTimer?.cancel();
+      _introTimer = null;
+      changed = true;
+    }
+
+    if (changed) notifyListeners();
   }
 
   void skipIntro() {
     showSkipIntro = false;
+    _cancelIntroAutoSkip();
     notifyListeners();
   }
 
@@ -504,6 +580,7 @@ class EpisodeNavigationController extends ChangeNotifier {
   @override
   void dispose() {
     _outroTimer?.cancel();
+    _introTimer?.cancel();
     super.dispose();
   }
 }

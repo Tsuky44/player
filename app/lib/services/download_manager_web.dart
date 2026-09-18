@@ -23,6 +23,12 @@ class DownloadManager extends ChangeNotifier {
   List<OfflineDownload> get downloads => const [];
   int get pendingSyncCount => 0;
   int get totalBytesOnDisk => 0;
+  int get queuedCount => 0;
+  bool get isHeldForNetwork => false;
+  bool Function()? transferGate;
+  Set<int> get downloadedShowIds => const {};
+  bool isDeclined(int mediaId) => false;
+  List<OfflineDownload> entriesForShow(int showId) => const [];
 
   Future<void> initialize(ApiClient api) async {}
 
@@ -48,6 +54,16 @@ class DownloadManager extends ChangeNotifier {
     String? showPosterUrl,
   }) async {}
 
+  Future<int> downloadAll(
+    Iterable<HomeMediaItem> items, {
+    String? showTitle,
+    int? showId,
+    int? seasonNumber,
+    String? showPosterUrl,
+    bool automatic = false,
+  }) async =>
+      0;
+
   Future<void> pause(int mediaId) async {}
   Future<void> resume(int mediaId) async {}
   Future<void> delete(int mediaId) async {}
@@ -64,4 +80,5 @@ class DownloadManager extends ChangeNotifier {
   Future<void> syncPending() async {}
   Future<void> onServerReachable() async {}
   Future<void> onServerChanged() async {}
+  void onNetworkChanged() {}
 }

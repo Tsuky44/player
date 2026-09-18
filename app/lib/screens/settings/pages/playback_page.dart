@@ -133,6 +133,27 @@ class _PlaybackPageState extends State<PlaybackPage> {
           ],
         ),
         SettingsGroup(
+          title: 'Séries',
+          footer:
+              'Un épisode enchaîne déjà sur le suivant au bout de 5 secondes. '
+              'L’intro peut faire pareil.',
+          children: [
+            SettingsSwitchTile(
+              icon: Icons.fast_forward_rounded,
+              title: 'Passer l’intro automatiquement',
+              subtitle:
+                  'Quand le bouton « Passer l’intro » apparaît, l’intro est '
+                  'sautée au bout de 5 secondes. Le moindre mouvement de '
+                  'souris ou appui sur une touche annule le saut.',
+              value: PlaybackPreferencesStorage.autoSkipIntro,
+              onChanged: (value) async {
+                await PlaybackPreferencesStorage.setAutoSkipIntro(value);
+                if (mounted) setState(() {});
+              },
+            ),
+          ],
+        ),
+        SettingsGroup(
           title: 'Interface du lecteur',
           footer:
               'Vos playeurs sont liés à votre compte et vous suivent sur tous vos appareils.',

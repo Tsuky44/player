@@ -5,6 +5,7 @@ import '../../models/models.dart';
 import '../../models/offline_download.dart';
 import '../../services/download_manager.dart';
 import '../../theme/app_colors.dart';
+import 'metered_download_dialog.dart';
 
 /// Le bouton « garder sur l'appareil », partout où un média se télécharge.
 ///
@@ -126,6 +127,13 @@ class MediaDownloadButton extends StatelessWidget {
     switch (entry?.status) {
       case null:
       case DownloadStatus.failed:
+        // Sur un forfait, un épisode se compte en gigaoctets : la question est
+        // posée avant la mise en file, jamais après.
+        final proceed = await confirmDownloadOnThisNetwork(
+          context,
+          what: item.media.type == MediaType.movie ? 'ce film' : 'cet épisode',
+        );
+        if (!proceed) return;
         await manager.download(
           item,
           showTitle: showTitle,

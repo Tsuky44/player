@@ -173,12 +173,21 @@ func DedupeShowMediaListForDisplay(shows []models.Media) []models.Media {
 		return shows
 	}
 	groups := map[string][]models.Media{}
+	// The keys are kept in the order they first appear: the caller's ordering
+	// is meaningful (the home row is newest-first, the library row is
+	// alphabetical) and iterating the map directly would shuffle it on every
+	// request, since Go randomises map iteration.
+	var keys []string
 	for _, s := range shows {
 		key := normalizedShowListKey(s)
+		if _, seen := groups[key]; !seen {
+			keys = append(keys, key)
+		}
 		groups[key] = append(groups[key], s)
 	}
 	var out []models.Media
-	for _, group := range groups {
+	for _, key := range keys {
+		group := groups[key]
 		if len(group) == 1 {
 			out = append(out, group[0])
 			continue
@@ -237,4 +246,11 @@ func safePickCanonicalShowID(ids []int) int {
 		return ids[0]
 	}
 	return pickCanonicalShowID(ids)
+}
+
+// ShowDisplayGroupKey exposes the key DedupeShowMediaListForDisplay groups on,
+// so a caller can fold per-row data — watch counts, sizes — into the row that
+// survives the dedupe instead of losing the duplicates' share of it.
+func ShowDisplayGroupKey(s models.Media) string {
+	return normalizedShowListKey(s)
 }

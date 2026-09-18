@@ -6,6 +6,7 @@ import android.app.UiModeManager
 import android.content.Context
 import android.content.pm.PackageManager
 import android.content.res.Configuration
+import android.net.ConnectivityManager
 import android.os.Build
 import android.os.Bundle
 import android.util.Rational
@@ -57,6 +58,7 @@ class MainActivity : FlutterActivity() {
                         releaseRefreshRate()
                         result.success(null)
                     }
+                    "isNetworkMetered" -> result.success(isNetworkMetered())
                     "supportsPictureInPicture" ->
                         result.success(supportsPictureInPicture())
                     "setPictureInPicture" -> {
@@ -69,6 +71,25 @@ class MainActivity : FlutterActivity() {
                 }
             }
         }
+    }
+
+    /// Whether the network the device is actually using is a paid one.
+    ///
+    /// Not the same question as "is this Wi-Fi or mobile data", and that is the
+    /// whole point: a phone tethered to another phone's hotspot sees Wi-Fi and
+    /// nothing else, while the bytes still come out of somebody's plan. Android
+    /// is the only one of the two who knows — it carries the NOT_METERED
+    /// capability of the active network, hotspots included, plus whatever the
+    /// user flagged by hand as limited.
+    ///
+    /// Downloads are the only caller: a several-gigabyte episode is exactly the
+    /// kind of thing that must not start on such a network without being asked
+    /// for.
+    private fun isNetworkMetered(): Boolean {
+        val manager =
+            getSystemService(Context.CONNECTIVITY_SERVICE) as? ConnectivityManager
+                ?: return false
+        return runCatching { manager.isActiveNetworkMetered }.getOrDefault(false)
     }
 
     // --- Picture-in-picture -------------------------------------------------

@@ -29,7 +29,7 @@ func Home(w http.ResponseWriter, r *http.Request, _ httprouter.Params, userID in
 		FROM medias m
 		WHERE m.type = 'movie'
 		  AND `+movieCardKey("m")+` IN (`+recentMovieCardKeys+`)
-		ORDER BY m.created_at DESC`, homeRecentMovies)
+		ORDER BY m.created_at DESC, m.id DESC`, homeRecentMovies)
 	if err != nil {
 		log.Printf("Home error: failed to query recent movies: %v", err)
 		http.Error(w, `{"error": "Internal database error"}`, http.StatusInternalServerError)
@@ -48,15 +48,19 @@ func Home(w http.ResponseWriter, r *http.Request, _ httprouter.Params, userID in
 	recentShows, err := queryMediaList("Home recent shows", `
 		SELECT `+mediaColumns+`
 		FROM medias m
-		WHERE m.type = 'show'
-		ORDER BY m.created_at DESC
-		LIMIT ?`, homeRecentShows)
+		JOIN (`+recentShowKeys+`) recent ON recent.show_id = m.id
+		ORDER BY recent.last_added DESC, m.id DESC`, homeRecentShows*2)
 	if err != nil {
 		log.Printf("Home error: failed to query recent shows: %v", err)
 		http.Error(w, `{"error": "Internal database error"}`, http.StatusInternalServerError)
 		return
 	}
+	// The query fetches more shows than the row holds because duplicate rows of
+	// the same series collapse here, after the ordering.
 	recentShows = indexer.DedupeShowMediaListForDisplay(recentShows)
+	if len(recentShows) > homeRecentShows {
+		recentShows = recentShows[:homeRecentShows]
+	}
 
 	discoveryMovies, err := queryRandomLibraryItems(models.TypeMovie, homeDiscoveryItems)
 	if err != nil {
@@ -157,7 +161,37 @@ const recentMovieCardKeys = `
 		FROM medias
 		WHERE type = 'movie'
 		GROUP BY COALESCE(NULLIF(tmdb_id, 0), -id)
-		ORDER BY MAX(created_at) DESC
+		ORDER BY MAX(created_at) DESC, MAX(id) DESC
+		LIMIT ?`
+
+// recentShowKeys orders series by the last file that landed under them.
+//
+// A series is not a file: it is created once, when its first episode is
+// indexed, and never touched again. Ordering the row on the show row's own
+// created_at therefore answered "which series did this server discover last",
+// which freezes a series at the date of its first season — a show that just
+// received a new season, the very thing worth showing on the home screen, kept
+// the position it had a year ago and never came back.
+//
+// The recency of a series is the recency of its newest episode instead, with
+// the show's own creation as the floor for one that has no episode yet. Both
+// halves of what the row promises then fall out of one ordering: a series added
+// today leads with its episodes, and an old one that gained files climbs back
+// to the top.
+//
+// The direct-episode branch of the join covers libraries where episodes hang
+// off the show without a season row; duplicate rows it may produce do not
+// disturb a MAX.
+const recentShowKeys = `
+		SELECT s.id AS show_id,
+		       MAX(COALESCE(ep.created_at, s.created_at)) AS last_added
+		FROM medias s
+		LEFT JOIN medias season ON season.type = 'season' AND season.parent_id = s.id
+		LEFT JOIN medias ep ON ep.type = 'episode'
+		                   AND (ep.parent_id = season.id OR ep.parent_id = s.id)
+		WHERE s.type = 'show'
+		GROUP BY s.id
+		ORDER BY last_added DESC, s.id DESC
 		LIMIT ?`
 
 const discoveryMovieCardKeys = `

@@ -147,6 +147,7 @@ class _MoviesScreenState extends State<MoviesScreen> {
                                 final item = filtered[index];
                                 return MediaCard(
                                   media: item.media,
+                                  watched: item.isFinished,
                                   progress: item.isFinished
                                       ? null
                                       : item.percentWatched,
