@@ -133,3 +133,33 @@ func isValidUTF8(s string) bool {
 	}
 	return true
 }
+
+func TestNormalizePlaybackStatsKeepsAnObject(t *testing.T) {
+	out := normalizePlaybackStats([]byte(`{"average_fps": 23.9, "decoder": "nvdec"}`))
+	if out == "" {
+		t.Fatal("un résumé valide a été écarté")
+	}
+	if !strings.Contains(out, "average_fps") || !strings.Contains(out, "nvdec") {
+		t.Fatalf("le contenu n'a pas survécu : %s", out)
+	}
+}
+
+func TestNormalizePlaybackStatsRefusesWhatIsNotAnObject(t *testing.T) {
+	// Ce qui sort d'ici est rendu tel quel à un administrateur : une chaîne, un
+	// tableau ou du texte libre n'ont rien à y faire, quelle que soit leur
+	// taille.
+	for _, raw := range []string{`"nvdec"`, `[1,2,3]`, `12`, `pas du json`, `{}`, ``} {
+		if out := normalizePlaybackStats([]byte(raw)); out != "" {
+			t.Errorf("%q aurait dû être écarté, reçu %q", raw, out)
+		}
+	}
+}
+
+func TestNormalizePlaybackStatsHoldsTheByteCeiling(t *testing.T) {
+	// Un objet bien formé mais démesuré : le plafond mord avant l'analyse, pour
+	// qu'un client bavard ne fasse pas allouer la mémoire qu'il demande.
+	big := `{"note": "` + strings.Repeat("x", playbackStatsMaxBytes) + `"}`
+	if out := normalizePlaybackStats([]byte(big)); out != "" {
+		t.Fatalf("le plafond n'a pas mordu : %d octets gardés", len(out))
+	}
+}

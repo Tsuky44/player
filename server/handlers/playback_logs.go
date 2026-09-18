@@ -39,6 +39,10 @@ const (
 	// Une ligne plus longue que ça est tronquée. Le client tronque déjà au même
 	// ordre de grandeur ; ceci vaut pour un client qui ne le ferait pas.
 	playbackLogMaxLineLength = 2000
+	// Le plafond du bloc de mesures. Un résumé tient en quelques centaines
+	// d'octets ; ce qui dépasse n'est plus un résumé, et n'a rien à faire dans
+	// une colonne qu'on relit à chaque ouverture de journal.
+	playbackStatsMaxBytes = 4 * 1024
 	// Combien de lectures gardent leur journal, au total.
 	//
 	// Sans ce plafond, rien ne bornerait la table : un journal disparaît avec sa
@@ -63,6 +67,13 @@ type PlaybackLogs struct {
 	// and that decision is the server's.
 	HasError  bool      `json:"has_error"`
 	UpdatedAt time.Time `json:"updated_at"`
+	// Stats is what the client measured of itself, as it sent it.
+	//
+	// Volontairement opaque : le serveur ne lit aucune de ces clés, il les
+	// range et les rend. Ce que sait mesurer un moteur de lecture n'est pas une
+	// affaire de serveur, et lui faire connaître chaque champ obligerait à le
+	// mettre à jour pour qu'un client puisse en mesurer un de plus.
+	Stats json.RawMessage `json:"stats,omitempty"`
 }
 
 // AttachPlaybackLogs stores the client's log for the play this session is
@@ -80,6 +91,7 @@ func AttachPlaybackLogs(w http.ResponseWriter, r *http.Request, _ httprouter.Par
 
 	var body struct {
 		Lines []PlaybackLogLine `json:"lines"`
+		Stats json.RawMessage   `json:"stats"`
 	}
 	if err := json.NewDecoder(http.MaxBytesReader(w, r.Body, playbackLogMaxBytes*2)).Decode(&body); err != nil {
 		writeJSONError(w, http.StatusBadRequest, "Invalid log payload")
@@ -96,7 +108,17 @@ func AttachPlaybackLogs(w http.ResponseWriter, r *http.Request, _ httprouter.Par
 	}
 
 	lines, hasError := normalizePlaybackLogLines(body.Lines)
-	if len(lines) == 0 {
+	// Les mesures ont leur propre interrupteur : un serveur peut vouloir les
+	// journaux sans faire interroger le moteur toutes les cinq secondes.
+	// Écartées ici plutôt qu'au client, qui n'a pas le droit de lire ce réglage.
+	var stats string
+	if config.PlaybackStatsEnabled() {
+		stats = normalizePlaybackStats(body.Stats)
+	}
+	// Ni lignes ni mesures : il n'y a rien à ranger. Une lecture peut n'avoir
+	// que l'un des deux — un moteur qui ne mesure rien, une séance qui n'a rien
+	// écrit — et chacun vaut le rangement à lui seul.
+	if len(lines) == 0 && stats == "" {
 		w.WriteHeader(http.StatusNoContent)
 		return
 	}
@@ -107,14 +129,18 @@ func AttachPlaybackLogs(w http.ResponseWriter, r *http.Request, _ httprouter.Par
 	}
 
 	if _, err := database.DB.Exec(`
-		INSERT INTO playback_logs (history_id, has_error, line_count, body, updated_at)
-		VALUES (?, ?, ?, ?, ?)
+		INSERT INTO playback_logs (history_id, has_error, line_count, body, stats, updated_at)
+		VALUES (?, ?, ?, ?, ?, ?)
 		ON CONFLICT(history_id) DO UPDATE SET
 			has_error = excluded.has_error,
 			line_count = excluded.line_count,
 			body = excluded.body,
+			-- Un envoi sans mesures ne doit pas effacer celles d'un envoi
+			-- précédent : le journal part une première fois dès qu'un démarrage
+			-- est abandonné, et une seconde à la fermeture de l'écran.
+			stats = CASE WHEN excluded.stats != '' THEN excluded.stats ELSE playback_logs.stats END,
 			updated_at = excluded.updated_at`,
-		historyID, hasError, len(lines), string(encoded), historyStamp(time.Now()),
+		historyID, hasError, len(lines), string(encoded), stats, historyStamp(time.Now()),
 	); err != nil {
 		writeJSONError(w, http.StatusInternalServerError, "Internal server error")
 		return
@@ -148,14 +174,15 @@ func GetPlaybackLogs(w http.ResponseWriter, _ *http.Request, ps httprouter.Param
 
 	var (
 		body      string
+		stats     string
 		hasError  bool
 		updatedAt string
 	)
 	err = database.DB.QueryRow(
-		`SELECT body, has_error, COALESCE(CAST(updated_at AS TEXT), '')
+		`SELECT body, COALESCE(stats, ''), has_error, COALESCE(CAST(updated_at AS TEXT), '')
 		 FROM playback_logs WHERE history_id = ?`,
 		historyID,
-	).Scan(&body, &hasError, &updatedAt)
+	).Scan(&body, &stats, &hasError, &updatedAt)
 
 	out := PlaybackLogs{Lines: []PlaybackLogLine{}}
 	switch {
@@ -169,6 +196,9 @@ func GetPlaybackLogs(w http.ResponseWriter, _ *http.Request, ps httprouter.Param
 	default:
 		if err := json.Unmarshal([]byte(body), &out.Lines); err != nil {
 			out.Lines = []PlaybackLogLine{}
+		}
+		if stats != "" {
+			out.Stats = json.RawMessage(stats)
 		}
 		out.HasError = hasError
 		out.UpdatedAt = parseSQLiteTime(updatedAt)
@@ -219,6 +249,30 @@ func normalizePlaybackLogLines(in []PlaybackLogLine) ([]PlaybackLogLine, bool) {
 		out[i], out[j] = out[j], out[i]
 	}
 	return out, hasError
+}
+
+// normalizePlaybackStats keeps a client's measurements only if they are a
+// plausible JSON object of a reasonable size.
+//
+// Rendu tel quel plus tard, donc vérifié maintenant : une chaîne stockée sans
+// être relue serait rendue au navigateur d'un administrateur comme du JSON,
+// alors qu'elle pourrait être n'importe quoi. Le contenu des clés n'est pas
+// inspecté — ce n'est pas l'affaire du serveur — mais la forme l'est.
+func normalizePlaybackStats(raw json.RawMessage) string {
+	if len(raw) == 0 || len(raw) > playbackStatsMaxBytes {
+		return ""
+	}
+	var probe map[string]any
+	if err := json.Unmarshal(raw, &probe); err != nil || len(probe) == 0 {
+		return ""
+	}
+	// Réencodé depuis ce qui a été relu, et non recopié : ce qui sort est alors
+	// du JSON que ce serveur a produit, sans espaces ni restes du client.
+	encoded, err := json.Marshal(probe)
+	if err != nil {
+		return ""
+	}
+	return string(encoded)
 }
 
 // truncateRunes cuts on a character boundary.

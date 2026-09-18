@@ -120,7 +120,7 @@ List<_Category> _categoriesFor(Permissions p) {
       id: SettingsSections.logs,
       label: 'Journal',
       icon: Icons.receipt_long_rounded,
-      hint: 'Ce que l’app enregistre, pour comprendre une erreur',
+      hint: 'Journaux de l’app et des lectures, pour comprendre une erreur',
       admin: false,
       builder: (_) => const LogsPage(),
     ),

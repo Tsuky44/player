@@ -11,13 +11,14 @@ import (
 )
 
 const (
-	KeyMediaHubURL         = "mediahub_url"
-	KeyMediaHubAPIKey      = "mediahub_api_key"
-	KeyTMDBAPIKey          = "tmdb_api_key"
-	KeyTMDBLanguage        = "tmdb_language"
-	KeyMoviesDir           = "movies_dir"
-	KeySeriesDir           = "series_dir"
-	KeyPlaybackLogsEnabled = "playback_logs_enabled"
+	KeyMediaHubURL          = "mediahub_url"
+	KeyMediaHubAPIKey       = "mediahub_api_key"
+	KeyTMDBAPIKey           = "tmdb_api_key"
+	KeyTMDBLanguage         = "tmdb_language"
+	KeyMoviesDir            = "movies_dir"
+	KeySeriesDir            = "series_dir"
+	KeyPlaybackLogsEnabled  = "playback_logs_enabled"
+	KeyPlaybackStatsEnabled = "playback_stats_enabled"
 )
 
 var (
@@ -181,17 +182,37 @@ func PlaybackLogsEnabled() bool {
 	return true
 }
 
+// PlaybackStatsEnabled returns whether plays attach their measurements
+// (db → env → true).
+//
+// Séparé des journaux parce que les deux ne coûtent pas la même chose : le
+// journal ne pèse que sur la fin d'une lecture, alors que les mesures
+// interrogent le moteur toutes les cinq secondes pendant toute la séance. Sur
+// un téléviseur d'entrée de gamme, c'est une raison suffisante de vouloir l'un
+// sans l'autre.
+func PlaybackStatsEnabled() bool {
+	if v, ok := getStored(KeyPlaybackStatsEnabled); ok {
+		return v == "true" || v == "1" || v == "yes"
+	}
+	env := strings.TrimSpace(os.Getenv("PLAYBACK_STATS_ENABLED"))
+	if env != "" {
+		return env == "true" || env == "1" || env == "yes"
+	}
+	return true
+}
+
 // PublicSettings is the safe API payload (secrets never returned in clear).
 type PublicSettings struct {
-	MediaHubURL        string `json:"mediahub_url"`
-	MediaHubAPIKeySet  bool   `json:"mediahub_api_key_set"`
-	MediaHubAPIKeyHint string `json:"mediahub_api_key_hint,omitempty"`
-	TMDBAPIKeySet      bool   `json:"tmdb_api_key_set"`
-	TMDBAPIKeyHint     string `json:"tmdb_api_key_hint,omitempty"`
-	TMDBLanguage       string `json:"tmdb_language"`
-	MoviesDir          string `json:"movies_dir"`
-	SeriesDir          string `json:"series_dir"`
-	PlaybackLogsEnabled bool  `json:"playback_logs_enabled"`
+	MediaHubURL          string `json:"mediahub_url"`
+	MediaHubAPIKeySet    bool   `json:"mediahub_api_key_set"`
+	MediaHubAPIKeyHint   string `json:"mediahub_api_key_hint,omitempty"`
+	TMDBAPIKeySet        bool   `json:"tmdb_api_key_set"`
+	TMDBAPIKeyHint       string `json:"tmdb_api_key_hint,omitempty"`
+	TMDBLanguage         string `json:"tmdb_language"`
+	MoviesDir            string `json:"movies_dir"`
+	SeriesDir            string `json:"series_dir"`
+	PlaybackLogsEnabled  bool   `json:"playback_logs_enabled"`
+	PlaybackStatsEnabled bool   `json:"playback_stats_enabled"`
 }
 
 func maskSecret(secret string) string {
@@ -210,15 +231,16 @@ func Snapshot() PublicSettings {
 	mhKey := MediaHubAPIKey()
 	tmdbKey := TMDBAPIKey()
 	return PublicSettings{
-		MediaHubURL:         MediaHubURL(),
-		MediaHubAPIKeySet:   mhKey != "",
-		MediaHubAPIKeyHint:  maskSecret(mhKey),
-		TMDBAPIKeySet:       tmdbKey != "",
-		TMDBAPIKeyHint:      maskSecret(tmdbKey),
-		TMDBLanguage:        TMDBLanguage(),
-		MoviesDir:           MoviesDir(),
-		SeriesDir:           SeriesDir(),
-		PlaybackLogsEnabled: PlaybackLogsEnabled(),
+		MediaHubURL:          MediaHubURL(),
+		MediaHubAPIKeySet:    mhKey != "",
+		MediaHubAPIKeyHint:   maskSecret(mhKey),
+		TMDBAPIKeySet:        tmdbKey != "",
+		TMDBAPIKeyHint:       maskSecret(tmdbKey),
+		TMDBLanguage:         TMDBLanguage(),
+		MoviesDir:            MoviesDir(),
+		SeriesDir:            SeriesDir(),
+		PlaybackLogsEnabled:  PlaybackLogsEnabled(),
+		PlaybackStatsEnabled: PlaybackStatsEnabled(),
 	}
 }
 
@@ -233,6 +255,7 @@ type UpdateRequest struct {
 	MoviesDir            *string `json:"movies_dir"`
 	SeriesDir            *string `json:"series_dir"`
 	PlaybackLogsEnabled  *bool   `json:"playback_logs_enabled"`
+	PlaybackStatsEnabled *bool   `json:"playback_stats_enabled"`
 }
 
 // ApplyUpdate persists partial updates and returns the new public snapshot.
@@ -287,6 +310,15 @@ func ApplyUpdate(req UpdateRequest) (PublicSettings, error) {
 			value = "true"
 		}
 		if err := setStored(KeyPlaybackLogsEnabled, value); err != nil {
+			return PublicSettings{}, err
+		}
+	}
+	if req.PlaybackStatsEnabled != nil {
+		value := "false"
+		if *req.PlaybackStatsEnabled {
+			value = "true"
+		}
+		if err := setStored(KeyPlaybackStatsEnabled, value); err != nil {
 			return PublicSettings{}, err
 		}
 	}

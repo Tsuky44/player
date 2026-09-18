@@ -174,14 +174,50 @@ class OnyxPlayerStatus {
 ///
 /// C'est le critère de recette du premier jalon : comparable au
 /// `frame-drop-count` que le lecteur mpv journalise déjà en sortie.
+///
+/// Les compteurs cumulent depuis l'ouverture ; les moyennes se calculent côté
+/// Dart, qui seul sait depuis combien de temps la lecture dure. Les rendre ici
+/// obligerait à tenir une horloge de plus dans le lecteur natif, pour un
+/// résultat que l'appelant recalcule de toute façon quand il échantillonne.
 class OnyxPlaybackStats {
   OnyxPlaybackStats({
     required this.droppedFrames,
     required this.renderedFrames,
+    required this.bytesLoaded,
+    this.videoDecoder,
+    this.audioDecoder,
+    this.videoBitrate,
+    this.audioBitrate,
+    this.containerFps,
   });
 
   final int droppedFrames;
   final int renderedFrames;
+
+  /// Les octets réellement tirés du réseau depuis l'ouverture.
+  ///
+  /// C'est de quoi se déduit le seul bitrate qui décrit la lecture : celui
+  /// qu'annonce le conteneur décrit le fichier, pas ce qui passe le câble un
+  /// soir où le débit manque.
+  final int bytesLoaded;
+
+  /// Le décodeur qu'ExoPlayer a réellement instancié, tel que MediaCodec le
+  /// nomme — `c2.qti.avc.decoder`, `OMX.google.h264.decoder`…
+  ///
+  /// Le nom dit ce qu'aucun drapeau ne dit : un décodeur `google` ou `sw` est
+  /// un décodage logiciel, et c'est l'explication de la moitié des lectures qui
+  /// saccadent sur un appareil d'entrée de gamme.
+  final String? videoDecoder;
+  final String? audioDecoder;
+
+  /// Ce que le format déclare, en bits par seconde. Complète [bytesLoaded]
+  /// sans le remplacer : l'un dit ce que le fichier prétend, l'autre ce qui a
+  /// transité.
+  final int? videoBitrate;
+  final int? audioBitrate;
+
+  /// La cadence déclarée par le format vidéo.
+  final double? containerFps;
 }
 
 /// Ce que l'appareil sait décoder et restituer.

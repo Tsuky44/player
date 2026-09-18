@@ -483,6 +483,26 @@ var migrations = []migration{
 			);`,
 		},
 	},
+	{
+		id:   11,
+		name: "per-play client stats",
+		stmts: []string{
+			// Ce que la lecture a mesuré d'elle-même : cadence rendue, débit
+			// moyen, décodeur retenu, images perdues, mises en tampon.
+			//
+			// Dans la même ligne que le journal parce que c'est la même chose
+			// vue deux fois — ce que la séance a raconté, et ce qu'elle a fait —
+			// et que les deux naissent et meurent ensemble. Une colonne plutôt
+			// qu'une table : elles seraient toujours jointes.
+			//
+			// Le contenu est un objet JSON laissé libre. Les mesures
+			// disponibles diffèrent d'un moteur à l'autre — mpv compte les
+			// octets démuxés, ExoPlayer les octets chargés, le web ne compte
+			// rien — et figer ça en colonnes obligerait à migrer la base
+			// chaque fois qu'un moteur apprend à répondre une question de plus.
+			`ALTER TABLE playback_logs ADD COLUMN stats TEXT NOT NULL DEFAULT '';`,
+		},
+	},
 }
 
 // applyMigrations brings the database up to the latest schema version.

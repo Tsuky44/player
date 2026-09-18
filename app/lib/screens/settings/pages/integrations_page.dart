@@ -30,11 +30,9 @@ class _IntegrationsPageState extends State<IntegrationsPage> {
 
   ServerSettings? _settings;
   String _language = 'fr-FR';
-  bool _playbackLogsEnabled = true;
   String? _error;
   bool _savingTmdb = false;
   bool _savingMediaHub = false;
-  bool _savingPlaybackLogs = false;
 
   @override
   void initState() {
@@ -55,7 +53,6 @@ class _IntegrationsPageState extends State<IntegrationsPage> {
     _language = _languages.any((l) => l.$1 == settings.tmdbLanguage)
         ? settings.tmdbLanguage
         : 'fr-FR';
-    _playbackLogsEnabled = settings.playbackLogsEnabled;
     _mediaHubUrl.text = settings.mediaHubUrl;
     _tmdbKey.clear();
     _mediaHubKey.clear();
@@ -120,30 +117,6 @@ class _IntegrationsPageState extends State<IntegrationsPage> {
       }
     }
     if (mounted) setState(() => _savingMediaHub = false);
-  }
-
-  Future<void> _savePlaybackLogs() async {
-    setState(() => _savingPlaybackLogs = true);
-    try {
-      final updated = await context.read<ApiClient>().updateServerSettings(
-            playbackLogsEnabled: _playbackLogsEnabled,
-          );
-      if (!mounted) return;
-      setState(() => _apply(updated));
-      showSettingsSnack(
-        context,
-        _playbackLogsEnabled
-            ? 'Logs des lectures activés.'
-            : 'Logs des lectures désactivés.',
-      );
-    } catch (e) {
-      if (mounted) {
-        showSettingsSnack(
-            context, settingsErrorText(e, "Échec de l'enregistrement."),
-            error: true);
-      }
-    }
-    if (mounted) setState(() => _savingPlaybackLogs = false);
   }
 
   Widget _status(bool configured) => SettingsPill(
@@ -246,27 +219,6 @@ class _IntegrationsPageState extends State<IntegrationsPage> {
                         : null,
                   ),
                 ],
-              ),
-            ],
-          ),
-          SettingsGroup(
-            title: 'Logs des lectures',
-            footer:
-                "Gardez les journaux des 10 dernières sessions. Utile pour diagnostiquer les pannes de lecture. Les journaux peuvent être lus depuis l'historique de chaque lecture.",
-            children: [
-              SettingsSwitchTile(
-                icon: Icons.receipt_long_rounded,
-                title: 'Activer les logs',
-                subtitle: _playbackLogsEnabled
-                    ? 'Les logs des lectures sont stockés et accessibles.'
-                    : 'Les logs des lectures ne sont pas stockés.',
-                value: _playbackLogsEnabled,
-                onChanged: _savingPlaybackLogs
-                    ? null
-                    : (value) => setState(() {
-                          _playbackLogsEnabled = value;
-                          _savePlaybackLogs();
-                        }),
               ),
             ],
           ),

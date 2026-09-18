@@ -9,6 +9,11 @@ DateTime _date(Object? raw) =>
 
 int _int(Object? raw) => (raw as num?)?.toInt() ?? 0;
 
+/// Null quand la valeur est absente, pour distinguer « pas mesuré » de « zéro
+/// mesuré » — la différence entre une case vide et une lecture sans une seule
+/// image.
+double? _double(Object? raw) => (raw as num?)?.toDouble();
+
 String _str(Object? raw) => raw as String? ?? '';
 
 /// Comment l'image arrive à l'écran. Ce que « pourquoi le serveur rame »
@@ -425,6 +430,104 @@ class PlaybackLogLine {
   }
 }
 
+/// Ce qu'une lecture a mesuré d'elle-même, tel que l'historique le rend.
+///
+/// À ne pas confondre avec [PlaybackStats], qui agrège le serveur entier sur
+/// trente jours. Celle-ci porte sur une séance et une seule.
+///
+/// Miroir de ce que `PlaybackStatsSummary` envoie, côté lecteur. Tous les
+/// champs sont optionnels : les moteurs ne savent pas répondre aux mêmes
+/// questions, et une lecture faite par un client plus ancien n'en rapporte
+/// aucune. Une case vide se dessine comme une case vide — elle ne se remplit
+/// pas d'un zéro qui se lirait comme une mesure.
+class PlaybackSessionStats {
+  const PlaybackSessionStats({
+    this.sampledSeconds = 0,
+    this.sampleCount = 0,
+    this.averageFps,
+    this.containerFps,
+    this.averageBitrateBps,
+    this.videoBitrateBps,
+    this.audioBitrateBps,
+    this.droppedFrames,
+    this.renderedFrames,
+    this.videoCodec,
+    this.audioCodec,
+    this.decoder,
+    this.bufferingEvents = 0,
+    this.bufferingSeconds = 0,
+    this.startupMillis,
+  });
+
+  final double sampledSeconds;
+  final int sampleCount;
+  final double? averageFps;
+  final double? containerFps;
+  final double? averageBitrateBps;
+  final double? videoBitrateBps;
+  final double? audioBitrateBps;
+  final int? droppedFrames;
+  final int? renderedFrames;
+  final String? videoCodec;
+  final String? audioCodec;
+  final String? decoder;
+  final int bufferingEvents;
+  final double bufferingSeconds;
+  final int? startupMillis;
+
+  bool get isEmpty => sampleCount == 0;
+
+  /// La proportion d'images perdues, entre 0 et 1.
+  double? get dropRatio {
+    final dropped = droppedFrames;
+    final rendered = renderedFrames;
+    if (dropped == null || rendered == null) return null;
+    final total = dropped + rendered;
+    if (total <= 0) return null;
+    return dropped / total;
+  }
+
+  /// Vrai quand le décodage s'est fait par le processeur.
+  ///
+  /// Le nom du décodeur est la seule source qui le dise : `no` côté mpv quand
+  /// l'accélération n'a pas pris, et côté Android un `OMX.google.*` ou un
+  /// `c2.android.*`, qui sont les décodeurs logiciels fournis avec le système.
+  /// C'est l'explication la plus fréquente d'une lecture qui saccade sans
+  /// jamais tomber en panne, et elle n'apparaissait nulle part.
+  bool get looksSoftwareDecoded {
+    final name = decoder?.toLowerCase();
+    if (name == null || name.isEmpty) return false;
+    return name == 'no' ||
+        name.contains('omx.google') ||
+        name.contains('c2.android') ||
+        name.contains('ffmpeg') ||
+        name.contains('software');
+  }
+
+  factory PlaybackSessionStats.fromJson(Map<String, dynamic> json) =>
+      PlaybackSessionStats(
+        sampledSeconds: _double(json['sampled_seconds']) ?? 0,
+        sampleCount: _int(json['sample_count']),
+        averageFps: _double(json['average_fps']),
+        containerFps: _double(json['container_fps']),
+        averageBitrateBps: _double(json['average_bitrate_bps']),
+        videoBitrateBps: _double(json['video_bitrate_bps']),
+        audioBitrateBps: _double(json['audio_bitrate_bps']),
+        droppedFrames:
+            json['dropped_frames'] == null ? null : _int(json['dropped_frames']),
+        renderedFrames: json['rendered_frames'] == null
+            ? null
+            : _int(json['rendered_frames']),
+        videoCodec: json['video_codec'] == null ? null : _str(json['video_codec']),
+        audioCodec: json['audio_codec'] == null ? null : _str(json['audio_codec']),
+        decoder: json['decoder'] == null ? null : _str(json['decoder']),
+        bufferingEvents: _int(json['buffering_events']),
+        bufferingSeconds: _double(json['buffering_seconds']) ?? 0,
+        startupMillis:
+            json['startup_ms'] == null ? null : _int(json['startup_ms']),
+      );
+}
+
 /// Le journal d'une lecture passée.
 class PlaybackLogs {
   final List<PlaybackLogLine> lines;
@@ -434,16 +537,28 @@ class PlaybackLogs {
   /// dans l'historique.
   final bool hasError;
 
-  const PlaybackLogs({required this.lines, required this.hasError});
+  /// Ce que la lecture a mesuré. Null quand elle n'a rien mesuré — un client
+  /// plus ancien, ou un serveur où les mesures sont coupées.
+  final PlaybackSessionStats? stats;
+
+  const PlaybackLogs({required this.lines, required this.hasError, this.stats});
 
   static const empty = PlaybackLogs(lines: [], hasError: false);
 
-  bool get isEmpty => lines.isEmpty;
+  /// Vide quand il n'y a ni ligne ni mesure : l'un des deux suffit à rendre
+  /// l'écran utile.
+  bool get isEmpty => lines.isEmpty && (stats?.isEmpty ?? true);
+
+  bool get hasLines => lines.isNotEmpty;
 
   factory PlaybackLogs.fromJson(Map<String, dynamic> json) => PlaybackLogs(
         lines: ((json['lines'] as List?) ?? const [])
             .map((e) => PlaybackLogLine.fromJson(e as Map<String, dynamic>))
             .toList(growable: false),
         hasError: json['has_error'] as bool? ?? false,
+        stats: json['stats'] is Map<String, dynamic>
+            ? PlaybackSessionStats.fromJson(
+                json['stats'] as Map<String, dynamic>)
+            : null,
       );
 }

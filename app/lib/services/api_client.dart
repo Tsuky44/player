@@ -1549,6 +1549,7 @@ class ApiClient {
     String? moviesDir,
     String? seriesDir,
     bool? playbackLogsEnabled,
+    bool? playbackStatsEnabled,
   }) async {
     final response = await _dio.put('/api/settings', data: {
       if (mediaHubUrl != null) 'mediahub_url': mediaHubUrl,
@@ -1560,6 +1561,8 @@ class ApiClient {
       if (moviesDir != null) 'movies_dir': moviesDir,
       if (seriesDir != null) 'series_dir': seriesDir,
       if (playbackLogsEnabled != null) 'playback_logs_enabled': playbackLogsEnabled,
+      if (playbackStatsEnabled != null)
+        'playback_stats_enabled': playbackStatsEnabled,
     });
     return ServerSettings.fromJson(response.data as Map<String, dynamic>);
   }
@@ -1664,9 +1667,15 @@ class ApiClient {
   /// cette route : l'appelant traite l'échec comme sans conséquence, une
   /// lecture ne dépend pas de son journal.
   ///
-  /// Si [enabled] est false, les logs ne sont pas envoyés au serveur.
-  Future<void> uploadPlaybackLogs(List<LogEntry> lines, {bool enabled = true}) async {
-    if (lines.isEmpty || !enabled) return;
+  /// Rien à filtrer ici quand le serveur a coupé la conservation : le réglage
+  /// vit derrière `manage_settings`, qu'un compte ordinaire n'a pas, donc ce
+  /// client ne peut pas le connaître. C'est le serveur qui écarte la tranche,
+  /// par un 204 — la seule place où la réponse est sûre.
+  Future<void> uploadPlaybackLogs(
+    List<LogEntry> lines, {
+    Map<String, dynamic>? stats,
+  }) async {
+    if (lines.isEmpty && stats == null) return;
     await _dio.post('/api/playing/logs', data: {
       'lines': [
         for (final line in lines)
@@ -1676,6 +1685,7 @@ class ApiClient {
             'message': line.message,
           },
       ],
+      if (stats != null) 'stats': stats,
     });
   }
 
@@ -1821,6 +1831,10 @@ class ServerSettings {
   final String seriesDir;
   final bool playbackLogsEnabled;
 
+  /// Les mesures ont leur propre réglage : elles interrogent le moteur pendant
+  /// toute la lecture, là où le journal ne coûte rien avant la fin.
+  final bool playbackStatsEnabled;
+
   ServerSettings({
     required this.mediaHubUrl,
     required this.mediaHubApiKeySet,
@@ -1831,6 +1845,7 @@ class ServerSettings {
     required this.moviesDir,
     required this.seriesDir,
     required this.playbackLogsEnabled,
+    required this.playbackStatsEnabled,
   });
 
   factory ServerSettings.fromJson(Map<String, dynamic> json) {
@@ -1844,6 +1859,7 @@ class ServerSettings {
       moviesDir: json['movies_dir'] as String? ?? '',
       seriesDir: json['series_dir'] as String? ?? '',
       playbackLogsEnabled: json['playback_logs_enabled'] as bool? ?? true,
+      playbackStatsEnabled: json['playback_stats_enabled'] as bool? ?? true,
     );
   }
 }
