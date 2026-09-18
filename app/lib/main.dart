@@ -13,6 +13,7 @@ import 'utils/window_controls.dart';
 import 'services/api_client.dart';
 import 'services/app_image_cache.dart';
 import 'services/client_identity.dart';
+import 'services/client_log.dart';
 import 'services/download_manager.dart';
 import 'services/server_reachability.dart';
 import 'providers/auth_provider.dart';
@@ -111,6 +112,11 @@ Future<void> _configureSystemUi() async {
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
+  // Avant tout le reste : ce qui s'écrit pendant le démarrage — les capacités
+  // de l'appareil, le profil de lecture retenu, une requête qui échoue — est
+  // précisément ce qu'on vient chercher dans le journal quand l'app ne va pas
+  // plus loin. Voir [ClientLog].
+  ClientLog.install();
   // Le libmpv patché qui sait dessiner dans une vue native, s'il est installé
   // et se charge. Sinon, celui que media_kit embarque.
   MpvNativeView.resolve();

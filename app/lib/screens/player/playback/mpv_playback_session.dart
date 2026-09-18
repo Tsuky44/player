@@ -245,6 +245,17 @@ class MpvPlaybackSession implements PlaybackSession {
     );
   }
 
+  /// Muet, délibérément.
+  ///
+  /// libmpv rapporte bien ses pannes, mais media_kit les publie sur un flux
+  /// (`stream.error`) qui porte aussi des lignes de journal sans gravité : le
+  /// brancher ici ferait abandonner des lectures qui aboutissent. Les classer
+  /// demande de trier ce flux, ce que ce correctif — dont le sujet est Android
+  /// — ne fait pas. mpv garde donc le comportement qu'il avait : le délai de
+  /// démarrage de l'écran est ce qui rattrape une ouverture qui n'aboutit pas.
+  @override
+  Stream<PlaybackFailure> get failures => const Stream<PlaybackFailure>.empty();
+
   // --- Réglages propres à mpv --------------------------------------------
 
   /// Pose une option mpv, sans laisser un refus emporter les suivantes.

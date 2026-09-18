@@ -391,3 +391,59 @@ class ServerInfo {
     );
   }
 }
+
+/// Une ligne du journal qu'un client a laissée derrière une lecture.
+///
+/// Miroir de `PlaybackLogLine` dans `server/handlers/playback_logs.go`. Le
+/// niveau n'est pas deviné du texte : il est celui que le client a écrit.
+class PlaybackLogLine {
+  final DateTime at;
+  final bool isError;
+  final String message;
+
+  const PlaybackLogLine({
+    required this.at,
+    required this.isError,
+    required this.message,
+  });
+
+  factory PlaybackLogLine.fromJson(Map<String, dynamic> json) =>
+      PlaybackLogLine(
+        at: _date(json['at']),
+        isError: _str(json['level']) == 'error',
+        message: _str(json['message']),
+      );
+
+  /// `12:04:07.318 · message`, à l'heure de l'appareil qui lit — pas de celui
+  /// qui a écrit. Les deux peuvent être à des fuseaux différents ; celui qui
+  /// enquête compare ce journal à sa propre horloge.
+  String format() {
+    String two(int v) => v.toString().padLeft(2, '0');
+    final local = at.toLocal();
+    return '${two(local.hour)}:${two(local.minute)}:${two(local.second)}'
+        '.${local.millisecond.toString().padLeft(3, '0')} · $message';
+  }
+}
+
+/// Le journal d'une lecture passée.
+class PlaybackLogs {
+  final List<PlaybackLogLine> lines;
+
+  /// Au moins une ligne est une erreur. Le serveur le lit des lignes, jamais du
+  /// client : c'est ce qui décide qu'une lecture trop courte reste malgré tout
+  /// dans l'historique.
+  final bool hasError;
+
+  const PlaybackLogs({required this.lines, required this.hasError});
+
+  static const empty = PlaybackLogs(lines: [], hasError: false);
+
+  bool get isEmpty => lines.isEmpty;
+
+  factory PlaybackLogs.fromJson(Map<String, dynamic> json) => PlaybackLogs(
+        lines: ((json['lines'] as List?) ?? const [])
+            .map((e) => PlaybackLogLine.fromJson(e as Map<String, dynamic>))
+            .toList(growable: false),
+        hasError: json['has_error'] as bool? ?? false,
+      );
+}

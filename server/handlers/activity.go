@@ -295,7 +295,10 @@ func finishHistoryRow(entry *activePlayback) {
 		log.Printf("Activity: failed to close a history row: %v", err)
 		return
 	}
-	if entry.Watched < playbackMinSeconds {
+	// Sauf quand elle a laissé une erreur derrière elle : voir
+	// [playbackHasErrorLog]. Une lecture qui n'a jamais démarré dure zéro
+	// seconde, et c'est celle qu'on cherchera dans l'historique.
+	if entry.Watched < playbackMinSeconds && !playbackHasErrorLog(entry.historyID) {
 		if _, err := database.DB.Exec(`DELETE FROM playback_history WHERE id = ?`, entry.historyID); err != nil {
 			log.Printf("Activity: failed to drop a short play: %v", err)
 		}
@@ -360,6 +363,22 @@ func (t *playbackTracker) titlesBySession() map[[32]byte]string {
 		out[key] = title
 	}
 	return out
+}
+
+// historyIDFor returns the history row this session's live play is writing to.
+//
+// Vérifie le compte autant que la session : deux jetons ne partagent pas une
+// clé, mais le journal d'une lecture est une donnée de séance, et rien ne doit
+// pouvoir l'écrire sur celle de quelqu'un d'autre parce qu'une clé aurait été
+// devinée.
+func (t *playbackTracker) historyIDFor(key [32]byte, userID int) (int64, bool) {
+	t.mu.Lock()
+	defer t.mu.Unlock()
+	entry := t.byKey[key]
+	if entry == nil || entry.historyID == 0 || entry.UserID != userID {
+		return 0, false
+	}
+	return entry.historyID, true
 }
 
 // RunPlaybackActivity sweeps quiet plays until ctx ends.

@@ -12,6 +12,7 @@ import '../playback/timeline_previews.dart';
 import '../playback_profile.dart';
 import '../web_quality.dart';
 import '../../../services/api_client.dart';
+import '../../../services/client_log.dart';
 import '../../../services/playback_access.dart';
 import '../../../services/download_manager.dart';
 import '../../../services/playback_capabilities.dart';
@@ -69,6 +70,13 @@ class PlayerController {
   /// until this turns true; it is the only signal that the picture on screen
   /// belongs to the media that was asked for.
   bool hasFirstFrame = false;
+
+  /// La panne qui a arrêté le démarrage, quand le moteur en a rapporté une.
+  ///
+  /// Lue par l'écran, qui affiche son message plutôt que d'attendre le délai de
+  /// démarrage : une panne connue à la seconde deux n'a aucune raison d'être
+  /// annoncée à la seconde vingt-cinq.
+  PlaybackFailure? startupFailure;
 
   /// The decoder has read this file's dimensions — it knows what it is about to
   /// draw, but has not necessarily drawn it yet.
@@ -184,6 +192,13 @@ class PlayerController {
   /// The stop signal is sent once, whichever of finish/cancel/dispose runs first.
   bool _activityStopped = false;
 
+  /// Le rang de la première ligne de journal de cette lecture.
+  ///
+  /// Ce qui délimite « les logs de cette séance » dans le tampon commun de
+  /// [ClientLog] : la tranche part de là et va jusqu'à l'arrêt. Voir
+  /// [ClientLog.since].
+  int _logMark = 0;
+
   /// Chemin du fichier local quand ce média est téléchargé, sinon null.
   ///
   /// Résolu une fois à l'ouverture et jamais relu : le fichier ne peut pas
@@ -224,6 +239,7 @@ class PlayerController {
   VoidCallback? _onBufferingChanged;
   VoidCallback? _onFirstFrame;
   VoidCallback? _onTracksChanged;
+  VoidCallback? _onFailure;
   VoidCallback? _onPlayingChanged;
 
   /// Guards the one-shot background subtitle extraction kicked off on start.
@@ -383,6 +399,7 @@ class PlayerController {
   StreamSubscription? _videoParamsSubscription;
   StreamSubscription? _bufferingSubscription;
   StreamSubscription? _reapplySubscription;
+  StreamSubscription? _failureSubscription;
   bool _disposed = false;
 
   /// Aspect ratio of the current video (width / height).
@@ -444,11 +461,13 @@ class PlayerController {
     VoidCallback? onBufferingChanged,
     VoidCallback? onFirstFrame,
     VoidCallback? onTracksChanged,
+    VoidCallback? onFailure,
     PlayerPlaybackPreferences? inheritedPreferences,
     int knownDurationSeconds = 0,
     Future<int>? resumePositionFuture,
   }) async {
     _startupWatch.start();
+    _logMark = ClientLog.sequence;
     // Un moteur repris au vestiaire peut encore décharger le film précédent.
     // Ouvrir par-dessus est ce qui laissait une lecture derrière un indicateur
     // qui ne s'arrêtait jamais.
@@ -532,6 +551,11 @@ class PlayerController {
       _maybeMarkFirstFrame();
     });
 
+    _failureSubscription = session.failures.listen((failure) {
+      if (_disposed) return;
+      unawaited(_handleFailure(failure));
+    });
+
     _media = media;
     _apiClient = apiClient;
     _knownDurationSeconds =
@@ -546,6 +570,7 @@ class PlayerController {
     _onBufferingChanged = onBufferingChanged;
     _onFirstFrame = onFirstFrame;
     _onTracksChanged = onTracksChanged;
+    _onFailure = onFailure;
 
     _localFilePath = DownloadManager.instance.localVideoPath(media.id);
     if (_localFilePath == null) {
@@ -622,7 +647,7 @@ class PlayerController {
           if (startAt > 0) position = Duration(seconds: startAt);
         }
       } catch (e) {
-        debugPrint(
+        ClientLog.error(
             "Player: failed to open stream: ${redactPlaybackDiagnostic(e)}");
       }
       _mark('opened');
@@ -1105,7 +1130,9 @@ class PlayerController {
     if (durSeconds <= 0 && _knownDurationSeconds > 0) {
       durSeconds = _knownDurationSeconds;
     }
-    unawaited(apiClient
+    // Figé maintenant : ce qui suit peut partir après un aller-retour réseau,
+    // et le rapport doit décrire l'instant de l'arrêt, pas celui de l'envoi.
+    Future<void> send() => apiClient
         .reportPlayback(
           mediaId: mediaId,
           positionSeconds: position.inSeconds,
@@ -1115,7 +1142,22 @@ class PlayerController {
           quality: currentQuality ?? '',
           event: event,
         )
-        .catchError((_) {}));
+        .catchError((_) {});
+
+    // Le journal part avec le dernier signal, et **avant** lui : le serveur le
+    // rattache à la séance encore ouverte, et c'est ce signal-là qui la ferme.
+    // L'ordre inverse écrirait dans le vide une fois sur deux.
+    if (event == 'stop') {
+      final lines = ClientLog.since(_logMark);
+      if (lines.isNotEmpty) {
+        unawaited(apiClient
+            .uploadPlaybackLogs(lines)
+            .catchError((_) {})
+            .whenComplete(send));
+        return;
+      }
+    }
+    unawaited(send());
   }
 
   void _reportActivityStopped() {
@@ -1558,6 +1600,50 @@ class PlayerController {
         .decodesInDirectPlay(audio[index].codec);
   }
 
+  /// Ce qu'on fait d'une panne du moteur.
+  ///
+  /// Une panne après la première image ne se rattrape pas ici : la lecture a
+  /// démarré, et les chemins de reprise — relais, reconnexion, rechargement
+  /// HLS — ont déjà leurs propres déclencheurs. Ce qui manquait est l'autre
+  /// cas : une panne *pendant* le démarrage, qui sur Android ne laissait rien
+  /// voir avant le délai de vingt-cinq secondes, et qui pour un conteneur
+  /// illisible ne laissait rien voir du tout — le repli en transcodage que
+  /// [PlaybackFailureKind.unsupported] nomme n'était branché nulle part.
+  Future<void> _handleFailure(PlaybackFailure failure) async {
+    if (hasFirstFrame) {
+      debugPrint('Player: panne en cours de lecture — $failure');
+      return;
+    }
+
+    // Ce que l'appareil ne décode pas, le serveur le décode : c'est
+    // exactement ce que fait déjà [_transcodeForUndecodableAudio] pour une
+    // piste audio muette, à la résolution de la source pour que l'image reste
+    // recopiée. Une seule tentative — un transcodage qui échoue à son tour est
+    // une vraie panne, pas un cas à rattraper une deuxième fois.
+    //
+    // La liste de pistes n'est pas attendue : elle se charge en parallèle de
+    // l'ouverture, et un conteneur refusé l'est souvent avant qu'elle arrive.
+    // Sans hauteur, `qualityForSourceHeight` rend le palier 1080p, que tous les
+    // serveurs offrent — se tromper de palier laisse une lecture, l'attendre
+    // n'en laisse aucune.
+    if (failure.kind == PlaybackFailureKind.unsupported &&
+        currentQuality == null) {
+      final quality = qualityForSourceHeight(mediaTracks?.video?.height ?? 0);
+      debugPrint('Player: Direct Play refusé ($failure) — repli HLS $quality');
+      try {
+        await switchToQuality(quality);
+        return;
+      } catch (e) {
+        debugPrint(
+            'Player: repli HLS impossible : ${redactPlaybackDiagnostic(e)}');
+      }
+    }
+
+    ClientLog.error('Player: démarrage abandonné — $failure');
+    startupFailure = failure;
+    _onFailure?.call();
+  }
+
   /// Passe en HLS à la résolution de la source, pour que le serveur décode la
   /// piste que le moteur local ne sait pas lire.
   ///
@@ -1987,6 +2073,7 @@ class PlayerController {
     _videoParamsSubscription?.cancel();
     _bufferingSubscription?.cancel();
     _reapplySubscription?.cancel();
+    _failureSubscription?.cancel();
     _positionSubscription = null;
     _durationSubscription = null;
     _completedSubscription = null;
@@ -1994,6 +2081,7 @@ class PlayerController {
     _videoParamsSubscription = null;
     _bufferingSubscription = null;
     _reapplySubscription = null;
+    _failureSubscription = null;
   }
 
   void dispose() {
@@ -2020,6 +2108,7 @@ class PlayerController {
     _videoParamsSubscription?.cancel();
     _bufferingSubscription?.cancel();
     _reapplySubscription?.cancel();
+    _failureSubscription?.cancel();
     // Leaving the player screen must not leave hls.js segment loaders running
     // against a <video> that is about to disappear.
     WebPlayback.clearSubtitles();

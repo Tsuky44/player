@@ -5,6 +5,7 @@ import '../../../models/models.dart';
 import '../../../models/server_activity.dart';
 import '../../../services/api_client.dart';
 import '../../../theme/app_colors.dart';
+import '../playback_logs_screen.dart';
 import '../widgets/history_tile.dart';
 import '../widgets/settings_ui.dart';
 
@@ -121,7 +122,9 @@ class _ActivityPageState extends State<ActivityPage> {
     return SettingsPage(
       title: 'Historique',
       description:
-          'Chaque lecture de plus de 30 secondes : le titre, le compte, l’appareil et le temps réellement regardé, pauses exclues.',
+          'Chaque lecture de plus de 30 secondes : le titre, le compte, l’appareil et le temps réellement regardé, '
+          'pauses exclues. Touchez une ligne pour lire le journal du lecteur — celles qui ont échoué y figurent aussi, '
+          'quelle qu’ait été leur durée.',
       onRefresh: _reload,
       actions: [
         PopupMenuButton<String>(
@@ -192,7 +195,15 @@ class _ActivityPageState extends State<ActivityPage> {
               ),
               children: [
                 for (final entry in groups[day]!)
-                  HistoryTile(entry, showUser: _userFilter == null),
+                  HistoryTile(
+                    entry,
+                    showUser: _userFilter == null,
+                    onTap: () => Navigator.of(context).push(
+                      MaterialPageRoute(
+                        builder: (_) => PlaybackLogsScreen(entry),
+                      ),
+                    ),
+                  ),
               ],
             ),
           if (_hasMore)
