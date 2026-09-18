@@ -407,10 +407,17 @@ class ExoPlaybackSession implements PlaybackSession {
     final stats = await (await _ready).stats();
     final status = _status;
     return PlaybackDiagnostics(
-      // ExoPlayer ne passe que par MediaCodec : il n'y a pas de repli logiciel
-      // silencieux à débusquer, contrairement à mpv.
-      hardwareDecoder: 'mediacodec',
+      // Le nom que MediaCodec a donné au décodeur retenu, et non plus
+      // « mediacodec » en dur : ExoPlayer ne se rabat pas en silence comme mpv,
+      // mais le décodeur qu'il obtient peut parfaitement être logiciel — un
+      // `OMX.google.*` ou un `c2.android.*` — et c'est ce que le nom dit.
+      hardwareDecoder: stats.videoDecoder ?? 'mediacodec',
       droppedByDisplay: stats.droppedFrames,
+      renderedFrames: stats.renderedFrames,
+      containerFps: stats.containerFps,
+      videoBitrate: stats.videoBitrate?.toDouble(),
+      audioBitrate: stats.audioBitrate?.toDouble(),
+      bytesLoaded: stats.bytesLoaded,
       audioCodec: status?.selectedAudioTrackId,
     );
   }

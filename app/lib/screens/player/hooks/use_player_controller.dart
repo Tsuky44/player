@@ -8,6 +8,7 @@ import '../display_frame_rate.dart';
 import '../hardware_decoding.dart';
 import '../playback/playback_engine.dart';
 import '../playback/playback_session.dart';
+import '../playback/playback_stats.dart';
 import '../playback/timeline_previews.dart';
 import '../playback_profile.dart';
 import '../web_quality.dart';
@@ -198,6 +199,9 @@ class PlayerController {
   /// [ClientLog] : la tranche part de là et va jusqu'à l'arrêt. Voir
   /// [ClientLog.since].
   int _logMark = 0;
+
+  /// Les mesures de cette séance. Voir [PlaybackStatsCollector].
+  final PlaybackStatsCollector _stats = PlaybackStatsCollector();
 
   /// Chemin du fichier local quand ce média est téléchargé, sinon null.
   ///
@@ -441,6 +445,7 @@ class PlayerController {
     _startupReported = true;
     _mark('playing');
     _startupWatch.stop();
+    _stats.noteStartup(_startupWatch.elapsedMilliseconds);
     debugPrint('PLAYER STARTUP: ${_startupMarks.join(' ')}');
   }
 
@@ -573,6 +578,27 @@ class PlayerController {
     _onFailure = onFailure;
 
     _localFilePath = DownloadManager.instance.localVideoPath(media.id);
+
+    // La séance s'ouvre ici, avant tout ce qui peut encore échouer : l'accès au
+    // flux, l'ouverture du conteneur, le repli en transcodage.
+    //
+    // Le serveur ne rattache le journal d'une lecture qu'à une séance qu'il
+    // connaît déjà (voir `playback_logs.go`). L'ouvrir seulement une fois
+    // `play()` passé revenait donc à ne garder de journal que pour les lectures
+    // qui ont démarré — c'est-à-dire précisément pas celles qu'on vient y
+    // chercher. Une panne au démarrage écrivait sa ligne dans le tampon local,
+    // puis la jetait faute de séance à qui la donner.
+    //
+    // Une ligne d'historique ouverte pour une lecture qui n'a jamais commencé
+    // ne traîne pas : `finishHistoryRow` efface ce qui dure moins de trente
+    // secondes, sauf quand le journal porte une erreur — ce qui est exactement
+    // le cas qu'on veut retrouver.
+    _activityStopped = false;
+    _reportActivity(mediaId: media.id, apiClient: apiClient, event: 'start');
+    // Les mesures partent avec la séance, pas avec la première image : le temps
+    // passé à ouvrir fait partie de ce qu'on veut pouvoir relire.
+    _stats.start(session);
+
     if (_localFilePath == null) {
       final access = await apiClient.openPlaybackAccess(media.id);
       if (_disposed) {
@@ -1082,6 +1108,7 @@ class PlayerController {
   void _setBuffering(bool buffering) {
     if (isBuffering == buffering) return;
     isBuffering = buffering;
+    _stats.noteBuffering(buffering);
     _onBufferingChanged?.call();
   }
 
@@ -1098,6 +1125,9 @@ class PlayerController {
   void startHeartbeat({required int mediaId, required ApiClient apiClient}) {
     _heartbeatTimer?.cancel();
     _activityStopped = false;
+    // La séance est déjà ouverte depuis `open()` ; ce second signal ne la
+    // duplique pas — le serveur reconnaît la même clé et le même média — il
+    // rafraîchit la méthode de lecture, qui n'était pas encore résolue là-bas.
     _reportActivity(mediaId: mediaId, apiClient: apiClient, event: 'start');
     _heartbeatTimer = Timer.periodic(const Duration(seconds: 15), (_) {
       // The activity signal goes out paused too: a film on pause is still
@@ -1148,16 +1178,49 @@ class PlayerController {
     // rattache à la séance encore ouverte, et c'est ce signal-là qui la ferme.
     // L'ordre inverse écrirait dans le vide une fois sur deux.
     if (event == 'stop') {
-      final lines = ClientLog.since(_logMark);
-      if (lines.isNotEmpty) {
-        unawaited(apiClient
-            .uploadPlaybackLogs(lines)
-            .catchError((_) {})
-            .whenComplete(send));
-        return;
-      }
+      unawaited(_uploadSession(apiClient, last: true).whenComplete(send));
+      return;
     }
     unawaited(send());
+  }
+
+  /// Envoie au serveur ce que cette séance a écrit et ce qu'elle a mesuré.
+  ///
+  /// Le serveur réécrit la ligne à chaque envoi plutôt que d'en empiler
+  /// (`ON CONFLICT DO UPDATE`, voir `playback_logs.go`) : envoyer deux fois ne
+  /// duplique rien, le second envoi remplace simplement le premier, plus
+  /// complet puisque plus tardif.
+  ///
+  /// [last] déclenche un dernier relevé avant le résumé. Ce qui s'est passé
+  /// depuis le dernier échantillon compte autant que le reste — c'est souvent
+  /// là que la lecture s'est dégradée.
+  Future<void> _uploadSession(ApiClient apiClient, {required bool last}) async {
+    final stats = last ? await _stats.finish() : _stats.summary;
+    final lines = ClientLog.since(_logMark);
+    if (lines.isEmpty && stats.isEmpty) return;
+    try {
+      await apiClient.uploadPlaybackLogs(
+        lines,
+        stats: stats.isEmpty ? null : stats.toJson(),
+      );
+    } catch (_) {
+      // Un serveur plus ancien n'a pas cette route, et une lecture ne dépend
+      // pas de son journal.
+    }
+  }
+
+  /// Fait monter le journal sans attendre l'arrêt de la séance.
+  ///
+  /// Une séance qui ne bat plus est balayée côté serveur au bout d'une minute,
+  /// et sa ligne d'historique disparaît avec elle si aucun journal d'erreur n'y
+  /// est attaché. Or un démarrage abandonné n'a pas de battement — il n'a
+  /// jamais commencé — et quelqu'un qui lit le message d'erreur avant de fermer
+  /// l'écran met volontiers plus d'une minute. Attendre la fermeture perdait
+  /// donc précisément les journaux pour lesquels tout ceci existe.
+  void _flushLogsNow() {
+    final apiClient = _apiClient;
+    if (apiClient == null || _activityStopped) return;
+    unawaited(_uploadSession(apiClient, last: false));
   }
 
   void _reportActivityStopped() {
@@ -1641,6 +1704,9 @@ class PlayerController {
 
     ClientLog.error('Player: démarrage abandonné — $failure');
     startupFailure = failure;
+    // Maintenant, pendant que la séance ouverte par `open()` est encore vivante
+    // côté serveur — voir [_flushLogsNow].
+    _flushLogsNow();
     _onFailure?.call();
   }
 
@@ -2059,6 +2125,7 @@ class PlayerController {
 
   void cancelStreams() {
     _reportActivityStopped();
+    _stats.stop();
     _disposeTimelinePreviews();
     unawaited(_releasePlaybackAccess());
     _disposed = true;
@@ -2086,6 +2153,7 @@ class PlayerController {
 
   void dispose() {
     _reportActivityStopped();
+    _stats.stop();
     _disposeTimelinePreviews();
     unawaited(_releasePlaybackAccess());
     // Before `_disposed`, so the property reads still go through.

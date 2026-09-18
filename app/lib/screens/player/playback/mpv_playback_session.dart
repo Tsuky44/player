@@ -652,6 +652,19 @@ class MpvPlaybackSession implements PlaybackSession {
       sourceChannels: await _read(platform, 'audio-params/channel-count'),
       outputChannels: await _read(platform, 'audio-out-params/channel-count'),
       audioCodec: await _read(platform, 'audio-codec-name'),
+      renderedFrames:
+          int.tryParse(await _read(platform, 'frame-count') ?? ''),
+      // La cadence telle qu'elle sort, pas telle qu'elle est annoncée. mpv la
+      // moyenne lui-même sur les dernières images, ce qui évite d'avoir à
+      // dériver un compteur sur deux relevés.
+      estimatedFps:
+          double.tryParse(await _read(platform, 'estimated-vf-fps') ?? ''),
+      videoBitrate:
+          double.tryParse(await _read(platform, 'video-bitrate') ?? ''),
+      audioBitrate:
+          double.tryParse(await _read(platform, 'audio-bitrate') ?? ''),
+      bytesLoaded: int.tryParse(
+          await _read(platform, 'demuxer-cache-state/total-bytes') ?? ''),
     );
   }
 }

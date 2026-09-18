@@ -24,6 +24,9 @@ import androidx.media3.exoplayer.audio.AudioSink
 import androidx.media3.exoplayer.audio.DefaultAudioSink
 import androidx.media3.exoplayer.SeekParameters
 import androidx.media3.exoplayer.analytics.AnalyticsListener
+import androidx.media3.exoplayer.source.LoadEventInfo
+import androidx.media3.exoplayer.source.MediaLoadData
+import androidx.media3.common.Format
 import java.io.File
 
 /// Un lecteur ExoPlayer, et l'état que Dart en connaît.
@@ -54,6 +57,26 @@ internal class PlayerInstance(
 
     private var droppedFrames: Long = 0
     private var renderedFrames: Long = 0
+
+    /// Ce qui a réellement transité, cumulé depuis l'ouverture.
+    ///
+    /// ExoPlayer expose bien un `BandwidthMeter`, mais il rend une estimation
+    /// glissante du débit disponible — ce que le réseau *pourrait* donner, pas
+    /// ce que cette lecture a consommé. Pour un bitrate moyen, c'est la somme
+    /// des chargements qui répond.
+    private var bytesLoaded: Long = 0
+
+    /// Le nom que MediaCodec donne au décodeur retenu.
+    ///
+    /// Relevé à l'initialisation plutôt que déduit du format : entre ce qu'un
+    /// appareil déclare savoir décoder et ce qu'il instancie vraiment, il y a
+    /// le repli logiciel silencieux, et c'est précisément lui qu'on cherche.
+    private var videoDecoder: String? = null
+    private var audioDecoder: String? = null
+
+    private var videoBitrate: Long? = null
+    private var audioBitrate: Long? = null
+    private var containerFps: Double? = null
 
     private var lastErrorKind: OnyxPlayerErrorKind? = null
     private var lastErrorMessage: String? = null
@@ -119,6 +142,51 @@ internal class PlayerInstance(
             frameCount: Int,
         ) {
             renderedFrames += frameCount
+        }
+
+        override fun onVideoDecoderInitialized(
+            eventTime: AnalyticsListener.EventTime,
+            decoderName: String,
+            initializedTimestampMs: Long,
+            initializationDurationMs: Long,
+        ) {
+            videoDecoder = decoderName
+        }
+
+        override fun onAudioDecoderInitialized(
+            eventTime: AnalyticsListener.EventTime,
+            decoderName: String,
+            initializedTimestampMs: Long,
+            initializationDurationMs: Long,
+        ) {
+            audioDecoder = decoderName
+        }
+
+        override fun onVideoInputFormatChanged(
+            eventTime: AnalyticsListener.EventTime,
+            format: Format,
+            decoderReuseEvaluation: androidx.media3.exoplayer.DecoderReuseEvaluation?,
+        ) {
+            // `Format.NO_VALUE` vaut -1 : le laisser passer ferait remonter un
+            // bitrate négatif jusqu'à l'interface.
+            videoBitrate = format.bitrate.takeIf { it > 0 }?.toLong()
+            containerFps = format.frameRate.takeIf { it > 0f }?.toDouble()
+        }
+
+        override fun onAudioInputFormatChanged(
+            eventTime: AnalyticsListener.EventTime,
+            format: Format,
+            decoderReuseEvaluation: androidx.media3.exoplayer.DecoderReuseEvaluation?,
+        ) {
+            audioBitrate = format.bitrate.takeIf { it > 0 }?.toLong()
+        }
+
+        override fun onLoadCompleted(
+            eventTime: AnalyticsListener.EventTime,
+            loadEventInfo: LoadEventInfo,
+            mediaLoadData: MediaLoadData,
+        ) {
+            bytesLoaded += loadEventInfo.bytesLoaded
         }
     }
 
@@ -254,6 +322,20 @@ internal class PlayerInstance(
 
     fun open(url: String, startPositionMs: Long, play: Boolean) {
         currentUrl = url
+        // Les compteurs repartent de zéro : l'instance est réutilisée d'une
+        // ouverture à l'autre — épisode suivant, changement de qualité — et
+        // sans cette remise à zéro, les images perdues du film précédent
+        // s'ajouteraient à celles du suivant. L'appelant qui a besoin du total
+        // d'une séance entière recompose le cumul, lui seul sachant ce qui est
+        // la même séance (voir `PlaybackStatsCollector` côté Dart).
+        droppedFrames = 0
+        renderedFrames = 0
+        bytesLoaded = 0
+        videoDecoder = null
+        audioDecoder = null
+        videoBitrate = null
+        audioBitrate = null
+        containerFps = null
         val exo = ensurePlayer()
         exo.setMediaItem(buildMediaItem(url), startPositionMs)
         exo.prepare()
@@ -473,7 +555,16 @@ internal class PlayerInstance(
     }
 
     fun stats(): OnyxPlaybackStats =
-        OnyxPlaybackStats(droppedFrames = droppedFrames, renderedFrames = renderedFrames)
+        OnyxPlaybackStats(
+            droppedFrames = droppedFrames,
+            renderedFrames = renderedFrames,
+            bytesLoaded = bytesLoaded,
+            videoDecoder = videoDecoder,
+            audioDecoder = audioDecoder,
+            videoBitrate = videoBitrate,
+            audioBitrate = audioBitrate,
+            containerFps = containerFps,
+        )
 
     // --- Fin ---------------------------------------------------------------
 

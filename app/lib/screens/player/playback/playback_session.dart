@@ -93,6 +93,11 @@ class PlaybackDiagnostics {
     this.sourceChannels,
     this.outputChannels,
     this.audioCodec,
+    this.renderedFrames,
+    this.estimatedFps,
+    this.videoBitrate,
+    this.audioBitrate,
+    this.bytesLoaded,
   });
 
   final String? videoCodec;
@@ -103,6 +108,25 @@ class PlaybackDiagnostics {
   final String? sourceChannels;
   final String? outputChannels;
   final String? audioCodec;
+
+  /// Les images effectivement présentées depuis l'ouverture. Avec les images
+  /// perdues, c'est de quoi dire quelle proportion de la lecture a sauté.
+  final int? renderedFrames;
+
+  /// La cadence mesurée à l'instant de la lecture, distincte de
+  /// [containerFps] qui est celle que le fichier annonce. L'écart entre les
+  /// deux *est* le symptôme : un film à 23,976 rendu à 19 images par seconde
+  /// saccade, et aucun compteur d'images perdues ne le dit aussi directement.
+  final double? estimatedFps;
+
+  /// Les débits instantanés, en bits par seconde.
+  final double? videoBitrate;
+  final double? audioBitrate;
+
+  /// Les octets tirés de la source depuis l'ouverture, quand le moteur les
+  /// compte. Ce qui permet un bitrate moyen sur la séance plutôt qu'un relevé
+  /// à un instant.
+  final int? bytesLoaded;
 
   static const PlaybackDiagnostics none = PlaybackDiagnostics();
 }

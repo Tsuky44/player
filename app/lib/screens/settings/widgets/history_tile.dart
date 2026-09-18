@@ -12,8 +12,9 @@ class HistoryTile extends StatelessWidget {
   final PlaybackHistoryEntry entry;
   final bool showUser;
 
-  /// Ouvre le journal de cette lecture. Null là où il n'y a rien à ouvrir —
-  /// le tableau de bord montre les mêmes lignes sans cette destination.
+  /// Ouvre le journal de cette lecture. Null pour un compte qui n'a pas le
+  /// droit de les lire : la ligne reste alors inerte plutôt que de mener à un
+  /// 403.
   final VoidCallback? onTap;
 
   @override

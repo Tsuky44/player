@@ -8,6 +8,7 @@ import '../../../providers/auth_provider.dart';
 import '../../../services/api_client.dart';
 import '../../../theme/app_colors.dart';
 import '../../../utils/format.dart';
+import '../playback_logs_screen.dart';
 import '../widgets/history_tile.dart';
 import '../widgets/media_thumb.dart';
 import '../widgets/settings_ui.dart';
@@ -82,6 +83,7 @@ class _DashboardPageState extends State<DashboardPage> {
   @override
   Widget build(BuildContext context) {
     final perms = context.watch<AuthProvider>().permissions;
+    final canReadLogs = perms.manageUsers;
     final server = _server;
     final playing = _nowPlaying;
     final layout = SettingsLayout.maybeOf(context);
@@ -213,7 +215,23 @@ class _DashboardPageState extends State<DashboardPage> {
                 const SettingsEmptyNote(
                     'Rien pour l’instant : l’historique se remplit à chaque lecture.')
               else
-                for (final entry in _recent!) HistoryTile(entry),
+                // Cliquables ici comme dans l'Historique, et pour la même
+                // raison : ces lignes sont celles qu'on regarde en premier
+                // quand quelque chose vient de mal se passer, et les laisser
+                // inertes obligeait à retrouver la même lecture une page plus
+                // loin. Sans le droit de lire les journaux, la ligne reste
+                // inerte plutôt que d'ouvrir un 403.
+                for (final entry in _recent!)
+                  HistoryTile(
+                    entry,
+                    onTap: canReadLogs
+                        ? () => Navigator.of(context).push(
+                              MaterialPageRoute(
+                                builder: (_) => PlaybackLogsScreen(entry),
+                              ),
+                            )
+                        : null,
+                  ),
             ],
           ),
       ],
