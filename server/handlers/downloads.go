@@ -20,6 +20,7 @@ import (
 	"path/filepath"
 	"regexp"
 	"sort"
+	"strconv"
 	"strings"
 	"time"
 
@@ -42,17 +43,36 @@ type DownloadArtifact struct {
 // platformForExt maps an extension to the platform label shown in the UI, and
 // doubles as the whitelist of what may be served: anything else in the folder
 // is ignored rather than exposed.
-var platformForExt = map[string]struct {
-	platform string
-	label    string
-	// order sorts the list for the UI; lower comes first.
-	order int
-}{
+var platformForExt = map[string]artifactKind{
 	".exe": {"windows", "Windows (installeur)", 0},
 	".zip": {"windows-portable", "Windows (portable)", 1},
 	".dmg": {"macos", "macOS", 2},
 	".apk": {"android", "Android (APK)", 3},
 	".ipa": {"ios", "iOS (IPA)", 4},
+}
+
+// artifactKind is what the listing says about one file.
+type artifactKind struct {
+	platform string
+	label    string
+	// order sorts the list for the UI; lower comes first.
+	order int
+}
+
+// tvosArtifact is the Apple TV build. It is an .ipa like the iPhone one, and
+// only its name tells them apart — without this the two would compete for the
+// single "ios" slot, and whichever won would hide the other.
+var tvosArtifact = artifactKind{"tvos", "Apple TV (IPA)", 5}
+
+// artifactKindFor classifies a file by name: its extension, and for an .ipa
+// the `-tvos` suffix that artifactName gives the Apple TV build.
+func artifactKindFor(name string) (artifactKind, bool) {
+	ext := strings.ToLower(filepath.Ext(name))
+	kind, known := platformForExt[ext]
+	if known && ext == ".ipa" && strings.HasSuffix(strings.ToLower(name), "-tvos.ipa") {
+		return tvosArtifact, true
+	}
+	return kind, known
 }
 
 // versionInName pulls 1.0.0 out of "Onyx-1.0.0-macos.dmg". Artifacts staged by
@@ -76,22 +96,38 @@ func DownloadsDir() string {
 // listArtifacts scans the directory on every call. It is a handful of stat
 // calls on a directory holding at most a few files, and it means an artifact
 // dropped in through a volume mount shows up without a restart.
+//
+// Exactly one entry per platform: `.exe` and `.zip` both map "windows" to two
+// different extensions (installer vs portable), but nothing stops two files of
+// the *same* extension from sitting in the directory at once — a build staged
+// by hand, an interrupted publish, a leftover from before the staging script's
+// own cleanup ran. Silently listing both used to mean the client compared
+// itself against whichever sorted first alphabetically, which is not
+// necessarily the newest: "Onyx-0.9.0-windows.exe" comes before
+// "Onyx-1.0.0-windows.exe", so a stale lower-numbered leftover could shadow the
+// real update. Keeping the highest version per platform (or, when a name fails
+// to parse, the most recently written file) makes the listing agree with the
+// version compare a client does anyway.
 func listArtifacts() []DownloadArtifact {
-	artifacts := []DownloadArtifact{}
-
 	dir := DownloadsDir()
 	entries, err := os.ReadDir(dir)
 	if err != nil {
 		// No directory at all (dev checkout, image built before this feature):
 		// an empty list, never an error — the UI just hides the section.
-		return artifacts
+		return []DownloadArtifact{}
 	}
+
+	type candidate struct {
+		artifact DownloadArtifact
+		modTime  time.Time
+	}
+	best := map[string]candidate{}
 
 	for _, entry := range entries {
 		if entry.IsDir() {
 			continue
 		}
-		meta, known := platformForExt[strings.ToLower(filepath.Ext(entry.Name()))]
+		meta, known := artifactKindFor(entry.Name())
 		if !known {
 			continue
 		}
@@ -105,26 +141,101 @@ func listArtifacts() []DownloadArtifact {
 			version = m[1]
 		}
 
-		artifacts = append(artifacts, DownloadArtifact{
-			Platform: meta.platform,
-			Label:    meta.label,
-			File:     entry.Name(),
-			URL:      "/api/downloads/" + entry.Name(),
-			Version:  version,
-			Size:     info.Size(),
-			BuiltAt:  info.ModTime().UTC().Format("2006-01-02T15:04:05Z"),
-		})
+		next := candidate{
+			artifact: DownloadArtifact{
+				Platform: meta.platform,
+				Label:    meta.label,
+				File:     entry.Name(),
+				URL:      "/api/downloads/" + entry.Name(),
+				Version:  version,
+				Size:     info.Size(),
+				BuiltAt:  info.ModTime().UTC().Format("2006-01-02T15:04:05Z"),
+			},
+			modTime: info.ModTime(),
+		}
+
+		current, exists := best[meta.platform]
+		if !exists {
+			best[meta.platform] = next
+			continue
+		}
+		if cmp := compareVersions(next.artifact.Version, current.artifact.Version); cmp > 0 {
+			best[meta.platform] = next
+		} else if cmp == 0 && next.modTime.After(current.modTime) {
+			best[meta.platform] = next
+		}
+	}
+
+	artifacts := make([]DownloadArtifact, 0, len(best))
+	for _, c := range best {
+		artifacts = append(artifacts, c.artifact)
 	}
 
 	sort.Slice(artifacts, func(i, j int) bool {
-		oi := platformForExt[strings.ToLower(filepath.Ext(artifacts[i].File))].order
-		oj := platformForExt[strings.ToLower(filepath.Ext(artifacts[j].File))].order
+		ki, _ := artifactKindFor(artifacts[i].File)
+		kj, _ := artifactKindFor(artifacts[j].File)
+		oi, oj := ki.order, kj.order
 		if oi != oj {
 			return oi < oj
 		}
 		return artifacts[i].File < artifacts[j].File
 	})
 	return artifacts
+}
+
+// compareVersions orders two dot-separated numeric versions ("1.2.3"),
+// treating missing trailing components as 0. A version that fails to parse
+// (empty, non-numeric) sorts below one that does, so a clean name always beats
+// a mangled one instead of an arbitrary string comparison deciding.
+func compareVersions(a, b string) int {
+	pa, oka := versionParts(a)
+	pb, okb := versionParts(b)
+	if !oka || !okb {
+		if oka == okb {
+			return 0
+		}
+		if oka {
+			return 1
+		}
+		return -1
+	}
+
+	length := len(pa)
+	if len(pb) > length {
+		length = len(pb)
+	}
+	for i := 0; i < length; i++ {
+		var x, y int
+		if i < len(pa) {
+			x = pa[i]
+		}
+		if i < len(pb) {
+			y = pb[i]
+		}
+		if x != y {
+			if x < y {
+				return -1
+			}
+			return 1
+		}
+	}
+	return 0
+}
+
+func versionParts(v string) ([]int, bool) {
+	if v == "" {
+		return nil, false
+	}
+	segments := strings.Split(v, ".")
+	parts := make([]int, 0, len(segments))
+	for _, s := range segments {
+		n, err := strconv.Atoi(s)
+		if err != nil {
+			return nil, false
+		}
+		parts = append(parts, n)
+	}
+	return parts, true
 }
 
 // ListDownloads publishes the available client apps.
@@ -318,7 +429,7 @@ func UploadDownload(w http.ResponseWriter, r *http.Request, _ httprouter.Params,
 		return
 	}
 
-	meta := platformForExt[ext]
+	meta, _ := artifactKindFor(originalName)
 	if version == "" {
 		if m := versionInName.FindStringSubmatch(originalName); m != nil {
 			version = m[1]

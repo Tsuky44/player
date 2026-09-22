@@ -34,6 +34,12 @@ class ServerRegistry extends ChangeNotifier {
   List<ServerAccount> _accounts = const [];
   List<PendingAccessRequest> _pendingRequests = const [];
   String? _activeId;
+
+  /// Le serveur sur lequel l'app se remet d'elle-même à chaque lancement,
+  /// quel que soit celui qu'on regardait la fois d'avant. Nul tant que
+  /// personne n'en a désigné un : le carnet reprend alors le dernier actif.
+  String? _primaryId;
+
   bool _loaded = false;
 
   /// Liens déclarés par le serveur de chaque compte, indexés par compte.
@@ -55,6 +61,25 @@ class ServerRegistry extends ChangeNotifier {
       if (account.id == id) return account;
     }
     return null;
+  }
+
+  /// Le serveur principal, quand il est encore au carnet.
+  ServerAccount? get primary {
+    final id = _primaryId;
+    return id == null ? null : accountById(id);
+  }
+
+  String? get primaryId => primary == null ? null : _primaryId;
+
+  bool isPrimary(String id) => _primaryId != null && _primaryId == id;
+
+  /// Désigne — ou libère, avec `null` — le serveur de démarrage.
+  Future<void> setPrimary(String? id) async {
+    if (id != null && accountById(id) == null) return;
+    if (_primaryId == id) return;
+    _primaryId = id;
+    await _persist();
+    notifyListeners();
   }
 
   /// Vrai dès qu'il y a de quoi basculer — ce qui décide de l'affichage du
@@ -182,6 +207,7 @@ class ServerRegistry extends ChangeNotifier {
           .map((e) => PendingAccessRequest.fromJson(e as Map<String, dynamic>))
           .toList();
       _activeId = data['active'] as String?;
+      _primaryId = data['primary'] as String?;
       _legacyLinks = (data['links'] as List? ?? const [])
           .map((g) => (g as List)
               .cast<String>()
@@ -203,9 +229,14 @@ class ServerRegistry extends ChangeNotifier {
       _accounts = const [];
       _pendingRequests = const [];
       _activeId = null;
+      _primaryId = null;
       _legacyLinks = [];
       _serverLinks = {};
     }
+    // Un principal qui ne désigne plus rien — compte retiré depuis un autre
+    // lancement — vaut pas de principal du tout, sinon le démarrage se bloque
+    // sur un serveur qui n'existe pas.
+    if (accountById(_primaryId ?? '') == null) _primaryId = null;
     if (accountById(_activeId ?? '') == null) {
       _activeId = _accounts.isEmpty ? null : _accounts.first.id;
     }
@@ -262,6 +293,7 @@ class ServerRegistry extends ChangeNotifier {
       _storeKey,
       jsonEncode({
         'active': _activeId,
+        if (_primaryId != null) 'primary': _primaryId,
         if (_legacyLinks.isNotEmpty)
           'links': _legacyLinks.map((g) => g.toList()).toList(),
         'server_links': {
@@ -339,6 +371,7 @@ class ServerRegistry extends ChangeNotifier {
     final normalized = ServerAccount.normalizeUrl(url);
     if (normalized == account.url) return account;
 
+    final wasPrimary = isPrimary(id);
     final legacyGroups =
         _legacyLinks.where((g) => g.contains(id)).map(Set.of).toList();
     final links = serverLinksFor(id);
@@ -361,6 +394,7 @@ class ServerRegistry extends ChangeNotifier {
       _legacyLinks.add({...group..remove(id), moved.id});
     }
     _activeId = moved.id;
+    if (wasPrimary) _primaryId = moved.id;
     if (token != null) await _writeToken(moved.id, token);
     if (profile != null) await writeProfile(moved.id, profile);
     await _persist();
@@ -402,6 +436,9 @@ class ServerRegistry extends ChangeNotifier {
     _removeLinks(id);
     await _deleteToken(id);
     await clearProfile(id);
+    // Un serveur retiré ne peut plus être celui du démarrage : le laisser
+    // désigné renverrait l'app vers un compte dont elle n'a plus le jeton.
+    if (_primaryId == id) _primaryId = null;
     if (_activeId == id) {
       _activeId = _accounts.isEmpty ? null : _accounts.first.id;
     }
@@ -515,6 +552,7 @@ class ServerRegistry extends ChangeNotifier {
     _accounts = const [];
     _pendingRequests = const [];
     _activeId = null;
+    _primaryId = null;
     _serverLinks = {};
     _legacyLinks = [];
     _loaded = false;

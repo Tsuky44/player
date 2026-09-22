@@ -177,6 +177,13 @@ class PlayerController {
     debugPrint('Playback: dropped frames — display=$display decoder=$decoder');
   }
 
+  /// Whether this platform only ever plays through an HLS session.
+  ///
+  /// A browser cannot open the containers and codecs a private library is made
+  /// of, and AVPlayer on the Apple TV refuses MKV: both skip Direct Play and
+  /// start a session as soon as the track list says which tier to ask for.
+  static bool get _hlsOnly => AppPlatform.isWeb || AppPlatform.isTvOS;
+
   /// In HLS mode the stream timeline resets to 0 at this offset (seconds) into
   /// the original media. Used to display the absolute position and to compute
   /// seek targets. 0 in Direct Play.
@@ -621,8 +628,9 @@ class PlayerController {
     // and audio codecs a private library is actually made of, and the failure is
     // silent — picture, no sound, no message. Rather than open the file and back
     // out of it a moment later, the web waits for the track list and starts
-    // straight in HLS, at the source's own resolution.
-    if (!AppPlatform.isWeb) {
+    // straight in HLS, at the source's own resolution. The Apple TV does the
+    // same for its own reason: AVPlayer refuses MKV outright.
+    if (!_hlsOnly) {
       // Which audio track to load with. The episode being carried over from
       // knows best; otherwise it is the user's standing preference, which lives
       // on this machine and costs nothing to read.
@@ -803,18 +811,23 @@ class PlayerController {
   /// Returns true when a session was started, so the caller stops configuring a
   /// player that is about to be handed a different source.
   Future<bool> _startWebTranscode() async {
-    if (!AppPlatform.isWeb) return false;
+    if (!_hlsOnly) return false;
     if (currentQuality != null) return false; // already running
     final tracks = mediaTracks;
     if (tracks == null) return false;
 
     final height = tracks.video?.height ?? 0;
     final surface = _surfacePixelHeight();
-    final quality = webQualityFor(
-      sourceHeight: height,
-      viewportHeight: surface,
-      sourceCodec: tracks.video?.codec ?? '',
-    );
+    // The Apple TV asks for the source's own tier, always: AVPlayer decodes
+    // HEVC as well as H.264, so the server copies either instead of encoding,
+    // and a television is the one screen that shows every one of those pixels.
+    final quality = AppPlatform.isTvOS
+        ? qualityForSourceHeight(height)
+        : webQualityFor(
+            sourceHeight: height,
+            viewportHeight: surface,
+            sourceCodec: tracks.video?.codec ?? '',
+          );
     // The resume point has to be part of the session rather than a seek applied
     // to it afterwards: the server transcodes from `?start=N` onwards, and the
     // rest of the film does not exist yet to seek into.
@@ -1057,7 +1070,7 @@ class PlayerController {
     int resumeAtSeconds = 0,
   }) async {
     if (_disposed) return;
-    if (AppPlatform.isWeb) {
+    if (_hlsOnly) {
       // On the web the resume point is part of the session: the server was asked
       // to start transcoding at that second, so there is nothing to seek to —
       // and a seek would land outside the window it is producing anyway. When
@@ -1636,6 +1649,12 @@ class PlayerController {
       }
       return;
     }
+    // AVPlayer switches between the session's audio renditions itself, like
+    // mpv; it only needs a session to exist first.
+    if (_hlsOnly && currentQuality == null) {
+      await _startWebTranscode();
+      return;
+    }
 
     if (_directPlayCannotDecodeAudio(index)) {
       await _transcodeForUndecodableAudio();
@@ -1656,7 +1675,7 @@ class PlayerController {
   /// DTS ou de l'(E-)AC-3 sous ExoPlayer quand l'appareil n'a ni décodeur ni
   /// passthrough pour eux.
   bool _directPlayCannotDecodeAudio(int index) {
-    if (AppPlatform.isWeb || currentQuality != null) return false;
+    if (_hlsOnly || currentQuality != null) return false;
     final audio = mediaTracks?.audio ?? const <MediaAudioTrack>[];
     if (index < 0 || index >= audio.length) return false;
     return !PlaybackCapabilitiesResolver.current
@@ -1867,7 +1886,7 @@ class PlayerController {
     // Except in a browser, which cannot see a file's embedded subtitle tracks at
     // all — a <video> knows only <track> elements. There the external WebVTT is
     // the only source there has ever been, Direct Play included.
-    if (currentQuality == null && !AppPlatform.isWeb) {
+    if (currentQuality == null && !_hlsOnly) {
       _applyInternalSubtitleSelection();
       return;
     }

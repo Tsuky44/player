@@ -37,12 +37,23 @@ func ExportProgress(w http.ResponseWriter, r *http.Request, _ httprouter.Params,
 }
 
 func exportPortableProgress(w http.ResponseWriter, userID int, mediaID string) {
+	entries, err := readPortableProgress(userID, mediaID)
+	if err != nil {
+		http.Error(w, "Unable to read progress", 500)
+		return
+	}
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(entries)
+}
+
+// readPortableProgress lit la progression d'un compte par identité de contenu,
+// pour un média (mediaID) ou pour tous ("").
+func readPortableProgress(userID int, mediaID string) ([]PortableProgress, error) {
 	rows, err := database.DB.Query(`WITH content(id, type, tmdb, season, episode) AS (`+portableMedia+`)
  SELECT c.type, c.tmdb, c.season, c.episode, p.current_position_seconds, p.is_finished, p.updated_at
  FROM content c JOIN progressions p ON p.media_id = c.id WHERE p.user_id = ? AND (? = '' OR c.id = ?)`, userID, mediaID, mediaID)
 	if err != nil {
-		http.Error(w, "Unable to read progress", 500)
-		return
+		return nil, err
 	}
 	defer rows.Close()
 	entries := []PortableProgress{}
@@ -50,8 +61,7 @@ func exportPortableProgress(w http.ResponseWriter, userID int, mediaID string) {
 		var entry PortableProgress
 		var stamp sql.NullString
 		if err := rows.Scan(&entry.Type, &entry.TMDBID, &entry.Season, &entry.Episode, &entry.Position, &entry.Finished, &stamp); err != nil {
-			http.Error(w, "Unable to read progress", 500)
-			return
+			return nil, err
 		}
 		date := scanSQLiteTime(stamp)
 		if date.IsZero() {
@@ -60,12 +70,7 @@ func exportPortableProgress(w http.ResponseWriter, userID int, mediaID string) {
 		entry.UpdatedAt = date.UTC().Format(time.RFC3339Nano)
 		entries = append(entries, entry)
 	}
-	if rows.Err() != nil {
-		http.Error(w, "Unable to read progress", 500)
-		return
-	}
-	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(entries)
+	return entries, rows.Err()
 }
 
 func ImportProgress(w http.ResponseWriter, r *http.Request, _ httprouter.Params, userID int) {

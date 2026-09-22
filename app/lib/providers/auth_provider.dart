@@ -5,6 +5,26 @@ import '../models/server_account.dart';
 import '../services/api_client.dart';
 import '../utils/app_platform.dart';
 
+/// Ce que donne une tentative d'ouverture de session sur le compte actif.
+///
+/// Quatre issues et pas deux, parce que l'app n'en tire pas la même
+/// conclusion : un refus renvoie à l'écran de connexion, un serveur muet peut
+/// valoir une bascule, et un serveur qui répond de travers ne prouve pas
+/// qu'il est éteint.
+enum _SessionOutcome {
+  /// Le profil est arrivé : la session est ouverte pour de bon.
+  opened,
+
+  /// 401 : la session n'existe plus de l'autre côté.
+  unauthorized,
+
+  /// Aucune réponse : le serveur est injoignable d'ici.
+  unreachable,
+
+  /// Une réponse, mais inexploitable — un 500, un corps illisible.
+  faulted,
+}
+
 class AuthProvider extends ChangeNotifier {
   final ApiClient apiClient;
 
@@ -18,6 +38,11 @@ class AuthProvider extends ChangeNotifier {
   /// joindre le serveur. Tout ce qui vient du réseau est indisponible ; ce qui
   /// a été téléchargé, non.
   bool _isOfflineSession = false;
+
+  /// Le serveur principal n'a pas répondu au démarrage et il reste d'autres
+  /// comptes au carnet : l'app attend qu'on lui dise où aller plutôt que de
+  /// choisir à la place de l'utilisateur.
+  ServerAccount? _unreachablePrimary;
 
   AuthProvider(this.apiClient) {
     // Le carnet de serveurs se modifie aussi sans passer par ici — un renommage
@@ -52,41 +77,74 @@ class AuthProvider extends ChangeNotifier {
     _isInitializing = true;
     notifyListeners();
 
+    // Le serveur principal passe avant celui qu'on regardait la dernière fois :
+    // c'est tout ce qu'on lui demande d'être.
+    await _applyPrimaryServer();
+
     if (!apiClient.hasSavedToken) {
       _isInitializing = false;
       notifyListeners();
       return;
     }
 
-    try {
-      _currentUser = await apiClient.getMe();
-      await apiClient.saveLastUsername(_currentUser!.username);
-      await apiClient.cacheProfile(_currentUser!);
-      _isAuthenticated = true;
-      _isOfflineSession = false;
-      _errorMessage = null;
-    } on DioException catch (e) {
-      // Un 401 est un verdict : la session n'existe plus, on nettoie et on
-      // renvoie vers l'écran de connexion. Une absence de réponse n'est un
-      // verdict sur rien — c'est le cas hors ligne, et il se rattrape.
-      if (e.response?.statusCode == 401) {
-        _currentUser = null;
-        _isAuthenticated = false;
-        _isOfflineSession = false;
-        await apiClient.clearAuth();
-      } else if (!await _openOfflineSession()) {
-        _currentUser = null;
-        _isAuthenticated = false;
-      }
-    } catch (_) {
-      if (!await _openOfflineSession()) {
-        _currentUser = null;
-        _isAuthenticated = false;
-      }
-    } finally {
-      _isInitializing = false;
-      notifyListeners();
+    // Un 401 est un verdict : la session n'existe plus, on nettoie et on
+    // renvoie vers l'écran de connexion. Une absence de réponse n'est un
+    // verdict sur rien — c'est le cas hors ligne, et il se rattrape.
+    switch (await _probeSessionOnActive(announceExpiry: false)) {
+      case _SessionOutcome.opened:
+        await apiClient.saveLastUsername(_currentUser!.username);
+      case _SessionOutcome.unauthorized:
+        break;
+      case _SessionOutcome.unreachable:
+        // Le principal est muet : on demande où aller tant qu'il y a un
+        // ailleurs. Sinon la session hors ligne reste la meilleure réponse.
+        if (!_askWhereToGo() && !await _openOfflineSession()) {
+          _currentUser = null;
+          _isAuthenticated = false;
+        }
+      case _SessionOutcome.faulted:
+        if (!await _openOfflineSession()) {
+          _currentUser = null;
+          _isAuthenticated = false;
+        }
     }
+
+    _isInitializing = false;
+    notifyListeners();
+  }
+
+  /// Remet l'app sur le serveur principal, s'il y en a un de désigné.
+  ///
+  /// Sans sonder quoi que ce soit : c'est la requête de profil qui suit qui
+  /// dira s'il répond, et un aller-retour de plus devant l'écran de démarrage
+  /// se paie sur tous les lancements pour renseigner le cas rare.
+  Future<void> _applyPrimaryServer() async {
+    final registry = apiClient.servers;
+    await registry.load();
+    final primary = registry.primary;
+    if (primary == null || registry.active?.id == primary.id) return;
+    if (await apiClient.activateAccount(primary.id)) _onServerChanged?.call();
+  }
+
+  /// Retient qu'il faut poser la question, et rend vrai quand c'est le cas.
+  ///
+  /// Uniquement quand le serveur muet est le principal — sans principal,
+  /// personne n'a demandé à démarrer ici plutôt qu'ailleurs — et qu'il reste
+  /// au moins un autre compte : une liste d'un seul serveur ne propose rien.
+  bool _askWhereToGo() {
+    final registry = apiClient.servers;
+    final primary = registry.primary;
+    if (primary == null ||
+        registry.active?.id != primary.id ||
+        registry.accounts.length < 2) {
+      return false;
+    }
+    _unreachablePrimary = primary;
+    _currentUser = null;
+    _isAuthenticated = false;
+    _isOfflineSession = false;
+    _errorMessage = null;
+    return true;
   }
 
   /// Ouvre une session sur le profil mis de côté au dernier passage en ligne.
@@ -110,6 +168,13 @@ class AuthProvider extends ChangeNotifier {
   /// Sans effet quand la session en cours est déjà en ligne, pour que le
   /// sondage de connectivité puisse appeler sans condition.
   Future<void> reconnect() async {
+    // La question posée au démarrage se referme d'elle-même quand le serveur
+    // principal se réveille : personne n'a à choisir un pis-aller parce qu'un
+    // NAS a mis trente secondes de plus que l'app à démarrer.
+    if (needsServerChoice) {
+      await retryPrimaryServer();
+      return;
+    }
     if (!_isOfflineSession) return;
     try {
       _currentUser = await apiClient.getMe();
@@ -268,6 +333,72 @@ class AuthProvider extends ChangeNotifier {
   List<PendingAccessRequest> get pendingAccessRequests =>
       apiClient.servers.pendingRequests;
 
+  // ==================== SERVEUR PRINCIPAL ====================
+  //
+  // Un serveur peut être désigné comme celui du démarrage : l'app s'y remet à
+  // chaque lancement, quel que soit celui qu'on regardait la fois d'avant.
+  // Quand il ne répond pas et qu'il reste d'autres comptes, elle demande où
+  // aller plutôt que de se rabattre en silence sur le cache — se retrouver
+  // hors ligne sans l'avoir demandé, avec un autre serveur allumé à côté, est
+  // exactement ce que ce réglage sert à éviter.
+
+  /// Le serveur de démarrage, s'il en existe un.
+  ServerAccount? get primaryServer => apiClient.servers.primary;
+
+  bool isPrimaryServer(String accountId) =>
+      apiClient.servers.isPrimary(accountId);
+
+  /// Désigne le serveur de démarrage, ou le libère avec `null`.
+  Future<void> setPrimaryServer(String? accountId) async {
+    await apiClient.servers.setPrimary(accountId);
+    notifyListeners();
+  }
+
+  /// Le principal auquel on n'a pas pu se connecter au lancement. Non nul tant
+  /// que l'utilisateur n'a pas tranché.
+  ServerAccount? get unreachablePrimary => _unreachablePrimary;
+
+  bool get needsServerChoice => _unreachablePrimary != null;
+
+  /// Redemande au serveur principal, pour le cas où il vient de se réveiller.
+  Future<bool> retryPrimaryServer() async {
+    final primary = _unreachablePrimary;
+    if (primary == null) return _isAuthenticated;
+
+    _isLoading = true;
+    _errorMessage = null;
+    notifyListeners();
+
+    if (apiClient.servers.active?.id != primary.id) {
+      await apiClient.activateAccount(primary.id);
+      _onServerChanged?.call();
+    }
+    final outcome = await _probeSessionOnActive();
+    // Toujours muet : la question reste posée. Répondu, même mal : elle n'a
+    // plus lieu d'être, et l'app repart sur ce que le serveur a dit.
+    if (outcome != _SessionOutcome.unreachable) _unreachablePrimary = null;
+    if (outcome == _SessionOutcome.faulted) await _openOfflineSession();
+
+    _isLoading = false;
+    notifyListeners();
+    return outcome == _SessionOutcome.opened;
+  }
+
+  /// Reste sur le principal sans lui : la session s'ouvre sur le profil mis de
+  /// côté au dernier passage en ligne, et les téléchargements sont sur le
+  /// disque. Faux quand il n'y a aucun profil à rouvrir — l'écran de connexion
+  /// est alors la seule réponse honnête.
+  Future<bool> continueOfflineOnPrimary() async {
+    _unreachablePrimary = null;
+    final opened = await _openOfflineSession();
+    if (!opened) {
+      _currentUser = null;
+      _isAuthenticated = false;
+    }
+    notifyListeners();
+    return opened;
+  }
+
   /// Bascule sur un autre serveur du carnet.
   ///
   /// L'identité est relue au serveur d'arrivée avant d'annoncer quoi que ce
@@ -287,6 +418,7 @@ class AuthProvider extends ChangeNotifier {
       return false;
     }
 
+    _unreachablePrimary = null;
     _onServerChanged?.call();
     final ok = await _openSessionOnActive();
     _isLoading = false;
@@ -299,13 +431,34 @@ class AuthProvider extends ChangeNotifier {
   /// même raison — un serveur injoignable ne prouve pas qu'on n'y a plus de
   /// compte, et les téléchargements, eux, sont sur le disque.
   Future<bool> _openSessionOnActive() async {
+    final outcome = await _probeSessionOnActive();
+    switch (outcome) {
+      case _SessionOutcome.opened:
+        return true;
+      case _SessionOutcome.unauthorized:
+        return false;
+      case _SessionOutcome.unreachable:
+      case _SessionOutcome.faulted:
+        return await _openOfflineSession();
+    }
+  }
+
+  /// Demande son profil au serveur du compte actif et dit ce qui s'est passé,
+  /// sans rien décider : c'est l'appelant qui sait s'il peut se rabattre sur
+  /// le cache, proposer un autre serveur ou renvoyer à l'écran de connexion.
+  ///
+  /// [announceExpiry] laisse le message de session expirée à l'écran. Au
+  /// démarrage il n'a rien à y faire — personne n'a rien tenté.
+  Future<_SessionOutcome> _probeSessionOnActive({
+    bool announceExpiry = true,
+  }) async {
     try {
       _currentUser = await apiClient.getMe();
       await apiClient.cacheProfile(_currentUser!);
       _isAuthenticated = true;
       _isOfflineSession = false;
       _errorMessage = null;
-      return true;
+      return _SessionOutcome.opened;
     } on DioException catch (e) {
       if (e.response?.statusCode == 401) {
         // La session a été révoquée de l'autre côté : le compte reste au
@@ -314,12 +467,18 @@ class AuthProvider extends ChangeNotifier {
         _currentUser = null;
         _isAuthenticated = false;
         _isOfflineSession = false;
-        _errorMessage = 'Session expirée sur ce serveur, reconnectez-vous.';
-        return false;
+        if (announceExpiry) {
+          _errorMessage = 'Session expirée sur ce serveur, reconnectez-vous.';
+        }
+        return _SessionOutcome.unauthorized;
       }
-      return await _openOfflineSession();
+      // Une réponse, même mauvaise, prouve qu'il y a quelqu'un en face : ce
+      // n'est pas un serveur éteint, et ça ne vaut pas une bascule.
+      return e.response == null
+          ? _SessionOutcome.unreachable
+          : _SessionOutcome.faulted;
     } catch (_) {
-      return await _openOfflineSession();
+      return _SessionOutcome.faulted;
     }
   }
 
@@ -330,6 +489,7 @@ class AuthProvider extends ChangeNotifier {
   /// cet appareil-ci n'a pas à faire tomber les autres.
   Future<void> forgetServer(String accountId) async {
     final wasActive = activeServer?.id == accountId;
+    if (_unreachablePrimary?.id == accountId) _unreachablePrimary = null;
     await apiClient.forgetAccount(accountId);
     if (!wasActive) {
       notifyListeners();

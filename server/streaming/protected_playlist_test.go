@@ -79,3 +79,19 @@ func TestHLSTicketAndSessionIsolation(t *testing.T) {
 		t.Fatal("revoked ticket leaked media")
 	}
 }
+
+func TestStartAtBeginningPinsTheMediaPlaylistStart(t *testing.T) {
+	media := "#EXTM3U\n#EXT-X-VERSION:7\n#EXT-X-TARGETDURATION:4\n#EXT-X-PLAYLIST-TYPE:EVENT\n#EXTINF:4.0,\nstream_0_0.m4s\n"
+	got := StartAtBeginning(media)
+	if !strings.HasPrefix(got, "#EXTM3U\n#EXT-X-START:TIME-OFFSET=0,PRECISE=YES\n#EXT-X-VERSION:7\n") {
+		t.Fatalf("EXT-X-START must follow #EXTM3U, got:\n%s", got)
+	}
+	if StartAtBeginning(got) != got {
+		t.Error("a playlist that already says where to start must be left alone")
+	}
+
+	master := "#EXTM3U\n#EXT-X-STREAM-INF:BANDWIDTH=1\nstream_0.m3u8\n"
+	if StartAtBeginning(master) != master {
+		t.Error("a master playlist must not carry EXT-X-START")
+	}
+}

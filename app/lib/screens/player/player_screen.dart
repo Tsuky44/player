@@ -20,6 +20,7 @@ import '../../services/picture_in_picture.dart';
 import '../../services/screen_brightness_control.dart';
 import 'display_cutouts.dart';
 import 'video_fit.dart';
+import '../../tv/tv_focus.dart';
 import '../../tv/tv_mode.dart';
 import '../../utils/poster_url.dart';
 import 'hooks/use_player_controller.dart';
@@ -1401,9 +1402,7 @@ class _PlayerScreenState extends State<PlayerScreen> {
       return KeyEventResult.handled;
     }
 
-    if (key == LogicalKeyboardKey.escape ||
-        key == LogicalKeyboardKey.goBack ||
-        key == LogicalKeyboardKey.browserBack) {
+    if (kTvBackKeys.contains(key)) {
       // Innermost first: a menu opened from the chrome, then the episode
       // panel, then the control bar, and only then the player itself.
       if (_dismissTopPopup()) return KeyEventResult.handled;
@@ -1767,9 +1766,7 @@ class _PlayerScreenState extends State<PlayerScreen> {
         onKeyEvent: (node, event) {
           if (event is! KeyDownEvent) return KeyEventResult.ignored;
           final key = event.logicalKey;
-          if (key == LogicalKeyboardKey.escape ||
-              key == LogicalKeyboardKey.goBack ||
-              key == LogicalKeyboardKey.browserBack) {
+          if (kTvBackKeys.contains(key)) {
             dismiss();
             return KeyEventResult.handled;
           }

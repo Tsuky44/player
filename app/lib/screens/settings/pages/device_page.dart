@@ -68,27 +68,30 @@ class _DevicePageState extends State<DevicePage> {
       description:
           'Ce qui ne concerne que cet appareil : son mode d’affichage, le téléviseur à connecter, et ce qu’il garde en mémoire.',
       children: [
-        SettingsGroup(
-          title: 'Affichage',
-          children: [
-            SettingsChoiceTile<TvModePreference>(
-              icon: Icons.settings_remote_rounded,
-              title: 'Mode télécommande',
-              subtitle:
-                  'Interface pensée pour un téléviseur et une télécommande. Cet appareil est détecté comme $detected.',
-              value: TvMode.preference,
-              options: const [
-                (TvModePreference.auto, 'Auto'),
-                (TvModePreference.on, 'Activé'),
-                (TvModePreference.off, 'Désactivé'),
-              ],
-              onChanged: (value) async {
-                await TvMode.setPreference(value);
-                if (mounted) setState(() {});
-              },
-            ),
-          ],
-        ),
+        // Sur une Apple TV le mode télécommande est le seul possible : rien à
+        // régler (voir [TvMode]).
+        if (!AppPlatform.isTvOS)
+          SettingsGroup(
+            title: 'Affichage',
+            children: [
+              SettingsChoiceTile<TvModePreference>(
+                icon: Icons.settings_remote_rounded,
+                title: 'Mode télécommande',
+                subtitle:
+                    'Interface pensée pour un téléviseur et une télécommande. Cet appareil est détecté comme $detected.',
+                value: TvMode.preference,
+                options: const [
+                  (TvModePreference.auto, 'Auto'),
+                  (TvModePreference.on, 'Activé'),
+                  (TvModePreference.off, 'Désactivé'),
+                ],
+                onChanged: (value) async {
+                  await TvMode.setPreference(value);
+                  if (mounted) setState(() {});
+                },
+              ),
+            ],
+          ),
         // Le lien se fait en scannant le code affiché par l'autre écran
         // (téléviseur, navigateur, ordinateur) : il faut une caméra, donc un
         // téléphone.
@@ -109,7 +112,7 @@ class _DevicePageState extends State<DevicePage> {
               ),
             ],
           ),
-        if (!AppPlatform.isWeb)
+        if (!AppPlatform.isWeb && downloads.isSupported)
           SettingsGroup(
             title: 'Stockage',
             children: [

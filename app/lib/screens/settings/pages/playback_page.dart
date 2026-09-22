@@ -97,41 +97,44 @@ class _PlaybackPageState extends State<PlaybackPage> {
             ),
           ],
         ),
-        SettingsGroup(
-          title: 'Vidéo',
-          children: [
-            SettingsChoiceTile<HardwareDecodingPreference>(
-              icon: Icons.memory_rounded,
-              title: 'Décodage matériel',
-              subtitle:
-                  'Passez sur « Compatible » si l’image est noire ou verte alors que le son fonctionne.',
-              footnote: 'Prend effet à la prochaine lecture.',
-              value: HardwareDecoding.preference,
-              options: const [
-                (HardwareDecodingPreference.auto, 'Rapide'),
-                (HardwareDecodingPreference.copy, 'Compatible'),
-                (HardwareDecodingPreference.off, 'Logiciel'),
-              ],
-              onChanged: (value) async {
-                await HardwareDecoding.setPreference(value);
-                if (mounted) setState(() {});
-              },
-            ),
-            // Android seul laisse une app choisir le mode d'affichage.
-            if (AppPlatform.isAndroid)
-              SettingsSwitchTile(
-                icon: Icons.slow_motion_video_rounded,
-                title: 'Adapter l’écran au film',
+        // AVPlayer, sur l'Apple TV, ne décode qu'en matériel et ne laisse rien
+        // choisir : le groupe n'aurait rien à y proposer.
+        if (!AppPlatform.isTvOS)
+          SettingsGroup(
+            title: 'Vidéo',
+            children: [
+              SettingsChoiceTile<HardwareDecodingPreference>(
+                icon: Icons.memory_rounded,
+                title: 'Décodage matériel',
                 subtitle:
-                    'Cale la fréquence du téléviseur sur celle du film pour supprimer les saccades. Désactivez-le si la lecture se fige au démarrage.',
-                value: DisplayFrameRate.enabled,
+                    'Passez sur « Compatible » si l’image est noire ou verte alors que le son fonctionne.',
+                footnote: 'Prend effet à la prochaine lecture.',
+                value: HardwareDecoding.preference,
+                options: const [
+                  (HardwareDecodingPreference.auto, 'Rapide'),
+                  (HardwareDecodingPreference.copy, 'Compatible'),
+                  (HardwareDecodingPreference.off, 'Logiciel'),
+                ],
                 onChanged: (value) async {
-                  await DisplayFrameRate.setEnabled(value);
+                  await HardwareDecoding.setPreference(value);
                   if (mounted) setState(() {});
                 },
               ),
-          ],
-        ),
+              // Android seul laisse une app choisir le mode d'affichage.
+              if (AppPlatform.isAndroid)
+                SettingsSwitchTile(
+                  icon: Icons.slow_motion_video_rounded,
+                  title: 'Adapter l’écran au film',
+                  subtitle:
+                      'Cale la fréquence du téléviseur sur celle du film pour supprimer les saccades. Désactivez-le si la lecture se fige au démarrage.',
+                  value: DisplayFrameRate.enabled,
+                  onChanged: (value) async {
+                    await DisplayFrameRate.setEnabled(value);
+                    if (mounted) setState(() {});
+                  },
+                ),
+            ],
+          ),
         SettingsGroup(
           title: 'Séries',
           footer:

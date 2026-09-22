@@ -1269,6 +1269,38 @@ class ApiClient {
     return response.data as Map<String, dynamic>;
   }
 
+  /// Marque un lot de médias — en pratique une saison entière — vu ou non vu.
+  ///
+  /// Renvoie, par identifiant, ce que le serveur a retenu ; les identifiants
+  /// qu'il refuse (un épisode disparu, une saison) manquent simplement à
+  /// l'appel. Un serveur plus ancien ne connaît pas la route de lot : on
+  /// retombe alors sur les appels un par un, qui font le même travail en
+  /// vingt requêtes au lieu d'une.
+  Future<Map<int, Map<String, dynamic>>> setMediasWatched(
+      List<int> mediaIds, bool watched) async {
+    if (mediaIds.isEmpty) return {};
+    try {
+      final response = await _dio.post("/api/progress/watched", data: {
+        "media_ids": mediaIds,
+        "watched": watched,
+      });
+      final updated = (response.data as Map)["updated"] as List? ?? const [];
+      return {
+        for (final entry in updated)
+          if (entry is Map && entry["media_id"] is int)
+            entry["media_id"] as int: Map<String, dynamic>.from(entry),
+      };
+    } on DioException catch (error) {
+      final status = error.response?.statusCode;
+      if (status != 404 && status != 405) rethrow;
+      final results = <int, Map<String, dynamic>>{};
+      for (final mediaId in mediaIds) {
+        results[mediaId] = await setMediaWatched(mediaId, watched);
+      }
+      return results;
+    }
+  }
+
   Future<void> hideFromContinueWatching({int? movieId, int? showId}) async {
     final data = <String, dynamic>{};
     if (movieId != null) data['movie_id'] = movieId;

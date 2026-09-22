@@ -2,6 +2,11 @@
     <uses-permission android:name="android.permission.INTERNET"/>
     <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE"/>
     <uses-permission android:name="android.permission.WAKE_LOCK"/>
+    <!-- Lets the app hand a downloaded APK straight to the system installer
+         instead of dropping it in Downloads for the user to find by hand. The
+         system still shows its own install confirmation — this only grants
+         the *right to ask*, never a silent install. -->
+    <uses-permission android:name="android.permission.REQUEST_INSTALL_PACKAGES"/>
 
     <!-- Android TV. Leanback is declared not-required so the very same APK
          still installs on phones; declaring it required would hide the app from
@@ -75,6 +80,21 @@
         <meta-data
             android:name="flutterEmbedding"
             android:value="2" />
+
+        <!-- Hands the downloaded APK to the system installer as a content:// URI
+             — Android 7+ refuses a file:// one from another app's cache dir
+             outright. The exposed path is scoped to the cache directory only,
+             which is exactly where AppUpdater.createWorkDir() (dart:io's
+             Directory.systemTemp) puts the download. -->
+        <provider
+            android:name="androidx.core.content.FileProvider"
+            android:authorities="${applicationId}.fileprovider"
+            android:exported="false"
+            android:grantUriPermissions="true">
+            <meta-data
+                android:name="android.support.FILE_PROVIDER_PATHS"
+                android:resource="@xml/file_paths"/>
+        </provider>
     </application>
     <!-- Required to query activities that can process text, see:
          https://developer.android.com/training/package-visibility and
@@ -85,6 +105,13 @@
         <intent>
             <action android:name="android.intent.action.PROCESS_TEXT"/>
             <data android:mimeType="text/plain"/>
+        </intent>
+        <!-- Android 11+ hides the package installer from an app's view of the
+             system unless it says it needs to see it — without this the VIEW
+             intent below resolves to nothing and installing silently fails. -->
+        <intent>
+            <action android:name="android.intent.action.VIEW"/>
+            <data android:mimeType="application/vnd.android.package-archive"/>
         </intent>
     </queries>
 </manifest>

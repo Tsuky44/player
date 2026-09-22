@@ -2,10 +2,10 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../../models/models.dart';
 import '../../services/api_client.dart';
-import '../../theme/app_colors.dart';
 import '../../utils/format.dart';
 import '../../utils/poster_url.dart';
 import 'poster_card.dart';
+import 'progress_pill.dart';
 import 'watch_badge.dart';
 
 class MediaCard extends StatelessWidget {
@@ -52,16 +52,14 @@ class MediaCard extends StatelessWidget {
       showPlayOnHover: true,
       placeholderIcon: isShow ? Icons.tv_rounded : Icons.movie_rounded,
       overlays: [
-        if (badge != null) Positioned(top: 8, right: 8, child: badge),
+        if (badge != null)
+          Positioned(
+            top: PosterCard.overlayInset,
+            right: PosterCard.overlayInset,
+            child: badge,
+          ),
       ],
-      footerOverlay: inProgress
-          ? LinearProgressIndicator(
-              value: progress,
-              minHeight: 3,
-              backgroundColor: Colors.black.withValues(alpha: 0.45),
-              valueColor: const AlwaysStoppedAnimation(AppColors.progress),
-            )
-          : null,
+      footerOverlay: inProgress ? ProgressPill(value: progress!) : null,
     );
   }
 }

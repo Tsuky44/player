@@ -28,6 +28,7 @@ import 'services/layout_storage.dart';
 import 'providers/search_provider.dart';
 import 'navigation/search_route_observer.dart';
 import 'screens/auth/login_screen.dart';
+import 'screens/auth/server_choice_screen.dart';
 import 'screens/auth/tv_login_screen.dart';
 import 'tv/tv_focus.dart';
 import 'tv/tv_focus_guard.dart';
@@ -124,7 +125,11 @@ void main() async {
   // Le libmpv patché qui sait dessiner dans une vue native, s'il est installé
   // et se charge. Sinon, celui que media_kit embarque.
   MpvNativeView.resolve();
-  MediaKit.ensureInitialized(libmpv: MpvNativeView.libmpvPath);
+  // Pas sur l'Apple TV, qui n'embarque pas libmpv : la charger y ferait
+  // échouer le démarrage. Son lecteur est AVPlayer (ADR-0028).
+  if (!AppPlatform.isTvOS) {
+    MediaKit.ensureInitialized(libmpv: MpvNativeView.libmpvPath);
+  }
 
   // La licence de la police embarquée, que `google_fonts` déclarait pour nous
   // avant l'ADR-0025.
@@ -372,6 +377,8 @@ class OnyxApp extends StatelessWidget {
                 actions: <Type, Action<Intent>>{
                   ...WidgetsApp.defaultActions,
                   DirectionalFocusIntent: TvDirectionalFocusAction(),
+                  // Retour à la télécommande hors Android — voir [TvBackAction].
+                  TvBackIntent: TvBackAction(),
                 },
                 builder: (context, child) {
                   return Listener(
@@ -404,6 +411,12 @@ class OnyxApp extends StatelessWidget {
                   builder: (context, authProvider, _) {
                     if (authProvider.isInitializing) {
                       return const SplashScreen();
+                    }
+                    // Le serveur principal n'a pas répondu et il y a un
+                    // ailleurs : l'app demande où aller plutôt que de se
+                    // rabattre en silence sur le cache.
+                    if (authProvider.needsServerChoice) {
+                      return const ServerChoiceScreen();
                     }
                     if (!authProvider.isAuthenticated) {
                       // A television gets the QR pairing instead of a password

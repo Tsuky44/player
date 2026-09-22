@@ -503,6 +503,29 @@ var migrations = []migration{
 			`ALTER TABLE playback_logs ADD COLUMN stats TEXT NOT NULL DEFAULT '';`,
 		},
 	},
+	{
+		id:   12,
+		name: "emby sync baselines",
+		stmts: []string{
+			// Le dernier état sur lequel Onyx et Emby étaient d'accord, par
+			// contenu. C'est lui qui dit qui a bougé depuis : un seul côté
+			// différent de cet accord, c'est lui qui a raison, quelles que
+			// soient les dates. Les dates d'Emby ne peuvent pas le dire à sa
+			// place — son LastPlayedDate est l'heure du début de la dernière
+			// lecture, pas de sa dernière modification.
+			`CREATE TABLE IF NOT EXISTS emby_baselines (
+				user_id INTEGER NOT NULL,
+				type TEXT NOT NULL,
+				tmdb_id INTEGER NOT NULL,
+				season INTEGER NOT NULL,
+				episode INTEGER NOT NULL,
+				position INTEGER NOT NULL,
+				finished INTEGER NOT NULL,
+				PRIMARY KEY (user_id, type, tmdb_id, season, episode),
+				FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+			);`,
+		},
+	},
 }
 
 // applyMigrations brings the database up to the latest schema version.

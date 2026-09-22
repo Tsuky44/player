@@ -81,6 +81,30 @@ dependencies:
   onyx_mpv_macos:
     path: ../packages/onyx_mpv_macos
 
+  # --- Apple TV (tvOS) ---------------------------------------------------
+  # tvOS se construit avec flutter-tvos (voir l'ADR-0028), qui n'embarque que
+  # les plugins déclarant la plateforme `tvos`. Ces paquets sont les portages
+  # de fluttertv.dev ; ils ne déclarent que tvOS, donc aucune autre plateforme
+  # n'en voit une ligne.
+  #
+  # Le lecteur : AVPlayer, par l'interface de plateforme de video_player et
+  # non par `video_player` lui-même, qui ajouterait son propre ExoPlayer au
+  # build Android à côté de celui d'onyx_player_android.
+  video_player_platform_interface: ^6.6.0
+  video_player_tvos: ^0.0.1
+  # Ce dont l'app ne peut pas se passer : réglages, jeton de session, dossiers,
+  # cache des affiches (sqflite, via flutter_cache_manager), type de réseau.
+  shared_preferences_tvos: ^0.0.2
+  flutter_secure_storage_tvos: ^0.0.2
+  path_provider_tvos: ^0.0.3
+  sqflite_tvos: ^0.0.2
+  connectivity_plus_tvos: ^0.0.2
+  # Délibérément absents, faute d'objet sur un téléviseur : media_kit (remplacé
+  # par AVPlayer), screen_brightness, mobile_scanner, file_picker,
+  # window_manager. package_info_plus_tvos exige une interface 4.x incompatible
+  # avec le package_info_plus 9 épinglé plus haut : l'hôte tvOS donne la
+  # version lui-même (voir ClientIdentity).
+
 # Les bibliothèques natives de media_kit, avec un FFmpeg complet. Les versions
 # publiées embarquent un FFmpeg réduit à une liste blanche de décodeurs sans
 # TrueHD : la piste Atmos d'un Blu-ray était muette en Direct Play sur mac,

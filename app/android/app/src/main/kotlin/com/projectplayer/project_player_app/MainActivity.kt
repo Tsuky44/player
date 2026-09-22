@@ -4,15 +4,20 @@ import android.app.ActivityManager
 import android.app.PictureInPictureParams
 import android.app.UiModeManager
 import android.content.Context
+import android.content.Intent
 import android.content.pm.PackageManager
 import android.content.res.Configuration
 import android.net.ConnectivityManager
+import android.net.Uri
 import android.os.Build
 import android.os.Bundle
+import android.provider.Settings
 import android.util.Rational
 import android.view.Display
+import java.io.File
 import kotlin.math.abs
 import kotlin.math.roundToInt
+import androidx.core.content.FileProvider
 import androidx.core.view.WindowCompat
 import androidx.lifecycle.Lifecycle
 import io.flutter.embedding.android.FlutterActivity
@@ -66,6 +71,19 @@ class MainActivity : FlutterActivity() {
                         val height = call.argument<Int>("height") ?: 0
                         setPictureInPicture(width, height)
                         result.success(supportsPictureInPicture())
+                    }
+                    "canInstallPackages" -> result.success(canInstallPackages())
+                    "openInstallPermissionSettings" -> {
+                        openInstallPermissionSettings()
+                        result.success(null)
+                    }
+                    "installApk" -> {
+                        val path = call.argument<String>("path")
+                        if (path == null) {
+                            result.error("bad_args", "path manquant", null)
+                        } else {
+                            result.success(installApk(path))
+                        }
                     }
                     else -> result.notImplemented()
                 }
@@ -289,6 +307,50 @@ class MainActivity : FlutterActivity() {
                 preferredDisplayModeId = 0
             }
         }
+    }
+
+    // --- In-place update ----------------------------------------------------
+
+    /// Whether the system will let this app hand a file straight to the
+    /// installer. Below Android 8 there is no such gate — any source could
+    /// always trigger the install prompt — so this reports true there.
+    private fun canInstallPackages(): Boolean {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.O) return true
+        return packageManager.canRequestPackageInstalls()
+    }
+
+    /// Sends the user to the one settings screen that toggles "allow from this
+    /// source" for Onyx specifically — not the general security settings list,
+    /// which would leave them hunting for the app in it.
+    private fun openInstallPermissionSettings() {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.O) return
+        val intent = Intent(Settings.ACTION_MANAGE_UNKNOWN_APP_SOURCES).apply {
+            data = Uri.parse("package:$packageName")
+        }
+        runCatching { startActivity(intent) }
+    }
+
+    /// Hands [path] to the system package installer. The confirmation screen
+    /// that follows is the OS's own — nothing here can skip or silence it, and
+    /// nothing here waits for its result: [result] only reports whether the
+    /// installer could be *launched*, not whether the user went through with
+    /// it, because Android gives no callback for that short of registering a
+    /// broadcast receiver for a system-scoped session this simple path does
+    /// not open.
+    private fun installApk(path: String): Boolean {
+        val file = File(path)
+        if (!file.exists()) return false
+
+        val uri = runCatching {
+            FileProvider.getUriForFile(this, "$packageName.fileprovider", file)
+        }.getOrNull() ?: return false
+
+        val intent = Intent(Intent.ACTION_VIEW).apply {
+            setDataAndType(uri, "application/vnd.android.package-archive")
+            addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+            addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+        }
+        return runCatching { startActivity(intent) }.isSuccess
     }
 
     private companion object {

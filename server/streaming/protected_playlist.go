@@ -59,3 +59,28 @@ func ProtectPlaylist(playlist, token string) (string, error) {
 	}
 	return strings.Join(lines, "\n"), nil
 }
+
+// startTag pins where a player begins in a media playlist.
+const startTag = "#EXT-X-START:TIME-OFFSET=0,PRECISE=YES"
+
+// StartAtBeginning makes a media playlist say where playback starts.
+//
+// Every session playlist is an EVENT playlist whose first segment is the
+// moment the client asked for (`?start=N`). Without EXT-X-START, AVPlayer
+// (Safari, iOS, tvOS) treats a playlist with no ENDLIST as live and begins
+// three segments short of the newest one — and a remux runs far ahead of real
+// time, so that is minutes past where the viewer meant to be. A zero offset is
+// what every other client already assumed.
+//
+// Master playlists are left alone: the tag belongs to the media playlist.
+func StartAtBeginning(playlist string) string {
+	if !strings.Contains(playlist, "#EXT-X-TARGETDURATION") ||
+		strings.Contains(playlist, "#EXT-X-START") {
+		return playlist
+	}
+	head, rest, found := strings.Cut(playlist, "\n")
+	if !found || strings.TrimSpace(head) != "#EXTM3U" {
+		return playlist
+	}
+	return head + "\n" + startTag + "\n" + rest
+}

@@ -16,6 +16,7 @@ import '../../widgets/global/episode_tile.dart';
 import '../../widgets/global/media_detail_widgets.dart';
 import '../../widgets/global/metadata_fix_sheet.dart';
 import '../../widgets/global/season_download_button.dart';
+import '../../widgets/global/season_watched_button.dart';
 import '../player/player_screen.dart';
 import '../requests/widgets/season_selector_dialog.dart';
 import '../../navigation/search_route_observer.dart';
@@ -37,6 +38,7 @@ class _ShowDetailScreenState extends State<ShowDetailScreen> {
   Media? _selectedSeason;
   HomeMediaItem? _resumeEpisode;
   bool _requesting = false;
+  bool _updatingSeasonWatched = false;
 
   @override
   void initState() {
@@ -318,6 +320,61 @@ class _ShowDetailScreenState extends State<ShowDetailScreen> {
         );
       }
     }
+  }
+
+  /// Toute la saison d'un coup, dans un sens ou dans l'autre.
+  ///
+  /// Le serveur tranche en une requête, puis l'accueil et la grille des séries
+  /// sont relus une seule fois : vingt rafraîchissements pour un seul geste ne
+  /// montreraient rien de plus.
+  Future<void> _setSeasonWatched(
+      List<HomeMediaItem> episodes, bool watched) async {
+    if (_updatingSeasonWatched || episodes.isEmpty) return;
+    final library = Provider.of<LibraryProvider>(context, listen: false);
+    final home = Provider.of<HomeProvider>(context, listen: false);
+    final messenger = ScaffoldMessenger.of(context);
+    setState(() => _updatingSeasonWatched = true);
+    try {
+      final changed = await library.setMediasWatched(
+        [for (final episode in episodes) episode.media.id],
+        watched,
+      );
+      await home.loadHome(silent: true);
+      // La pastille de la grille des séries compte les épisodes vus côté
+      // serveur : elle ne bouge que si la liste est relue.
+      await library.loadShows(silent: true);
+      // Une saison entière cochée déplace la reprise ailleurs — souvent dans
+      // la saison suivante : c'est au serveur de dire où.
+      await _refreshResumeEpisode();
+      if (!mounted) return;
+      messenger.showSnackBar(SnackBar(
+        content: Text(watched
+            ? '$changed épisode${changed > 1 ? 's' : ''} '
+                'marqué${changed > 1 ? 's' : ''} vu${changed > 1 ? 's' : ''}'
+            : 'Saison marquée non vue'),
+      ));
+    } catch (_) {
+      if (mounted) {
+        messenger.showSnackBar(
+          const SnackBar(
+              content: Text('Impossible de mettre à jour la saison')),
+        );
+      }
+    } finally {
+      if (mounted) setState(() => _updatingSeasonWatched = false);
+    }
+  }
+
+  /// Redemande au serveur où reprendre. Muet en cas d'échec : le bouton de
+  /// reprise garde alors ce qu'il affichait.
+  Future<void> _refreshResumeEpisode() async {
+    final library = Provider.of<LibraryProvider>(context, listen: false);
+    try {
+      final resume = await library.apiClient.getShowResumeEpisode(_show.id);
+      if (!mounted) return;
+      setState(
+          () => _resumeEpisode = resume.hasEpisode ? resume.episode : null);
+    } catch (_) {}
   }
 
   int? get _playerSeasonNumber => _selectedSeason?.effectiveSeasonNumber;
@@ -649,64 +706,78 @@ class _ShowDetailScreenState extends State<ShowDetailScreen> {
                 // A DropdownButton forces its menu to the anchor's width, so a
                 // compact button clipped the "· manquante" annotations. A popup
                 // menu sizes itself to its own content instead.
-                child: Align(
-                  alignment: Alignment.centerLeft,
-                  child: PopupMenuButton<Media>(
-                    tooltip: 'Choisir une saison',
-                    position: PopupMenuPosition.under,
-                    offset: const Offset(0, 6),
-                    padding: EdgeInsets.zero,
-                    color: AppColors.surfaceElevated,
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(12),
-                      side: BorderSide(color: AppColors.glassBorder),
-                    ),
-                    onSelected: _onSeasonChanged,
-                    itemBuilder: (_) => lp.seasons
-                        .map((s) => PopupMenuItem<Media>(
-                              value: s,
-                              child: _SeasonMenuLabel(
-                                season: s,
-                                selected: identical(s, selectedSeason),
+                // Le bouton passe à la ligne plutôt que de pousser le
+                // sélecteur hors de l'écran quand une saison porte un nom long.
+                child: Wrap(
+                  spacing: 8,
+                  runSpacing: 4,
+                  crossAxisAlignment: WrapCrossAlignment.center,
+                  children: [
+                    PopupMenuButton<Media>(
+                      tooltip: 'Choisir une saison',
+                      position: PopupMenuPosition.under,
+                      offset: const Offset(0, 6),
+                      padding: EdgeInsets.zero,
+                      color: AppColors.surfaceElevated,
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(12),
+                        side: BorderSide(color: AppColors.glassBorder),
+                      ),
+                      onSelected: _onSeasonChanged,
+                      itemBuilder: (_) => lp.seasons
+                          .map((s) => PopupMenuItem<Media>(
+                                value: s,
+                                child: _SeasonMenuLabel(
+                                  season: s,
+                                  selected: identical(s, selectedSeason),
+                                ),
+                              ))
+                          .toList(),
+                      // The popup's ink well holds the focus; the halo is how a
+                      // remote sees it landed here.
+                      child: TvFocusHalo(
+                        child: Container(
+                          padding: const EdgeInsets.symmetric(
+                              horizontal: 14, vertical: 9),
+                          decoration: BoxDecoration(
+                            color: AppColors.surfaceElevated,
+                            borderRadius: BorderRadius.circular(12),
+                            border: Border.all(color: AppColors.border),
+                          ),
+                          child: Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              Text(
+                                selectedSeason == null
+                                    ? 'Saison'
+                                    : seasonLabel(selectedSeason),
+                                style: Theme.of(context)
+                                    .textTheme
+                                    .bodyMedium
+                                    ?.copyWith(
+                                      color: selectedSeason == null
+                                          ? AppColors.textSecondary
+                                          : AppColors.textPrimary,
+                                      fontWeight: FontWeight.w600,
+                                    ),
                               ),
-                            ))
-                        .toList(),
-                    // The popup's ink well holds the focus; the halo is how a
-                    // remote sees it landed here.
-                    child: TvFocusHalo(
-                      child: Container(
-                        padding: const EdgeInsets.symmetric(
-                            horizontal: 14, vertical: 9),
-                        decoration: BoxDecoration(
-                          color: AppColors.surfaceElevated,
-                          borderRadius: BorderRadius.circular(12),
-                          border: Border.all(color: AppColors.border),
-                        ),
-                        child: Row(
-                          mainAxisSize: MainAxisSize.min,
-                          children: [
-                            Text(
-                              selectedSeason == null
-                                  ? 'Saison'
-                                  : seasonLabel(selectedSeason),
-                              style: Theme.of(context)
-                                  .textTheme
-                                  .bodyMedium
-                                  ?.copyWith(
-                                    color: selectedSeason == null
-                                        ? AppColors.textSecondary
-                                        : AppColors.textPrimary,
-                                    fontWeight: FontWeight.w600,
-                                  ),
-                            ),
-                            const SizedBox(width: 8),
-                            const Icon(Icons.expand_more_rounded,
-                                size: 18, color: AppColors.textSecondary),
-                          ],
+                              const SizedBox(width: 8),
+                              const Icon(Icons.expand_more_rounded,
+                                  size: 18, color: AppColors.textSecondary),
+                            ],
+                          ),
                         ),
                       ),
                     ),
-                  ),
+                    // Le même geste que « télécharger la saison », de l'autre
+                    // côté du visionnage : la ligne qui dit de quelle saison on
+                    // parle est aussi celle d'où on la solde d'un coup.
+                    SeasonWatchedButton(
+                      episodes: lp.episodes,
+                      busy: _updatingSeasonWatched,
+                      onSetWatched: _setSeasonWatched,
+                    ),
+                  ],
                 ),
               ),
             ),

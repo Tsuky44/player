@@ -318,6 +318,34 @@ class LibraryProvider extends ChangeNotifier {
     return isFinished;
   }
 
+  /// Marque une saison entière vue ou non vue en une requête.
+  ///
+  /// Renvoie le nombre d'épisodes que le serveur a effectivement changés — ce
+  /// que dit le message de confirmation. Les positions partielles des épisodes
+  /// concernés sont perdues : « j'ai fini cette saison » veut dire que le
+  /// milieu de l'épisode 5 n'a plus à être retrouvé.
+  Future<int> setMediasWatched(List<int> mediaIds, bool watched) async {
+    if (mediaIds.isEmpty) return 0;
+    final results = await apiClient.setMediasWatched(mediaIds, watched);
+    results.forEach((mediaId, payload) {
+      final isFinished = payload['is_finished'] as bool? ?? watched;
+      final position = payload['current_position_seconds'] as int? ?? 0;
+      _patchLocalProgress(mediaId,
+          isFinished: isFinished, positionSeconds: position);
+      // Même verdict pour le manifeste hors ligne que pour un épisode coché
+      // seul : voir [setMediaWatched].
+      unawaited(DownloadManager.instance.recordProgress(
+        mediaId: mediaId,
+        positionSeconds: position,
+        durationSeconds: 0,
+        isFinished: isFinished,
+        syncedWithServer: true,
+      ));
+    });
+    notifyListeners();
+    return results.length;
+  }
+
   void _patchLocalProgress(
     int mediaId, {
     required bool isFinished,

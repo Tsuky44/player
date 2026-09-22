@@ -87,9 +87,10 @@ List<_Category> _categoriesFor(Permissions p) {
       admin: false,
       builder: (_) => const PlaybackPage(),
     ),
-    // Un navigateur n'a pas de dossier privé où garder un film : la catégorie
-    // n'aurait que des réglages sans effet à proposer.
-    if (!AppPlatform.isWeb)
+    // Un navigateur n'a pas de dossier privé où garder un film, une Apple TV
+    // n'en a qu'un que le système vide à sa guise : la catégorie n'aurait que
+    // des réglages sans effet à proposer.
+    if (!AppPlatform.isWeb && !AppPlatform.isTvOS)
       _Category(
         id: SettingsSections.downloads,
         label: 'Téléchargements',
@@ -122,14 +123,17 @@ List<_Category> _categoriesFor(Permissions p) {
       admin: false,
       builder: (_) => const DevicePage(),
     ),
-    _Category(
-      id: SettingsSections.apps,
-      label: 'Applications',
-      icon: Icons.download_for_offline_rounded,
-      hint: 'Installer Onyx sur un autre appareil',
-      admin: false,
-      builder: (_) => const AppsPage(),
-    ),
+    // Une Apple TV n'ouvre pas de lien et ne choisit pas de fichier : ni
+    // installer ailleurs, ni publier un installeur n'y a de sens.
+    if (!AppPlatform.isTvOS)
+      _Category(
+        id: SettingsSections.apps,
+        label: 'Applications',
+        icon: Icons.download_for_offline_rounded,
+        hint: 'Installer Onyx sur un autre appareil',
+        admin: false,
+        builder: (_) => const AppsPage(),
+      ),
     _Category(
       id: SettingsSections.logs,
       label: 'Journal',

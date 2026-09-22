@@ -44,9 +44,9 @@ class AppImageCache {
   /// and then opening a detail page evicts the grid, so scrolling back decoded
   /// every poster again — visible as a flash of placeholder on content that was
   /// on screen a second earlier. Desktop and web have the headroom to hold it;
-  /// mobile keeps Flutter's defaults.
+  /// mobile and the Apple TV keep Flutter's defaults.
   static void configure() {
-    if (AppPlatform.isMobile) return;
+    if (AppPlatform.isMobile || AppPlatform.isTvOS) return;
     PaintingBinding.instance.imageCache
       ..maximumSizeBytes = 300 << 20
       ..maximumSize = 2000;

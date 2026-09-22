@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+    Scopes the FileProvider declared in AndroidManifest.xml to the app's cache
+    directory. dart:io's Directory.systemTemp resolves to exactly that
+    directory on Android, and AppUpdater.createWorkDir() (app_updater_io.dart)
+    downloads the APK there — nothing else needs exposing.
+-->
+<paths xmlns:android="http://schemas.android.com/apk/res/android">
+    <cache-path name="onyx-update" path="."/>
+</paths>
