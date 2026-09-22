@@ -374,12 +374,26 @@ jobs:
       - name: flutter-tvos precache
         run: flutter-tvos precache
 
+      # Ce tag de flutter-tvos n'a pas de --no-codesign : il passe toujours a
+      # xcodebuild l'equipe du projet et -allowProvisioningUpdates, ce qui
+      # echoue sur un runner sans compte Apple. XCODE_XCCONFIG_FILE impose des
+      # reglages a toutes les cibles (Runner et Pods) par-dessus le projet : la
+      # signature y est coupee, comme le ferait --no-codesign. Les phases
+      # d'embarquement du projet sautent deja la signature dans ce cas.
       - name: Build tvOS
         working-directory: app
         env:
           LANG: en_US.UTF-8
         run: |
-          flutter-tvos build tvos --release --no-codesign \
+          set -euo pipefail
+          XCCONFIG="$RUNNER_TEMP/no-codesign.xcconfig"
+          printf '%s\n' \
+            'CODE_SIGNING_ALLOWED = NO' \
+            'CODE_SIGNING_REQUIRED = NO' \
+            'CODE_SIGN_IDENTITY =' \
+            'EXPANDED_CODE_SIGN_IDENTITY =' > "$XCCONFIG"
+          export XCODE_XCCONFIG_FILE="$XCCONFIG"
+          flutter-tvos build tvos --release \
             --build-name="${{ needs.prepare.outputs.version }}" \
             --build-number="${{ github.run_number }}"
 

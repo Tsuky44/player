@@ -98,8 +98,17 @@ if [[ "$SIGNED" == "1" ]]; then
   log "flutter-tvos build tvos --release"
   flutter-tvos build tvos --release
 else
-  log "flutter-tvos build tvos --release --no-codesign"
-  flutter-tvos build tvos --release --no-codesign
+  # Pas de --no-codesign à cette version de flutter-tvos : la signature est
+  # coupée par un xcconfig imposé à xcodebuild (même méthode que la CI).
+  log "flutter-tvos build tvos --release (sans signature)"
+  XCCONFIG="$(mktemp -t onyx-no-codesign).xcconfig"
+  printf '%s\n' \
+    'CODE_SIGNING_ALLOWED = NO' \
+    'CODE_SIGNING_REQUIRED = NO' \
+    'CODE_SIGN_IDENTITY =' \
+    'EXPANDED_CODE_SIGN_IDENTITY =' > "$XCCONFIG"
+  XCODE_XCCONFIG_FILE="$XCCONFIG" flutter-tvos build tvos --release
+  rm -f "$XCCONFIG"
 fi
 
 APP_BUNDLE="build/tvos/Release-appletvos/Runner.app"
