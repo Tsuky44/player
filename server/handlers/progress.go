@@ -3,6 +3,7 @@ package handlers
 import (
 	"database/sql"
 	"encoding/json"
+	"errors"
 	"log"
 	"net/http"
 	"strconv"
@@ -159,6 +160,85 @@ type watchedRequest struct {
 	Watched bool `json:"watched"`
 }
 
+var (
+	errMediaNotFound    = errors.New("media not found")
+	errMediaNotPlayable = errors.New("media cannot be marked as watched")
+)
+
+// watchedWriter is all applyWatched needs of a database handle, so the same
+// write runs directly for a single media and inside the transaction a whole
+// season opens — one verdict, written one way.
+type watchedWriter interface {
+	Exec(query string, args ...interface{}) (sql.Result, error)
+	QueryRow(query string, args ...interface{}) *sql.Row
+}
+
+// applyWatched records the watched verdict of one media for one user and
+// returns the position the row holds afterwards.
+func applyWatched(db watchedWriter, userID, mediaID int, watched bool) (int, error) {
+	var mediaType string
+	var duration int
+	err := db.QueryRow(
+		"SELECT type, COALESCE(duration, 0) FROM medias WHERE id = ?",
+		mediaID,
+	).Scan(&mediaType, &duration)
+	if err == sql.ErrNoRows {
+		return 0, errMediaNotFound
+	}
+	if err != nil {
+		return 0, err
+	}
+	if mediaType != string(models.TypeMovie) && mediaType != string(models.TypeEpisode) {
+		return 0, errMediaNotPlayable
+	}
+
+	now := time.Now().UTC().Format(progressTimeLayout)
+	position := 0
+
+	if watched {
+		_ = db.QueryRow(
+			"SELECT COALESCE(current_position_seconds, 0) FROM progressions WHERE user_id = ? AND media_id = ?",
+			userID, mediaID,
+		).Scan(&position)
+		if duration > 0 {
+			position = duration
+		} else if position <= 0 {
+			position = 1
+		}
+
+		_, err = db.Exec(`
+			INSERT INTO progressions (user_id, media_id, current_position_seconds, is_finished, updated_at)
+			VALUES (?, ?, ?, 1, ?)
+			ON CONFLICT(user_id, media_id) DO UPDATE SET
+				current_position_seconds = excluded.current_position_seconds,
+				is_finished = 1,
+				updated_at = excluded.updated_at
+		`, userID, mediaID, position, now)
+		if err != nil {
+			return 0, err
+		}
+		return position, nil
+	}
+
+	result, err := db.Exec(`
+		UPDATE progressions
+		SET is_finished = 0, updated_at = ?
+		WHERE user_id = ? AND media_id = ?
+	`, now, userID, mediaID)
+	if err != nil {
+		return 0, err
+	}
+	// Nothing stored means nothing watched: there is no progress to rewind.
+	if rows, _ := result.RowsAffected(); rows == 0 {
+		return 0, nil
+	}
+	_ = db.QueryRow(
+		"SELECT COALESCE(current_position_seconds, 0) FROM progressions WHERE user_id = ? AND media_id = ?",
+		userID, mediaID,
+	).Scan(&position)
+	return position, nil
+}
+
 // SetMediaWatched marks or unmarks a movie/episode as watched (POST /api/media/:id/watched).
 func SetMediaWatched(w http.ResponseWriter, r *http.Request, ps httprouter.Params, userID int) {
 	w.Header().Set("Content-Type", "application/json")
@@ -175,80 +255,109 @@ func SetMediaWatched(w http.ResponseWriter, r *http.Request, ps httprouter.Param
 		return
 	}
 
-	var mediaType string
-	var duration int
-	err = database.DB.QueryRow(
-		"SELECT type, COALESCE(duration, 0) FROM medias WHERE id = ?",
-		mediaID,
-	).Scan(&mediaType, &duration)
-	if err == sql.ErrNoRows {
+	position, err := applyWatched(database.DB, userID, mediaID, req.Watched)
+	switch {
+	case errors.Is(err, errMediaNotFound):
 		http.Error(w, `{"error": "Media not found"}`, http.StatusNotFound)
 		return
-	}
-	if err != nil {
-		log.Printf("Watched error: failed to load media %d: %v", mediaID, err)
-		http.Error(w, `{"error": "Internal database error"}`, http.StatusInternalServerError)
-		return
-	}
-	if mediaType != string(models.TypeMovie) && mediaType != string(models.TypeEpisode) {
+	case errors.Is(err, errMediaNotPlayable):
 		http.Error(w, `{"error": "Only movies and episodes can be marked as watched"}`, http.StatusBadRequest)
 		return
-	}
-
-	position := 0
-	if req.Watched {
-		_ = database.DB.QueryRow(
-			"SELECT COALESCE(current_position_seconds, 0) FROM progressions WHERE user_id = ? AND media_id = ?",
-			userID, mediaID,
-		).Scan(&position)
-		if duration > 0 {
-			position = duration
-		} else if position <= 0 {
-			position = 1
-		}
-
-		_, err = database.DB.Exec(`
-			INSERT INTO progressions (user_id, media_id, current_position_seconds, is_finished, updated_at)
-			VALUES (?, ?, ?, 1, ?)
-			ON CONFLICT(user_id, media_id) DO UPDATE SET
-				current_position_seconds = excluded.current_position_seconds,
-				is_finished = 1,
-				updated_at = excluded.updated_at
-		`, userID, mediaID, position, time.Now().UTC().Format(progressTimeLayout))
-		if err != nil {
-			log.Printf("Watched error: failed to update media %d: %v", mediaID, err)
-			http.Error(w, `{"error": "Internal database error"}`, http.StatusInternalServerError)
-			return
-		}
-	} else {
-		result, updateErr := database.DB.Exec(`
-			UPDATE progressions
-			SET is_finished = 0, updated_at = ?
-			WHERE user_id = ? AND media_id = ?
-		`, time.Now().UTC().Format(progressTimeLayout), userID, mediaID)
-		if updateErr != nil {
-			log.Printf("Watched error: failed to update media %d: %v", mediaID, updateErr)
-			http.Error(w, `{"error": "Internal database error"}`, http.StatusInternalServerError)
-			return
-		}
-		if rows, _ := result.RowsAffected(); rows == 0 {
-			json.NewEncoder(w).Encode(map[string]interface{}{
-				"status":                   "success",
-				"is_finished":              false,
-				"current_position_seconds": 0,
-			})
-			return
-		}
-		_ = database.DB.QueryRow(
-			"SELECT COALESCE(current_position_seconds, 0) FROM progressions WHERE user_id = ? AND media_id = ?",
-			userID, mediaID,
-		).Scan(&position)
+	case err != nil:
+		log.Printf("Watched error: failed to update media %d: %v", mediaID, err)
+		http.Error(w, `{"error": "Internal database error"}`, http.StatusInternalServerError)
+		return
 	}
 
 	json.NewEncoder(w).Encode(map[string]interface{}{
 		"status":                   "success",
 		"is_finished":              req.Watched,
 		"current_position_seconds": position,
+	})
+}
+
+// maxWatchedBatch borne une requête de lot : une saison tient largement
+// dedans, une boucle partie en vrille non.
+const maxWatchedBatch = 500
+
+type watchedBatchRequest struct {
+	MediaIDs []int `json:"media_ids"`
+	Watched  bool  `json:"watched"`
+}
+
+type watchedBatchEntry struct {
+	MediaID    int  `json:"media_id"`
+	IsFinished bool `json:"is_finished"`
+	Position   int  `json:"current_position_seconds"`
+}
+
+// SetMediaWatchedBatch marque un lot de médias — en pratique une saison
+// entière — vu ou non vu en une requête (POST /api/progress/watched).
+//
+// Vingt épisodes cochés un par un, c'est vingt allers-retours et une liste qui
+// clignote vingt fois ; ici le client envoie la saison et reçoit son verdict.
+// Les identifiants introuvables ou non lisibles (une saison, une série) sont
+// ignorés plutôt que de faire échouer le reste : le geste porte sur ce qui est
+// regardable.
+func SetMediaWatchedBatch(w http.ResponseWriter, r *http.Request, _ httprouter.Params, userID int) {
+	w.Header().Set("Content-Type", "application/json")
+
+	var req watchedBatchRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		http.Error(w, `{"error": "Invalid request body"}`, http.StatusBadRequest)
+		return
+	}
+	if len(req.MediaIDs) == 0 {
+		http.Error(w, `{"error": "media_ids is required"}`, http.StatusBadRequest)
+		return
+	}
+	if len(req.MediaIDs) > maxWatchedBatch {
+		http.Error(w, `{"error": "Too many media IDs"}`, http.StatusBadRequest)
+		return
+	}
+
+	tx, err := database.DB.Begin()
+	if err != nil {
+		log.Printf("Watched batch error: failed to open transaction: %v", err)
+		http.Error(w, `{"error": "Internal database error"}`, http.StatusInternalServerError)
+		return
+	}
+	defer tx.Rollback()
+
+	updated := make([]watchedBatchEntry, 0, len(req.MediaIDs))
+	seen := make(map[int]bool, len(req.MediaIDs))
+	for _, mediaID := range req.MediaIDs {
+		if mediaID <= 0 || seen[mediaID] {
+			continue
+		}
+		seen[mediaID] = true
+
+		position, err := applyWatched(tx, userID, mediaID, req.Watched)
+		if errors.Is(err, errMediaNotFound) || errors.Is(err, errMediaNotPlayable) {
+			continue
+		}
+		if err != nil {
+			log.Printf("Watched batch error: failed to update media %d: %v", mediaID, err)
+			http.Error(w, `{"error": "Internal database error"}`, http.StatusInternalServerError)
+			return
+		}
+		updated = append(updated, watchedBatchEntry{
+			MediaID:    mediaID,
+			IsFinished: req.Watched,
+			Position:   position,
+		})
+	}
+
+	if err := tx.Commit(); err != nil {
+		log.Printf("Watched batch error: failed to commit: %v", err)
+		http.Error(w, `{"error": "Internal database error"}`, http.StatusInternalServerError)
+		return
+	}
+
+	json.NewEncoder(w).Encode(map[string]interface{}{
+		"status":  "success",
+		"watched": req.Watched,
+		"updated": updated,
 	})
 }
 
@@ -267,6 +376,10 @@ func GetProgress(w http.ResponseWriter, r *http.Request, _ httprouter.Params, us
 		http.Error(w, `{"error": "invalid media_id"}`, http.StatusBadRequest)
 		return
 	}
+
+	// Le point de reprise est lu ici juste avant une lecture : c'est le moment
+	// de demander à Emby s'il en sait plus récent. Borné, jamais bloquant.
+	refreshEmbyMedia(r.Context(), userID, mediaID)
 
 	var currentPosition int
 	var isFinished bool

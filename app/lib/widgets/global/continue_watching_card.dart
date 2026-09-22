@@ -4,6 +4,8 @@ import '../../theme/app_colors.dart';
 import '../../tv/tv_focus.dart';
 import '../../utils/format.dart';
 import 'media_poster.dart';
+import 'poster_card.dart';
+import 'progress_pill.dart';
 
 class ContinueWatchingCard extends StatefulWidget {
   /// TMDB posters are 2:3 — match that ratio so faces/titles aren't cropped.
@@ -165,25 +167,18 @@ class _ContinueWatchingCardState extends State<ContinueWatchingCard> {
                       ),
                     if (widget.item.hasNewEpisode)
                       const Positioned(
-                        top: 8,
-                        left: 8,
+                        top: PosterCard.overlayInset,
+                        left: PosterCard.overlayInset,
                         child: _NewEpisodeBadge(),
                       ),
+                    // Même retrait que le badge ci-dessus, et le même que sur
+                    // les affiches du catalogue : la barre flotte au lieu de se
+                    // faire découper par l'arrondi du coin bas.
                     Positioned(
-                      left: 0,
-                      right: 0,
-                      bottom: 0,
-                      child: ClipRRect(
-                        borderRadius: const BorderRadius.vertical(
-                          bottom: Radius.circular(12),
-                        ),
-                        child: LinearProgressIndicator(
-                          value: progress.clamp(0.01, 1.0),
-                          minHeight: 4,
-                          backgroundColor: AppColors.border,
-                          valueColor: const AlwaysStoppedAnimation(AppColors.progress),
-                        ),
-                      ),
+                      left: PosterCard.overlayInset,
+                      right: PosterCard.overlayInset,
+                      bottom: PosterCard.overlayInset,
+                      child: ProgressPill(value: progress),
                     ),
                   ],
                 ),

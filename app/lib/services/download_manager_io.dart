@@ -10,6 +10,7 @@ import 'package:path_provider/path_provider.dart';
 import '../models/models.dart';
 import '../models/offline_chrome.dart';
 import '../models/offline_download.dart';
+import '../utils/app_platform.dart';
 import '../utils/poster_url.dart';
 import 'api_client.dart';
 import 'playback_access.dart';
@@ -145,7 +146,10 @@ class DownloadManager extends ChangeNotifier {
   Timer? _manifestTimer;
   DateTime _lastNotify = DateTime.fromMillisecondsSinceEpoch(0);
 
-  bool get isSupported => true;
+  /// Pas sur l'Apple TV : tvOS ne laisse à une app que des dossiers de cache,
+  /// que le système vide quand la place manque. Un film « téléchargé » y
+  /// disparaîtrait sans prévenir — mieux vaut ne pas le promettre.
+  bool get isSupported => !AppPlatform.isTvOS;
 
   /// Vrai une fois le manifeste relu. Avant ça la liste est vide sans que cela
   /// veuille dire « rien n'est téléchargé ».

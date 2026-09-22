@@ -1,7 +1,8 @@
 name: Release
 
 # Publie une version complete d'Onyx : les installateurs clients (Windows,
-# macOS, Android, iOS), le bundle web, et l'image Docker qui embarque le tout.
+# macOS, Android, iOS, Apple TV), le bundle web, et l'image Docker qui embarque
+# le tout.
 #
 # Ce workflow remplace publish-image.sh. Le script local doit recuperer les
 # artefacts de l'image precedente parce qu'un Mac ne produit jamais l'EXE
@@ -221,9 +222,18 @@ jobs:
         working-directory: app
         run: flutter pub get
 
+      # --build-name doit correspondre a la version du nom d'artefact : c'est ce
+      # que PackageInfo.fromPlatform() rapporte au client installe, et c'est
+      # contre cette valeur que l'auto-updater compare la version publiee.
+      # Android et iOS le passent deja ; l'oublier ici veut dire que l'app
+      # tournante croit toujours etre en version pubspec.yaml (1.0.0, jamais
+      # remontee), quelle que soit la version reellement publiee.
       - name: Build macOS
         working-directory: app
-        run: flutter build macos --release
+        run: |
+          flutter build macos --release \
+            --build-name="${{ needs.prepare.outputs.version }}" \
+            --build-number="${{ github.run_number }}"
 
       # Meme empaquetage que scripts/build-releases.sh : le .app renomme, plus
       # un lien vers /Applications pour que le glisser-deposer soit evident a
@@ -325,6 +335,86 @@ jobs:
           if-no-files-found: error
 
   # ---------------------------------------------------------------------------
+  # Apple TV (tvOS) — IPA non signe
+  # ---------------------------------------------------------------------------
+  # Flutter ne cible pas tvOS : le build passe par flutter-tvos (ADR-0028), qui
+  # apporte son propre moteur et son propre Flutter, epingle sur la meme ligne
+  # 3.44 que le reste. Meme sortie que `scripts/build-tvos-ipa.sh` sans
+  # --signed.
+  #
+  # continue-on-error : cette cible s'appuie sur un outillage communautaire. Un
+  # echec ici ne doit pas priver les autres plateformes de leur publication —
+  # la Release part simplement sans l'IPA Apple TV.
+  build-tvos:
+    needs: prepare
+    runs-on: macos-latest
+    continue-on-error: true
+    env:
+      FLUTTER_TVOS_VERSION: v3.44.9-tvos.1.5.1
+    steps:
+      - uses: actions/checkout@v4
+
+      # Le SDK tvOS n'est pas toujours installe avec Xcode sur les images
+      # GitHub : sans lui, xcodebuild ne trouve aucune destination.
+      - name: Plateforme tvOS
+        run: |
+          set -euo pipefail
+          if ! xcodebuild -showsdks | grep -q appletvos; then
+            xcodebuild -downloadPlatform tvOS
+          fi
+          xcodebuild -showsdks | grep appletv
+
+      - name: Installer flutter-tvos
+        run: |
+          set -euo pipefail
+          git clone --depth 1 --branch "$FLUTTER_TVOS_VERSION" \
+            https://github.com/fluttertv/flutter-tvos.git "$RUNNER_TEMP/flutter-tvos"
+          echo "$RUNNER_TEMP/flutter-tvos/bin" >> "$GITHUB_PATH"
+
+      - name: flutter-tvos precache
+        run: flutter-tvos precache
+
+      - name: Build tvOS
+        working-directory: app
+        env:
+          LANG: en_US.UTF-8
+        run: |
+          flutter-tvos build tvos --release --no-codesign \
+            --build-name="${{ needs.prepare.outputs.version }}" \
+            --build-number="${{ github.run_number }}"
+
+      - name: Packager l'IPA
+        env:
+          VERSION: ${{ needs.prepare.outputs.version }}
+        run: |
+          set -euo pipefail
+          APP_BUNDLE="app/build/tvos/Release-appletvos/Runner.app"
+          if [ ! -d "$APP_BUNDLE" ]; then
+            echo "::error::Runner.app introuvable dans app/build/tvos/Release-appletvos/"
+            exit 1
+          fi
+
+          STAGE="$(mktemp -d)"
+          mkdir -p "$STAGE/Payload"
+          cp -R "$APP_BUNDLE" "$STAGE/Payload/"
+          rm -rf "$STAGE/Payload/Runner.app/_CodeSignature"
+
+          # Le suffixe -tvos est ce qui distingue cet .ipa de celui de l'iPhone
+          # pour le serveur (handlers/downloads.go).
+          mkdir -p out
+          OUT="$PWD/out/Onyx-${VERSION}-tvos.ipa"
+          (cd "$STAGE" && zip -qry "$OUT" Payload)
+          rm -rf "$STAGE"
+          ls -lh out
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: installer-tvos
+          path: out/*.ipa
+          retention-days: 7
+          if-no-files-found: error
+
+  # ---------------------------------------------------------------------------
   # Windows — EXE (installeur Inno Setup) + ZIP portable
   # ---------------------------------------------------------------------------
   build-windows:
@@ -353,11 +443,18 @@ jobs:
         working-directory: app
         run: flutter pub get
 
+      # Meme raison que le build macOS ci-dessus : sans --build-name, l'exe
+      # compile lit la version figee de pubspec.yaml au lieu de celle du tag
+      # publie, et PackageInfo.fromPlatform() ment au client sur sa propre
+      # version — l'auto-updater compare alors contre une base fausse.
       - name: Build Windows
         working-directory: app
         env:
           CMAKE_GENERATOR: Ninja
-        run: flutter build windows --release
+        run: |
+          flutter build windows --release `
+            --build-name="${{ needs.prepare.outputs.version }}" `
+            --build-number="${{ github.run_number }}"
 
       - name: Construire l'installeur Inno Setup
         working-directory: app
@@ -401,7 +498,7 @@ jobs:
   # Bundle web + image Docker + GitHub Release
   # ---------------------------------------------------------------------------
   publish:
-    needs: [prepare, build-android, build-macos, build-ios, build-windows]
+    needs: [prepare, build-android, build-macos, build-ios, build-tvos, build-windows]
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4

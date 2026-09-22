@@ -5,11 +5,25 @@ import '../../theme/app_colors.dart';
 /// Pastille d'avancement posée en haut à droite d'une affiche.
 ///
 /// Deux états seulement, parce que c'est tout ce qu'une vignette de catalogue
-/// peut dire d'un coup d'œil : « vu » (coche verte, le même vert que le bouton
-/// « Marquer vu » des fiches) et « en cours » (pastille bleue portant le nombre
-/// d'épisodes restants). Un titre jamais commencé ne porte rien : c'est l'état
-/// par défaut de la bibliothèque, et le marquer bruiterait toutes les affiches.
+/// peut dire d'un coup d'œil : « vu » (coche) et « en cours » (nombre d'épisodes
+/// restants). Un titre jamais commencé ne porte rien : c'est l'état par défaut
+/// de la bibliothèque, et le marquer bruiterait toutes les affiches.
+///
+/// Les deux états partagent le même fond — du verre sombre, comme le reste du
+/// chrome de l'app — et ne se distinguent que par ce qu'ils portent. Une
+/// pastille pleine et colorée pèse autant qu'un titre dans une grille ; sur
+/// quarante affiches, elle prend le dessus sur les affiches elles-mêmes. La
+/// couleur reste donc réduite au glyphe.
 class WatchBadge extends StatelessWidget {
+  /// Hauteur commune aux deux états : la coche et le compteur doivent s'aligner
+  /// quand ils se suivent dans une même grille.
+  static const double _height = 24;
+
+  /// Vert adouci vers le blanc : le vert système à pleine saturation vibre sur
+  /// un fond quasi noir, et la pastille doit se lire sans crier.
+  static final Color _watchedGlyph =
+      Color.lerp(AppColors.success, Colors.white, 0.22)!;
+
   /// Nombre d'épisodes restants, affiché pour l'état « en cours ». Null pour
   /// « vu », et pour un film en cours — un film n'a pas de reste à compter, sa
   /// barre de progression le dit déjà.
@@ -44,33 +58,52 @@ class WatchBadge extends StatelessWidget {
     return Semantics(
       label: isWatched ? 'Vu' : '$remaining épisode(s) à voir',
       child: Container(
-        constraints: const BoxConstraints(minWidth: 22, minHeight: 22),
-        padding: EdgeInsets.symmetric(horizontal: label == null ? 0 : 6),
+        height: _height,
+        constraints: const BoxConstraints(minWidth: _height),
+        padding: EdgeInsets.symmetric(horizontal: label == null ? 0 : 7),
+        alignment: Alignment.center,
         decoration: BoxDecoration(
-          color: isWatched ? AppColors.success : AppColors.accent,
-          borderRadius: BorderRadius.circular(11),
-          // L'affiche derrière peut être claire : sans ce liseré la pastille
-          // s'y dissout.
-          border: Border.all(color: Colors.black.withValues(alpha: 0.35)),
+          // Un dégradé très court plutôt qu'un aplat : c'est ce qui empêche la
+          // pastille de se lire comme un sticker collé sur l'affiche.
+          gradient: const LinearGradient(
+            begin: Alignment.topCenter,
+            end: Alignment.bottomCenter,
+            colors: [Color(0xF22A2A2E), Color(0xF2121214)],
+          ),
+          borderRadius: BorderRadius.circular(_height / 2),
+          // Filet blanc, pas noir : le contraste contre une affiche claire vient
+          // des ombres ci-dessous, et un cerne sombre salit le fond.
+          border: Border.all(
+            color: Colors.white.withValues(alpha: 0.16),
+            width: 0.8,
+          ),
           boxShadow: [
+            // Deux couches : une courte qui décolle la pastille du fond, une
+            // large et diffuse qui lui donne son poids. Une ombre unique et
+            // franche est exactement ce qui faisait « autocollant ».
             BoxShadow(
-              color: Colors.black.withValues(alpha: 0.35),
-              blurRadius: 6,
-              offset: const Offset(0, 2),
+              color: Colors.black.withValues(alpha: 0.45),
+              blurRadius: 3,
+              offset: const Offset(0, 1),
+            ),
+            BoxShadow(
+              color: Colors.black.withValues(alpha: 0.22),
+              blurRadius: 12,
+              offset: const Offset(0, 3),
             ),
           ],
         ),
-        alignment: Alignment.center,
         child: label == null
-            ? const Icon(Icons.check_rounded,
-                size: 15, color: AppColors.onAccent)
+            ? Icon(Icons.check_rounded, size: 15, color: _watchedGlyph)
             : Text(
                 label,
                 style: const TextStyle(
-                  color: AppColors.onAccent,
+                  color: Colors.white,
                   fontSize: 12,
-                  height: 1.1,
+                  height: 1,
                   fontWeight: FontWeight.w700,
+                  letterSpacing: 0.1,
+                  fontFeatures: [FontFeature.tabularFigures()],
                 ),
               ),
       ),

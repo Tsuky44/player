@@ -1,6 +1,7 @@
 /// Quel moteur pilote la lecture, ici.
 ///
-/// ExoPlayer sur Android, mpv partout ailleurs — voir l'ADR-0009. Le choix est
+/// ExoPlayer sur Android, AVPlayer sur l'Apple TV, mpv partout ailleurs — voir
+/// les ADR-0009 et 0028. Le choix est
 /// **compilé, pas testé à l'exécution** : l'implémentation mpv vit derrière un
 /// import conditionnel, donc sur Android les symboles de media_kit n'existent
 /// pas dans le binaire. Un `if (Platform.isAndroid)` aurait laissé le jour où

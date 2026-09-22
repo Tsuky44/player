@@ -198,6 +198,7 @@ class _AppsPageState extends State<AppsPage> {
         'macos' => Icons.laptop_mac_rounded,
         'android' => Icons.android_rounded,
         'ios' => Icons.phone_iphone_rounded,
+        'tvos' => Icons.tv_rounded,
         _ => Icons.download_rounded,
       };
 

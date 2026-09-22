@@ -126,6 +126,16 @@ func (o TranscodeOptions) caps() Capabilities {
 	return o.Caps
 }
 
+// copiesHEVCIntoFMP4 reports whether this session repackages an HEVC stream
+// into fMP4 segments — the one case where the sample entry tag matters.
+func copiesHEVCIntoFMP4(o TranscodeOptions) bool {
+	if o.Probe == nil || o.Probe.Video == nil {
+		return false
+	}
+	return o.caps().Container == ContainerFMP4 &&
+		canonicalVideoCodec(o.Probe.Video.Codec) == "hevc"
+}
+
 // NoBurnedSubtitle is the wire value meaning "no subtitle is burned in".
 const NoBurnedSubtitle = -1
 
@@ -248,6 +258,12 @@ func BuildFFmpegArgs(opt TranscodeOptions) []string {
 		// therefore follows the file's own GOP, which the indexer measures into
 		// medias.gop_seconds.
 		args = append(args, "-c:v", "copy")
+		// Apple's players (AVPlayer: Safari, iOS, tvOS) refuse HEVC in fMP4 unless
+		// the sample entry is `hvc1`, and FFmpeg writes `hev1` for a copy out of
+		// Matroska. Every other client reads both, so the tag is simply forced.
+		if copiesHEVCIntoFMP4(opt) {
+			args = append(args, "-tag:v", "hvc1")
+		}
 		return append(args, audioAndMuxerArgs(opt, preset, audioIdxs, segDur)...)
 	}
 

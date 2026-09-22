@@ -6,6 +6,8 @@
 - `Onyx-<version>-macos.dmg`
 - `Onyx-<version>-windows.exe` + `-windows-portable.zip`
 - `Onyx-<version>-ios.ipa` (non signé, pour sideloading)
+- `Onyx-<version>-tvos.ipa` (Apple TV, non signé — voir l'ADR-0028 ; job en
+  `continue-on-error`, une Release peut partir sans lui)
 - le bundle Flutter Web, embarqué dans le binaire Go
 - l'image `ghcr.io/tsuky44/playeur-server` taguée `latest`, `v<version>`, `v<majeur.mineur>`
 - une GitHub Release portant tous les installateurs

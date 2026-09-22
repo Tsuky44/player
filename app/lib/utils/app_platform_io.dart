@@ -8,7 +8,20 @@ abstract final class AppPlatform {
   static bool get isWindows => io.Platform.isWindows;
   static bool get isLinux => io.Platform.isLinux;
   static bool get isAndroid => io.Platform.isAndroid;
-  static bool get isIOS => io.Platform.isIOS;
+
+  /// iPhone et iPad seulement.
+  ///
+  /// Le moteur Flutter de l'Apple TV (flutter-tvos) répond `true` à
+  /// `Platform.isIOS` — même noyau, même UIKit. Mais tout ce que ce drapeau
+  /// garde ici est du téléphone : la luminosité, la barre d'état, les gestes,
+  /// le chrome réduit de 10 %, la caméra. L'Apple TV en est donc exclue, et a
+  /// son propre drapeau, [isTvOS].
+  static bool get isIOS => io.Platform.isIOS && !isTvOS;
+
+  /// L'Apple TV. Lu par son nom : `Platform.isTvOS` n'existe que dans le SDK
+  /// patché de flutter-tvos, et ne compilerait pas avec le Flutter ordinaire
+  /// qui construit toutes les autres plateformes.
+  static bool get isTvOS => io.Platform.operatingSystem == 'tvos';
 
   /// True on the three platforms that carry a resizable OS window.
   static bool get isDesktop => isWindows || isMacOS || isLinux;
@@ -25,6 +38,7 @@ abstract final class AppPlatform {
     if (isLinux) return 'PC Linux';
     if (isAndroid) return 'Appareil Android';
     if (isIOS) return 'iPhone / iPad';
+    if (isTvOS) return 'Apple TV';
     return 'Appareil';
   }
 

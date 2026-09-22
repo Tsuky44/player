@@ -1,17 +1,24 @@
 import 'dart:io';
 
+import 'android_apk_installer.dart';
+
 /// Native in-place updater — see `app_updater.dart`.
 ///
-/// The whole point is that the user never handles a file: we fetch the same
-/// artifact the download page serves, unpack it while the app keeps running,
-/// and leave a small helper script behind that performs the swap in the two
-/// seconds after we quit. That last part has to happen outside our process:
-/// nothing can overwrite a running .app bundle or a locked .exe from within.
+/// On macOS and Windows the whole point is that the user never handles a
+/// file: we fetch the same artifact the download page serves, unpack it while
+/// the app keeps running, and leave a small helper script behind that
+/// performs the swap in the two seconds after we quit — that last part has to
+/// happen outside our process, since nothing can overwrite a running .app
+/// bundle or a locked .exe from within.
 ///
-/// Only the two platforms that ship a real installer are handled. Android would
-/// need `REQUEST_INSTALL_PACKAGES` and a platform channel, and the Windows
-/// portable ZIP has no install step at all — both simply report unsupported and
-/// the caller hides its button.
+/// Android has no such swap to perform — the APK *is* the installable
+/// artifact — so it skips straight to handing it to the system installer (see
+/// `android_apk_installer.dart`). That installer's confirmation screen is the
+/// OS's own and cannot be skipped, which is also why the app is never quit on
+/// that path: unlike the desktop helper, nothing here is waiting on our PID.
+///
+/// The Windows portable ZIP has no install step at all, so it simply reports
+/// unsupported and the caller hides its button.
 
 /// Something went wrong in a way the user can act on — the message is shown
 /// as-is in the update dialog.
@@ -26,16 +33,27 @@ class UpdateException implements Exception {
 
 /// An update already unpacked on disk. Everything slow and everything that can
 /// fail has happened by the time one of these exists: applying it is only a
-/// matter of quitting and letting the helper run.
+/// matter of quitting and letting the helper run — or, on Android, handing the
+/// APK to the system installer.
 class PreparedUpdate {
-  /// Helper script that waits for our exit, swaps the app and relaunches it.
+  /// The desktop helper script that waits for our exit and swaps the app, or
+  /// the downloaded APK's own path on Android — which one [_isAndroidApk]
+  /// says.
   final String _launcherPath;
 
   /// Temp directory holding the download and the staged app, removed by the
-  /// helper once the swap succeeded.
+  /// helper once the swap succeeded (desktop), or by [discard] directly
+  /// (Android, which has no helper to do it).
   final String _workDir;
 
-  const PreparedUpdate._(this._launcherPath, this._workDir);
+  final bool _isAndroidApk;
+
+  const PreparedUpdate._(this._launcherPath, this._workDir)
+      : _isAndroidApk = false;
+
+  const PreparedUpdate._androidApk(String apkPath, this._workDir)
+      : _launcherPath = apkPath,
+        _isAndroidApk = true;
 
   /// Best-effort cleanup for an update the user decided not to apply.
   Future<void> discard() async {
@@ -53,6 +71,7 @@ abstract final class AppUpdater {
   static bool supports(String platform) {
     if (Platform.isMacOS) return platform == 'macos';
     if (Platform.isWindows) return platform == 'windows';
+    if (Platform.isAndroid) return platform == 'android';
     return false;
   }
 
@@ -81,6 +100,7 @@ abstract final class AppUpdater {
     required String archivePath,
     required String workDir,
   }) async {
+    if (Platform.isAndroid) return _prepareAndroid(archivePath, workDir);
     if (Platform.isMacOS) return _prepareMacOS(archivePath, workDir);
     if (Platform.isWindows) return _prepareWindows(archivePath, workDir);
     throw UpdateException(
@@ -88,11 +108,19 @@ abstract final class AppUpdater {
     );
   }
 
-  /// Hands the swap over to the helper and quits.
+  /// Hands the update over and, on desktop, quits.
   ///
-  /// Does not return: the helper is already waiting on our PID, and staying
-  /// alive would only make it wait longer.
-  static Future<Never> applyAndRestart(PreparedUpdate update) async {
+  /// On macOS and Windows this never returns: the helper is already waiting on
+  /// our PID, and staying alive would only make it wait longer. On Android the
+  /// system installer takes over the screen on its own — the app is not
+  /// quit, because cancelling that screen must leave a working app behind, not
+  /// a process that already exited.
+  static Future<void> applyAndRestart(PreparedUpdate update) async {
+    if (update._isAndroidApk) {
+      await AndroidApkInstaller.install(update._launcherPath);
+      return;
+    }
+
     if (Platform.isWindows) {
       await Process.start(
         'cmd',
@@ -112,6 +140,26 @@ abstract final class AppUpdater {
     await Future<void>.delayed(const Duration(milliseconds: 300));
     exit(0);
   }
+}
+
+// -----------------------------------------------------------------------------
+// Android
+// -----------------------------------------------------------------------------
+
+/// Nothing to unpack — the download *is* the installable artifact. The only
+/// thing worth failing early on is the install permission, which the system
+/// picker for "allow installs from this source" needs before the installer
+/// will even open: better to send the user there now, with an explanation,
+/// than to have the confirmation screen silently fail to appear later.
+Future<PreparedUpdate> _prepareAndroid(String apkPath, String workDir) async {
+  if (!await AndroidApkInstaller.canInstallPackages()) {
+    await AndroidApkInstaller.openInstallPermissionSettings();
+    throw UpdateException(
+      'Autorisez Onyx à installer des applications dans l’écran qui vient '
+      'de s’ouvrir, puis réessayez.',
+    );
+  }
+  return PreparedUpdate._androidApk(apkPath, workDir);
 }
 
 // -----------------------------------------------------------------------------

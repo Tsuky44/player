@@ -184,6 +184,9 @@ func main() {
 	router.POST("/api/progress", handlers.RequireAuth(handlers.UpdateProgress))
 	router.POST("/api/continue-watching/hide", handlers.RequireAuth(handlers.HideFromContinueWatching))
 	router.POST("/api/media/:id/watched", handlers.RequireAuth(handlers.SetMediaWatched))
+	// Une saison entière d’un coup : le client envoie les épisodes, le
+	// serveur tranche en une transaction.
+	router.POST("/api/progress/watched", handlers.RequireAuth(handlers.SetMediaWatchedBatch))
 
 	// Activité : le lecteur signale ce qu'il lit, les administrateurs voient
 	// qui regarde quoi, l'historique et les statistiques. Voir activity.go.

@@ -6,14 +6,18 @@ import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
 import '../../utils/app_platform.dart';
 import '../../utils/window_controls.dart';
+import '../../models/app_download.dart';
 import '../../providers/auth_provider.dart';
 import '../../providers/home_provider.dart';
+import '../../services/api_client.dart';
+import '../../services/auto_updater_service.dart';
 import '../../services/download_manager.dart';
 import '../../services/server_reachability.dart';
 import '../../theme/app_colors.dart';
 import '../../utils/responsive.dart';
 import '../../widgets/global/account_menu.dart';
 import '../../widgets/global/app_download_button.dart';
+import '../../widgets/global/app_update_dialog.dart';
 import '../../widgets/global/glass_catalog_search.dart';
 import '../../widgets/global/glass_chrome.dart';
 import '../../widgets/global/sticky_glass_search.dart';
@@ -73,6 +77,12 @@ class _MainShellState extends State<MainShell> {
   final Set<int> _mountedTabs = {0};
   Timer? _warmTimer;
 
+  /// Checks the server for a newer build in the background and drives the
+  /// update dialog on its own — the header button stays as a manual fallback,
+  /// but nobody needs to notice or click it for the app to catch up.
+  AutoUpdateService? _autoUpdate;
+  bool _updateDialogOpen = false;
+
   /// Monte les autres onglets une fois l'accueil passé.
   ///
   /// Le délai est celui de [PlayerEnginePool.prewarm], et pour la même raison :
@@ -92,6 +102,7 @@ class _MainShellState extends State<MainShell> {
   @override
   void dispose() {
     _warmTimer?.cancel();
+    _autoUpdate?.dispose();
     for (final node in _tabNodes) {
       node.dispose();
     }
@@ -116,6 +127,20 @@ class _MainShellState extends State<MainShell> {
         MaterialPageRoute(builder: (_) => TvPairingScreen(initialCode: code)),
       );
     });
+    _autoUpdate = AutoUpdateService(
+      api: context.read<ApiClient>(),
+      onUpdateFound: _handleUpdateFound,
+    )..start();
+  }
+
+  /// Opens the update dialog on its own once the server turns out to have a
+  /// newer build — [showAppUpdateDialog]'s `autoStart` then chains straight
+  /// through download, install and a countdown to restart.
+  void _handleUpdateFound(AppDownload download) {
+    if (!mounted || _updateDialogOpen) return;
+    _updateDialogOpen = true;
+    showAppUpdateDialog(context, download: download, autoStart: true)
+        .whenComplete(() => _updateDialogOpen = false);
   }
 
   /// Vrai quand une page (fiche d'un média, d'une personne…) est ouverte

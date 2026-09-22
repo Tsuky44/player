@@ -824,3 +824,33 @@ func TestBuildFFmpegArgs_FMP4SessionsPublishAnInitSegment(t *testing.T) {
 		t.Errorf("legacy segments must stay .ts, got %q", got)
 	}
 }
+
+func TestBuildFFmpegArgs_CopiedHEVCIsTaggedForApplePlayers(t *testing.T) {
+	hevc := func() *ProbeResult {
+		p := probeWith(3840, 2160, 24, AudioStreamInfo{Codec: "eac3", Channels: 6})
+		p.Video.Codec = "hevc"
+		return p
+	}
+
+	// AVPlayer (Safari, iOS, tvOS) refuses an fMP4 HEVC track tagged hev1.
+	args := BuildFFmpegArgs(TranscodeOptions{
+		InputPath: "/x.mkv", Quality: "2160p", TmpDir: "/tmp/x", SegmentDuration: 2,
+		Probe: hevc(), AudioTypedIndexes: []int{0},
+		Video: VideoPlan{Copy: true}, Caps: surroundCaps(),
+	})
+	if got, _ := argValue(args, "-tag:v"); got != "hvc1" {
+		t.Errorf("-tag:v = %q, want hvc1", got)
+	}
+
+	// An H.264 copy has nothing to retag.
+	h264 := BuildFFmpegArgs(TranscodeOptions{
+		InputPath: "/x.mkv", Quality: "1080p", TmpDir: "/tmp/x", SegmentDuration: 2,
+		Probe:             probeWith(1920, 1080, 24, AudioStreamInfo{Codec: "aac", Channels: 2}),
+		AudioTypedIndexes: []int{0},
+		Video:             VideoPlan{Copy: true},
+		Caps:              surroundCaps(),
+	})
+	if hasArg(h264, "-tag:v") {
+		t.Error("an H.264 copy must not be retagged")
+	}
+}

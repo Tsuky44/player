@@ -136,6 +136,30 @@ class PlaybackCapabilities {
     label: 'mpv (gpu-next, vue native)',
   );
 
+  /// AVPlayer sur l'Apple TV, qui ne lit que du HLS préparé par le serveur.
+  ///
+  /// Le MKV lui est fermé, donc tout passe par une session — mais une session
+  /// qui **recopie** les pistes dès qu'elles tiennent dans un segment fMP4 :
+  /// HEVC et H.264 tels quels, Dolby Digital (Plus) jusqu'à l'ampli, Atmos
+  /// compris. Ce qu'AVPlayer ne décode pas (TrueHD, DTS) est converti par le
+  /// serveur, comme pour tous les clients fMP4.
+  ///
+  /// `hdr` et `dolbyVision` restent faux, et ce n'est pas une limite
+  /// d'AVPlayer : l'image passe par une texture Flutter en 8 bits BGRA
+  /// (`video_player_tvos`), qui écrase une source HDR. Le serveur la
+  /// tone-mappe donc lui-même, ce qui donne une image juste plutôt que
+  /// délavée. La vue native (`AVPlayerLayer`) lèverait cette limite.
+  static const appleTv = PlaybackCapabilities(
+    container: 'fmp4',
+    videoCodecs: {'h264', 'hevc'},
+    audioCodecs: {'aac', 'ac3', 'eac3', 'alac', 'flac'},
+    maxAudioChannels: 8,
+    maxVideoBitDepth: 10,
+    hdr: false,
+    dolbyVision: false,
+    label: 'avplayer (apple tv)',
+  );
+
   /// Ce qu'ExoPlayer a mesuré sur cet appareil.
   ///
   /// Tout vient du natif : les décodeurs de `MediaCodecList`, les canaux et le
@@ -327,6 +351,8 @@ abstract final class PlaybackCapabilitiesResolver {
         debugPrint('PlaybackCapabilities: interrogation impossible ($error)');
         _current = PlaybackCapabilities.legacy;
       }
+    } else if (AppPlatform.isTvOS) {
+      _current = PlaybackCapabilities.appleTv;
     } else if (MpvNativeView.enabled) {
       _current = PlaybackCapabilities.mpvGpuNext;
     } else {

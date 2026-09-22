@@ -11,6 +11,7 @@ abstract final class AppPlatform {
   static const bool isLinux = false;
   static const bool isAndroid = false;
   static const bool isIOS = false;
+  static const bool isTvOS = false;
 
   static const bool isDesktop = false;
   static const bool isMobile = false;

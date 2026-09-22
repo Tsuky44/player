@@ -1,11 +1,9 @@
-import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
-import 'package:package_info_plus/package_info_plus.dart';
 import 'package:provider/provider.dart';
 
 import '../../models/app_download.dart';
 import '../../services/api_client.dart';
-import '../../services/app_updater.dart';
+import '../../services/update_checker.dart';
 import '../../theme/app_colors.dart';
 import '../../utils/app_platform.dart';
 import '../../utils/external_url.dart';
@@ -55,38 +53,15 @@ class _AppDownloadButtonState extends State<AppDownloadButton> {
   /// better than an error banner in the header: on failure we stay hidden.
   Future<void> _load(ApiClient api) async {
     try {
-      final match = _pickForCurrentPlatform(await api.getAppDownloads());
-      final offered = match == null ? null : await _keepIfOffered(match);
+      final offered = _isUpdate
+          ? await UpdateChecker.findAvailableUpdate(api)
+          : pickDownloadForCurrentPlatform(await api.getAppDownloads());
       if (!mounted) return;
       setState(() => _download = offered);
     } catch (_) {
       if (!mounted) return;
       setState(() => _download = null);
     }
-  }
-
-  /// Filters out an artifact we should not push at this user: in the installed
-  /// app, anything we cannot install over ourselves, and anything that is not
-  /// strictly newer than the running build. A version we cannot compare
-  /// (unnamed artifact, unreadable package info) is treated as "not an update"
-  /// — a silent button beats nagging about a phantom release.
-  Future<AppDownload?> _keepIfOffered(AppDownload download) async {
-    if (!_isUpdate) return download;
-    if (!AppUpdater.supports(download.platform)) return null;
-
-    final published = _parseVersion(download.version);
-    if (published == null) return null;
-
-    String current;
-    try {
-      current = (await PackageInfo.fromPlatform()).version;
-    } catch (_) {
-      return null;
-    }
-    final running = _parseVersion(current);
-    if (running == null) return null;
-
-    return _isNewer(published, running) ? download : null;
   }
 
   Future<void> _open() async {
@@ -146,69 +121,3 @@ class _AppDownloadButtonState extends State<AppDownloadButton> {
   }
 }
 
-/// The artifact matching the OS we run on, or null when nobody published it.
-///
-/// `windows` (the installer) wins over `windows-portable`: the shortcut is
-/// meant to be the no-question path, the ZIP stays in the settings list.
-AppDownload? _pickForCurrentPlatform(List<AppDownload> downloads) {
-  final wanted = _currentPlatformKey();
-  if (wanted == null) return null;
-
-  AppDownload? fallback;
-  for (final download in downloads) {
-    if (download.platform == wanted) return download;
-    if (wanted == 'windows' && download.platform == 'windows-portable') {
-      fallback = download;
-    }
-  }
-  return fallback;
-}
-
-/// Platform key as published by the server, or null when we have no installer
-/// for it (Linux, iOS). On web every `AppPlatform` predicate is false, so the
-/// host OS comes from the framework's own browser detection instead.
-String? _currentPlatformKey() {
-  if (AppPlatform.isWindows) return 'windows';
-  if (AppPlatform.isMacOS) return 'macos';
-  if (AppPlatform.isAndroid) return 'android';
-  if (!AppPlatform.isWeb) return null;
-
-  switch (defaultTargetPlatform) {
-    case TargetPlatform.windows:
-      return 'windows';
-    case TargetPlatform.macOS:
-      return 'macos';
-    case TargetPlatform.android:
-      return 'android';
-    default:
-      return null;
-  }
-}
-
-/// Numeric components of a `1.2.3` version, or null when it is not one.
-///
-/// A build suffix (`1.2.3+7`, `1.2.3-beta`) is dropped: the artifacts are named
-/// after the release version, and comparing on it is what decides an update.
-List<int>? _parseVersion(String raw) {
-  final trimmed = raw.trim().split(RegExp(r'[+\-]')).first;
-  if (trimmed.isEmpty) return null;
-
-  final parts = <int>[];
-  for (final segment in trimmed.split('.')) {
-    final value = int.tryParse(segment);
-    if (value == null) return null;
-    parts.add(value);
-  }
-  return parts.isEmpty ? null : parts;
-}
-
-bool _isNewer(List<int> candidate, List<int> reference) {
-  final length =
-      candidate.length > reference.length ? candidate.length : reference.length;
-  for (var i = 0; i < length; i++) {
-    final a = i < candidate.length ? candidate[i] : 0;
-    final b = i < reference.length ? reference[i] : 0;
-    if (a != b) return a > b;
-  }
-  return false;
-}

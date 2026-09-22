@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
 import '../theme/app_colors.dart';
+import '../utils/app_platform.dart';
 import 'tv_focus_memory.dart';
 import 'tv_key_repeat.dart';
 import 'tv_mode.dart';
@@ -22,14 +23,66 @@ final Set<LogicalKeyboardKey> kTvSelectKeys = <LogicalKeyboardKey>{
   LogicalKeyboardKey.gameButtonA,
 };
 
+/// Keys that mean "go back one step".
+///
+/// Android TV's remote sends `goBack`; the Siri Remote's Menu button and a
+/// keyboard send `escape`; a game controller sends `gameButtonB`. The player
+/// and its menus unwind one layer per press on any of them.
+final Set<LogicalKeyboardKey> kTvBackKeys = <LogicalKeyboardKey>{
+  LogicalKeyboardKey.escape,
+  LogicalKeyboardKey.goBack,
+  LogicalKeyboardKey.browserBack,
+  LogicalKeyboardKey.gameButtonB,
+};
+
 /// Shortcuts merged into the app's defaults so `select` and the controller's A
 /// button activate anything Flutter already activates with Enter — every
 /// Material button, tile and menu item, without touching a single one of them.
+///
+/// The back keys first try [DismissIntent], like Escape always has: whatever
+/// can close itself (a dialog, a menu) does. Anything left over becomes a
+/// [TvBackIntent].
 Map<ShortcutActivator, Intent> get tvSelectShortcuts =>
     const <ShortcutActivator, Intent>{
       SingleActivator(LogicalKeyboardKey.select): ActivateIntent(),
       SingleActivator(LogicalKeyboardKey.gameButtonA): ActivateIntent(),
+      SingleActivator(LogicalKeyboardKey.escape): _dismissThenBack,
+      SingleActivator(LogicalKeyboardKey.goBack): _dismissThenBack,
+      SingleActivator(LogicalKeyboardKey.gameButtonB): _dismissThenBack,
     };
+
+const Intent _dismissThenBack = PrioritizedIntents(
+  orderedIntents: <Intent>[DismissIntent(), TvBackIntent()],
+);
+
+/// "Go back one step", once nothing closer to the focus wanted the key.
+class TvBackIntent extends Intent {
+  const TvBackIntent();
+}
+
+/// Back, on a television that is not Android.
+///
+/// Android TV's Back key goes through the system, which sends Flutter a
+/// `popRoute` — the same path as the phone's back gesture, so every
+/// [PopScope] in the app already knows what to do with it. iOS has no system
+/// back: an Apple remote or a controller only produces a key event, which by
+/// default nothing turns into navigation. This does what Flutter does with
+/// that `popRoute` — `maybePop` on the root navigator, which runs the same
+/// [PopScope]s — so one press of Back does the same thing on both.
+///
+/// Disabled off a television (Escape keeps its desktop meaning) and on Android
+/// (the system already does it; doing it here too would pop twice).
+class TvBackAction extends Action<TvBackIntent> {
+  @override
+  bool isEnabled(TvBackIntent intent) => TvMode.isTv && !AppPlatform.isAndroid;
+
+  @override
+  Object? invoke(TvBackIntent intent) {
+    final context = primaryFocus?.context;
+    if (context == null) return null;
+    return Navigator.maybeOf(context, rootNavigator: true)?.maybePop();
+  }
+}
 
 /// Makes an arbitrary widget reachable and activatable with a D-pad.
 ///

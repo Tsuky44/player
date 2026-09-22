@@ -88,6 +88,19 @@ class _ServersScreenState extends State<ServersScreen> {
     }
   }
 
+  /// Désigne — ou libère — le serveur sur lequel l'app se remettra à chaque
+  /// lancement. Un seul à la fois : c'est une place, pas une étiquette.
+  Future<void> _togglePrimary(ServerAccount account) async {
+    final auth = context.read<AuthProvider>();
+    final wasPrimary = auth.isPrimaryServer(account.id);
+    await auth.setPrimaryServer(wasPrimary ? null : account.id);
+    if (!mounted) return;
+    _toast(wasPrimary
+        ? '${account.displayName} n’est plus le serveur principal.'
+        : 'L’app démarrera sur ${account.displayName}.');
+    setState(() {});
+  }
+
   Future<void> _rename(ServerAccount account) async {
     final controller = TextEditingController(text: account.label ?? '');
     final label = await showDialog<String>(
@@ -261,14 +274,22 @@ class _ServersScreenState extends State<ServersScreen> {
           'sur un serveur disponible.',
           style: TextStyle(color: AppColors.textSecondary, fontSize: 13),
         ),
+        const SizedBox(height: 10),
+        const Text(
+          'Désignez un serveur principal pour que l’app y revienne à chaque lancement. '
+          'S’il ne répond pas, elle vous proposera les autres au lieu de basculer toute seule.',
+          style: TextStyle(color: AppColors.textSecondary, fontSize: 13),
+        ),
         const SizedBox(height: 20),
       ],
       for (final account in accounts)
         _ServerTile(
           account: account,
           isActive: account.id == activeId,
+          isPrimary: auth.isPrimaryServer(account.id),
           busy: auth.isLoading,
           onSelect: () => _switchTo(account),
+          onTogglePrimary: () => _togglePrimary(account),
           onRename: () => _rename(account),
           links: api.servers.serverLinksFor(account.id),
           onLink: _linkCandidates(api, account).isNotEmpty
@@ -379,8 +400,10 @@ class _ServerTile extends StatelessWidget {
   const _ServerTile({
     required this.account,
     required this.isActive,
+    required this.isPrimary,
     required this.busy,
     required this.onSelect,
+    required this.onTogglePrimary,
     required this.onRename,
     required this.links,
     required this.onLink,
@@ -390,8 +413,13 @@ class _ServerTile extends StatelessWidget {
 
   final ServerAccount account;
   final bool isActive;
+
+  /// Celui sur lequel l'app redémarre, marqué d'une étoile.
+  final bool isPrimary;
+
   final bool busy;
   final VoidCallback onSelect;
+  final VoidCallback onTogglePrimary;
   final VoidCallback onRename;
   final List<AccountLink> links;
   final VoidCallback? onLink;
@@ -428,9 +456,22 @@ class _ServerTile extends StatelessWidget {
               color: AppColors.textPrimary,
             ),
           ),
-          title: Text(account.displayName),
+          title: Row(
+            children: [
+              Flexible(child: Text(account.displayName)),
+              if (isPrimary) ...[
+                const SizedBox(width: 6),
+                const Icon(
+                  Icons.star_rounded,
+                  size: 16,
+                  color: AppColors.warning,
+                ),
+              ],
+            ],
+          ),
           subtitle: Text(
             '${account.username} · ${isActive ? 'serveur actif' : account.prettyHost}'
+            '${isPrimary ? ' · serveur principal' : ''}'
             '${links.isEmpty ? '' : '\nLié à ${links.map((l) => '${l.remoteUsername} sur ${l.displayName}${l.isActive ? '' : ' (en attente des administrateurs)'}').join(', ')}'}',
             style: const TextStyle(color: AppColors.textSecondary),
           ),
@@ -439,6 +480,8 @@ class _ServerTile extends StatelessWidget {
             enabled: !busy,
             onSelected: (value) {
               switch (value) {
+                case 'primary':
+                  onTogglePrimary();
                 case 'link':
                   onLink?.call();
                 case 'unlink':
@@ -450,6 +493,12 @@ class _ServerTile extends StatelessWidget {
               }
             },
             itemBuilder: (_) => [
+              PopupMenuItem(
+                value: 'primary',
+                child: Text(isPrimary
+                    ? 'Ne plus démarrer ici'
+                    : 'Démarrer sur ce serveur'),
+              ),
               if (onLink != null)
                 const PopupMenuItem(
                     value: 'link', child: Text('Lier un compte')),

@@ -70,6 +70,37 @@ func TestListDownloadsDescribesKnownArtifacts(t *testing.T) {
 	}
 }
 
+// A leftover build from before the staging script's own cleanup, or one staged
+// by hand, can leave two files for the same platform. The listing must not
+// hand out whichever sorts first alphabetically — that let a stale, lower
+// version shadow a real update.
+func TestListDownloadsKeepsTheHighestVersionPerPlatform(t *testing.T) {
+	stageDownloads(t,
+		"Onyx-0.1.3-windows.exe",
+		"Onyx-1.0.0-windows.exe",
+	)
+
+	rec := httptest.NewRecorder()
+	ListDownloads(rec, httptest.NewRequest(http.MethodGet, "/api/downloads", nil), nil)
+
+	var body struct {
+		Artifacts []DownloadArtifact `json:"artifacts"`
+	}
+	if err := json.NewDecoder(rec.Body).Decode(&body); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+
+	if len(body.Artifacts) != 1 {
+		t.Fatalf("expected one windows artifact, got %d: %+v", len(body.Artifacts), body.Artifacts)
+	}
+	if got := body.Artifacts[0].Version; got != "1.0.0" {
+		t.Errorf("version = %q, want the higher 1.0.0", got)
+	}
+	if got := body.Artifacts[0].File; got != "Onyx-1.0.0-windows.exe" {
+		t.Errorf("file = %q, want the higher version's file", got)
+	}
+}
+
 func TestServeDownloadSendsFileAsAttachment(t *testing.T) {
 	stageDownloads(t, "Onyx-1.0.0-android.apk")
 
@@ -240,5 +271,34 @@ func TestDeleteDownloadRemovesOnlyListedArtifacts(t *testing.T) {
 	}
 	if _, err := os.Stat(filepath.Join(dir, "secrets.env")); err != nil {
 		t.Errorf("unrelated file deleted: %v", err)
+	}
+}
+
+// The iPhone and Apple TV builds are both .ipa files. Sharing one platform slot
+// meant only one of them was ever listed.
+func TestListDownloadsKeepsTheAppleTVBuildApartFromIOS(t *testing.T) {
+	stageDownloads(t,
+		"Onyx-1.2.0-ios.ipa",
+		"Onyx-1.2.0-tvos.ipa",
+	)
+
+	rec := httptest.NewRecorder()
+	ListDownloads(rec, httptest.NewRequest(http.MethodGet, "/api/downloads", nil), nil)
+
+	var body struct {
+		Artifacts []DownloadArtifact `json:"artifacts"`
+	}
+	if err := json.NewDecoder(rec.Body).Decode(&body); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+
+	if len(body.Artifacts) != 2 {
+		t.Fatalf("expected both .ipa files, got %d: %+v", len(body.Artifacts), body.Artifacts)
+	}
+	if got := body.Artifacts[0]; got.Platform != "ios" || got.File != "Onyx-1.2.0-ios.ipa" {
+		t.Errorf("first artifact = %+v, want the iOS build", got)
+	}
+	if got := body.Artifacts[1]; got.Platform != "tvos" || got.Label != "Apple TV (IPA)" {
+		t.Errorf("second artifact = %+v, want the Apple TV build", got)
 	}
 }

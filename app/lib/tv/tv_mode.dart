@@ -50,9 +50,14 @@ abstract final class TvMode {
   static Future<void> initialize() async {
     _preference = await _readPreference();
 
-    if (AppPlatform.isAndroid) {
+    // iOS answers too: `false` on an iPhone or an iPad, where the override is
+    // what turns TV mode on for one plugged into a television. The Apple TV
+    // needs no question — see [_resolve] — but still gives its name.
+    if (AppPlatform.isTvOS) _detected = true;
+    if (AppPlatform.isAndroid || AppPlatform.isIOS || AppPlatform.isTvOS) {
       try {
-        _detected = await _channel.invokeMethod<bool>('isTelevision') ?? false;
+        _detected = AppPlatform.isTvOS ||
+            (await _channel.invokeMethod<bool>('isTelevision') ?? false);
         final name = await _channel.invokeMethod<String>('deviceName');
         if (name != null && name.trim().isNotEmpty) {
           _deviceName = name.trim();
@@ -61,7 +66,7 @@ abstract final class TvMode {
         // MissingPluginException on an older install of the host app, or a
         // platform that never registered the channel.
         debugPrint('TvMode: detection unavailable ($error)');
-        _detected = false;
+        _detected = AppPlatform.isTvOS;
       }
     }
 
@@ -96,6 +101,9 @@ abstract final class TvMode {
   }
 
   static bool _resolve() {
+    // Une Apple TV n'a ni écran tactile ni clavier : l'interface du téléphone
+    // y serait inutilisable, et le réglage ne s'y propose pas.
+    if (AppPlatform.isTvOS) return true;
     switch (_preference) {
       case TvModePreference.on:
         return true;

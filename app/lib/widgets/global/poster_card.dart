@@ -22,7 +22,12 @@ class PosterCard extends StatefulWidget {
   /// Badges / dots stacked over the poster (already `Positioned`).
   final List<Widget> overlays;
 
-  /// Full-width overlay pinned to the bottom of the poster (progression…).
+  /// Overlay posé en bas de l'affiche (progression…), en retrait des bords.
+  ///
+  /// Le retrait n'est pas cosmétique : une bande collée au bord bas devrait se
+  /// faire découper par l'arrondi du coin, et son rayon à elle plus celui de
+  /// l'affiche se lisaient comme deux coins mal alignés. Elle flotte donc à
+  /// l'intérieur, comme les badges du haut, avec le même retrait qu'eux.
   final Widget? footerOverlay;
 
   /// Dims the poster for titles absent from the library.
@@ -54,6 +59,10 @@ class PosterCard extends StatefulWidget {
   });
 
   static const double radius = 12;
+
+  /// Retrait commun à tout ce qui flotte au-dessus de l'affiche — badges et
+  /// barre de progression — pour que rien ne vienne toucher l'arrondi.
+  static const double overlayInset = 9;
 
   @override
   State<PosterCard> createState() => _PosterCardState();
@@ -135,15 +144,10 @@ class _PosterCardState extends State<PosterCard> {
                   ...widget.overlays,
                   if (widget.footerOverlay != null)
                     Positioned(
-                      left: 0,
-                      right: 0,
-                      bottom: 0,
-                      child: ClipRRect(
-                        borderRadius: const BorderRadius.vertical(
-                          bottom: Radius.circular(PosterCard.radius),
-                        ),
-                        child: widget.footerOverlay!,
-                      ),
+                      left: PosterCard.overlayInset,
+                      right: PosterCard.overlayInset,
+                      bottom: PosterCard.overlayInset,
+                      child: widget.footerOverlay!,
                     ),
                 ],
               ),

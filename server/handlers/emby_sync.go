@@ -25,12 +25,16 @@ import (
 //
 // Chaque utilisateur peut lier son compte Emby. La progression circule alors
 // dans les deux sens, reconnue par identité de contenu (TMDB, saison, épisode)
-// comme entre serveurs liés :
-//   - Emby → Onyx : les médias en cours et vus sur Emby sont importés, le plus
-//     récent l'emportant (importPortableProgress) ;
-//   - Onyx → Emby : ce qui change ici (progress_changes) est envoyé à Emby, sauf
-//     si Emby est déjà au même point ou plus récent — ce qui empêche aussi
-//     l'import de revenir en écho.
+// comme entre serveurs liés. Trois moments la font circuler :
+//   - Emby est relu en entier toutes les dix minutes ;
+//   - ce qui change ici (progress_changes) part vers Emby dans les trente
+//     secondes ;
+//   - juste avant de donner un point de reprise, Onyx redemande à Emby où en
+//     est ce média-là (refreshEmbyMedia).
+//
+// À chaque fois, c'est la même décision (decideEmby) : la dernière lecture
+// gagne, reconnue au côté qui s'est écarté du dernier accord (emby_baselines),
+// pas à des dates que les deux serveurs ne donnent pas dans le même sens.
 //
 // Le mot de passe ne sert qu'à obtenir un jeton ; seul le jeton est gardé.
 
@@ -41,9 +45,6 @@ const (
 	embyPage       = 500
 	embyIDsChunk   = 100
 	ticksPerSecond = 10_000_000
-
-	// Deux positions à moins de cet écart sont considérées identiques.
-	embyPositionSlack = 10 * ticksPerSecond
 )
 
 var embyHTTP = &http.Client{Timeout: 30 * time.Second}
@@ -315,107 +316,351 @@ func (l embyLink) resolve(ctx context.Context, idx *embyIndex, e PortableProgres
 	return eps[[2]int{e.Season, e.Episode}], nil
 }
 
-// ==================== EMBY → ONYX ====================
+// ==================== DÉCISION ====================
 
-func embyPortable(item embyItem, idx *embyIndex) (PortableProgress, bool) {
+// progressState est ce que les deux côtés comparent : où l'on en est, et si
+// c'est vu. Les dates n'en font pas partie.
+type progressState struct {
+	Position int
+	Finished bool
+}
+
+// Deux positions à moins de cet écart sont le même endroit : les deux côtés
+// n'arrondissent pas pareil, et un battement de plus ne fait pas un désaccord.
+const embyPositionSlackSeconds = 10
+
+func (s progressState) empty() bool { return !s.Finished && s.Position <= 0 }
+
+func (s progressState) matches(o progressState) bool {
+	if s.Finished != o.Finished {
+		return false
+	}
+	if s.Finished {
+		return true
+	}
+	d := s.Position - o.Position
+	return d > -embyPositionSlackSeconds && d < embyPositionSlackSeconds
+}
+
+// contentKey est l'identité portable d'un contenu, la seule que les deux côtés
+// partagent.
+type contentKey struct {
+	Type    string
+	TMDBID  int
+	Season  int
+	Episode int
+}
+
+func keyOf(e PortableProgress) contentKey {
+	return contentKey{e.Type, e.TMDBID, e.Season, e.Episode}
+}
+
+type embyVerdict int
+
+const (
+	// Les deux côtés disent la même chose : rien à écrire, l'accord est retenu.
+	embyInSync embyVerdict = iota
+	// Emby a la dernière lecture : elle s'écrit ici.
+	embyWins
+	// Onyx a la dernière lecture : elle part vers Emby.
+	onyxWins
+)
+
+// decideEmby dit quel côté a la dernière lecture.
+//
+// base est le dernier état sur lequel les deux étaient d'accord (nil tant
+// qu'aucun ne l'a été). Quand un seul côté s'en est écarté, c'est lui qui a
+// bougé, donc lui qui a raison — sans regarder aucune date. C'est ce qui rend la
+// décision juste : le LastPlayedDate d'Emby est l'heure du *début* de sa
+// dernière lecture, pas de sa dernière modification. Une heure de film sur
+// Emby garde la date de la première seconde, et la comparer à la dernière
+// modification ici donnait régulièrement la victoire au côté qui n'avait pas
+// bougé.
+//
+// Les dates ne départagent que ce que l'accord ne peut pas : les deux côtés ont
+// bougé depuis, ou il n'y a encore jamais eu d'accord.
+//
+// Un côté vide n'efface jamais l'autre. Une progression absente ici veut dire
+// « jamais regardé ici », et un élément Emby sans données peut être un média
+// réimporté sous un nouvel identifiant : dans les deux cas, écraser une vraie
+// progression par du vide serait une perte, pas une synchronisation.
+func decideEmby(local, emby progressState, localAt, embyAt time.Time, base *progressState) embyVerdict {
+	switch {
+	case local.matches(emby):
+		return embyInSync
+	case emby.empty():
+		return onyxWins
+	case local.empty():
+		return embyWins
+	}
+	if base != nil {
+		localMoved := !local.matches(*base)
+		embyMoved := !emby.matches(*base)
+		switch {
+		case embyMoved && !localMoved:
+			return embyWins
+		case localMoved && !embyMoved:
+			return onyxWins
+		}
+	}
+	if embyAt.After(localAt) {
+		return embyWins
+	}
+	return onyxWins
+}
+
+// ==================== ÉTAT DE CHAQUE CÔTÉ ====================
+
+// embyItemState lit l'état d'un élément Emby et la date qu'Emby lui donne.
+func embyItemState(item embyItem) (progressState, time.Time) {
 	ud := item.UserData
-	if ud == nil || (!ud.Played && ud.PlaybackPositionTicks <= 0) {
-		return PortableProgress{}, false
+	if ud == nil {
+		return progressState{}, time.Time{}
 	}
 	position := ud.PlaybackPositionTicks
 	if position <= 0 && ud.Played {
 		position = item.RunTimeTicks
 	}
-	stamp := parseEmbyDate(ud.LastPlayedDate)
-	if stamp.IsZero() {
-		// Vu sans date : le plus ancien possible, pour ne combler qu'un vide.
-		stamp = embyDateZero
-	}
-	e := PortableProgress{
-		Position:  int(position / ticksPerSecond),
-		Finished:  ud.Played,
-		UpdatedAt: stamp.Format(time.RFC3339Nano),
-	}
-	switch item.Type {
-	case "Movie":
-		e.Type = "movie"
-		e.TMDBID = providerTMDB(item.ProviderIds)
-	case "Episode":
-		if item.ParentIndexNumber == nil || item.IndexNumber == nil {
-			return e, false
-		}
-		e.Type = "episode"
-		e.TMDBID = idx.seriesTMDB[item.SeriesID]
-		e.Season = *item.ParentIndexNumber
-		e.Episode = *item.IndexNumber
-	default:
-		return e, false
-	}
-	return e, validatePortableProgress([]PortableProgress{e}) == ""
+	return progressState{Position: int(position / ticksPerSecond), Finished: ud.Played},
+		parseEmbyDate(ud.LastPlayedDate)
 }
 
-// pull importe ce qu'Emby sait et renvoie le nombre de progressions modifiées ici.
+// embyItemKey donne l'identité portable d'un élément de la bibliothèque Emby.
+func embyItemKey(item embyItem, idx *embyIndex) (contentKey, bool) {
+	var key contentKey
+	switch item.Type {
+	case "Movie":
+		key = contentKey{Type: "movie", TMDBID: providerTMDB(item.ProviderIds)}
+	case "Episode":
+		if item.ParentIndexNumber == nil || item.IndexNumber == nil {
+			return key, false
+		}
+		key = contentKey{
+			Type:    "episode",
+			TMDBID:  idx.seriesTMDB[item.SeriesID],
+			Season:  *item.ParentIndexNumber,
+			Episode: *item.IndexNumber,
+		}
+	default:
+		return key, false
+	}
+	probe := PortableProgress{Type: key.Type, TMDBID: key.TMDBID, Season: key.Season,
+		Episode: key.Episode, UpdatedAt: embyDateZero.Format(time.RFC3339Nano)}
+	return key, validatePortableProgress([]PortableProgress{probe}) == ""
+}
+
+// localSide est ce qu'Onyx sait d'un contenu.
+type localSide struct {
+	state progressState
+	at    time.Time
+}
+
+func localSideOf(e PortableProgress) localSide {
+	at, _ := time.Parse(time.RFC3339Nano, e.UpdatedAt)
+	return localSide{progressState{e.Position, e.Finished}, at}
+}
+
+// loadLocalProgress lit la progression d'un compte, par contenu. mediaID
+// restreint à un média ("" pour tous).
+func loadLocalProgress(userID int, mediaID string) (map[contentKey]localSide, error) {
+	entries, err := readPortableProgress(userID, mediaID)
+	if err != nil {
+		return nil, err
+	}
+	out := make(map[contentKey]localSide, len(entries))
+	for _, e := range entries {
+		out[keyOf(e)] = localSideOf(e)
+	}
+	return out, nil
+}
+
+// ==================== ACCORDS ====================
+
+func loadEmbyBaselines(userID int) (map[contentKey]progressState, error) {
+	rows, err := database.DB.Query(`SELECT type, tmdb_id, season, episode, position, finished
+		FROM emby_baselines WHERE user_id = ?`, userID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	out := map[contentKey]progressState{}
+	for rows.Next() {
+		var k contentKey
+		var s progressState
+		if err := rows.Scan(&k.Type, &k.TMDBID, &k.Season, &k.Episode, &s.Position, &s.Finished); err != nil {
+			return nil, err
+		}
+		out[k] = s
+	}
+	return out, rows.Err()
+}
+
+func loadEmbyBaseline(userID int, k contentKey) (*progressState, error) {
+	var s progressState
+	err := database.DB.QueryRow(`SELECT position, finished FROM emby_baselines
+		WHERE user_id = ? AND type = ? AND tmdb_id = ? AND season = ? AND episode = ?`,
+		userID, k.Type, k.TMDBID, k.Season, k.Episode).Scan(&s.Position, &s.Finished)
+	if err == sql.ErrNoRows {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, err
+	}
+	return &s, nil
+}
+
+func saveEmbyBaseline(userID int, k contentKey, s progressState) error {
+	_, err := database.DB.Exec(`INSERT INTO emby_baselines
+		(user_id, type, tmdb_id, season, episode, position, finished) VALUES (?, ?, ?, ?, ?, ?, ?)
+		ON CONFLICT(user_id, type, tmdb_id, season, episode) DO UPDATE SET
+			position = excluded.position, finished = excluded.finished`,
+		userID, k.Type, k.TMDBID, k.Season, k.Episode, s.Position, s.Finished)
+	return err
+}
+
+// ==================== APPLICATION ====================
+
+// writeEmbyLocally écrit ici l'état qu'Emby a gagné, et dit si une ligne a
+// été écrite.
+//
+// Sans la garde de date d'importPortableProgress : la décision est déjà prise,
+// et la date d'Emby — un début de lecture — est justement celle qui la
+// fausserait. La ligne est datée de maintenant, le moment où Onyx l'apprend.
+func writeEmbyLocally(userID int, k contentKey, s progressState) (bool, error) {
+	result, err := database.DB.Exec(`WITH content(id, type, tmdb, season, episode) AS (`+portableMedia+`)
+		INSERT INTO progressions(user_id, media_id, current_position_seconds, is_finished, updated_at)
+		SELECT ?, id, ?, ?, ? FROM content WHERE type = ? AND tmdb = ? AND season = ? AND episode = ?
+		ON CONFLICT(user_id, media_id) DO UPDATE SET
+			current_position_seconds = excluded.current_position_seconds,
+			is_finished = excluded.is_finished, updated_at = excluded.updated_at`,
+		userID, s.Position, s.Finished, time.Now().UTC().Format(progressTimeLayout),
+		k.Type, k.TMDBID, k.Season, k.Episode)
+	if err != nil {
+		return false, err
+	}
+	// Zéro ligne : ce contenu n'est pas dans la bibliothèque d'Onyx.
+	written, _ := result.RowsAffected()
+	return written > 0, nil
+}
+
+// sendToEmby écrit sur Emby l'état qu'Onyx a gagné.
+func (l embyLink) sendToEmby(ctx context.Context, itemID string, s progressState, at time.Time) error {
+	ticks := int64(s.Position) * ticksPerSecond
+	if s.Finished {
+		ticks = 0
+	}
+	if at.IsZero() {
+		at = time.Now()
+	}
+	body := map[string]any{
+		"PlaybackPositionTicks": ticks,
+		"Played":                s.Finished,
+		// Pour l'ordre « récemment regardé » d'Emby, pas pour la décision.
+		"LastPlayedDate": at.UTC().Format("2006-01-02T15:04:05.0000000Z"),
+	}
+	path := "/Users/" + url.PathEscape(l.embyUserID) + "/Items/" + url.PathEscape(itemID) + "/UserData"
+	return l.call(ctx, http.MethodPost, path, nil, body, nil)
+}
+
+// reconcile tranche un contenu et applique le verdict, accord compris.
+// local vaut nil quand Onyx n'a rien sur ce contenu.
+func (l embyLink) reconcile(ctx context.Context, k contentKey, itemID string, item embyItem,
+	local *localSide, base *progressState) (embyVerdict, error) {
+	embyState, embyAt := embyItemState(item)
+	var here localSide
+	if local != nil {
+		here = *local
+	}
+	verdict := decideEmby(here.state, embyState, here.at, embyAt, base)
+
+	agreed := here.state
+	switch verdict {
+	case embyWins:
+		written, err := writeEmbyLocally(l.userID, k, embyState)
+		if err != nil {
+			return verdict, err
+		}
+		if !written {
+			// Un contenu qu'Emby a et pas Onyx : rien ne s'est passé ici, et il
+			// n'y a pas d'accord entre deux côtés dont un seul le connaît.
+			return embyInSync, nil
+		}
+		agreed = embyState
+	case onyxWins:
+		if err := l.sendToEmby(ctx, itemID, here.state, here.at); err != nil {
+			return verdict, err
+		}
+	}
+	// Rien des deux côtés : il n'y a pas d'accord à retenir, seulement du vide.
+	if agreed.empty() {
+		return verdict, nil
+	}
+	if base == nil || !base.matches(agreed) {
+		if err := saveEmbyBaseline(l.userID, k, agreed); err != nil {
+			return verdict, err
+		}
+	}
+	return verdict, nil
+}
+
+// ==================== EMBY → ONYX ====================
+
+// pull relit ce qu'Emby sait et tranche chaque contenu. Renvoie le nombre de
+// progressions écrites ici.
 func (l embyLink) pull(ctx context.Context, idx *embyIndex) (int, error) {
 	path := "/Users/" + url.PathEscape(l.embyUserID) + "/Items"
 	seen := map[string]bool{}
-	var entries []PortableProgress
+	var items []embyItem
 	for _, filter := range []string{"IsResumable", "IsPlayed"} {
 		query := embyLibraryQuery("Movie,Episode")
 		query.Set("Filters", filter)
 		query.Set("EnableUserData", "true")
-		items, err := l.items(ctx, path, query)
+		page, err := l.items(ctx, path, query)
 		if err != nil {
 			return 0, err
 		}
-		for _, item := range items {
-			if seen[item.ID] {
-				continue
-			}
-			seen[item.ID] = true
-			if e, ok := embyPortable(item, idx); ok {
-				entries = append(entries, e)
+		for _, item := range page {
+			if !seen[item.ID] {
+				seen[item.ID] = true
+				items = append(items, item)
 			}
 		}
 	}
-	var before int
-	_ = database.DB.QueryRow(`SELECT COALESCE(MAX(seq), 0) FROM progress_changes`).Scan(&before)
-	for start := 0; start < len(entries); start += federationBatch {
-		end := min(start+federationBatch, len(entries))
-		if err := importPortableProgress(l.userID, entries[start:end]); err != nil {
-			return 0, err
+
+	locals, err := loadLocalProgress(l.userID, "")
+	if err != nil {
+		return 0, err
+	}
+	bases, err := loadEmbyBaselines(l.userID)
+	if err != nil {
+		return 0, err
+	}
+	written := 0
+	for _, item := range items {
+		k, ok := embyItemKey(item, idx)
+		if !ok {
+			continue
+		}
+		var local *localSide
+		if side, found := locals[k]; found {
+			local = &side
+		}
+		var base *progressState
+		if b, found := bases[k]; found {
+			base = &b
+		}
+		verdict, err := l.reconcile(ctx, k, item.ID, item, local, base)
+		if err != nil {
+			return written, err
+		}
+		if verdict == embyWins {
+			written++
 		}
 	}
-	var changed int
-	_ = database.DB.QueryRow(`SELECT COUNT(*) FROM progress_changes WHERE user_id = ? AND seq > ?`, l.userID, before).Scan(&changed)
-	return changed, nil
+	return written, nil
 }
 
 // ==================== ONYX → EMBY ====================
-
-// embyNeedsPush dit si Emby doit recevoir cette progression : il n'est pas
-// déjà au même point, et ce qu'il sait n'est pas plus récent.
-func embyNeedsPush(e PortableProgress, item embyItem) bool {
-	ud := embyUserData{}
-	if item.UserData != nil {
-		ud = *item.UserData
-	}
-	if e.Finished {
-		if ud.Played {
-			return false
-		}
-	} else if !ud.Played {
-		diff := ud.PlaybackPositionTicks - int64(e.Position)*ticksPerSecond
-		if diff > -embyPositionSlack && diff < embyPositionSlack {
-			return false
-		}
-	}
-	local, err := time.Parse(time.RFC3339Nano, e.UpdatedAt)
-	if err != nil {
-		return false
-	}
-	remote := parseEmbyDate(ud.LastPlayedDate)
-	return remote.IsZero() || local.After(remote.Add(time.Second))
-}
 
 func (l embyLink) userData(ctx context.Context, ids []string) (map[string]embyItem, error) {
 	out := map[string]embyItem{}
@@ -438,7 +683,8 @@ func (l embyLink) userData(ctx context.Context, ids []string) (map[string]embyIt
 	return out, nil
 }
 
-// push envoie à Emby les progressions changées ici et renvoie le nombre envoyé.
+// push tranche chaque contenu qui a changé ici. Renvoie le nombre de
+// progressions envoyées à Emby.
 func (l *embyLink) push(ctx context.Context, idx *embyIndex) (int, error) {
 	pushed := 0
 	for {
@@ -466,26 +712,24 @@ func (l *embyLink) push(ctx context.Context, idx *embyIndex) (int, error) {
 			return pushed, err
 		}
 		for _, id := range ids {
-			e := targets[id]
 			item, ok := current[id]
-			if !ok || !embyNeedsPush(e, item) {
+			if !ok {
 				continue
 			}
-			stamp, _ := time.Parse(time.RFC3339Nano, e.UpdatedAt)
-			ticks := int64(e.Position) * ticksPerSecond
-			if e.Finished {
-				ticks = 0
-			}
-			body := map[string]any{
-				"PlaybackPositionTicks": ticks,
-				"Played":                e.Finished,
-				"LastPlayedDate":        stamp.UTC().Format("2006-01-02T15:04:05.0000000Z"),
-			}
-			path := "/Users/" + url.PathEscape(l.embyUserID) + "/Items/" + url.PathEscape(id) + "/UserData"
-			if err := l.call(ctx, http.MethodPost, path, nil, body, nil); err != nil {
+			e := targets[id]
+			k := keyOf(e)
+			local := localSideOf(e)
+			base, err := loadEmbyBaseline(l.userID, k)
+			if err != nil {
 				return pushed, err
 			}
-			pushed++
+			verdict, err := l.reconcile(ctx, k, id, item, &local, base)
+			if err != nil {
+				return pushed, err
+			}
+			if verdict == onyxWins {
+				pushed++
+			}
 		}
 		if _, err := database.DB.Exec(`UPDATE emby_links SET pushed_seq = ? WHERE user_id = ?`, lastSeq, l.userID); err != nil {
 			return pushed, err
@@ -494,6 +738,81 @@ func (l *embyLink) push(ctx context.Context, idx *embyIndex) (int, error) {
 		if read < federationBatch {
 			return pushed, nil
 		}
+	}
+}
+
+// ==================== AU MOMENT DE REPRENDRE ====================
+
+// embyRefreshTimeout borne ce que la reprise d'une lecture peut attendre
+// d'Emby. Au-delà, Onyx reprend avec ce qu'il sait.
+const embyRefreshTimeout = 2 * time.Second
+
+// refreshEmbyMedia tranche un seul média avec Emby, juste avant qu'Onyx donne
+// son point de reprise.
+//
+// Emby n'est relu en entier que toutes les dix minutes. Sans ce rafraîchissement,
+// passer d'Emby à Onyx dans l'intervalle faisait reprendre Onyx à son ancienne
+// position — et son premier battement, daté de maintenant, renvoyait cette
+// position périmée sur Emby. C'est le moment exact où la bonne réponse compte.
+//
+// Jamais bloquant : sans index déjà construit, avec une synchronisation en
+// cours, ou au-delà du délai, Onyx répond avec ce qu'il a.
+func refreshEmbyMedia(parent context.Context, userID, mediaID int) {
+	if !embySyncMu.TryLock() {
+		return
+	}
+	defer embySyncMu.Unlock()
+
+	link, err := scanEmbyLink(database.DB.QueryRow(`SELECT `+embyLinkColumns+` FROM emby_links WHERE user_id = ?`, userID))
+	if err != nil {
+		return
+	}
+	// Un Emby qui vient d'échouer ne fait pas attendre chaque ouverture de fiche :
+	// la tâche de fond réessaiera à son rythme.
+	if b := embyBackoffs[link.token]; b != nil && time.Now().Before(b.retryAt) {
+		return
+	}
+	idx := embyIndexes[link.cacheKey()]
+	if idx == nil {
+		return
+	}
+	var k contentKey
+	err = database.DB.QueryRow(`WITH content(id, type, tmdb, season, episode) AS (`+portableMedia+`)
+		SELECT type, tmdb, season, episode FROM content WHERE id = ?`, mediaID).
+		Scan(&k.Type, &k.TMDBID, &k.Season, &k.Episode)
+	if err != nil {
+		return // pas d'identité portable : rien à demander à Emby
+	}
+
+	ctx, cancel := context.WithTimeout(parent, embyRefreshTimeout)
+	defer cancel()
+	probe := PortableProgress{Type: k.Type, TMDBID: k.TMDBID, Season: k.Season, Episode: k.Episode}
+	itemID, err := link.resolve(ctx, idx, probe)
+	if err != nil || itemID == "" {
+		return
+	}
+	current, err := link.userData(ctx, []string{itemID})
+	if err != nil {
+		return
+	}
+	item, ok := current[itemID]
+	if !ok {
+		return
+	}
+	locals, err := loadLocalProgress(userID, strconv.Itoa(mediaID))
+	if err != nil {
+		return
+	}
+	var local *localSide
+	if side, found := locals[k]; found {
+		local = &side
+	}
+	base, err := loadEmbyBaseline(userID, k)
+	if err != nil {
+		return
+	}
+	if _, err := link.reconcile(ctx, k, itemID, item, local, base); err != nil {
+		log.Printf("Emby refresh (user %d, media %d): %v", userID, mediaID, err)
 	}
 }
 
@@ -687,8 +1006,9 @@ func LinkEmby(w http.ResponseWriter, r *http.Request, _ httprouter.Params, userI
 		writeJSONError(w, http.StatusBadRequest, "Adresse Emby et nom d’utilisateur requis")
 		return
 	}
-	var deviceID string
-	_ = database.DB.QueryRow(`SELECT device_id FROM emby_links WHERE user_id = ?`, userID).Scan(&deviceID)
+	var deviceID, previousURL, previousEmbyUser string
+	_ = database.DB.QueryRow(`SELECT device_id, url, emby_user_id FROM emby_links WHERE user_id = ?`, userID).
+		Scan(&deviceID, &previousURL, &previousEmbyUser)
 	if deviceID == "" {
 		token, err := GenerateRandomToken()
 		if err != nil {
@@ -718,6 +1038,11 @@ func LinkEmby(w http.ResponseWriter, r *http.Request, _ httprouter.Params, userI
 		writeJSONError(w, http.StatusInternalServerError, "Impossible d’enregistrer le lien Emby")
 		return
 	}
+	// Un autre compte, ou un autre serveur : les accords retenus parlaient d'une
+	// autre progression. Se reconnecter au même compte les garde.
+	if previousURL != base || previousEmbyUser != auth.User.ID {
+		_, _ = database.DB.Exec(`DELETE FROM emby_baselines WHERE user_id = ?`, userID)
+	}
 	wakeEmbySync()
 	writeEmbyStatus(w, userID)
 }
@@ -730,6 +1055,7 @@ func UnlinkEmby(w http.ResponseWriter, _ *http.Request, _ httprouter.Params, use
 			writeJSONError(w, http.StatusInternalServerError, "Impossible de retirer le lien Emby")
 			return
 		}
+		_, _ = database.DB.Exec(`DELETE FROM emby_baselines WHERE user_id = ?`, userID)
 		go func() {
 			ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 			defer cancel()

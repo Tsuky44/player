@@ -154,6 +154,12 @@ Téléviseur → Mode télécommande**. Sur la TV, l'écran de connexion affiche
 de passe reste accessible à un bouton, pour le premier compte d'un serveur vierge. Depuis un
 téléphone, **menu compte → Connecter une TV** permet aussi de taper le code à la main.
 
+L'**Apple TV** a sa propre cible (`app/tvos/`, construite avec flutter-tvos) et la même interface
+à la télécommande : Siri Remote, manette ou clavier, avec les mêmes touches qu'Android TV. Le
+lecteur y est AVPlayer, alimenté en HLS par le serveur, qui recopie les pistes au lieu de les
+ré-encoder. Build, installation et limites : [ADR-0028](docs/adr/0028-cible-apple-tv.md) et
+`scripts/build-tvos-ipa.sh`.
+
 ---
 
 ### 👥 1 bis. Droits, utilisateurs & invitations

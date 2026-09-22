@@ -153,9 +153,7 @@ class _EmbySettingsMenuState extends State<EmbySettingsMenu> {
     if (_section == EmbyMenuSection.root) return KeyEventResult.ignored;
 
     final key = event.logicalKey;
-    if (key == LogicalKeyboardKey.escape ||
-        key == LogicalKeyboardKey.goBack ||
-        key == LogicalKeyboardKey.browserBack ||
+    if (kTvBackKeys.contains(key) ||
         key == LogicalKeyboardKey.arrowLeft) {
       _backToRoot();
       return KeyEventResult.handled;

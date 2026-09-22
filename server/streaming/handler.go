@@ -449,7 +449,7 @@ func (h *Handler) handleServeFile(w http.ResponseWriter, r *http.Request, sessio
 			http.Error(w, "playlist unavailable", http.StatusServiceUnavailable)
 			return
 		}
-		playlist, err := ProtectPlaylist(string(data), r.URL.Query().Get("ticket"))
+		playlist, err := ProtectPlaylist(StartAtBeginning(string(data)), r.URL.Query().Get("ticket"))
 		if err != nil {
 			http.Error(w, "invalid playlist", http.StatusInternalServerError)
 			return
