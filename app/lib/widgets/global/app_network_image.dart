@@ -1,5 +1,8 @@
+import 'dart:async';
+
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/scheduler.dart';
 
 import '../../services/app_image_cache.dart';
 import '../../theme/app_colors.dart';
@@ -71,6 +74,63 @@ class AppNetworkImage extends StatelessWidget {
   /// per breakpoint — and per hairline rounding difference. Quantising means a
   /// handful of shared buckets instead.
   static const int _decodeStep = 128;
+
+  /// The provider [AppNetworkImage] ends up drawing for [url] at
+  /// [memCacheWidth] — the same one `CachedNetworkImage` builds internally, so
+  /// resolving it ahead of time fills the exact memory-cache entry the widget
+  /// will look up. Keep this in step with [_image].
+  static ImageProvider providerFor(String url, {int? memCacheWidth}) {
+    return ResizeImage.resizeIfNeeded(
+      memCacheWidth,
+      null,
+      CachedNetworkImageProvider(
+        url.trim(),
+        cacheManager: AppImageCache.imageCacheManager,
+      ),
+    );
+  }
+
+  /// Downloads and decodes [url] into the memory cache without a widget, so a
+  /// screen about to open draws it on its first frame with no fade.
+  ///
+  /// [decodeWidth] is the logical width the destination passes to its own
+  /// [AppNetworkImage] (null for [decodeAtSourceSize]); it must match or the
+  /// warm-up lands in a different cache entry. Errors are swallowed — this is
+  /// only ever a head start.
+  static Future<void> precache(
+    String? url, {
+    required double devicePixelRatio,
+    double? decodeWidth,
+  }) {
+    final resolved = url?.trim();
+    if (resolved == null || resolved.isEmpty) return Future.value();
+    final provider = providerFor(
+      resolved,
+      memCacheWidth: _decodeWidthFor(decodeWidth, devicePixelRatio),
+    );
+    final done = Completer<void>();
+    final stream = provider.resolve(
+      ImageConfiguration(devicePixelRatio: devicePixelRatio),
+    );
+    late final ImageStreamListener listener;
+    listener = ImageStreamListener(
+      (image, _) {
+        if (!done.isCompleted) done.complete();
+        // Same hand-off as Flutter's `precacheImage`: the cache keeps the
+        // decoded frame, this listener only had to hold it until then.
+        SchedulerBinding.instance.addPostFrameCallback((_) {
+          image.dispose();
+          stream.removeListener(listener);
+        });
+      },
+      onError: (_, __) {
+        if (!done.isCompleted) done.complete();
+        stream.removeListener(listener);
+      },
+    );
+    stream.addListener(listener);
+    return done.future;
+  }
 
   static int? _decodeWidthFor(double? logicalWidth, double devicePixelRatio) {
     if (logicalWidth == null ||

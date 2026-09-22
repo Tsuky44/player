@@ -6,14 +6,22 @@ import '../../utils/poster_url.dart';
 import '../../utils/responsive.dart';
 import 'continue_watching_card.dart';
 import 'media_card.dart';
+import 'poster_card.dart';
+import 'poster_launch_route.dart';
 
 class MediaRow extends StatelessWidget {
   final String title;
   final List<dynamic> items;
   final VoidCallback? onSeeAll;
   final void Function(dynamic item) onItemTap;
-  final void Function(HomeMediaItem item)? onContinueWatchingTitleTap;
-  final Future<void> Function(HomeMediaItem item)? onContinueWatchingMarkWatched;
+
+  /// Lecture depuis « Reprendre ». Sans elle, la carte retombe sur [onItemTap].
+  final void Function(HomeMediaItem item, LaunchOrigin? origin)?
+      onContinueWatchingPlay;
+  final void Function(HomeMediaItem item, LaunchOrigin? origin)?
+      onContinueWatchingTitleTap;
+  final Future<void> Function(HomeMediaItem item)?
+      onContinueWatchingMarkWatched;
   final Future<void> Function(HomeMediaItem item)? onContinueWatchingRemove;
   final bool isContinueWatching;
 
@@ -27,6 +35,7 @@ class MediaRow extends StatelessWidget {
     required this.title,
     required this.items,
     required this.onItemTap,
+    this.onContinueWatchingPlay,
     this.onContinueWatchingTitleTap,
     this.onContinueWatchingMarkWatched,
     this.onContinueWatchingRemove,
@@ -43,8 +52,10 @@ class MediaRow extends StatelessWidget {
     final cardWidth = AppLayout.mediaRowCardWidth(context);
     final compact = AppLayout.isCompact(context);
     final rowHeight = isContinueWatching
-        ? ContinueWatchingCard.rowHeight
-        : mediaCardHeight(cardWidth, compact: true) + 4;
+        ? ContinueWatchingCard.rowHeight + PosterCard.liftHeadroom
+        : mediaCardHeight(cardWidth, compact: true) +
+            4 +
+            PosterCard.liftHeadroom;
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -82,7 +93,9 @@ class MediaRow extends StatelessWidget {
             ],
           ),
         ),
-        const SizedBox(height: 14),
+        // La marge réservée au zoom des affiches ([PosterCard.liftHeadroom])
+        // est reprise ici, pour que l'écart visible sous le titre ne change pas.
+        const SizedBox(height: 14 - PosterCard.liftHeadroom),
         // Revenir sur cette rangée ramène à la carte où l'on était, comme sur
         // Jellyfin — voir [TvFocusMemory].
         TvFocusMemory(
@@ -90,19 +103,27 @@ class MediaRow extends StatelessWidget {
             height: rowHeight,
             child: ListView.builder(
               scrollDirection: Axis.horizontal,
-              padding: EdgeInsets.symmetric(horizontal: horizontalPadding),
+              padding: EdgeInsets.only(
+                left: horizontalPadding,
+                right: horizontalPadding,
+                top: PosterCard.liftHeadroom,
+              ),
               itemCount: items.length,
               itemBuilder: (context, index) {
                 final item = items[index];
                 return Padding(
-                  padding: EdgeInsets.only(right: index < items.length - 1 ? 12 : 0),
+                  padding:
+                      EdgeInsets.only(right: index < items.length - 1 ? 12 : 0),
                   child: isContinueWatching
                       ? ContinueWatchingCard(
                           item: item as HomeMediaItem,
                           autofocus: autofocusFirstItem && index == 0,
-                          onTap: () => onItemTap(item),
+                          onTap: (origin) => onContinueWatchingPlay != null
+                              ? onContinueWatchingPlay!(item, origin)
+                              : onItemTap(item),
                           onTitleTap: onContinueWatchingTitleTap != null
-                              ? () => onContinueWatchingTitleTap!(item)
+                              ? (origin) =>
+                                  onContinueWatchingTitleTap!(item, origin)
                               : null,
                           onMarkAsWatched: onContinueWatchingMarkWatched,
                           onRemoveFromRow: onContinueWatchingRemove,

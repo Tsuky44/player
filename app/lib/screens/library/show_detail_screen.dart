@@ -40,16 +40,61 @@ class _ShowDetailScreenState extends State<ShowDetailScreen> {
   bool _requesting = false;
   bool _updatingSeasonWatched = false;
 
+  /// The show id the seasons on screen were loaded for.
+  int? _showDataId;
+
+  /// Set once the user picks a season, so a background refresh of the page
+  /// never yanks them back to the resume season.
+  bool _seasonPickedByUser = false;
+
   @override
   void initState() {
     super.initState();
     _show = widget.show;
-    // Paint from the shared cache before the first frame when this show has
-    // been opened before this session, so the header does not rebuild from an
-    // empty state on every visit.
+    // Paint from the shared caches before the first frame when this show has
+    // been opened (or hovered) before, so the page does not rebuild from an
+    // empty state and three spinners on every visit.
     _adopt(MediaDetailsCache.peek(_show.id));
+    _loadingDetails = _details == null;
+    _seedShowData();
     _loadDetails();
     WidgetsBinding.instance.addPostFrameCallback((_) => _loadShowData());
+  }
+
+  /// Puts the remembered seasons, resume point and episodes of this show on
+  /// the first frame. Without a memory of it, the provider is still reset
+  /// here — before the first build — so the previous show's list never shows.
+  void _seedShowData() {
+    final lp = Provider.of<LibraryProvider>(context, listen: false);
+    final seasons = lp.cachedSeasons(_show.id);
+    final resume = lp.cachedResume(_show.id);
+    final season = seasons == null ? null : _initialSeason(seasons, resume);
+    lp.adoptCachedShow(_show.id, season: season);
+    _showDataId = _show.id;
+    _selectedSeason = season;
+    _resumeEpisode = resume != null && resume.hasEpisode ? resume.episode : null;
+  }
+
+  /// The season the page opens on: the one holding the resume episode, else
+  /// the first season with files, else the first season.
+  static Media? _initialSeason(List<Media> seasons, ShowResumeResponse? resume) {
+    if (seasons.isEmpty) return null;
+    final episode = resume != null && resume.hasEpisode ? resume.episode : null;
+    if (episode != null) {
+      if (resume!.seasonId != null) {
+        for (final season in seasons) {
+          if (season.id == resume.seasonId) return season;
+        }
+      }
+      // Virtual seasons have id=0 — match by season number from the episode.
+      final seasonNum = episode.media.effectiveSeasonNumber;
+      if (seasonNum != null) {
+        for (final season in seasons) {
+          if (season.effectiveSeasonNumber == seasonNum) return season;
+        }
+      }
+    }
+    return seasons.firstWhere((s) => s.isAvailable, orElse: () => seasons.first);
   }
 
   /// Folds a details payload into the page state. The server may answer with a
@@ -74,7 +119,9 @@ class _ShowDetailScreenState extends State<ShowDetailScreen> {
   Future<void> _loadDetails({bool forceRefresh = false}) async {
     // Only claim to be loading when there is nothing on screen yet; a
     // background revalidation must not swap the synopsis for a spinner.
-    if (_details == null) setState(() => _loadingDetails = true);
+    if (_details == null && !_loadingDetails) {
+      setState(() => _loadingDetails = true);
+    }
     try {
       final api = Provider.of<AuthProvider>(context, listen: false).apiClient;
       final details = await MediaDetailsCache.load(
@@ -83,75 +130,55 @@ class _ShowDetailScreenState extends State<ShowDetailScreen> {
         forceRefresh: forceRefresh,
       );
       if (!mounted) return;
-      final resolvedId = details.id;
-      setState(() => _adopt(details));
-      if (resolvedId != widget.show.id) {
+      // Same payload the page already shows (cache hit): nothing to redraw.
+      if (identical(details, _details)) return;
+      setState(() {
+        _adopt(details);
+        _loadingDetails = false;
+      });
+      // The server answered with the canonical row of a duplicate show: the
+      // seasons belong to that one.
+      if (details.id != _showDataId) {
         await _loadShowData();
       }
     } catch (_) {
       // Keep local data on failure.
     } finally {
-      if (mounted) setState(() => _loadingDetails = false);
+      if (mounted && _loadingDetails) setState(() => _loadingDetails = false);
     }
   }
 
+  /// Seasons, resume point and episodes, revalidated on every visit.
+  ///
+  /// The seasons and the resume point do not depend on each other and are
+  /// asked for together — they used to be two round trips back to back, with
+  /// the episode list a third one behind them.
   Future<void> _loadShowData() async {
     final lp = Provider.of<LibraryProvider>(context, listen: false);
-    lp.clearSeasonsAndEpisodes();
-    setState(() {
-      _selectedSeason = null;
-      _resumeEpisode = null;
-    });
-
-    await lp.loadSeasons(_show.id);
-
-    HomeMediaItem? resumeEpisode;
-    Media? resumeSeason;
-    try {
-      final resume = await lp.apiClient.getShowResumeEpisode(_show.id);
-      if (resume.hasEpisode && resume.episode != null) {
-        resumeEpisode = resume.episode;
-        if (resume.seasonId != null) {
-          for (final season in lp.seasons) {
-            if (season.id == resume.seasonId) {
-              resumeSeason = season;
-              break;
-            }
-          }
-        }
-        // Virtual seasons have id=0 — match by season number from the episode.
-        if (resumeSeason == null) {
-          final seasonNum = resumeEpisode?.media.effectiveSeasonNumber;
-          if (seasonNum != null) {
-            for (final season in lp.seasons) {
-              if (season.effectiveSeasonNumber == seasonNum) {
-                resumeSeason = season;
-                break;
-              }
-            }
-          }
-        }
-      }
-    } catch (_) {
-      // Fallback: first available season.
+    final showId = _show.id;
+    if (_showDataId != showId) {
+      _showDataId = showId;
+      _seasonPickedByUser = false;
     }
 
-    final seasonToLoad = resumeSeason ??
-        (lp.seasons.isNotEmpty
-            ? lp.seasons.firstWhere(
-                (s) => s.isAvailable,
-                orElse: () => lp.seasons.first,
-              )
-            : null);
-    if (seasonToLoad != null) {
-      await lp.loadEpisodes(showId: _show.id, season: seasonToLoad);
-    }
+    final resumeRequest = lp.loadResume(showId);
+    await lp.loadSeasons(showId);
+    // A failed resume lookup keeps the last known answer.
+    final resume = await resumeRequest ?? lp.cachedResume(showId);
+    if (!mounted || showId != _show.id) return;
 
-    if (!mounted) return;
+    final season = (_seasonPickedByUser
+            ? _resolveSelectedSeason(lp.seasons)
+            : null) ??
+        _initialSeason(lp.seasons, resume);
     setState(() {
-      _resumeEpisode = resumeEpisode;
-      _selectedSeason = seasonToLoad;
+      _resumeEpisode =
+          resume != null && resume.hasEpisode ? resume.episode : null;
+      _selectedSeason = season;
     });
+    if (season != null) {
+      await lp.loadEpisodes(showId: showId, season: season);
+    }
   }
 
   /// Seasons the server does not hold and MediaHub has not been asked for yet.
@@ -290,6 +317,7 @@ class _ShowDetailScreenState extends State<ShowDetailScreen> {
   }
 
   Future<void> _onSeasonChanged(Media season) async {
+    _seasonPickedByUser = true;
     setState(() => _selectedSeason = season);
     await Provider.of<LibraryProvider>(context, listen: false)
         .loadEpisodes(showId: _show.id, season: season);
@@ -369,12 +397,9 @@ class _ShowDetailScreenState extends State<ShowDetailScreen> {
   /// reprise garde alors ce qu'il affichait.
   Future<void> _refreshResumeEpisode() async {
     final library = Provider.of<LibraryProvider>(context, listen: false);
-    try {
-      final resume = await library.apiClient.getShowResumeEpisode(_show.id);
-      if (!mounted) return;
-      setState(
-          () => _resumeEpisode = resume.hasEpisode ? resume.episode : null);
-    } catch (_) {}
+    final resume = await library.loadResume(_show.id);
+    if (resume == null || !mounted) return;
+    setState(() => _resumeEpisode = resume.hasEpisode ? resume.episode : null);
   }
 
   int? get _playerSeasonNumber => _selectedSeason?.effectiveSeasonNumber;
@@ -607,6 +632,7 @@ class _ShowDetailScreenState extends State<ShowDetailScreen> {
               details: _details,
               metadata: metadata,
               onBack: () => Navigator.of(context).pop(),
+              loading: _loadingDetails,
               actions: Row(
                 mainAxisSize: MainAxisSize.min,
                 children: [
@@ -841,7 +867,9 @@ class _ShowDetailScreenState extends State<ShowDetailScreen> {
                     child: CircularProgressIndicator(strokeWidth: 2.5)),
               ),
             )
-          else if (lp.episodes.isEmpty)
+          // While the seasons are still coming the spinner above speaks for
+          // the page; "no episodes" would be a claim we cannot make yet.
+          else if (lp.episodes.isEmpty && !lp.isLoadingSeasons)
             SliverToBoxAdapter(
               child: Padding(
                 padding: EdgeInsets.all(AppLayout.pagePadding(context)),

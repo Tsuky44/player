@@ -1502,8 +1502,18 @@ class _PlayerScreenState extends State<PlayerScreen> {
 
     unawaited(_syncProgressOnExit(popAfter: false));
 
-    // Defer navigation by one frame so pending stream events flush safely
-    WidgetsBinding.instance.addPostFrameCallback((_) {
+    // L'ancien moteur s'arrête avant que le suivant ne s'ouvre, pas à la
+    // destruction de cet écran. Sur iOS, mpv désactive la session audio de
+    // l'app en libérant sa sortie : un épisode téléchargé, qui démarre presque
+    // aussitôt, jouait déjà quand cet arrêt tombait, et se figeait en pause.
+    // La position envoyée au serveur est celle du contrôleur, lue ci-dessus.
+    final stopped = _playerController.session
+        .stop()
+        .timeout(const Duration(seconds: 1))
+        .catchError((Object _) {});
+
+    // Awaiting the stop also lets pending stream events flush safely.
+    unawaited(stopped.then((_) {
       if (!mounted) return;
       Navigator.of(context).pushReplacement(
         MaterialPageRoute(
@@ -1518,7 +1528,7 @@ class _PlayerScreenState extends State<PlayerScreen> {
           ),
         ),
       );
-    });
+    }));
   }
 
   Future<void> _syncProgressOnExit({required bool popAfter}) async {

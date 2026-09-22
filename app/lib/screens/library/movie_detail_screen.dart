@@ -6,6 +6,7 @@ import '../../providers/auth_provider.dart';
 import '../../providers/home_provider.dart';
 import '../../providers/library_provider.dart';
 import '../../services/media_details_cache.dart';
+import '../../services/media_tracks_cache.dart';
 import '../../theme/app_colors.dart';
 import '../../tv/tv_mode.dart';
 import '../../widgets/global/media_detail_widgets.dart';
@@ -56,15 +57,19 @@ class _MovieDetailScreenState extends State<MovieDetailScreen> {
     }
     _isFinished = widget.movieItem?.isFinished ?? false;
     _currentPosition = widget.movieItem?.currentPositionSeconds ?? 0;
-    // Paint from the shared cache before the first frame when this film has
-    // been opened before this session — the page then opens complete instead
-    // of on a bare backdrop with "Chargement des informations…".
+    // Paint from the shared caches before the first frame when this film has
+    // been opened (or hovered) before — the page then opens complete instead
+    // of on a bare backdrop with "Chargement des informations…". The hover
+    // prefetch (DetailPrefetch) usually has both ready by the time of the tap.
     _adopt(MediaDetailsCache.peek(_media.id));
+    _tracks = MediaTracksCache.peek(_playbackMedia.id);
+    _loadingTracks = _tracks == null;
+    _loadingDetails = _details == null;
     _loadDetails();
     _loadTracks();
-    if (widget.movieItem == null) {
-      _loadProgress();
-    }
+    // One progress read per visit. With a library item in hand the page
+    // already shows its progress, so the check runs without a spinner.
+    _loadProgress(silent: widget.movieItem != null);
   }
 
   /// Folds a details payload into the page state, enriching the local handle
@@ -100,7 +105,9 @@ class _MovieDetailScreenState extends State<MovieDetailScreen> {
   Future<void> _loadDetails({bool forceRefresh = false}) async {
     // Only claim to be loading when there is nothing on screen yet; a
     // background revalidation must not swap the synopsis for a spinner.
-    if (_details == null) setState(() => _loadingDetails = true);
+    if (_details == null && !_loadingDetails) {
+      setState(() => _loadingDetails = true);
+    }
     try {
       final api = Provider.of<AuthProvider>(context, listen: false).apiClient;
       final details = await MediaDetailsCache.load(
@@ -109,9 +116,20 @@ class _MovieDetailScreenState extends State<MovieDetailScreen> {
         forceRefresh: forceRefresh,
       );
       if (!mounted) return;
-      setState(() => _adopt(details));
-      await _loadTracks();
-      await _loadProgress();
+      // Same payload the page already shows (cache hit): nothing to redraw.
+      if (identical(details, _details)) return;
+      final playbackBefore = _playbackMedia.id;
+      setState(() {
+        _adopt(details);
+        _loadingDetails = false;
+      });
+      // Tracks and progress belong to the version being played. They only
+      // need asking again when the details moved the selection to another
+      // file — they used to be fetched a second time on every visit.
+      if (_playbackMedia.id != playbackBefore) {
+        _loadTracks();
+        _loadProgress();
+      }
     } catch (_) {
       // Keep local data on failure (offline / no TMDB key).
     } finally {
@@ -119,30 +137,47 @@ class _MovieDetailScreenState extends State<MovieDetailScreen> {
     }
   }
 
-  Future<void> _loadTracks() async {
+  Future<void> _loadTracks({bool forceRefresh = false}) async {
     final mediaId = _playbackMedia.id;
-    setState(() {
-      _loadingTracks = true;
-      _tracksFailed = false;
-    });
+    final cached = MediaTracksCache.peek(mediaId);
+    if (cached != null && !forceRefresh) {
+      if (!identical(cached, _tracks) || _loadingTracks || _tracksFailed) {
+        setState(() {
+          _tracks = cached;
+          _loadingTracks = false;
+          _tracksFailed = false;
+        });
+      }
+      if (MediaTracksCache.isFresh(mediaId)) return;
+    } else {
+      setState(() {
+        _loadingTracks = true;
+        _tracksFailed = false;
+      });
+    }
     try {
       final api = context.read<AuthProvider>().apiClient;
-      final tracks = await api.getMediaTracks(mediaId);
+      final tracks = await MediaTracksCache.load(
+        api,
+        mediaId,
+        forceRefresh: forceRefresh,
+      );
       if (!mounted || mediaId != _playbackMedia.id) return;
-      setState(() => _tracks = tracks);
+      if (!identical(tracks, _tracks)) setState(() => _tracks = tracks);
     } catch (_) {
       if (!mounted || mediaId != _playbackMedia.id) return;
-      setState(() => _tracksFailed = true);
+      // A stale list on screen beats an error for a failed revalidation.
+      if (_tracks == null) setState(() => _tracksFailed = true);
     } finally {
-      if (mounted && mediaId == _playbackMedia.id) {
+      if (mounted && mediaId == _playbackMedia.id && _loadingTracks) {
         setState(() => _loadingTracks = false);
       }
     }
   }
 
-  Future<void> _loadProgress() async {
+  Future<void> _loadProgress({bool silent = false}) async {
     final mediaId = _playbackMedia.id;
-    setState(() => _loadingProgress = true);
+    if (!silent) setState(() => _loadingProgress = true);
     try {
       final api = Provider.of<AuthProvider>(context, listen: false).apiClient;
       final data = await api.getProgress(mediaId);
@@ -153,7 +188,7 @@ class _MovieDetailScreenState extends State<MovieDetailScreen> {
       });
     } catch (_) {
     } finally {
-      if (mounted && mediaId == _playbackMedia.id) {
+      if (mounted && mediaId == _playbackMedia.id && _loadingProgress) {
         setState(() => _loadingProgress = false);
       }
     }
@@ -303,6 +338,7 @@ class _MovieDetailScreenState extends State<MovieDetailScreen> {
               details: _details,
               metadata: metadata,
               onBack: () => Navigator.of(context).pop(),
+              loading: _loadingDetails,
               actions: Row(
                 children: [
                   ElevatedButton.icon(

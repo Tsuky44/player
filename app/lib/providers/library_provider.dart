@@ -24,6 +24,15 @@ class LibraryProvider extends ChangeNotifier {
   int _seasonsRequest = 0;
   int _episodesRequest = 0;
 
+  /// Per-show memory of what the show page last displayed, so a return visit
+  /// paints at once and revalidates underneath. Cleared on a server change.
+  final Map<int, List<Media>> _seasonsByShow = {};
+  final Map<String, List<HomeMediaItem>> _episodesBySeason = {};
+  final Map<int, ShowResumeResponse> _resumeByShow = {};
+
+  /// The show [_seasons] belongs to.
+  int? _seasonsShowId;
+
   LibraryProvider(this.apiClient);
 
   List<HomeMediaItem> get movies => _movies;
@@ -48,6 +57,10 @@ class LibraryProvider extends ChangeNotifier {
     _shows = [];
     _seasons = [];
     _episodes = [];
+    _seasonsByShow.clear();
+    _episodesBySeason.clear();
+    _resumeByShow.clear();
+    _seasonsShowId = null;
     _isLoadingMovies = false;
     _isLoadingShows = false;
     _isLoadingSeasons = false;
@@ -129,17 +142,6 @@ class LibraryProvider extends ChangeNotifier {
     return show;
   }
 
-  // Clear sub-tier data (prevents old season/episode flash when clicking another show)
-  void clearSeasonsAndEpisodes() {
-    _seasonsRequest++;
-    _episodesRequest++;
-    _isLoadingSeasons = false;
-    _isLoadingEpisodes = false;
-    _seasons = [];
-    _episodes = [];
-    notifyListeners();
-  }
-
   // Load movies list
   Future<void> loadMovies({bool silent = false}) async {
     final request = ++_moviesRequest;
@@ -188,11 +190,72 @@ class LibraryProvider extends ChangeNotifier {
     }
   }
 
-  // Load seasons for a TV Show
+  /// Shows the seasons/episodes remembered for [showId] straight away, without
+  /// a network call and **without notifying** — it is meant for a detail
+  /// page's `initState`, which runs mid-build, so that its first frame is
+  /// already this show instead of a spinner (or the previous show's list).
+  /// [loadSeasons] / [loadEpisodes] revalidate right after.
+  ///
+  /// Returns false when nothing is remembered for this show.
+  bool adoptCachedShow(int showId, {Media? season}) {
+    final seasons = _seasonsByShow[showId];
+    final episodes =
+        season == null ? null : _episodesBySeason[_seasonKey(showId, season)];
+    _seasonsRequest++;
+    _episodesRequest++;
+    // What is not remembered reads as loading, not as empty: the page's first
+    // frame must not say "no episodes" for a show that has some.
+    _isLoadingSeasons = seasons == null;
+    _isLoadingEpisodes = season != null && episodes == null;
+    _seasonsShowId = showId;
+    _seasons = seasons ?? [];
+    _episodes = episodes ?? [];
+    return seasons != null;
+  }
+
+  List<Media>? cachedSeasons(int showId) => _seasonsByShow[showId];
+
+  /// Where playback of [showId] resumed last time we asked, if we have.
+  ShowResumeResponse? cachedResume(int showId) => _resumeByShow[showId];
+
+  /// Asks the server where to resume [showId] and remembers the answer.
+  /// Null on failure — callers keep whatever they were showing.
+  Future<ShowResumeResponse?> loadResume(int showId) async {
+    try {
+      final resume = await apiClient.getShowResumeEpisode(showId);
+      _resumeByShow[showId] = resume;
+      return resume;
+    } catch (_) {
+      return null;
+    }
+  }
+
+  /// Fetches the seasons and resume point of [showId] into the cache without
+  /// touching what is on screen — the hover/focus head start of a show page.
+  Future<void> prefetchShow(int showId) async {
+    if (showId <= 0) return;
+    await Future.wait([
+      if (!_seasonsByShow.containsKey(showId))
+        apiClient
+            .getShowSeasons(showId)
+            .then((seasons) => _seasonsByShow[showId] = seasons)
+            .catchError((_) => const <Media>[]),
+      if (!_resumeByShow.containsKey(showId)) loadResume(showId),
+    ]);
+  }
+
+  static String _seasonKey(int showId, Media season) =>
+      '$showId:${season.id}:${season.effectiveSeasonNumber ?? season.seasonNumber}';
+
+  // Load seasons for a TV Show. A show seen before this session is painted
+  // from memory at once and refreshed underneath; only a first visit shows a
+  // spinner.
   Future<void> loadSeasons(int showId) async {
     final request = ++_seasonsRequest;
-    _isLoadingSeasons = true;
-    _seasons = []; // Reset first
+    final cached = _seasonsByShow[showId];
+    _seasonsShowId = showId;
+    _isLoadingSeasons = cached == null;
+    _seasons = cached ?? [];
     _errorMessage = null;
     notifyListeners();
 
@@ -200,6 +263,7 @@ class LibraryProvider extends ChangeNotifier {
       final result = await apiClient.getShowSeasons(showId);
       if (request != _seasonsRequest) return;
       _seasons = result;
+      _seasonsByShow[showId] = result;
     } catch (e) {
       if (request != _seasonsRequest) return;
       _errorMessage = "Erreur lors du chargement des saisons : ${e.toString()}";
@@ -215,8 +279,10 @@ class LibraryProvider extends ChangeNotifier {
   Future<void> loadEpisodes(
       {required int showId, required Media season}) async {
     final request = ++_episodesRequest;
-    _isLoadingEpisodes = true;
-    _episodes = [];
+    final key = _seasonKey(showId, season);
+    final cached = _episodesBySeason[key];
+    _isLoadingEpisodes = cached == null;
+    _episodes = cached ?? [];
     _errorMessage = null;
     notifyListeners();
 
@@ -234,6 +300,7 @@ class LibraryProvider extends ChangeNotifier {
       }
       if (request != _episodesRequest) return;
       _episodes = result;
+      _episodesBySeason[key] = result;
     } catch (e) {
       if (request != _episodesRequest) return;
       _errorMessage =
@@ -276,6 +343,8 @@ class LibraryProvider extends ChangeNotifier {
         else
           season,
     ];
+    final showId = _seasonsShowId;
+    if (showId != null) _seasonsByShow[showId] = _seasons;
     notifyListeners();
   }
 
@@ -361,15 +430,24 @@ class LibraryProvider extends ChangeNotifier {
         else
           item,
     ];
-    _episodes = [
-      for (final item in _episodes)
-        if (item.media.id == mediaId)
-          item.copyWith(
-            isFinished: isFinished,
-            currentPositionSeconds: positionSeconds,
-          )
-        else
-          item,
-    ];
+    List<HomeMediaItem> patch(List<HomeMediaItem> items) => [
+          for (final item in items)
+            if (item.media.id == mediaId)
+              item.copyWith(
+                isFinished: isFinished,
+                currentPositionSeconds: positionSeconds,
+              )
+            else
+              item,
+        ];
+    _episodes = patch(_episodes);
+    // The remembered seasons follow, or reopening the show would first paint
+    // the episode as it was before the tick.
+    for (final key in _episodesBySeason.keys.toList()) {
+      final cached = _episodesBySeason[key]!;
+      if (cached.any((item) => item.media.id == mediaId)) {
+        _episodesBySeason[key] = patch(cached);
+      }
+    }
   }
 }

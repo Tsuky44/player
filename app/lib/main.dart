@@ -1,4 +1,5 @@
 import 'services/media_details_cache.dart';
+import 'services/media_tracks_cache.dart';
 import 'dart:async';
 
 import 'package:flutter/foundation.dart';
@@ -252,6 +253,7 @@ void main() async {
   final mediaRequestsProvider = MediaRequestsProvider(apiClient);
   authProvider.onServerChanged = () {
     MediaDetailsCache.clear();
+    MediaTracksCache.clear();
     homeProvider.reset();
     libraryProvider.reset();
     mediaRequestsProvider.reset();
