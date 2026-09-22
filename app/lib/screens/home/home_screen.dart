@@ -14,6 +14,7 @@ import '../../widgets/global/empty_state.dart';
 import '../../widgets/global/glass_chrome.dart';
 import '../../widgets/global/hero_carousel.dart';
 import '../../widgets/global/media_row.dart';
+import '../../widgets/global/poster_launch_route.dart';
 import '../../widgets/global/sticky_glass_search.dart';
 import '../library/movie_detail_screen.dart';
 import '../library/show_detail_screen.dart';
@@ -91,17 +92,22 @@ class _HomeScreenState extends State<HomeScreen> {
     }
   }
 
-  void _openContinueWatchingDetails(BuildContext context, HomeMediaItem item) {
+  void _openContinueWatchingDetails(
+    BuildContext context,
+    HomeMediaItem item, {
+    LaunchOrigin? origin,
+  }) {
     final target = item.detailMedia;
     if (target == null) return;
 
     if (target.type == MediaType.movie) {
-      Navigator.of(context).push(
-        MaterialPageRoute(
-          builder: (_) => MovieDetailScreen(
-            movieItem: item,
-            movie: target,
-          ),
+      pushPosterLaunch(
+        Navigator.of(context),
+        origin: origin,
+        destination: LaunchDestination.details,
+        builder: (_) => MovieDetailScreen(
+          movieItem: item,
+          movie: target,
         ),
       );
       return;
@@ -110,18 +116,26 @@ class _HomeScreenState extends State<HomeScreen> {
     if (target.type == MediaType.show) {
       final library = Provider.of<LibraryProvider>(context, listen: false);
       final resolved = library.resolveCanonicalShow(target);
-      Navigator.of(context).push(
-        MaterialPageRoute(builder: (_) => ShowDetailScreen(show: resolved)),
+      pushPosterLaunch(
+        Navigator.of(context),
+        origin: origin,
+        destination: LaunchDestination.details,
+        builder: (_) => ShowDetailScreen(show: resolved),
       );
     }
   }
 
-  void _playMedia(BuildContext context, dynamic media) async {
-    await Navigator.of(context, rootNavigator: true).push(
-      MaterialPageRoute(
-        settings: const RouteSettings(name: SearchRouteObserver.playerRouteName),
-        builder: (_) => PlayerScreen(media: media),
-      ),
+  void _playMedia(
+    BuildContext context,
+    dynamic media, {
+    LaunchOrigin? origin,
+  }) async {
+    await pushPosterLaunch(
+      Navigator.of(context, rootNavigator: true),
+      origin: origin,
+      destination: LaunchDestination.player,
+      settings: const RouteSettings(name: SearchRouteObserver.playerRouteName),
+      builder: (_) => PlayerScreen(media: media),
     );
     if (!context.mounted) return;
     Provider.of<HomeProvider>(context, listen: false).loadHome(silent: true);
@@ -239,8 +253,14 @@ class _HomeScreenState extends State<HomeScreen> {
                                   // button holds the focus there instead.
                                   autofocusFirstItem: !isTv,
                                   onItemTap: (item) => _playMedia(context, item),
-                                  onContinueWatchingTitleTap: (item) =>
-                                      _openContinueWatchingDetails(context, item),
+                                  onContinueWatchingPlay: (item, origin) =>
+                                      _playMedia(context, item, origin: origin),
+                                  onContinueWatchingTitleTap: (item, origin) =>
+                                      _openContinueWatchingDetails(
+                                    context,
+                                    item,
+                                    origin: origin,
+                                  ),
                                   onContinueWatchingMarkWatched: (item) =>
                                       homeProvider.markContinueWatchingAsWatched(item),
                                   onContinueWatchingRemove: (item) =>

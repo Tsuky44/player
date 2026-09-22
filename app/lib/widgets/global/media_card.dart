@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../../models/models.dart';
+import '../../navigation/detail_prefetch.dart';
 import '../../services/api_client.dart';
 import '../../utils/format.dart';
 import '../../utils/poster_url.dart';
@@ -47,6 +48,7 @@ class MediaCard extends StatelessWidget {
       title: media.title,
       subtitle: year,
       onTap: onTap,
+      onPrefetch: () => DetailPrefetch.warm(context, media),
       compact: compact,
       autofocus: autofocus,
       showPlayOnHover: true,

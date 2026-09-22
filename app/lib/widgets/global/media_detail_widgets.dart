@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
 import '../../models/models.dart';
+import '../../navigation/detail_prefetch.dart';
 import '../../services/api_client.dart';
 import '../../theme/app_colors.dart';
 import '../../tv/tv_focus.dart';
@@ -27,6 +28,12 @@ class DetailBackdropHeader extends StatelessWidget {
   final Widget? actions;
   final VoidCallback onBack;
 
+  /// True while [details] is still on its way. The backdrop then holds a flat
+  /// surface instead of borrowing the poster: stretching a portrait poster to
+  /// 1280 px cost a download of its own and was swapped for the real backdrop
+  /// a moment later — a second image and a visible flash for nothing.
+  final bool loading;
+
   const DetailBackdropHeader({
     super.key,
     required this.fallback,
@@ -34,9 +41,72 @@ class DetailBackdropHeader extends StatelessWidget {
     required this.metadata,
     required this.onBack,
     this.actions,
+    this.loading = false,
   });
 
   static const double heightDesktop = 540;
+  static const double posterWidth = 190;
+  static const double posterHeight = 285;
+
+  /// What the backdrop slot draws: the catalog backdrop, else — once we know
+  /// there is none — the poster.
+  static String? _backdropSource(
+    MediaDetails? details,
+    Media fallback, {
+    required bool loading,
+  }) {
+    final backdrop = details?.backdropUrl;
+    if (backdrop != null && backdrop.isNotEmpty) return backdrop;
+    if (details == null && loading) return null;
+    return fallback.posterUrl;
+  }
+
+  /// Warms every image the header — and the cast row right under it — draws,
+  /// at the exact sizes they are drawn at, so a page opened from a hovered or
+  /// focused card paints complete on its first frame.
+  ///
+  /// Sizes mirror [build], [_Poster] and [CastSection]; a mismatch only costs
+  /// the head start, never correctness.
+  static Future<void> precacheArtwork({
+    required MediaDetails details,
+    required Media fallback,
+    required String? baseUrl,
+    required Size screenSize,
+    required double devicePixelRatio,
+    required bool compact,
+    int castCount = 8,
+  }) {
+    final dpr = devicePixelRatio;
+    return Future.wait([
+      AppNetworkImage.precache(
+        backdropImageUrl(
+          _backdropSource(details, fallback, loading: false),
+          serverBaseUrl: baseUrl,
+        ),
+        devicePixelRatio: dpr,
+        decodeWidth: screenSize.width,
+      ),
+      AppNetworkImage.precache(
+        logoImageUrl(details.logoUrl, serverBaseUrl: baseUrl),
+        devicePixelRatio: dpr,
+      ),
+      if (!compact)
+        AppNetworkImage.precache(
+          detailPosterUrl(
+            details.posterUrl ?? fallback.posterUrl,
+            serverBaseUrl: baseUrl,
+          ),
+          devicePixelRatio: dpr,
+          decodeWidth: posterWidth,
+        ),
+      for (final member in details.cast.take(castCount))
+        AppNetworkImage.precache(
+          castProfileUrl(member.profileUrl),
+          devicePixelRatio: dpr,
+          decodeWidth: CastSection.cardWidth(compact),
+        ),
+    ]);
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -54,9 +124,7 @@ class DetailBackdropHeader extends StatelessWidget {
       serverBaseUrl: baseUrl,
     );
     final backdropUrl = backdropImageUrl(
-      details?.backdropUrl != null && details!.backdropUrl!.isNotEmpty
-          ? details!.backdropUrl
-          : fallback.posterUrl,
+      _backdropSource(details, fallback, loading: loading),
       serverBaseUrl: baseUrl,
     );
 
@@ -233,8 +301,8 @@ class _Poster extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    const w = 190.0;
-    const h = 285.0;
+    const w = DetailBackdropHeader.posterWidth;
+    const h = DetailBackdropHeader.posterHeight;
     return Container(
       decoration: BoxDecoration(
         borderRadius: BorderRadius.circular(10),
@@ -365,12 +433,14 @@ class CastSection extends StatelessWidget {
 
   const CastSection({super.key, required this.cast, this.onTapMember});
 
+  static double cardWidth(bool compact) => compact ? 96.0 : 120.0;
+
   @override
   Widget build(BuildContext context) {
     if (cast.isEmpty) return const SizedBox.shrink();
     final pad = AppLayout.pagePadding(context);
     final compact = AppLayout.isCompact(context);
-    final cardW = compact ? 96.0 : 120.0;
+    final cardW = cardWidth(compact);
     final cardH = compact ? 120.0 : 150.0;
 
     return Column(
@@ -629,6 +699,10 @@ class CatalogPosterCard extends StatelessWidget {
       title: item.title,
       subtitle: subtitle,
       onTap: onTap,
+      // Only owned titles open a library page worth warming.
+      onPrefetch: item.isOwned
+          ? () => DetailPrefetch.warm(context, item.toLocalMedia())
+          : null,
       dimmed: !item.isOwned,
       overlays: [
         if (!item.isOwned)
@@ -690,7 +764,8 @@ class SimilarTitlesSection extends StatelessWidget {
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         Padding(
-          padding: EdgeInsets.fromLTRB(pad, 8, pad, 16),
+          padding:
+              EdgeInsets.fromLTRB(pad, 8, pad, 16 - PosterCard.liftHeadroom),
           child: Text(
             'Titres similaires',
             style: Theme.of(context).textTheme.titleLarge?.copyWith(
@@ -703,10 +778,10 @@ class SimilarTitlesSection extends StatelessWidget {
           child: SizedBox(
             // The cards size themselves from the cell, so the rail states the
             // height a poster + two metadata lines need at this width.
-            height: mediaCardHeight(cardWidth),
+            height: mediaCardHeight(cardWidth) + PosterCard.liftHeadroom,
             child: ListView.separated(
               scrollDirection: Axis.horizontal,
-              padding: EdgeInsets.symmetric(horizontal: pad),
+              padding: EdgeInsets.fromLTRB(pad, PosterCard.liftHeadroom, pad, 0),
               itemCount: items.length,
               separatorBuilder: (_, __) => const SizedBox(width: 14),
               itemBuilder: (context, index) => SizedBox(

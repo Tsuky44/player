@@ -1,10 +1,14 @@
 import 'package:flutter/material.dart';
+import 'package:provider/provider.dart';
 import '../../models/models.dart';
+import '../../services/api_client.dart';
 import '../../theme/app_colors.dart';
 import '../../tv/tv_focus.dart';
 import '../../utils/format.dart';
+import '../../utils/poster_url.dart';
 import 'media_poster.dart';
 import 'poster_card.dart';
+import 'poster_launch_route.dart';
 import 'progress_pill.dart';
 
 class ContinueWatchingCard extends StatefulWidget {
@@ -14,8 +18,11 @@ class ContinueWatchingCard extends StatefulWidget {
   static const rowHeight = posterHeight + 6 + 40; // poster + gap + 2 text lines
 
   final HomeMediaItem item;
-  final VoidCallback onTap;
-  final VoidCallback? onTitleTap;
+
+  /// Reçoit l'affiche touchée, pour que l'écran suivant s'ouvre en la faisant
+  /// grandir — voir [pushPosterLaunch].
+  final void Function(LaunchOrigin? origin) onTap;
+  final void Function(LaunchOrigin? origin)? onTitleTap;
   final Future<void> Function(HomeMediaItem item)? onMarkAsWatched;
   final Future<void> Function(HomeMediaItem item)? onRemoveFromRow;
 
@@ -40,9 +47,20 @@ class ContinueWatchingCard extends StatefulWidget {
 class _ContinueWatchingCardState extends State<ContinueWatchingCard> {
   bool _hovered = false;
   bool _focused = false;
+  final _posterKey = GlobalKey();
 
   /// Pointer hover and D-pad focus mean the same thing here.
   bool get _active => _hovered || _focused;
+
+  LaunchOrigin? _origin() => LaunchOrigin.fromKey(
+        _posterKey,
+        imageUrl: cardPosterUrl(
+          widget.item.displayPosterUrl,
+          serverBaseUrl: Provider.of<ApiClient>(context, listen: false).baseUrl,
+        ),
+      );
+
+  void _play() => widget.onTap(_origin());
 
   /// Where a remote's context menu opens, since there is no cursor to anchor it
   /// to: the middle of the screen.
@@ -105,7 +123,7 @@ class _ContinueWatchingCardState extends State<ContinueWatchingCard> {
     final detail = _detailLine();
 
     return TvFocusable(
-      onSelect: widget.onTap,
+      onSelect: _play,
       // The remote's menu button reaches the same two actions the mouse gets
       // from a right-click and the phone from a long press.
       onContextMenu: _showContextMenuCentred,
@@ -117,109 +135,102 @@ class _ContinueWatchingCardState extends State<ContinueWatchingCard> {
         setState(() => _focused = focused);
       },
       child: MouseRegion(
-      onEnter: (_) => setState(() => _hovered = true),
-      onExit: (_) => setState(() => _hovered = false),
-      child: GestureDetector(
-        onSecondaryTapDown: (details) => _showContextMenu(details.globalPosition),
-        onLongPressStart: (details) => _showContextMenu(details.globalPosition),
-        child: SizedBox(
-          width: width,
-          child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            GestureDetector(
-              onTap: widget.onTap,
-              child: SizedBox(
-                width: width,
-                height: height,
-                child: Stack(
-                  fit: StackFit.expand,
-                  clipBehavior: Clip.hardEdge,
-                  children: [
-                    MediaPoster(
-                      media: widget.item.media,
-                      posterUrlOverride: widget.item.displayPosterUrl,
-                      width: width,
-                      height: height,
-                      fit: BoxFit.cover,
-                      alignment: Alignment.center,
-                    ),
-                    if (_active)
-                      Container(
-                        decoration: BoxDecoration(
-                          borderRadius: BorderRadius.circular(12),
-                          border: Border.all(
-                            color: _focused
-                                ? AppColors.accent
-                                : Colors.white.withValues(alpha: 0.16),
-                            width: _focused ? 3 : 1,
+        onEnter: (_) => setState(() => _hovered = true),
+        onExit: (_) => setState(() => _hovered = false),
+        child: GestureDetector(
+          onSecondaryTapDown: (details) =>
+              _showContextMenu(details.globalPosition),
+          onLongPressStart: (details) =>
+              _showContextMenu(details.globalPosition),
+          child: SizedBox(
+            width: width,
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                GestureDetector(
+                  onTap: _play,
+                  child: SizedBox(
+                    key: _posterKey,
+                    width: width,
+                    height: height,
+                    child: PosterLift(
+                      active: _active,
+                      child: Stack(
+                        fit: StackFit.expand,
+                        clipBehavior: Clip.hardEdge,
+                        children: [
+                          MediaPoster(
+                            media: widget.item.media,
+                            posterUrlOverride: widget.item.displayPosterUrl,
+                            width: width,
+                            height: height,
+                            fit: BoxFit.cover,
+                            alignment: Alignment.center,
                           ),
-                          color: Colors.black.withValues(alpha: 0.4),
-                        ),
-                        child: const Center(
-                          child: Icon(
-                            Icons.play_circle_fill_rounded,
-                            color: Colors.white,
-                            size: 52,
+                          PosterHoverOverlay(
+                            active: _active,
+                            focused: _focused,
+                            playSize: 54,
                           ),
-                        ),
+                          if (widget.item.hasNewEpisode)
+                            const Positioned(
+                              top: PosterCard.overlayInset,
+                              left: PosterCard.overlayInset,
+                              child: _NewEpisodeBadge(),
+                            ),
+                          // Même retrait que le badge ci-dessus, et le même que sur
+                          // les affiches du catalogue : la barre flotte au lieu de se
+                          // faire découper par l'arrondi du coin bas.
+                          Positioned(
+                            left: PosterCard.overlayInset,
+                            right: PosterCard.overlayInset,
+                            bottom: PosterCard.overlayInset,
+                            child: ProgressPill(value: progress),
+                          ),
+                        ],
                       ),
-                    if (widget.item.hasNewEpisode)
-                      const Positioned(
-                        top: PosterCard.overlayInset,
-                        left: PosterCard.overlayInset,
-                        child: _NewEpisodeBadge(),
-                      ),
-                    // Même retrait que le badge ci-dessus, et le même que sur
-                    // les affiches du catalogue : la barre flotte au lieu de se
-                    // faire découper par l'arrondi du coin bas.
-                    Positioned(
-                      left: PosterCard.overlayInset,
-                      right: PosterCard.overlayInset,
-                      bottom: PosterCard.overlayInset,
-                      child: ProgressPill(value: progress),
                     ),
-                  ],
-                ),
-              ),
-            ),
-            const SizedBox(height: 6),
-            MouseRegion(
-              cursor: widget.onTitleTap != null
-                  ? SystemMouseCursors.click
-                  : MouseCursor.defer,
-              child: GestureDetector(
-                onTap: widget.onTitleTap,
-                behavior: HitTestBehavior.opaque,
-                child: Text(
-                  widget.item.displayTitle,
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  style: const TextStyle(
-                    color: AppColors.textPrimary,
-                    fontWeight: FontWeight.w600,
-                    fontSize: 13,
-                    height: 1.2,
                   ),
                 ),
-              ),
-            ),
-              if (detail != null)
-                Text(
-                  detail,
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  style: const TextStyle(
-                    color: AppColors.textMuted,
-                    fontSize: 11,
-                    height: 1.2,
+                const SizedBox(height: 6),
+                MouseRegion(
+                  cursor: widget.onTitleTap != null
+                      ? SystemMouseCursors.click
+                      : MouseCursor.defer,
+                  child: GestureDetector(
+                    onTap: widget.onTitleTap == null
+                        ? null
+                        : () => widget.onTitleTap!(_origin()),
+                    behavior: HitTestBehavior.opaque,
+                    child: Text(
+                      widget.item.displayTitle,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: const TextStyle(
+                        color: AppColors.textPrimary,
+                        fontWeight: FontWeight.w600,
+                        fontSize: 13,
+                        height: 1.2,
+                      ),
+                    ),
                   ),
                 ),
-            ],
+                if (detail != null)
+                  Text(
+                    detail,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: const TextStyle(
+                      color: AppColors.textMuted,
+                      fontSize: 11,
+                      height: 1.2,
+                    ),
+                  ),
+              ],
+            ),
           ),
         ),
-      ),
       ),
     );
   }

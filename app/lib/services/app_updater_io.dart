@@ -301,12 +301,20 @@ open $t
 Future<PreparedUpdate> _prepareWindows(
     String setupPath, String workDir) async {
   final target = Platform.resolvedExecutable;
+
+  // Lives next to workDir, not inside it: the cleanup step it runs deletes
+  // workDir, and a script cannot survive deleting its own containing folder —
+  // see the comment on _windowsCleanup below.
+  final cleanup = File(
+      '${Directory.systemTemp.path}\\onyx-update-cleanup-$pid.cmd');
+  await cleanup.writeAsString(_windowsCleanup(workDir: workDir));
+
   final script = File('$workDir\\apply-update.cmd');
   await script.writeAsString(_windowsLauncher(
     pid: pid,
     setup: setupPath,
     target: target,
-    workDir: workDir,
+    cleanupScript: cleanup.path,
   ));
   return PreparedUpdate._(script.path, workDir);
 }
@@ -317,11 +325,11 @@ String _windowsLauncher({
   required int pid,
   required String setup,
   required String target,
-  required String workDir,
+  required String cleanupScript,
 }) {
   final s = _windowsQuote(setup);
   final t = _windowsQuote(target);
-  final w = _windowsQuote(workDir);
+  final c = _windowsQuote(cleanupScript);
   return '''
 @echo off
 rem Genere par Onyx - applique la mise a jour des que l'app est fermee.
@@ -337,6 +345,32 @@ goto wait
 :run
 start "" /wait $s /SILENT /NOCANCEL /NORESTART /SUPPRESSMSGBOXES
 start "" $t
+start "" /min $c
+''';
+}
+
+/// Deletes the temp directory this update was staged in — but from outside
+/// it, and after a short delay.
+///
+/// This used to be the last line of [_windowsLauncher] itself
+/// (`rmdir /s /q` on its own containing folder). cmd.exe reads a batch file
+/// from disk one line at a time rather than loading it upfront, so deleting
+/// the folder out from under a script that is still executing *from a file in
+/// that folder* made it lose track of where it was: it failed with "Le chemin
+/// d'accès spécifié est introuvable" instead of exiting, leaving a console
+/// window behind — one the freshly relaunched app then appeared to depend on,
+/// since closing it took Onyx down too. This script never reads itself from
+/// workDir, so deleting workDir out from under it is safe; the delay just
+/// gives the launcher's own console time to close first.
+///
+/// Left behind afterward rather than self-deleted: a few hundred leftover
+/// bytes in the system temp directory is a better trade than reintroducing
+/// the very same class of bug to shave them off.
+String _windowsCleanup({required String workDir}) {
+  final w = _windowsQuote(workDir);
+  return '''
+@echo off
+ping -n 3 127.0.0.1 >nul
 rmdir /s /q $w
 ''';
 }

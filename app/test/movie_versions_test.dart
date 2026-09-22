@@ -7,6 +7,7 @@ import 'package:onyx/screens/library/movie_detail_screen.dart';
 import 'package:onyx/services/api_client.dart';
 import 'package:onyx/services/download_manager.dart';
 import 'package:onyx/services/media_details_cache.dart';
+import 'package:onyx/services/media_tracks_cache.dart';
 import 'package:onyx/widgets/global/media_download_button.dart';
 
 class _Api extends ApiClient {
@@ -51,6 +52,7 @@ void main() {
   testWidgets('best version is selected and changing it updates playback',
       (tester) async {
     MediaDetailsCache.clear();
+    MediaTracksCache.clear();
     final api = _Api();
     final auth = AuthProvider(api);
     await tester.binding.setSurfaceSize(const Size(1200, 1200));
@@ -58,6 +60,7 @@ void main() {
       await tester.binding.setSurfaceSize(null);
       auth.dispose();
       MediaDetailsCache.clear();
+      MediaTracksCache.clear();
     });
     await tester.pumpWidget(MultiProvider(
       providers: [
@@ -89,7 +92,9 @@ void main() {
     expect(selected().media.id, 1);
     expect(selected().duration, 7100);
     expect(selected().introEnd, 15);
-    expect(api.tracksRequested.last, 1);
+    // Each file is asked for once: the page opened on 1, the details moved it
+    // to 2, and going back to 1 is answered from the cache.
+    expect(api.tracksRequested, [1, 2]);
     expect(tester.takeException(), isNull);
   });
 }
