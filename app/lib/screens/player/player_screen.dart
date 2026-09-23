@@ -13,6 +13,7 @@ import '../../providers/library_provider.dart';
 import '../../providers/player_layout_provider.dart';
 import '../../navigation/search_route_observer.dart';
 import '../../services/api_client.dart';
+import '../../models/remote_playback.dart';
 import '../../services/download_manager.dart';
 import '../../services/server_reachability.dart';
 import '../../services/media_details_cache.dart';
@@ -112,6 +113,14 @@ class _PlayerScreenState extends State<PlayerScreen> {
   bool _progressFlushed = false;
   ApiClient? _apiClient;
   Timer? _relayTimer;
+
+  /// Reprise sur un autre appareil : le serveur est interrogé toutes les
+  /// quelques secondes pour savoir si ce titre a démarré ailleurs sur le même
+  /// compte. [_handedOffTo] nomme cet appareil tant que la lecture y est.
+  Timer? _handoffTimer;
+  String? _handedOffTo;
+  bool _resumingHere = false;
+  static const Duration _handoffPollInterval = Duration(seconds: 4);
   bool _findingRelay = false;
   bool _wantsPlayback = true;
   String? _sourceAccountId;
@@ -868,6 +877,7 @@ class _PlayerScreenState extends State<PlayerScreen> {
     if (!mounted || _isLeaving) return;
     if (widget.startPaused) await _playerController.session.pause();
     setState(() => _isInitialized = true);
+    _startHandoffWatch();
     _armStartupWatchdog();
     _scheduleSubtitlePaddingSync();
     unawaited(_mediaKeys.attach(
@@ -1682,6 +1692,7 @@ class _PlayerScreenState extends State<PlayerScreen> {
     _controlsTimer?.cancel();
     _startupWatchdog?.cancel();
     _relayTimer?.cancel();
+    _handoffTimer?.cancel();
     _zoomHintTimer?.cancel();
     _seekHintTimer?.cancel();
     _remoteSeekCommit?.cancel();
@@ -2407,6 +2418,12 @@ class _PlayerScreenState extends State<PlayerScreen> {
   }
 
   void _togglePlayPause() {
+    // En pause parce que la lecture est passée ailleurs : relancer ici, c'est
+    // la reprendre, pas lire en double.
+    if (_handedOffTo != null) {
+      unawaited(_resumeHere());
+      return;
+    }
     _wantsPlayback = !_playerController.isPlaying;
     _playerController.togglePlayPause();
     final party = _party;
@@ -2430,6 +2447,58 @@ class _PlayerScreenState extends State<PlayerScreen> {
           playing: _playerController.isPlaying));
     }
     await _playerController.seekToAbsoluteSeconds(target);
+  }
+
+  // ==================== Reprise sur un autre appareil ====================
+
+  void _startHandoffWatch() {
+    _handoffTimer?.cancel();
+    _handoffTimer =
+        Timer.periodic(_handoffPollInterval, (_) => _pollHandoff());
+  }
+
+  Future<void> _pollHandoff() async {
+    final api = _apiClient;
+    // Une séance « Regarder ensemble » a ses propres règles : plusieurs
+    // appareils y lisent le même titre, c'est le but.
+    if (api == null || _party != null || _handedOffTo != null || _isLeaving) {
+      return;
+    }
+    final PlaybackHandoff? handoff;
+    try {
+      handoff = await api.getPlaybackHandoff();
+    } catch (_) {
+      return; // Serveur plus ancien, ou réseau absent : on lit, simplement.
+    }
+    if (handoff == null || !mounted || _isLeaving || _handedOffTo != null) {
+      return;
+    }
+    _wantsPlayback = false;
+    if (_playerController.isPlaying) _playerController.togglePlayPause();
+    _safeSetState(() => _handedOffTo = handoff!.deviceName);
+  }
+
+  /// Rapatrie ici la lecture qui continue sur l'autre appareil, là où il en
+  /// est.
+  Future<void> _resumeHere() async {
+    final api = _apiClient;
+    if (api == null || _resumingHere) return;
+    _safeSetState(() => _resumingHere = true);
+    try {
+      final handoff = await api.getPlaybackHandoff().catchError((_) => null);
+      final remote = handoff?.playback;
+      if (remote != null && remote.mediaId == _playerController.mediaId) {
+        await _playerController.seekToAbsoluteSeconds(remote.positionSeconds);
+      }
+    } finally {
+      _playerController.announcePlaybackHere();
+      _wantsPlayback = true;
+      if (!_playerController.isPlaying) _playerController.togglePlayPause();
+      _safeSetState(() {
+        _handedOffTo = null;
+        _resumingHere = false;
+      });
+    }
   }
 
   // ==================== Regarder ensemble ====================
@@ -3158,6 +3227,15 @@ class _PlayerScreenState extends State<PlayerScreen> {
                         ),
                       ),
                     ),
+                if (_handedOffTo != null)
+                  Positioned.fill(
+                    child: _PlayingElsewhere(
+                      deviceName: _handedOffTo!,
+                      busy: _resumingHere,
+                      onResume: _resumeHere,
+                      onBack: _leavePlayer,
+                    ),
+                  ),
                 // Both spinners below are IgnorePointer, not AbsorbPointer: they
                 // cover the whole screen and sit above the controls, so
                 // absorbing taps made every player button dead for as long as a
@@ -3239,6 +3317,78 @@ class _PlayerBackButtonState extends State<_PlayerBackButton> {
 /// on anything. What actually helps is naming the likeliest cause — the link
 /// between this screen and the server — and offering the one action that fixes
 /// most of them, which is to open the whole thing again from scratch.
+/// La lecture a été reprise sur un autre appareil du compte : ce lecteur est
+/// en pause et propose de la ramener ici.
+class _PlayingElsewhere extends StatelessWidget {
+  final String deviceName;
+  final bool busy;
+  final VoidCallback onResume;
+  final VoidCallback onBack;
+
+  const _PlayingElsewhere({
+    required this.deviceName,
+    required this.busy,
+    required this.onResume,
+    required this.onBack,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return ColoredBox(
+      color: Colors.black.withValues(alpha: 0.86),
+      child: Center(
+        child: Padding(
+          padding: const EdgeInsets.all(40),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              const Icon(Icons.devices_rounded, size: 54, color: Colors.white70),
+              const SizedBox(height: 22),
+              const Text(
+                'Lecture en cours sur un autre appareil',
+                textAlign: TextAlign.center,
+                style: TextStyle(
+                  color: Colors.white,
+                  fontSize: 22,
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+              const SizedBox(height: 12),
+              Text(
+                'La lecture continue sur « $deviceName ». Reprenez-la ici, '
+                'là où il en est.',
+                textAlign: TextAlign.center,
+                style: const TextStyle(
+                  color: Colors.white70,
+                  fontSize: 15,
+                  height: 1.45,
+                ),
+              ),
+              const SizedBox(height: 28),
+              Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  ElevatedButton.icon(
+                    autofocus: true,
+                    onPressed: busy ? null : onResume,
+                    icon: const Icon(Icons.play_arrow_rounded),
+                    label: const Text('Reprendre la lecture ici'),
+                  ),
+                  const SizedBox(width: 12),
+                  TextButton(
+                    onPressed: onBack,
+                    child: const Text('Quitter'),
+                  ),
+                ],
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
 class _StalledStartup extends StatelessWidget {
   /// Ce que le moteur a dit, quand il a dit quelque chose.
   ///

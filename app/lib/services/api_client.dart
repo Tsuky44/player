@@ -16,6 +16,7 @@ import 'server_registry.dart';
 import 'media_failover.dart';
 import '../models/media_request.dart';
 import '../models/server_activity.dart';
+import '../models/remote_playback.dart';
 import '../utils/app_platform.dart';
 import '../models/request_catalog_filters.dart';
 import '../models/models.dart';
@@ -1733,6 +1734,29 @@ class ApiClient {
       if (quality.isNotEmpty) 'quality': quality,
       'event': event,
     });
+  }
+
+  /// Ce que ce compte lit sur ses autres appareils, pour le reprendre ici.
+  Future<List<RemotePlayback>> getMyRemotePlaybacks() async {
+    final response = await _dio.get('/api/me/now-playing');
+    final data = response.data;
+    if (data is! List) return const [];
+    return data
+        .whereType<Map<String, dynamic>>()
+        .map(RemotePlayback.tryParse)
+        .whereType<RemotePlayback>()
+        .toList();
+  }
+
+  /// Non nul quand la lecture de ce lecteur a été reprise sur un autre
+  /// appareil. Voir `server/handlers/playback_handoff.go`.
+  Future<PlaybackHandoff?> getPlaybackHandoff() async {
+    final response = await _dio.get('/api/playing/handoff');
+    final data = response.data;
+    if (response.statusCode == 204 || data is! Map<String, dynamic>) {
+      return null;
+    }
+    return PlaybackHandoff.fromJson(data);
   }
 
   Future<List<NowPlayingSession>> getNowPlaying() async {

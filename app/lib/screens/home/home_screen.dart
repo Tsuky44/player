@@ -15,6 +15,7 @@ import '../../widgets/global/glass_chrome.dart';
 import '../../widgets/global/hero_carousel.dart';
 import '../../widgets/global/media_row.dart';
 import '../../widgets/global/poster_launch_route.dart';
+import '../../widgets/global/remote_playback_banner.dart';
 import '../../widgets/global/sticky_glass_search.dart';
 import '../library/movie_detail_screen.dart';
 import '../library/show_detail_screen.dart';
@@ -300,6 +301,15 @@ class _HomeScreenState extends State<HomeScreen> {
                       ),
                     ),
 
+                    const Positioned(
+                      left: 16,
+                      right: 16,
+                      bottom: 16,
+                      child: SafeArea(
+                        top: false,
+                        child: Center(child: RemotePlaybackBanner()),
+                      ),
+                    ),
                     if (!widget.embedded)
                       Positioned(
                         top: 0,

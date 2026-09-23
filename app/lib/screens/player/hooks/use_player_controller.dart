@@ -1236,6 +1236,15 @@ class PlayerController {
     unawaited(_uploadSession(apiClient, last: false));
   }
 
+  /// Annonce que la lecture reprend ici : le serveur met en pause, chez les
+  /// autres appareils du compte, ce même titre (voir `playback_handoff.go`).
+  void announcePlaybackHere() {
+    final media = _media;
+    final api = _apiClient;
+    if (media == null || api == null) return;
+    _reportActivity(mediaId: media.id, apiClient: api, event: 'start');
+  }
+
   void _reportActivityStopped() {
     final media = _media;
     final api = _apiClient;

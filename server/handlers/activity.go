@@ -88,6 +88,10 @@ type activePlayback struct {
 	NowPlaying
 	showID    sql.NullInt64
 	historyID int64
+	// handedOffTo names the device another start of the same title moved the
+	// play to (see playback_handoff.go); handedOffBy is that device's session.
+	handedOffTo string
+	handedOffBy [32]byte
 }
 
 type playbackTracker struct {
@@ -199,6 +203,9 @@ func (t *playbackTracker) report(key [32]byte, userID int, username string, clie
 	}
 	if client.client != "" {
 		entry.Client = client.client
+	}
+	if req.Event == "start" {
+		t.handOffLocked(key, entry)
 	}
 	snapshot := *entry
 	t.mu.Unlock()
