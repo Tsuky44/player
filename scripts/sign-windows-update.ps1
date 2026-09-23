@@ -120,7 +120,10 @@ $message = [System.Text.Encoding]::UTF8.GetBytes("onyx-update-v1`n$Version`n$zip
 $messageHash = Get-Sha256 $message $message.Length
 
 $key = [System.Security.Cryptography.CngKey]::Import(
-  [Convert]::FromBase64String($keyBase64.Trim()),
+  # Tout sauf l'alphabet base64 est retire : un secret colle ou transmis par
+  # un pipe PowerShell 5.1 peut arriver avec BOM, retours a la ligne ou
+  # espaces, et FromBase64String refuse le moindre caractere en trop.
+  [Convert]::FromBase64String(($keyBase64 -replace '[^A-Za-z0-9+/=]', '')),
   [System.Security.Cryptography.CngKeyBlobFormat]::Pkcs8PrivateBlob)
 $ecdsa = New-Object System.Security.Cryptography.ECDsaCng($key)
 [byte[]]$signature = $ecdsa.SignHash($messageHash)
