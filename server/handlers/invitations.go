@@ -21,9 +21,9 @@ const InvitationTTL = 7 * 24 * time.Hour
 
 // Invitation is a single-use registration link.
 type Invitation struct {
-	Token     string             `json:"token"`
-	InviterID int                `json:"inviter_id"`
-	Inviter   string             `json:"inviter"`
+	Token     string `json:"token"`
+	InviterID int    `json:"inviter_id"`
+	Inviter   string `json:"inviter"`
 	// Grants is frozen when the link is created: a link does exactly what it
 	// announced, even if the inviter's template changes afterwards.
 	Grants    models.Permissions `json:"grants"`
@@ -82,12 +82,18 @@ func redeemableInvitation(token string) (*Invitation, error) {
 	return &inv, nil
 }
 
-func markInvitationUsed(token string, userID int) error {
-	_, err := database.DB.Exec(
+// claimInvitation marks the invitation used by userID, and reports whether it
+// was still unused: of two sign-ups racing on one link, only one gets true.
+func claimInvitation(db sqlExecer, token string, userID int) (bool, error) {
+	res, err := db.Exec(
 		`UPDATE invitations
 		 SET status = 'used', used_at = CURRENT_TIMESTAMP, used_by_user_id = ?
 		 WHERE token = ? AND status = 'pending'`, userID, token)
-	return err
+	if err != nil {
+		return false, err
+	}
+	n, err := res.RowsAffected()
+	return n == 1, err
 }
 
 // revokePendingInvitations kills every link an inviter still has in

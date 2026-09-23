@@ -34,12 +34,12 @@ func GetShowSeasonEpisodes(w http.ResponseWriter, r *http.Request, ps httprouter
 
 	showID, err := strconv.Atoi(ps.ByName("id"))
 	if err != nil {
-		http.Error(w, `{"error": "Invalid show ID"}`, http.StatusBadRequest)
+		writeJSONError(w, http.StatusBadRequest, "Invalid show ID")
 		return
 	}
 	seasonNumber, err := strconv.Atoi(ps.ByName("num"))
 	if err != nil || seasonNumber <= 0 {
-		http.Error(w, `{"error": "Invalid season number"}`, http.StatusBadRequest)
+		writeJSONError(w, http.StatusBadRequest, "Invalid season number")
 		return
 	}
 	showID = indexer.ResolveCanonicalShowID(showID)

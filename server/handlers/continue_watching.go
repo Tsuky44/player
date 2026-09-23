@@ -372,7 +372,7 @@ func HideFromContinueWatching(w http.ResponseWriter, r *http.Request, _ httprout
 
 	var req hideContinueWatchingRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		http.Error(w, `{"error": "Invalid request body"}`, http.StatusBadRequest)
+		writeJSONError(w, http.StatusBadRequest, "Invalid request body")
 		return
 	}
 
@@ -382,13 +382,13 @@ func HideFromContinueWatching(w http.ResponseWriter, r *http.Request, _ httprout
 	} else if req.MovieID != nil && *req.MovieID > 0 {
 		entryKey = continueWatchingMovieKey(*req.MovieID)
 	} else {
-		http.Error(w, `{"error": "movie_id or show_id is required"}`, http.StatusBadRequest)
+		writeJSONError(w, http.StatusBadRequest, "movie_id or show_id is required")
 		return
 	}
 
 	if err := hideContinueWatchingEntry(userID, entryKey); err != nil {
 		log.Printf("ContinueWatching: hide failed for user %d key %s: %v", userID, entryKey, err)
-		http.Error(w, `{"error": "Internal database error"}`, http.StatusInternalServerError)
+		writeJSONError(w, http.StatusInternalServerError, "Internal database error")
 		return
 	}
 

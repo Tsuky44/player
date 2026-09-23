@@ -91,7 +91,7 @@ func TriggerSubtitleExtract(w http.ResponseWriter, r *http.Request, _ httprouter
 	w.Header().Set("Content-Type", "application/json")
 
 	if !subtitles.TryStartForceExtractAll() {
-		http.Error(w, `{"error": "Subtitle extraction is already in progress"}`, http.StatusConflict)
+		writeJSONError(w, http.StatusConflict, "Subtitle extraction is already in progress")
 		return
 	}
 
@@ -109,21 +109,21 @@ func ForceMediaSubtitleExtract(w http.ResponseWriter, r *http.Request, ps httpro
 
 	mediaID, err := strconv.Atoi(ps.ByName("id"))
 	if err != nil {
-		http.Error(w, `{"error": "Invalid media ID"}`, http.StatusBadRequest)
+		writeJSONError(w, http.StatusBadRequest, "Invalid media ID")
 		return
 	}
 
 	filePath, err := subtitles.MediaFilePath(mediaID)
 	if err != nil {
 		if err == sql.ErrNoRows {
-			http.Error(w, `{"error": "Media not found or has no file"}`, http.StatusNotFound)
+			writeJSONError(w, http.StatusNotFound, "Media not found or has no file")
 		} else {
-			http.Error(w, `{"error": "Database error"}`, http.StatusInternalServerError)
+			writeJSONError(w, http.StatusInternalServerError, "Database error")
 		}
 		return
 	}
 	if _, err := os.Stat(filePath); os.IsNotExist(err) {
-		http.Error(w, `{"error": "Media file not found on disk"}`, http.StatusNotFound)
+		writeJSONError(w, http.StatusNotFound, "Media file not found on disk")
 		return
 	}
 
@@ -147,7 +147,7 @@ func ForceMediaSubtitleExtract(w http.ResponseWriter, r *http.Request, ps httpro
 	}
 	if err != nil {
 		log.Printf("ForceMediaSubtitleExtract %d: %v", mediaID, err)
-		http.Error(w, `{"error": "Subtitle extraction failed"}`, http.StatusInternalServerError)
+		writeJSONError(w, http.StatusInternalServerError, "Subtitle extraction failed")
 		return
 	}
 

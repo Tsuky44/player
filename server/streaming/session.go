@@ -64,6 +64,16 @@ type TranscodeSession struct {
 	// ".m4s". The throttler counts segment files by name, so it has to know
 	// which name the session is producing; empty means ".ts".
 	SegmentExt string
+	// Variants est le nombre de séries de segments que la session écrit : la
+	// vidéo, puis une par rendition audio. La purge les parcourt toutes.
+	Variants int
+	// RetainSegments est ce que la session garde derrière le dernier segment
+	// demandé ; au-delà, ils sont effacés au fil de la lecture. 0 : tout est
+	// gardé, pour un client qui ne sait pas rouvrir une session pour reculer.
+	RetainSegments int
+	// superseded est posé, sous le verrou du gestionnaire, quand une session
+	// plus récente sur le même ticket la remplace. Voir SessionManager.Supersede.
+	superseded bool
 
 	ctx    context.Context
 	cancel context.CancelFunc
@@ -76,6 +86,8 @@ type TranscodeSession struct {
 	lastAccess           time.Time
 	lastRequestedSegment int
 	producedSegments     int
+	// purgedBelow est le premier index de segment encore sur le disque.
+	purgedBelow int
 }
 
 // Start launches FFmpeg and the JIT throttling watchdog.
@@ -154,6 +166,7 @@ func (s *TranscodeSession) throttle() {
 				return
 			}
 			produced := s.countVideoSegments()
+			s.purgeBehind()
 
 			s.mu.Lock()
 			bufferAhead := (produced - 1) - s.lastRequestedSegment
@@ -203,6 +216,40 @@ func (s *TranscodeSession) countVideoSegments() int {
 	n = s.producedSegments
 	s.mu.Unlock()
 	return n
+}
+
+// purgeBehind efface les segments plus vieux que RetainSegments derrière le
+// dernier demandé, dans toutes les séries. Le client qui a demandé la purge
+// ouvre une nouvelle session pour reculer plus loin.
+func (s *TranscodeSession) purgeBehind() {
+	if s.RetainSegments <= 0 {
+		return
+	}
+	s.mu.Lock()
+	from := s.purgedBelow
+	to := s.lastRequestedSegment - s.RetainSegments
+	s.mu.Unlock()
+	if to <= from {
+		return
+	}
+	variants := s.Variants
+	if variants < 1 {
+		variants = 1
+	}
+	ext := s.segmentExt()
+	for i := from; i < to; i++ {
+		for v := 0; v < variants; v++ {
+			path := filepath.Join(s.TmpDir, fmt.Sprintf("stream_%d_%03d%s", v, i, ext))
+			if err := os.Remove(path); err != nil && !os.IsNotExist(err) {
+				log.Printf("Session %s: cannot purge %s: %v", s.ID, filepath.Base(path), err)
+			}
+		}
+	}
+	s.mu.Lock()
+	if to > s.purgedBelow {
+		s.purgedBelow = to
+	}
+	s.mu.Unlock()
 }
 
 // segmentExt is the extension this session's segments carry, defaulting to

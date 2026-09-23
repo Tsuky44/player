@@ -17,6 +17,7 @@ import (
 	"time"
 
 	"project-player/server/database"
+	"project-player/server/httpx"
 
 	"github.com/julienschmidt/httprouter"
 )
@@ -47,7 +48,9 @@ const (
 	ticksPerSecond = 10_000_000
 )
 
-var embyHTTP = &http.Client{Timeout: 30 * time.Second}
+// embyHTTP ne se connecte qu'à des adresses permises : l'URL vient de
+// l'utilisateur. Voir httpx.UserDirected.
+var embyHTTP = httpx.UserDirected
 
 // embySyncMu sérialise les synchronisations : la tâche de fond et le bouton
 // « Synchroniser » ne travaillent jamais en même temps, et les caches
@@ -145,7 +148,11 @@ func embyRequest(ctx context.Context, base, token, deviceID, method, path string
 	}
 	resp, err := embyHTTP.Do(req)
 	if err != nil {
-		return fmt.Errorf("Emby injoignable : %w", err)
+		// Le détail reste dans le journal. Renvoyé à l'appelant, il disait si
+		// une adresse du réseau interne refuse la connexion ou ne répond pas —
+		// de quoi cartographier ce réseau depuis n'importe quel compte.
+		log.Printf("Emby: %s %s: %v", method, base, err)
+		return errors.New("Emby injoignable à cette adresse")
 	}
 	defer resp.Body.Close()
 	if resp.StatusCode == http.StatusUnauthorized || resp.StatusCode == http.StatusForbidden {

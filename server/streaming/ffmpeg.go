@@ -111,6 +111,10 @@ type TranscodeOptions struct {
 	// client that declared nothing, which is treated as the browser this server
 	// was originally written for — see LegacyCapabilities.
 	Caps Capabilities
+	// LiveSubtitles liste les pistes texte (0:s:N) que la session écrit en
+	// WebVTT à côté des segments, produites par LiveSubtitleTracks. Vide : pas
+	// de sous-titres écrits, la commande reste celle d'avant l'ADR-0031.
+	LiveSubtitles []int
 }
 
 // caps resolves the client declaration, defaulting to the legacy one.
@@ -183,17 +187,17 @@ func SelectAudioRenditions(probe *ProbeResult, requested int) []int {
 
 // BuildFFmpegArgs constructs the FFmpeg command-line for an HLS transcode.
 //
-// Design (video + a SINGLE audio track — deliberately lean):
-//   - One H.264 video rendition (8-bit yuv420p) — the only heavy work.
-//   - Exactly ONE audio track (the requested AudioTypedIndex) transcoded to AAC
-//     and muxed into the same segments, keeping CPU usage minimal. Switching
-//     language is a client-driven session restart, not a multi-rendition stream.
-//   - NO subtitles (-sn). Subtitles live entirely out of band as pre-extracted
-//     .vtt files served separately and injected by the client as external tracks.
+// What one session produces, in one read of the source:
+//   - one video variant, either copied untouched or re-encoded (see PlanVideo);
+//   - every published audio track as a rendition of the same group, so that a
+//     language change is a player track switch, not a new session;
+//   - no subtitle inside the stream (-sn): a bitmap track is painted into the
+//     picture, and the text tracks are written next to the segments as WebVTT
+//     files that grow with the transcode (see live_subtitles.go, ADR-0031).
 //
-// FFmpeg writes master.m3u8 + stream_0.m3u8 (+ stream_0_%03d.ts) into TmpDir.
-// The variant URI stays relative, so the player resolves it against the master
-// URL and no server-side playlist rewriting is required.
+// FFmpeg writes stream_%v.m3u8 and its segments into TmpDir. The master it
+// also writes is never served: the handler renders its own, see
+// BuildMasterPlaylist.
 func BuildFFmpegArgs(opt TranscodeOptions) []string {
 	preset := presetFor(opt.Quality)
 	segDur := opt.SegmentDuration
@@ -264,7 +268,7 @@ func BuildFFmpegArgs(opt TranscodeOptions) []string {
 		if copiesHEVCIntoFMP4(opt) {
 			args = append(args, "-tag:v", "hvc1")
 		}
-		return append(args, audioAndMuxerArgs(opt, preset, audioIdxs, segDur)...)
+		return append(args, sessionOutputArgs(opt, preset, audioIdxs, segDur)...)
 	}
 
 	// Force 8-bit 4:2:0 so 10-bit HEVC sources don't yield a "High 10" H.264
@@ -312,7 +316,14 @@ func BuildFFmpegArgs(opt TranscodeOptions) []string {
 		"-force_key_frames", fmt.Sprintf("expr:gte(t,n_forced*%d)", segDur),
 	)
 
-	return append(args, audioAndMuxerArgs(opt, preset, audioIdxs, segDur)...)
+	return append(args, sessionOutputArgs(opt, preset, audioIdxs, segDur)...)
+}
+
+// sessionOutputArgs is every output of the session: the HLS stream, then the
+// WebVTT files of its text subtitles (see live_subtitles.go).
+func sessionOutputArgs(opt TranscodeOptions, preset qualityPreset, audioIdxs []int, segDur int) []string {
+	args := audioAndMuxerArgs(opt, preset, audioIdxs, segDur)
+	return append(args, liveSubtitleOutputArgs(opt.TmpDir, opt.LiveSubtitles)...)
 }
 
 // audioAndMuxerArgs builds everything downstream of the video decision: the

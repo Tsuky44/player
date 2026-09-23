@@ -122,6 +122,20 @@ func (s *Store) IsLive(key [32]byte, mediaID int) bool {
 	return ok && ticket.MediaID == mediaID && s.now().Before(ticket.ExpiresAt)
 }
 
+// Holds dit si userID détient un ticket encore valide pour mediaID, c'est-à-
+// dire s'il est en train de lire ce média.
+func (s *Store) Holds(userID, mediaID int) bool {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	now := s.now()
+	for _, ticket := range s.tickets {
+		if ticket.UserID == userID && ticket.MediaID == mediaID && now.Before(ticket.ExpiresAt) {
+			return true
+		}
+	}
+	return false
+}
+
 func (s *Store) reapLocked(now time.Time) {
 	for key, ticket := range s.tickets {
 		if !now.Before(ticket.ExpiresAt) {

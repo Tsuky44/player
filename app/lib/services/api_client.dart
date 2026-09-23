@@ -22,6 +22,20 @@ import '../models/request_catalog_filters.dart';
 import '../models/models.dart';
 import '../models/player_layout.dart';
 import '../models/player_layout_preset.dart';
+import 'conditional_get.dart';
+import 'api_types.dart';
+import 'hls_session.dart';
+
+// Le descripteur de session a quitté ce fichier ; ses appelants l'importaient
+// d'ici et continuent de le faire.
+export 'hls_session.dart';
+export 'api_types.dart';
+
+part 'api/account_admin.dart';
+part 'api/watch_party.dart';
+part 'api/library_admin.dart';
+part 'api/activity.dart';
+part 'api/player_layouts.dart';
 
 class _PlaybackRequestScope {
   const _PlaybackRequestScope(this.origin, this.authorization);
@@ -29,69 +43,13 @@ class _PlaybackRequestScope {
   final String? authorization;
 }
 
-/// Holds the result of starting an HLS transcoding session.
-///
-/// [masterUrl] is opened directly by media_kit/mpv, which fetches the child
-/// playlists and segments itself (no local temp file, no playlist rewriting).
-class HlsSession {
-  final String sessionId;
-  final String masterUrl;
-  final double totalDuration; // full media duration in seconds
-  final int startOffset; // seconds into the original media
-
-  /// Source audio tracks published as HLS renditions, in the order the player
-  /// enumerates them: position k in the player's audio track list is source
-  /// track `audioMap[k]`. This is what lets a language change be an mpv track
-  /// switch instead of a whole new transcoding session.
-  final List<int> audioMap;
-
-  /// Bitmap subtitle stream the server actually rendered into the video, or -1.
-  /// It can differ from what was requested when the track turned out not to be
-  /// burnable, so the client should trust this rather than its own request.
-  final int burnedSubtitle;
-
-  /// `copy` when the server is repackaging the picture untouched, `encode` when
-  /// it is re-encoding it. Empty from a server that predates the field.
-  ///
-  /// Worth surfacing rather than guessing: "Direct Stream" and "why is the
-  /// server's CPU at 400%" are the same question, and only the server knows.
-  final String videoMode;
-
-  /// Why a copy was refused, in the server's own words. Empty on the copy path.
-  final String videoReason;
-
-  HlsSession({
-    required this.sessionId,
-    required this.masterUrl,
-    required this.totalDuration,
-    required this.startOffset,
-    this.audioMap = const [],
-    this.burnedSubtitle = -1,
-    this.videoMode = '',
-    this.videoReason = '',
-  });
-
-  /// True when the picture is reaching the viewer untouched.
-  bool get isDirectStream => videoMode == 'copy';
-
-  factory HlsSession.fromJson(Map<String, dynamic> json) {
-    return HlsSession(
-      sessionId: json['session_id'] as String? ?? '',
-      masterUrl: json['master_url'] as String? ?? '',
-      totalDuration: (json['duration'] as num? ?? 0).toDouble(),
-      startOffset: json['start_offset'] as int? ?? 0,
-      audioMap: (json['audio_map'] as List?)
-              ?.map((e) => (e as num).toInt())
-              .toList() ??
-          const [],
-      burnedSubtitle: (json['burned_subtitle'] as num?)?.toInt() ?? -1,
-      videoMode: json['video_mode'] as String? ?? '',
-      videoReason: json['video_reason'] as String? ?? '',
-    );
-  }
-}
-
-class ApiClient {
+class ApiClient
+    with
+        _AccountAdminEndpoints,
+        _WatchPartyEndpoints,
+        _LibraryAdminEndpoints,
+        _ActivityEndpoints,
+        _PlayerLayoutEndpoints {
   static String get _defaultBaseUrl {
     // On web the Go server serves this very bundle, so the page origin is
     // already the API root. Hardcoding a host here would turn every call into a
@@ -114,6 +72,7 @@ class ApiClient {
   /// serveur au bout.
   static void Function()? onConnectionSuccess;
 
+  @override
   final Dio _dio;
 
   /// Les serveurs auxquels cet appareil a un compte. Le client ne détient plus
@@ -121,6 +80,9 @@ class ApiClient {
   /// changer de serveur revient à en désigner un autre. Voir ADR-0013.
   final ServerRegistry servers;
   late final MediaFailover mediaFailover = MediaFailover(servers);
+
+  /// Les listes de la médiathèque, relues seulement quand elles changent.
+  final ConditionalGetCache _libraryLists = ConditionalGetCache();
   String? _pinnedAccountId;
   String? get accountId => _pinnedAccountId ?? servers.active?.id;
 
@@ -384,6 +346,7 @@ class ApiClient {
   }
 
   // Get current active base URL
+  @override
   String get baseUrl => _baseUrl ?? _defaultBaseUrl;
 
   /// True once a server address has been picked — remembered from a previous
@@ -550,6 +513,9 @@ class ApiClient {
         // Bitmap subtitles have no out-of-band form, so the transcoder paints
         // the chosen one into the video. -1 means none.
         "burnsub": burnSubtitleIndex,
+        // Ce client rouvre une session pour reculer au-delà de ce qu'elle a
+        // gardé (retain_seconds) : le serveur peut effacer le reste.
+        "purge": 1,
         ...?access?.query,
         // What this device can decode and play back. Without it the server
         // assumes the weakest client it has ever had to serve — H.264 8-bit and
@@ -663,6 +629,7 @@ class ApiClient {
   /// Tout ce qui produit une session passe par ici — mot de passe, appairage
   /// TV, demande d'accès approuvée — pour qu'il n'y ait qu'un seul endroit où
   /// un serveur entre dans le carnet.
+  @override
   Future<ServerAccount> rememberSession({
     required String serverUrl,
     required String username,
@@ -729,6 +696,7 @@ class ApiClient {
   /// Ferme la session du compte actif **sur cet appareil** et passe au suivant
   /// s'il y en a un. C'est ce qui fait qu'une déconnexion d'un serveur ne
   /// renvoie pas à l'écran de connexion tant qu'un autre compte tient.
+  @override
   Future<void> clearAuth() async {
     await servers.load();
     final active = servers.active;
@@ -890,208 +858,6 @@ class ApiClient {
     });
   }
 
-  // ==================== USERS & INVITATIONS ====================
-
-  Future<List<User>> getUsers() async {
-    final response = await _dio.get("/api/users");
-    return (response.data as List<dynamic>)
-        .map((e) => User.fromJson(e as Map<String, dynamic>))
-        .toList();
-  }
-
-  /// Rewrites a user's rights. [inviteGrants] is the template their own
-  /// invitation links will apply; it is the admin who picks it, never them.
-  Future<User> updateUserPermissions(
-    int userId,
-    Permissions permissions, {
-    Permissions? inviteGrants,
-  }) async {
-    final response = await _dio.put("/api/users/$userId/permissions", data: {
-      "permissions": permissions.toJson(),
-      if (inviteGrants != null) "invite_grants": inviteGrants.toJson(),
-    });
-    return User.fromJson(response.data as Map<String, dynamic>);
-  }
-
-  Future<void> resetUserPassword(int userId, String newPassword) async {
-    await _dio.post("/api/users/$userId/password",
-        data: {"new_password": newPassword});
-  }
-
-  Future<void> deleteUser(int userId) async {
-    await _dio.delete("/api/users/$userId");
-  }
-
-  Future<void> transferOwnership(int userId) async {
-    await _dio.post("/api/users/$userId/transfer-ownership");
-  }
-
-  Future<List<Invitation>> getInvitations() async {
-    final response = await _dio.get("/api/invitations");
-    return (response.data as List<dynamic>)
-        .map((e) => Invitation.fromJson(e as Map<String, dynamic>))
-        .toList();
-  }
-
-  Future<Invitation> createInvitation({Permissions? grants}) async {
-    final response = await _dio.post(
-      "/api/invitations",
-      data: grants == null ? null : {"grants": grants.toJson()},
-    );
-    return Invitation.fromJson(response.data as Map<String, dynamic>);
-  }
-
-  Future<void> revokeInvitation(String token) async {
-    await _dio.delete("/api/invitations/$token");
-  }
-
-  /// The shareable link for an invitation. The server cannot build this itself
-  /// — behind a proxy or a tunnel it has no idea what its public address is —
-  /// so it is composed from the address this client is actually connected to.
-  /// That address may be LAN-only, which is why the raw code is shown next to
-  /// it: on the native apps it is the only usable path anyway.
-  String invitationLink(Invitation invitation) {
-    return "$baseUrl/?invite=${invitation.token}";
-  }
-
-  // ==================== DEMANDES D'ACCÈS ====================
-  //
-  // Deux moitiés qui ne parlent pas au même serveur.
-  //
-  // Côté demandeur, les appels visent un serveur **autre** que celui où la
-  // session est ouverte, et ils partent donc sur un Dio nu : l'intercepteur
-  // habituel poserait l'en-tête `Authorization` du compte actif, c'est-à-dire
-  // qu'il confierait la session ouverte chez l'un à l'autre. Ces routes sont
-  // ouvertes de toute façon — le demandeur n'a précisément pas de compte là-bas.
-  //
-  // Côté décideur, ce sont des appels ordinaires sur le serveur actif.
-
-  /// Un client sans intercepteur, pour parler à un serveur tiers sans rien lui
-  /// présenter de ce qui appartient au serveur actif.
-  Dio _bareClient() => Dio(BaseOptions(
-        connectTimeout: const Duration(seconds: 10),
-        receiveTimeout: const Duration(seconds: 30),
-      ));
-
-  /// Sonne à la porte d'un serveur : propose un identifiant, attend un verdict.
-  /// Rien n'est créé là-bas tant que personne n'a approuvé.
-  Future<AccessRequestTicket> requestAccess({
-    required String serverUrl,
-    required String username,
-    required String password,
-    String? deviceName,
-    String? message,
-  }) async {
-    final url = ServerAccount.normalizeUrl(serverUrl);
-    final response = await _bareClient().post(
-      "$url/api/auth/access/request",
-      data: {
-        "username": username,
-        "password": password,
-        if (deviceName != null && deviceName.isNotEmpty)
-          "device_name": deviceName,
-        if (message != null && message.isNotEmpty) "message": message,
-      },
-    );
-    return AccessRequestTicket.fromJson(response.data as Map<String, dynamic>);
-  }
-
-  /// Demande le verdict. Sur une approbation, la session est remise une seule
-  /// fois : ce qui en est fait ensuite regarde [rememberSession].
-  Future<AccessRequestVerdict> pollAccessRequest({
-    required String serverUrl,
-    required String requestCode,
-  }) async {
-    final url = ServerAccount.normalizeUrl(serverUrl);
-    final response = await _bareClient().post(
-      "$url/api/auth/access/poll",
-      data: {"request_code": requestCode},
-    );
-    return AccessRequestVerdict.fromJson(response.data as Map<String, dynamic>);
-  }
-
-  /// Ouvre une session sur un serveur tiers sans quitter celui qui est actif.
-  ///
-  /// C'est le cas de l'utilisateur qui a **déjà** un compte ailleurs : rien à
-  /// demander à personne, il suffit de le rentrer au carnet. Sur le Dio nu pour
-  /// la même raison que les demandes d'accès — le jeton du serveur actif n'a
-  /// rien à faire dans cet appel.
-  Future<User> signInAt({
-    required String serverUrl,
-    required String username,
-    required String password,
-    bool activate = false,
-  }) async {
-    final url = ServerAccount.normalizeUrl(serverUrl);
-    final response = await _bareClient().post(
-      "$url/api/auth/login",
-      data: {"username": username, "password": password},
-    );
-    final token = response.data["token"] as String;
-    final user = User.fromJson(response.data["user"] as Map<String, dynamic>);
-    await rememberSession(
-      serverUrl: url,
-      username: user.username,
-      token: token,
-      userId: user.id,
-      activate: activate,
-    );
-    return user;
-  }
-
-  /// Les demandes en attente sur le serveur actif.
-  Future<List<AccessRequest>> getAccessRequests() async {
-    final response = await _dio.get("/api/access-requests");
-    return (response.data as List<dynamic>)
-        .map((e) => AccessRequest.fromJson(e as Map<String, dynamic>))
-        .toList();
-  }
-
-  /// Accepte une demande. [permissions] n'est honoré que pour un titulaire de
-  /// `manage_users` ; un simple inviteur accorde son gabarit, quoi qu'il envoie.
-  Future<User> approveAccessRequest(int id, {Permissions? permissions}) async {
-    final response = await _dio.post(
-      "/api/access-requests/$id/approve",
-      data: permissions == null ? null : {"permissions": permissions.toJson()},
-    );
-    return User.fromJson(response.data as Map<String, dynamic>);
-  }
-
-  Future<void> denyAccessRequest(int id) async {
-    await _dio.post("/api/access-requests/$id/deny");
-  }
-
-  Future<User> login(String username, String password) async {
-    final response = await _dio.post("/api/auth/login", data: {
-      "username": username,
-      "password": password,
-    });
-
-    final token = response.data["token"] as String;
-    final userJson = response.data["user"] as Map<String, dynamic>;
-    final user = User.fromJson(userJson);
-
-    await rememberSession(
-      serverUrl: baseUrl,
-      username: user.username,
-      token: token,
-      userId: user.id,
-    );
-    return user;
-  }
-
-  Future<User> getMe() async {
-    final response = await _dio.get("/api/auth/me");
-    return User.fromJson(response.data as Map<String, dynamic>);
-  }
-
-  Future<void> logout() async {
-    try {
-      await _dio.post("/api/auth/logout");
-    } catch (_) {}
-    await clearAuth();
-  }
-
   // ==================== MEDIA API ====================
 
   /// Client apps (APK / DMG / EXE) embedded in the server image. Unauthenticated
@@ -1189,15 +955,17 @@ class ApiClient {
   }
 
   Future<List<HomeMediaItem>> getMovies() async {
-    final response = await _dio.get("/api/movies");
-    return (response.data as List<dynamic>)
+    final data =
+        await _libraryLists.get(_dio, "/api/movies", scope: accountId ?? '');
+    return (data as List<dynamic>)
         .map((e) => HomeMediaItem.fromJson(e as Map<String, dynamic>))
         .toList();
   }
 
   Future<List<Media>> getShows() async {
-    final response = await _dio.get("/api/shows");
-    return (response.data as List<dynamic>)
+    final data =
+        await _libraryLists.get(_dio, "/api/shows", scope: accountId ?? '');
+    return (data as List<dynamic>)
         .map((e) => Media.fromJson(e as Map<String, dynamic>))
         .toList();
   }
@@ -1260,124 +1028,6 @@ class ApiClient {
     });
 
     return response.data["is_finished"] as bool? ?? isFinished;
-  }
-
-  // ==================== REGARDER ENSEMBLE ====================
-  //
-  // Voir server/handlers/watch_party.go. Les réponses sont rendues brutes :
-  // c'est [WatchPartySession] qui les date à la réception, ce dont dépend
-  // toute la synchronisation.
-
-  Future<Map<String, dynamic>> createWatchParty({
-    required int mediaId,
-    required double positionSeconds,
-    required bool playing,
-  }) async {
-    final response = await _dio.post('/api/watch-parties', data: {
-      'media_id': mediaId,
-      'position_seconds': positionSeconds,
-      'playing': playing,
-    });
-    return response.data as Map<String, dynamic>;
-  }
-
-  Future<Map<String, dynamic>> joinWatchParty(String code) async {
-    final response =
-        await _dio.post('/api/watch-parties/${Uri.encodeComponent(code)}/join');
-    return response.data as Map<String, dynamic>;
-  }
-
-  /// Attend le prochain changement après [since] — jusqu'à une vingtaine de
-  /// secondes, sous le délai de réception du client.
-  Future<Map<String, dynamic>> pollWatchParty(
-    String code, {
-    required String memberId,
-    required int since,
-    CancelToken? cancelToken,
-  }) async {
-    final response = await _dio.get(
-      '/api/watch-parties/${Uri.encodeComponent(code)}',
-      queryParameters: {'member': memberId, 'since': since},
-      cancelToken: cancelToken,
-    );
-    return response.data as Map<String, dynamic>;
-  }
-
-  Future<Map<String, dynamic>> updateWatchParty(
-    String code, {
-    required String memberId,
-    required String action,
-    bool? playing,
-    double? positionSeconds,
-    int? mediaId,
-    bool? loading,
-  }) async {
-    final response = await _dio.post(
-      '/api/watch-parties/${Uri.encodeComponent(code)}/state',
-      data: {
-        'member_id': memberId,
-        'action': action,
-        if (playing != null) 'playing': playing,
-        if (positionSeconds != null) 'position_seconds': positionSeconds,
-        if (mediaId != null) 'media_id': mediaId,
-        if (loading != null) 'loading': loading,
-      },
-    );
-    return response.data as Map<String, dynamic>;
-  }
-
-  Future<void> leaveWatchParty(String code, {required String memberId}) async {
-    await _dio.post(
-      '/api/watch-parties/${Uri.encodeComponent(code)}/leave',
-      data: {'member_id': memberId},
-    );
-  }
-
-  Future<Map<String, dynamic>> setMediaWatched(
-      int mediaId, bool watched) async {
-    final response = await _dio.post("/api/media/$mediaId/watched", data: {
-      "watched": watched,
-    });
-    return response.data as Map<String, dynamic>;
-  }
-
-  /// Marque un lot de médias — en pratique une saison entière — vu ou non vu.
-  ///
-  /// Renvoie, par identifiant, ce que le serveur a retenu ; les identifiants
-  /// qu'il refuse (un épisode disparu, une saison) manquent simplement à
-  /// l'appel. Un serveur plus ancien ne connaît pas la route de lot : on
-  /// retombe alors sur les appels un par un, qui font le même travail en
-  /// vingt requêtes au lieu d'une.
-  Future<Map<int, Map<String, dynamic>>> setMediasWatched(
-      List<int> mediaIds, bool watched) async {
-    if (mediaIds.isEmpty) return {};
-    try {
-      final response = await _dio.post("/api/progress/watched", data: {
-        "media_ids": mediaIds,
-        "watched": watched,
-      });
-      final updated = (response.data as Map)["updated"] as List? ?? const [];
-      return {
-        for (final entry in updated)
-          if (entry is Map && entry["media_id"] is int)
-            entry["media_id"] as int: Map<String, dynamic>.from(entry),
-      };
-    } on DioException catch (error) {
-      final status = error.response?.statusCode;
-      if (status != 404 && status != 405) rethrow;
-      final results = <int, Map<String, dynamic>>{};
-      for (final mediaId in mediaIds) {
-        results[mediaId] = await setMediaWatched(mediaId, watched);
-      }
-      return results;
-    }
-  }
-
-  Future<void> hideFromContinueWatching({int? movieId, int? showId}) async {
-    final data = <String, dynamic>{};
-    if (movieId != null) data['movie_id'] = movieId;
-    if (showId != null) data['show_id'] = showId;
-    await _dio.post('/api/continue-watching/hide', data: data);
   }
 
   // ==================== EPISODE NAVIGATION ====================
@@ -1532,550 +1182,4 @@ class ApiClient {
     });
   }
 
-  // ==================== INDEXER API ====================
-
-  Future<void> triggerScan() async {
-    await _dio.post("/api/indexer/scan");
-  }
-
-  Future<void> triggerMetadataBackfill() async {
-    await _dio.post("/api/indexer/metadata/backfill");
-  }
-
-  Future<void> triggerRedetectAllMatches() async {
-    await _dio.post("/api/indexer/metadata/redetect-all");
-  }
-
-  /// Movies and shows that remain unidentified or have incomplete artwork/text.
-  /// The server rebuilds this queue from its database on every request.
-  Future<List<Media>> getMediaReviewQueue() async {
-    final response = await _dio.get("/api/indexer/review");
-    final data = response.data as Map<String, dynamic>;
-    final items = data["items"] as List? ?? const [];
-    return items
-        .map((e) => Media.fromJson(Map<String, dynamic>.from(e as Map)))
-        .toList();
-  }
-
-  /// Fetches TMDB poster/overview for a single movie or show.
-  Future<Media> enrichMediaMetadata(int mediaId) async {
-    final response = await _dio.post("/api/media/$mediaId/metadata/enrich");
-    return Media.fromJson(response.data as Map<String, dynamic>);
-  }
-
-  Future<Media> redetectMediaMetadata(int mediaId) async {
-    final response = await _dio.post("/api/media/$mediaId/metadata/redetect");
-    return Media.fromJson(response.data as Map<String, dynamic>);
-  }
-
-  /// Re-identifies a movie/show against TMDB to fix a wrong match. Provide a
-  /// [title] to search for, or a [tmdbId] to force an exact entry.
-  Future<Media> rematchMediaMetadata(
-    int mediaId, {
-    String? title,
-    int? tmdbId,
-  }) async {
-    final response = await _dio.post(
-      "/api/media/$mediaId/metadata/rematch",
-      queryParameters: {
-        if (title != null && title.trim().isNotEmpty) "title": title.trim(),
-        if (tmdbId != null && tmdbId > 0) "tmdb_id": tmdbId,
-      },
-    );
-    return Media.fromJson(response.data as Map<String, dynamic>);
-  }
-
-  /// Search TMDB manually for the "fix metadata" poster picker.
-  Future<List<TmdbCandidate>> searchTmdb(
-    String query, {
-    MediaType type = MediaType.movie,
-  }) async {
-    final response = await _dio.get(
-      "/api/tmdb/search",
-      queryParameters: {
-        "query": query.trim(),
-        "type": type == MediaType.show ? "show" : "movie",
-      },
-    );
-    final results = response.data["results"] as List? ?? [];
-    return results
-        .map((e) => TmdbCandidate.fromJson(e as Map<String, dynamic>))
-        .toList();
-  }
-
-  Future<void> triggerSubtitleExtract() async {
-    await _dio.post("/api/indexer/subtitles/extract");
-  }
-
-  /// Extract subtitles for a single movie or episode.
-  ///
-  /// [force] (default) re-extracts everything — used by the manual button.
-  /// When [force] is false the server only extracts if nothing is registered
-  /// yet, which is the cheap "ensure" path used in the background on playback.
-  Future<List<MediaSubtitleTrack>> forceMediaSubtitleExtract(
-    int mediaId, {
-    bool force = true,
-  }) async {
-    final response = await _dio.post(
-      "/api/media/$mediaId/subtitles/extract",
-      queryParameters: force ? null : {"force": "false"},
-    );
-    final subs = response.data["subtitles"] as List? ?? [];
-    return subs
-        .map((e) => MediaSubtitleTrack.fromJson(e as Map<String, dynamic>))
-        .toList();
-  }
-
-  Future<IndexerStatus> getIndexerStatus() async {
-    final response = await _dio.get("/api/indexer/status");
-    return IndexerStatus.fromJson(response.data as Map<String, dynamic>);
-  }
-
-  Future<bool> getScanStatus() async {
-    final status = await getIndexerStatus();
-    return status.isScanning;
-  }
-
-  // ==================== SERVER SETTINGS ====================
-
-  Future<ServerSettings> getServerSettings() async {
-    final response = await _dio.get('/api/settings');
-    return ServerSettings.fromJson(response.data as Map<String, dynamic>);
-  }
-
-  Future<ServerSettings> updateServerSettings({
-    String? mediaHubUrl,
-    String? mediaHubApiKey,
-    bool clearMediaHubApiKey = false,
-    String? tmdbApiKey,
-    bool clearTmdbApiKey = false,
-    String? tmdbLanguage,
-    String? moviesDir,
-    String? seriesDir,
-    bool? playbackLogsEnabled,
-    bool? playbackStatsEnabled,
-  }) async {
-    final response = await _dio.put('/api/settings', data: {
-      if (mediaHubUrl != null) 'mediahub_url': mediaHubUrl,
-      if (mediaHubApiKey != null) 'mediahub_api_key': mediaHubApiKey,
-      if (clearMediaHubApiKey) 'clear_mediahub_api_key': true,
-      if (tmdbApiKey != null) 'tmdb_api_key': tmdbApiKey,
-      if (clearTmdbApiKey) 'clear_tmdb_api_key': true,
-      if (tmdbLanguage != null) 'tmdb_language': tmdbLanguage,
-      if (moviesDir != null) 'movies_dir': moviesDir,
-      if (seriesDir != null) 'series_dir': seriesDir,
-      if (playbackLogsEnabled != null) 'playback_logs_enabled': playbackLogsEnabled,
-      if (playbackStatsEnabled != null)
-        'playback_stats_enabled': playbackStatsEnabled,
-    });
-    return ServerSettings.fromJson(response.data as Map<String, dynamic>);
-  }
-
-  // ==================== SYNCHRONISATION EMBY ====================
-
-  /// Le compte Emby lié à ce compte, dont la progression est synchronisée
-  /// dans les deux sens par le serveur. Voir `server/handlers/emby_sync.go`.
-  Future<EmbyLinkStatus> getEmbyLink() async {
-    final response = await _dio.get('/api/me/emby');
-    return EmbyLinkStatus.fromJson(Map<String, dynamic>.from(response.data as Map));
-  }
-
-  /// Le mot de passe ne sert qu'à obtenir un jeton : le serveur ne le garde pas.
-  Future<EmbyLinkStatus> linkEmby({
-    required String url,
-    required String username,
-    required String password,
-  }) async {
-    final response = await _dio.put('/api/me/emby', data: {
-      'url': url,
-      'username': username,
-      'password': password,
-    });
-    return EmbyLinkStatus.fromJson(Map<String, dynamic>.from(response.data as Map));
-  }
-
-  Future<EmbyLinkStatus> unlinkEmby() async {
-    final response = await _dio.delete('/api/me/emby');
-    return EmbyLinkStatus.fromJson(Map<String, dynamic>.from(response.data as Map));
-  }
-
-  /// Relit Emby et envoie ce qui a changé ici, sans attendre la tâche de fond.
-  /// Renvoie le nombre de progressions reçues et envoyées.
-  Future<({int pulled, int pushed})> syncEmbyNow() async {
-    final response = await _dio.post(
-      '/api/me/emby/sync',
-      options: Options(receiveTimeout: const Duration(minutes: 5)),
-    );
-    final data = Map<String, dynamic>.from(response.data as Map);
-    return (
-      pulled: (data['pulled'] as num?)?.toInt() ?? 0,
-      pushed: (data['pushed'] as num?)?.toInt() ?? 0,
-    );
-  }
-
-  // ==================== ACTIVITÉ, APPAREILS, STATISTIQUES ====================
-
-  /// Signal de lecture : ce que ce lecteur lit, où il en est, en pause ou non.
-  /// Le serveur en tire les lectures en cours du tableau de bord et
-  /// l'historique. Voir `server/handlers/activity.go`.
-  Future<void> reportPlayback({
-    required int mediaId,
-    required int positionSeconds,
-    required int durationSeconds,
-    required bool paused,
-    required PlayMethod playMethod,
-    String quality = '',
-    String event = 'progress',
-  }) async {
-    await _dio.post('/api/playing', data: {
-      'media_id': mediaId,
-      'position_seconds': positionSeconds,
-      'duration_seconds': durationSeconds,
-      'paused': paused,
-      'play_method': playMethod.wire,
-      if (quality.isNotEmpty) 'quality': quality,
-      'event': event,
-    });
-  }
-
-  /// Ce que ce compte lit sur ses autres appareils, pour le reprendre ici.
-  Future<List<RemotePlayback>> getMyRemotePlaybacks() async {
-    final response = await _dio.get('/api/me/now-playing');
-    final data = response.data;
-    if (data is! List) return const [];
-    return data
-        .whereType<Map<String, dynamic>>()
-        .map(RemotePlayback.tryParse)
-        .whereType<RemotePlayback>()
-        .toList();
-  }
-
-  /// Non nul quand la lecture de ce lecteur a été reprise sur un autre
-  /// appareil. Voir `server/handlers/playback_handoff.go`.
-  Future<PlaybackHandoff?> getPlaybackHandoff() async {
-    final response = await _dio.get('/api/playing/handoff');
-    final data = response.data;
-    if (response.statusCode == 204 || data is! Map<String, dynamic>) {
-      return null;
-    }
-    return PlaybackHandoff.fromJson(data);
-  }
-
-  Future<List<NowPlayingSession>> getNowPlaying() async {
-    final response = await _dio.get('/api/admin/activity');
-    return (response.data as List)
-        .map((e) => NowPlayingSession.fromJson(e as Map<String, dynamic>))
-        .toList();
-  }
-
-  Future<List<PlaybackHistoryEntry>> getPlaybackHistory({
-    int limit = 50,
-    int? beforeId,
-    int? userId,
-  }) async {
-    final response = await _dio.get('/api/admin/history', queryParameters: {
-      'limit': limit,
-      if (beforeId != null) 'before_id': beforeId,
-      if (userId != null) 'user_id': userId,
-    });
-    return (response.data as List)
-        .map((e) => PlaybackHistoryEntry.fromJson(e as Map<String, dynamic>))
-        .toList();
-  }
-
-  Future<void> clearPlaybackHistory() async {
-    await _dio.delete('/api/admin/history');
-  }
-
-  /// Envoie le journal de la lecture en cours.
-  ///
-  /// Le serveur le rattache à la séance ouverte pour cette session, donc
-  /// l'appel doit précéder le signal d'arrêt. Un serveur plus ancien n'a pas
-  /// cette route : l'appelant traite l'échec comme sans conséquence, une
-  /// lecture ne dépend pas de son journal.
-  ///
-  /// Rien à filtrer ici quand le serveur a coupé la conservation : le réglage
-  /// vit derrière `manage_settings`, qu'un compte ordinaire n'a pas, donc ce
-  /// client ne peut pas le connaître. C'est le serveur qui écarte la tranche,
-  /// par un 204 — la seule place où la réponse est sûre.
-  Future<void> uploadPlaybackLogs(
-    List<LogEntry> lines, {
-    Map<String, dynamic>? stats,
-  }) async {
-    if (lines.isEmpty && stats == null) return;
-    await _dio.post('/api/playing/logs', data: {
-      'lines': [
-        for (final line in lines)
-          {
-            'at': line.time.toUtc().toIso8601String(),
-            'level': line.level == LogLevel.error ? 'error' : 'info',
-            'message': line.message,
-          },
-      ],
-      if (stats != null) 'stats': stats,
-    });
-  }
-
-  /// Ce qu'une lecture passée a enregistré. Vide pour une lecture faite par un
-  /// client qui n'envoyait pas encore son journal.
-  Future<PlaybackLogs> getPlaybackLogs(int historyId) async {
-    final response = await _dio.get('/api/admin/history/$historyId/logs');
-    return PlaybackLogs.fromJson(response.data as Map<String, dynamic>);
-  }
-
-  /// Statistiques du serveur entier, ou d'un compte avec [userId]. Les jours
-  /// sont découpés dans le fuseau de cet appareil.
-  Future<PlaybackStats> getPlaybackStats({int days = 30, int? userId}) async {
-    final response = await _dio.get('/api/admin/stats', queryParameters: {
-      'days': days,
-      'tz_offset': DateTime.now().timeZoneOffset.inMinutes,
-      if (userId != null) 'user_id': userId,
-    });
-    return PlaybackStats.fromJson(response.data as Map<String, dynamic>);
-  }
-
-  Future<PlaybackStats> getMyPlaybackStats({int days = 30}) async {
-    final response = await _dio.get('/api/me/stats', queryParameters: {
-      'days': days,
-      'tz_offset': DateTime.now().timeZoneOffset.inMinutes,
-    });
-    return PlaybackStats.fromJson(response.data as Map<String, dynamic>);
-  }
-
-  Future<List<ConnectedDevice>> getMyDevices() async {
-    final response = await _dio.get('/api/me/devices');
-    return (response.data as List)
-        .map((e) => ConnectedDevice.fromJson(e as Map<String, dynamic>))
-        .toList();
-  }
-
-  Future<void> revokeMyDevice(int id) async {
-    await _dio.delete('/api/me/devices/$id');
-  }
-
-  Future<List<ConnectedDevice>> getAllDevices() async {
-    final response = await _dio.get('/api/admin/devices');
-    return (response.data as List)
-        .map((e) => ConnectedDevice.fromJson(e as Map<String, dynamic>))
-        .toList();
-  }
-
-  Future<void> revokeAnyDevice(int id) async {
-    await _dio.delete('/api/admin/devices/$id');
-  }
-
-  Future<ServerInfo> getServerInfo() async {
-    final response = await _dio.get('/api/admin/server');
-    return ServerInfo.fromJson(response.data as Map<String, dynamic>);
-  }
-
-  // ==================== PLAYER STUDIO LAYOUTS ====================
-
-  Future<List<PlayerLayoutPreset>> listPlayerLayouts() async {
-    final response = await _dio.get('/api/me/player-layouts');
-    final data = response.data;
-    final list = data is Map ? data['layouts'] as List? ?? const [] : const [];
-    return list
-        .whereType<Map>()
-        .map((e) => PlayerLayoutPreset.fromJson(Map<String, dynamic>.from(e)))
-        .where((p) => p.id.isNotEmpty)
-        .toList();
-  }
-
-  Future<PlayerLayoutPreset> createPlayerLayout({
-    required String name,
-    required PlayerLayoutConfig config,
-    required bool useModular,
-  }) async {
-    final response = await _dio.post('/api/me/player-layouts', data: {
-      'name': name,
-      'config': config.toJson(),
-      'use_modular': useModular,
-    });
-    return PlayerLayoutPreset.fromJson(
-      Map<String, dynamic>.from(response.data as Map),
-    );
-  }
-
-  Future<PlayerLayoutPreset> updatePlayerLayout({
-    required String id,
-    String? name,
-    PlayerLayoutConfig? config,
-    bool? useModular,
-  }) async {
-    final response = await _dio.put('/api/me/player-layouts/$id', data: {
-      if (name != null) 'name': name,
-      if (config != null) 'config': config.toJson(),
-      if (useModular != null) 'use_modular': useModular,
-    });
-    return PlayerLayoutPreset.fromJson(
-      Map<String, dynamic>.from(response.data as Map),
-    );
-  }
-
-  Future<void> deletePlayerLayout(String id) async {
-    await _dio.delete('/api/me/player-layouts/$id');
-  }
-}
-
-/// État du lien Emby d'un compte (GET/PUT/DELETE /api/me/emby).
-class EmbyLinkStatus {
-  final bool linked;
-  final String url;
-  final String username;
-  final DateTime? lastSyncAt;
-  final String lastError;
-
-  const EmbyLinkStatus({
-    required this.linked,
-    this.url = '',
-    this.username = '',
-    this.lastSyncAt,
-    this.lastError = '',
-  });
-
-  factory EmbyLinkStatus.fromJson(Map<String, dynamic> json) {
-    final stamp = json['last_sync_at'] as String?;
-    return EmbyLinkStatus(
-      linked: json['linked'] as bool? ?? false,
-      url: json['url'] as String? ?? '',
-      username: json['username'] as String? ?? '',
-      lastSyncAt: stamp == null ? null : DateTime.tryParse(stamp)?.toLocal(),
-      lastError: json['last_error'] as String? ?? '',
-    );
-  }
-}
-
-/// Public server settings from GET/PUT /api/settings (secrets are never cleartext).
-class ServerSettings {
-  final String mediaHubUrl;
-  final bool mediaHubApiKeySet;
-  final String? mediaHubApiKeyHint;
-  final bool tmdbApiKeySet;
-  final String? tmdbApiKeyHint;
-  final String tmdbLanguage;
-  final String moviesDir;
-  final String seriesDir;
-  final bool playbackLogsEnabled;
-
-  /// Les mesures ont leur propre réglage : elles interrogent le moteur pendant
-  /// toute la lecture, là où le journal ne coûte rien avant la fin.
-  final bool playbackStatsEnabled;
-
-  ServerSettings({
-    required this.mediaHubUrl,
-    required this.mediaHubApiKeySet,
-    this.mediaHubApiKeyHint,
-    required this.tmdbApiKeySet,
-    this.tmdbApiKeyHint,
-    required this.tmdbLanguage,
-    required this.moviesDir,
-    required this.seriesDir,
-    required this.playbackLogsEnabled,
-    required this.playbackStatsEnabled,
-  });
-
-  factory ServerSettings.fromJson(Map<String, dynamic> json) {
-    return ServerSettings(
-      mediaHubUrl: json['mediahub_url'] as String? ?? '',
-      mediaHubApiKeySet: json['mediahub_api_key_set'] as bool? ?? false,
-      mediaHubApiKeyHint: json['mediahub_api_key_hint'] as String?,
-      tmdbApiKeySet: json['tmdb_api_key_set'] as bool? ?? false,
-      tmdbApiKeyHint: json['tmdb_api_key_hint'] as String?,
-      tmdbLanguage: json['tmdb_language'] as String? ?? 'fr-FR',
-      moviesDir: json['movies_dir'] as String? ?? '',
-      seriesDir: json['series_dir'] as String? ?? '',
-      playbackLogsEnabled: json['playback_logs_enabled'] as bool? ?? true,
-      playbackStatsEnabled: json['playback_stats_enabled'] as bool? ?? true,
-    );
-  }
-}
-
-/// Combined indexer / subtitle-extraction status from the server.
-class IndexerStatus {
-  final bool isScanning;
-  final bool isBackfillingMetadata;
-  final bool isRedetectingAll;
-  final RedetectAllProgress redetectAll;
-  final bool isExtractingSubtitles;
-  final SubtitleExtractionStats subtitleExtraction;
-
-  IndexerStatus({
-    required this.isScanning,
-    required this.isBackfillingMetadata,
-    required this.isRedetectingAll,
-    required this.redetectAll,
-    required this.isExtractingSubtitles,
-    required this.subtitleExtraction,
-  });
-
-  factory IndexerStatus.fromJson(Map<String, dynamic> json) {
-    return IndexerStatus(
-      isScanning: json["is_scanning"] as bool? ?? false,
-      isBackfillingMetadata: json["is_backfilling_metadata"] as bool? ?? false,
-      isRedetectingAll: json["is_redetecting_all"] as bool? ?? false,
-      redetectAll: RedetectAllProgress.fromJson(
-        json["redetect_all"] as Map<String, dynamic>? ?? {},
-      ),
-      isExtractingSubtitles: json["is_extracting_subtitles"] as bool? ?? false,
-      subtitleExtraction: SubtitleExtractionStats.fromJson(
-        json["subtitle_extraction"] as Map<String, dynamic>? ?? {},
-      ),
-    );
-  }
-
-  bool get isBusy =>
-      isScanning ||
-      isBackfillingMetadata ||
-      isRedetectingAll ||
-      isExtractingSubtitles;
-}
-
-class RedetectAllProgress {
-  final int total;
-  final int processed;
-  final int updated;
-  final int skipped;
-
-  RedetectAllProgress({
-    this.total = 0,
-    this.processed = 0,
-    this.updated = 0,
-    this.skipped = 0,
-  });
-
-  factory RedetectAllProgress.fromJson(Map<String, dynamic> json) {
-    return RedetectAllProgress(
-      total: json["total"] as int? ?? 0,
-      processed: json["processed"] as int? ?? 0,
-      updated: json["updated"] as int? ?? 0,
-      skipped: json["skipped"] as int? ?? 0,
-    );
-  }
-}
-
-class SubtitleExtractionStats {
-  final int total;
-  final int processed;
-  final int succeeded;
-  final int failed;
-  final int tracks;
-
-  SubtitleExtractionStats({
-    this.total = 0,
-    this.processed = 0,
-    this.succeeded = 0,
-    this.failed = 0,
-    this.tracks = 0,
-  });
-
-  factory SubtitleExtractionStats.fromJson(Map<String, dynamic> json) {
-    return SubtitleExtractionStats(
-      total: json["total"] as int? ?? 0,
-      processed: json["processed"] as int? ?? 0,
-      succeeded: json["succeeded"] as int? ?? 0,
-      failed: json["failed"] as int? ?? 0,
-      tracks: json["tracks"] as int? ?? 0,
-    );
-  }
 }

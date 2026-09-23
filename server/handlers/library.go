@@ -25,7 +25,7 @@ func GetMovies(w http.ResponseWriter, r *http.Request, _ httprouter.Params, user
 		ORDER BY m.title ASC`, userID)
 	if err != nil {
 		log.Printf("Movies error: failed to query: %v", err)
-		http.Error(w, `{"error": "Internal database error"}`, http.StatusInternalServerError)
+		writeJSONError(w, http.StatusInternalServerError, "Internal database error")
 		return
 	}
 	defer rows.Close()
@@ -43,10 +43,10 @@ func GetMovies(w http.ResponseWriter, r *http.Request, _ httprouter.Params, user
 	rows.Close()
 	results, err = groupMediaVersions(results)
 	if err != nil {
-		http.Error(w, `{"error":"Unable to load versions"}`, http.StatusInternalServerError)
+		writeJSONError(w, http.StatusInternalServerError, "Unable to load versions")
 		return
 	}
-	json.NewEncoder(w).Encode(results)
+	writeETaggedJSON(w, r, results)
 }
 
 // showLibraryItem is a show row carrying the watch roll-up the catalog grid
@@ -84,7 +84,7 @@ func GetShows(w http.ResponseWriter, r *http.Request, _ httprouter.Params, userI
 		ORDER BY m.title ASC`)
 	if err != nil {
 		log.Printf("Shows error: failed to query: %v", err)
-		http.Error(w, `{"error": "Internal database error"}`, http.StatusInternalServerError)
+		writeJSONError(w, http.StatusInternalServerError, "Internal database error")
 		return
 	}
 
@@ -96,7 +96,7 @@ func GetShows(w http.ResponseWriter, r *http.Request, _ httprouter.Params, userI
 		stats = map[int]showWatchStats{}
 	}
 
-	json.NewEncoder(w).Encode(buildShowLibraryItems(results, stats))
+	writeETaggedJSON(w, r, buildShowLibraryItems(results, stats))
 }
 
 // loadShowWatchStats counts, per show row, the episodes present on disk and how
@@ -170,7 +170,7 @@ func GetSeasonEpisodes(w http.ResponseWriter, r *http.Request, ps httprouter.Par
 
 	seasonID, err := strconv.Atoi(ps.ByName("id"))
 	if err != nil {
-		http.Error(w, `{"error": "Invalid season ID"}`, http.StatusBadRequest)
+		writeJSONError(w, http.StatusBadRequest, "Invalid season ID")
 		return
 	}
 
@@ -186,7 +186,7 @@ func GetSeasonEpisodes(w http.ResponseWriter, r *http.Request, ps httprouter.Par
 		ORDER BY COALESCE(NULLIF(m.episode_number, 0), 9999), m.id ASC`, userID, seasonID)
 	if err != nil {
 		log.Printf("Episodes error: failed to query: %v", err)
-		http.Error(w, `{"error": "Internal database error"}`, http.StatusInternalServerError)
+		writeJSONError(w, http.StatusInternalServerError, "Internal database error")
 		return
 	}
 	defer rows.Close()
@@ -204,7 +204,7 @@ func GetSeasonEpisodes(w http.ResponseWriter, r *http.Request, ps httprouter.Par
 	rows.Close()
 	results, err = groupMediaVersions(results)
 	if err != nil {
-		http.Error(w, `{"error":"Unable to load versions"}`, http.StatusInternalServerError)
+		writeJSONError(w, http.StatusInternalServerError, "Unable to load versions")
 		return
 	}
 	json.NewEncoder(w).Encode(results)

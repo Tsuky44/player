@@ -203,6 +203,9 @@ func ResetUserPassword(w http.ResponseWriter, r *http.Request, ps httprouter.Par
 	if _, err := database.DB.Exec("DELETE FROM sessions WHERE user_id = ?", target.ID); err != nil {
 		log.Printf("ResetUserPassword: failed to clear sessions of %d: %v", target.ID, err)
 	}
+	// Après la suppression, pas avant : une requête glissée entre les deux
+	// remettrait en cache une session encore en base.
+	forgetCachedSessionsOf(target.ID)
 
 	w.Write([]byte(`{"status": "success"}`))
 }
@@ -239,6 +242,8 @@ func DeleteUser(w http.ResponseWriter, r *http.Request, ps httprouter.Params, us
 		}
 	}
 
+	// Ses sessions partent avec lui (ON DELETE CASCADE) : le cache aussi.
+	defer forgetCachedSessionsOf(target.ID)
 	if _, err := database.DB.Exec("DELETE FROM users WHERE id = ?", target.ID); err != nil {
 		log.Printf("DeleteUser: delete failed for %d: %v", target.ID, err)
 		writeJSONError(w, http.StatusInternalServerError, "Internal server error")

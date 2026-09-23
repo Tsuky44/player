@@ -2,19 +2,23 @@ package main
 
 import (
 	"context"
+	"errors"
 	"flag"
 	"log"
 	"net/http"
 	"os"
+	"os/signal"
 	"path/filepath"
 	"strconv"
 	"strings"
+	"syscall"
 	"time"
 
 	"project-player/server/config"
 	"project-player/server/database"
 	"project-player/server/handlers"
 	"project-player/server/indexer"
+	"project-player/server/logging"
 	"project-player/server/middleware"
 	"project-player/server/models"
 	"project-player/server/streaming"
@@ -28,6 +32,7 @@ func main() {
 	dbPath := flag.String("db", "./data/player.db", "Path to SQLite database file")
 	scanOnStartup := flag.Bool("scan-startup", true, "Trigger a media scan on startup")
 	flag.Parse()
+	logging.Setup()
 
 	log.Println("Starting Project Player Media Server...")
 
@@ -67,8 +72,9 @@ func main() {
 	// Initialize router
 	router := httprouter.New()
 
-	// Global middleware: CORS on the outside, then gzip for the JSON API.
-	handler := middleware.Gzip(router)
+	// Global middleware: CORS on the outside, then the body limit, then gzip for
+	// the JSON API.
+	handler := middleware.LimitBodies(middleware.Gzip(router))
 	corsRouter := setupCORS(handler)
 
 	// Base API route
@@ -88,9 +94,9 @@ func main() {
 	// 1. Authentication Routes
 	// Register is not open sign-up: it only succeeds on a pristine server (that
 	// account becomes the owner) or with a valid invitation token.
-	router.POST("/api/auth/register", handlers.Register)
+	router.POST("/api/auth/register", handlers.RateLimited(handlers.SignupLimiter, handlers.Register))
 	router.GET("/api/auth/state", handlers.GetAuthState)
-	router.POST("/api/auth/login", handlers.Login)
+	router.POST("/api/auth/login", handlers.RateLimited(handlers.LoginLimiter, handlers.Login))
 	router.POST("/api/auth/logout", handlers.Logout)
 	router.GET("/api/auth/me", handlers.RequireAuth(handlers.Me))
 	router.POST("/api/playback/tickets", handlers.RequireAuth(handlers.CreatePlaybackTicket))
@@ -102,8 +108,8 @@ func main() {
 	// because the caller is a television that has no account yet; both only ever
 	// speak in random codes, and nothing is minted until a signed-in phone
 	// approves. approve/deny run as the user whose account the TV inherits.
-	router.POST("/api/auth/device/start", handlers.StartDevicePairing)
-	router.POST("/api/auth/device/poll", handlers.PollDevicePairing)
+	router.POST("/api/auth/device/start", handlers.RateLimited(handlers.SignupLimiter, handlers.StartDevicePairing))
+	router.POST("/api/auth/device/poll", handlers.RateLimited(handlers.PollLimiter, handlers.PollDevicePairing))
 	router.GET("/api/auth/device/pending", handlers.RequireAuth(handlers.LookupDevicePairing))
 	router.POST("/api/auth/device/approve", handlers.RequireAuth(handlers.ApproveDevicePairing))
 	router.POST("/api/auth/device/deny", handlers.RequireAuth(handlers.DenyDevicePairing))
@@ -115,8 +121,8 @@ func main() {
 	// ouvertes parce que le demandeur n'a pas de compte ici — c'est tout
 	// l'objet — et ne parlent qu'en codes aléatoires ; rien n'est créé tant
 	// qu'un administrateur n'a pas approuvé. Voir ADR-0013.
-	router.POST("/api/auth/access/request", handlers.RequestAccess)
-	router.POST("/api/auth/access/poll", handlers.PollAccessRequest)
+	router.POST("/api/auth/access/request", handlers.RateLimited(handlers.SignupLimiter, handlers.RequestAccess))
+	router.POST("/api/auth/access/poll", handlers.RateLimited(handlers.PollLimiter, handlers.PollAccessRequest))
 
 	// User administration & invitations (lot A).
 	router.GET("/api/users", handlers.RequirePermission(models.PermManageUsers, handlers.ListUsers))
@@ -163,7 +169,7 @@ func main() {
 	// Serveurs liés (ADR-0017) : la progression passe d'un serveur à l'autre
 	// sans dépendre d'une app ouverte.
 	router.GET("/api/federation/info", handlers.GetFederationInfo)
-	router.POST("/api/federation/claim", handlers.ClaimAccountLink)
+	router.POST("/api/federation/claim", handlers.RateLimited(handlers.LoginLimiter, handlers.ClaimAccountLink))
 	router.POST("/api/federation/approval", handlers.RequirePeer(handlers.PeerApproval))
 	router.POST("/api/federation/progress", handlers.RequirePeer(handlers.PeerProgress))
 	router.POST("/api/federation/unlink", handlers.RequirePeer(handlers.PeerUnlink))
@@ -352,11 +358,6 @@ func main() {
 		log.Println("         Configure it in Paramètres, or set TMDB_API_KEY in the environment.")
 	}
 
-	// Create data directory if it doesn't exist
-	if err := os.MkdirAll("./data", 0755); err != nil {
-		log.Printf("Warning: failed to create data directory: %v", err)
-	}
-
 	// Start server with generous timeouts for large Range responses.
 	addr := ":" + *port
 	log.Printf("Server listening on http://localhost%s", addr)
@@ -367,9 +368,37 @@ func main() {
 		WriteTimeout: 0, // no write deadline — long video ranges
 		IdleTimeout:  120 * time.Second,
 	}
-	if err := server.ListenAndServe(); err != nil {
-		log.Fatalf("Server failed to start: %v", err)
+
+	// Arrêt propre. Le processus s'arrêtait sur le signal sans rien fermer :
+	// les FFmpeg des sessions lui survivaient, leurs segments restaient sur le
+	// disque, et la base était fermée par le système plutôt que par nous.
+	signals, stopSignals := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
+	defer stopSignals()
+	served := make(chan error, 1)
+	go func() { served <- server.ListenAndServe() }()
+
+	select {
+	case err := <-served:
+		if !errors.Is(err, http.ErrServerClosed) {
+			log.Fatalf("Server failed to start: %v", err)
+		}
+	case <-signals.Done():
+		log.Println("Shutting down...")
 	}
+
+	// Les sessions d'abord : leurs requêtes en cours échouent aussitôt, au
+	// lieu de tenir l'arrêt ouvert. Cinq secondes ensuite pour les autres —
+	// l'arrêt d'un conteneur en laisse dix avant de tout tuer.
+	hlsHandler.Close()
+	stopPlaybackReaper()
+	shutdown, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	if err := server.Shutdown(shutdown); err != nil {
+		// Un flux Direct Play ne devient jamais inactif de lui-même.
+		log.Printf("Shutdown: closing %v", err)
+		_ = server.Close()
+	}
+	log.Println("Server stopped.")
 }
 
 // setupCORS wraps the handler chain to inject general CORS headers for all requests

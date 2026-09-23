@@ -47,6 +47,72 @@ func (m *SessionManager) Count() int {
 	return len(m.sessions)
 }
 
+// LiveCountExcept compte les sessions que le plafond de maxTranscodes borne :
+// ni celles déjà remplacées, ni celles du ticket qui demande une nouvelle
+// session — la nouvelle va les remplacer, et un changement de qualité au
+// plafond ne doit pas être refusé pour cela.
+func (m *SessionManager) LiveCountExcept(ticket [32]byte) int {
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+	n := 0
+	for _, s := range m.sessions {
+		if !s.superseded && s.TicketHash != ticket {
+			n++
+		}
+	}
+	return n
+}
+
+// supersedeGrace est ce qu'une session remplacée garde à vivre.
+//
+// Un saut hors de la session, un changement de qualité ou de sous-titre
+// incrusté ouvrent une nouvelle session sur le même ticket, et le client ne
+// détruit l'ancienne qu'une fois la nouvelle prête — ou jamais, s'il plante
+// entre-temps : elle tournait alors jusqu'à l'inactivité, cinq minutes. La
+// détruire tout de suite couperait l'image que le client montre encore pendant
+// l'ouverture de la nouvelle, d'où ce délai.
+var supersedeGrace = 30 * time.Second
+
+// Supersede marque comme remplacées les sessions ouvertes avec ce ticket,
+// sauf keepID, et les détruit au bout de supersedeGrace si le client ne l'a
+// pas fait avant.
+func (m *SessionManager) Supersede(ticket [32]byte, keepID string) {
+	m.mu.Lock()
+	var ids []string
+	for id, s := range m.sessions {
+		if id != keepID && s.TicketHash == ticket && !s.superseded {
+			s.superseded = true
+			ids = append(ids, id)
+		}
+	}
+	m.mu.Unlock()
+	for _, id := range ids {
+		id := id
+		time.AfterFunc(supersedeGrace, func() { m.DestroySession(id) })
+	}
+}
+
+// DestroyAll arrête toutes les sessions, à l'arrêt du serveur. En parallèle :
+// chacune peut attendre trois secondes que son FFmpeg s'arrête, et l'arrêt
+// d'un conteneur ne laisse que dix secondes avant de tout tuer.
+func (m *SessionManager) DestroyAll() {
+	m.mu.RLock()
+	ids := make([]string, 0, len(m.sessions))
+	for id := range m.sessions {
+		ids = append(ids, id)
+	}
+	m.mu.RUnlock()
+	var wg sync.WaitGroup
+	for _, id := range ids {
+		wg.Add(1)
+		go func(id string) {
+			defer wg.Done()
+			m.DestroySession(id)
+		}(id)
+	}
+	wg.Wait()
+}
+
 // DestroySession kills the FFmpeg process, cleans up temp files, and removes the session.
 func (m *SessionManager) DestroySession(id string) {
 	m.mu.Lock()

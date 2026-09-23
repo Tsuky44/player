@@ -38,3 +38,10 @@ Thumbs.db
 server/downloads/*
 !server/downloads/.gitkeep
 jellyfin code/
+
+# Python
+__pycache__/
+
+# Données locales d'un serveur lancé depuis server/ (base, sous-titres extraits,
+# aperçus) : propres à la machine, jamais versionnées.
+server/data/

@@ -23,12 +23,12 @@ func EnrichMediaMetadata(w http.ResponseWriter, r *http.Request, ps httprouter.P
 
 	mediaID, err := strconv.Atoi(ps.ByName("id"))
 	if err != nil {
-		http.Error(w, `{"error": "Invalid media ID"}`, http.StatusBadRequest)
+		writeJSONError(w, http.StatusBadRequest, "Invalid media ID")
 		return
 	}
 
 	if !indexer.EnrichMediaByID(mediaID) {
-		http.Error(w, `{"error": "No metadata found on TMDB"}`, http.StatusNotFound)
+		writeJSONError(w, http.StatusNotFound, "No metadata found on TMDB")
 		return
 	}
 
@@ -42,7 +42,7 @@ func writeMediaByID(w http.ResponseWriter, mediaID int) {
 	m, err := scanMedia(database.DB.QueryRow(
 		`SELECT `+mediaColumns+` FROM medias m WHERE m.id = ?`, mediaID))
 	if err != nil {
-		http.Error(w, `{"error": "Media not found"}`, http.StatusNotFound)
+		writeJSONError(w, http.StatusNotFound, "Media not found")
 		return
 	}
 	json.NewEncoder(w).Encode(m)
@@ -57,18 +57,18 @@ func GetMediaDetails(w http.ResponseWriter, r *http.Request, ps httprouter.Param
 
 	mediaID, err := strconv.Atoi(ps.ByName("id"))
 	if err != nil || mediaID <= 0 {
-		http.Error(w, `{"error": "Invalid media ID"}`, http.StatusBadRequest)
+		writeJSONError(w, http.StatusBadRequest, "Invalid media ID")
 		return
 	}
 
 	var mediaType string
 	err = database.DB.QueryRow(`SELECT type FROM medias WHERE id = ?`, mediaID).Scan(&mediaType)
 	if err == sql.ErrNoRows {
-		http.Error(w, `{"error": "Media not found"}`, http.StatusNotFound)
+		writeJSONError(w, http.StatusNotFound, "Media not found")
 		return
 	}
 	if err != nil {
-		http.Error(w, `{"error": "Internal database error"}`, http.StatusInternalServerError)
+		writeJSONError(w, http.StatusInternalServerError, "Internal database error")
 		return
 	}
 	mt := models.MediaType(mediaType)
@@ -87,12 +87,12 @@ func GetMediaDetails(w http.ResponseWriter, r *http.Request, ps httprouter.Param
 		FROM medias WHERE id = ? AND type IN ('movie', 'show')`, mediaID,
 	).Scan(&mediaType, &title, &filePath, &duration, &posterURL, &overview, &releaseDate, &tmdbID)
 	if err == sql.ErrNoRows {
-		http.Error(w, `{"error": "Media not found"}`, http.StatusNotFound)
+		writeJSONError(w, http.StatusNotFound, "Media not found")
 		return
 	}
 	if err != nil {
 		log.Printf("MediaDetails error: failed to load media %d: %v", mediaID, err)
-		http.Error(w, `{"error": "Internal database error"}`, http.StatusInternalServerError)
+		writeJSONError(w, http.StatusInternalServerError, "Internal database error")
 		return
 	}
 
@@ -136,7 +136,7 @@ func GetMediaDetails(w http.ResponseWriter, r *http.Request, ps httprouter.Param
 	if mt == models.TypeMovie {
 		details.Versions, err = movieVersions(mediaID, userID)
 		if err != nil {
-			http.Error(w, `{"error":"Unable to load versions"}`, http.StatusInternalServerError)
+			writeJSONError(w, http.StatusInternalServerError, "Unable to load versions")
 			return
 		}
 	}
@@ -237,12 +237,12 @@ func RedetectMediaMetadata(w http.ResponseWriter, r *http.Request, ps httprouter
 
 	mediaID, err := strconv.Atoi(ps.ByName("id"))
 	if err != nil || mediaID <= 0 {
-		http.Error(w, `{"error": "Invalid media ID"}`, http.StatusBadRequest)
+		writeJSONError(w, http.StatusBadRequest, "Invalid media ID")
 		return
 	}
 
 	if !indexer.RedetectMediaByID(mediaID) {
-		http.Error(w, `{"error": "No matching title found on TMDB"}`, http.StatusNotFound)
+		writeJSONError(w, http.StatusNotFound, "No matching title found on TMDB")
 		return
 	}
 
@@ -257,13 +257,13 @@ func GetPersonDetails(w http.ResponseWriter, r *http.Request, ps httprouter.Para
 
 	personID, err := strconv.Atoi(ps.ByName("id"))
 	if err != nil || personID <= 0 {
-		http.Error(w, `{"error": "Invalid person ID"}`, http.StatusBadRequest)
+		writeJSONError(w, http.StatusBadRequest, "Invalid person ID")
 		return
 	}
 
 	person := indexer.FetchPersonDetails(personID)
 	if person == nil {
-		http.Error(w, `{"error": "Person not found"}`, http.StatusNotFound)
+		writeJSONError(w, http.StatusNotFound, "Person not found")
 		return
 	}
 
@@ -278,13 +278,13 @@ func GetCollectionDetails(w http.ResponseWriter, r *http.Request, ps httprouter.
 
 	collectionID, err := strconv.Atoi(ps.ByName("id"))
 	if err != nil || collectionID <= 0 {
-		http.Error(w, `{"error": "Invalid collection ID"}`, http.StatusBadRequest)
+		writeJSONError(w, http.StatusBadRequest, "Invalid collection ID")
 		return
 	}
 
 	collection := indexer.FetchCollectionDetails(collectionID)
 	if collection == nil {
-		http.Error(w, `{"error": "Collection not found"}`, http.StatusNotFound)
+		writeJSONError(w, http.StatusNotFound, "Collection not found")
 		return
 	}
 
@@ -354,7 +354,7 @@ func SearchTMDBMetadata(w http.ResponseWriter, r *http.Request, _ httprouter.Par
 
 	query := strings.TrimSpace(r.URL.Query().Get("query"))
 	if query == "" {
-		http.Error(w, `{"error": "query is required"}`, http.StatusBadRequest)
+		writeJSONError(w, http.StatusBadRequest, "query is required")
 		return
 	}
 
@@ -377,7 +377,7 @@ func RematchMediaMetadata(w http.ResponseWriter, r *http.Request, ps httprouter.
 
 	mediaID, err := strconv.Atoi(ps.ByName("id"))
 	if err != nil || mediaID <= 0 {
-		http.Error(w, `{"error": "Invalid media ID"}`, http.StatusBadRequest)
+		writeJSONError(w, http.StatusBadRequest, "Invalid media ID")
 		return
 	}
 
@@ -390,7 +390,7 @@ func RematchMediaMetadata(w http.ResponseWriter, r *http.Request, ps httprouter.
 	}
 
 	if !indexer.RematchMediaByID(mediaID, overrideTitle, overrideTMDBID) {
-		http.Error(w, `{"error": "No matching title found on TMDB"}`, http.StatusNotFound)
+		writeJSONError(w, http.StatusNotFound, "No matching title found on TMDB")
 		return
 	}
 

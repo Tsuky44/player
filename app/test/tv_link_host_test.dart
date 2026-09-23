@@ -7,8 +7,13 @@ import 'dart:io';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:onyx/services/tv_link_host.dart';
 
-/// Posts a delivery to the television, the way the phone does.
-Future<HttpClientResponse> deliver(
+/// Posts a delivery to the television, the way the phone does, and returns
+/// its status code.
+///
+/// The body is read before the client is closed: closing it by force first
+/// cuts the connection under a response that is still arriving, which failed
+/// these tests intermittently with "Connection closed while receiving data".
+Future<int> deliver(
   Uri endpoint,
   Map<String, dynamic> body,
 ) async {
@@ -17,7 +22,9 @@ Future<HttpClientResponse> deliver(
     final request = await client.postUrl(endpoint);
     request.headers.contentType = ContentType.json;
     request.write(jsonEncode(body));
-    return await request.close();
+    final response = await request.close();
+    await response.drain<void>();
+    return response.statusCode;
   } finally {
     client.close(force: true);
   }
@@ -57,12 +64,11 @@ void main() {
     if (offer == null) return;
     final code = Uri.parse(offer.url).queryParameters['c']!;
 
-    final response = await deliver(
+    final status = await deliver(
       Uri.parse('http://127.0.0.1:${offer.port}/link'),
       validBody(code),
     );
-    expect(response.statusCode, 200);
-    await response.drain<void>();
+    expect(status, 200);
 
     final payload = await host.linked;
     expect(payload.serverUrl, 'http://192.168.1.50:8080');
@@ -74,14 +80,13 @@ void main() {
     final offer = await host.start(deviceName: 'Salon');
     if (offer == null) return;
 
-    final response = await deliver(
+    final status = await deliver(
       Uri.parse('http://127.0.0.1:${offer.port}/link'),
       validBody('not-the-code'),
     );
     // The code is the only thing standing between this listener and anyone else
     // on the network: it decides which server the television is pointed at.
-    expect(response.statusCode, 403);
-    await response.drain<void>();
+    expect(status, 403);
   });
 
   test('a delivery missing the server or the token is refused', () async {
@@ -89,12 +94,11 @@ void main() {
     if (offer == null) return;
     final code = Uri.parse(offer.url).queryParameters['c']!;
 
-    final response = await deliver(
+    final status = await deliver(
       Uri.parse('http://127.0.0.1:${offer.port}/link'),
       {'code': code, 'token': 'session-token'},
     );
-    expect(response.statusCode, 400);
-    await response.drain<void>();
+    expect(status, 400);
   });
 
   test('the listener closes itself once it has been used', () async {
@@ -103,7 +107,7 @@ void main() {
     final code = Uri.parse(offer.url).queryParameters['c']!;
 
     final endpoint = Uri.parse('http://127.0.0.1:${offer.port}/link');
-    await (await deliver(endpoint, validBody(code))).drain<void>();
+    await deliver(endpoint, validBody(code));
     await host.linked;
 
     // One delivery only, and no socket left open on a living-room network.

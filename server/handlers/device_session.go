@@ -52,9 +52,7 @@ func CreateDeviceSession(w http.ResponseWriter, _ *http.Request, _ httprouter.Pa
 		return
 	}
 
-	if _, err := database.DB.Exec(
-		`INSERT INTO sessions (token, user_id) VALUES (?, ?)`, token, userID,
-	); err != nil {
+	if err := storeSession(database.DB, token, userID); err != nil {
 		log.Printf("CreateDeviceSession: session insert failed: %v", err)
 		writeJSONError(w, http.StatusInternalServerError, "Internal server error")
 		return

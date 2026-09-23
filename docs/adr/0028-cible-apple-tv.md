@@ -52,7 +52,8 @@ résolution de la source, puisqu'une recopie ne coûte rien au serveur.
 
 Le port ne fournit ni flux de position ni sous-titres externes. La session relit la position
 toutes les 250 ms, découpe le WebVTT du serveur (`VttCues`) et le peint avec le
-`SubtitleOverlay` d'Android.
+`SubtitleOverlay` d'Android. Depuis l'[ADR-0031](0031-sous-titres-ecrits-par-la-session.md), ce WebVTT est celui que la
+session écrit au fil du transcodage, peint par la couche commune à tous les moteurs.
 
 ### 3. Deux corrections serveur, pour tous les lecteurs d'Apple
 

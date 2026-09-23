@@ -1,14 +1,12 @@
 package handlers
 
 import (
-	"bytes"
 	"database/sql"
 	"encoding/json"
 	"fmt"
 	"log"
 	"net/http"
 	"os"
-	"os/exec"
 	"strconv"
 
 	"project-player/server/database"
@@ -25,7 +23,7 @@ func GetEpisodeTimestamps(w http.ResponseWriter, r *http.Request, ps httprouter.
 
 	episodeID, err := strconv.Atoi(ps.ByName("id"))
 	if err != nil {
-		http.Error(w, `{"error": "Invalid episode ID"}`, http.StatusBadRequest)
+		writeJSONError(w, http.StatusBadRequest, "Invalid episode ID")
 		return
 	}
 
@@ -36,22 +34,17 @@ func GetEpisodeTimestamps(w http.ResponseWriter, r *http.Request, ps httprouter.
 	).Scan(&introStart, &introEnd, &outroStart, &outroEnd, &seasonID, &duration)
 	if err != nil {
 		if err == sql.ErrNoRows {
-			http.Error(w, `{"error": "Episode not found"}`, http.StatusNotFound)
+			writeJSONError(w, http.StatusNotFound, "Episode not found")
 		} else {
 			log.Printf("Timestamps error: %v", err)
-			http.Error(w, `{"error": "Internal database error"}`, http.StatusInternalServerError)
+			writeJSONError(w, http.StatusInternalServerError, "Internal database error")
 		}
 		return
 	}
 
 	// If timestamps are empty, trigger background detection
 	if introEnd == 0 && outroStart == 0 && seasonID > 0 {
-		go func(sID int) {
-			log.Printf("Timestamps: Triggering background detection for season %d (episode %d)", sID, episodeID)
-			if err := indexer.AnalyzeSeasonPending(sID); err != nil {
-				log.Printf("Timestamps: Background detection failed for season %d: %v", sID, err)
-			}
-		}(seasonID)
+		indexer.RequestSeasonAnalysis(seasonID)
 	}
 
 	// Drop corrupt intro markers (e.g. a false-positive chapter spanning to EOF).
@@ -74,7 +67,7 @@ func GetEpisodeChapters(w http.ResponseWriter, r *http.Request, ps httprouter.Pa
 
 	episodeID, err := strconv.Atoi(ps.ByName("id"))
 	if err != nil {
-		http.Error(w, `{"error": "Invalid episode ID"}`, http.StatusBadRequest)
+		writeJSONError(w, http.StatusBadRequest, "Invalid episode ID")
 		return
 	}
 
@@ -83,79 +76,33 @@ func GetEpisodeChapters(w http.ResponseWriter, r *http.Request, ps httprouter.Pa
 	err = database.DB.QueryRow("SELECT file_path FROM medias WHERE id = ? AND type = 'episode'", episodeID).Scan(&filePath)
 	if err != nil {
 		if err == sql.ErrNoRows {
-			http.Error(w, `{"error": "Episode not found"}`, http.StatusNotFound)
+			writeJSONError(w, http.StatusNotFound, "Episode not found")
 		} else {
 			log.Printf("GetEpisodeChapters DB error: %v", err)
-			http.Error(w, `{"error": "Internal database error"}`, http.StatusInternalServerError)
+			writeJSONError(w, http.StatusInternalServerError, "Internal database error")
 		}
 		return
 	}
 
 	if filePath == "" {
-		http.Error(w, `{"error": "Media file path is empty"}`, http.StatusBadRequest)
+		writeJSONError(w, http.StatusBadRequest, "Media file path is empty")
 		return
 	}
 
-	// Spawn ffprobe
-	cmd := exec.Command("ffprobe", "-v", "quiet", "-print_format", "json", "-show_chapters", filePath)
-	var stdout, stderr bytes.Buffer
-	cmd.Stdout = &stdout
-	cmd.Stderr = &stderr
-
-	err = cmd.Run()
+	chapters, err := streaming.ProbeChapters(filePath)
 	if err != nil {
-		log.Printf("ffprobe execution failed: %v, stderr: %s", err, stderr.String())
+		log.Printf("GetEpisodeChapters %d: %v", episodeID, err)
 		// Return empty list instead of 500 so client doesn't crash
-		json.NewEncoder(w).Encode(map[string]interface{}{"chapters": []interface{}{}})
-		return
+		chapters = nil
 	}
-
-	// Parse JSON output
-	var ffResponse struct {
-		Chapters []struct {
-			ID        int                    `json:"id"`
-			StartTime string                 `json:"start_time"`
-			EndTime   string                 `json:"end_time"`
-			Tags      map[string]interface{} `json:"tags"`
-		} `json:"chapters"`
-	}
-
-	if err := json.Unmarshal(stdout.Bytes(), &ffResponse); err != nil {
-		log.Printf("Failed to unmarshal ffprobe output: %v", err)
-		json.NewEncoder(w).Encode(map[string]interface{}{"chapters": []interface{}{}})
-		return
-	}
-
-	// Map to simplified schema compatible with client structure
-	type ChapterItem struct {
-		ID        int     `json:"id"`
-		StartTime float64 `json:"start_time"`
-		EndTime   float64 `json:"end_time"`
-		Title     string  `json:"title"`
-	}
-
-	chapters := make([]ChapterItem, 0)
-	for _, c := range ffResponse.Chapters {
-		start, _ := strconv.ParseFloat(c.StartTime, 64)
-		end, _ := strconv.ParseFloat(c.EndTime, 64)
-
-		title := fmt.Sprintf("Chapter %d", c.ID)
-		if c.Tags != nil {
-			if t, ok := c.Tags["title"]; ok {
-				title = fmt.Sprintf("%v", t)
-			} else if t, ok := c.Tags["TITLE"]; ok {
-				title = fmt.Sprintf("%v", t)
-			}
+	for i := range chapters {
+		if chapters[i].Title == "" {
+			chapters[i].Title = fmt.Sprintf("Chapter %d", chapters[i].ID)
 		}
-
-		chapters = append(chapters, ChapterItem{
-			ID:        c.ID,
-			StartTime: start,
-			EndTime:   end,
-			Title:     title,
-		})
 	}
-
+	if chapters == nil {
+		chapters = []streaming.Chapter{}
+	}
 	json.NewEncoder(w).Encode(map[string]interface{}{
 		"chapters": chapters,
 	})
@@ -169,7 +116,7 @@ func GetMediaTracks(w http.ResponseWriter, r *http.Request, ps httprouter.Params
 
 	mediaID, err := strconv.Atoi(ps.ByName("id"))
 	if err != nil {
-		http.Error(w, `{"error": "Invalid media ID"}`, http.StatusBadRequest)
+		writeJSONError(w, http.StatusBadRequest, "Invalid media ID")
 		return
 	}
 
@@ -177,21 +124,21 @@ func GetMediaTracks(w http.ResponseWriter, r *http.Request, ps httprouter.Params
 	err = database.DB.QueryRow("SELECT file_path FROM medias WHERE id = ?", mediaID).Scan(&filePath)
 	if err != nil {
 		if err == sql.ErrNoRows {
-			http.Error(w, `{"error": "Media not found"}`, http.StatusNotFound)
+			writeJSONError(w, http.StatusNotFound, "Media not found")
 		} else {
 			log.Printf("GetMediaTracks DB error: %v", err)
-			http.Error(w, `{"error": "Internal database error"}`, http.StatusInternalServerError)
+			writeJSONError(w, http.StatusInternalServerError, "Internal database error")
 		}
 		return
 	}
 
 	if filePath == "" {
-		http.Error(w, `{"error": "Media file path is empty"}`, http.StatusBadRequest)
+		writeJSONError(w, http.StatusBadRequest, "Media file path is empty")
 		return
 	}
 
 	if _, err := os.Stat(filePath); os.IsNotExist(err) {
-		http.Error(w, `{"error": "Media file not found on disk"}`, http.StatusNotFound)
+		writeJSONError(w, http.StatusNotFound, "Media file not found on disk")
 		return
 	}
 
@@ -203,7 +150,7 @@ func GetMediaTracks(w http.ResponseWriter, r *http.Request, ps httprouter.Params
 		probe, err = streaming.ProbeTracks(filePath)
 		if err != nil {
 			log.Printf("GetMediaTracks probe error for media %d: %v", mediaID, err)
-			http.Error(w, `{"error": "Failed to probe media tracks"}`, http.StatusInternalServerError)
+			writeJSONError(w, http.StatusInternalServerError, "Failed to probe media tracks")
 			return
 		}
 		go indexer.PersistProbeAfterLiveProbe(mediaID, filePath, probe)

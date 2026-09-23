@@ -26,7 +26,7 @@ func TestTicketIssuanceAndProtectedRange(t *testing.T) {
 	if _, err := database.DB.Exec("UPDATE medias SET file_path = ? WHERE id = 3", file); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := database.DB.Exec("INSERT INTO sessions (token, user_id) VALUES ('login-token', 1)"); err != nil {
+	if err := storeSession(database.DB, "login-token", 1); err != nil {
 		t.Fatal(err)
 	}
 	if err := InitStream(); err != nil {

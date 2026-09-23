@@ -2,6 +2,7 @@ package subtitles
 
 import (
 	"bytes"
+	"context"
 	"fmt"
 	"log"
 	"os"
@@ -11,7 +12,9 @@ import (
 	"strings"
 	"sync"
 	"syscall"
+	"time"
 
+	"project-player/server/database"
 	"project-player/server/streaming"
 )
 
@@ -46,7 +49,7 @@ var outputDirOnce sync.Once
 func OutputDir() string {
 	dir := os.Getenv("SUBTITLE_DIR")
 	if dir == "" {
-		dir = filepath.Join("data", "subtitles")
+		dir = filepath.Join(database.DataDir(), "subtitles")
 	}
 	outputDirOnce.Do(func() {
 		if err := os.MkdirAll(dir, 0o755); err != nil {
@@ -81,6 +84,9 @@ const headSeconds = 900
 // on the client would cost more than it saves (a 2 GB episode extracts in
 // seconds).
 const headThresholdBytes = 6 << 30 // 6 GiB
+
+// extractionTimeout borne une extraction ; voir extractTracks.
+const extractionTimeout = 2 * time.Hour
 
 // extractionNiceness deprioritises extraction against the transcoder, which is
 // usually reading the same file at the same time.
@@ -312,7 +318,12 @@ func extractTracks(videoPath string, tracks []plannedTrack, limitSeconds int) er
 		args = append(args, "-c:s", "webvtt", "-f", "webvtt", tmps[i])
 	}
 
-	cmd := exec.Command("ffmpeg", args...)
+	// Une extraction lit le fichier entier : des minutes sur un remux, plus sur
+	// un disque réseau lent. L'échéance est là pour le partage qui ne répond
+	// plus du tout, pas pour presser une lecture qui avance.
+	ctx, cancel := context.WithTimeout(context.Background(), extractionTimeout)
+	defer cancel()
+	cmd := exec.CommandContext(ctx, "ffmpeg", args...)
 	var stderr bytes.Buffer
 	cmd.Stderr = &stderr
 

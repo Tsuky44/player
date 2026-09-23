@@ -224,7 +224,7 @@ func TestPlaybackStatsGroupsEpisodesAndZeroFillsDays(t *testing.T) {
 
 func insertSession(t *testing.T, token string, userID int) int64 {
 	t.Helper()
-	res, err := database.DB.Exec(`INSERT INTO sessions (token, user_id) VALUES (?, ?)`, token, userID)
+	res, err := database.DB.Exec(`INSERT INTO sessions (token, user_id) VALUES (?, ?)`, database.SessionTokenDigest(token), userID)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -258,7 +258,7 @@ func TestDevicesRecordClientAndReportPlayback(t *testing.T) {
 	}
 
 	var stored string
-	if err := database.DB.QueryRow(`SELECT device_name FROM sessions WHERE token = 'lea-tv'`).Scan(&stored); err != nil || stored != "Télé Salon" {
+	if err := database.DB.QueryRow(`SELECT device_name FROM sessions WHERE token = ?`, database.SessionTokenDigest("lea-tv")).Scan(&stored); err != nil || stored != "Télé Salon" {
 		t.Fatalf("device name stored = %q (%v)", stored, err)
 	}
 

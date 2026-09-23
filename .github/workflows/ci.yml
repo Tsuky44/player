@@ -1,0 +1,93 @@
+name: CI
+
+# Le filet : analyse et tests du serveur Go et de l'app Flutter.
+#
+# Appele par server.yml et release.yml avant qu'ils ne publient quoi que ce
+# soit — une image ou une version ne part pas si les tests sont rouges. Tourne
+# aussi seul sur les pull requests, et sur les pushs de main qui ne touchent
+# que ce que server.yml ne surveille pas (tests, packages), pour que chaque
+# changement passe par ici exactement une fois.
+
+on:
+  workflow_call:
+  workflow_dispatch:
+  pull_request:
+  push:
+    branches: [main]
+    paths:
+      - "app/test/**"
+      - "app/analysis_options.yaml"
+      - "packages/**"
+      - ".github/workflows/ci.yml"
+
+permissions:
+  contents: read
+
+env:
+  FLUTTER_VERSION: "3.44.2"
+
+jobs:
+  server:
+    name: Serveur (go vet + go test)
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: server
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: server/go.mod
+          cache-dependency-path: server/go.sum
+
+      # Les tests du streaming et des sous-titres fabriquent leurs sources avec
+      # FFmpeg ; sans lui ils se sautent, et le filet aurait un trou.
+      - name: FFmpeg
+        run: sudo apt-get update -qq && sudo apt-get install -y -qq ffmpeg
+
+      - name: go mod tidy est a jour
+        run: |
+          go mod tidy
+          git diff --exit-code -- go.mod go.sum
+
+      - name: gofmt
+        run: |
+          unformatted="$(gofmt -l .)"
+          if [ -n "$unformatted" ]; then
+            echo "::error::Fichiers a formater avec gofmt :"
+            echo "$unformatted"
+            exit 1
+          fi
+
+      - name: go vet
+        run: go vet ./...
+
+      # -race : le serveur est fait de goroutines de fond (sessions HLS,
+      # indexeur, watch parties) qui partagent de l'etat en memoire.
+      - name: go test
+        run: go test -race -count=1 ./...
+
+  app:
+    name: App (flutter analyze + flutter test)
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: app
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: subosito/flutter-action@v2
+        with:
+          flutter-version: ${{ env.FLUTTER_VERSION }}
+          channel: stable
+          cache: true
+
+      - name: flutter pub get
+        run: flutter pub get
+
+      - name: flutter analyze
+        run: flutter analyze
+
+      - name: flutter test
+        run: flutter test

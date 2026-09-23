@@ -65,7 +65,10 @@ func collectDuplicateShowIDs(title string, tmdbID int) []int {
 	return uniqueInts(ids)
 }
 
-func scanIDList(rows interface{ Next() bool; Scan(...interface{}) error }) []int {
+func scanIDList(rows interface {
+	Next() bool
+	Scan(...interface{}) error
+}) []int {
 	var ids []int
 	for rows.Next() {
 		var id int

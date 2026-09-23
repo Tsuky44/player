@@ -9,8 +9,8 @@ import (
 
 func TestContentTypeForPath(t *testing.T) {
 	tests := map[string]string{
-		"/media/Films/foo.mkv":  "video/x-matroska",
-		"/media/Films/foo.MP4":  "video/mp4",
+		"/media/Films/foo.mkv":     "video/x-matroska",
+		"/media/Films/foo.MP4":     "video/mp4",
 		"/media/Films/foo.unknown": "application/octet-stream",
 	}
 	for path, want := range tests {

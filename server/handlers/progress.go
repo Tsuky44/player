@@ -63,18 +63,21 @@ func UpdateProgress(w http.ResponseWriter, r *http.Request, _ httprouter.Params,
 
 	var req ProgressRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		http.Error(w, `{"error": "Invalid request body"}`, http.StatusBadRequest)
+		writeJSONError(w, http.StatusBadRequest, "Invalid request body")
 		return
 	}
 
 	if req.MediaID <= 0 {
-		http.Error(w, `{"error": "Invalid media_id"}`, http.StatusBadRequest)
+		writeJSONError(w, http.StatusBadRequest, "Invalid media_id")
 		return
 	}
 
-	// If client provided a duration, update it in the medias table
+	// A duration the client measured fills in one the probe never found. Only
+	// from someone actually playing the media: the column is shared by every
+	// account, and any account could otherwise write whatever it liked into
+	// the progress bars and "watched" thresholds of everyone else.
 	effectiveDuration := req.Duration
-	if req.Duration > 0 {
+	if req.Duration > 0 && PlaybackTickets.Holds(userID, req.MediaID) {
 		_, err := database.DB.Exec("UPDATE medias SET duration = ? WHERE id = ? AND (duration IS NULL OR duration = 0)", req.Duration, req.MediaID)
 		if err != nil {
 			log.Printf("Progress error: failed to update media duration: %v", err)
@@ -125,7 +128,7 @@ func UpdateProgress(w http.ResponseWriter, r *http.Request, _ httprouter.Params,
 		isFinished, stamp.Format(progressTimeLayout), guard)
 	if err != nil {
 		log.Printf("Progress error: failed to update progression: %v", err)
-		http.Error(w, `{"error": "Internal database error"}`, http.StatusInternalServerError)
+		writeJSONError(w, http.StatusInternalServerError, "Internal database error")
 		return
 	}
 
@@ -245,27 +248,27 @@ func SetMediaWatched(w http.ResponseWriter, r *http.Request, ps httprouter.Param
 
 	mediaID, err := strconv.Atoi(ps.ByName("id"))
 	if err != nil || mediaID <= 0 {
-		http.Error(w, `{"error": "Invalid media ID"}`, http.StatusBadRequest)
+		writeJSONError(w, http.StatusBadRequest, "Invalid media ID")
 		return
 	}
 
 	var req watchedRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		http.Error(w, `{"error": "Invalid request body"}`, http.StatusBadRequest)
+		writeJSONError(w, http.StatusBadRequest, "Invalid request body")
 		return
 	}
 
 	position, err := applyWatched(database.DB, userID, mediaID, req.Watched)
 	switch {
 	case errors.Is(err, errMediaNotFound):
-		http.Error(w, `{"error": "Media not found"}`, http.StatusNotFound)
+		writeJSONError(w, http.StatusNotFound, "Media not found")
 		return
 	case errors.Is(err, errMediaNotPlayable):
-		http.Error(w, `{"error": "Only movies and episodes can be marked as watched"}`, http.StatusBadRequest)
+		writeJSONError(w, http.StatusBadRequest, "Only movies and episodes can be marked as watched")
 		return
 	case err != nil:
 		log.Printf("Watched error: failed to update media %d: %v", mediaID, err)
-		http.Error(w, `{"error": "Internal database error"}`, http.StatusInternalServerError)
+		writeJSONError(w, http.StatusInternalServerError, "Internal database error")
 		return
 	}
 
@@ -304,22 +307,22 @@ func SetMediaWatchedBatch(w http.ResponseWriter, r *http.Request, _ httprouter.P
 
 	var req watchedBatchRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		http.Error(w, `{"error": "Invalid request body"}`, http.StatusBadRequest)
+		writeJSONError(w, http.StatusBadRequest, "Invalid request body")
 		return
 	}
 	if len(req.MediaIDs) == 0 {
-		http.Error(w, `{"error": "media_ids is required"}`, http.StatusBadRequest)
+		writeJSONError(w, http.StatusBadRequest, "media_ids is required")
 		return
 	}
 	if len(req.MediaIDs) > maxWatchedBatch {
-		http.Error(w, `{"error": "Too many media IDs"}`, http.StatusBadRequest)
+		writeJSONError(w, http.StatusBadRequest, "Too many media IDs")
 		return
 	}
 
 	tx, err := database.DB.Begin()
 	if err != nil {
 		log.Printf("Watched batch error: failed to open transaction: %v", err)
-		http.Error(w, `{"error": "Internal database error"}`, http.StatusInternalServerError)
+		writeJSONError(w, http.StatusInternalServerError, "Internal database error")
 		return
 	}
 	defer tx.Rollback()
@@ -338,7 +341,7 @@ func SetMediaWatchedBatch(w http.ResponseWriter, r *http.Request, _ httprouter.P
 		}
 		if err != nil {
 			log.Printf("Watched batch error: failed to update media %d: %v", mediaID, err)
-			http.Error(w, `{"error": "Internal database error"}`, http.StatusInternalServerError)
+			writeJSONError(w, http.StatusInternalServerError, "Internal database error")
 			return
 		}
 		updated = append(updated, watchedBatchEntry{
@@ -350,7 +353,7 @@ func SetMediaWatchedBatch(w http.ResponseWriter, r *http.Request, _ httprouter.P
 
 	if err := tx.Commit(); err != nil {
 		log.Printf("Watched batch error: failed to commit: %v", err)
-		http.Error(w, `{"error": "Internal database error"}`, http.StatusInternalServerError)
+		writeJSONError(w, http.StatusInternalServerError, "Internal database error")
 		return
 	}
 
@@ -367,13 +370,13 @@ func GetProgress(w http.ResponseWriter, r *http.Request, _ httprouter.Params, us
 
 	mediaIDStr := r.URL.Query().Get("media_id")
 	if mediaIDStr == "" {
-		http.Error(w, `{"error": "media_id parameter is required"}`, http.StatusBadRequest)
+		writeJSONError(w, http.StatusBadRequest, "media_id parameter is required")
 		return
 	}
 
 	mediaID, err := strconv.Atoi(mediaIDStr)
 	if err != nil {
-		http.Error(w, `{"error": "invalid media_id"}`, http.StatusBadRequest)
+		writeJSONError(w, http.StatusBadRequest, "invalid media_id")
 		return
 	}
 
@@ -398,7 +401,7 @@ func GetProgress(w http.ResponseWriter, r *http.Request, _ httprouter.Params, us
 			})
 		} else {
 			log.Printf("Progress error: failed to query: %v", err)
-			http.Error(w, `{"error": "Internal database error"}`, http.StatusInternalServerError)
+			writeJSONError(w, http.StatusInternalServerError, "Internal database error")
 		}
 		return
 	}

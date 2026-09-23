@@ -19,6 +19,7 @@ import (
 	"sync"
 	"time"
 
+	"project-player/server/database"
 	"project-player/server/playbackauth"
 
 	"github.com/julienschmidt/httprouter"
@@ -226,7 +227,7 @@ func previewRoot() string {
 	if dir := os.Getenv("PREVIEW_DIR"); dir != "" {
 		return dir
 	}
-	return filepath.Join("data", "previews")
+	return filepath.Join(database.DataDir(), "previews")
 }
 
 func previewCacheBytes() int64 {
@@ -447,6 +448,22 @@ func (g *previewGenerator) warm(set *previewSet, ticket [32]byte) {
 		defer cancel()
 		g.runWarm(ctx, set, ticket)
 	}()
+}
+
+// stopAll arrête les passes de fond, à l'arrêt du serveur. Les images déjà
+// faites restent : la prochaine passe reprend où celle-ci s'est arrêtée.
+func (g *previewGenerator) stopAll() {
+	g.mu.Lock()
+	jobs := make([]*previewWarmJob, 0, len(g.jobs))
+	for dir, job := range g.jobs {
+		job.cancel()
+		jobs = append(jobs, job)
+		delete(g.jobs, dir)
+	}
+	g.mu.Unlock()
+	for _, job := range jobs {
+		<-job.done
+	}
 }
 
 func (g *previewGenerator) runWarm(ctx context.Context, set *previewSet, ticket [32]byte) {

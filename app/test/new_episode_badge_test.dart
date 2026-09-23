@@ -36,7 +36,7 @@ void main() {
         child: MaterialApp(
           home: Scaffold(
             body: Center(
-              child: ContinueWatchingCard(item: item, onTap: () {}),
+              child: ContinueWatchingCard(item: item, onTap: (_) {}),
             ),
           ),
         ),

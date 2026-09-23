@@ -41,7 +41,7 @@ func DebugIntroOutro(w http.ResponseWriter, r *http.Request, _ httprouter.Params
 	rows, err := database.DB.Query(query)
 	if err != nil {
 		log.Printf("DebugIntroOutro error: %v", err)
-		http.Error(w, `{"error": "Database error"}`, http.StatusInternalServerError)
+		writeJSONError(w, http.StatusInternalServerError, "Database error")
 		return
 	}
 	defer rows.Close()
@@ -70,7 +70,7 @@ func DetectShowIntroOutro(w http.ResponseWriter, r *http.Request, ps httprouter.
 	showIDStr := ps.ByName("id")
 	showID, err := strconv.Atoi(showIDStr)
 	if err != nil {
-		http.Error(w, `{"error": "Invalid show ID"}`, http.StatusBadRequest)
+		writeJSONError(w, http.StatusBadRequest, "Invalid show ID")
 		return
 	}
 
@@ -99,7 +99,7 @@ func TriggerScan(w http.ResponseWriter, r *http.Request, _ httprouter.Params, _ 
 	// ScanMedia claims the run atomically, so two simultaneous triggers cannot
 	// both believe they started one.
 	if !indexer.ScanMedia(moviesDir, seriesDir) {
-		http.Error(w, `{"error": "Scan is already in progress"}`, http.StatusConflict)
+		writeJSONError(w, http.StatusConflict, "Scan is already in progress")
 		return
 	}
 
@@ -121,7 +121,7 @@ func TriggerMetadataBackfill(w http.ResponseWriter, r *http.Request, _ httproute
 	w.Header().Set("Content-Type", "application/json")
 
 	if !indexer.BackfillMissingMetadataAsync() {
-		http.Error(w, `{"error": "Metadata backfill is already in progress"}`, http.StatusConflict)
+		writeJSONError(w, http.StatusConflict, "Metadata backfill is already in progress")
 		return
 	}
 
@@ -134,7 +134,7 @@ func TriggerRedetectAll(w http.ResponseWriter, r *http.Request, _ httprouter.Par
 	w.Header().Set("Content-Type", "application/json")
 
 	if !indexer.RedetectAllMediaAsync() {
-		http.Error(w, `{"error": "Bulk redetect is already in progress"}`, http.StatusConflict)
+		writeJSONError(w, http.StatusConflict, "Bulk redetect is already in progress")
 		return
 	}
 
@@ -146,7 +146,7 @@ func TriggerProbeBackfill(w http.ResponseWriter, r *http.Request, _ httprouter.P
 	w.Header().Set("Content-Type", "application/json")
 
 	if !indexer.BackfillMissingProbesAsync() {
-		http.Error(w, `{"error": "Probe backfill is already in progress"}`, http.StatusConflict)
+		writeJSONError(w, http.StatusConflict, "Probe backfill is already in progress")
 		return
 	}
 
@@ -197,7 +197,7 @@ func GetMediaReviewQueue(w http.ResponseWriter, r *http.Request, _ httprouter.Pa
 		ORDER BY m.created_at DESC, m.title COLLATE NOCASE ASC`)
 	if err != nil {
 		log.Printf("Media review queue: failed to query: %v", err)
-		http.Error(w, `{"error": "Internal database error"}`, http.StatusInternalServerError)
+		writeJSONError(w, http.StatusInternalServerError, "Internal database error")
 		return
 	}
 

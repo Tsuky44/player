@@ -1,18 +1,18 @@
 package indexer
 
 import (
-	"bytes"
 	"database/sql"
 	"encoding/json"
 	"fmt"
 	"log"
-	"os/exec"
 	"path/filepath"
-	"strconv"
 	"strings"
+	"sync"
+	"time"
 
 	"project-player/server/database"
 	"project-player/server/httpx"
+	"project-player/server/streaming"
 )
 
 // ChapterItem represents a simplified chapter structure
@@ -154,12 +154,12 @@ func MergeIntroDBSkipRange(intro, recap *IntroDBSegment) (start, end int, ok boo
 
 // TheIntroDB API structures
 type IntroDBSegment struct {
-	StartMs          int     `json:"start_ms"`
-	EndMs            int     `json:"end_ms"`
-	StartSec         float64 `json:"start_sec"`
-	EndSec           float64 `json:"end_sec"`
-	Confidence       float64 `json:"confidence"`
-	SubmissionCount  int     `json:"submission_count"`
+	StartMs         int     `json:"start_ms"`
+	EndMs           int     `json:"end_ms"`
+	StartSec        float64 `json:"start_sec"`
+	EndSec          float64 `json:"end_sec"`
+	Confidence      float64 `json:"confidence"`
+	SubmissionCount int     `json:"submission_count"`
 }
 
 type IntroDBResponse struct {
@@ -253,31 +253,11 @@ func DetectFromChapters(episodeID int, filePath string) (bool, error) {
 		return false, fmt.Errorf("empty file path")
 	}
 
-	// Run ffprobe to get chapters
-	cmd := exec.Command("ffprobe", "-v", "quiet", "-print_format", "json", "-show_chapters", filePath)
-	var stdout, stderr bytes.Buffer
-	cmd.Stdout = &stdout
-	cmd.Stderr = &stderr
-
-	err := cmd.Run()
+	chapters, err := streaming.ProbeChapters(filePath)
 	if err != nil {
-		return false, fmt.Errorf("ffprobe failed: %v, stderr: %s", err, stderr.String())
-	}
-
-	var ffResponse struct {
-		Chapters []struct {
-			ID        int                    `json:"id"`
-			StartTime string                 `json:"start_time"`
-			EndTime   string                 `json:"end_time"`
-			Tags      map[string]interface{} `json:"tags"`
-		} `json:"chapters"`
-	}
-
-	if err := json.Unmarshal(stdout.Bytes(), &ffResponse); err != nil {
 		return false, err
 	}
-
-	if len(ffResponse.Chapters) == 0 {
+	if len(chapters) == 0 {
 		return false, nil // No chapters found
 	}
 
@@ -285,19 +265,8 @@ func DetectFromChapters(episodeID int, filePath string) (bool, error) {
 	foundIntro := false
 	foundOutro := false
 
-	for _, c := range ffResponse.Chapters {
-		start, _ := strconv.ParseFloat(c.StartTime, 64)
-		end, _ := strconv.ParseFloat(c.EndTime, 64)
-
-		title := ""
-		if c.Tags != nil {
-			if t, ok := c.Tags["title"]; ok {
-				title = fmt.Sprintf("%v", t)
-			} else if t, ok := c.Tags["TITLE"]; ok {
-				title = fmt.Sprintf("%v", t)
-			}
-		}
-
+	for _, c := range chapters {
+		start, end, title := c.StartTime, c.EndTime, c.Title
 		if title == "" {
 			continue
 		}
@@ -501,6 +470,50 @@ func AnalyzeSeasonPending(seasonID int) error {
 	return analyzeSeason(seasonID, true, nil)
 }
 
+// seasonAnalysisCooldown est le temps pendant lequel une saison déjà analysée
+// à la demande ne l'est pas de nouveau.
+//
+// La route des marqueurs lançait une analyse à chaque épisode ouvert sans
+// intro connue, sans regarder si une autre tournait déjà pour la même saison :
+// parcourir la liste d'une saison en lançait une par épisode, chacune avec ses
+// appels à TheIntroDB et un ffprobe par épisode. Et pour une série qui n'a pas
+// de générique repérable, la même analyse inutile revenait à chaque lecture.
+const seasonAnalysisCooldown = 30 * time.Minute
+
+var seasonAnalyses = struct {
+	sync.Mutex
+	running map[int]bool
+	lastRun map[int]time.Time
+}{running: map[int]bool{}, lastRun: map[int]time.Time{}}
+
+// RequestSeasonAnalysis lance en fond l'analyse des épisodes en attente d'une
+// saison, sauf si elle tourne déjà ou a tourné il y a moins de
+// seasonAnalysisCooldown. Elle dit si elle en a lancé une.
+func RequestSeasonAnalysis(seasonID int) bool {
+	seasonAnalyses.Lock()
+	if seasonAnalyses.running[seasonID] ||
+		time.Since(seasonAnalyses.lastRun[seasonID]) < seasonAnalysisCooldown {
+		seasonAnalyses.Unlock()
+		return false
+	}
+	seasonAnalyses.running[seasonID] = true
+	seasonAnalyses.Unlock()
+
+	go func() {
+		defer func() {
+			seasonAnalyses.Lock()
+			delete(seasonAnalyses.running, seasonID)
+			seasonAnalyses.lastRun[seasonID] = time.Now()
+			seasonAnalyses.Unlock()
+		}()
+		log.Printf("Detection: analysing pending episodes of season %d", seasonID)
+		if err := AnalyzeSeasonPending(seasonID); err != nil {
+			log.Printf("Detection: analysis of season %d failed: %v", seasonID, err)
+		}
+	}()
+	return true
+}
+
 // AnalyzeEpisodesPending is AnalyzeSeasonPending restricted to some episodes:
 // the ones a scan just added.
 func AnalyzeEpisodesPending(seasonID int, episodeIDs []int) error {
@@ -607,7 +620,7 @@ func analyzeSeason(seasonID int, pendingOnly bool, only map[int]bool) error {
 	// Try TheIntroDB first if we have an IMDb ID
 	if imdbID != "" {
 		log.Printf("Detection: Using TheIntroDB for show %s (IMDb ID: %s)", imdbID, imdbID)
-		
+
 		for _, ep := range episodes {
 			if ep.Episode == 0 {
 				log.Printf("Detection: Skipping episode %d (no episode number)", ep.ID)
@@ -660,7 +673,7 @@ func analyzeSeason(seasonID int, pendingOnly bool, only map[int]bool) error {
 	for _, ep := range episodes {
 		var currentIntroStart, currentOutroStart int
 		_ = database.DB.QueryRow("SELECT intro_start, outro_start FROM medias WHERE id = ?", ep.ID).Scan(&currentIntroStart, &currentOutroStart)
-		
+
 		// Skip if we already have both intro and outro from IntroDB
 		if currentIntroStart > 0 && currentOutroStart > 0 {
 			continue

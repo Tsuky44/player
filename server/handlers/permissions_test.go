@@ -49,7 +49,7 @@ func createTestSession(t *testing.T, userID int) string {
 	if err != nil {
 		t.Fatalf("token: %v", err)
 	}
-	if _, err := database.DB.Exec("INSERT INTO sessions (token, user_id) VALUES (?, ?)", token, userID); err != nil {
+	if err := storeSession(database.DB, token, userID); err != nil {
 		t.Fatalf("insert session: %v", err)
 	}
 	return token

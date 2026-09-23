@@ -107,7 +107,15 @@ void main() {
   });
 
   tearDownAll(() {
-    if (root.existsSync()) root.deleteSync(recursive: true);
+    // Sous Windows, un fichier que le singleton tient encore ouvert bloque la
+    // suppression, et l'échec d'un simple ménage faisait rougir la suite
+    // complète une fois sur deux. C'est un dossier temporaire : le système le
+    // récupère de toute façon.
+    try {
+      if (root.existsSync()) root.deleteSync(recursive: true);
+    } on FileSystemException {
+      // Laissé au système.
+    }
   });
 
   test('relit le manifeste au démarrage', () {

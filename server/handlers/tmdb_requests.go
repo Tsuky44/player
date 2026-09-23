@@ -465,14 +465,14 @@ func TmdbRequestSeasonEpisodes(w http.ResponseWriter, r *http.Request, ps httpro
 	}
 
 	type episodeInfo struct {
-		ID            int     `json:"id"`
-		Number        int     `json:"number"`
-		Name          string  `json:"name"`
-		Overview      string  `json:"overview"`
-		StillPath     string  `json:"stillPath,omitempty"`
-		AirDate       string  `json:"airDate,omitempty"`
-		Runtime       int     `json:"runtime,omitempty"`
-		VoteAverage   float64 `json:"rating"`
+		ID          int     `json:"id"`
+		Number      int     `json:"number"`
+		Name        string  `json:"name"`
+		Overview    string  `json:"overview"`
+		StillPath   string  `json:"stillPath,omitempty"`
+		AirDate     string  `json:"airDate,omitempty"`
+		Runtime     int     `json:"runtime,omitempty"`
+		VoteAverage float64 `json:"rating"`
 	}
 
 	episodes := make([]episodeInfo, 0, len(tmdbResp.Episodes))
@@ -549,10 +549,4 @@ func extractPath(fullURL string) string {
 		return ""
 	}
 	return rest[slashIdx:]
-}
-
-func writeJSONError(w http.ResponseWriter, status int, message string) {
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(status)
-	_ = json.NewEncoder(w).Encode(map[string]string{"error": message})
 }

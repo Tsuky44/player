@@ -137,25 +137,25 @@ type User struct {
 
 // Media represents any media entity (movie, show, season, episode)
 type Media struct {
-	Versions []MediaVersion `json:"versions,omitempty"`
-	ID          int       `json:"id"`
-	Type        MediaType `json:"type"` // "movie", "show", "season", "episode"
-	Title       string    `json:"title"`
-	FilePath    string    `json:"file_path,omitempty"`
-	Duration    int       `json:"duration,omitempty"` // in seconds
-	ParentID    *int      `json:"parent_id,omitempty"` // ID of the parent (e.g., season ID for episodes, show ID for seasons)
-	PosterURL   string    `json:"poster_url,omitempty"`
-	Overview    string    `json:"overview,omitempty"`
-	ReleaseDate string    `json:"release_date,omitempty"`
-	TMDBID        int       `json:"tmdb_id,omitempty"`
-	SeasonNumber  int       `json:"season_number,omitempty"`
-	EpisodeNumber int       `json:"episode_number,omitempty"`
-	IMDbID        string    `json:"imdb_id,omitempty"`
-	IntroStart  int       `json:"intro_start"`
-	IntroEnd    int       `json:"intro_end"`
-	OutroStart  int       `json:"outro_start"`
-	OutroEnd    int       `json:"outro_end"`
-	CreatedAt   time.Time `json:"created_at"`
+	Versions      []MediaVersion `json:"versions,omitempty"`
+	ID            int            `json:"id"`
+	Type          MediaType      `json:"type"` // "movie", "show", "season", "episode"
+	Title         string         `json:"title"`
+	FilePath      string         `json:"file_path,omitempty"`
+	Duration      int            `json:"duration,omitempty"`  // in seconds
+	ParentID      *int           `json:"parent_id,omitempty"` // ID of the parent (e.g., season ID for episodes, show ID for seasons)
+	PosterURL     string         `json:"poster_url,omitempty"`
+	Overview      string         `json:"overview,omitempty"`
+	ReleaseDate   string         `json:"release_date,omitempty"`
+	TMDBID        int            `json:"tmdb_id,omitempty"`
+	SeasonNumber  int            `json:"season_number,omitempty"`
+	EpisodeNumber int            `json:"episode_number,omitempty"`
+	IMDbID        string         `json:"imdb_id,omitempty"`
+	IntroStart    int            `json:"intro_start"`
+	IntroEnd      int            `json:"intro_end"`
+	OutroStart    int            `json:"outro_start"`
+	OutroEnd      int            `json:"outro_end"`
+	CreatedAt     time.Time      `json:"created_at"`
 }
 
 // CatalogCastMember is an actor entry fetched live from TMDB for a detail page.
@@ -233,39 +233,39 @@ type CatalogCrewMember struct {
 // GET /api/media/:id/details. It merges the local library record (ID, poster)
 // with live TMDB catalog metadata (cast, genres, rating, backdrop…).
 type MediaDetails struct {
-	Versions []MediaVersion `json:"versions,omitempty"`
-	ID            int       `json:"id"`
-	TMDBID        int       `json:"tmdb_id,omitempty"`
-	Type          MediaType `json:"type"`
-	Title         string    `json:"title"`
-	OriginalTitle string    `json:"original_title,omitempty"`
-	Tagline       string    `json:"tagline,omitempty"`
-	Overview      string    `json:"overview,omitempty"`
-	PosterURL     string    `json:"poster_url,omitempty"`
-	BackdropURL   string    `json:"backdrop_url,omitempty"`
-	LogoURL       string    `json:"logo_url,omitempty"`
-	FileName         string    `json:"file_name,omitempty"`          // movies: local file basename
-	LocalFolder      string    `json:"local_folder,omitempty"`       // shows: series folder on disk
-	LocalEpisodeFile string    `json:"local_episode_file,omitempty"` // shows: sample episode filename
-	ReleaseDate   string    `json:"release_date,omitempty"`
-	Runtime       int       `json:"runtime,omitempty"`  // minutes (from TMDB)
-	Duration      int       `json:"duration,omitempty"` // seconds (from local file)
-	Status        string    `json:"status,omitempty"`
-	VoteAverage   float64   `json:"vote_average,omitempty"`
-	Genres        []string  `json:"genres,omitempty"`
-	Studios       []string  `json:"studios,omitempty"`
-	Countries     []string  `json:"countries,omitempty"`
-	OriginalLang  string    `json:"original_language,omitempty"`
+	Versions         []MediaVersion `json:"versions,omitempty"`
+	ID               int            `json:"id"`
+	TMDBID           int            `json:"tmdb_id,omitempty"`
+	Type             MediaType      `json:"type"`
+	Title            string         `json:"title"`
+	OriginalTitle    string         `json:"original_title,omitempty"`
+	Tagline          string         `json:"tagline,omitempty"`
+	Overview         string         `json:"overview,omitempty"`
+	PosterURL        string         `json:"poster_url,omitempty"`
+	BackdropURL      string         `json:"backdrop_url,omitempty"`
+	LogoURL          string         `json:"logo_url,omitempty"`
+	FileName         string         `json:"file_name,omitempty"`          // movies: local file basename
+	LocalFolder      string         `json:"local_folder,omitempty"`       // shows: series folder on disk
+	LocalEpisodeFile string         `json:"local_episode_file,omitempty"` // shows: sample episode filename
+	ReleaseDate      string         `json:"release_date,omitempty"`
+	Runtime          int            `json:"runtime,omitempty"`  // minutes (from TMDB)
+	Duration         int            `json:"duration,omitempty"` // seconds (from local file)
+	Status           string         `json:"status,omitempty"`
+	VoteAverage      float64        `json:"vote_average,omitempty"`
+	Genres           []string       `json:"genres,omitempty"`
+	Studios          []string       `json:"studios,omitempty"`
+	Countries        []string       `json:"countries,omitempty"`
+	OriginalLang     string         `json:"original_language,omitempty"`
 
 	Director string   `json:"director,omitempty"`
 	Writers  []string `json:"writers,omitempty"`
 	Editors  []string `json:"editors,omitempty"`
 
-	Cast      []CatalogCastMember `json:"cast,omitempty"`
-	Keywords  []string            `json:"keywords,omitempty"`
-	TrailerKey string             `json:"trailer_key,omitempty"` // YouTube video id
-	Budget    int64               `json:"budget,omitempty"`
-	Revenue   int64               `json:"revenue,omitempty"`
+	Cast       []CatalogCastMember `json:"cast,omitempty"`
+	Keywords   []string            `json:"keywords,omitempty"`
+	TrailerKey string              `json:"trailer_key,omitempty"` // YouTube video id
+	Budget     int64               `json:"budget,omitempty"`
+	Revenue    int64               `json:"revenue,omitempty"`
 
 	Recommendations []RelatedMedia `json:"recommendations,omitempty"`
 	Similar         []RelatedMedia `json:"similar,omitempty"`
@@ -285,14 +285,14 @@ type MediaDetails struct {
 
 // RelatedMedia is a compact TMDB title used for recommendations / similar.
 type RelatedMedia struct {
-	ID           int       `json:"id"`
-	Type         MediaType `json:"type"`
-	Title        string    `json:"title"`
-	PosterURL    string    `json:"poster_url,omitempty"`
-	BackdropURL  string    `json:"backdrop_url,omitempty"`
-	ReleaseDate  string    `json:"release_date,omitempty"`
-	VoteAverage  float64   `json:"vote_average,omitempty"`
-	Overview     string    `json:"overview,omitempty"`
+	ID          int       `json:"id"`
+	Type        MediaType `json:"type"`
+	Title       string    `json:"title"`
+	PosterURL   string    `json:"poster_url,omitempty"`
+	BackdropURL string    `json:"backdrop_url,omitempty"`
+	ReleaseDate string    `json:"release_date,omitempty"`
+	VoteAverage float64   `json:"vote_average,omitempty"`
+	Overview    string    `json:"overview,omitempty"`
 }
 
 // Progression represents the user's watch progress on a media (movie/episode)

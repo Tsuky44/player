@@ -17,6 +17,20 @@ var DB *sql.DB
 // Path is the file DB was opened from, for the dashboard's storage figures.
 var Path string
 
+// DataDir est le dossier où le serveur range tout ce qu'il produit : la base,
+// les sous-titres extraits, les aperçus. C'est celui de la base.
+//
+// Les sous-titres et les aperçus allaient dans un « data » relatif au dossier
+// de lancement, qui ne coïncidait avec celui de la base que dans l'image
+// Docker. Lancé d'ailleurs, ou avec -db ailleurs, le serveur éparpillait ses
+// fichiers là où on l'avait démarré.
+func DataDir() string {
+	if Path == "" {
+		return "data"
+	}
+	return filepath.Dir(Path)
+}
+
 // InitDB initializes the SQLite database, runs migrations, and enables WAL mode
 func InitDB(dbPath string) (*sql.DB, error) {
 	// Ensure directory exists

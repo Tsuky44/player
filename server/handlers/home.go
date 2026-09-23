@@ -19,7 +19,7 @@ func Home(w http.ResponseWriter, r *http.Request, _ httprouter.Params, userID in
 	continueWatching, err := buildContinueWatching(userID, 10)
 	if err != nil {
 		log.Printf("Home error: failed to build continue watching: %v", err)
-		http.Error(w, `{"error": "Internal database error"}`, http.StatusInternalServerError)
+		writeJSONError(w, http.StatusInternalServerError, "Internal database error")
 		return
 	}
 
@@ -32,12 +32,12 @@ func Home(w http.ResponseWriter, r *http.Request, _ httprouter.Params, userID in
 		ORDER BY m.created_at DESC, m.id DESC`, homeRecentMovies)
 	if err != nil {
 		log.Printf("Home error: failed to query recent movies: %v", err)
-		http.Error(w, `{"error": "Internal database error"}`, http.StatusInternalServerError)
+		writeJSONError(w, http.StatusInternalServerError, "Internal database error")
 		return
 	}
 	recentMovies, err = groupMovieCards(recentMovies)
 	if err != nil {
-		http.Error(w, `{"error":"Unable to load versions"}`, http.StatusInternalServerError)
+		writeJSONError(w, http.StatusInternalServerError, "Unable to load versions")
 		return
 	}
 	if len(recentMovies) > homeRecentMovies {
@@ -52,7 +52,7 @@ func Home(w http.ResponseWriter, r *http.Request, _ httprouter.Params, userID in
 		ORDER BY recent.last_added DESC, m.id DESC`, homeRecentShows*2)
 	if err != nil {
 		log.Printf("Home error: failed to query recent shows: %v", err)
-		http.Error(w, `{"error": "Internal database error"}`, http.StatusInternalServerError)
+		writeJSONError(w, http.StatusInternalServerError, "Internal database error")
 		return
 	}
 	// The query fetches more shows than the row holds because duplicate rows of
@@ -65,14 +65,14 @@ func Home(w http.ResponseWriter, r *http.Request, _ httprouter.Params, userID in
 	discoveryMovies, err := queryRandomLibraryItems(models.TypeMovie, homeDiscoveryItems)
 	if err != nil {
 		log.Printf("Home error: failed to query discovery movies: %v", err)
-		http.Error(w, `{"error": "Internal database error"}`, http.StatusInternalServerError)
+		writeJSONError(w, http.StatusInternalServerError, "Internal database error")
 		return
 	}
 
 	discoveryShows, err := queryRandomLibraryItems(models.TypeShow, homeDiscoveryItems)
 	if err != nil {
 		log.Printf("Home error: failed to query discovery shows: %v", err)
-		http.Error(w, `{"error": "Internal database error"}`, http.StatusInternalServerError)
+		writeJSONError(w, http.StatusInternalServerError, "Internal database error")
 		return
 	}
 	discoveryShows = indexer.DedupeShowMediaListForDisplay(discoveryShows)

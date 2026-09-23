@@ -8,6 +8,7 @@ import (
 	"log"
 	"net/http"
 	"strings"
+	"sync"
 
 	"project-player/server/database"
 	"project-player/server/models"
@@ -33,13 +34,13 @@ func RequireAuth(next AuthenticatedHandle) httprouter.Handle {
 	return func(w http.ResponseWriter, r *http.Request, ps httprouter.Params) {
 		authHeader := r.Header.Get("Authorization")
 		if authHeader == "" {
-			http.Error(w, `{"error": "Authorization header required"}`, http.StatusUnauthorized)
+			writeJSONError(w, http.StatusUnauthorized, "Authorization header required")
 			return
 		}
 
 		parts := strings.Split(authHeader, " ")
 		if len(parts) != 2 || strings.ToLower(parts[0]) != "bearer" {
-			http.Error(w, `{"error": "Authorization header must be Bearer <token>"}`, http.StatusUnauthorized)
+			writeJSONError(w, http.StatusUnauthorized, "Authorization header must be Bearer <token>")
 			return
 		}
 
@@ -47,11 +48,11 @@ func RequireAuth(next AuthenticatedHandle) httprouter.Handle {
 		userID, ok, err := lookupSession(parts[1])
 		if err != nil && err != sql.ErrNoRows {
 			log.Printf("Session query error: %v", err)
-			http.Error(w, `{"error": "Internal server error"}`, http.StatusInternalServerError)
+			writeJSONError(w, http.StatusInternalServerError, "Internal server error")
 			return
 		}
 		if !ok {
-			http.Error(w, `{"error": "Invalid or expired session"}`, http.StatusUnauthorized)
+			writeJSONError(w, http.StatusUnauthorized, "Invalid or expired session")
 			return
 		}
 
@@ -173,30 +174,14 @@ func Register(w http.ResponseWriter, r *http.Request, _ httprouter.Params) {
 		return
 	}
 
-	res, err := database.DB.Exec(
-		`INSERT INTO users (
-			username, password_hash, is_owner,
-			perm_manage_settings, perm_manage_library, perm_manage_users,
-			perm_delete_media, perm_invite_users, perm_request_media
-		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-		req.Username, string(passwordHash), firstAccount,
-		permissions.ManageSettings, permissions.ManageLibrary, permissions.ManageUsers,
-		permissions.DeleteMedia, permissions.InviteUsers, permissions.RequestMedia,
-	)
-	if err != nil {
-		log.Printf("Failed to insert user: %v", err)
-		writeJSONError(w, http.StatusInternalServerError, "Internal server error")
+	// The account and what entitles it to exist are written together, or not
+	// at all. Checked separately, two sign-ups racing on a pristine server both
+	// became owner, and two racing on one invitation both got an account out
+	// of a single-use link.
+	userID, status, msg := insertRegisteredUser(req.Username, string(passwordHash), firstAccount, permissions, invitation)
+	if status != 0 {
+		writeJSONError(w, status, msg)
 		return
-	}
-
-	userID, _ := res.LastInsertId()
-
-	if invitation != nil {
-		if err := markInvitationUsed(invitation.Token, int(userID)); err != nil {
-			// The account exists and is usable; leaving the link consumable would
-			// be worse than a stale row, so this is logged, not fatal.
-			log.Printf("Failed to mark invitation %s used: %v", invitation.Token, err)
-		}
 	}
 
 	json.NewEncoder(w).Encode(map[string]interface{}{
@@ -207,6 +192,64 @@ func Register(w http.ResponseWriter, r *http.Request, _ httprouter.Params) {
 			"username": req.Username,
 		},
 	})
+}
+
+// insertRegisteredUser creates the account in one transaction with what
+// allows it: the server still having no account for the owner, the
+// invitation still being unused otherwise. A non-zero status is the refusal to
+// answer with.
+func insertRegisteredUser(username, passwordHash string, owner bool, permissions models.Permissions, invitation *Invitation) (int64, int, string) {
+	tx, err := database.DB.Begin()
+	if err != nil {
+		log.Printf("Register: begin: %v", err)
+		return 0, http.StatusInternalServerError, "Internal server error"
+	}
+	defer tx.Rollback() //nolint:errcheck // no-op once committed
+
+	// The owner row is only written if the table is still empty at the moment
+	// of writing, which is the moment that counts.
+	guard := ""
+	if owner {
+		guard = " WHERE NOT EXISTS (SELECT 1 FROM users)"
+	}
+	res, err := tx.Exec(
+		`INSERT INTO users (
+			username, password_hash, is_owner,
+			perm_manage_settings, perm_manage_library, perm_manage_users,
+			perm_delete_media, perm_invite_users, perm_request_media
+		) SELECT ?, ?, ?, ?, ?, ?, ?, ?, ?`+guard,
+		username, passwordHash, owner,
+		permissions.ManageSettings, permissions.ManageLibrary, permissions.ManageUsers,
+		permissions.DeleteMedia, permissions.InviteUsers, permissions.RequestMedia,
+	)
+	if err != nil {
+		if strings.Contains(err.Error(), "UNIQUE constraint failed") {
+			return 0, http.StatusConflict, "Username already taken"
+		}
+		log.Printf("Register: insert user: %v", err)
+		return 0, http.StatusInternalServerError, "Internal server error"
+	}
+	if n, _ := res.RowsAffected(); n == 0 {
+		return 0, http.StatusForbidden, "Une invitation est requise pour créer un compte"
+	}
+	userID, _ := res.LastInsertId()
+
+	if invitation != nil {
+		claimed, err := claimInvitation(tx, invitation.Token, int(userID))
+		if err != nil {
+			log.Printf("Register: claim invitation: %v", err)
+			return 0, http.StatusInternalServerError, "Internal server error"
+		}
+		if !claimed {
+			return 0, http.StatusForbidden, "Invitation invalide, expirée ou déjà utilisée"
+		}
+	}
+
+	if err := tx.Commit(); err != nil {
+		log.Printf("Register: commit: %v", err)
+		return 0, http.StatusInternalServerError, "Internal server error"
+	}
+	return userID, 0, ""
 }
 
 // LoginRequest represents the JSON payload for login
@@ -227,7 +270,14 @@ func Login(w http.ResponseWriter, r *http.Request, _ httprouter.Params) {
 
 	var req LoginRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		http.Error(w, `{"error": "Invalid request body"}`, http.StatusBadRequest)
+		writeJSONError(w, http.StatusBadRequest, "Invalid request body")
+		return
+	}
+
+	account := strings.ToLower(strings.TrimSpace(req.Username))
+	if accountLoginLimiter.exhausted(account) {
+		w.Header().Set("Retry-After", "30")
+		writeJSONError(w, http.StatusTooManyRequests, "Trop de tentatives sur ce compte, réessaie dans un moment")
 		return
 	}
 
@@ -237,10 +287,14 @@ func Login(w http.ResponseWriter, r *http.Request, _ httprouter.Params) {
 	err := database.DB.QueryRow("SELECT id, password_hash FROM users WHERE username = ?", req.Username).Scan(&userID, &passwordHash)
 	if err != nil {
 		if err == sql.ErrNoRows {
-			http.Error(w, `{"error": "Invalid username or password"}`, http.StatusUnauthorized)
+			// Même coût qu'un mauvais mot de passe : sans cette comparaison
+			// pour rien, la réponse rapide disait que le compte n'existe pas.
+			_ = bcrypt.CompareHashAndPassword(unknownUserHash(), []byte(req.Password))
+			accountLoginLimiter.allow(account)
+			writeJSONError(w, http.StatusUnauthorized, "Invalid username or password")
 		} else {
 			log.Printf("Login database query error: %v", err)
-			http.Error(w, `{"error": "Internal server error"}`, http.StatusInternalServerError)
+			writeJSONError(w, http.StatusInternalServerError, "Internal server error")
 		}
 		return
 	}
@@ -248,7 +302,8 @@ func Login(w http.ResponseWriter, r *http.Request, _ httprouter.Params) {
 	// Verify the password before doing any more work: a wrong one must not cost
 	// the server a full profile load.
 	if err := bcrypt.CompareHashAndPassword([]byte(passwordHash), []byte(req.Password)); err != nil {
-		http.Error(w, `{"error": "Invalid username or password"}`, http.StatusUnauthorized)
+		accountLoginLimiter.allow(account)
+		writeJSONError(w, http.StatusUnauthorized, "Invalid username or password")
 		return
 	}
 
@@ -256,7 +311,7 @@ func Login(w http.ResponseWriter, r *http.Request, _ httprouter.Params) {
 	user, err := LoadUser(userID)
 	if err != nil {
 		log.Printf("Login: failed to load user %d: %v", userID, err)
-		http.Error(w, `{"error": "Internal server error"}`, http.StatusInternalServerError)
+		writeJSONError(w, http.StatusInternalServerError, "Internal server error")
 		return
 	}
 
@@ -264,15 +319,14 @@ func Login(w http.ResponseWriter, r *http.Request, _ httprouter.Params) {
 	token, err := GenerateRandomToken()
 	if err != nil {
 		log.Printf("Failed to generate token: %v", err)
-		http.Error(w, `{"error": "Internal server error"}`, http.StatusInternalServerError)
+		writeJSONError(w, http.StatusInternalServerError, "Internal server error")
 		return
 	}
 
 	// Store session in DB
-	_, err = database.DB.Exec("INSERT INTO sessions (token, user_id) VALUES (?, ?)", token, user.ID)
-	if err != nil {
+	if err := storeSession(database.DB, token, user.ID); err != nil {
 		log.Printf("Failed to save session token: %v", err)
-		http.Error(w, `{"error": "Internal server error"}`, http.StatusInternalServerError)
+		writeJSONError(w, http.StatusInternalServerError, "Internal server error")
 		return
 	}
 
@@ -283,32 +337,41 @@ func Login(w http.ResponseWriter, r *http.Request, _ httprouter.Params) {
 	})
 }
 
+// unknownUserHash est un hash bcrypt quelconque, au coût des vrais, contre
+// lequel comparer le mot de passe d'un compte qui n'existe pas.
+var unknownUserHash = sync.OnceValue(func() []byte {
+	hash, err := bcrypt.GenerateFromPassword([]byte("onyx-unknown-user"), bcrypt.DefaultCost)
+	if err != nil {
+		log.Printf("Login: failed to build the unknown-user hash: %v", err)
+	}
+	return hash
+})
+
 // Logout handles user logout (POST /api/auth/logout)
 func Logout(w http.ResponseWriter, r *http.Request, _ httprouter.Params) {
 	w.Header().Set("Content-Type", "application/json")
 
 	authHeader := r.Header.Get("Authorization")
 	if authHeader == "" {
-		http.Error(w, `{"error": "Authorization header required"}`, http.StatusUnauthorized)
+		writeJSONError(w, http.StatusUnauthorized, "Authorization header required")
 		return
 	}
 
 	parts := strings.Split(authHeader, " ")
 	if len(parts) != 2 || strings.ToLower(parts[0]) != "bearer" {
-		http.Error(w, `{"error": "Invalid Authorization header"}`, http.StatusUnauthorized)
+		writeJSONError(w, http.StatusUnauthorized, "Invalid Authorization header")
 		return
 	}
 
 	token := parts[1]
 
 	// Delete session from DB
-	_, err := database.DB.Exec("DELETE FROM sessions WHERE token = ?", token)
-	if err != nil {
+	if err := deleteSession(token); err != nil {
 		log.Printf("Logout database deletion error: %v", err)
-		http.Error(w, `{"error": "Internal server error"}`, http.StatusInternalServerError)
+		writeJSONError(w, http.StatusInternalServerError, "Internal server error")
 		return
 	}
-	forgetSessionClient(token)
+	forgetSessionClient(sessionKey(token))
 	playbackActivity.dropSession(sessionKey(token))
 
 	w.Write([]byte(`{"status": "success", "message": "Logged out successfully"}`))
@@ -321,7 +384,7 @@ func Me(w http.ResponseWriter, r *http.Request, _ httprouter.Params, userID int)
 	user, err := LoadUser(userID)
 	if err != nil {
 		log.Printf("Me handler query error: %v", err)
-		http.Error(w, `{"error": "User not found"}`, http.StatusNotFound)
+		writeJSONError(w, http.StatusNotFound, "User not found")
 		return
 	}
 

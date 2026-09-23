@@ -96,6 +96,9 @@ changer aucun comportement — c'est ce qui rend la recette possible : « le son
 
 ### 6. Les sous-titres réutilisent ce qui existe
 
+> **Remplacé en HLS par l'[ADR-0031](0031-sous-titres-ecrits-par-la-session.md)** : la session
+> écrit ses sous-titres texte elle-même, et Flutter les peint pour tous les moteurs.
+
 Le texte vient déjà de fichiers `.vtt` externes servis par le backend, qui rebase lui-même les cues
 pour l'offset HLS. ExoPlayer chargera la même URL et remontera ses cues à la `SubtitleView` Flutter
 partagée : rendu identique partout, un seul style, et la logique de positionnement au-dessus de la

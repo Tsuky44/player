@@ -70,16 +70,29 @@ type Handler struct {
 	db       *sql.DB
 	tickets  *playbackauth.Store
 	previews *previewGenerator
+	// workspace est le dossier des sessions ; voir hlsWorkspace.
+	workspace string
 }
 
 // NewHandler creates a streaming handler.
 func NewHandler(db *sql.DB, tickets *playbackauth.Store) *Handler {
+	workspace := hlsWorkspace()
+	resetWorkspace(workspace)
 	return &Handler{
-		manager:  NewSessionManager(tickets),
-		db:       db,
-		tickets:  tickets,
-		previews: newPreviewGenerator(previewRoot(), tickets),
+		manager:   NewSessionManager(tickets),
+		db:        db,
+		tickets:   tickets,
+		previews:  newPreviewGenerator(previewRoot(), tickets),
+		workspace: workspace,
 	}
+}
+
+// Close arrête toutes les sessions et les aperçus en cours, à l'arrêt du
+// serveur : sans lui, les FFmpeg survivaient au processus et leurs segments
+// restaient sur le disque.
+func (h *Handler) Close() {
+	h.previews.stopAll()
+	h.manager.DestroyAll()
 }
 
 // ActiveSessions reports the HLS sessions running right now, for the dashboard.
@@ -175,6 +188,20 @@ type startResponse struct {
 	VideoReason string `json:"video_reason,omitempty"`
 	// Container is the segment format the session actually publishes.
 	Container string `json:"container"`
+	// RetainSeconds est ce que la session garde derrière le dernier segment
+	// demandé, quand le client a dit savoir rouvrir une session pour reculer
+	// plus loin (purge=1). Absent : tout est gardé.
+	RetainSeconds int `json:"retain_seconds,omitempty"`
+	// Subtitles are the text tracks this session writes as WebVTT, each with
+	// the URL it grows at. Absent from a server that predates ADR-0031, which
+	// the client takes as "fetch them the old way".
+	Subtitles []liveSubtitle `json:"subtitles"`
+}
+
+// liveSubtitle is one text track a session writes, as /start announces it.
+type liveSubtitle struct {
+	TypedIndex int    `json:"typed_index"`
+	URL        string `json:"url"`
 }
 
 func (h *Handler) handleStart(w http.ResponseWriter, r *http.Request, mediaID int) {
@@ -216,7 +243,23 @@ func (h *Handler) handleStart(w http.ResponseWriter, r *http.Request, mediaID in
 		audioIndex = 0
 	}
 
-	tmpDir, err := os.MkdirTemp("", "hls-*")
+	ticketHash := playbackauth.Digest(r.URL.Query().Get("ticket"))
+	if limit := maxTranscodes(); limit > 0 && h.manager.LiveCountExcept(ticketHash) >= limit {
+		log.Printf("HLS start: media %d refused, %d session(s) already running", mediaID, limit)
+		w.Header().Set("Retry-After", "15")
+		http.Error(w, "too many transcoding sessions", http.StatusServiceUnavailable)
+		return
+	}
+	if floor := minFreeBytes(); floor > 0 {
+		if free, err := freeBytes(h.workspace); err == nil && free < floor {
+			log.Printf("HLS start: media %d refused, only %d MiB free in %s", mediaID, free>>20, h.workspace)
+			w.Header().Set("Retry-After", "60")
+			http.Error(w, "not enough disk space to transcode", http.StatusServiceUnavailable)
+			return
+		}
+	}
+
+	tmpDir, err := os.MkdirTemp(h.workspace, "hls-*")
 	if err != nil {
 		log.Printf("HLS start: mkdtemp: %v", err)
 		http.Error(w, "internal error", http.StatusInternalServerError)
@@ -224,6 +267,7 @@ func (h *Handler) handleStart(w http.ResponseWriter, r *http.Request, mediaID in
 	}
 
 	audioMap := SelectAudioRenditions(probe, audioIndex)
+	subtitleTracks := LiveSubtitleTracks(probe)
 
 	// Only a real bitmap stream may be burned in. A bogus index would make FFmpeg
 	// fail to build its filter graph and the whole session would die, so an
@@ -253,6 +297,7 @@ func (h *Handler) handleStart(w http.ResponseWriter, r *http.Request, mediaID in
 		BurnSubtitleTypedIndex: burnSubtitle,
 		Video:                  videoPlan,
 		Caps:                   caps,
+		LiveSubtitles:          subtitleTracks,
 	})
 
 	// Copying the picture means the file's own bitrate goes out on the wire, so
@@ -274,9 +319,14 @@ func (h *Handler) handleStart(w http.ResponseWriter, r *http.Request, mediaID in
 	ctx, cancel := context.WithCancel(context.Background())
 	cmd := exec.CommandContext(ctx, "ffmpeg", args...)
 
+	retain := 0
+	if isTruthy(r.URL.Query().Get("purge")) {
+		retain = retainSeconds()
+	}
+
 	sessionID := uuid.New().String()
 	session := &TranscodeSession{
-		TicketHash:     playbackauth.Digest(r.URL.Query().Get("ticket")),
+		TicketHash:     ticketHash,
 		ID:             sessionID,
 		MediaID:        mediaID,
 		Quality:        quality,
@@ -286,6 +336,8 @@ func (h *Handler) handleStart(w http.ResponseWriter, r *http.Request, mediaID in
 		Probe:          probe,
 		MasterPlaylist: master,
 		SegmentExt:     caps.Container.SegmentExt(),
+		Variants:       1 + len(audioMap),
+		RetainSegments: retain / segmentDuration,
 		ctx:            ctx,
 		cancel:         cancel,
 		cmd:            cmd,
@@ -324,6 +376,9 @@ func (h *Handler) handleStart(w http.ResponseWriter, r *http.Request, mediaID in
 		return
 	}
 
+	// The one this ticket watched until now is being replaced.
+	h.manager.Supersede(ticketHash, sessionID)
+
 	videoMode := "encode"
 	// The screen may have closed while FFmpeg was starting. Do not publish an
 	// orphan session after its ticket was revoked in the meantime.
@@ -336,9 +391,18 @@ func (h *Handler) handleStart(w http.ResponseWriter, r *http.Request, mediaID in
 	}
 
 	baseURL := getBaseURL(r)
+	sessionURL := fmt.Sprintf("%s/api/v1/stream/%d/%s", baseURL, mediaID, sessionID)
+	ticketQuery := "?ticket=" + r.URL.Query().Get("ticket")
+	subtitles := make([]liveSubtitle, 0, len(subtitleTracks))
+	for _, typedIndex := range subtitleTracks {
+		subtitles = append(subtitles, liveSubtitle{
+			TypedIndex: typedIndex,
+			URL:        sessionURL + "/" + LiveSubtitleFileName(typedIndex) + ticketQuery,
+		})
+	}
 	resp := startResponse{
 		SessionID:      sessionID,
-		MasterURL:      fmt.Sprintf("%s/api/v1/stream/%d/%s/master.m3u8?ticket=%s", baseURL, mediaID, sessionID, r.URL.Query().Get("ticket")),
+		MasterURL:      sessionURL + "/master.m3u8" + ticketQuery,
 		Duration:       probe.Duration,
 		StartOffset:    startSeconds,
 		Quality:        quality,
@@ -347,6 +411,8 @@ func (h *Handler) handleStart(w http.ResponseWriter, r *http.Request, mediaID in
 		VideoMode:      videoMode,
 		VideoReason:    videoPlan.Reason,
 		Container:      string(caps.Container),
+		RetainSeconds:  retain,
+		Subtitles:      subtitles,
 	}
 
 	w.Header().Set("Content-Type", "application/json")
@@ -374,6 +440,14 @@ func (h *Handler) handleServeFile(w http.ResponseWriter, r *http.Request, sessio
 	}
 
 	filename = filepath.Base(filename) // path-traversal guard
+
+	// The client polls these on its own schedule, paused or not: they must not
+	// keep an abandoned session alive, so they neither touch it nor wait.
+	if isLiveSubtitleFile(filename) {
+		serveLiveSubtitle(w, r, filepath.Join(session.TmpDir, filename))
+		return
+	}
+
 	if idx, isSeg := parseVideoSegmentIndex(filename); isSeg {
 		session.NoteSegment(idx)
 	} else {
@@ -464,6 +538,23 @@ func (h *Handler) handleServeFile(w http.ResponseWriter, r *http.Request, sessio
 		w.Header().Set("Cache-Control", "private, no-store")
 	}
 	http.ServeFile(w, r, filePath)
+}
+
+// serveLiveSubtitle serves a session's WebVTT as far as it has been written.
+//
+// The file grows as the transcode advances, and the client only asks for what
+// follows what it already has (Range: bytes=N-); http.ServeFile answers that
+// with 206, or 416 once there is nothing new. A track with no cue yet has no
+// file at all — FFmpeg only writes the header with the first cue — which is
+// "nothing yet", not an error: 204.
+func serveLiveSubtitle(w http.ResponseWriter, r *http.Request, path string) {
+	w.Header().Set("Content-Type", "text/vtt; charset=utf-8")
+	w.Header().Set("Cache-Control", "private, no-store")
+	if _, err := os.Stat(path); err != nil {
+		w.WriteHeader(http.StatusNoContent)
+		return
+	}
+	http.ServeFile(w, r, path)
 }
 
 // isPendingSessionFile reports the files that are legitimately asked for before

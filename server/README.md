@@ -52,6 +52,8 @@ docker compose up -d --build
 ```
 Le serveur démarrera sur le port **8080** (http://localhost:8080) et créera la base de données SQLite dans `./data/player.db`.
 
+Les sous-titres extraits et les aperçus de la barre de lecture sont rangés à côté de la base. Le journal s'écrit en texte sur la sortie d'erreur ; `LOG_FORMAT=json` donne une ligne JSON par entrée, et `LOG_LEVEL` (`debug`, `info`, `warn`, `error`) règle ce qui est écrit.
+
 ---
 
 ## 📡 Documentation de l'API REST
@@ -285,9 +287,17 @@ n'affecte que les liens futurs.
 
 ### 🎬 5. Lecture Vidéo (Direct Play)
 
-* **Route :** `GET /stream?media_id=12`
-* **Note importante :** Cette route est publique et ne nécessite pas d'en-tête de session pour garantir une compatibilité maximale à 100 % avec les lecteurs vidéo de tous les OS (Flutter, ExoPlayer, VLC, mpv) qui peinent parfois à injecter des en-têtes d'autorisation HTTP personnalisés lors de la diffusion en continu.
+* **Route :** `GET /stream?media_id=12&ticket=…`
+* **Note importante :** Pas d'en-tête de session, parce que les lecteurs vidéo (ExoPlayer, mpv, AVPlayer) injectent mal les en-têtes personnalisés. L'accès passe par un ticket de lecture temporaire dans l'URL (`POST /api/playback/tickets`), voir `docs/playback-tickets.md`.
 * **Comportement :** Émet des Range Requests. Supporte le streaming par morceaux, le multi-pistes, le chargement des sous-titres intégrés et les seeks fluides.
+
+#### ➡️ Transcodage (HLS)
+* **Configuration :**
+  * `MAX_TRANSCODES` : nombre maximal de sessions simultanées (par défaut la moitié des cœurs, au moins 4 ; `0` retire la limite). Au-delà, `/start` répond 503 avec `Retry-After`.
+  * `HLS_DIR` : dossier de travail des sessions (par défaut `onyx-hls` dans le dossier temporaire du système). Les sessions laissées par un arrêt brutal y sont effacées au démarrage.
+  * `HLS_MIN_FREE_MB` : espace libre minimal sur ce dossier pour ouvrir une session (`2048` par défaut, `0` pour désactiver).
+  * `HLS_RETAIN_MINUTES` : ce qu'une session garde derrière la lecture quand le client sait rouvrir une session pour reculer plus loin (`30` par défaut). Les clients plus anciens gardent toute leur session.
+* **Comportement :** une seule session par ticket de lecture. Celle que remplace une nouvelle session (saut, changement de qualité) est arrêtée trente secondes plus tard si le client ne l'a pas fait lui-même.
 
 ---
 

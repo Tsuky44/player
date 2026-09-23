@@ -24,6 +24,9 @@ type migration struct {
 	id    int
 	name  string
 	stmts []string
+	// run, quand il est là, s'exécute après stmts dans la même transaction :
+	// pour une transformation des données que SQL seul ne sait pas faire.
+	run func(*sql.Tx) error
 }
 
 // migrations must stay ordered by id, and ids must never be reused.
@@ -526,6 +529,14 @@ var migrations = []migration{
 			);`,
 		},
 	},
+	{
+		id:   13,
+		name: "hash session tokens",
+		// Les jetons de connexion ne sont plus gardés qu'en empreinte : voir
+		// SessionTokenDigest. Les appareils déjà connectés le restent, puisque
+		// c'est le jeton qu'ils présentent qui est haché à chaque requête.
+		run: hashStoredSessionTokens,
+	},
 }
 
 // applyMigrations brings the database up to the latest schema version.
@@ -596,6 +607,11 @@ func runMigration(db *sql.DB, m migration) error {
 			}
 			return fmt.Errorf("migration %04d (%s), statement [%s]: %w",
 				m.id, m.name, firstLine(stmt), err)
+		}
+	}
+	if m.run != nil {
+		if err := m.run(tx); err != nil {
+			return fmt.Errorf("migration %04d (%s): %w", m.id, m.name, err)
 		}
 	}
 

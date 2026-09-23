@@ -3,6 +3,7 @@ package handlers
 import (
 	"crypto/sha256"
 	"database/sql"
+	"encoding/hex"
 	"encoding/json"
 	"log"
 	"net"
@@ -52,6 +53,15 @@ var sessionClients = struct {
 }{byToken: make(map[[32]byte]*sessionClient)}
 
 func sessionKey(token string) [32]byte { return sha256.Sum256([]byte(token)) }
+
+// sessionKeyFromDigest is sessionKey for a session read back from the table,
+// which only holds the token's digest (database.SessionTokenDigest) — the same
+// SHA-256, in hexadecimal.
+func sessionKeyFromDigest(digest string) [32]byte {
+	var key [32]byte
+	_, _ = hex.Decode(key[:], []byte(digest))
+	return key
+}
 
 // headerLabel reads a label header. Clients percent-encode it, because a device
 // called « Téléviseur du salon » is not valid in a raw HTTP header.
@@ -136,23 +146,23 @@ func noteSessionClient(token string, r *http.Request) {
 				device_name = CASE WHEN ? != '' THEN ? ELSE device_name END,
 				client = CASE WHEN ? != '' THEN ? ELSE client END
 			WHERE token = ?`,
-			device, device, client, client, token,
+			device, device, client, client, database.SessionTokenDigest(token),
 		); err != nil {
 			log.Printf("Devices: failed to record client of a session: %v", err)
 		}
 	}
 }
 
-func forgetSessionClient(token string) {
+func forgetSessionClient(key [32]byte) {
 	sessionClients.Lock()
-	delete(sessionClients.byToken, sessionKey(token))
+	delete(sessionClients.byToken, key)
 	sessionClients.Unlock()
 }
 
-func sessionClientSnapshot(token string) (sessionClient, bool) {
+func sessionClientSnapshot(key [32]byte) (sessionClient, bool) {
 	sessionClients.Lock()
 	defer sessionClients.Unlock()
-	entry, ok := sessionClients.byToken[sessionKey(token)]
+	entry, ok := sessionClients.byToken[key]
 	if !ok {
 		return sessionClient{}, false
 	}
@@ -206,13 +216,13 @@ func listDevices(userID int, currentToken string) ([]Device, error) {
 	}
 	type row struct {
 		device Device
-		token  string
+		key    [32]byte
 	}
 	var collected []row
 	for rows.Next() {
 		var d Device
-		var token, created, seen string
-		if err := rows.Scan(&d.ID, &token, &d.UserID, &d.Username, &d.DeviceName, &d.Client, &created, &seen); err != nil {
+		var digest, created, seen string
+		if err := rows.Scan(&d.ID, &digest, &d.UserID, &d.Username, &d.DeviceName, &d.Client, &created, &seen); err != nil {
 			rows.Close()
 			return nil, err
 		}
@@ -221,7 +231,7 @@ func listDevices(userID int, currentToken string) ([]Device, error) {
 		if d.LastSeenAt.IsZero() {
 			d.LastSeenAt = d.CreatedAt
 		}
-		collected = append(collected, row{device: d, token: token})
+		collected = append(collected, row{device: d, key: sessionKeyFromDigest(digest)})
 	}
 	rows.Close()
 	if err := rows.Err(); err != nil {
@@ -229,10 +239,11 @@ func listDevices(userID int, currentToken string) ([]Device, error) {
 	}
 
 	playing := playbackActivity.titlesBySession()
+	currentKey := sessionKey(currentToken)
 	devices := make([]Device, 0, len(collected))
 	for _, item := range collected {
 		d := item.device
-		if live, ok := sessionClientSnapshot(item.token); ok {
+		if live, ok := sessionClientSnapshot(item.key); ok {
 			if live.lastSeen.After(d.LastSeenAt) {
 				d.LastSeenAt = live.lastSeen.UTC()
 			}
@@ -245,8 +256,8 @@ func listDevices(userID int, currentToken string) ([]Device, error) {
 				d.Client = live.client
 			}
 		}
-		d.IsCurrent = currentToken != "" && item.token == currentToken
-		d.NowPlaying = playing[sessionKey(item.token)]
+		d.IsCurrent = currentToken != "" && item.key == currentKey
+		d.NowPlaying = playing[item.key]
 		devices = append(devices, d)
 	}
 	sort.SliceStable(devices, func(i, j int) bool {
@@ -283,9 +294,9 @@ func ListAllDevices(w http.ResponseWriter, r *http.Request, _ httprouter.Params,
 // revokeDevice deletes one session. Returns false when it does not exist or is
 // not the caller's to revoke.
 func revokeDevice(id int64, allowed func(ownerID int) bool) (bool, error) {
-	var token string
+	var digest string
 	var ownerID int
-	err := database.DB.QueryRow(`SELECT token, user_id FROM sessions WHERE rowid = ?`, id).Scan(&token, &ownerID)
+	err := database.DB.QueryRow(`SELECT token, user_id FROM sessions WHERE rowid = ?`, id).Scan(&digest, &ownerID)
 	if err == sql.ErrNoRows {
 		return false, nil
 	}
@@ -298,8 +309,10 @@ func revokeDevice(id int64, allowed func(ownerID int) bool) (bool, error) {
 	if _, err := database.DB.Exec(`DELETE FROM sessions WHERE rowid = ?`, id); err != nil {
 		return false, err
 	}
-	forgetSessionClient(token)
-	playbackActivity.dropSession(sessionKey(token))
+	forgetCachedSession(digest)
+	key := sessionKeyFromDigest(digest)
+	forgetSessionClient(key)
+	playbackActivity.dropSession(key)
 	return true, nil
 }
 

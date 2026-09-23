@@ -1,6 +1,7 @@
 package streaming
 
 import (
+	"context"
 	"fmt"
 	"log"
 	"os"
@@ -97,7 +98,9 @@ func estimateMaxGOPSeconds(path string) (float64, error) {
 // Demuxing still means pulling sixty seconds of video off the disk, which is
 // why the container index above is tried first.
 func probeMaxGOPSeconds(path string) (float64, error) {
-	cmd := exec.Command("ffprobe",
+	ctx, cancel := context.WithTimeout(context.Background(), probeTimeout)
+	defer cancel()
+	cmd := exec.CommandContext(ctx, "ffprobe",
 		"-v", "error",
 		"-select_streams", "v:0",
 		"-read_intervals", "0%+60",

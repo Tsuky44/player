@@ -1,11 +1,13 @@
 package streaming
 
 import (
+	"context"
 	"fmt"
 	"log"
 	"os/exec"
 	"strings"
 	"sync"
+	"time"
 )
 
 // VideoPlan is what the session will do with the picture.
@@ -266,7 +268,9 @@ func setFilterSetForTest(names ...string) {
 func ffmpegHasFilter(name string) bool {
 	filterOnce.Do(func() {
 		filterSet = map[string]bool{}
-		out, err := exec.Command("ffmpeg", "-hide_banner", "-loglevel", "quiet", "-filters").Output()
+		ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+		defer cancel()
+		out, err := exec.CommandContext(ctx, "ffmpeg", "-hide_banner", "-loglevel", "quiet", "-filters").Output()
 		if err != nil {
 			return
 		}

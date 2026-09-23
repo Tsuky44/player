@@ -578,7 +578,7 @@ func newWatchPartyMember(r *http.Request, userID int) (*watchPartyMember, error)
 	}
 	var username string
 	_ = database.DB.QueryRow(`SELECT username FROM users WHERE id = ?`, userID).Scan(&username)
-	client, _ := sessionClientSnapshot(bearerToken(r))
+	client, _ := sessionClientSnapshot(sessionKey(bearerToken(r)))
 	return &watchPartyMember{ID: id, UserID: userID, Username: username, Device: client.device}, nil
 }
 

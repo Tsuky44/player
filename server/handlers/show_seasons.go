@@ -65,7 +65,7 @@ func GetShowSeasons(w http.ResponseWriter, r *http.Request, ps httprouter.Params
 
 	showID, err := strconv.Atoi(ps.ByName("id"))
 	if err != nil {
-		http.Error(w, `{"error": "Invalid show ID"}`, http.StatusBadRequest)
+		writeJSONError(w, http.StatusBadRequest, "Invalid show ID")
 		return
 	}
 	showID = indexer.ResolveCanonicalShowID(showID)
@@ -73,7 +73,7 @@ func GetShowSeasons(w http.ResponseWriter, r *http.Request, ps httprouter.Params
 	local, err := loadLocalSeasons(showID)
 	if err != nil {
 		log.Printf("Seasons error: failed to query: %v", err)
-		http.Error(w, `{"error": "Internal database error"}`, http.StatusInternalServerError)
+		writeJSONError(w, http.StatusInternalServerError, "Internal database error")
 		return
 	}
 

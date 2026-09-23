@@ -526,13 +526,13 @@ func buildShowCredits(d *models.MediaDetails, r *tmdbCatalogResponse) {
 // ---- Person (actor) details ----
 
 type tmdbCreditItem struct {
-	ID           int    `json:"id"`
-	Title        string `json:"title"`
-	Name         string `json:"name"`
-	PosterPath   string `json:"poster_path"`
-	BackdropPath string `json:"backdrop_path"`
-	ReleaseDate  string `json:"release_date"`
-	FirstAirDate string `json:"first_air_date"`
+	ID           int     `json:"id"`
+	Title        string  `json:"title"`
+	Name         string  `json:"name"`
+	PosterPath   string  `json:"poster_path"`
+	BackdropPath string  `json:"backdrop_path"`
+	ReleaseDate  string  `json:"release_date"`
+	FirstAirDate string  `json:"first_air_date"`
 	MediaType    string  `json:"media_type"`
 	Character    string  `json:"character"`
 	VoteAverage  float64 `json:"vote_average"`

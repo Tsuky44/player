@@ -459,9 +459,7 @@ func ApproveAccessRequest(w http.ResponseWriter, r *http.Request, ps httprouter.
 	}
 	newUserID, _ := res.LastInsertId()
 
-	if _, err := tx.Exec(
-		`INSERT INTO sessions (token, user_id) VALUES (?, ?)`, token, newUserID,
-	); err != nil {
+	if err := storeSession(tx, token, int(newUserID)); err != nil {
 		log.Printf("ApproveAccessRequest: session insert failed: %v", err)
 		writeJSONError(w, http.StatusInternalServerError, "Internal server error")
 		return
@@ -559,12 +557,9 @@ func purgeExpiredAccessRequests() {
 	// Une demande approuvée mais jamais relevée laisse une session dont personne
 	// ne détient le jeton. Elle s'éteindrait d'elle-même au bout de quatre-vingt
 	// -dix jours ; la tuer avec sa demande, c'est le même ménage plus tôt.
-	if _, err := database.DB.Exec(`
-		DELETE FROM sessions
-		WHERE token IN (
-			SELECT session_token FROM access_requests
-			WHERE session_token IS NOT NULL AND expires_at <= datetime('now', ?)
-		)`, grace); err != nil {
+	if err := deleteSessionsFor(`
+		SELECT session_token FROM access_requests
+		WHERE session_token IS NOT NULL AND expires_at <= datetime('now', ?)`, grace); err != nil {
 		log.Printf("Access request reaper: orphan session sweep: %v", err)
 	}
 

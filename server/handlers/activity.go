@@ -413,7 +413,7 @@ func ReportPlayback(w http.ResponseWriter, r *http.Request, _ httprouter.Params,
 		req.Position = 0
 	}
 	token := bearerToken(r)
-	client, _ := sessionClientSnapshot(token)
+	client, _ := sessionClientSnapshot(sessionKey(token))
 	if client.address == "" {
 		client.address = clientAddress(r)
 	}

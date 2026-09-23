@@ -6,9 +6,12 @@ import '../../../utils/app_platform.dart';
 import '../web/web_playback.dart';
 import '../display_frame_rate.dart';
 import '../hardware_decoding.dart';
+import '../playback/hls_retain_window.dart';
+import '../playback/live_subtitles.dart';
 import '../playback/playback_engine.dart';
 import '../playback/playback_session.dart';
 import '../playback/playback_stats.dart';
+import 'playback_reporter.dart';
 import '../playback/timeline_previews.dart';
 import '../playback_profile.dart';
 import '../web_quality.dart';
@@ -31,10 +34,11 @@ import '../player_playback_preferences.dart';
 ///   - Audio: every track is exposed as an HLS rendition while transcoding (and
 ///     natively in Direct Play), so switching languages is instant — no session
 ///     rebuild.
-///   - Subtitles: clean external .vtt files served by the backend (local sidecar
-///     files or OpenSubtitles downloads), attached via SubtitleTrack.uri and
-///     selected by language code. They work identically in both modes; the only
-///     HLS-specific concern is a time-shift so cues align with the stream offset.
+///   - Subtitles: in Direct Play the engine reads the file's own tracks. While
+///     transcoding, the session writes every text track as a WebVTT that grows
+///     with it, and [liveSubtitles] paints it over the picture (ADR-0031). A
+///     server older than that falls back to the .vtt files it extracts ahead,
+///     injected into the engine.
 class PlayerController {
   PlaybackAccess? _playbackAccess;
 
@@ -197,18 +201,13 @@ class PlayerController {
   /// `copy` or `encode`, as the server reported for the current HLS session.
   String _hlsVideoMode = '';
 
-  /// The stop signal is sent once, whichever of finish/cancel/dispose runs first.
-  bool _activityStopped = false;
-
-  /// Le rang de la première ligne de journal de cette lecture.
-  ///
-  /// Ce qui délimite « les logs de cette séance » dans le tampon commun de
-  /// [ClientLog] : la tranche part de là et va jusqu'à l'arrêt. Voir
-  /// [ClientLog.since].
-  int _logMark = 0;
-
   /// Les mesures de cette séance. Voir [PlaybackStatsCollector].
   final PlaybackStatsCollector _stats = PlaybackStatsCollector();
+
+  /// Ce que le lecteur dit au serveur pendant qu'il lit. Voir
+  /// [PlaybackReporter].
+  late final PlaybackReporter _reporter =
+      PlaybackReporter(moment: _playbackMoment, stats: _stats);
 
   /// Chemin du fichier local quand ce média est téléchargé, sinon null.
   ///
@@ -252,6 +251,24 @@ class PlayerController {
   VoidCallback? _onTracksChanged;
   VoidCallback? _onFailure;
   VoidCallback? _onPlayingChanged;
+
+  /// Les sous-titres texte de la session HLS en cours, lus pendant que le
+  /// serveur les écrit, et peints au-dessus de l'image. Voir ADR-0031.
+  final LiveSubtitleFeed liveSubtitles = LiveSubtitleFeed();
+
+  /// Les pistes que la session HLS en cours écrit elle-même, ou null hors HLS
+  /// et face à un serveur qui ne sait pas le faire — c'est alors l'extraction
+  /// d'avant qui sert.
+  List<LiveSubtitleSource>? _hlsLiveSubtitles;
+
+  /// Ce que la session HLS en cours garde derrière elle ; null : tout.
+  int? _hlsRetainSeconds;
+
+  /// La qualité de la session en train de s'ouvrir, pendant l'ouverture.
+  String? _hlsQualityInFlight;
+
+  /// La dernière ouverture demandée pendant qu'une autre était en cours.
+  ({String quality, int startSeconds})? _pendingHlsOpen;
 
   /// Guards the one-shot background subtitle extraction kicked off on start.
   bool _autoExtractStarted = false;
@@ -391,7 +408,6 @@ class PlayerController {
     return lang;
   }
 
-  Timer? _heartbeatTimer;
   Timer? _deferredSubtitleExtractTimer;
 
   /// Delay subtitle extraction so FFmpeg on the server does not compete with
@@ -480,7 +496,7 @@ class PlayerController {
     int provisionalResumeSeconds = 0,
   }) async {
     _startupWatch.start();
-    _logMark = ClientLog.sequence;
+    _reporter.markLogStart();
     // Un moteur repris au vestiaire peut encore décharger le film précédent.
     // Ouvrir par-dessus est ce qui laissait une lecture derrière un indicateur
     // qui ne s'arrêtait jamais.
@@ -601,8 +617,7 @@ class PlayerController {
     // ne traîne pas : `finishHistoryRow` efface ce qui dure moins de trente
     // secondes, sauf quand le journal porte une erreur — ce qui est exactement
     // le cas qu'on veut retrouver.
-    _activityStopped = false;
-    _reportActivity(mediaId: media.id, apiClient: apiClient, event: 'start');
+    _reporter.open(mediaId: media.id, apiClient: apiClient);
     // Les mesures partent avec la séance, pas avec la première image : le temps
     // passé à ouvrir fait partie de ce qu'on veut pouvoir relire.
     _stats.start(session);
@@ -939,6 +954,28 @@ class PlayerController {
     }
   }
 
+  /// Retient les pistes que la nouvelle session écrit, et les marque prêtes
+  /// dans le catalogue : toute la mécanique d'extraction s'éteint alors pour
+  /// elles d'elle-même.
+  ///
+  /// Ce qui était affiché s'efface tout de suite : ses répliques sont sur
+  /// l'horloge de la session précédente, et elles tomberaient au mauvais moment
+  /// sur celle-ci jusqu'à ce que la sélection soit réappliquée.
+  void _adoptLiveSubtitles(List<LiveSubtitleSource>? sources) {
+    liveSubtitles.stop();
+    _hlsLiveSubtitles = sources;
+    final tracks = mediaTracks;
+    if (sources == null || tracks == null) return;
+    mediaTracks = withLiveSubtitles(tracks, sources);
+    _notifyTracksChanged();
+  }
+
+  MediaTracks _withLiveSubtitles(MediaTracks tracks) {
+    final sources = _hlsLiveSubtitles;
+    if (sources == null || currentQuality == null) return tracks;
+    return withLiveSubtitles(tracks, sources);
+  }
+
   /// Canonical track for a language key, or null when the media has no such key.
   MediaSubtitleTrack? _trackForLang(String lang) {
     for (final s in mediaTracks?.subtitles ?? const <MediaSubtitleTrack>[]) {
@@ -976,7 +1013,8 @@ class PlayerController {
   Future<void> _refreshMediaTracks() async {
     if (_media == null || _apiClient == null) return;
     try {
-      mediaTracks = await _apiClient!.getMediaTracks(_media!.id);
+      mediaTracks =
+          _withLiveSubtitles(await _apiClient!.getMediaTracks(_media!.id));
       _notifyTracksChanged();
     } catch (e) {
       debugPrint(
@@ -1162,23 +1200,8 @@ class PlayerController {
     }
   }
 
-  void startHeartbeat({required int mediaId, required ApiClient apiClient}) {
-    _heartbeatTimer?.cancel();
-    _activityStopped = false;
-    // La séance est déjà ouverte depuis `open()` ; ce second signal ne la
-    // duplique pas — le serveur reconnaît la même clé et le même média — il
-    // rafraîchit la méthode de lecture, qui n'était pas encore résolue là-bas.
-    _reportActivity(mediaId: mediaId, apiClient: apiClient, event: 'start');
-    _heartbeatTimer = Timer.periodic(const Duration(seconds: 15), (_) {
-      // The activity signal goes out paused too: a film on pause is still
-      // someone watching, and the dashboard says so.
-      _reportActivity(mediaId: mediaId, apiClient: apiClient);
-      if (session.isPlaying) {
-        _sendProgress(
-            mediaId: mediaId, apiClient: apiClient, isFinished: false);
-      }
-    });
-  }
+  void startHeartbeat({required int mediaId, required ApiClient apiClient}) =>
+      _reporter.startHeartbeat(mediaId: mediaId, apiClient: apiClient);
 
   PlayMethod get playMethod {
     if (_localFilePath != null) return PlayMethod.local;
@@ -1186,81 +1209,20 @@ class PlayerController {
     return _hlsVideoMode == 'copy' ? PlayMethod.directStream : PlayMethod.transcode;
   }
 
-  /// Tells the server what this player is doing, for its dashboard and
-  /// history. Best effort: an older server has no such route, and playback
-  /// never waits on it.
-  void _reportActivity({
-    required int mediaId,
-    required ApiClient apiClient,
-    String event = 'progress',
-  }) {
-    if (_activityStopped) return;
-    if (event == 'stop') _activityStopped = true;
+  /// L'instant de la lecture pour [PlaybackReporter]. La durée retombe sur
+  /// celle que le serveur connaît tant que le moteur n'a pas donné la sienne.
+  PlaybackMoment _playbackMoment() {
     var durSeconds = duration.inSeconds;
     if (durSeconds <= 0 && _knownDurationSeconds > 0) {
       durSeconds = _knownDurationSeconds;
     }
-    // Figé maintenant : ce qui suit peut partir après un aller-retour réseau,
-    // et le rapport doit décrire l'instant de l'arrêt, pas celui de l'envoi.
-    Future<void> send() => apiClient
-        .reportPlayback(
-          mediaId: mediaId,
-          positionSeconds: position.inSeconds,
-          durationSeconds: durSeconds,
-          paused: !session.isPlaying,
-          playMethod: playMethod,
-          quality: currentQuality ?? '',
-          event: event,
-        )
-        .catchError((_) {});
-
-    // Le journal part avec le dernier signal, et **avant** lui : le serveur le
-    // rattache à la séance encore ouverte, et c'est ce signal-là qui la ferme.
-    // L'ordre inverse écrirait dans le vide une fois sur deux.
-    if (event == 'stop') {
-      unawaited(_uploadSession(apiClient, last: true).whenComplete(send));
-      return;
-    }
-    unawaited(send());
-  }
-
-  /// Envoie au serveur ce que cette séance a écrit et ce qu'elle a mesuré.
-  ///
-  /// Le serveur réécrit la ligne à chaque envoi plutôt que d'en empiler
-  /// (`ON CONFLICT DO UPDATE`, voir `playback_logs.go`) : envoyer deux fois ne
-  /// duplique rien, le second envoi remplace simplement le premier, plus
-  /// complet puisque plus tardif.
-  ///
-  /// [last] déclenche un dernier relevé avant le résumé. Ce qui s'est passé
-  /// depuis le dernier échantillon compte autant que le reste — c'est souvent
-  /// là que la lecture s'est dégradée.
-  Future<void> _uploadSession(ApiClient apiClient, {required bool last}) async {
-    final stats = last ? await _stats.finish() : _stats.summary;
-    final lines = ClientLog.since(_logMark);
-    if (lines.isEmpty && stats.isEmpty) return;
-    try {
-      await apiClient.uploadPlaybackLogs(
-        lines,
-        stats: stats.isEmpty ? null : stats.toJson(),
-      );
-    } catch (_) {
-      // Un serveur plus ancien n'a pas cette route, et une lecture ne dépend
-      // pas de son journal.
-    }
-  }
-
-  /// Fait monter le journal sans attendre l'arrêt de la séance.
-  ///
-  /// Une séance qui ne bat plus est balayée côté serveur au bout d'une minute,
-  /// et sa ligne d'historique disparaît avec elle si aucun journal d'erreur n'y
-  /// est attaché. Or un démarrage abandonné n'a pas de battement — il n'a
-  /// jamais commencé — et quelqu'un qui lit le message d'erreur avant de fermer
-  /// l'écran met volontiers plus d'une minute. Attendre la fermeture perdait
-  /// donc précisément les journaux pour lesquels tout ceci existe.
-  void _flushLogsNow() {
-    final apiClient = _apiClient;
-    if (apiClient == null || _activityStopped) return;
-    unawaited(_uploadSession(apiClient, last: false));
+    return (
+      positionSeconds: position.inSeconds,
+      durationSeconds: durSeconds,
+      playing: session.isPlaying,
+      method: playMethod,
+      quality: currentQuality ?? '',
+    );
   }
 
   /// Annonce que la lecture reprend ici : le serveur met en pause, chez les
@@ -1269,87 +1231,23 @@ class PlayerController {
     final media = _media;
     final api = _apiClient;
     if (media == null || api == null) return;
-    _reportActivity(mediaId: media.id, apiClient: api, event: 'start');
+    _reporter.announceHere(mediaId: media.id, apiClient: api);
   }
 
   void _reportActivityStopped() {
     final media = _media;
     final api = _apiClient;
     if (media == null || api == null) return;
-    _reportActivity(mediaId: media.id, apiClient: api, event: 'stop');
-  }
-
-  Future<void> _sendProgress({
-    required int mediaId,
-    required ApiClient apiClient,
-    required bool isFinished,
-  }) async {
-    final posSeconds = position.inSeconds;
-    var durSeconds = duration.inSeconds;
-    if (durSeconds <= 0 && _knownDurationSeconds > 0) {
-      durSeconds = _knownDurationSeconds;
-    }
-    if (posSeconds <= 0) return;
-
-    // Le serveur d'abord, le disque ensuite — et le disque dans tous les cas.
-    //
-    // C'est ce qui rend le hors ligne transparent : un épisode téléchargé garde
-    // son avancement dans le manifeste, marqué à resynchroniser tant que le
-    // serveur ne l'a pas accepté. Au retour de la connexion, le rejeu le porte
-    // et l'épisode apparaît vu partout ailleurs, sans que le lecteur ait eu à
-    // savoir s'il y avait du réseau.
-    var synced = false;
-    var resolvedFinished = isFinished;
-    try {
-      resolvedFinished = await apiClient.sendProgress(
-        mediaId: mediaId,
-        currentPositionSeconds: posSeconds,
-        duration: durSeconds,
-        isFinished: isFinished,
-        clientUpdatedAt: DateTime.now().toUtc(),
-      );
-      synced = true;
-    } catch (e) {
-      debugPrint(
-          "Player: failed to sync progress: ${redactPlaybackDiagnostic(e)}");
-    }
-
-    // The old server may answer after a relay changed the download catalog.
-    if (apiClient.servers.active?.id != apiClient.accountId) return;
-    await DownloadManager.instance.recordProgress(
-      mediaId: mediaId,
-      positionSeconds: posSeconds,
-      durationSeconds: durSeconds,
-      isFinished: resolvedFinished,
-      syncedWithServer: synced,
-    );
+    _reporter.stop(mediaId: media.id, apiClient: api);
   }
 
   Future<void> finishPlayback({
     required int mediaId,
     required ApiClient apiClient,
     bool isFinished = false,
-  }) async {
-    _heartbeatTimer?.cancel();
-    _heartbeatTimer = null;
-    _reportActivity(mediaId: mediaId, apiClient: apiClient, event: 'stop');
-
-    final posSeconds = position.inSeconds;
-    var durSeconds = duration.inSeconds;
-    if (durSeconds <= 0 && _knownDurationSeconds > 0) {
-      durSeconds = _knownDurationSeconds;
-    }
-    if (posSeconds > 0) {
-      var finalIsFinished = isFinished;
-      if (!finalIsFinished &&
-          durSeconds > 0 &&
-          (posSeconds / durSeconds) * 100 >= 90.0) {
-        finalIsFinished = true;
-      }
-      await _sendProgress(
-          mediaId: mediaId, apiClient: apiClient, isFinished: finalIsFinished);
-    }
-  }
+  }) =>
+      _reporter.finish(
+          mediaId: mediaId, apiClient: apiClient, isFinished: isFinished);
 
   // ==================== Quality switching ====================
 
@@ -1379,8 +1277,11 @@ class PlayerController {
   /// where segments outside the sliding window no longer exist).
   Future<void> reloadHlsAtPosition(int newPositionSeconds) async {
     if (_media == null || _apiClient == null || currentQuality == null) return;
+    // Pendant un changement de qualité, la qualité visée est celle qui arrive,
+    // pas celle qui s'en va.
     await _openHlsSession(
-        quality: currentQuality!, startSeconds: newPositionSeconds);
+        quality: _hlsQualityInFlight ?? currentQuality!,
+        startSeconds: newPositionSeconds);
   }
 
   /// Core HLS (re)launch: ask the server for a fresh session, open its master
@@ -1390,12 +1291,21 @@ class PlayerController {
     required String quality,
     required int startSeconds,
   }) async {
-    if (_media == null || _apiClient == null || _disposed || _hlsSwapInFlight) {
+    if (_media == null || _apiClient == null || _disposed) return;
+    if (_hlsSwapInFlight) {
+      // Une session est déjà en train de s'ouvrir. Cette demande-ci était
+      // ignorée : un second saut pendant l'ouverture était perdu, et la lecture
+      // reprenait au premier endroit cliqué. Elle est gardée — la dernière
+      // gagne — et servie dès que l'ouverture en cours se termine.
+      _pendingHlsOpen = (quality: quality, startSeconds: startSeconds);
+      position = Duration(seconds: startSeconds);
+      _onPositionChanged?.call();
       return;
     }
 
     isSwitchingQuality = true;
     _hlsSwapInFlight = true;
+    _hlsQualityInFlight = quality;
     // Move the reported position to the target straight away. The rebuild takes
     // a few seconds, during which the swap guard (rightly) suppresses mpv's
     // position events — so without this the timeline would keep showing where
@@ -1473,6 +1383,8 @@ class PlayerController {
       _hlsAudioMap = hls.audioMap;
       // Trust the server: a track it could not burn in comes back as -1.
       _hlsBurnedSubTypedIndex = hls.burnedSubtitle;
+      _adoptLiveSubtitles(hls.subtitles);
+      _hlsRetainSeconds = hls.retainSeconds;
 
       // Duration first, then reopen the gate: position events resume against a
       // coherent (offset, duration) pair rather than a half-updated one.
@@ -1500,11 +1412,24 @@ class PlayerController {
       _hlsSwapInFlight = false;
       if (!_disposed) _onQualitySwitchingChanged?.call();
     } finally {
+      _hlsQualityInFlight = null;
       if (!adopted && pendingSession != null) {
         await api.destroyHlsSession(mediaId, pendingSession.sessionId,
             access: access);
       }
+      _openPendingHlsSession();
     }
+  }
+
+  /// Sert la demande arrivée pendant la dernière ouverture, s'il y en a une.
+  void _openPendingHlsSession() {
+    final pending = _pendingHlsOpen;
+    _pendingHlsOpen = null;
+    if (pending == null || _disposed || _hlsSwapInFlight) return;
+    unawaited(_openHlsSession(
+      quality: pending.quality,
+      startSeconds: pending.startSeconds,
+    ));
   }
 
   /// Switch back to Direct Play from HLS, resuming at the same second.
@@ -1592,6 +1517,14 @@ class PlayerController {
     if (currentQuality == null) return true;
     // Before this session's timeline begins: unreachable without a new session.
     if (absoluteSeconds < _hlsStartOffset) return false;
+    // Behind what the server still keeps: those segments are gone.
+    if (absoluteSeconds < retainedFloorSeconds(
+      startOffset: _hlsStartOffset,
+      bufferedEnd: _bufferedAbsoluteSeconds(),
+      retainSeconds: _hlsRetainSeconds,
+    )) {
+      return false;
+    }
 
     if (absoluteSeconds <= position.inSeconds) return true;
 
@@ -1783,8 +1716,8 @@ class PlayerController {
     ClientLog.error('Player: démarrage abandonné — $failure');
     startupFailure = failure;
     // Maintenant, pendant que la séance ouverte par `open()` est encore vivante
-    // côté serveur — voir [_flushLogsNow].
-    _flushLogsNow();
+    // côté serveur — voir [PlaybackReporter.flushLogs].
+    _reporter.flushLogs(_apiClient);
     _onFailure?.call();
   }
 
@@ -1946,6 +1879,7 @@ class PlayerController {
     // all — a <video> knows only <track> elements. There the external WebVTT is
     // the only source there has ever been, Direct Play included.
     if (currentQuality == null && !_hlsOnly) {
+      liveSubtitles.stop();
       _applyInternalSubtitleSelection();
       return;
     }
@@ -1968,6 +1902,7 @@ class PlayerController {
 
     if (lang == null || lang.isEmpty) {
       _attachedSubtitleSignature = null;
+      liveSubtitles.stop();
       return;
     }
 
@@ -1976,8 +1911,20 @@ class PlayerController {
     // would render nothing on top of an already-subtitled picture.
     if (_trackForLang(lang)?.image ?? false) {
       _attachedSubtitleSignature = null;
+      liveSubtitles.stop();
       return;
     }
+
+    // Written by the session itself: follow it as it grows. Its clock is the
+    // session's, which is also the engine's, so nothing needs shifting.
+    final live =
+        liveSourceFor(_hlsLiveSubtitles ?? const [], _trackForLang(lang));
+    if (live != null) {
+      _attachedSubtitleSignature = null;
+      liveSubtitles.follow(live.url, positions: session.positions);
+      return;
+    }
+    liveSubtitles.stop();
     _attachedSubtitleSignature = _subtitleSignature(lang);
 
     String? title;
@@ -2176,6 +2123,9 @@ class PlayerController {
   }
 
   Future<void> _destroyHlsSession() async {
+    _hlsLiveSubtitles = null;
+    _hlsRetainSeconds = null;
+    liveSubtitles.stop();
     if (_hlsSessionId == null || _media == null || _apiClient == null) return;
     await _apiClient!
         .destroyHlsSession(_media!.id, _hlsSessionId!, access: _playbackAccess);
@@ -2210,7 +2160,8 @@ class PlayerController {
     _deferredSubtitleExtractTimer?.cancel();
     _deferredSubtitleExtractTimer = null;
     _stopSubtitleWatch();
-    _heartbeatTimer?.cancel();
+    liveSubtitles.stop();
+    _reporter.cancelHeartbeat();
     _positionSubscription?.cancel();
     _durationSubscription?.cancel();
     _completedSubscription?.cancel();
@@ -2243,8 +2194,9 @@ class PlayerController {
     _deferredSubtitleExtractTimer?.cancel();
     _deferredSubtitleExtractTimer = null;
     _stopSubtitleWatch();
+    liveSubtitles.dispose();
     _tracksStreamController.close();
-    _heartbeatTimer?.cancel();
+    _reporter.cancelHeartbeat();
     _positionSubscription?.cancel();
     _durationSubscription?.cancel();
     _completedSubscription?.cancel();

@@ -70,17 +70,17 @@ func GetNextEpisode(w http.ResponseWriter, r *http.Request, ps httprouter.Params
 
 	episodeID, err := strconv.Atoi(ps.ByName("id"))
 	if err != nil {
-		http.Error(w, `{"error": "Invalid episode ID"}`, http.StatusBadRequest)
+		writeJSONError(w, http.StatusBadRequest, "Invalid episode ID")
 		return
 	}
 
 	seasonID, currentEpisodeNum, err := currentEpisodePosition(episodeID)
 	if err != nil {
 		if err == sql.ErrNoRows {
-			http.Error(w, `{"error": "Episode not found"}`, http.StatusNotFound)
+			writeJSONError(w, http.StatusNotFound, "Episode not found")
 		} else {
 			log.Printf("NextEpisode error: %v", err)
-			http.Error(w, `{"error": "Internal database error"}`, http.StatusInternalServerError)
+			writeJSONError(w, http.StatusInternalServerError, "Internal database error")
 		}
 		return
 	}

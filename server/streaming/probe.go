@@ -1,6 +1,7 @@
 package streaming
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"os/exec"
@@ -307,7 +308,12 @@ type ffprobeStream struct {
 // Subtitle indices are assigned per stream-type (0:s:N) so they map correctly
 // regardless of how many audio/video streams precede them in the container.
 func ProbeTracks(inputPath string) (*ProbeResult, error) {
-	cmd := exec.Command("ffprobe",
+	// Sans échéance, un partage réseau qui ne répond plus bloquait l'appelant
+	// — une requête HTTP, un worker de l'indexeur — et son ffprobe pour
+	// toujours.
+	ctx, cancel := context.WithTimeout(context.Background(), probeTimeout)
+	defer cancel()
+	cmd := exec.CommandContext(ctx, "ffprobe",
 		"-v", "quiet",
 		"-print_format", "json",
 		"-show_streams",

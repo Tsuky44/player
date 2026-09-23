@@ -526,10 +526,16 @@ jobs:
           if-no-files-found: error
 
   # ---------------------------------------------------------------------------
+  # Tests : en parallele des builds, mais rien n'est publie s'ils sont rouges.
+  # ---------------------------------------------------------------------------
+  test:
+    uses: ./.github/workflows/ci.yml
+
+  # ---------------------------------------------------------------------------
   # Bundle web + image Docker + GitHub Release
   # ---------------------------------------------------------------------------
   publish:
-    needs: [prepare, build-android, build-macos, build-ios, build-tvos, build-windows]
+    needs: [prepare, test, build-android, build-macos, build-ios, build-tvos, build-windows]
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4

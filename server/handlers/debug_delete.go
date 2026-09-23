@@ -123,12 +123,12 @@ func DebugDeleteShow(w http.ResponseWriter, r *http.Request, ps httprouter.Param
 		len(episodeIDs), deletedSubs, showTitle)
 
 	_ = json.NewEncoder(w).Encode(map[string]any{
-		"status":          "success",
-		"show_id":         showID,
-		"show_title":      showTitle,
-		"episodes_removed": len(episodeIDs),
+		"status":                 "success",
+		"show_id":                showID,
+		"show_title":             showTitle,
+		"episodes_removed":       len(episodeIDs),
 		"subtitle_files_deleted": deletedSubs,
-		"message":         "Show deleted. Trigger a scan to re-index it.",
+		"message":                "Show deleted. Trigger a scan to re-index it.",
 	})
 }
 

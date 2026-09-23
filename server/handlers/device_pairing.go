@@ -349,9 +349,7 @@ func ApproveDevicePairing(w http.ResponseWriter, r *http.Request, _ httprouter.P
 		return
 	}
 
-	if _, err := tx.Exec(
-		`INSERT INTO sessions (token, user_id) VALUES (?, ?)`, token, userID,
-	); err != nil {
+	if err := storeSession(tx, token, userID); err != nil {
 		log.Printf("ApproveDevicePairing: session insert failed: %v", err)
 		writeJSONError(w, http.StatusInternalServerError, "Internal server error")
 		return
@@ -425,12 +423,9 @@ func purgeExpiredDevicePairings() {
 	// A pairing approved but never collected leaves a session nobody holds the
 	// token for. It would idle out on its own in ninety days; killing it with
 	// its pairing is the same cleanup, ninety days earlier.
-	if _, err := database.DB.Exec(`
-		DELETE FROM sessions
-		WHERE token IN (
-			SELECT session_token FROM device_pairings
-			WHERE session_token IS NOT NULL AND expires_at <= datetime('now', ?)
-		)`, grace); err != nil {
+	if err := deleteSessionsFor(`
+		SELECT session_token FROM device_pairings
+		WHERE session_token IS NOT NULL AND expires_at <= datetime('now', ?)`, grace); err != nil {
 		log.Printf("Device pairing reaper: orphan session sweep: %v", err)
 	}
 

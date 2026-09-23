@@ -1,5 +1,5 @@
 # Stage 1: Build the Go binary
-FROM --platform=linux/amd64 golang:1.21-alpine AS builder
+FROM --platform=linux/amd64 golang:1.27-alpine AS builder
 
 WORKDIR /app
 
@@ -17,7 +17,10 @@ COPY . .
 RUN CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -ldflags="-w -s" -o media-server .
 
 # Stage 2: Final lightweight runtime image
-FROM --platform=linux/amd64 alpine:latest
+#
+# Épinglée : `latest` changeait de version d'Alpine — et donc de FFmpeg — sans
+# que rien ne change ici. Monter de version doit être un changement voulu.
+FROM --platform=linux/amd64 alpine:3.24
 
 # Install basic dependencies (ca-certificates, tzdata, ffmpeg)
 RUN apk --no-cache add ca-certificates tzdata ffmpeg
@@ -38,6 +41,10 @@ COPY downloads/ /app/downloads/
 
 # Default port
 EXPOSE 8080
+
+# /api/ping ne touche ni la base ni le disque des médias : il dit seulement que
+# le processus répond. Le démarrage laisse le temps d'ouvrir la base.
+HEALTHCHECK --interval=30s --timeout=5s --start-period=20s --retries=3     CMD wget -q -O /dev/null http://127.0.0.1:8080/api/ping || exit 1
 
 # Configure default paths inside container
 ENV MOVIES_DIR=/media/Films \

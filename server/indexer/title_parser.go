@@ -25,20 +25,20 @@ var (
 		regexp.MustCompile(`(?i)\b\d{1,2}[xX]\d{1,3}\b`),
 	}
 
-	stripSourceRe = regexp.MustCompile(`(?i)\b(BluRay|BLURAY|BD|BD50|BD25|WEB[-\s]?DL|WEBDL|WEB[-\s]?Rip|WEBRip|WEB|HDTV|PDTV|DVD|DVD[-\s]?Rip|CAM|HD[-\s]?CAM|TS|HD[-\s]?TS|TC)\b`)
-	stripQualityRe = regexp.MustCompile(`(?i)\b(4K|UHD|2160p|1080p|1080i|720p|480p|360p|HDR|HDR10|HDR10\+|DV|REMUX|4KLight|1080pLight|720pLight|4K-Light|1080p-Light|720p-Light)\b`)
-	stripCodecRe   = regexp.MustCompile(`(?i)\b(10bit|10\-bit|8bit|8\-bit|12bit|12\-bit|HEVC|x265|x264|H\.265|H\.264|AVC|AV1|VP9|MPEG[-\s]?2|MPEG[-\s]?4|XviD|DivX)\b`)
-	stripAudioRe   = regexp.MustCompile(`(?i)\b(DD[\s+]?5\.1|DD[\s+]?2\.0|AC3|DTS[-\s]?HD|DTS[-\s]?X|DTS|TrueHD|Atmos|AAC|FLAC|MP3|5\.1|7\.1|2\.0)\b`)
-	stripLangRe    = regexp.MustCompile(`(?i)\b(VOSTFR|SUBFRENCH|SUB|FRENCH|FRA|VF|VF2|VFF|VFQ|VFI|ENGLISH|ENG|VO|VOST|MULTI|TRUEFRENCH)\b`)
-	stripFeatureRe = regexp.MustCompile(`(?i)\b(Hybrid|Unrated|Extended|Remastered|Director's[\s-]?Cut|Collector|Special[\s-]?Edition)\b`)
-	stripGroupRe   = regexp.MustCompile(`(?i)[-\[(]\s*[A-Za-z0-9]+(?:[-_][A-Za-z0-9]+)*\s*[\])]?$`)
-	stripEpisodeRe = regexp.MustCompile(`(?i)[Ss]\d{1,2}[Ee]\d{1,3}(?:[-~][Ee]?\d{1,3})?|[Ss]\d{1,2}\.?[Ee]\d{1,3}|\b[Ss]\d{1,2}\b|\d{1,2}[xX]\d{1,3}(?:[-~]\d{1,3})?|(?:Season|Saison)\s*\d{1,2}|[Ee]p(?:isode)?\s*\d{1,3}`)
-	stripExtRe     = regexp.MustCompile(`(?i)\b(mkv|mp4|avi|mov|wmv|m4v|mpg|mpeg|flv)\b`)
-	stripGameRe    = regexp.MustCompile(`(?i)\b(REPACK|PROPER|RELOADED|SKIDROW|CODEX|FLT|RUNE|CRACK|CRACKED|STEAMWORKS|GOG|GOTY|Game of the Year|Definitive|Ultimate|Collector|Edition)\b`)
+	stripSourceRe   = regexp.MustCompile(`(?i)\b(BluRay|BLURAY|BD|BD50|BD25|WEB[-\s]?DL|WEBDL|WEB[-\s]?Rip|WEBRip|WEB|HDTV|PDTV|DVD|DVD[-\s]?Rip|CAM|HD[-\s]?CAM|TS|HD[-\s]?TS|TC)\b`)
+	stripQualityRe  = regexp.MustCompile(`(?i)\b(4K|UHD|2160p|1080p|1080i|720p|480p|360p|HDR|HDR10|HDR10\+|DV|REMUX|4KLight|1080pLight|720pLight|4K-Light|1080p-Light|720p-Light)\b`)
+	stripCodecRe    = regexp.MustCompile(`(?i)\b(10bit|10\-bit|8bit|8\-bit|12bit|12\-bit|HEVC|x265|x264|H\.265|H\.264|AVC|AV1|VP9|MPEG[-\s]?2|MPEG[-\s]?4|XviD|DivX)\b`)
+	stripAudioRe    = regexp.MustCompile(`(?i)\b(DD[\s+]?5\.1|DD[\s+]?2\.0|AC3|DTS[-\s]?HD|DTS[-\s]?X|DTS|TrueHD|Atmos|AAC|FLAC|MP3|5\.1|7\.1|2\.0)\b`)
+	stripLangRe     = regexp.MustCompile(`(?i)\b(VOSTFR|SUBFRENCH|SUB|FRENCH|FRA|VF|VF2|VFF|VFQ|VFI|ENGLISH|ENG|VO|VOST|MULTI|TRUEFRENCH)\b`)
+	stripFeatureRe  = regexp.MustCompile(`(?i)\b(Hybrid|Unrated|Extended|Remastered|Director's[\s-]?Cut|Collector|Special[\s-]?Edition)\b`)
+	stripGroupRe    = regexp.MustCompile(`(?i)[-\[(]\s*[A-Za-z0-9]+(?:[-_][A-Za-z0-9]+)*\s*[\])]?$`)
+	stripEpisodeRe  = regexp.MustCompile(`(?i)[Ss]\d{1,2}[Ee]\d{1,3}(?:[-~][Ee]?\d{1,3})?|[Ss]\d{1,2}\.?[Ee]\d{1,3}|\b[Ss]\d{1,2}\b|\d{1,2}[xX]\d{1,3}(?:[-~]\d{1,3})?|(?:Season|Saison)\s*\d{1,2}|[Ee]p(?:isode)?\s*\d{1,3}`)
+	stripExtRe      = regexp.MustCompile(`(?i)\b(mkv|mp4|avi|mov|wmv|m4v|mpg|mpeg|flv)\b`)
+	stripGameRe     = regexp.MustCompile(`(?i)\b(REPACK|PROPER|RELOADED|SKIDROW|CODEX|FLT|RUNE|CRACK|CRACKED|STEAMWORKS|GOG|GOTY|Game of the Year|Definitive|Ultimate|Collector|Edition)\b`)
 	stripGameTailRe = regexp.MustCompile(`(?i)\b(Update|Patch|DLC|Build|Version)\b.*$`)
-	extraCleanRe   = regexp.MustCompile(`(?i)\b(x264|x265|hevc|h264|h265|aac|dts|ac3|multi|vff|vf|vostfr|subfrench|french|eng|english|bluray|webrip|web|hd|uhd|complete|pack|saison\s*\d+|season\s*\d+|integrale|rip|ld|dvd|hdlight|remux|custom|webdl)\b`)
-	bracketRe      = regexp.MustCompile(`[\[\]()]+`)
-	spaceRe        = regexp.MustCompile(`\s+`)
+	extraCleanRe    = regexp.MustCompile(`(?i)\b(x264|x265|hevc|h264|h265|aac|dts|ac3|multi|vff|vf|vostfr|subfrench|french|eng|english|bluray|webrip|web|hd|uhd|complete|pack|saison\s*\d+|season\s*\d+|integrale|rip|ld|dvd|hdlight|remux|custom|webdl)\b`)
+	bracketRe       = regexp.MustCompile(`[\[\]()]+`)
+	spaceRe         = regexp.MustCompile(`\s+`)
 )
 
 func normalizeSeparators(name string) string {

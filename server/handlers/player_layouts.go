@@ -15,11 +15,11 @@ import (
 
 // PlayerLayout represents a named Player Studio configuration owned by a user.
 type PlayerLayout struct {
-	ID          string          `json:"id"`
-	Name        string          `json:"name"`
-	Config      json.RawMessage `json:"config"`
-	UseModular  bool            `json:"use_modular"`
-	UpdatedAt   string          `json:"updated_at"`
+	ID         string          `json:"id"`
+	Name       string          `json:"name"`
+	Config     json.RawMessage `json:"config"`
+	UseModular bool            `json:"use_modular"`
+	UpdatedAt  string          `json:"updated_at"`
 }
 
 type playerLayoutWriteRequest struct {
@@ -120,7 +120,7 @@ func ListPlayerLayouts(w http.ResponseWriter, r *http.Request, _ httprouter.Para
 	layouts, err := listPlayerLayouts(userID)
 	if err != nil {
 		log.Printf("player layouts list error: %v", err)
-		http.Error(w, `{"error": "Internal database error"}`, http.StatusInternalServerError)
+		writeJSONError(w, http.StatusInternalServerError, "Internal database error")
 		return
 	}
 
@@ -135,20 +135,20 @@ func CreatePlayerLayout(w http.ResponseWriter, r *http.Request, _ httprouter.Par
 
 	var req playerLayoutWriteRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		http.Error(w, `{"error": "Invalid request body"}`, http.StatusBadRequest)
+		writeJSONError(w, http.StatusBadRequest, "Invalid request body")
 		return
 	}
 
 	configJSON, err := validateLayoutConfig(req.Config)
 	if err != nil {
-		http.Error(w, `{"error": "Invalid layout config"}`, http.StatusBadRequest)
+		writeJSONError(w, http.StatusBadRequest, "Invalid layout config")
 		return
 	}
 
 	id, err := GenerateRandomToken()
 	if err != nil {
 		log.Printf("player layout id error: %v", err)
-		http.Error(w, `{"error": "Internal server error"}`, http.StatusInternalServerError)
+		writeJSONError(w, http.StatusInternalServerError, "Internal server error")
 		return
 	}
 
@@ -164,14 +164,14 @@ func CreatePlayerLayout(w http.ResponseWriter, r *http.Request, _ httprouter.Par
 	`, id, userID, name, configJSON, useModular)
 	if err != nil {
 		log.Printf("player layout create error: %v", err)
-		http.Error(w, `{"error": "Internal database error"}`, http.StatusInternalServerError)
+		writeJSONError(w, http.StatusInternalServerError, "Internal database error")
 		return
 	}
 
 	layout, err := loadPlayerLayout(userID, id)
 	if err != nil {
 		log.Printf("player layout reload error: %v", err)
-		http.Error(w, `{"error": "Internal database error"}`, http.StatusInternalServerError)
+		writeJSONError(w, http.StatusInternalServerError, "Internal database error")
 		return
 	}
 
@@ -185,24 +185,24 @@ func UpdatePlayerLayout(w http.ResponseWriter, r *http.Request, ps httprouter.Pa
 
 	layoutID := strings.TrimSpace(ps.ByName("id"))
 	if layoutID == "" {
-		http.Error(w, `{"error": "Missing layout id"}`, http.StatusBadRequest)
+		writeJSONError(w, http.StatusBadRequest, "Missing layout id")
 		return
 	}
 
 	var req playerLayoutWriteRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		http.Error(w, `{"error": "Invalid request body"}`, http.StatusBadRequest)
+		writeJSONError(w, http.StatusBadRequest, "Invalid request body")
 		return
 	}
 
 	existing, err := loadPlayerLayout(userID, layoutID)
 	if err != nil {
 		if err == sql.ErrNoRows {
-			http.Error(w, `{"error": "Layout not found"}`, http.StatusNotFound)
+			writeJSONError(w, http.StatusNotFound, "Layout not found")
 			return
 		}
 		log.Printf("player layout load error: %v", err)
-		http.Error(w, `{"error": "Internal database error"}`, http.StatusInternalServerError)
+		writeJSONError(w, http.StatusInternalServerError, "Internal database error")
 		return
 	}
 
@@ -215,7 +215,7 @@ func UpdatePlayerLayout(w http.ResponseWriter, r *http.Request, ps httprouter.Pa
 	if len(req.Config) > 0 {
 		configJSON, err = validateLayoutConfig(req.Config)
 		if err != nil {
-			http.Error(w, `{"error": "Invalid layout config"}`, http.StatusBadRequest)
+			writeJSONError(w, http.StatusBadRequest, "Invalid layout config")
 			return
 		}
 	}
@@ -232,14 +232,14 @@ func UpdatePlayerLayout(w http.ResponseWriter, r *http.Request, ps httprouter.Pa
 	`, name, configJSON, useModular, userID, layoutID)
 	if err != nil {
 		log.Printf("player layout update error: %v", err)
-		http.Error(w, `{"error": "Internal database error"}`, http.StatusInternalServerError)
+		writeJSONError(w, http.StatusInternalServerError, "Internal database error")
 		return
 	}
 
 	layout, err := loadPlayerLayout(userID, layoutID)
 	if err != nil {
 		log.Printf("player layout reload error: %v", err)
-		http.Error(w, `{"error": "Internal database error"}`, http.StatusInternalServerError)
+		writeJSONError(w, http.StatusInternalServerError, "Internal database error")
 		return
 	}
 
@@ -252,7 +252,7 @@ func DeletePlayerLayout(w http.ResponseWriter, r *http.Request, ps httprouter.Pa
 
 	layoutID := strings.TrimSpace(ps.ByName("id"))
 	if layoutID == "" {
-		http.Error(w, `{"error": "Missing layout id"}`, http.StatusBadRequest)
+		writeJSONError(w, http.StatusBadRequest, "Missing layout id")
 		return
 	}
 
@@ -261,13 +261,13 @@ func DeletePlayerLayout(w http.ResponseWriter, r *http.Request, ps httprouter.Pa
 	`, userID, layoutID)
 	if err != nil {
 		log.Printf("player layout delete error: %v", err)
-		http.Error(w, `{"error": "Internal database error"}`, http.StatusInternalServerError)
+		writeJSONError(w, http.StatusInternalServerError, "Internal database error")
 		return
 	}
 
 	affected, _ := result.RowsAffected()
 	if affected == 0 {
-		http.Error(w, `{"error": "Layout not found"}`, http.StatusNotFound)
+		writeJSONError(w, http.StatusNotFound, "Layout not found")
 		return
 	}
 
