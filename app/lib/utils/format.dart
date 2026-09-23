@@ -23,7 +23,7 @@ String formatPlaybackTime(int totalSeconds) {
 }
 
 /// Wall-clock time at which playback ends, as `HH:mm` — the `19:31` half of
-/// the Emby player's `-3:12:33 / 19:31` readout.
+/// the Chrome Onyx `-3:12:33 / 19:31` readout.
 ///
 /// [now] is injectable so the result is testable without freezing the clock.
 String formatEndClock(int remainingSeconds, {DateTime? now}) {

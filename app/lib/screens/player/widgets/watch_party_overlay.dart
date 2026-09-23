@@ -5,76 +5,51 @@ import '../../../models/watch_party.dart';
 import '../../../services/watch_party.dart';
 import '../../../theme/app_colors.dart';
 
-/// La pastille « Regarder ensemble » du lecteur.
-///
-/// Posée au-dessus de tous les habillages (par défaut, Studio, Emby) plutôt
-/// que dans chacun : sans séance, elle en ouvre une ; pendant une séance, elle
-/// dit combien on est et rappelle le code à partager.
-class WatchPartyChip extends StatelessWidget {
-  const WatchPartyChip({super.key, required this.party, required this.onTap});
+/// Le bouton « Regarder ensemble » des barres du lecteur : une icône parmi
+/// les autres, qui ne se distingue que pendant une séance.
+class WatchPartyBarButton extends StatelessWidget {
+  const WatchPartyBarButton({
+    super.key,
+    required this.active,
+    required this.onPressed,
+    this.size = 40,
+  });
 
-  final WatchPartySession? party;
-  final VoidCallback onTap;
+  final bool active;
+  final VoidCallback onPressed;
+  final double size;
 
   @override
   Widget build(BuildContext context) {
-    final party = this.party;
-    return Material(
-      color: Colors.transparent,
-      child: InkWell(
-        onTap: onTap,
-        borderRadius: BorderRadius.circular(20),
-        child: Container(
-          height: 36,
-          padding: const EdgeInsets.symmetric(horizontal: 14),
-          decoration: BoxDecoration(
-            color: party != null
-                ? AppColors.accent.withValues(alpha: 0.28)
-                : Colors.black.withValues(alpha: 0.45),
-            borderRadius: BorderRadius.circular(20),
-            border: Border.all(
-              color: party != null
-                  ? AppColors.accent.withValues(alpha: 0.6)
-                  : Colors.white.withValues(alpha: 0.15),
+    return Tooltip(
+      message: active ? 'Séance en cours' : 'Regarder ensemble',
+      waitDuration: const Duration(milliseconds: 500),
+      child: Material(
+        color: Colors.transparent,
+        child: InkWell(
+          onTap: onPressed,
+          customBorder: const CircleBorder(),
+          child: Container(
+            width: size,
+            height: size,
+            decoration: BoxDecoration(
+              shape: BoxShape.circle,
+              color: active
+                  ? AppColors.accent.withValues(alpha: 0.25)
+                  : Colors.white.withValues(alpha: 0.08),
+              border: Border.all(
+                color: active
+                    ? AppColors.accent.withValues(alpha: 0.6)
+                    : Colors.white.withValues(alpha: 0.12),
+              ),
+            ),
+            alignment: Alignment.center,
+            child: Icon(
+              active ? Icons.groups_rounded : Icons.group_add_outlined,
+              color: active ? AppColors.accentMuted : Colors.white,
+              size: size * 0.5,
             ),
           ),
-          child: party == null
-              ? const Row(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    Icon(Icons.group_add_outlined, size: 18, color: Colors.white),
-                    SizedBox(width: 8),
-                    Text(
-                      'Regarder ensemble',
-                      style: TextStyle(
-                        color: Colors.white,
-                        fontSize: 13,
-                        fontWeight: FontWeight.w600,
-                      ),
-                    ),
-                  ],
-                )
-              : ListenableBuilder(
-                  listenable: party,
-                  builder: (context, _) => Row(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      const Icon(Icons.groups_rounded,
-                          size: 18, color: Colors.white),
-                      const SizedBox(width: 8),
-                      Text(
-                        '${party.members.length} · ${party.code}',
-                        style: const TextStyle(
-                          color: Colors.white,
-                          fontSize: 13,
-                          fontWeight: FontWeight.w700,
-                          letterSpacing: 1.2,
-                          fontFeatures: [FontFeature.tabularFigures()],
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
         ),
       ),
     );

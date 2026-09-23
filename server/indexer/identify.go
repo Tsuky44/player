@@ -16,7 +16,7 @@ import (
 	"project-player/server/models"
 )
 
-// Title-similarity gates for accepting an automatic match (Emby-like: refuse
+// Title-similarity gates for accepting an automatic match (refuse
 // weak guesses, but don't leave a whole library unidentified either).
 const (
 	// With a matching release year the title only has to be close.
@@ -25,7 +25,7 @@ const (
 	minTitleScoreNoYear = 0.92
 )
 
-// IdentityMatch is the result of Emby-style media identification.
+// IdentityMatch is the result of media identification.
 type IdentityMatch struct {
 	TMDBID      int
 	IMDbID      string
@@ -58,7 +58,7 @@ func IdentifyMovie(videoPath, moviesRoot string) IdentityMatch {
 	return match
 }
 
-// IdentifyShow resolves a series from folder/name hints using the same Emby priority order.
+// IdentifyShow resolves a series from folder/name hints using the same priority order.
 func IdentifyShow(showFolderPath, rawSearchKey string) IdentityMatch {
 	hints := CollectShowLocalIdentity(showFolderPath, rawSearchKey)
 	return identifyFromHints(hints, models.TypeShow)
@@ -111,7 +111,7 @@ func identifyFromHints(hints LocalIdentityHints, mediaType models.MediaType) Ide
 		}
 	}
 
-	// 2) IMDb id → TMDB /find (Emby external id path).
+	// 2) IMDb id → TMDB /find (external id path).
 	if hints.IMDbID != "" {
 		if id := findTMDBIDByExternal(hints.IMDbID, "imdb_id", mediaType); id > 0 {
 			poster, overview, date, title := fetchTMDBDetailsByID(id, mediaType)
@@ -325,7 +325,7 @@ search:
 	}
 }
 
-// isConfidentTMDBMatch mirrors Emby's refusal to lock a vague popularity hit:
+// isConfidentTMDBMatch refuses to lock a vague popularity hit:
 // the title must really match, and a known year must not contradict the result.
 func isConfidentTMDBMatch(r tmdbSearchResult, targetTitle string, targetYear int, mediaType models.MediaType, _ float64) bool {
 	if r.ID == 0 {

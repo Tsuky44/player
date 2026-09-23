@@ -41,7 +41,7 @@ Ce chrome a deux défauts opposés sur le même geste :
 
 Les deux se combinent en une violation de §7 (« if something disappears one way, we expect it to emerge from where it came ») : le HUD glisse vers le haut en fondu pour entrer, et se volatilise sur place pour sortir. Et comme l'animation d'entrée est un `flutter_animate` monté au build, elle n'est **pas interruptible** (§3) : re-taper pendant le fondu ne reprend pas la valeur à l'écran, ça rejoue depuis zéro.
 
-**L'exemplaire correct existe déjà dans le dépôt** : `EmbyControlsLayer._fadeWithChrome` (`screens/player/widgets/emby/emby_controls_layer.dart:178-188`) enveloppe le chrome dans un `AnimatedOpacity` 200 ms `easeOut` **symétrique**, doublé d'un `IgnorePointer(ignoring: !visible)` pour qu'un contrôle invisible ne soit pas cliquable. `AnimatedOpacity` repart de la valeur courante à chaque changement de cible — c'est précisément le comportement interruptible que §3 demande.
+**L'exemplaire correct existe déjà dans le dépôt** : `OnyxControlsLayer._fadeWithChrome` (`screens/player/widgets/onyx/onyx_controls_layer.dart:178-188`) enveloppe le chrome dans un `AnimatedOpacity` 200 ms `easeOut` **symétrique**, doublé d'un `IgnorePointer(ignoring: !visible)` pour qu'un contrôle invisible ne soit pas cliquable. `AnimatedOpacity` repart de la valeur courante à chaque changement de cible — c'est précisément le comportement interruptible que §3 demande.
 
 **Correctif** : extraire ce wrapper en owner partagé (`widgets/global/player_chrome_fade.dart`) et le faire consommer par les trois chromes. Cible : ~180 ms `easeOut`, identique dans les deux sens, plus un `AnimatedSlide` de la même durée si le glissement est conservé — même chemin à l'aller et au retour.
 
@@ -55,7 +55,7 @@ Le même produit, sur le même écran, selon une préférence utilisateur :
 
 | Chrome | Apparition | Disparition | Fichier |
 | --- | --- | --- | --- |
-| Emby | fondu 200 ms `easeOut` | fondu 200 ms `easeOut` | `emby_controls_layer.dart:183-186` |
+| Chrome Onyx | fondu 200 ms `easeOut` | fondu 200 ms `easeOut` | `onyx_controls_layer.dart:183-186` |
 | HUD par défaut | fondu + glissement 300 ms, décalé 40 ms | **instantanée** | `player_hud_overlay.dart:242-244` / `:66` |
 | Modulaire | **instantanée** | **instantanée** | `modular_controls_layer.dart:165` |
 
@@ -71,14 +71,14 @@ Le skill §16 Familiarité : « things that look the same must behave the same �
 
 §2 est la règle la plus littérale du skill : « touch and content should move together ». Pendant un drag, la barre doit peindre **où est le doigt**, pas où en est le lecteur.
 
-- **Correct** — `EmbyProgressBar` tient un `_dragFraction` local, peint `_shownFraction => _dragFraction ?? widget.progress` et ne commet le seek qu'au relâchement (`screens/player/widgets/emby/emby_progress_bar.dart:56-59`, `:96-104`). La barre est collée au doigt, le seek coûteux arrive une fois. C'est l'exemplaire à généraliser.
+- **Correct** — `OnyxProgressBar` tient un `_dragFraction` local, peint `_shownFraction => _dragFraction ?? widget.progress` et ne commet le seek qu'au relâchement (`screens/player/widgets/onyx/onyx_progress_bar.dart:56-59`, `:96-104`). La barre est collée au doigt, le seek coûteux arrive une fois. C'est l'exemplaire à généraliser.
 - **Incorrect** — `_SeekableBar` (`screens/player/widgets/modular_controls_layer.dart:393-397`) n'a aucun état local : il émet `onSeekFraction` à chaque `onHorizontalDragUpdate`, et la barre qu'il enveloppe est peinte à partir du `progress` que `player_screen.dart:1561` lui passe depuis le contrôleur. Le rendu suit donc la latence de seek de mpv/HLS, pas le pointeur.
 - **Incorrect, même cause** — `_TimelineSeekable` (`widgets/global/control_chrome.dart:1737-1765`), qui met en plus le lecteur en pause au `dragStart` et le relance au `dragEnd` : chaque micro-drag provoque un aller-retour pause/play.
 
-**Correctif** : hisser le patron d'`EmbyProgressBar` dans un `ScrubState` partagé (fraction locale pendant le drag, commit au relâchement, `onScrubbingChanged` pour tenir le chrome ouvert — ce dernier est déjà câblé côté `player_screen.dart:1508-1516`).
+**Correctif** : hisser le patron d'`OnyxProgressBar` dans un `ScrubState` partagé (fraction locale pendant le drag, commit au relâchement, `onScrubbingChanged` pour tenir le chrome ouvert — ce dernier est déjà câblé côté `player_screen.dart:1508-1516`).
 
 **Bonus §6, pas encore présent nulle part** : au relâchement d'un flick sur la barre, projeter le point d'arrivée au lieu de s'arrêter net —
-`projected = current + (v/1000) * d / (1 - d)` avec `d ≈ 0.998`. Sur une timeline avec chapitres (`chapterMarks` existe déjà, `emby_progress_bar.dart:157`), c'est ce qui transforme un flick en « saut au chapitre » naturel.
+`projected = current + (v/1000) * d / (1 - d)` avec `d ≈ 0.998`. Sur une timeline avec chapitres (`chapterMarks` existe déjà, `onyx_progress_bar.dart:157`), c'est ce qui transforme un flick en « saut au chapitre » naturel.
 
 ---
 
@@ -182,9 +182,9 @@ Autre point §12 non traité : « scroll edge effects, not hard dividers ». Le 
 
 `utils/responsive.dart:61-62` déclare `minTouchTarget` (48 en compact, 44 sinon) — **zéro consommateur** dans tout `app/lib`. Pendant ce temps `GlassIconButton` a un côté par défaut de 32 (`widgets/global/glass_chrome.dart:266`), sous le seuil que le dépôt s'est lui-même fixé.
 
-L'exemplaire correct est, là encore, dans le chrome Emby : `EmbyChromeMetrics` réserve `hitSize = 40` en compact et `44` en desktop autour d'une barre de 4 px (`screens/player/widgets/emby/emby_chrome_theme.dart:92`, `:106`), avec le commentaire qui explique pourquoi (`emby_progress_bar.dart:72-74`). C'est exactement l'hystérésis de §10.
+L'exemplaire correct est, là encore, dans le Chrome Onyx : `OnyxChromeMetrics` réserve `hitSize = 40` en compact et `44` en desktop autour d'une barre de 4 px (`screens/player/widgets/onyx/onyx_chrome_theme.dart:92`, `:106`), avec le commentaire qui explique pourquoi (`onyx_progress_bar.dart:72-74`). C'est exactement l'hystérésis de §10.
 
-**Correctif** : faire consommer `minTouchTarget` par `GlassIconButton`, `_TimelineBarIcon` et `_EmbyTimelineIcon` via un `ConstrainedBox` — la cible grandit, le visuel ne bouge pas.
+**Correctif** : faire consommer `minTouchTarget` par `GlassIconButton`, `_TimelineBarIcon` et `_OnyxTimelineIcon` via un `ConstrainedBox` — la cible grandit, le visuel ne bouge pas.
 
 ---
 
@@ -199,7 +199,7 @@ Ce sont les trois qui partagent une seule cause — l'absence d'owner de mouveme
 1. `theme/app_motion.dart` — trois durées (180 / 200 / 260 ms), une courbe (`easeOut`), une échelle d'appui (0,97), et les deux helpers `fade` / `move` qui portent §14. Toutes les durées tiennent dans la plage 180–280 ms que `PROJECT_DESIGN.md` §10 impose déjà — l'owner ne fait que nommer des valeurs que le dépôt applique déjà par endroits. Le garde-fou `disableAnimations` vit dans ce fichier, pas dans les appelants : `fade` conserve l'opacité (non vestibulaire), `move` annule la géométrie.
 
    **Pas de ressort pour l'instant, délibérément.** Un ressort ne paie que là où un geste porte une vélocité à transmettre (§5) — relâchement de drag, flick. L'app n'en a aucun aujourd'hui, et les animations implicites de Flutter repartent déjà de la valeur affichée, ce qui suffit à les rendre interruptibles (§3). Le premier vrai candidat est le finding 3, quand le scrubber accrochera les chapitres au flick.
-2. `widgets/global/player_chrome_fade.dart` — le wrapper d'`emby_controls_layer.dart:180-190` extrait et consommé par les trois chromes (findings 1 et 2).
+2. `widgets/global/player_chrome_fade.dart` — le wrapper d'`onyx_controls_layer.dart:180-190` extrait et consommé par les trois chromes (findings 1 et 2).
 3. `widgets/global/pressable.dart` — appui, survol et focus dans un seul primitive : échelle 0,97 au `onTapDown`, retour au relâchement ou à l'annulation par glissement (finding 4).
 
 Les findings 5 à 10 sont indépendants entre eux et peuvent suivre dans n'importe quel ordre. Les 7 et 8 sont les plus volumineux et se traitent par lots d'écrans.

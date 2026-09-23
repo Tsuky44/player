@@ -2,7 +2,7 @@
 
 - **Statut :** accepté, réalisé — vérification dans l'app encore à faire
 - **Date :** 2026-09-14
-- **Portée :** le chrome Emby (ordinateur, téléphone, téléviseur). Pas les dispositions modulaires
+- **Portée :** le Chrome Onyx (ordinateur, téléphone, téléviseur). Pas les dispositions modulaires
   ni le HUD par défaut.
 
 ## Contexte
@@ -10,7 +10,7 @@
 Survoler la barre de lecture n'affichait qu'un temps. On veut l'image de ce moment-là, en grand,
 sans ralentir le démarrage de la lecture et sans attendre dix secondes qu'elle apparaisse.
 
-La forme habituelle — une planche de vignettes générée en une passe (trickplay de Jellyfin) — lit
+La forme habituelle — une planche de vignettes générée en une passe (« trickplay ») — lit
 et décode tout le fichier avant de pouvoir répondre au premier survol : plusieurs minutes pour un
 remux 4K sur la machine de production, qui n'a pas de GPU.
 

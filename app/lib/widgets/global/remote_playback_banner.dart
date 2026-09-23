@@ -12,7 +12,7 @@ import '../../theme/app_colors.dart';
 import '../../utils/poster_url.dart';
 
 /// « Lecture en cours sur un autre appareil » : ce que le compte lit ailleurs,
-/// avec de quoi le reprendre ici là où il en est — comme YouTube.
+/// avec de quoi le reprendre ici là où il en est.
 ///
 /// Reprendre ouvre le lecteur, dont le premier signal met l'autre appareil en
 /// pause (voir `server/handlers/playback_handoff.go`).

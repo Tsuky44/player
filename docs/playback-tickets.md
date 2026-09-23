@@ -1,6 +1,6 @@
 # Tickets temporaires de lecture
 
-Implémentation locale de la phase 1 de la [roadmap](roadmap-parite-plex-emby.md). Les tests automatiques passent ; aucun déploiement ni test manuel de cette version n'a été effectué sur le serveur externe.
+Implémentation locale de la phase 1 de la [roadmap](roadmap-lecture.md). Les tests automatiques passent ; aucun déploiement ni test manuel de cette version n'a été effectué sur le serveur externe.
 
 ## Contrat
 

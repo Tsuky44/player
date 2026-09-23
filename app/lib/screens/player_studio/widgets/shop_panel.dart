@@ -9,7 +9,7 @@ const _kCategories = <String, List<PlayerControlType>>{
     PlayerControlType.progressBar,
     PlayerControlType.timeline,
     PlayerControlType.timelineGlassInline,
-    PlayerControlType.timelineEmby,
+    PlayerControlType.timelineOnyx,
   ],
   'Navigation temporelle': [
     PlayerControlType.rewind,
@@ -22,7 +22,7 @@ const _kCategories = <String, List<PlayerControlType>>{
     PlayerControlType.skipPrevious,
     PlayerControlType.skipNext,
     PlayerControlType.upNext,
-    PlayerControlType.upNextEmby,
+    PlayerControlType.upNextOnyx,
   ],
   'Volume': [
     PlayerControlType.volumeUp,
@@ -37,6 +37,7 @@ const _kCategories = <String, List<PlayerControlType>>{
     PlayerControlType.settings,
     PlayerControlType.subtitles,
     PlayerControlType.fullscreen,
+    PlayerControlType.watchParty,
   ],
   'Pack Cinéma': [
     PlayerControlType.skipIntro,
@@ -48,9 +49,9 @@ const _kCategories = <String, List<PlayerControlType>>{
     PlayerControlType.rewind30,
     PlayerControlType.forward30,
   ],
-  'Pack Emby': [
+  'Pack Chrome Onyx': [
     PlayerControlType.episodeTitleBlock,
-    PlayerControlType.chaptersEmby,
+    PlayerControlType.chaptersOnyx,
     PlayerControlType.mediaInfo,
   ],
 };

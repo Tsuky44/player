@@ -10,14 +10,14 @@ Le dépôt est une app Flutter unique (`app/lib`) déployée sur macOS, Windows,
 
 - Surface : en-tête de l'app sur les deux branches — `_DesktopGlassHeader` (`app/lib/screens/shell/main_shell.dart:115-192`) pour ≥900 px, `_HomeOverlayBar` (`app/lib/screens/home/home_screen.dart:281-370`) pour l'onglet Accueil <900 px.
 - Problème : deux défauts d'une même racine.
-  1. `GlassBrand` peint la tuile de marque avec `LinearGradient(colors: [Color(0xFFE50914), Color(0xFFB20710)])` (`app/lib/widgets/global/glass_chrome.dart:190-195`) — le rouge Netflix, explicitement banni.
+  1. `GlassBrand` peint la tuile de marque avec `LinearGradient(colors: [Color(0xFFE50914), Color(0xFFB20710)])` (`app/lib/widgets/global/glass_chrome.dart:190-195`) — le rouge vif, explicitement banni.
   2. `_HomeOverlayBar` ne consomme pas le chrome du shell : il redessine localement une tuile de marque bleue 32×32 rayon 6 (`app/lib/screens/home/home_screen.dart:310-318`) et un menu compte complet (`home_screen.dart:334-363`) en parallèle de `_AccountMenu` (`main_shell.dart:373-427`). Les deux menus divergent sur le libellé de la même action — « Déconnexion » (`home_screen.dart:361`) contre « Se déconnecter » (`main_shell.dart:398`) — et sur la présentation de l'avatar (`CircleAvatar` rayon 16 sur fond `surfaceElevated` @0.8 contre `GlassIconButton` size 34). Le menu du shell porte en plus un en-tête username et deux `PopupMenuDivider` que celui de l'Accueil n'a pas.
 - Design evidence :
   - `PROJECT_DESIGN.md` §6 Color Palette & Roles : « Constraints: **no `#E50914`** ».
-  - `PROJECT_DESIGN.md` §11 Don't : « Netflix red, purple gradients, neon glow ».
-  - `PROJECT_DESIGN.md` §2 Existing UI Read, « Patterns to remove or avoid » : « rouge Netflix ».
+  - `PROJECT_DESIGN.md` §11 Don't : « Bright red `#E50914`, purple gradients, neon glow ».
+  - `PROJECT_DESIGN.md` §2 Existing UI Read, « Patterns to remove or avoid » : « rouge vif ».
   - `PROJECT_DESIGN.md` §11 Do : « Align shell + player + login on same tokens ».
-  - `design.md:107` : « No Netflix-red branding; the mark is a light play tile on dark. »
+  - `design.md:107` : « No bright-red branding; the mark is a light play tile on dark. »
 - Owner : `app/lib/widgets/global/glass_chrome.dart` (`GlassBrand`) pour la marque ; `app/lib/screens/shell/main_shell.dart` (`_AccountMenu`) pour le menu compte.
 - Scope and affected surfaces : `app/lib/widgets/global/glass_chrome.dart`, `app/lib/screens/shell/main_shell.dart`, `app/lib/screens/home/home_screen.dart`.
 - Uncertainty : `_AccountMenu` est privé à `main_shell.dart` ; il faut le rendre public (ou l'extraire) pour que `home_screen.dart` le consomme. Aucune autre incertitude.

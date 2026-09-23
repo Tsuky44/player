@@ -96,8 +96,8 @@ class MediaRow extends StatelessWidget {
         // La marge réservée au zoom des affiches ([PosterCard.liftHeadroom])
         // est reprise ici, pour que l'écart visible sous le titre ne change pas.
         const SizedBox(height: 14 - PosterCard.liftHeadroom),
-        // Revenir sur cette rangée ramène à la carte où l'on était, comme sur
-        // Jellyfin — voir [TvFocusMemory].
+        // Revenir sur cette rangée ramène à la carte où l'on était — voir
+        // [TvFocusMemory].
         TvFocusMemory(
           child: SizedBox(
             height: rowHeight,

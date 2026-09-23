@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 
-import 'emby_chrome_theme.dart';
+import 'onyx_chrome_theme.dart';
 
 /// The vertical brightness bar down the right edge of the player, the control
 /// every phone video app puts on one of the two.
@@ -21,7 +21,7 @@ import 'emby_chrome_theme.dart';
 /// first contact a mistake to correct rather than the start of an adjustment —
 /// and it is what made a wide catch area impossible, since every stray touch
 /// would have thrown the brightness somewhere.
-class EmbyBrightnessSlider extends StatefulWidget {
+class OnyxBrightnessSlider extends StatefulWidget {
   /// 0.0 -> 1.0.
   final double value;
 
@@ -31,9 +31,9 @@ class EmbyBrightnessSlider extends StatefulWidget {
   /// whole of it instead of fading out from under the finger.
   final ValueChanged<bool>? onDraggingChanged;
 
-  final EmbyChromeMetrics metrics;
+  final OnyxChromeMetrics metrics;
 
-  const EmbyBrightnessSlider({
+  const OnyxBrightnessSlider({
     super.key,
     required this.value,
     required this.onChanged,
@@ -42,10 +42,10 @@ class EmbyBrightnessSlider extends StatefulWidget {
   });
 
   @override
-  State<EmbyBrightnessSlider> createState() => _EmbyBrightnessSliderState();
+  State<OnyxBrightnessSlider> createState() => _OnyxBrightnessSliderState();
 }
 
-class _EmbyBrightnessSliderState extends State<EmbyBrightnessSlider> {
+class _OnyxBrightnessSliderState extends State<OnyxBrightnessSlider> {
   /// The drawn track: thick enough to read its own fill from arm's length — a
   /// hairline over a moving picture shows a level nobody can see — and no
   /// thicker, because it sits over the film.
@@ -234,7 +234,7 @@ class _EmbyBrightnessSliderState extends State<EmbyBrightnessSlider> {
                           widthFactor: 1,
                           child: const DecoratedBox(
                             decoration: BoxDecoration(
-                              color: EmbyChromeTheme.progressPlayed,
+                              color: OnyxChromeTheme.progressPlayed,
                             ),
                           ),
                         ),
@@ -257,7 +257,7 @@ class _EmbyBrightnessSliderState extends State<EmbyBrightnessSlider> {
                                 ? Icons.brightness_medium_rounded
                                 : Icons.brightness_high_rounded,
                         size: m.iconSize,
-                        color: EmbyChromeTheme.icon,
+                        color: OnyxChromeTheme.icon,
                         shadows: const [
                           Shadow(color: Color(0x99000000), blurRadius: 8),
                         ],

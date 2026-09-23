@@ -12,7 +12,7 @@ L'ADR-0003 §4 fixe la règle du lecteur à la télécommande : le lecteur déti
 flèches parcourent le film ; OK donne le focus à la barre de contrôle, Retour le rend. La règle
 était juste et la barre ne pouvait pas la tenir.
 
-Le chrome Emby ne contient **aucun widget focusable**. Ses boutons sont des `GestureDetector`
+Le Chrome Onyx ne contient **aucun widget focusable**. Ses boutons sont des `GestureDetector`
 enveloppés d'un `MouseRegion` : ils prennent le clic et le survol, rien dans cette pile ne demande
 le focus. Le seul widget focusable de tout le chrome était le `Slider` de volume en haut à droite.
 Trois symptômes en découlaient, qui n'en font qu'un :
@@ -57,7 +57,7 @@ de transport, parce qu'une télécommande ne fait pas glisser une poignée.
 
 ### 2. Chaque commande du chrome est focusable, par le mécanisme déjà en place
 
-`_EmbyIconButton` est enveloppé dans `TvFocusable` — le même widget que les vignettes du catalogue,
+`_OnyxIconButton` est enveloppé dans `TvFocusable` — le même widget que les vignettes du catalogue,
 avec le même anneau d'accentuation et le même agrandissement au focus. Le `GestureDetector` interne
 est conservé tel quel : la souris et le doigt gardent exactement le chemin qu'ils avaient.
 

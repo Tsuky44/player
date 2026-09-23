@@ -36,8 +36,8 @@ import 'widgets/next_season_overlay.dart';
 import 'widgets/upcoming_episode_overlay.dart';
 import 'widgets/player_hud_overlay.dart';
 import 'widgets/modular_controls_layer.dart';
-import 'widgets/emby/emby_controls_layer.dart';
-import 'widgets/emby/emby_settings_menu.dart';
+import 'widgets/onyx/onyx_controls_layer.dart';
+import 'widgets/onyx/onyx_settings_menu.dart';
 import 'widgets/top_right_controls.dart';
 import 'widgets/player_settings_sheet.dart';
 import 'widgets/player_settings_anchor.dart';
@@ -138,6 +138,10 @@ class _PlayerScreenState extends State<PlayerScreen> {
   /// Jusqu'à quand un recalage demandé par la séance est en train de se poser.
   DateTime? _partySeekSettlesAt;
 
+  /// Le facteur que la séance applique à la vitesse choisie, pour rattraper
+  /// un petit écart sans couper. 1 hors séance.
+  double _partyRateFactor = 1;
+
   /// Ce lecteur cède la place à un autre (épisode suivant, relance) : la
   /// séance continue avec lui, elle ne doit pas être quittée ici.
   bool _partyHandOver = false;
@@ -148,7 +152,7 @@ class _PlayerScreenState extends State<PlayerScreen> {
   /// [BoxFit.cover]   = adaptive (fills screen, may crop edges).
   BoxFit _videoFit = BoxFit.contain;
 
-  /// Pinch-to-zoom, the gesture Netflix and YouTube both answer on a phone:
+  /// Pinch-to-zoom, the gesture people expect on a phone:
   /// spreading two fingers fills the screen ([BoxFit.cover]), pinching them
   /// back gives the original framing ([BoxFit.contain]). Reading the pinch
   /// itself belongs to [PinchZoomFit]; what is left here is when to listen and
@@ -242,7 +246,7 @@ class _PlayerScreenState extends State<PlayerScreen> {
 
   /// The scrubber — where the remote lands when it came in seeking.
   ///
-  /// Left and right with the HUD down seek straight away, as on Jellyfin, and
+  /// Left and right with the HUD down seek straight away, and
   /// put the outline on the bar so the next press goes on seeking from it with
   /// the screen saying so. OK on the bar itself toggles playback.
   final FocusNode _progressFocusNode = FocusNode(debugLabel: 'player-progress');
@@ -587,6 +591,9 @@ class _PlayerScreenState extends State<PlayerScreen> {
       // point at the exact moment it opens the stream, so mpv can start at that
       // second instead of starting at 0 and seeking afterwards.
       resumePositionFuture: resumePositionFuture,
+      // What the home row already knows: lets the stream open without waiting
+      // on the server, which only has to confirm it.
+      provisionalResumeSeconds: widget.autoAdvance ? 0 : _resumePosition,
       onCompleted: _onPlaybackCompleted,
       onPositionChanged: _onPositionChanged,
       onPlayingChanged: () {
@@ -1164,7 +1171,7 @@ class _PlayerScreenState extends State<PlayerScreen> {
   /// card is up; only the back button survives it.
   bool get _controlsVisible => _showControls && !_endCardVisible;
 
-  /// Netflix-style: hide the cursor while controls are hidden during playback.
+  /// Hide the cursor while controls are hidden during playback.
   /// Never on an end card, which has buttons to aim at.
   bool get _shouldHideCursor =>
       !_showControls &&
@@ -1379,7 +1386,7 @@ class _PlayerScreenState extends State<PlayerScreen> {
       // A focused button answers for itself — the app-wide shortcut turns this
       // very key into its activation.
       if (browsingControls) return KeyEventResult.ignored;
-      // On a television OK never toggles playback from here: as on Jellyfin it
+      // On a television OK never toggles playback from here: it
       // wakes the HUD with the remote on play/pause, so the next OK pauses.
       // Reaching this branch with the HUD already up means the focus slipped,
       // and putting it back is the repair.
@@ -1405,7 +1412,7 @@ class _PlayerScreenState extends State<PlayerScreen> {
         key == LogicalKeyboardKey.arrowDown;
 
     if (!browsingControls && isArrow) {
-      // As on Jellyfin: left and right seek at once — the press is not spent
+      // Left and right seek at once — the press is not spent
       // waking the HUD — and the HUD comes up on the scrubber, showing where
       // the seek is going, so the next press goes on from there. Up and down
       // only bring the HUD up, on play/pause. Volume is untouched: the set owns
@@ -1680,6 +1687,7 @@ class _PlayerScreenState extends State<PlayerScreen> {
     WatchPartySession.active.removeListener(_handleWatchPartyChanged);
     final party = _party;
     if (party != null) {
+      party.removeListener(_handlePartyUpdated);
       party.detach(_partyBinding);
       if (!_partyHandOver) unawaited(party.leave());
     }
@@ -1746,7 +1754,7 @@ class _PlayerScreenState extends State<PlayerScreen> {
   /// This is the blunt version, and it is only for the layers that place their
   /// controls freely — a Studio layout puts a button at any fraction of the
   /// screen, so there is no row to test and nothing finer to do than pad the
-  /// edge. The Emby chrome takes the cutouts themselves and moves one row at a
+  /// edge. Chrome Onyx takes the cutouts themselves and moves one row at a
   /// time; see its `cutouts`.
   Widget _clearOfCutout(Widget chrome) => Padding(
         padding: DisplayCutouts.of(context),
@@ -1958,16 +1966,16 @@ class _PlayerScreenState extends State<PlayerScreen> {
     );
   }
 
-  /// Emby-chrome settings menu, anchored to the button that opened it.
-  void _showEmbySettingsMenu({
-    EmbyMenuSection section = EmbyMenuSection.root,
+  /// Chrome Onyx settings menu, anchored to the button that opened it.
+  void _showOnyxSettingsMenu({
+    OnyxMenuSection section = OnyxMenuSection.root,
     required GlobalKey anchorKey,
   }) {
     final screenSize = MediaQuery.sizeOf(context);
     final renderBox = anchorKey.currentContext?.findRenderObject() as RenderBox?;
 
-    const menuWidth = EmbySettingsMenu.width;
-    const menuMaxHeight = EmbySettingsMenu.maxHeight;
+    const menuWidth = OnyxSettingsMenu.width;
+    const menuMaxHeight = OnyxSettingsMenu.maxHeight;
 
     late final double left;
     late final double? bottom;
@@ -2012,7 +2020,7 @@ class _PlayerScreenState extends State<PlayerScreen> {
                   top: top,
                   child: ConstrainedBox(
                     constraints: BoxConstraints(maxHeight: maxHeight),
-                    child: EmbySettingsMenu(
+                    child: OnyxSettingsMenu(
                       session: _playerController.session,
                       playerController: _playerController,
                       episodeNav: _episodeNav,
@@ -2037,7 +2045,7 @@ class _PlayerScreenState extends State<PlayerScreen> {
   }
 
   Future<void> _setPlaybackRate(double rate) async {
-    await _playerController.session.setRate(rate);
+    await _playerController.session.setRate(rate * _partyRateFactor);
     if (!mounted) return;
     setState(() => _playbackRate = rate);
     _showControlsTransient();
@@ -2046,7 +2054,7 @@ class _PlayerScreenState extends State<PlayerScreen> {
   Future<void> _cyclePlaybackRate() async {
     final idx = _playbackRates.indexOf(_playbackRate);
     final next = _playbackRates[(idx < 0 ? 0 : idx + 1) % _playbackRates.length];
-    await _playerController.session.setRate(next);
+    await _playerController.session.setRate(next * _partyRateFactor);
     if (!mounted) return;
     setState(() => _playbackRate = next);
     _showControlsTransient();
@@ -2290,18 +2298,18 @@ class _PlayerScreenState extends State<PlayerScreen> {
         title: _episodeOrMovieTitle,
       );
 
-  /// Bold line of the Emby title block: the show name on an episode, the film
+  /// Bold line of the Chrome Onyx title block: the show name on an episode, the film
   /// title on a movie.
-  String get _embyTitleLine => _episodesShowTitle;
+  String get _onyxTitleLine => _episodesShowTitle;
 
   /// Muted line above it: `S1:E3 - …` on an episode, the release year on a
-  /// movie — which is what Emby shows there.
-  String? get _embyOverline {
+  /// movie.
+  String? get _onyxOverline {
     if (_isEpisode) return _episodeOverline;
     return extractYear(_actualMedia.releaseDate);
   }
 
-  /// Downloaded-ahead fraction for the Emby scrubber.
+  /// Downloaded-ahead fraction for the Chrome Onyx scrubber.
   double get _bufferedFraction {
     final total = _playerController.duration.inSeconds;
     if (total <= 0) return 0;
@@ -2309,7 +2317,7 @@ class _PlayerScreenState extends State<PlayerScreen> {
         .clamp(0.0, 1.0);
   }
 
-  /// Chapter starts as fractions, for the Emby scrubber ticks. Empty when the
+  /// Chapter starts as fractions, for the Chrome Onyx scrubber ticks. Empty when the
   /// backend found no chapters — the bar then reads as a plain timeline.
   List<double> get _chapterMarks {
     final chapters = _episodeNav?.chapters ?? const [];
@@ -2517,8 +2525,10 @@ class _PlayerScreenState extends State<PlayerScreen> {
     final target = eligible ? next : null;
     if (identical(target, _party)) return;
     _party?.detach(_partyBinding);
+    _party?.removeListener(_handlePartyUpdated);
     _party = target;
     if (target != null) {
+      target.addListener(_handlePartyUpdated);
       // L'abonnement précédent n'est coupé qu'ici, pas à la fin de la séance :
       // son dernier message (« La séance est terminée ») arrive après.
       unawaited(_partyNotices?.cancel());
@@ -2527,6 +2537,14 @@ class _PlayerScreenState extends State<PlayerScreen> {
     }
     _safeSetState(() {});
   }
+
+  /// La séance a changé (participants, attente) : le bouton et le message
+  /// « En attente de… » suivent.
+  void _handlePartyUpdated() => _safeSetState(() {});
+
+  /// Le panneau s'ouvre partout où un serveur peut héberger une séance.
+  VoidCallback? get _watchPartyAction =>
+      _apiClient != null ? _showWatchPartyPanel : null;
 
   void _showPartyNotice(String text) {
     _partyNoticeTimer?.cancel();
@@ -2640,7 +2658,7 @@ class _PlayerScreenState extends State<PlayerScreen> {
     // pointer that can reach any of them directly; a D-pad walks between them,
     // and no arrangement a user can draw guarantees a path that reaches every
     // control. The fixed chrome is laid out for that walk.
-    final fixedChrome = isTv ? FixedChromeId.emby : chrome.fixedChrome;
+    final fixedChrome = isTv ? FixedChromeId.onyx : chrome.fixedChrome;
     final useModular = fixedChrome == null && chrome.useModular;
     final useDefaultHud = fixedChrome == null && !useModular;
     final totalSeconds = _playerController.duration.inSeconds;
@@ -2867,7 +2885,7 @@ class _PlayerScreenState extends State<PlayerScreen> {
                 // rendering a player with no controls at all.
                 if (fixedChrome != null)
                   switch (fixedChrome) {
-                    FixedChromeId.emby => EmbyControlsLayer(
+                    FixedChromeId.onyx => OnyxControlsLayer(
                     visible: _controlsVisible,
                     timelineAnchorKey: _timelineAnchorKey,
                     isPlaying: _playerController.isPlaying,
@@ -2895,8 +2913,8 @@ class _PlayerScreenState extends State<PlayerScreen> {
                         _hideControlsWithDelay();
                       }
                     },
-                    title: _embyTitleLine,
-                    overline: _embyOverline,
+                    title: _onyxTitleLine,
+                    overline: _onyxOverline,
                     logoUrl: _mediaLogoUrl,
                     volume: _playerController.session.volume,
                     onVolumeChanged: (v) =>
@@ -2914,20 +2932,22 @@ class _PlayerScreenState extends State<PlayerScreen> {
                       }
                     },
                     onBack: _leavePlayer,
-                    // This chrome gets the Emby-shaped menu, not the tabbed
+                    // This chrome gets its own list menu, not the tabbed
                     // panel the modular and default layouts use.
-                    onToggleSubtitles: () => _showEmbySettingsMenu(
-                      section: EmbyMenuSection.subtitles,
+                    onToggleSubtitles: () => _showOnyxSettingsMenu(
+                      section: OnyxMenuSection.subtitles,
                       anchorKey: _subtitlesButtonKey,
                     ),
-                    onOpenAudio: () => _showEmbySettingsMenu(
-                      section: EmbyMenuSection.audio,
+                    onOpenAudio: () => _showOnyxSettingsMenu(
+                      section: OnyxMenuSection.audio,
                       anchorKey: _subtitlesButtonKey,
                     ),
                     onCycleSpeed: _cyclePlaybackRate,
-                    onOpenSettings: () => _showEmbySettingsMenu(
+                    onOpenSettings: () => _showOnyxSettingsMenu(
                       anchorKey: _settingsButtonKey,
                     ),
+                    onOpenWatchParty: _watchPartyAction,
+                    watchPartyActive: _party != null,
                     onToggleFullscreen: _toggleFullscreen,
                     playbackRate: _playbackRate,
                     onSkipNext: (_episodeNav?.nextEpisode != null)
@@ -2996,6 +3016,8 @@ class _PlayerScreenState extends State<PlayerScreen> {
                         ? () => _showTrackSettings(initialTabIndex: 4)
                         : null,
                     onOpenInfo: _showInfoPanel,
+                    onOpenWatchParty: _watchPartyAction,
+                    watchPartyActive: _party != null,
                     episodeInfoLine: _episodeOverline,
                     episodeShowTitle: _episodesShowTitle,
                     playbackRate: _playbackRate,
@@ -3059,6 +3081,8 @@ class _PlayerScreenState extends State<PlayerScreen> {
                     onNextEpisode: (_episodeNav?.nextEpisode != null)
                         ? _goToNextEpisode
                         : null,
+                    onOpenWatchParty: _watchPartyAction,
+                    watchPartyActive: _party != null,
                   )),
                 if (_controlsVisible && useDefaultHud)
                   _clearOfCutout(TopRightControls(
@@ -3069,35 +3093,22 @@ class _PlayerScreenState extends State<PlayerScreen> {
                     episodeNav: _episodeNav,
                     onSeekToAbsolute: _seekTo,
                   )),
-                // Regarder ensemble : au-dessus de tous les habillages, au
-                // centre, pour ne rien disputer à leurs boutons.
-                if (!_endCardVisible && _apiClient != null)
+                // Regarder ensemble : les annonces (« alex a mis en pause ») et
+                // l'attente d'un participant qui charge, en haut au centre. Le
+                // bouton, lui, est dans la barre de chaque habillage.
+                if (_party != null || _partyNoticeVisible)
                   Positioned(
-                    top: macOSWindowControlsTopInset + 16,
+                    top: macOSWindowControlsTopInset + 20,
                     left: 0,
                     right: 0,
                     child: SafeArea(
                       bottom: false,
-                      child: Column(
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          IgnorePointer(
-                            ignoring: !_controlsVisible,
-                            child: AnimatedOpacity(
-                              opacity: _controlsVisible ? 1 : 0,
-                              duration: const Duration(milliseconds: 200),
-                              child: WatchPartyChip(
-                                party: _party,
-                                onTap: _showWatchPartyPanel,
-                              ),
-                            ),
-                          ),
-                          const SizedBox(height: 10),
-                          WatchPartyToast(
-                            message: _partyNotice,
-                            visible: _partyNoticeVisible,
-                          ),
-                        ],
+                      child: Center(
+                        child: WatchPartyToast(
+                          message: _party?.waitingMessage ?? _partyNotice,
+                          visible: _party?.waitingMessage != null ||
+                              _partyNoticeVisible,
+                        ),
                       ),
                     ),
                   ),
@@ -3575,6 +3586,12 @@ class _WatchPartyBinding implements WatchPartyPlayer {
       _controller.hasFirstFrame && !_state._isLeaving && !_state._isDisposing;
 
   @override
+  bool get isLoading =>
+      !_controller.hasFirstFrame ||
+      _controller.isBuffering ||
+      _controller.isSwitchingQuality;
+
+  @override
   bool get isBusy {
     final settles = _state._partySeekSettlesAt;
     return _controller.isBuffering ||
@@ -3598,9 +3615,16 @@ class _WatchPartyBinding implements WatchPartyPlayer {
 
   @override
   Future<void> applySeek(Duration position) async {
-    _state._partySeekSettlesAt = DateTime.now().add(const Duration(seconds: 4));
-    await _controller
-        .seekToAbsoluteSeconds((position.inMilliseconds / 1000).round());
+    // Le temps que la position rapportée par le moteur rejoigne la cible.
+    _state._partySeekSettlesAt =
+        DateTime.now().add(const Duration(milliseconds: 1200));
+    await _controller.seekToAbsolutePosition(position);
+  }
+
+  @override
+  Future<void> applyRateFactor(double factor) async {
+    _state._partyRateFactor = factor;
+    await _controller.session.setRate(_state._playbackRate * factor);
   }
 
   @override

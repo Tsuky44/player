@@ -12,13 +12,13 @@ Utilisateur principal : propriétaire / foyer d’un serveur multimédia privé 
 
 ## Product Purpose
 
-Onyx est le client Flutter d’un serveur média léger (Go, Direct Play 100 %). Il remplace l’expérience Emby/Plex côté lecture et découverte pour une bibliothèque personnelle : authentification, accueil (reprendre / récents), catalogues films & séries, fiches détail, demandes de médias, préférences de lecture, lecteur vidéo (media_kit/mpv) et studio de layout des contrôles.
+Onyx est le client Flutter d’un serveur média léger (Go, Direct Play 100 %). Il couvre la lecture et la découverte d’une bibliothèque personnelle : authentification, accueil (reprendre / récents), catalogues films & séries, fiches détail, demandes de médias, préférences de lecture, lecteur vidéo (media_kit/mpv) et studio de layout des contrôles.
 
 Succès = trouver rapidement un titre, le lire sans friction (seek, audio, sous-titres, reprise), et que l’UI reste claire sur desktop large et mobile étroit — sans casser aucune fonctionnalité existante.
 
 ## Positioning
 
-Client Direct Play pur branché sur un backend Go ultra-léger : zéro transcodage côté serveur, décodage client via mpv/media_kit, progression heartbeat, et chrome lecteur personnalisable (Player Studio). Différence clé vs Emby/Plex cloud : contrôle total, empreinte serveur minimale, expérience cinéma privée.
+Client Direct Play pur branché sur un backend Go ultra-léger : zéro transcodage côté serveur, décodage client via mpv/media_kit, progression heartbeat, et chrome lecteur personnalisable (Player Studio). Ses différences clés : contrôle total, empreinte serveur minimale, expérience cinéma privée.
 
 ## Operating Context
 
@@ -46,7 +46,7 @@ Client Direct Play pur branché sur un backend Go ultra-léger : zéro transcoda
 ## Brand Commitments
 
 - Nom produit : Onyx. Marque et déclinaisons dans `brand/` (mark, wordmark vectorisé, icônes).
-- Direction visuelle documentée dans `design.md` (« Cinematic Glass ») : immersion atmosphérique, glass, charcoal, accent bleu type focus — à traiter comme intention de world, pas forcément comme implémentation actuelle (le code utilise encore Inter + rouge Netflix `#E50914`).
+- Direction visuelle documentée dans `design.md` (« Cinematic Glass ») : immersion atmosphérique, glass, charcoal, accent bleu type focus — à traiter comme intention de world, pas forcément comme implémentation actuelle (le code utilise encore Inter + rouge `#E50914`).
 - Carte blanche design accordée par l’utilisateur pour cette passe, sous réserve de garder toutes les fonctionnalités utilisables.
 
 ## Evidence on Hand

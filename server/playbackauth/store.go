@@ -8,8 +8,10 @@ import (
 	"crypto/sha256"
 	"encoding/base64"
 	"errors"
+	"io"
 	"net/http"
 	"sync"
+	"sync/atomic"
 	"time"
 )
 
@@ -28,6 +30,9 @@ type Store struct {
 	mu      sync.Mutex
 	tickets map[[32]byte]Ticket
 	now     func() time.Time
+	// generation moves on every Renew and Revoke: a GuardWriter that saw the
+	// same value can trust what it validated without taking the lock again.
+	generation atomic.Uint64
 }
 
 func NewStore() *Store             { return &Store{tickets: make(map[[32]byte]Ticket), now: time.Now} }
@@ -94,6 +99,7 @@ func (s *Store) Renew(token string, userID int) (Ticket, error) {
 	ticket.ExpiresAt = now.Add(TTL)
 	ticket.LastActivity = now
 	s.tickets[key] = ticket
+	s.generation.Add(1)
 	return ticket, nil
 }
 
@@ -103,6 +109,7 @@ func (s *Store) Revoke(token string, userID int) {
 	key := Digest(token)
 	if ticket, ok := s.tickets[key]; ok && ticket.UserID == userID {
 		delete(s.tickets, key)
+		s.generation.Add(1)
 	}
 }
 
@@ -139,29 +146,80 @@ func (s *Store) RunReaper(ctx context.Context) {
 }
 
 // GuardWriter also stops an already-open Range response after revocation or
-// expiry. Avoid embedding ReaderFrom: io.Copy must pass through Write.
+// expiry. Never delegate to the underlying ReaderFrom (sendfile): every byte
+// must pass through Write.
+//
+// A direct-play stream is thousands of writes a second, and each one used to
+// take the store's global lock and hash the token. The writer now keeps what
+// it last validated and only goes back to the store when the ticket's deadline
+// passes or the store's generation moved (a Renew or a Revoke somewhere) —
+// revocation still stops the very next write.
 type GuardWriter struct {
 	http.ResponseWriter
 	Store   *Store
 	Token   string
 	MediaID int
+
+	validUntil time.Time
+	generation uint64
 }
 
 func (w *GuardWriter) Write(data []byte) (int, error) {
-	if _, ok := w.Store.Validate(w.Token, w.MediaID); !ok {
+	if !w.stillValid() {
 		return 0, ErrDenied
 	}
 	return w.ResponseWriter.Write(data)
 }
 
+func (w *GuardWriter) stillValid() bool {
+	generation := w.Store.generation.Load()
+	if generation == w.generation && w.Store.now().Before(w.validUntil) {
+		return true
+	}
+	ticket, ok := w.Store.Validate(w.Token, w.MediaID)
+	if !ok {
+		return false
+	}
+	w.validUntil = ticket.ExpiresAt
+	w.generation = generation
+	return true
+}
+
+// copyBufferSize is the chunk a stream goes out in. io.Copy's default is 32 KiB,
+// which at 4K-remux rates is several thousand writes — and syscalls — a second.
+const copyBufferSize = 256 << 10
+
+var copyBuffers = sync.Pool{New: func() any { b := make([]byte, copyBufferSize); return &b }}
+
+// ReadFrom only picks a larger buffer: every byte still goes through Write,
+// and so through the ticket check.
+func (w *GuardWriter) ReadFrom(src io.Reader) (int64, error) {
+	buf := copyBuffers.Get().(*[]byte)
+	defer copyBuffers.Put(buf)
+	return io.CopyBuffer(writeOnly{w}, src, *buf)
+}
+
+// writeOnly hides ReadFrom from io.CopyBuffer, which would otherwise call
+// straight back into it.
+type writeOnly struct{ io.Writer }
+
 func Protect(w http.ResponseWriter, r *http.Request, store *Store, mediaID int) (http.ResponseWriter, bool) {
 	token := r.URL.Query().Get("ticket")
-	if _, ok := store.Validate(token, mediaID); !ok {
+	generation := store.generation.Load()
+	ticket, ok := store.Validate(token, mediaID)
+	if !ok {
 		w.Header().Set("Cache-Control", "no-store")
 		http.Error(w, "valid playback ticket required; update your client if necessary", http.StatusUnauthorized)
 		return w, false
 	}
 	w.Header().Set("Cache-Control", "private, no-store")
 	w.Header().Set("Referrer-Policy", "no-referrer")
-	return &GuardWriter{ResponseWriter: w, Store: store, Token: token, MediaID: mediaID}, true
+	return &GuardWriter{
+		ResponseWriter: w,
+		Store:          store,
+		Token:          token,
+		MediaID:        mediaID,
+		validUntil:     ticket.ExpiresAt,
+		generation:     generation,
+	}, true
 }

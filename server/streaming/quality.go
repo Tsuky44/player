@@ -7,7 +7,7 @@ import "sort"
 // A tier is a resolution *and* a bitrate. Offering only one bitrate per
 // resolution is what leaves a viewer stuck: the picture stalls at 1080p and the
 // only way down is 720p, which throws away half the lines to solve a problem
-// that was never about lines. Emby's menu is a ladder for that reason, and the
+// that was never about lines. The menu is a ladder for that reason, and the
 // bitrate is written next to each rung so the choice can be made against a known
 // link speed rather than by trial and error.
 //

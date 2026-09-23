@@ -137,8 +137,8 @@ class ControlEditDrawer extends StatelessWidget {
                   const SizedBox(height: 20),
                   Text(
                     switch (selectedPlaced!.type) {
-                      PlayerControlType.timelineEmby =>
-                        'Style Emby — barre fine, sans fond',
+                      PlayerControlType.timelineOnyx =>
+                        'Style épuré — barre fine, sans fond',
                       PlayerControlType.timelineGlassInline =>
                         'Style verre fin — une ligne, heures de chaque côté',
                       _ => switch (tlOpts.visualStyle) {
@@ -201,8 +201,8 @@ class ControlEditDrawer extends StatelessWidget {
                   ),
                   const SizedBox(height: 16),
                   Text(
-                    selectedPlaced!.type == PlayerControlType.timelineEmby ||
-                            tlOpts.visualStyle == TimelineVisualStyle.emby
+                    selectedPlaced!.type == PlayerControlType.timelineOnyx ||
+                            tlOpts.visualStyle == TimelineVisualStyle.onyx
                         ? 'Actions (haut droite)'
                         : 'Actions (droite)',
                     style: const TextStyle(

@@ -34,7 +34,7 @@ var outroKeywords = []string{
 	"generique de fin", "generique fin", "generique de fin",
 }
 
-// isOpeningCreditsChapter matches Plex/Jellyfin-style opening credit markers.
+// isOpeningCreditsChapter matches the usual opening-credits chapter titles.
 func isOpeningCreditsChapter(normTitle string) bool {
 	if normTitle == "" {
 		return false

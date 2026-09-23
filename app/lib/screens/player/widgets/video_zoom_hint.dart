@@ -8,7 +8,7 @@ import '../../../theme/app_colors.dart';
 ///
 /// The gesture changes the shape of the picture, sometimes by cropping its
 /// edges away, and does it without touching the chrome — so it needs to say
-/// what it did. Netflix and YouTube both answer the same pinch the same way.
+/// what it did.
 ///
 /// Placed above the middle rather than on it: the centre belongs to the
 /// transport button, which may be up at the same time.

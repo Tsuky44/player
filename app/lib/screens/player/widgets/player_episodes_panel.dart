@@ -12,7 +12,7 @@ const Color _kAccent = AppColors.primary;
 const Color _kPanelBg = AppColors.surface;
 const double _kEpisodeCardRowHeight = 182.0;
 
-/// Bottom episode browser (Netflix / Emby style) shown while watching a series.
+/// Bottom episode browser shown while watching a series.
 class PlayerEpisodesPanel extends StatefulWidget {
   final String showTitle;
   final int currentEpisodeId;

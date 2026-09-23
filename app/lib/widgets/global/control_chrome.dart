@@ -53,7 +53,7 @@ class ControlChrome extends StatelessWidget {
   /// Callback for the integrated fullscreen button in timeline.
   final VoidCallback? onToggleFullscreen;
 
-  /// Embedded timeline transport / action buttons (Emby-style).
+  /// Embedded timeline transport / action buttons (minimal style).
   final TimelineChromeOptions timelineOptions;
   final VoidCallback? onPlayPause;
   final VoidCallback? onRewind;
@@ -170,15 +170,15 @@ class ControlChrome extends StatelessWidget {
     Widget child = switch (type) {
       PlayerControlType.progressBar => _buildProgressBar(),
       PlayerControlType.timeline ||
-      PlayerControlType.timelineEmby ||
+      PlayerControlType.timelineOnyx ||
       PlayerControlType.timelineGlassInline => _buildTimelineBar(),
       PlayerControlType.mediaTitle => _buildMediaTitle(),
       PlayerControlType.mediaLogo => _buildMediaLogo(),
       PlayerControlType.episodeTitleBlock => _buildEpisodeTitleBlock(),
-      PlayerControlType.chaptersEmby => _buildChaptersEmbyButton(),
-      PlayerControlType.mediaInfo => _buildMediaInfoEmbyButton(),
+      PlayerControlType.chaptersOnyx => _buildChaptersOnyxButton(),
+      PlayerControlType.mediaInfo => _buildMediaInfoOnyxButton(),
       PlayerControlType.upNext => _buildUpNextButton(),
-      PlayerControlType.upNextEmby => _buildUpNextEmbyButton(),
+      PlayerControlType.upNextOnyx => _buildUpNextOnyxButton(),
       PlayerControlType.volumeSlider => _buildVolumeSlider(context),
       PlayerControlType.skipIntro => _buildLabeledPill(
           icon: Icons.fast_forward_rounded,
@@ -575,9 +575,9 @@ class ControlChrome extends StatelessWidget {
   }
 
   Widget _buildTimelineBar() {
-    if (type == PlayerControlType.timelineEmby ||
-        timelineOptions.visualStyle == TimelineVisualStyle.emby) {
-      return _buildEmbyTimelineBar();
+    if (type == PlayerControlType.timelineOnyx ||
+        timelineOptions.visualStyle == TimelineVisualStyle.onyx) {
+      return _buildOnyxTimelineBar();
     }
     if (type == PlayerControlType.timelineGlassInline) {
       return _buildGlassInlineTimelineBar();
@@ -588,7 +588,7 @@ class ControlChrome extends StatelessWidget {
       case TimelineVisualStyle.neumorphic:
         return _buildNeumorphicTimelineBar();
       case TimelineVisualStyle.glass:
-      case TimelineVisualStyle.emby:
+      case TimelineVisualStyle.onyx:
         return _buildGlassTimelineBar();
     }
   }
@@ -976,7 +976,7 @@ class ControlChrome extends StatelessWidget {
     );
   }
 
-  Widget _buildEmbyTimelineBar() {
+  Widget _buildOnyxTimelineBar() {
     final opts = timelineOptions;
     final double scale = (_pixelSize * 0.5).clamp(14.0, 40.0);
     final totalSec = duration?.inSeconds ?? 3600;
@@ -1041,26 +1041,26 @@ class ControlChrome extends StatelessWidget {
       child: _seekableTimelineTrack(barTrack),
     );
 
-    void addEmbyBtn(List<Widget> out, IconData icon, bool show, VoidCallback? onTap) {
+    void addOnyxBtn(List<Widget> out, IconData icon, bool show, VoidCallback? onTap) {
       if (!show) return;
       if (variant == ControlChromeVariant.live && onTap == null) return;
-      out.add(_EmbyTimelineIcon(icon: icon, size: iconSize, onTap: onTap));
+      out.add(_OnyxTimelineIcon(icon: icon, size: iconSize, onTap: onTap));
     }
 
     final transportButtons = <Widget>[];
-    addEmbyBtn(transportButtons, Icons.skip_previous, opts.showSkipPrevious, onSkipPrevious);
-    addEmbyBtn(transportButtons, Icons.replay_10, opts.showRewind, onRewind);
-    addEmbyBtn(
+    addOnyxBtn(transportButtons, Icons.skip_previous, opts.showSkipPrevious, onSkipPrevious);
+    addOnyxBtn(transportButtons, Icons.replay_10, opts.showRewind, onRewind);
+    addOnyxBtn(
       transportButtons,
       isPlaying ? Icons.pause : Icons.play_arrow,
       opts.showPlayPause,
       onPlayPause,
     );
-    addEmbyBtn(transportButtons, Icons.forward_10, opts.showForward, onForward);
-    addEmbyBtn(transportButtons, Icons.skip_next, opts.showSkipNext, onSkipNext);
+    addOnyxBtn(transportButtons, Icons.forward_10, opts.showForward, onForward);
+    addOnyxBtn(transportButtons, Icons.skip_next, opts.showSkipNext, onSkipNext);
 
     final utilityButtons = <Widget>[];
-    void addEmbyActionBtn(
+    void addOnyxActionBtn(
       IconData icon,
       bool show,
       VoidCallback? onTap, {
@@ -1068,29 +1068,29 @@ class ControlChrome extends StatelessWidget {
     }) {
       if (!show) return;
       if (variant == ControlChromeVariant.live && onTap == null) return;
-      Widget btn = _EmbyTimelineIcon(icon: icon, size: iconSize, onTap: onTap);
+      Widget btn = _OnyxTimelineIcon(icon: icon, size: iconSize, onTap: onTap);
       if (key != null) btn = KeyedSubtree(key: key, child: btn);
       utilityButtons.add(btn);
     }
 
-    addEmbyActionBtn(
+    addOnyxActionBtn(
       Icons.closed_caption_outlined,
       opts.showSubtitles,
       onToggleSubtitles,
       key: subtitlesButtonKey,
     );
-    addEmbyActionBtn(
+    addOnyxActionBtn(
       Icons.settings_outlined,
       opts.showSettings,
       onOpenSettings,
       key: settingsButtonKey,
     );
-    addEmbyActionBtn(
+    addOnyxActionBtn(
       Icons.view_list_rounded,
       opts.showUpNext,
       onOpenUpNext,
     );
-    addEmbyBtn(
+    addOnyxBtn(
       utilityButtons,
       Icons.fullscreen,
       opts.showFullscreen,
@@ -1182,7 +1182,7 @@ class ControlChrome extends StatelessWidget {
     );
   }
 
-  /// Two-line Emby-style title block: a small muted episode/release line
+  /// Two-line title block: a small muted episode/release line
   /// above a bold show-title line. No chrome background, like [_buildMediaTitle].
   Widget _buildEpisodeTitleBlock() {
     final double height = (_pixelSize * 1.7).clamp(40.0, 76.0);
@@ -1223,8 +1223,8 @@ class ControlChrome extends StatelessWidget {
     );
   }
 
-  /// Emby-style plain text link (icon + label, no chrome background).
-  Widget _buildEmbyTextLink({required IconData icon, required String label}) {
+  /// Plain text link (icon + label, no chrome background).
+  Widget _buildOnyxTextLink({required IconData icon, required String label}) {
     final double height = (_pixelSize * 1.2).clamp(28.0, 40.0);
     final double iconSize = (_pixelSize * 0.75).clamp(18.0, 24.0);
     final double fontSize = (_pixelSize * 0.36).clamp(12.0, 15.0);
@@ -1251,11 +1251,11 @@ class ControlChrome extends StatelessWidget {
     );
   }
 
-  Widget _buildChaptersEmbyButton() =>
-      _buildEmbyTextLink(icon: Icons.list_alt_rounded, label: 'Chapitres');
+  Widget _buildChaptersOnyxButton() =>
+      _buildOnyxTextLink(icon: Icons.list_alt_rounded, label: 'Chapitres');
 
-  Widget _buildMediaInfoEmbyButton() =>
-      _buildEmbyTextLink(icon: Icons.info_outline_rounded, label: 'Info');
+  Widget _buildMediaInfoOnyxButton() =>
+      _buildOnyxTextLink(icon: Icons.info_outline_rounded, label: 'Info');
 
   Widget _buildLabeledPill({required IconData icon, required String label}) {
     final double height = (_pixelSize * 1.15).clamp(32.0, 44.0);
@@ -1402,8 +1402,8 @@ class ControlChrome extends StatelessWidget {
     );
   }
 
-  Widget _buildUpNextEmbyButton() =>
-      _buildEmbyTextLink(icon: Icons.view_list_rounded, label: 'À suivre');
+  Widget _buildUpNextOnyxButton() =>
+      _buildOnyxTextLink(icon: Icons.view_list_rounded, label: 'À suivre');
 
   Widget _buildMediaLogo() {
     final double height =
@@ -1778,13 +1778,13 @@ class _TimelineSeekableState extends State<_TimelineSeekable> {
   }
 }
 
-/// Flat white icon for the Emby-style timeline (no background pill).
-class _EmbyTimelineIcon extends StatelessWidget {
+/// Flat white icon for the minimal timeline (no background pill).
+class _OnyxTimelineIcon extends StatelessWidget {
   final IconData icon;
   final double size;
   final VoidCallback? onTap;
 
-  const _EmbyTimelineIcon({
+  const _OnyxTimelineIcon({
     required this.icon,
     required this.size,
     this.onTap,

@@ -10,7 +10,7 @@ import 'package:flutter/widgets.dart';
 /// le bouton retour, gauche depuis « reculer » sortir de la rangée vers la
 /// barre, et l'on ne savait plus où l'on était.
 ///
-/// Ici l'ordre est explicite, comme sur Crunchyroll ou Jellyfin :
+/// Ici l'ordre est explicite :
 /// - gauche et droite restent dans la rangée, et s'arrêtent à ses bords ;
 /// - haut et bas passent à la rangée voisine, sur son élément préféré
 ///   ([TvFocusRow.preferredFocus]) ou, à défaut, sur celui qui est le plus

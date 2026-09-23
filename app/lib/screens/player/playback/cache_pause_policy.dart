@@ -32,6 +32,16 @@ class CachePausePolicy {
 
   int get waitSeconds => levels[_level];
 
+  /// Vrai quand une mise en pause du cache, qui a duré [paused], accuse la
+  /// connexion.
+  ///
+  /// mpv ne se met en pause qu'une fois la sortie à sec, cache presque vide :
+  /// la pause dure donc le temps de télécharger [waitSeconds] de média. Plus
+  /// court que ça en temps réel, le réseau a livré plus vite que le film ne se
+  /// lit — la coupure vient du décodage, de la sortie ou d'un rechargement de
+  /// piste, et allonger l'attente ne ferait que ralentir chaque seek suivant.
+  bool blamesNetwork(Duration paused) => paused >= Duration(seconds: waitSeconds);
+
   /// Une coupure en pleine lecture. Renvoie `true` si l'attente a changé.
   bool noteUnderrun(DateTime now) {
     final before = _level;

@@ -204,7 +204,7 @@ void main() {
       presetId: 'preset-42',
       name: 'Mon playeur',
       useModular: true,
-      config: PlayerLayoutConfig.fixed(FixedChromeId.emby),
+      config: PlayerLayoutConfig.fixed(FixedChromeId.onyx),
       savedAt: DateTime.utc(2026, 9, 3),
     ));
 
@@ -212,7 +212,7 @@ void main() {
     expect(chrome, isNotNull);
     expect(chrome!.presetId, 'preset-42');
     expect(chrome.useModular, isTrue);
-    expect(chrome.config.fixedChrome, FixedChromeId.emby);
+    expect(chrome.config.fixedChrome, FixedChromeId.onyx);
 
     // Écrit sur le disque, pas seulement en mémoire : c'est justement au
     // démarrage suivant, hors ligne, qu'il servira.
@@ -224,7 +224,7 @@ void main() {
       OfflineChrome.fromJson(
         Map<String, dynamic>.from(saved['http://nas:8080'] as Map),
       ).config.fixedChrome,
-      FixedChromeId.emby,
+      FixedChromeId.onyx,
     );
   });
 

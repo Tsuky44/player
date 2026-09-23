@@ -10,7 +10,7 @@ import (
 	"github.com/julienschmidt/httprouter"
 )
 
-// Reprise sur un autre appareil, à la YouTube.
+// Reprise sur un autre appareil.
 //
 // Le téléphone ouvre l'app pendant que le PC lit : l'accueil lui propose de
 // reprendre là où en est le PC (GET /api/me/now-playing). Dès que le téléphone

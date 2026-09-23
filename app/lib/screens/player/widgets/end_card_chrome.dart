@@ -11,7 +11,7 @@ import '../../../widgets/global/app_network_image.dart';
 ///
 /// Both occupy the space left free by the shrunk video rather than floating
 /// over it — the credits stay watchable to the left while this reads as a full
-/// panel, the way Crunchyroll and Netflix end a season. Neither ever acts on
+/// panel. Neither ever acts on
 /// its own: no countdown, no auto-advance, always a tap.
 class EndCardPanel extends StatelessWidget {
   /// Artwork washed and blurred behind the panel, so the page has a colour of

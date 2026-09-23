@@ -9,7 +9,7 @@ import (
 const sampleVTT = `WEBVTT
 
 00:03.717 --> 00:07.929
-UNE SÉRIE NETFLIX
+GÉNÉRIQUE D'OUVERTURE
 
 01:03.526 --> 01:05.820
 Intro dialogue (should be dropped)
@@ -27,7 +27,7 @@ func TestShiftVTT(t *testing.T) {
 	if !strings.HasPrefix(out, "WEBVTT") {
 		t.Fatalf("missing WEBVTT header:\n%s", out)
 	}
-	if strings.Contains(out, "UNE SÉRIE NETFLIX") || strings.Contains(out, "Intro dialogue") {
+	if strings.Contains(out, "GÉNÉRIQUE D'OUVERTURE") || strings.Contains(out, "Intro dialogue") {
 		t.Errorf("cues before the window should have been dropped:\n%s", out)
 	}
 	if !strings.Contains(out, "Kept line one") || !strings.Contains(out, "Kept line two") {

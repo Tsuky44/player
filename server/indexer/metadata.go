@@ -404,7 +404,7 @@ func fetchTMDBTranslation(tmdbID int, mediaType models.MediaType) (title, overvi
 	return "", ""
 }
 
-// fetchTMDBMetadata queries TMDB with Emby-style confidence gating.
+// fetchTMDBMetadata queries TMDB with confidence gating.
 // Weak popularity hits are rejected (tmdbID stays 0) so the library is not poisoned.
 func fetchTMDBMetadata(title string, mediaType models.MediaType) (posterURL string, overview string, releaseDate string, tmdbID int, displayTitle string) {
 	identity := IdentifyFromRawName(title, mediaType)
@@ -855,7 +855,7 @@ func redetectIdentity(id int, mt models.MediaType, filePath, storedTitle string)
 	case models.TypeMovie:
 		if filePath != "" {
 			// Parent of the file is used as library root fallback; folder-first still applies
-			// when the movie sits in its own Emby-style directory.
+			// when the movie sits in its own directory.
 			return IdentifyMovie(filePath, filepath.Dir(filepath.Dir(filePath)))
 		}
 	case models.TypeShow:
@@ -955,7 +955,7 @@ func RedetectAllProgressSnapshot() RedetectAllProgress {
 	return redetectAllProgress
 }
 
-// RedetectAllMediaAsync re-runs Emby-style identification on every movie and
+// RedetectAllMediaAsync re-runs identification on every movie and
 // show. It claims the run before returning, so the caller learns whether it
 // started one rather than checking IsRedetectingAll() and racing.
 func RedetectAllMediaAsync() bool {

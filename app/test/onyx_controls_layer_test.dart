@@ -1,10 +1,10 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:onyx/screens/player/widgets/emby/emby_brightness_slider.dart';
-import 'package:onyx/screens/player/widgets/emby/emby_chrome_theme.dart';
-import 'package:onyx/screens/player/widgets/emby/emby_controls_layer.dart';
-import 'package:onyx/screens/player/widgets/emby/emby_progress_bar.dart';
+import 'package:onyx/screens/player/widgets/onyx/onyx_brightness_slider.dart';
+import 'package:onyx/screens/player/widgets/onyx/onyx_chrome_theme.dart';
+import 'package:onyx/screens/player/widgets/onyx/onyx_controls_layer.dart';
+import 'package:onyx/screens/player/widgets/onyx/onyx_progress_bar.dart';
 import 'package:onyx/theme/app_colors.dart';
 import 'package:onyx/widgets/global/app_slider.dart';
 
@@ -41,7 +41,7 @@ Future<void> pumpChrome(
     MaterialApp(
       home: Scaffold(
         backgroundColor: Colors.black,
-        body: EmbyControlsLayer(
+        body: OnyxControlsLayer(
           visible: visible,
           isPlaying: isPlaying,
           position: const Duration(minutes: 42),
@@ -102,7 +102,7 @@ void main() {
       }
     });
 
-    testWidgets('the removed Emby links are nowhere in the chrome',
+    testWidgets('the removed text links are nowhere in the chrome',
         (tester) async {
       await pumpChrome(tester, width: 1280);
 
@@ -262,7 +262,7 @@ void main() {
     testWidgets('compact keeps touch targets at 44px', (tester) async {
       // The whole reason for a second arrangement: a scaled-down single
       // layout would put these well under the usable size.
-      const compact = EmbyChromeMetrics.compact();
+      const compact = OnyxChromeMetrics.compact();
       expect(compact.hitSize, greaterThanOrEqualTo(44));
     });
 
@@ -287,7 +287,7 @@ void main() {
     await tester.pumpWidget(
       MaterialApp(
         home: Scaffold(
-          body: EmbyControlsLayer(
+          body: OnyxControlsLayer(
             visible: false,
             isPlaying: true,
             position: Duration.zero,
@@ -323,14 +323,14 @@ void main() {
       // must not be there at all rather than sit inert on the edge.
       await pumpChrome(tester, width: 1280);
 
-      expect(find.byType(EmbyBrightnessSlider), findsNothing);
+      expect(find.byType(OnyxBrightnessSlider), findsNothing);
     });
 
     testWidgets('takes the band between the two bars, on the right edge',
         (tester) async {
       await pumpChrome(tester, width: 420, brightness: 0.5);
 
-      final bar = find.byType(EmbyBrightnessSlider);
+      final bar = find.byType(OnyxBrightnessSlider);
       expect(bar, findsOneWidget);
 
       final rect = tester.getRect(bar);
@@ -349,7 +349,7 @@ void main() {
       // while still being drawn.
       await pumpChrome(tester, width: 420, brightness: 0.5);
 
-      final rect = tester.getRect(find.byType(EmbyBrightnessSlider));
+      final rect = tester.getRect(find.byType(OnyxBrightnessSlider));
       final fullscreen =
           tester.getRect(find.byIcon(Icons.fullscreen_rounded));
 
@@ -365,7 +365,7 @@ void main() {
         onBrightnessChanged: values.add,
       );
 
-      final bar = find.byType(EmbyBrightnessSlider);
+      final bar = find.byType(OnyxBrightnessSlider);
       await tester.drag(bar, const Offset(0, -60));
       await tester.pump();
       expect(values.last, greaterThan(0.5),
@@ -385,8 +385,8 @@ void main() {
       // which is worse than tight.
       await pumpChrome(tester, width: 800, height: 360, brightness: 0.5);
 
-      expect(find.byType(EmbyBrightnessSlider), findsOneWidget);
-      final rect = tester.getRect(find.byType(EmbyBrightnessSlider));
+      expect(find.byType(OnyxBrightnessSlider), findsOneWidget);
+      final rect = tester.getRect(find.byType(OnyxBrightnessSlider));
       final fullscreen =
           tester.getRect(find.byIcon(Icons.fullscreen_rounded));
       expect(rect.bottom, lessThanOrEqualTo(fullscreen.top));
@@ -406,7 +406,7 @@ void main() {
         cutouts: const [Rect.fromLTWH(0, 120, 40, 80)],
       );
 
-      final bar = tester.getRect(find.byType(EmbyBrightnessSlider));
+      final bar = tester.getRect(find.byType(OnyxBrightnessSlider));
       final fullscreen =
           tester.getRect(find.byIcon(Icons.fullscreen_rounded));
 
@@ -414,7 +414,7 @@ void main() {
         await tester.pump(const Duration(milliseconds: 16));
       }
 
-      expect(tester.getRect(find.byType(EmbyBrightnessSlider)), bar);
+      expect(tester.getRect(find.byType(OnyxBrightnessSlider)), bar);
       expect(tester.getRect(find.byIcon(Icons.fullscreen_rounded)), fullscreen);
     });
 
@@ -430,7 +430,7 @@ void main() {
         onBrightnessChanged: values.add,
       );
 
-      final rect = tester.getRect(find.byType(EmbyBrightnessSlider));
+      final rect = tester.getRect(find.byType(OnyxBrightnessSlider));
       await tester.dragFrom(
         Offset(rect.left + 8, rect.center.dy),
         const Offset(0, -60),
@@ -453,7 +453,7 @@ void main() {
         brightness: 0.5,
         onBrightnessChanged: values.add,
       );
-      final rect = tester.getRect(find.byType(EmbyBrightnessSlider));
+      final rect = tester.getRect(find.byType(OnyxBrightnessSlider));
 
       await tester.dragFrom(
         Offset(rect.center.dx, rect.bottom - 4),
@@ -484,7 +484,7 @@ void main() {
       );
 
       final gesture = await tester.startGesture(
-        tester.getCenter(find.byType(EmbyBrightnessSlider)),
+        tester.getCenter(find.byType(OnyxBrightnessSlider)),
       );
       await tester.pump();
       await gesture.up();
@@ -502,7 +502,7 @@ void main() {
         onBrightnessChanged: values.add,
       );
 
-      final bar = find.byType(EmbyBrightnessSlider);
+      final bar = find.byType(OnyxBrightnessSlider);
       await tester.drag(bar, const Offset(0, -600));
       await tester.pump();
       await tester.drag(bar, const Offset(0, 600));
@@ -525,7 +525,7 @@ void main() {
       final opacity = tester.widget<AnimatedOpacity>(
         find
             .ancestor(
-              of: find.byType(EmbyBrightnessSlider),
+              of: find.byType(OnyxBrightnessSlider),
               matching: find.byType(AnimatedOpacity),
             )
             .first,
@@ -538,7 +538,7 @@ void main() {
     test('scaling trims what is drawn and leaves what is touched', () {
       // The whole point of the split: a chrome that looks 10% smaller and is
       // 10% harder to press is not the same trade.
-      const base = EmbyChromeMetrics.wide();
+      const base = OnyxChromeMetrics.wide();
       final small = base.scaledBy(0.9);
 
       expect(small.titleSize, closeTo(base.titleSize * 0.9, 0.001));
@@ -800,7 +800,7 @@ void main() {
     });
   });
 
-  group('the television chrome is laid out like Crunchyroll', () {
+  group('the television chrome is laid out for the remote', () {
     testWidgets('menus at the top right, transport in the middle, timeline '
         'at the bottom', (tester) async {
       await pumpChrome(tester, width: 960, height: 540, isTv: true);
@@ -873,7 +873,7 @@ void main() {
         progressFocusNode: progress,
       );
 
-      final bar = find.byType(EmbyProgressBar);
+      final bar = find.byType(OnyxProgressBar);
       bool accentFill() => tester
           .widgetList<DecoratedBox>(
               find.descendant(of: bar, matching: find.byType(DecoratedBox)))
@@ -921,7 +921,7 @@ void main() {
         onBrightnessChanged: (_) {},
       );
 
-      expect(find.byType(EmbyBrightnessSlider), findsNothing);
+      expect(find.byType(OnyxBrightnessSlider), findsNothing);
     });
 
     testWidgets('no fullscreen toggle: there is no window', (tester) async {

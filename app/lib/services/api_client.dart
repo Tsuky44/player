@@ -1310,6 +1310,7 @@ class ApiClient {
     bool? playing,
     double? positionSeconds,
     int? mediaId,
+    bool? loading,
   }) async {
     final response = await _dio.post(
       '/api/watch-parties/${Uri.encodeComponent(code)}/state',
@@ -1319,6 +1320,7 @@ class ApiClient {
         if (playing != null) 'playing': playing,
         if (positionSeconds != null) 'position_seconds': positionSeconds,
         if (mediaId != null) 'media_id': mediaId,
+        if (loading != null) 'loading': loading,
       },
     );
     return response.data as Map<String, dynamic>;
@@ -1398,7 +1400,7 @@ class ApiClient {
         .toList();
   }
 
-  /// Fetches rich, Emby-style catalog details (cast, genres, rating, backdrop,
+  /// Fetches rich catalog details (cast, genres, rating, backdrop,
   /// crew…) for a movie or show, merging local library data with live TMDB.
   /// La fiche sous sa forme brute, telle que le téléchargement hors ligne la
   /// range sur le disque. Voir [getMediaTracksJson] pour le même raisonnement.

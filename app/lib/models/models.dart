@@ -847,7 +847,7 @@ class PersonDetails {
   }
 }
 
-/// Rich, Emby-style catalog details for a movie/show, returned by
+/// Rich catalog details for a movie/show, returned by
 /// GET /api/media/:id/details. Merges local library data with live TMDB
 /// metadata (cast, genres, rating, backdrop, crew…).
 class MediaVersion {
@@ -1422,7 +1422,7 @@ class MediaAudioTrack {
     }
   }
 
-  /// Emby-style readable name, e.g. "Français (Dolby Atmos 5.1)".
+  /// Readable name, e.g. "Français (Dolby Atmos 5.1)".
   String get displayName {
     final parts = <String>[];
     final t = title?.trim() ?? '';
@@ -1535,7 +1535,7 @@ class MediaVideoTrack {
     );
   }
 
-  /// Emby-style resolution label, e.g. "4K", "1080p", "720p".
+  /// Resolution label, e.g. "4K", "1080p", "720p".
   String get resolutionLabel {
     // Cinemascope files often omit the black bars: width preserves the tier.
     if (width >= 7680 || height >= 4320) return '8K';

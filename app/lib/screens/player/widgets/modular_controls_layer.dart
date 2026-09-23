@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import '../../../models/player_layout.dart';
 import '../../../tv/tv_focus.dart';
 import '../../../widgets/global/control_chrome.dart';
+import 'watch_party_overlay.dart';
 
 /// Real, interactive control layer driven by a [PlayerLayoutConfig].
 class ModularControlsLayer extends StatelessWidget {
@@ -73,6 +74,12 @@ class ModularControlsLayer extends StatelessWidget {
   /// Opens the media info panel ([PlayerControlType.mediaInfo]).
   final VoidCallback? onOpenInfo;
 
+  /// Ouvre le panneau « Regarder ensemble » ([PlayerControlType.watchParty]).
+  /// Une disposition qui ne place pas ce bouton en reçoit un discret, en bas
+  /// à droite : sans lui, la fonction serait introuvable.
+  final VoidCallback? onOpenWatchParty;
+  final bool watchPartyActive;
+
   /// Small muted line shown by [PlayerControlType.episodeTitleBlock].
   final String? episodeInfoLine;
 
@@ -121,6 +128,8 @@ class ModularControlsLayer extends StatelessWidget {
     this.onBack,
     this.onOpenUpNext,
     this.onOpenInfo,
+    this.onOpenWatchParty,
+    this.watchPartyActive = false,
     this.episodeInfoLine,
     this.episodeShowTitle,
   });
@@ -134,7 +143,7 @@ class ModularControlsLayer extends StatelessWidget {
       PlayerControlType.forward30 => onForward30,
       PlayerControlType.playPause || PlayerControlType.progressBar => onPlayPause,
       PlayerControlType.timeline ||
-          PlayerControlType.timelineEmby ||
+          PlayerControlType.timelineOnyx ||
           PlayerControlType.timelineGlassInline =>
         null,
       PlayerControlType.skipPrevious => onSkipPrevious,
@@ -145,13 +154,14 @@ class ModularControlsLayer extends StatelessWidget {
       PlayerControlType.fullscreen => onToggleFullscreen,
       PlayerControlType.settings => onOpenSettings,
       PlayerControlType.subtitles => onToggleSubtitles,
-      PlayerControlType.upNext || PlayerControlType.upNextEmby => onOpenUpNext,
+      PlayerControlType.upNext || PlayerControlType.upNextOnyx => onOpenUpNext,
       PlayerControlType.skipIntro => onSkipIntro,
       PlayerControlType.playbackSpeed => onCycleSpeed,
       PlayerControlType.aspectFit => onToggleAspectFit,
       PlayerControlType.audioTracks => onOpenAudio,
-      PlayerControlType.chapters || PlayerControlType.chaptersEmby => onOpenChapters,
+      PlayerControlType.chapters || PlayerControlType.chaptersOnyx => onOpenChapters,
       PlayerControlType.mediaInfo => onOpenInfo,
+      PlayerControlType.watchParty => onOpenWatchParty,
       PlayerControlType.mediaTitle ||
           PlayerControlType.mediaLogo ||
           PlayerControlType.episodeTitleBlock ||
@@ -175,6 +185,16 @@ class ModularControlsLayer extends StatelessWidget {
             children: [
               for (final placed in config.controls)
                 _positioned(placed, canvasSize, timelineAnchorId),
+              if (onOpenWatchParty != null &&
+                  !config.hasControl(PlayerControlType.watchParty))
+                Positioned(
+                  right: 20,
+                  bottom: 20,
+                  child: WatchPartyBarButton(
+                    active: watchPartyActive,
+                    onPressed: onOpenWatchParty!,
+                  ),
+                ),
             ],
           );
         },
@@ -363,7 +383,7 @@ class ModularControlsLayer extends StatelessWidget {
       child = KeyedSubtree(key: timelineAnchorKey, child: child);
     }
 
-    if (placed.type == PlayerControlType.timelineEmby ||
+    if (placed.type == PlayerControlType.timelineOnyx ||
         placed.type == PlayerControlType.timelineGlassInline) {
       return Align(
         alignment: Alignment(0, c.yPercentage * 2 - 1),

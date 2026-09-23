@@ -44,7 +44,7 @@ class DraggableControl extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final isFullWidthTimeline =
-        placed.type == PlayerControlType.timelineEmby ||
+        placed.type == PlayerControlType.timelineOnyx ||
         placed.type == PlayerControlType.timelineGlassInline;
 
     return AnimatedAlign(

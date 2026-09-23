@@ -49,9 +49,16 @@ const (
 	// parti : appli tuée, réseau coupé, télévision éteinte.
 	watchPartyMemberStaleAfter = 50 * time.Second
 	watchPartyReaperInterval   = 15 * time.Second
-	watchPartyCodeLength       = 6
-	watchPartyMaxMembers       = 12
-	watchPartyMaxParties       = 256
+	// Au-delà, on cesse d'attendre un appareil qui charge : il rattrapera
+	// seul, plutôt que de tenir tout le monde en pause indéfiniment.
+	watchPartyWaitLimit = 20 * time.Second
+	// Jusqu'où une attente peut ramener la séance en arrière : la position
+	// de l'appareil qui charge, mais pas un rembobinage arbitraire.
+	watchPartyMaxRewindOnWait = 15.0
+
+	watchPartyCodeLength = 6
+	watchPartyMaxMembers = 12
+	watchPartyMaxParties = 256
 )
 
 // watchPartyAction dit qui a fait quoi en dernier, pour que les autres
@@ -70,6 +77,12 @@ type watchPartyMember struct {
 	Device   string
 	JoinedAt time.Time
 	LastSeen time.Time
+
+	// Waiting : la séance attend cet appareil (il charge, il cherche, il
+	// ouvre le média). Tant qu'un participant est attendu, la séance est
+	// figée pour tout le monde, puis repart d'un seul geste.
+	Waiting      bool
+	WaitingSince time.Time
 }
 
 type watchParty struct {
@@ -90,9 +103,20 @@ type watchParty struct {
 	changed chan struct{}
 }
 
-// positionAt extrapole la position de référence à [now].
+// waiting dit si la séance attend au moins un participant.
+func (p *watchParty) waiting() bool {
+	for _, m := range p.Members {
+		if m.Waiting {
+			return true
+		}
+	}
+	return false
+}
+
+// positionAt extrapole la position de référence à [now]. Elle n'avance que
+// si la séance est en lecture et n'attend personne.
 func (p *watchParty) positionAt(now time.Time) float64 {
-	if !p.Playing {
+	if !p.Playing || p.waiting() {
 		return p.Position
 	}
 	elapsed := now.Sub(p.Updated).Seconds()
@@ -100,6 +124,38 @@ func (p *watchParty) positionAt(now time.Time) float64 {
 		elapsed = 0
 	}
 	return p.Position + elapsed
+}
+
+// rebase fige la position courante comme nouvelle référence. À appeler avant
+// tout ce qui change la façon dont elle avance (lecture, attente).
+func (p *watchParty) rebase(now time.Time) {
+	p.Position = p.positionAt(now)
+	p.Updated = now
+}
+
+// startWaiting met un participant en attente. [position] est l'endroit où
+// cet appareil s'est arrêté : la séance s'y cale, pour que celui qui charge ne
+// manque rien — les autres reculent d'autant, en pause.
+func (p *watchParty) startWaiting(m *watchPartyMember, position *float64, now time.Time) {
+	if m.Waiting {
+		return
+	}
+	wasRunning := p.Playing && !p.waiting()
+	p.rebase(now)
+	if wasRunning && position != nil && *position >= 0 && *position < p.Position &&
+		p.Position-*position <= watchPartyMaxRewindOnWait {
+		p.Position = *position
+	}
+	m.Waiting = true
+	m.WaitingSince = now
+}
+
+func (p *watchParty) stopWaiting(m *watchPartyMember, now time.Time) {
+	if !m.Waiting {
+		return
+	}
+	p.rebase(now)
+	m.Waiting = false
 }
 
 // bump publie un changement : nouveau numéro, et réveil des attentes.
@@ -197,6 +253,9 @@ func (s *watchPartyStore) join(code string, member *watchPartyMember, now time.T
 	}
 	member.JoinedAt, member.LastSeen = now, now
 	party.Members[member.ID] = member
+	// Les autres attendent que le nouveau venu ait son image, pour partir
+	// ensemble.
+	party.startWaiting(member, nil, now)
 	party.bump(&watchPartyAction{Kind: "join", MemberID: member.ID, Username: member.Username})
 	return nil
 }
@@ -225,6 +284,9 @@ type watchPartyUpdate struct {
 	Playing  *bool    `json:"playing"`
 	Position *float64 `json:"position_seconds"`
 	MediaID  int      `json:"media_id"`
+	// Loading accompagne l'action "loading" : l'appareil charge (true) ou est
+	// prêt (false).
+	Loading *bool `json:"loading"`
 }
 
 func (s *watchPartyStore) update(code string, userID int, req watchPartyUpdate, now time.Time) error {
@@ -236,6 +298,27 @@ func (s *watchPartyStore) update(code string, userID int, req watchPartyUpdate, 
 	}
 	m.LastSeen = now
 
+	// Un appareil qui charge ou qui est de nouveau prêt n'est pas un geste :
+	// il ne change ni la lecture ni la position voulues, seulement l'attente.
+	if req.Action == "loading" {
+		if req.Loading == nil {
+			return nil
+		}
+		if *req.Loading {
+			if m.Waiting {
+				return nil
+			}
+			party.startWaiting(m, req.Position, now)
+		} else {
+			if !m.Waiting {
+				return nil
+			}
+			party.stopWaiting(m, now)
+		}
+		party.bump(nil)
+		return nil
+	}
+
 	// La position de départ est celle extrapolée : une pause sans position
 	// fige la séance là où elle en est, pas là où elle en était au dernier
 	// changement.
@@ -244,6 +327,11 @@ func (s *watchPartyStore) update(code string, userID int, req watchPartyUpdate, 
 	if req.MediaID > 0 && req.MediaID != party.MediaID {
 		party.MediaID = req.MediaID
 		party.Position = 0
+		// Tout le monde ouvre le nouveau média : on attend chacun.
+		for _, other := range party.Members {
+			other.Waiting = true
+			other.WaitingSince = now
+		}
 	}
 	if req.Position != nil && *req.Position >= 0 {
 		party.Position = *req.Position
@@ -262,13 +350,16 @@ func (s *watchPartyStore) leave(code, memberID string, userID int) error {
 	if err != nil {
 		return err
 	}
-	s.removeLocked(party, m, "leave")
+	s.removeLocked(party, m, "leave", time.Now())
 	return nil
 }
 
 // removeLocked retire un participant ; une séance vide disparaît, et l'hôte
 // qui part passe la main au plus ancien des restants.
-func (s *watchPartyStore) removeLocked(party *watchParty, m *watchPartyMember, kind string) {
+func (s *watchPartyStore) removeLocked(party *watchParty, m *watchPartyMember, kind string, now time.Time) {
+	// Un participant attendu qui s'en va libère les autres : la position
+	// doit repartir d'ici, pas de son arrivée.
+	party.rebase(now)
 	delete(party.Members, m.ID)
 	if len(party.Members) == 0 {
 		delete(s.parties, party.Code)
@@ -287,28 +378,53 @@ func (s *watchPartyStore) removeLocked(party *watchParty, m *watchPartyMember, k
 	party.bump(&watchPartyAction{Kind: kind, MemberID: m.ID, Username: m.Username})
 }
 
+// expireWaits cesse d'attendre les appareils qui chargent depuis trop
+// longtemps.
+func (s *watchPartyStore) expireWaits(now time.Time) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	for _, party := range s.parties {
+		changed := false
+		for _, m := range party.Members {
+			if m.Waiting && now.Sub(m.WaitingSince) > watchPartyWaitLimit {
+				party.stopWaiting(m, now)
+				changed = true
+			}
+		}
+		if changed {
+			party.bump(nil)
+		}
+	}
+}
+
 func (s *watchPartyStore) reap(now time.Time) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	for _, party := range s.parties {
 		for _, m := range party.Members {
 			if now.Sub(m.LastSeen) > watchPartyMemberStaleAfter {
-				s.removeLocked(party, m, "leave")
+				s.removeLocked(party, m, "leave", now)
 			}
 		}
 	}
 }
 
-// RunWatchParties purge les participants partis sans prévenir.
+// RunWatchParties purge les participants partis sans prévenir et lève les
+// attentes trop longues.
 func RunWatchParties(ctx context.Context) {
-	ticker := time.NewTicker(watchPartyReaperInterval)
+	ticker := time.NewTicker(time.Second)
 	defer ticker.Stop()
+	lastReap := time.Now()
 	for {
 		select {
 		case <-ctx.Done():
 			return
 		case now := <-ticker.C:
-			watchParties.reap(now)
+			watchParties.expireWaits(now)
+			if now.Sub(lastReap) >= watchPartyReaperInterval {
+				lastReap = now
+				watchParties.reap(now)
+			}
 		}
 	}
 }
@@ -339,6 +455,10 @@ type watchPartyView struct {
 	Position float64                `json:"position_seconds"`
 	Members  []watchPartyMemberView `json:"members"`
 	Action   *watchPartyActionView  `json:"last_action,omitempty"`
+	// Les participants que la séance attend. Tant que la liste n'est pas
+	// vide, la position est figée, même si Playing est vrai.
+	WaitingFor    []string `json:"waiting_for"`
+	WaitingForYou bool     `json:"waiting_for_you"`
 }
 
 // view photographie la séance du point de vue d'un participant. À appeler
@@ -352,6 +472,8 @@ func (p *watchParty) view(memberID string, now time.Time) watchPartyView {
 		Playing:  p.Playing,
 		Position: p.positionAt(now),
 		Members:  make([]watchPartyMemberView, 0, len(p.Members)),
+
+		WaitingFor: []string{},
 	}
 	members := make([]*watchPartyMember, 0, len(p.Members))
 	for _, m := range p.Members {
@@ -359,6 +481,13 @@ func (p *watchParty) view(memberID string, now time.Time) watchPartyView {
 	}
 	sort.Slice(members, func(i, j int) bool { return members[i].JoinedAt.Before(members[j].JoinedAt) })
 	for _, m := range members {
+		if m.Waiting {
+			if m.ID == memberID {
+				v.WaitingForYou = true
+			} else {
+				v.WaitingFor = append(v.WaitingFor, m.Username)
+			}
+		}
 		v.Members = append(v.Members, watchPartyMemberView{
 			Username: m.Username,
 			Device:   m.Device,
@@ -574,7 +703,7 @@ func UpdateWatchParty(w http.ResponseWriter, r *http.Request, ps httprouter.Para
 		return
 	}
 	switch req.Action {
-	case "play", "pause", "seek", "media":
+	case "play", "pause", "seek", "media", "loading":
 	default:
 		writeJSONError(w, http.StatusBadRequest, "Unknown action")
 		return

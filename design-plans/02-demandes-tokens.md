@@ -16,7 +16,7 @@ Le dépôt est une app Flutter unique (`app/lib`) déployée sur macOS, Windows,
   4. **Accent en aplat.** `_primaryButton` remplit son état principal de `#3B82F6` (`request_detail_screen.dart:500`) et borde son état secondaire de rouge `#EF4444` @55 % (`request_detail_screen.dart:503`).
 - Design evidence :
   - `PROJECT_DESIGN.md` §6 : rôles de couleur (`Background #0A0A0A`, `Surface elevated #1C1C1C`, `Accent #0A84FF`, `Success #30D158`, `Warning #FF9F0A`, `Error #FF453A`) et « Constraints: accent ≤ ~5% surface ; **pas de purple/neon** ».
-  - `PROJECT_DESIGN.md` §11 Don't : « Netflix red, **purple gradients**, neon glow ».
+  - `PROJECT_DESIGN.md` §11 Don't : « Bright red `#E50914`, **purple gradients**, neon glow ».
   - `PROJECT_DESIGN.md` §11 Do : « Use accent only for focus, selection, progress, links » et « Align shell + player + login on same tokens ».
   - `PROJECT_DESIGN.md` §8 Buttons : « Primary: fill blanc 92% / text near-black ; radius 12 » — « Secondary: glass or hairline border white 12% ».
 - Owner : `app/lib/theme/app_colors.dart` pour les valeurs ; `app/lib/screens/requests/widgets/request_status_badge.dart` pour la sémantique statut → token, déjà correcte dans `RequestAvailabilityBadge`.

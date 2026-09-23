@@ -8,7 +8,7 @@
 ## Contexte
 
 Un fichier 4K est inregardable sur téléviseur : deux images par seconde, ou l'app tuée. Le 1080p
-passe très bien. Emby, sur le même appareil, lit le même fichier sans effort.
+passe très bien. Un lecteur Android natif, sur le même appareil, lit le même fichier sans effort.
 
 L'ADR-0004 avait identifié la cause et l'avait laissée ouverte : media_kit rend avec OpenGL ES dans
 un `SurfaceProducer`, que Flutter recompose ensuite dans sa scène. Trois faits mesurés depuis :
@@ -18,7 +18,7 @@ un `SurfaceProducer`, que Flutter recompose ensuite dans sa scène. Trois faits 
 3. `AndroidVideoController` dimensionne la surface de rendu sur **la résolution native du
    fichier** : un 4K est rendu en 3840×2160 même sur un panneau 1080p.
 
-Emby ne fait rien de tout cela. ExoPlayer donne les images de MediaCodec à une `SurfaceView`, que
+Un lecteur natif ne fait rien de tout cela. ExoPlayer donne les images de MediaCodec à une `SurfaceView`, que
 le plan vidéo du contrôleur d'affichage compose : l'image ne traverse ni le GPU ni la scène.
 
 ## Décision

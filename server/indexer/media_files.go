@@ -9,7 +9,7 @@ import (
 	"sync"
 )
 
-// Video containers we index. Kept close to Emby's list — a missing extension
+// Video containers we index. Kept broad — a missing extension
 // silently drops films from the library.
 var videoExtensions = map[string]bool{
 	".mp4": true, ".m4v": true, ".mkv": true, ".avi": true, ".mov": true,
@@ -43,7 +43,7 @@ var junkDirNames = map[string]bool{
 	".@__thumb": true, ".git": true, "@recycle": true, ".stfolder": true, ".stversions": true,
 }
 
-// Folders whose videos are bonus content, not library items (Emby's extra dirs).
+// Folders whose videos are bonus content, not library items (the usual extras dirs).
 var extrasDirNames = map[string]bool{
 	"extras": true, "extra": true, "featurettes": true, "featurette": true,
 	"behind the scenes": true, "deleted scenes": true, "interviews": true,
@@ -54,7 +54,7 @@ var extrasDirNames = map[string]bool{
 	"proof": true, "screens": true, "screenshots": true,
 }
 
-// Emby marks bonus content with a "-marker" suffix ("Film-trailer.mkv").
+// Bonus content is commonly marked with a "-marker" suffix ("Film-trailer.mkv").
 var extraSuffixMarkers = map[string]bool{
 	"trailer": true, "sample": true, "featurette": true, "behindthescenes": true,
 	"deleted": true, "deletedscene": true, "deletedscenes": true, "interview": true,
@@ -95,7 +95,7 @@ func IsExtraFileName(name string) bool {
 		return false
 	}
 
-	// "-trailer", "-sample2", "-featurette" suffix (Emby convention).
+	// "-trailer", "-sample2", "-featurette" suffix (common convention).
 	if idx := strings.LastIndexAny(base, "-"); idx >= 0 && idx < len(base)-1 {
 		suffix := strings.TrimRight(strings.TrimSpace(base[idx+1:]), "0123456789 ")
 		if extraSuffixMarkers[strings.ReplaceAll(suffix, " ", "")] {

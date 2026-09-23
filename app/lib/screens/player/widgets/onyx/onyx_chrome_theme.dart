@@ -1,13 +1,13 @@
 import 'package:flutter/material.dart';
 
-/// Locked visual constants for the Emby fixed chrome.
+/// Locked visual constants for Chrome Onyx, the fixed chrome.
 ///
 /// Nothing here reads from [PlayerLayoutConfig]: this chrome deliberately
-/// ignores skin, blur, glass opacity and accent colour. "Same theme as Emby"
-/// and "not editable" are the same requirement — a configurable clone is not
-/// a clone.
-abstract final class EmbyChromeTheme {
-  const EmbyChromeTheme._();
+/// ignores skin, blur, glass opacity and accent colour. A fixed look and
+/// "not editable" are the same requirement — a configurable fixed chrome is
+/// not fixed.
+abstract final class OnyxChromeTheme {
+  const OnyxChromeTheme._();
 
   /// Below this width the chrome switches to its compact arrangement.
   ///
@@ -26,7 +26,7 @@ abstract final class EmbyChromeTheme {
   static const Color meta = Color(0x99FFFFFF); // white 60%
   static const Color time = Color(0xB3FFFFFF); // white 70%
 
-  /// Played portion of the scrubber — white, as in Emby.
+  /// Played portion of the scrubber — white.
   static const Color progressPlayed = Colors.white;
   static const Color progressBuffered = Color(0x4DFFFFFF); // white 30%
   static const Color progressTrack = Color(0x33FFFFFF); // white 20%
@@ -55,26 +55,26 @@ abstract final class EmbyChromeTheme {
   /// which would make the chrome unusable on the very devices it has to serve.
   ///
   /// [scale] trims what is *drawn* without touching what is touched — see
-  /// [EmbyChromeMetrics.scaledBy]. It is how an iPhone gets a slightly smaller
+  /// [OnyxChromeMetrics.scaledBy]. It is how an iPhone gets a slightly smaller
   /// chrome than the same widget on Android.
   ///
   /// A television ignores the width: it always gets the phone's arrangement,
-  /// drawn at [EmbyChromeMetrics.tv] sizes. See [EmbyChromeMetrics.tv].
-  static EmbyChromeMetrics metricsFor(
+  /// drawn at [OnyxChromeMetrics.tv] sizes. See [OnyxChromeMetrics.tv].
+  static OnyxChromeMetrics metricsFor(
     double width, {
     double scale = 1,
     bool tv = false,
   }) {
-    if (tv) return const EmbyChromeMetrics.tv();
+    if (tv) return const OnyxChromeMetrics.tv();
     final base = width < compactBreakpoint
-        ? const EmbyChromeMetrics.compact()
-        : const EmbyChromeMetrics.wide();
+        ? const OnyxChromeMetrics.compact()
+        : const OnyxChromeMetrics.wide();
     return scale == 1 ? base : base.scaledBy(scale);
   }
 }
 
-/// The two size sets of the Emby chrome, picked by width.
-class EmbyChromeMetrics {
+/// The two size sets of Chrome Onyx, picked by width.
+class OnyxChromeMetrics {
   /// Edge padding around the whole chrome.
   final double gutter;
 
@@ -117,7 +117,7 @@ class EmbyChromeMetrics {
   /// Width of the timeline still shown above the scrubber.
   final double previewWidth;
 
-  const EmbyChromeMetrics.wide()
+  const OnyxChromeMetrics.wide()
       : gutter = 32,
         hitSize = 40,
         iconSize = 22,
@@ -137,7 +137,7 @@ class EmbyChromeMetrics {
         skipIntroTextSize = 14,
         previewWidth = 320;
 
-  const EmbyChromeMetrics.compact()
+  const OnyxChromeMetrics.compact()
       : gutter = 16,
         hitSize = 44,
         iconSize = 21,
@@ -165,7 +165,7 @@ class EmbyChromeMetrics {
   ///
   /// The insets keep every control inside the title-safe area: a good share of
   /// televisions still crop a few percent off each edge.
-  const EmbyChromeMetrics.tv()
+  const OnyxChromeMetrics.tv()
       : gutter = 48,
         hitSize = 52,
         iconSize = 28,
@@ -185,7 +185,7 @@ class EmbyChromeMetrics {
         skipIntroTextSize = 16,
         previewWidth = 400;
 
-  const EmbyChromeMetrics._({
+  const OnyxChromeMetrics._({
     required this.gutter,
     required this.hitSize,
     required this.iconSize,
@@ -213,7 +213,7 @@ class EmbyChromeMetrics {
   /// they are the size of a fingertip and of a target that has to be hit while
   /// a film is playing. A chrome that looks 10% smaller and is 10% harder to
   /// press is not the same trade.
-  EmbyChromeMetrics scaledBy(double factor) => EmbyChromeMetrics._(
+  OnyxChromeMetrics scaledBy(double factor) => OnyxChromeMetrics._(
         gutter: gutter * factor,
         hitSize: hitSize,
         iconSize: iconSize * factor,

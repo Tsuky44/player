@@ -1,7 +1,7 @@
-# 🚀 Projet : Mon Serveur de Médias Personnalisé (Alternatif à Emby)
+# 🚀 Projet : Mon Serveur de Médias Personnalisé
 
 ## 📌 Introduction et Vision du Projet
-L'objectif est de concevoir un clone d'Emby privé, ultra-léger, performant et centré sur le **Direct Play pur à 100 %**. Le serveur Docker (Back-End Go) servira de base de données et de distributeur de fichiers brut. L'application Flutter (Front-End) gérera l'interface utilisateur et le décodage vidéo via **Media Kit (mpv)**. 
+L'objectif est de concevoir un serveur de médias privé, ultra-léger, performant et centré sur le **Direct Play pur à 100 %**. Le serveur Docker (Back-End Go) servira de base de données et de distributeur de fichiers brut. L'application Flutter (Front-End) gérera l'interface utilisateur et le décodage vidéo via **Media Kit (mpv)**. 
 
 Le système gérera nativement les profils utilisateurs, la séparation stricte des contenus (Films vs Séries/Saisons/Épisodes), le suivi de la progression ("Vu", "En cours"), et un système de mise en cache asymétrique pour un lancement instantané des vidéos sans ralentir le serveur.
 
@@ -55,7 +55,7 @@ Le système gérera nativement les profils utilisateurs, la séparation stricte 
 ### PHASE 2 : L'Application (Front-End en Flutter)
 
 * **Étape 2.1 : Écran d'Accueil & Gestion des Profils**
-    * Créer un écran de sélection de profil ou de connexion (à la Emby/Netflix).
+    * Créer un écran de sélection de profil ou de connexion.
     * Créer l'interface principale avec deux onglets ou sections bien distinctes : **Films** (grille de jaquettes) et **Séries** (cliquer sur une série affiche les saisons, puis les épisodes).
     * Afficher tout en haut de l'accueil le carrousel horizontal **"Reprendre la lecture"** avec une barre de progression visuelle sous chaque jaquette entamée.
 

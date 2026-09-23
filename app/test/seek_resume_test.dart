@@ -37,6 +37,25 @@ void main() {
       expect(policy.waitSeconds, 2);
     });
 
+    test('a pause refilled faster than real time does not blame the network',
+        () {
+      final policy = CachePausePolicy();
+      // 2 s of film fetched in 0.3 s: the link is ~7x the bitrate.
+      expect(policy.blamesNetwork(const Duration(milliseconds: 300)), isFalse);
+      expect(policy.blamesNetwork(const Duration(milliseconds: 1999)), isFalse);
+      // 2 s of film took 3 s: the link is slower than the film.
+      expect(policy.blamesNetwork(const Duration(seconds: 3)), isTrue);
+    });
+
+    test('the bar for blaming the network follows the current wait', () {
+      final policy = CachePausePolicy();
+      policy.noteUnderrun(t0);
+      policy.noteUnderrun(t0.add(const Duration(seconds: 30)));
+      expect(policy.waitSeconds, 5);
+      expect(policy.blamesNetwork(const Duration(seconds: 3)), isFalse);
+      expect(policy.blamesNetwork(const Duration(seconds: 6)), isTrue);
+    });
+
     test('a calm stretch brings a seek back to the short wait', () {
       final policy = CachePausePolicy();
       policy.noteUnderrun(t0);

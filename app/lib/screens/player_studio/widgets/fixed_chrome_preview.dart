@@ -2,7 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../../../models/player_layout.dart';
 import '../../../utils/app_platform.dart';
-import '../../player/widgets/emby/emby_controls_layer.dart';
+import '../../player/widgets/onyx/onyx_controls_layer.dart';
 
 /// What Player Studio shows when the active playeur is a fixed chrome.
 ///
@@ -48,8 +48,8 @@ class FixedChromePreview extends StatelessWidget {
 
   Widget _buildChrome() {
     switch (chrome) {
-      case FixedChromeId.emby:
-        return EmbyControlsLayer(
+      case FixedChromeId.onyx:
+        return OnyxControlsLayer(
           visible: true,
           isPlaying: false,
           // The preview shows the chrome this device will actually get: no

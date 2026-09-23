@@ -128,7 +128,7 @@ func lookupShowIDByTMDBID(tmdbID int) (int, bool) {
 	return id, err == nil
 }
 
-// findOrCreateShow resolves a show by local provider IDs / NFO first (Emby-style),
+// findOrCreateShow resolves a show by local provider IDs / NFO first,
 // then TMDB id, then normalized title. tmdbSearchKey should preserve years when available.
 func findOrCreateShow(displayTitle, tmdbSearchKey, showFolderPath string) (int, error) {
 	displayTitle = strings.TrimSpace(displayTitle)

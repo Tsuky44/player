@@ -104,7 +104,7 @@ spacing:
 
 ## Brand & Style
 
-**Quiet Premium** — OLED charcoal stage, content-first posters, frosted chrome only where it earns its keep (nav, menus, player HUD). Calm restraint over theatrical concepts. No Netflix-red branding; the mark is a light play tile on dark.
+**Quiet Premium** — OLED charcoal stage, content-first posters, frosted chrome only where it earns its keep (nav, menus, player HUD). Calm restraint over theatrical concepts. No bright-red branding; the mark is a light play tile on dark.
 
 ## Colors
 

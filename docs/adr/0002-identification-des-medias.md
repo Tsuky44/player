@@ -31,7 +31,7 @@ d'extensions ignorait `.m4v`, `.ts`, `.m2ts`, `.mpg`…
 
 ### 1. Le dossier n'identifie un film que s'il lui appartient
 
-Règle Emby : un dossier ne nomme le film que lorsqu'il ne contient qu'un seul film (les parties
+Règle : un dossier ne nomme le film que lorsqu'il ne contient qu'un seul film (les parties
 `cd1`/`cd2` comptant pour une seule œuvre, les samples et bonus étant exclus du décompte). Sinon —
 et pour tout dossier de regroupement reconnu (genre, lettre, qualité, langue, « Saga … », dossier
 purement numérique) — l'identité vient du **nom de fichier**.

@@ -206,7 +206,7 @@ class StudioController extends ChangeNotifier {
             ControlSkinStyle.glass => TimelineChromeOptions.glass(),
           },
         PlayerControlType.timelineGlassInline => TimelineChromeOptions.glass(),
-        PlayerControlType.timelineEmby => TimelineChromeOptions.emby(),
+        PlayerControlType.timelineOnyx => TimelineChromeOptions.onyx(),
         _ => null,
       },
     );

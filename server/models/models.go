@@ -229,7 +229,7 @@ type CatalogCrewMember struct {
 	Job  string `json:"job,omitempty"`
 }
 
-// MediaDetails is the rich, Emby-style detail payload returned by
+// MediaDetails is the rich detail payload returned by
 // GET /api/media/:id/details. It merges the local library record (ID, poster)
 // with live TMDB catalog metadata (cast, genres, rating, backdrop…).
 type MediaDetails struct {

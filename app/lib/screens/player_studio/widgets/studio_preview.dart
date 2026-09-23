@@ -64,7 +64,7 @@ class StudioPreview extends StatelessWidget {
   Widget _positionedControl(PlacedControl placed, Size canvasSize) {
     final c = placed.config;
     final isFullWidthTimeline =
-        placed.type == PlayerControlType.timelineEmby ||
+        placed.type == PlayerControlType.timelineOnyx ||
         placed.type == PlayerControlType.timelineGlassInline;
 
     final chrome = ControlChrome(

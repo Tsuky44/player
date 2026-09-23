@@ -11,23 +11,23 @@ import '../../../../utils/app_platform.dart';
 import '../../hooks/use_episode_navigation.dart';
 import '../../hooks/use_player_controller.dart';
 import '../player_settings_ui.dart' show splitTrackLabel;
-import 'emby_chrome_theme.dart';
+import 'onyx_chrome_theme.dart';
 
 /// Which list the menu is showing. [root] is the index of sections.
-enum EmbyMenuSection { root, quality, audio, subtitles, speed, display, chapters }
+enum OnyxMenuSection { root, quality, audio, subtitles, speed, display, chapters }
 
-/// Emby-shaped settings menu: a narrow list of sections, each drilling into a
+/// Chrome Onyx settings menu: a narrow list of sections, each drilling into a
 /// list of choices, instead of a tall tabbed panel.
 ///
 /// The tabbed [PlayerSettingsSheet] shows every category's chrome at once —
 /// header, subtitle, five segmented tabs — before showing a single option. On
-/// the Emby chrome that reads as a dialog dropped on the video. Emby instead
+/// Chrome Onyx that reads as a dialog dropped on the video. This menu instead
 /// puts one column of rows over the picture: what each setting is *currently*
 /// on is visible without opening anything, and a category costs one tap.
 ///
 /// Like the rest of this chrome, the look is locked and ignores
-/// [PlayerLayoutConfig] — see [EmbyChromeTheme].
-class EmbySettingsMenu extends StatefulWidget {
+/// [PlayerLayoutConfig] — see [OnyxChromeTheme].
+class OnyxSettingsMenu extends StatefulWidget {
   final PlaybackSession session;
   final PlayerController? playerController;
   final EpisodeNavigationController? episodeNav;
@@ -43,11 +43,11 @@ class EmbySettingsMenu extends StatefulWidget {
 
   /// Opening straight on a category — the CC and audio buttons of the chrome
   /// point at their own list rather than at the index.
-  final EmbyMenuSection initialSection;
+  final OnyxMenuSection initialSection;
 
   final VoidCallback onClose;
 
-  const EmbySettingsMenu({
+  const OnyxSettingsMenu({
     super.key,
     required this.session,
     required this.currentFit,
@@ -59,18 +59,18 @@ class EmbySettingsMenu extends StatefulWidget {
     this.playerController,
     this.episodeNav,
     this.onSeekToAbsolute,
-    this.initialSection = EmbyMenuSection.root,
+    this.initialSection = OnyxMenuSection.root,
   });
 
   static const double width = 292;
   static const double maxHeight = 420;
 
   @override
-  State<EmbySettingsMenu> createState() => _EmbySettingsMenuState();
+  State<OnyxSettingsMenu> createState() => _OnyxSettingsMenuState();
 }
 
-class _EmbySettingsMenuState extends State<EmbySettingsMenu> {
-  late EmbyMenuSection _section;
+class _OnyxSettingsMenuState extends State<OnyxSettingsMenu> {
+  late OnyxMenuSection _section;
   late BoxFit _fit;
   StreamSubscription<void>? _tracksSubscription;
 
@@ -80,11 +80,11 @@ class _EmbySettingsMenuState extends State<EmbySettingsMenu> {
   /// One node moved from row to row on every section change, rather than an
   /// `autofocus` on each: two rows claiming the entry point is a ring that
   /// jumps.
-  final FocusNode _entryNode = FocusNode(debugLabel: 'emby-menu-entry');
+  final FocusNode _entryNode = FocusNode(debugLabel: 'onyx-menu-entry');
 
   /// The section just left, so the index puts the ring back on its row instead
   /// of dropping the user at the top of the list.
-  EmbyMenuSection? _returnedFrom;
+  OnyxMenuSection? _returnedFrom;
 
   PlayerController? get _controller => widget.playerController;
 
@@ -124,7 +124,7 @@ class _EmbySettingsMenuState extends State<EmbySettingsMenu> {
     });
   }
 
-  void _openSection(EmbyMenuSection section) {
+  void _openSection(OnyxMenuSection section) {
     setState(() => _section = section);
     _focusEntryAfterBuild();
   }
@@ -132,15 +132,15 @@ class _EmbySettingsMenuState extends State<EmbySettingsMenu> {
   void _backToRoot() {
     setState(() {
       _returnedFrom = _section;
-      _section = EmbyMenuSection.root;
+      _section = OnyxMenuSection.root;
     });
     _focusEntryAfterBuild();
   }
 
   /// The index row the remote lands on.
-  EmbyMenuSection get _rootEntry =>
+  OnyxMenuSection get _rootEntry =>
       _returnedFrom ??
-      (_hasQuality ? EmbyMenuSection.quality : EmbyMenuSection.audio);
+      (_hasQuality ? OnyxMenuSection.quality : OnyxMenuSection.audio);
 
   /// Back and left go up one level instead of closing everything.
   ///
@@ -150,7 +150,7 @@ class _EmbySettingsMenuState extends State<EmbySettingsMenu> {
   /// right next step up.
   KeyEventResult _handleMenuKey(FocusNode node, KeyEvent event) {
     if (event is! KeyDownEvent) return KeyEventResult.ignored;
-    if (_section == EmbyMenuSection.root) return KeyEventResult.ignored;
+    if (_section == OnyxMenuSection.root) return KeyEventResult.ignored;
 
     final key = event.logicalKey;
     if (kTvBackKeys.contains(key) ||
@@ -249,10 +249,10 @@ class _EmbySettingsMenuState extends State<EmbySettingsMenu> {
       child: Material(
         color: Colors.transparent,
         child: Container(
-          width: EmbySettingsMenu.width,
+          width: OnyxSettingsMenu.width,
           decoration: BoxDecoration(
             // Flat surface, no blur: this chrome renders no glass anywhere.
-            color: EmbyChromeTheme.tooltipSurface,
+            color: OnyxChromeTheme.tooltipSurface,
             borderRadius: BorderRadius.circular(10),
             border: Border.all(color: Colors.white.withValues(alpha: 0.1)),
             boxShadow: [
@@ -271,9 +271,9 @@ class _EmbySettingsMenuState extends State<EmbySettingsMenu> {
             alignment: Alignment.topCenter,
             child: ConstrainedBox(
               constraints: const BoxConstraints(
-                maxHeight: EmbySettingsMenu.maxHeight,
+                maxHeight: OnyxSettingsMenu.maxHeight,
               ),
-              child: _section == EmbyMenuSection.root
+              child: _section == OnyxMenuSection.root
                   ? _buildRoot()
                   : _buildSection(),
             ),
@@ -284,8 +284,8 @@ class _EmbySettingsMenuState extends State<EmbySettingsMenu> {
   }
 
   Widget _buildRoot() {
-    Widget row(EmbyMenuSection section, String label, String value) {
-      return _EmbyMenuRow(
+    Widget row(OnyxMenuSection section, String label, String value) {
+      return _OnyxMenuRow(
         label: label,
         value: value,
         focusNode: _rootEntry == section ? _entryNode : null,
@@ -298,14 +298,14 @@ class _EmbySettingsMenuState extends State<EmbySettingsMenu> {
       padding: const EdgeInsets.symmetric(vertical: 6),
       children: [
         if (_hasQuality)
-          row(EmbyMenuSection.quality, 'Qualité', _qualityValue),
-        row(EmbyMenuSection.audio, 'Audio', _audioValue),
-        row(EmbyMenuSection.subtitles, 'Sous-titres', _subtitlesValue),
-        row(EmbyMenuSection.speed, 'Vitesse de lecture', _speedValue),
-        row(EmbyMenuSection.display, 'Affichage', _displayValue),
+          row(OnyxMenuSection.quality, 'Qualité', _qualityValue),
+        row(OnyxMenuSection.audio, 'Audio', _audioValue),
+        row(OnyxMenuSection.subtitles, 'Sous-titres', _subtitlesValue),
+        row(OnyxMenuSection.speed, 'Vitesse de lecture', _speedValue),
+        row(OnyxMenuSection.display, 'Affichage', _displayValue),
         if (_hasChapters)
           row(
-            EmbyMenuSection.chapters,
+            OnyxMenuSection.chapters,
             'Chapitres',
             '${widget.episodeNav!.chapters.length}',
           ),
@@ -315,19 +315,19 @@ class _EmbySettingsMenuState extends State<EmbySettingsMenu> {
 
   Widget _buildSection() {
     final (title, body) = switch (_section) {
-      EmbyMenuSection.quality => ('Qualité', _buildQuality()),
-      EmbyMenuSection.audio => ('Audio', _buildAudio()),
-      EmbyMenuSection.subtitles => ('Sous-titres', _buildSubtitles()),
-      EmbyMenuSection.speed => ('Vitesse de lecture', _buildSpeed()),
-      EmbyMenuSection.display => ('Affichage', _buildDisplay()),
-      EmbyMenuSection.chapters => ('Chapitres', _buildChapters()),
-      EmbyMenuSection.root => ('', const SizedBox.shrink()),
+      OnyxMenuSection.quality => ('Qualité', _buildQuality()),
+      OnyxMenuSection.audio => ('Audio', _buildAudio()),
+      OnyxMenuSection.subtitles => ('Sous-titres', _buildSubtitles()),
+      OnyxMenuSection.speed => ('Vitesse de lecture', _buildSpeed()),
+      OnyxMenuSection.display => ('Affichage', _buildDisplay()),
+      OnyxMenuSection.chapters => ('Chapitres', _buildChapters()),
+      OnyxMenuSection.root => ('', const SizedBox.shrink()),
     };
 
     return Column(
       mainAxisSize: MainAxisSize.min,
       children: [
-        _EmbyMenuBackHeader(title: title, onBack: _backToRoot),
+        _OnyxMenuBackHeader(title: title, onBack: _backToRoot),
         Flexible(child: body),
       ],
     );
@@ -338,7 +338,7 @@ class _EmbySettingsMenuState extends State<EmbySettingsMenu> {
   /// The option already in force, so opening "Audio" outlines the language
   /// being played and the next press moves from there. A list with nothing
   /// selected — the chapters — hands it to the first row.
-  Widget _sectionList(List<_EmbyMenuOption> options) {
+  Widget _sectionList(List<_OnyxMenuOption> options) {
     final selected = options.indexWhere((option) => option.selected);
     final entry = selected < 0 ? 0 : selected;
 
@@ -375,13 +375,13 @@ class _EmbySettingsMenuState extends State<EmbySettingsMenu> {
 
   Widget _buildQuality() {
     final controller = _controller;
-    if (controller == null) return const _EmbyMenuEmpty();
+    if (controller == null) return const _OnyxMenuEmpty();
 
     return _sectionList([
       // Direct Play is native-only: it hands the player the file itself, which
       // a browser cannot open.
       if (!AppPlatform.isWeb)
-        _EmbyMenuOption(
+        _OnyxMenuOption(
           label: 'Direct',
           subtitle: 'Le fichier tel quel',
           selected: controller.currentQuality == null,
@@ -392,7 +392,7 @@ class _EmbySettingsMenuState extends State<EmbySettingsMenu> {
         ),
       for (final tier in _qualityTiers)
         () {
-          return _EmbyMenuOption(
+          return _OnyxMenuOption(
             label: tier.resolutionLabel,
             subtitle: tier.bitrateLabel,
             selected: controller.currentQuality == tier.key,
@@ -415,7 +415,7 @@ class _EmbySettingsMenuState extends State<EmbySettingsMenu> {
           () {
             final (title, subtitle) = splitTrackLabel(tracks[i].displayName);
             final selected = i == controller.selectedAudioIndex;
-            return _EmbyMenuOption(
+            return _OnyxMenuOption(
               label: title,
               subtitle: subtitle,
               selected: selected,
@@ -429,12 +429,12 @@ class _EmbySettingsMenuState extends State<EmbySettingsMenu> {
     }
 
     final internal = widget.session.audioTracks;
-    if (internal.isEmpty) return const _EmbyMenuEmpty();
+    if (internal.isEmpty) return const _OnyxMenuEmpty();
     final current = widget.session.currentAudioTrack;
 
     return _sectionList([
       for (var i = 0; i < internal.length; i++)
-        _EmbyMenuOption(
+        _OnyxMenuOption(
           label: internal[i].id == 'no'
               ? 'Désactivé'
               : internal[i].title ??
@@ -452,7 +452,7 @@ class _EmbySettingsMenuState extends State<EmbySettingsMenu> {
 
   Widget _buildSubtitles() {
     final controller = _controller;
-    if (controller == null) return const _EmbyMenuEmpty();
+    if (controller == null) return const _OnyxMenuEmpty();
 
     // Direct Play reads the tracks off the file; a transcode carries the
     // canonical list from the server. Same split as [PlayerSubtitlesPicker].
@@ -460,12 +460,12 @@ class _EmbySettingsMenuState extends State<EmbySettingsMenu> {
       final subs = widget.session.subtitleTracks
           .where((t) => t.id != 'auto')
           .toList();
-      if (subs.isEmpty) return const _EmbyMenuEmpty();
+      if (subs.isEmpty) return const _OnyxMenuEmpty();
       final current = widget.session.currentSubtitleTrack;
 
       return _sectionList([
         for (var i = 0; i < subs.length; i++)
-          _EmbyMenuOption(
+          _OnyxMenuOption(
             label: subs[i].id == 'no'
                 ? 'Désactivés'
                 : subs[i].title ??
@@ -483,7 +483,7 @@ class _EmbySettingsMenuState extends State<EmbySettingsMenu> {
 
     final subtitles = controller.mediaTracks?.subtitles ?? const <MediaSubtitleTrack>[];
     return _sectionList([
-      _EmbyMenuOption(
+      _OnyxMenuOption(
         label: 'Désactivés',
         selected: controller.selectedSubtitleLang == null,
         onTap: () {
@@ -494,7 +494,7 @@ class _EmbySettingsMenuState extends State<EmbySettingsMenu> {
       for (final track in subtitles)
         () {
           final (title, subtitle) = splitTrackLabel(track.displayName);
-          return _EmbyMenuOption(
+          return _OnyxMenuOption(
             label: title,
             subtitle: subtitle,
             // A bitmap track has to be burned into the video while
@@ -515,7 +515,7 @@ class _EmbySettingsMenuState extends State<EmbySettingsMenu> {
   Widget _buildSpeed() {
     return _sectionList([
       for (final rate in widget.playbackRates)
-        _EmbyMenuOption(
+        _OnyxMenuOption(
           label: rate == 1.0 ? 'Normale' : '${_trimRate(rate)}×',
           selected: rate == widget.playbackRate,
           onTap: () {
@@ -528,13 +528,13 @@ class _EmbySettingsMenuState extends State<EmbySettingsMenu> {
 
   Widget _buildDisplay() {
     return _sectionList([
-      _EmbyMenuOption(
+      _OnyxMenuOption(
         label: 'Original',
         subtitle: 'Conserve les proportions',
         selected: _fit == BoxFit.contain,
         onTap: () => _setFit(BoxFit.contain),
       ),
-      _EmbyMenuOption(
+      _OnyxMenuOption(
         label: 'Adaptatif',
         subtitle: "Remplit l'écran, coupe les bords",
         selected: _fit == BoxFit.cover,
@@ -558,7 +558,7 @@ class _EmbySettingsMenuState extends State<EmbySettingsMenu> {
 
     return _sectionList([
       for (final chapter in chapters)
-        _EmbyMenuOption(
+        _OnyxMenuOption(
           label: chapter.title.isEmpty ? 'Chapitre ${chapter.id}' : chapter.title,
           value: _timecode(chapter.startTime),
           selected: false,
@@ -587,24 +587,24 @@ class _EmbySettingsMenuState extends State<EmbySettingsMenu> {
 /// [TvFocusable] paints everywhere else in the app, plus a fill that carries
 /// from three metres away. The pointer gets its own, quieter tint — it had
 /// lost its hover state to the same burial.
-class _EmbyMenuTile extends StatefulWidget {
+class _OnyxMenuTile extends StatefulWidget {
   final Widget child;
   final VoidCallback onTap;
 
   /// Supplied for the one row the remote is sent to on arrival.
   final FocusNode? focusNode;
 
-  const _EmbyMenuTile({
+  const _OnyxMenuTile({
     required this.child,
     required this.onTap,
     this.focusNode,
   });
 
   @override
-  State<_EmbyMenuTile> createState() => _EmbyMenuTileState();
+  State<_OnyxMenuTile> createState() => _OnyxMenuTileState();
 }
 
-class _EmbyMenuTileState extends State<_EmbyMenuTile> {
+class _OnyxMenuTileState extends State<_OnyxMenuTile> {
   bool _hovered = false;
 
   @override
@@ -658,13 +658,13 @@ final Color _focusFill = Colors.white.withValues(alpha: 0.14);
 final Color _hoverFill = Colors.white.withValues(alpha: 0.07);
 
 /// Index row: what the setting is on, without opening it.
-class _EmbyMenuRow extends StatelessWidget {
+class _OnyxMenuRow extends StatelessWidget {
   final String label;
   final String value;
   final VoidCallback onTap;
   final FocusNode? focusNode;
 
-  const _EmbyMenuRow({
+  const _OnyxMenuRow({
     required this.label,
     required this.value,
     required this.onTap,
@@ -673,7 +673,7 @@ class _EmbyMenuRow extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return _EmbyMenuTile(
+    return _OnyxMenuTile(
       onTap: onTap,
       focusNode: focusNode,
       child: Container(
@@ -684,7 +684,7 @@ class _EmbyMenuRow extends StatelessWidget {
             Text(
               label,
               style: const TextStyle(
-                color: EmbyChromeTheme.title,
+                color: OnyxChromeTheme.title,
                 fontSize: 14,
                 fontWeight: FontWeight.w500,
               ),
@@ -697,7 +697,7 @@ class _EmbyMenuRow extends StatelessWidget {
                 overflow: TextOverflow.ellipsis,
                 textAlign: TextAlign.right,
                 style: const TextStyle(
-                  color: EmbyChromeTheme.meta,
+                  color: OnyxChromeTheme.meta,
                   fontSize: 13,
                   fontWeight: FontWeight.w400,
                 ),
@@ -707,7 +707,7 @@ class _EmbyMenuRow extends StatelessWidget {
             const Icon(
               Icons.chevron_right_rounded,
               size: 18,
-              color: EmbyChromeTheme.meta,
+              color: OnyxChromeTheme.meta,
             ),
           ],
         ),
@@ -718,7 +718,7 @@ class _EmbyMenuRow extends StatelessWidget {
 
 /// Choice row: a check occupies the left slot whether or not it is set, so the
 /// labels stay on one vertical line.
-class _EmbyMenuOption extends StatelessWidget {
+class _OnyxMenuOption extends StatelessWidget {
   final String label;
   final String? subtitle;
   final String? value;
@@ -727,7 +727,7 @@ class _EmbyMenuOption extends StatelessWidget {
   final VoidCallback onTap;
   final FocusNode? focusNode;
 
-  const _EmbyMenuOption({
+  const _OnyxMenuOption({
     required this.label,
     required this.selected,
     required this.onTap,
@@ -740,7 +740,7 @@ class _EmbyMenuOption extends StatelessWidget {
   /// The entry node is placed by the list, which is the only thing that knows
   /// which option is the current one — the sections build their rows without
   /// looking at each other.
-  _EmbyMenuOption withFocusNode(FocusNode? node) => _EmbyMenuOption(
+  _OnyxMenuOption withFocusNode(FocusNode? node) => _OnyxMenuOption(
         label: label,
         selected: selected,
         onTap: onTap,
@@ -752,7 +752,7 @@ class _EmbyMenuOption extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return _EmbyMenuTile(
+    return _OnyxMenuTile(
       onTap: onTap,
       focusNode: focusNode,
       child: Container(
@@ -764,7 +764,7 @@ class _EmbyMenuOption extends StatelessWidget {
               width: 26,
               child: selected
                   ? const Icon(Icons.check_rounded,
-                      size: 17, color: EmbyChromeTheme.title)
+                      size: 17, color: OnyxChromeTheme.title)
                   : null,
             ),
             Expanded(
@@ -780,7 +780,7 @@ class _EmbyMenuOption extends StatelessWidget {
                           maxLines: 1,
                           overflow: TextOverflow.ellipsis,
                           style: TextStyle(
-                            color: EmbyChromeTheme.title,
+                            color: OnyxChromeTheme.title,
                             fontSize: 14,
                             fontWeight:
                                 selected ? FontWeight.w600 : FontWeight.w400,
@@ -789,7 +789,7 @@ class _EmbyMenuOption extends StatelessWidget {
                       ),
                       if (badge != null) ...[
                         const SizedBox(width: 6),
-                        _EmbyMenuBadge(text: badge!),
+                        _OnyxMenuBadge(text: badge!),
                       ],
                     ],
                   ),
@@ -801,7 +801,7 @@ class _EmbyMenuOption extends StatelessWidget {
                         maxLines: 1,
                         overflow: TextOverflow.ellipsis,
                         style: const TextStyle(
-                          color: EmbyChromeTheme.meta,
+                          color: OnyxChromeTheme.meta,
                           fontSize: 12,
                         ),
                       ),
@@ -814,7 +814,7 @@ class _EmbyMenuOption extends StatelessWidget {
               Text(
                 value!,
                 style: const TextStyle(
-                  color: EmbyChromeTheme.meta,
+                  color: OnyxChromeTheme.meta,
                   fontSize: 12,
                   fontFeatures: [FontFeature.tabularFigures()],
                 ),
@@ -827,15 +827,15 @@ class _EmbyMenuOption extends StatelessWidget {
   }
 }
 
-class _EmbyMenuBackHeader extends StatelessWidget {
+class _OnyxMenuBackHeader extends StatelessWidget {
   final String title;
   final VoidCallback onBack;
 
-  const _EmbyMenuBackHeader({required this.title, required this.onBack});
+  const _OnyxMenuBackHeader({required this.title, required this.onBack});
 
   @override
   Widget build(BuildContext context) {
-    return _EmbyMenuTile(
+    return _OnyxMenuTile(
       onTap: onBack,
       child: Container(
         height: 44,
@@ -848,12 +848,12 @@ class _EmbyMenuBackHeader extends StatelessWidget {
         child: Row(
           children: [
             const Icon(Icons.chevron_left_rounded,
-                size: 22, color: EmbyChromeTheme.title),
+                size: 22, color: OnyxChromeTheme.title),
             const SizedBox(width: 4),
             Text(
               title,
               style: const TextStyle(
-                color: EmbyChromeTheme.title,
+                color: OnyxChromeTheme.title,
                 fontSize: 14,
                 fontWeight: FontWeight.w600,
               ),
@@ -865,10 +865,10 @@ class _EmbyMenuBackHeader extends StatelessWidget {
   }
 }
 
-class _EmbyMenuBadge extends StatelessWidget {
+class _OnyxMenuBadge extends StatelessWidget {
   final String text;
 
-  const _EmbyMenuBadge({required this.text});
+  const _OnyxMenuBadge({required this.text});
 
   @override
   Widget build(BuildContext context) {
@@ -880,14 +880,14 @@ class _EmbyMenuBadge extends StatelessWidget {
       ),
       child: Text(
         text,
-        style: const TextStyle(color: EmbyChromeTheme.meta, fontSize: 10),
+        style: const TextStyle(color: OnyxChromeTheme.meta, fontSize: 10),
       ),
     );
   }
 }
 
-class _EmbyMenuEmpty extends StatelessWidget {
-  const _EmbyMenuEmpty();
+class _OnyxMenuEmpty extends StatelessWidget {
+  const _OnyxMenuEmpty();
 
   @override
   Widget build(BuildContext context) {
@@ -895,7 +895,7 @@ class _EmbyMenuEmpty extends StatelessWidget {
       padding: EdgeInsets.symmetric(vertical: 22, horizontal: 16),
       child: Text(
         'Aucune piste disponible',
-        style: TextStyle(color: EmbyChromeTheme.meta, fontSize: 13),
+        style: TextStyle(color: OnyxChromeTheme.meta, fontSize: 13),
       ),
     );
   }

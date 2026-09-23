@@ -10,23 +10,23 @@ import '../../../../widgets/global/app_network_image.dart';
 import '../../../../widgets/global/optimistic_volume.dart';
 import '../avoid_cutouts.dart';
 import '../../playback/timeline_previews.dart';
-import 'emby_brightness_slider.dart';
-import 'emby_chrome_theme.dart';
-import 'emby_progress_bar.dart';
+import 'onyx_brightness_slider.dart';
+import 'onyx_chrome_theme.dart';
+import 'onyx_progress_bar.dart';
 import '../../../../widgets/global/app_slider.dart';
 
-/// Hand-written clone of the Emby player chrome.
+/// Chrome Onyx: the hand-written, fixed player chrome.
 ///
 /// Unlike [ModularControlsLayer] nothing here is placed by the user: the
 /// arrangement is code, not data, which is what lets it be laid out in real
 /// pixels and stay faithful. Player Studio shows it as a frozen preview.
 ///
-/// Two arrangements, one breakpoint ([EmbyChromeTheme.compactBreakpoint]):
+/// Two arrangements, one breakpoint ([OnyxChromeTheme.compactBreakpoint]):
 /// wide puts the title block and the utility cluster on one row above the
 /// scrubber, compact stacks them so nothing collides at phone widths. A
-/// television gets its own, laid out like Crunchyroll's — see
+/// television gets its own, built for the remote — see
 /// [_buildTvChrome].
-class EmbyControlsLayer extends StatelessWidget {
+class OnyxControlsLayer extends StatelessWidget {
   final bool visible;
 
   /// Anchors subtitle positioning to the scrubber, as the other layers do.
@@ -106,6 +106,13 @@ class EmbyControlsLayer extends StatelessWidget {
   /// Only while an intro chapter is playing.
   final VoidCallback? onSkipIntro;
 
+  /// Opens the « Regarder ensemble » panel. Null where no server can host a
+  /// session (offline playback).
+  final VoidCallback? onOpenWatchParty;
+
+  /// A session is running: the button says so.
+  final bool watchPartyActive;
+
   /// Chapter starts as fractions, for the scrubber ticks.
   final List<double> chapterMarks;
 
@@ -119,7 +126,7 @@ class EmbyControlsLayer extends StatelessWidget {
   /// 1 everywhere except on an iPhone, where the same widget reads slightly
   /// larger than it does on Android at the same width. Only what is drawn
   /// shrinks — the touch targets do not, see
-  /// [EmbyChromeMetrics.scaledBy]. Passed in rather than read from the
+  /// [OnyxChromeMetrics.scaledBy]. Passed in rather than read from the
   /// platform, for the same reason [showVolume] is: the Studio renders this
   /// chrome away from any device.
   final double scale;
@@ -177,7 +184,7 @@ class EmbyControlsLayer extends StatelessWidget {
   /// still of where it will land.
   final bool remoteSeekPending;
 
-  const EmbyControlsLayer({
+  const OnyxControlsLayer({
     super.key,
     required this.visible,
     required this.isPlaying,
@@ -198,6 +205,8 @@ class EmbyControlsLayer extends StatelessWidget {
     required this.onOpenAudio,
     required this.onCycleSpeed,
     required this.onOpenSettings,
+    this.onOpenWatchParty,
+    this.watchPartyActive = false,
     required this.onToggleFullscreen,
     this.playbackRate = 1.0,
     this.timelineAnchorKey,
@@ -261,7 +270,7 @@ class EmbyControlsLayer extends StatelessWidget {
     return LayoutBuilder(
       builder: (context, constraints) {
         final width = constraints.maxWidth;
-        final m = EmbyChromeTheme.metricsFor(width, scale: scale, tv: isTv);
+        final m = OnyxChromeTheme.metricsFor(width, scale: scale, tv: isTv);
         if (isTv) return _buildTvChrome(m);
         final hasBrightness =
             brightness != null && onBrightnessChanged != null;
@@ -279,7 +288,7 @@ class EmbyControlsLayer extends StatelessWidget {
         // the band that is actually left. It cannot overlap either of them,
         // and the band being known means the whole of it can catch a finger.
         return CustomMultiChildLayout(
-          delegate: _EmbyChromeLayout(
+          delegate: _OnyxChromeLayout(
             topLead: _topBarTail,
             // The skip-intro button sits in that strip when there is one, and
             // it is a button: the bar has to stay off it.
@@ -287,7 +296,7 @@ class EmbyControlsLayer extends StatelessWidget {
           ),
           children: [
             LayoutId(
-              id: _EmbyChromeLayout.top,
+              id: _OnyxChromeLayout.top,
               child: _fadeWithChrome(_buildTop(m, width)),
             ),
             // It rides the same fade as the chrome: a bar floating alone over
@@ -295,7 +304,7 @@ class EmbyControlsLayer extends StatelessWidget {
             // exists to remove.
             if (hasBrightness)
               LayoutId(
-                id: _EmbyChromeLayout.brightness,
+                id: _OnyxChromeLayout.brightness,
                 // A full-width row holding one right-aligned control, rather
                 // than a box pinned to the right edge: that is the shape the
                 // cutout dodge reasons about, and it is what lets a camera on
@@ -307,7 +316,7 @@ class EmbyControlsLayer extends StatelessWidget {
                       mainAxisAlignment: MainAxisAlignment.end,
                       children: [
                         _fadeWithChrome(
-                          EmbyBrightnessSlider(
+                          OnyxBrightnessSlider(
                             value: brightness!,
                             onChanged: onBrightnessChanged!,
                             onDraggingChanged: onBrightnessDraggingChanged,
@@ -320,7 +329,7 @@ class EmbyControlsLayer extends StatelessWidget {
                 ),
               ),
             LayoutId(
-              id: _EmbyChromeLayout.bottom,
+              id: _OnyxChromeLayout.bottom,
               child: Column(
                 mainAxisSize: MainAxisSize.min,
                 children: [
@@ -339,7 +348,7 @@ class EmbyControlsLayer extends StatelessWidget {
                       ),
                       child: Align(
                         alignment: Alignment.centerRight,
-                        child: _EmbySkipIntroButton(
+                        child: _OnyxSkipIntroButton(
                             onPressed: onSkipIntro!, metrics: m),
                       ),
                     ),
@@ -355,7 +364,7 @@ class EmbyControlsLayer extends StatelessWidget {
 
   // --- Television ---------------------------------------------------------
 
-  /// The television arrangement, after Crunchyroll's: the title and the track
+  /// The television arrangement: the title and the track
   /// menus along the top, the transport in the middle of the picture, the
   /// timeline along the bottom.
   ///
@@ -363,7 +372,7 @@ class EmbyControlsLayer extends StatelessWidget {
   /// on the row, up and down go to the next one — onto play/pause in the
   /// middle, onto the timeline at the bottom, onto the nearest button at the
   /// top.
-  Widget _buildTvChrome(EmbyChromeMetrics m) {
+  Widget _buildTvChrome(OnyxChromeMetrics m) {
     return TvFocusRows(
       onNavigate: onRemoteNavigate,
       child: Stack(
@@ -416,7 +425,7 @@ class EmbyControlsLayer extends StatelessWidget {
                     child: Align(
                       alignment: Alignment.centerRight,
                       child: TvFocusRow(
-                        child: _EmbySkipIntroButton(
+                        child: _OnyxSkipIntroButton(
                           onPressed: onSkipIntro!,
                           metrics: m,
                         ),
@@ -432,15 +441,15 @@ class EmbyControlsLayer extends StatelessWidget {
     );
   }
 
-  Widget _buildTvTop(EmbyChromeMetrics m) {
+  Widget _buildTvTop(OnyxChromeMetrics m) {
     return Container(
       padding: EdgeInsets.fromLTRB(m.gutter, m.topInset, m.gutter, _topBarTail),
-      decoration: const BoxDecoration(gradient: EmbyChromeTheme.topScrim),
+      decoration: const BoxDecoration(gradient: OnyxChromeTheme.topScrim),
       child: TvFocusRow(
         child: Row(
           children: [
-            _EmbyIconButton(
-              key: const ValueKey('emby-back'),
+            _OnyxIconButton(
+              key: const ValueKey('onyx-back'),
               icon: Icons.arrow_back_ios_new_rounded,
               tooltip: 'Retour',
               metrics: m,
@@ -457,13 +466,13 @@ class EmbyControlsLayer extends StatelessWidget {
     );
   }
 
-  Widget _buildTvBottom(EmbyChromeMetrics m) {
+  Widget _buildTvBottom(OnyxChromeMetrics m) {
     return Stack(
       children: [
         const Positioned.fill(
           child: IgnorePointer(
             child: DecoratedBox(
-              decoration: BoxDecoration(gradient: EmbyChromeTheme.bottomScrim),
+              decoration: BoxDecoration(gradient: OnyxChromeTheme.bottomScrim),
             ),
           ),
         ),
@@ -484,7 +493,7 @@ class EmbyControlsLayer extends StatelessWidget {
                 preferredFocus: progressFocusNode,
                 child: KeyedSubtree(
                   key: timelineAnchorKey,
-                  child: EmbyProgressBar(
+                  child: OnyxProgressBar(
                     progress: _progressFraction,
                     buffered: buffered,
                     duration: duration,
@@ -532,7 +541,7 @@ class EmbyControlsLayer extends StatelessWidget {
 
   // --- Top ----------------------------------------------------------------
 
-  Widget _buildTop(EmbyChromeMetrics m, double width) {
+  Widget _buildTop(OnyxChromeMetrics m, double width) {
     return Container(
       // The macOS traffic lights live in this strip, so the row starts below
       // them instead of underneath.
@@ -542,11 +551,11 @@ class EmbyControlsLayer extends StatelessWidget {
         m.gutter,
         _topBarTail,
       ),
-      decoration: const BoxDecoration(gradient: EmbyChromeTheme.topScrim),
+      decoration: const BoxDecoration(gradient: OnyxChromeTheme.topScrim),
       child: _dodgeCutouts(
         Row(
           children: [
-          _EmbyIconButton(
+          _OnyxIconButton(
             icon: Icons.arrow_back_ios_new_rounded,
             tooltip: 'Retour',
             metrics: m,
@@ -561,7 +570,7 @@ class EmbyControlsLayer extends StatelessWidget {
           // remote's focus and hold it. Same conclusion on a phone, for the
           // same reason with different hardware — see [showVolume].
           if (!isTv && showVolume)
-            _EmbyVolumeControl(
+            _OnyxVolumeControl(
               volume: volume,
               onChanged: onVolumeChanged,
               metrics: m,
@@ -578,7 +587,7 @@ class EmbyControlsLayer extends StatelessWidget {
 
   /// TMDB logo when we have one, the title otherwise — never both, and never
   /// an empty gap while the logo request is still in flight.
-  Widget _buildBrand(EmbyChromeMetrics m) {
+  Widget _buildBrand(OnyxChromeMetrics m) {
     final url = logoUrl;
     if (url != null && url.isNotEmpty) {
       return Align(
@@ -605,7 +614,7 @@ class EmbyControlsLayer extends StatelessWidget {
     return _brandText(m);
   }
 
-  Widget _brandText(EmbyChromeMetrics m) {
+  Widget _brandText(OnyxChromeMetrics m) {
     return Align(
       alignment: Alignment.centerLeft,
       child: Text(
@@ -613,7 +622,7 @@ class EmbyControlsLayer extends StatelessWidget {
         maxLines: 1,
         overflow: TextOverflow.ellipsis,
         style: TextStyle(
-          color: EmbyChromeTheme.title,
+          color: OnyxChromeTheme.title,
           fontSize: m.brandTextSize,
           fontWeight: FontWeight.w600,
         ),
@@ -623,7 +632,7 @@ class EmbyControlsLayer extends StatelessWidget {
 
   // --- Bottom -------------------------------------------------------------
 
-  Widget _buildBottom(EmbyChromeMetrics m) {
+  Widget _buildBottom(OnyxChromeMetrics m) {
     // The scrim is painted *behind* the rows rather than around them, and it
     // does not take touches.
     //
@@ -639,7 +648,7 @@ class EmbyControlsLayer extends StatelessWidget {
         const Positioned.fill(
           child: IgnorePointer(
             child: DecoratedBox(
-              decoration: BoxDecoration(gradient: EmbyChromeTheme.bottomScrim),
+              decoration: BoxDecoration(gradient: OnyxChromeTheme.bottomScrim),
             ),
           ),
         ),
@@ -656,7 +665,7 @@ class EmbyControlsLayer extends StatelessWidget {
     );
   }
 
-  Widget _buildBottomRows(EmbyChromeMetrics m) {
+  Widget _buildBottomRows(OnyxChromeMetrics m) {
     // Every row dodges the camera on its own: on a phone held sideways this
     // bar is half the height of the screen, so a bubble on the edge lands on
     // one of these rows and not on the others.
@@ -682,7 +691,7 @@ class EmbyControlsLayer extends StatelessWidget {
           _dodgeCutouts(
             KeyedSubtree(
               key: timelineAnchorKey,
-              child: EmbyProgressBar(
+              child: OnyxProgressBar(
                 progress: _progressFraction,
                 buffered: buffered,
                 duration: duration,
@@ -708,7 +717,7 @@ class EmbyControlsLayer extends StatelessWidget {
     );
   }
 
-  Widget _buildTitleBlock(EmbyChromeMetrics m) {
+  Widget _buildTitleBlock(OnyxChromeMetrics m) {
     return Column(
       mainAxisSize: MainAxisSize.min,
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -719,7 +728,7 @@ class EmbyControlsLayer extends StatelessWidget {
             maxLines: 1,
             overflow: TextOverflow.ellipsis,
             style: TextStyle(
-              color: EmbyChromeTheme.meta,
+              color: OnyxChromeTheme.meta,
               fontSize: m.metaSize,
               fontWeight: FontWeight.w500,
             ),
@@ -730,7 +739,7 @@ class EmbyControlsLayer extends StatelessWidget {
           maxLines: 1,
           overflow: TextOverflow.ellipsis,
           style: TextStyle(
-            color: EmbyChromeTheme.title,
+            color: OnyxChromeTheme.title,
             fontSize: m.titleSize,
             fontWeight: FontWeight.w600,
             height: 1.15,
@@ -740,14 +749,14 @@ class EmbyControlsLayer extends StatelessWidget {
     );
   }
 
-  Widget _buildUtilities(EmbyChromeMetrics m) {
+  Widget _buildUtilities(OnyxChromeMetrics m) {
     return Row(
       mainAxisSize: MainAxisSize.min,
       children: [
         // Series only: a movie has no episode list to browse.
         if (onOpenEpisodes != null) ...[
-          _EmbyIconButton(
-            key: const ValueKey('emby-episodes'),
+          _OnyxIconButton(
+            key: const ValueKey('onyx-episodes'),
             icon: Icons.playlist_play_rounded,
             tooltip: 'Épisodes suivants',
             metrics: m,
@@ -756,8 +765,8 @@ class EmbyControlsLayer extends StatelessWidget {
           ),
           SizedBox(width: m.clusterGap),
         ],
-        _EmbyIconButton(
-          key: const ValueKey('emby-subtitles'),
+        _OnyxIconButton(
+          key: const ValueKey('onyx-subtitles'),
           buttonKey: subtitlesButtonKey,
           icon: Icons.closed_caption_rounded,
           tooltip: 'Sous-titres',
@@ -766,8 +775,8 @@ class EmbyControlsLayer extends StatelessWidget {
           onPressed: onToggleSubtitles,
         ),
         SizedBox(width: m.clusterGap),
-        _EmbyIconButton(
-          key: const ValueKey('emby-audio'),
+        _OnyxIconButton(
+          key: const ValueKey('onyx-audio'),
           icon: Icons.graphic_eq_rounded,
           tooltip: 'Pistes audio',
           metrics: m,
@@ -778,8 +787,8 @@ class EmbyControlsLayer extends StatelessWidget {
         // button fewer is one press fewer to reach the settings.
         if (!isTv) ...[
           SizedBox(width: m.clusterGap),
-          _EmbyIconButton(
-            key: const ValueKey('emby-speed'),
+          _OnyxIconButton(
+            key: const ValueKey('onyx-speed'),
             icon: Icons.speed_rounded,
             // The current rate is the whole point of the control, so it goes
             // in the tooltip rather than making the user open a menu to read it.
@@ -788,9 +797,22 @@ class EmbyControlsLayer extends StatelessWidget {
             onPressed: onCycleSpeed,
           ),
         ],
+        if (onOpenWatchParty != null) ...[
+          SizedBox(width: m.clusterGap),
+          _OnyxIconButton(
+            key: const ValueKey('onyx-watch-party'),
+            icon: watchPartyActive
+                ? Icons.groups_rounded
+                : Icons.group_add_outlined,
+            tooltip: watchPartyActive ? 'Séance en cours' : 'Regarder ensemble',
+            metrics: m,
+            isTv: isTv,
+            onPressed: onOpenWatchParty!,
+          ),
+        ],
         SizedBox(width: m.clusterGap),
-        _EmbyIconButton(
-          key: const ValueKey('emby-settings'),
+        _OnyxIconButton(
+          key: const ValueKey('onyx-settings'),
           buttonKey: settingsButtonKey,
           icon: Icons.settings_rounded,
           tooltip: 'Réglages',
@@ -801,8 +823,8 @@ class EmbyControlsLayer extends StatelessWidget {
         // A television has no window to fill: the button would do nothing.
         if (!isTv) ...[
           SizedBox(width: m.clusterGap),
-          _EmbyIconButton(
-            key: const ValueKey('emby-fullscreen'),
+          _OnyxIconButton(
+            key: const ValueKey('onyx-fullscreen'),
             icon: Icons.fullscreen_rounded,
             tooltip: 'Plein écran',
             metrics: m,
@@ -818,9 +840,9 @@ class EmbyControlsLayer extends StatelessWidget {
     return rate == asInt ? '$asInt' : rate.toStringAsFixed(2);
   }
 
-  Widget _buildTimes(EmbyChromeMetrics m) {
+  Widget _buildTimes(OnyxChromeMetrics m) {
     final style = TextStyle(
-      color: EmbyChromeTheme.time,
+      color: OnyxChromeTheme.time,
       fontSize: m.timeSize,
       fontWeight: FontWeight.w500,
       fontFeatures: const [FontFeature.tabularFigures()],
@@ -841,7 +863,7 @@ class EmbyControlsLayer extends StatelessWidget {
     );
   }
 
-  Widget _buildTransport(EmbyChromeMetrics m) {
+  Widget _buildTransport(OnyxChromeMetrics m) {
     // Keyed, because the episode buttons come and go — the neighbours load
     // after playback starts — and without keys every button after them would
     // inherit the state, and the focus, of the one that used to sit there.
@@ -855,8 +877,8 @@ class EmbyControlsLayer extends StatelessWidget {
       children: [
         // Same rule as the next button: only when there is somewhere to go.
         if (onSkipPrevious != null) ...[
-          _EmbyIconButton(
-            key: const ValueKey('emby-previous'),
+          _OnyxIconButton(
+            key: const ValueKey('onyx-previous'),
             icon: Icons.skip_previous_rounded,
             tooltip: 'Épisode précédent',
             metrics: m,
@@ -865,8 +887,8 @@ class EmbyControlsLayer extends StatelessWidget {
           ),
           gap,
         ],
-        _EmbyIconButton(
-          key: const ValueKey('emby-rewind'),
+        _OnyxIconButton(
+          key: const ValueKey('onyx-rewind'),
           icon: Icons.replay_10_rounded,
           tooltip: 'Reculer de 10 s',
           metrics: m,
@@ -875,8 +897,8 @@ class EmbyControlsLayer extends StatelessWidget {
           onPressed: onRewind,
         ),
         gap,
-        _EmbyIconButton(
-          key: const ValueKey('emby-play-pause'),
+        _OnyxIconButton(
+          key: const ValueKey('onyx-play-pause'),
           icon: isPlaying ? Icons.pause_rounded : Icons.play_arrow_rounded,
           tooltip: isPlaying ? 'Pause' : 'Lecture',
           metrics: m,
@@ -887,8 +909,8 @@ class EmbyControlsLayer extends StatelessWidget {
           onPressed: onPlayPause,
         ),
         gap,
-        _EmbyIconButton(
-          key: const ValueKey('emby-forward'),
+        _OnyxIconButton(
+          key: const ValueKey('onyx-forward'),
           icon: Icons.forward_10_rounded,
           tooltip: 'Avancer de 10 s',
           metrics: m,
@@ -900,8 +922,8 @@ class EmbyControlsLayer extends StatelessWidget {
         // to go to and the button would sit there doing nothing.
         if (onSkipNext != null) ...[
           gap,
-          _EmbyIconButton(
-            key: const ValueKey('emby-next'),
+          _OnyxIconButton(
+            key: const ValueKey('onyx-next'),
             icon: Icons.skip_next_rounded,
             tooltip: 'Épisode suivant',
             metrics: m,
@@ -914,19 +936,19 @@ class EmbyControlsLayer extends StatelessWidget {
   }
 }
 
-/// Flat Emby icon button, reachable three ways: pointer, finger, and D-pad.
+/// Flat Chrome Onyx icon button, reachable three ways: pointer, finger, and D-pad.
 ///
 /// The remote is the reason this is wrapped in a [TvFocusable] rather than
 /// left as a bare [GestureDetector]. Nothing in this chrome used to request
 /// focus, so on a television the only focusable widget in it was the volume
 /// slider — the remote landed there and had nowhere else to go.
-class _EmbyIconButton extends StatefulWidget {
+class _OnyxIconButton extends StatefulWidget {
   final IconData icon;
   final String tooltip;
   final VoidCallback onPressed;
-  final EmbyChromeMetrics metrics;
+  final OnyxChromeMetrics metrics;
 
-  /// Overrides [EmbyChromeMetrics.iconSize] (play/pause is larger).
+  /// Overrides [OnyxChromeMetrics.iconSize] (play/pause is larger).
   final double? size;
 
   /// Anchor for popups that open above this button.
@@ -943,7 +965,7 @@ class _EmbyIconButton extends StatefulWidget {
   /// transport is built around.
   final bool prominent;
 
-  const _EmbyIconButton({
+  const _OnyxIconButton({
     super.key,
     required this.icon,
     required this.tooltip,
@@ -957,10 +979,10 @@ class _EmbyIconButton extends StatefulWidget {
   });
 
   @override
-  State<_EmbyIconButton> createState() => _EmbyIconButtonState();
+  State<_OnyxIconButton> createState() => _OnyxIconButtonState();
 }
 
-class _EmbyIconButtonState extends State<_EmbyIconButton> {
+class _OnyxIconButtonState extends State<_OnyxIconButton> {
   bool _hovered = false;
 
   /// Owned when the chrome does not hand one in. The highlight is read from
@@ -971,7 +993,7 @@ class _EmbyIconButtonState extends State<_EmbyIconButton> {
   FocusNode? _ownedNode;
 
   FocusNode get _node =>
-      widget.focusNode ?? (_ownedNode ??= FocusNode(debugLabel: 'emby-button'));
+      widget.focusNode ?? (_ownedNode ??= FocusNode(debugLabel: 'onyx-button'));
 
   @override
   void dispose() {
@@ -1040,8 +1062,8 @@ class _EmbyIconButtonState extends State<_EmbyIconButton> {
                     widget.icon,
                     size: iconSize,
                     color: active
-                        ? EmbyChromeTheme.iconActive
-                        : EmbyChromeTheme.icon,
+                        ? OnyxChromeTheme.iconActive
+                        : OnyxChromeTheme.icon,
                   ),
                 );
               },
@@ -1053,19 +1075,19 @@ class _EmbyIconButtonState extends State<_EmbyIconButton> {
   }
 }
 
-/// Mute toggle plus an always-visible slider, as Emby keeps it.
+/// Mute toggle plus an always-visible slider.
 ///
 /// Muting has to remember where the volume was: setting it to 0 and back to a
 /// hardcoded default would quietly change the user's level.
-class _EmbyVolumeControl extends StatefulWidget {
+class _OnyxVolumeControl extends StatefulWidget {
   final double volume;
   final ValueChanged<double> onChanged;
-  final EmbyChromeMetrics metrics;
+  final OnyxChromeMetrics metrics;
 
   /// False on narrow chromes, where only the mute button is shown.
   final bool showSlider;
 
-  const _EmbyVolumeControl({
+  const _OnyxVolumeControl({
     required this.volume,
     required this.onChanged,
     required this.metrics,
@@ -1073,10 +1095,10 @@ class _EmbyVolumeControl extends StatefulWidget {
   });
 
   @override
-  State<_EmbyVolumeControl> createState() => _EmbyVolumeControlState();
+  State<_OnyxVolumeControl> createState() => _OnyxVolumeControlState();
 }
 
-class _EmbyVolumeControlState extends State<_EmbyVolumeControl> {
+class _OnyxVolumeControlState extends State<_OnyxVolumeControl> {
   double _lastAudible = 100;
   final OptimisticVolume _shown = OptimisticVolume();
 
@@ -1108,7 +1130,7 @@ class _EmbyVolumeControlState extends State<_EmbyVolumeControl> {
     return Row(
       mainAxisSize: MainAxisSize.min,
       children: [
-        _EmbyIconButton(
+        _OnyxIconButton(
           icon: _icon(volume),
           tooltip: volume <= 0 ? 'Rétablir le son' : 'Couper le son',
           metrics: m,
@@ -1120,9 +1142,9 @@ class _EmbyVolumeControlState extends State<_EmbyVolumeControl> {
             child: SliderTheme(
               data: const SliderThemeData(
                 trackHeight: 3,
-                activeTrackColor: EmbyChromeTheme.progressPlayed,
-                inactiveTrackColor: EmbyChromeTheme.progressTrack,
-                thumbColor: EmbyChromeTheme.progressPlayed,
+                activeTrackColor: OnyxChromeTheme.progressPlayed,
+                inactiveTrackColor: OnyxChromeTheme.progressTrack,
+                thumbColor: OnyxChromeTheme.progressPlayed,
                 overlayColor: Colors.white24,
                 thumbShape:
                     RoundSliderThumbShape(enabledThumbRadius: 6),
@@ -1144,13 +1166,13 @@ class _EmbyVolumeControlState extends State<_EmbyVolumeControl> {
   }
 }
 
-/// Emby's skip-intro affordance: a bordered pill above the controls, shown
+/// Skip-intro affordance: a bordered pill above the controls, shown
 /// only while an intro chapter is playing.
-class _EmbySkipIntroButton extends StatelessWidget {
+class _OnyxSkipIntroButton extends StatelessWidget {
   final VoidCallback onPressed;
-  final EmbyChromeMetrics metrics;
+  final OnyxChromeMetrics metrics;
 
-  const _EmbySkipIntroButton({required this.onPressed, required this.metrics});
+  const _OnyxSkipIntroButton({required this.onPressed, required this.metrics});
 
   @override
   Widget build(BuildContext context) {
@@ -1162,7 +1184,7 @@ class _EmbySkipIntroButton extends StatelessWidget {
         color: Colors.black.withValues(alpha: 0.55),
         shape: RoundedRectangleBorder(
           borderRadius: BorderRadius.circular(6),
-          side: const BorderSide(color: EmbyChromeTheme.icon, width: 1.4),
+          side: const BorderSide(color: OnyxChromeTheme.icon, width: 1.4),
         ),
         child: InkWell(
           borderRadius: BorderRadius.circular(6),
@@ -1172,7 +1194,7 @@ class _EmbySkipIntroButton extends StatelessWidget {
             child: Text(
               'Passer l’intro',
               style: TextStyle(
-                color: EmbyChromeTheme.iconActive,
+                color: OnyxChromeTheme.iconActive,
                 fontSize: metrics.skipIntroTextSize,
                 fontWeight: FontWeight.w600,
               ),
@@ -1192,8 +1214,8 @@ class _EmbySkipIntroButton extends StatelessWidget {
 /// then given the space that actually remains, so it can neither be drawn over
 /// the buttons nor — worse, because it is invisible — catch fingers where they
 /// belong to the buttons. A [Stack] could only have guessed at those heights.
-class _EmbyChromeLayout extends MultiChildLayoutDelegate {
-  _EmbyChromeLayout({required this.topLead, required this.bottomLead});
+class _OnyxChromeLayout extends MultiChildLayoutDelegate {
+  _OnyxChromeLayout({required this.topLead, required this.bottomLead});
 
   /// How far the band may reach back into each bar — their empty scrim
   /// margins, which draw nothing and catch nothing.
@@ -1251,6 +1273,6 @@ class _EmbyChromeLayout extends MultiChildLayoutDelegate {
   }
 
   @override
-  bool shouldRelayout(_EmbyChromeLayout oldDelegate) =>
+  bool shouldRelayout(_OnyxChromeLayout oldDelegate) =>
       oldDelegate.topLead != topLead || oldDelegate.bottomLead != bottomLead;
 }

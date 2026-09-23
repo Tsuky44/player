@@ -2,12 +2,12 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:onyx/screens/player/playback/playback_session.dart';
-import 'package:onyx/screens/player/widgets/emby/emby_settings_menu.dart';
+import 'package:onyx/screens/player/widgets/onyx/onyx_settings_menu.dart';
 import 'package:onyx/tv/tv_focus.dart';
 import 'package:onyx/tv/tv_mode.dart';
 
 /// Le défaut que ce fichier verrouille : sur un téléviseur, le menu de réglages
-/// du chrome Emby s'ouvrait, la télécommande y déplaçait bien le focus — mais
+/// du Chrome Onyx s'ouvrait, la télécommande y déplaçait bien le focus — mais
 /// rien à l'écran ne le montrait. L'`InkWell` de chaque ligne faisait peindre
 /// son halo par le [Material] du menu, c'est-à-dire *sous* le fond opaque du
 /// panneau. Impossible, dès lors, de savoir où l'on est, donc impossible de
@@ -78,7 +78,7 @@ void main() {
   });
 }
 
-/// Le remplissage que [_EmbyMenuTile] pose sur la ligne focalisée.
+/// Le remplissage que [_OnyxMenuTile] pose sur la ligne focalisée.
 final Color _focusFill = Colors.white.withValues(alpha: 0.14);
 
 /// Le libellé de la ligne mise en évidence à l'écran — pas celle qui détient le
@@ -127,7 +127,7 @@ Future<void> _pumpMenu(WidgetTester tester, {_FakeSession? session}) async {
             data: const MediaQueryData(textScaler: TextScaler.linear(0.4)),
             child: FocusScope(
               node: scope,
-              child: EmbySettingsMenu(
+              child: OnyxSettingsMenu(
                 session: session ?? _FakeSession(),
                 currentFit: BoxFit.contain,
                 onFitChanged: (_) {},

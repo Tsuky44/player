@@ -7,18 +7,20 @@
 
 ## Contexte
 
-On voulait l'équivalent du « Watch Together » de Plex : plusieurs personnes regardent le même
+On voulait pouvoir regarder ensemble : plusieurs personnes regardent le même
 film, chacune sur son appareil et pas forcément avec le même compte. Les commandes sont
 partagées : si l'une met en pause, tout le monde est en pause.
 
-La feuille de route ([roadmap-parite-plex-emby](../roadmap-parite-plex-emby.md)) le rangeait parmi
+La feuille de route ([roadmap-lecture](../roadmap-lecture.md)) le rangeait parmi
 les sujets moins prioritaires. On l'a quand même avancé, sur demande.
 
 ## Décision
 
 ### 1. Une séance vit sur un serveur, en mémoire
 
-L'hôte ouvre une séance depuis le lecteur. Le serveur lui donne un code de six caractères, tiré du
+L'hôte ouvre une séance depuis le bouton « Regarder ensemble » de la barre du lecteur (dans
+chaque habillage ; dans une disposition Studio qui ne le place pas, un bouton discret en bas à
+droite). Le serveur lui donne un code de six caractères, tiré du
 même alphabet que les codes d'appairage (sans 0/O ni 1/I). Les autres entrent ce code via
 *menu du compte › Rejoindre une séance*, **sur le même serveur**, avec leur propre compte. Le
 catalogue est partagé entre tous les comptes ([ADR-0001](0001-user-permissions-and-invitations.md)),
@@ -40,12 +42,13 @@ toutes les plateformes (web et Apple TV compris). Il n'ajoute de dépendance ni 
 Flutter. Il traverse aussi le middleware gzip et les proxys sans réglage. Le coût est une requête
 toutes les 20 s par participant quand rien ne bouge, ce qui est négligeable.
 
-### 3. Aucune horloge partagée
+### 3. Aucune horloge partagée, mais la latence mesurée
 
 Le serveur envoie la position **extrapolée au moment de sa réponse**. L'appareil y ajoute le temps
-écoulé depuis la réception, mesuré par un chronomètre local. On ne compare jamais l'heure du
-serveur à celle de l'appareil. L'erreur se limite à la moitié du temps d'aller-retour, bien en
-dessous de la tolérance.
+écoulé depuis cet instant, mesuré par un chronomètre local. On ne compare jamais l'heure du
+serveur à celle de l'appareil. Le trajet retour est compensé : l'appareil mesure l'aller-retour
+(un poll sur une version dépassée répond sur-le-champ, toutes les 15 s, plus chaque geste) et
+retient la moitié du plus court des six derniers.
 
 ### 4. Les gestes partent, les recalages ne repartent pas
 
@@ -58,9 +61,31 @@ Tant qu'un geste local n'est pas confirmé, la séance connue localement est en 
 Aucun recalage n'a donc lieu pendant ce temps : sinon il annulerait la pause qu'on vient de
 demander.
 
-Tolérances : 1,2 s après un geste explicite (tout le monde sur la même image), 2,5 s en lecture
-continue, avec au plus une correction toutes les 6 s. Une recherche peut reconstruire une session
-HLS, et chercher en boucle serait pire qu'un léger décalage.
+Le recalage se fait en deux temps, évalués deux fois par seconde :
+
+- **En lecture, par la vitesse.** Au-delà de 80 ms d'écart, la vitesse varie de 20 % par seconde
+  d'écart, plafonnée à ±8 %, jusqu'à revenir sous 30 ms. Rien ne se coupe, et la correction
+  audio de hauteur (mpv, ExoPlayer, navigateur) la rend inaudible. Au-delà de 1,5 s, on cherche,
+  à la milliseconde près (`seekToAbsolutePosition`).
+- **À l'arrêt, par une recherche.** Tout le monde sur la même image à 0,2 s près : chercher en
+  pause ne se voit pas.
+
+### 4 bis. Quand un appareil charge, tout le monde l'attend
+
+Un lecteur qui charge (première image pas encore là, tampon vide depuis plus de 400 ms,
+reconstruction de session) envoie `loading`. Le serveur le marque *attendu* et **fige la
+séance** pour tout le monde, à la position où cet appareil s'est arrêté (au plus 15 s en
+arrière). Il ne rate donc rien. Les autres se mettent en pause et reculent d'autant. Le lecteur
+attendu, lui, ne se met pas en pause : il continue de remplir son tampon. Une fois prêt, il se
+tient à l'arrêt et envoie `loading: false`. Le serveur relance alors tout le monde d'un même
+changement de version. Le message « En attente de alex… » s'affiche pendant l'attente.
+
+Le serveur attend aussi le nouveau venu jusqu'à sa première image, et tout le monde quand la
+séance passe à un autre épisode : on part ensemble.
+
+Au bout de 20 s, le serveur cesse d'attendre un appareil qui charge encore. Cet appareil ne
+redemande pas d'attente pour ce même chargement : il rattrapera seul, plutôt que de bloquer la
+séance en boucle.
 
 ### 5. L'épisode suivant emmène tout le monde
 
@@ -78,12 +103,10 @@ séance : elle couperait l'appareil des autres.
 - **Même serveur seulement.** Des amis sur deux serveurs Onyx différents ne peuvent pas encore
   regarder ensemble. Il faudrait relayer la séance par la fédération et faire correspondre les
   médias par leur identité ([ADR-0002](0002-identification-des-medias.md)).
-- **Pas d'attente collective en cas de chargement.** Un appareil dont le tampon se vide prend du
-  retard, puis le recalage le ramène sur la séance. Les autres ne s'arrêtent pas pour l'attendre.
-- **Télécommande.** La pastille « Regarder ensemble » est un bouton superposé à tous les
-  habillages. Elle n'est pas dans le parcours du focus de la barre de commandes TV. Sur un
-  téléviseur, on peut rejoindre une séance, mais pas en démarrer une.
-- La vitesse de lecture n'est pas partagée.
+- **Vitesse de lecture.** Elle n'est pas partagée. Une personne qui passe en ×1,25 pendant une
+  séance sera ramenée en arrière par des recherches répétées.
+- **Latence audio propre à l'appareil** (casque Bluetooth, barre de son) : elle n'est pas
+  mesurable ici, et reste comme écart résiduel.
 - Pas encore essayé de bout en bout. Le serveur n'a pas été compilé sur la machine de
   développement (pas de Go installé en local). À vérifier avec `go test ./handlers/` et un essai à
   deux appareils.

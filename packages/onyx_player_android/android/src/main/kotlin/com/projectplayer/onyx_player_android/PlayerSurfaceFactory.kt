@@ -12,8 +12,7 @@ import io.flutter.plugin.platform.PlatformViewFactory
 /// C'est ce qui distingue ce chemin de celui de mpv. MediaCodec écrit
 /// directement dans la Surface, et le plan vidéo du contrôleur d'affichage la
 /// compose avec le reste — l'image ne traverse ni le GPU ni la scène Flutter.
-/// C'est l'architecture d'Emby, et la seule qui tienne le 4K sur une boîte de
-/// salon.
+/// C'est la seule architecture qui tienne le 4K sur une boîte de salon.
 ///
 /// La contrepartie tient en une phrase, et elle est structurante : **une
 /// SurfaceView est une couche du système, pas un pixel Flutter.** Flutter ne

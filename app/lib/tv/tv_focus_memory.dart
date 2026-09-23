@@ -4,9 +4,9 @@ import 'tv_mode.dart';
 
 /// Une zone qui se souvient de l'élément sur lequel la télécommande était.
 ///
-/// C'est la logique des rangées de Jellyfin sur Android TV (et de Leanback en
-/// général) : descendre vers une rangée puis remonter ramène sur l'affiche où
-/// l'on était, et non sur celle qui se trouve géométriquement au-dessus. Sans
+/// C'est la logique attendue des rangées sur un téléviseur : descendre vers
+/// une rangée puis remonter ramène sur l'affiche où l'on était, et non sur
+/// celle qui se trouve géométriquement au-dessus. Sans
 /// cela, parcourir l'accueil revient à perdre sa place dans chaque rangée à
 /// chaque passage — on avance de dix affiches, on descend voir la rangée
 /// suivante, on remonte, et l'on est revenu au début.

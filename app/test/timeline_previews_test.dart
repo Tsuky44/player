@@ -5,8 +5,8 @@ import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:onyx/screens/player/playback/timeline_previews.dart';
-import 'package:onyx/screens/player/widgets/emby/emby_chrome_theme.dart';
-import 'package:onyx/screens/player/widgets/emby/emby_progress_bar.dart';
+import 'package:onyx/screens/player/widgets/onyx/onyx_chrome_theme.dart';
+import 'package:onyx/screens/player/widgets/onyx/onyx_progress_bar.dart';
 
 /// A 1x1 transparent PNG: enough for [Image] to decode in a widget test.
 final _png = Uint8List.fromList(const [
@@ -135,11 +135,11 @@ void main() {
           alignment: Alignment.bottomCenter,
           child: SizedBox(
             width: 1000,
-            child: EmbyProgressBar(
+            child: OnyxProgressBar(
               progress: 0.1,
               buffered: 0.2,
               duration: const Duration(hours: 2),
-              metrics: const EmbyChromeMetrics.wide(),
+              metrics: const OnyxChromeMetrics.wide(),
               onSeek: (_) {},
               previews: previews,
             ),
@@ -148,7 +148,7 @@ void main() {
       ),
     ));
 
-    final bar = tester.getRect(find.byType(EmbyProgressBar));
+    final bar = tester.getRect(find.byType(OnyxProgressBar));
     final gesture = await tester.createGesture(kind: PointerDeviceKind.mouse);
     addTearDown(gesture.removePointer);
     await gesture.addPointer(location: Offset(bar.left + 1, bar.center.dy));
@@ -163,6 +163,6 @@ void main() {
     final image = tester.widget<Image>(find.byType(Image));
     expect(image.gaplessPlayback, isTrue);
     expect(tester.getSize(find.byType(Image)).width,
-        const EmbyChromeMetrics.wide().previewWidth);
+        const OnyxChromeMetrics.wide().previewWidth);
   });
 }

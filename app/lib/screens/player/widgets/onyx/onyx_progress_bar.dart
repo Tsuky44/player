@@ -6,16 +6,16 @@ import '../../../../theme/app_colors.dart';
 import '../../../../tv/tv_focus.dart';
 import '../../../../utils/format.dart';
 import '../../playback/timeline_previews.dart';
-import 'emby_chrome_theme.dart';
+import 'onyx_chrome_theme.dart';
 
-/// The Emby scrubber: thin white bar that thickens on hover, a handle that
+/// The Chrome Onyx scrubber: thin white bar that thickens on hover, a handle that
 /// only appears once pointed at, chapter ticks, and a time bubble following
 /// the cursor — which grows into a still of that moment once the player has
 /// [previews].
 ///
 /// Seeking is committed on release, not while dragging: the parent owns the
 /// HLS session and a mid-drag seek to a not-yet-served segment stalls it.
-class EmbyProgressBar extends StatefulWidget {
+class OnyxProgressBar extends StatefulWidget {
   /// Played fraction, 0.0 -> 1.0.
   final double progress;
 
@@ -27,7 +27,7 @@ class EmbyProgressBar extends StatefulWidget {
   /// Chapter start positions as fractions, 0.0 -> 1.0.
   final List<double> chapterMarks;
 
-  final EmbyChromeMetrics metrics;
+  final OnyxChromeMetrics metrics;
 
   /// Fired once, on release, with the target fraction.
   final ValueChanged<double> onSeek;
@@ -68,7 +68,7 @@ class EmbyProgressBar extends StatefulWidget {
   /// the remote has no pointer to follow.
   final bool previewAtProgress;
 
-  const EmbyProgressBar({
+  const OnyxProgressBar({
     super.key,
     required this.progress,
     required this.buffered,
@@ -87,10 +87,10 @@ class EmbyProgressBar extends StatefulWidget {
   });
 
   @override
-  State<EmbyProgressBar> createState() => _EmbyProgressBarState();
+  State<OnyxProgressBar> createState() => _OnyxProgressBarState();
 }
 
-class _EmbyProgressBarState extends State<EmbyProgressBar> {
+class _OnyxProgressBarState extends State<OnyxProgressBar> {
   bool _hovered = false;
   bool _focused = false;
   double? _dragFraction;
@@ -214,7 +214,7 @@ class _EmbyProgressBarState extends State<EmbyProgressBar> {
   /// The played part and the handle: the accent under the remote, white
   /// otherwise.
   Color get _playedColor =>
-      _focused ? AppColors.accent : EmbyChromeTheme.progressPlayed;
+      _focused ? AppColors.accent : OnyxChromeTheme.progressPlayed;
 
   Widget _buildBar(double width) {
     final m = widget.metrics;
@@ -229,7 +229,7 @@ class _EmbyProgressBarState extends State<EmbyProgressBar> {
         height: thickness,
         width: width,
         decoration: BoxDecoration(
-          color: EmbyChromeTheme.progressTrack,
+          color: OnyxChromeTheme.progressTrack,
           borderRadius: radius,
         ),
         child: Stack(
@@ -237,7 +237,7 @@ class _EmbyProgressBarState extends State<EmbyProgressBar> {
           children: [
             _fill(
               width: widget.buffered.clamp(0.0, 1.0) * width,
-              color: EmbyChromeTheme.progressBuffered,
+              color: OnyxChromeTheme.progressBuffered,
               radius: radius,
             ),
             _fill(
@@ -254,7 +254,7 @@ class _EmbyProgressBarState extends State<EmbyProgressBar> {
                   top: 0,
                   bottom: 0,
                   width: 2,
-                  child: const ColoredBox(color: EmbyChromeTheme.chapterMark),
+                  child: const ColoredBox(color: OnyxChromeTheme.chapterMark),
                 ),
           ],
         ),
@@ -340,7 +340,7 @@ class _EmbyProgressBarState extends State<EmbyProgressBar> {
         child: Container(
           width: boxWidth,
           decoration: BoxDecoration(
-            color: EmbyChromeTheme.tooltipSurface,
+            color: OnyxChromeTheme.tooltipSurface,
             borderRadius: radius,
             boxShadow: const [
               BoxShadow(
@@ -415,7 +415,7 @@ class _EmbyProgressBarState extends State<EmbyProgressBar> {
           alignment: Alignment.center,
           padding: const EdgeInsets.symmetric(vertical: 5),
           decoration: BoxDecoration(
-            color: EmbyChromeTheme.tooltipSurface,
+            color: OnyxChromeTheme.tooltipSurface,
             borderRadius: BorderRadius.circular(6),
           ),
           child: _timeLabel(seconds),

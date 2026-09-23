@@ -390,7 +390,7 @@ class _FixedChromeCard extends StatelessWidget {
                     ),
                     const SizedBox(height: 2),
                     Text(
-                      'Fidèle au lecteur Emby. Non modifiable.',
+                      'Le chrome maison d’Onyx. Non modifiable.',
                       style: TextStyle(
                         color: Colors.white.withValues(alpha: 0.5),
                         fontSize: 12,

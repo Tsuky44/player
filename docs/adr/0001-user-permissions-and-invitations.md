@@ -15,8 +15,7 @@ aucune notion de rôle ni d'administrateur. Conséquences concrètes :
 - `POST /api/indexer/debug/delete-show` — la route la plus destructrice du serveur — n'exigeait
   aucune authentification.
 
-Le besoin exprimé : accorder des droits différents à des utilisateurs différents, à la manière
-d'Emby.
+Le besoin exprimé : accorder des droits différents à des utilisateurs différents.
 
 ## Décision
 

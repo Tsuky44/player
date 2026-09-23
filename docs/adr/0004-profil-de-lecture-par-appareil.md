@@ -139,7 +139,7 @@ l'app.
 
 ### Ce qui reste, et qu'on ne peut pas changer ici
 
-Emby lit en Direct Play sans effort sur la même clé, et c'est vrai : son lecteur Android donne les
+Un lecteur Android natif lit en Direct Play sans effort sur la même clé, et c'est vrai : il donne les
 images de MediaCodec à une `SurfaceView`, que le compositeur matériel affiche sans que l'app ne
 touche un pixel. media_kit ne fonctionne pas ainsi — il rend avec OpenGL ES dans un
 `TextureRegistry.SurfaceProducer`, et Flutter compose cette texture dans sa propre scène. C'est une

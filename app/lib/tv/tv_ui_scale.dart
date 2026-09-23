@@ -7,8 +7,8 @@ import '../navigation/search_route_observer.dart';
 /// Un téléviseur annonce le plus souvent 960 × 540 pixels logiques — la
 /// densité d'un téléphone posée sur un écran de salon. L'app se mettait donc en
 /// page comme sur une tablette étroite : bandeau sur les deux tiers de l'écran,
-/// cinq affiches par rangée, textes énormes vus du canapé. Jellyfin et les
-/// autres apps TV montrent bien plus de contenu à la fois.
+/// cinq affiches par rangée, textes énormes vus du canapé, là où un
+/// téléviseur peut montrer bien plus de contenu à la fois.
 ///
 /// On met donc la page en page sur [designWidth] pixels logiques, puis on la
 /// réduit pour qu'elle remplisse l'écran. Tout suit — marges, affiches, textes,

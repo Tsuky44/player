@@ -4,6 +4,7 @@ import 'package:flutter_animate/flutter_animate.dart';
 import 'package:audio_video_progress_bar/audio_video_progress_bar.dart';
 import '../playback/playback_session.dart';
 import 'player_top_bar.dart';
+import 'watch_party_overlay.dart';
 
 class PlayerHUDOverlay extends StatelessWidget {
   final bool visible;
@@ -26,6 +27,8 @@ class PlayerHUDOverlay extends StatelessWidget {
   final void Function(double) onSliderChanged;
   final void Function(double) onSliderChangeEnd;
   final VoidCallback? onNextEpisode;
+  final VoidCallback? onOpenWatchParty;
+  final bool watchPartyActive;
 
   const PlayerHUDOverlay({
     super.key,
@@ -49,6 +52,8 @@ class PlayerHUDOverlay extends StatelessWidget {
     required this.onSliderChanged,
     required this.onSliderChangeEnd,
     this.onNextEpisode,
+    this.onOpenWatchParty,
+    this.watchPartyActive = false,
   });
 
   String _formatDuration(Duration d) {
@@ -234,6 +239,13 @@ class PlayerHUDOverlay extends StatelessWidget {
                               onPressed: () {},
                               size: 22,
                             ),
+                            if (onOpenWatchParty != null) ...[
+                              const SizedBox(width: 24),
+                              WatchPartyBarButton(
+                                active: watchPartyActive,
+                                onPressed: onOpenWatchParty!,
+                              ),
+                            ],
                           ],
                         ),
                       ],

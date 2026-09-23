@@ -13,19 +13,19 @@
 
 ## 2. Existing UI Read
 
-- Current visual vocabulary: dark `#0A0A0A`, glass headers, Netflix red `#E50914`, Inter, rows/carousels, modular player HUD
+- Current visual vocabulary: dark `#0A0A0A`, glass headers, bright red `#E50914`, Inter, rows/carousels, modular player HUD
 - Strongest existing cue to preserve: glass chrome léger + posters full-bleed + shell desktop sticky
 - Components/tokens to reuse: `glass_chrome.dart`, `liquid_glass_panel.dart`, `MediaCard`, `MediaRow`, `HeroCarousel`, player modular controls
 - Patterns to preserve: IndexedStack tabs, continue watching, hero, horizontal media rows, player auto-hide HUD
 - Patterns to evolve: tokens couleur/typo, focus states, progress accent, login atmosphere, densités/espacements
-- Patterns to remove or avoid: rouge Netflix, glow purple, cards empilées inutiles, Inter-as-brand, glass partout
+- Patterns to remove or avoid: rouge vif, glow purple, cards empilées inutiles, Inter-as-brand, glass partout
 - Accessibility: dark contrast, 44px targets mobile, focus desktop, reduced motion
 
 ## 3. Taste Direction
 
 - Product identity: client cinéma privé calme — le média parle, l’UI se tait
 - Recommended taste: **Quiet Premium** (Apple TV–adjacent restraint, sans copier)
-- Direction to avoid: concepts théâtraux forts (velours/or, film grain, nixie, cockpit), clones Netflix, neon SaaS
+- Direction to avoid: concepts théâtraux forts (velours/or, film grain, nixie, cockpit), clones de plateformes de streaming, neon SaaS
 - Why more useful: moins de bruit → scan plus rapide, contrôles plus lisibles, sensation « produit fini »
 - Distinctive: typo Manrope + labels Geist, accent focus bleu mesuré, glass rationné
 - Quiet: surfaces plates charcoal, pas de flare décoratif, player HUD qui disparaît
@@ -137,7 +137,7 @@
 - Align shell + player + login on same tokens
 
 ### Don't
-- Netflix red, purple gradients, neon glow
+- Bright red `#E50914`, purple gradients, neon glow
 - Glass on every card
 - Fake metrics / marketing sections
 - Break Player Studio or request flows for aesthetics
@@ -159,4 +159,4 @@
 - Responsive: compact + wide
 - Contrast on charcoal
 - No feature regression
-- Better-than-original: feels quieter and more intentional than Netflix-red Inter dark
+- Better-than-original: feels quieter and more intentional than bright-red Inter dark

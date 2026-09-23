@@ -1,4 +1,4 @@
-# Feuille de route — rapprocher Onyx de Plex et Emby
+# Feuille de route — lecture au quotidien
 
 État de référence : commit `d86d10ec2f9cc435f94fb5552b6185e889167878`, 12 septembre 2026.
 
@@ -8,7 +8,7 @@ Phase 1 : [tickets implémentés localement, compatibilité et validation](playb
 
 ## Objectif
 
-Faire d'Onyx un lecteur multimédia privé aussi fiable et agréable au quotidien que Plex ou Emby, sans perdre ses différences : serveur léger, Direct Play prioritaire, confidentialité, Player Studio et prise en charge poussée de mpv.
+Faire d'Onyx un lecteur multimédia privé fiable et agréable au quotidien, sans perdre ses différences : serveur léger, Direct Play prioritaire, confidentialité, Player Studio et prise en charge poussée de mpv.
 
 Le travail porte sur le parcours `bibliothèque → fiche → lecture → changement d'appareil → reprise`. La musique, les photos, la télévision en direct et le DVR ne font pas partie de cette feuille de route.
 
@@ -19,7 +19,7 @@ Le travail porte sur le parcours `bibliothèque → fiche → lecture → change
 - Une perte de réseau, une erreur de transcodage ou une piste incompatible doit produire un message et une action de récupération, jamais un spinner infini.
 - La progression reste propre à l'utilisateur et la plus récente gagne lors d'une synchronisation.
 - Les fonctionnalités hors ligne ne doivent pas dépendre du serveur après le téléchargement.
-- Les modifications du lecteur doivent rester compatibles avec les chromes standard, Emby et Player Studio.
+- Les modifications du lecteur doivent rester compatibles avec les chromes standard, Chrome Onyx et Player Studio.
 
 ## État existant à conserver
 
@@ -319,7 +319,7 @@ Terminé quand le bon couple audio/sous-titres est sélectionné automatiquement
 
 - `server/indexer/`
 - nouveau stockage de miniatures côté serveur
-- `app/lib/screens/player/widgets/emby/emby_progress_bar.dart`
+- `app/lib/screens/player/widgets/onyx/onyx_progress_bar.dart`
 - `app/lib/widgets/global/control_chrome.dart`
 - `app/lib/screens/player/widgets/modular_controls_layer.dart`
 - `app/lib/screens/player/player_playback_preferences.dart`
@@ -429,7 +429,7 @@ Terminé quand le bon couple audio/sous-titres est sélectionné automatiquement
 - Phase 7.
 - Phase 8 complète.
 
-## Définition globale de « comparable à Plex/Emby »
+## Définition globale de « terminé »
 
 La feuille de route est accomplie lorsque les conditions suivantes sont toutes vraies :
 
@@ -451,4 +451,4 @@ La feuille de route est accomplie lorsque les conditions suivantes sont toutes v
 - Clients Roku, Tizen, webOS, consoles et Apple TV natif.
 - Recommandations éditoriales ou service de streaming public.
 
-Ces sujets pourront devenir des feuilles de route séparées une fois les phases P0 et P1 stabilisées. Watch Together est notamment moins prioritaire qu'auparavant : Plex en a réduit la disponibilité sur ses nouvelles applications en 2025.
+Ces sujets pourront devenir des feuilles de route séparées une fois les phases P0 et P1 stabilisées. Watch Together est notamment moins prioritaire que le reste.

@@ -16,7 +16,7 @@ import 'media_logo_display.dart';
 import 'poster_card.dart';
 import 'overlay_back_button.dart';
 
-/// Emby-style hero header for movie/show detail pages: a wide backdrop with
+/// Hero header for movie/show detail pages: a wide backdrop with
 /// gradients, an overlaid poster, title, tagline, metadata chips and actions.
 ///
 /// [details] is the live catalog payload (may be null while loading); [fallback]

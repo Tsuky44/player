@@ -226,7 +226,7 @@ func scanMovieScope(scope scanScope) *scanOutcome {
 			return
 		}
 
-		// Emby-style identity: folder/NFO/provider IDs first, then confident TMDB match.
+		// Identity: folder/NFO/provider IDs first, then confident TMDB match.
 		identity := IdentifyMovie(path, dir)
 		displayTitle := identity.Title
 		if displayTitle == "" {
@@ -316,7 +316,7 @@ func scanSeriesScope(scope scanScope) *scanOutcome {
 		relPath = filepath.ToSlash(relPath)
 		parts := strings.Split(relPath, "/")
 
-		// Emby-compatible episode patterns (SxxExx, 1x02, Season/Episode, …),
+		// Common episode patterns (SxxExx, 1x02, Season/Episode, …),
 		// falling back to the folder layout for bare "01 - Title.mkv" episodes.
 		seasonNum, episodeNum, ok := ResolveEpisodeNumbers(parts, info.Name())
 		if !ok {

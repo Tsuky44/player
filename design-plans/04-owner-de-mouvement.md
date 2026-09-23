@@ -24,7 +24,7 @@ Ce plan est le **prérequis** des plans [05](05-fondu-chrome-lecteur.md) et [06]
 - Owner : n'existe pas. Ce plan le crée : `app/lib/theme/app_motion.dart`, voisin de `app_colors.dart` et `app_theme.dart`.
 - Scope and affected surfaces : `app/lib/theme/app_motion.dart` (nouveau), `app/lib/widgets/global/glass_chrome.dart` (premier consommateur).
 - Uncertainty :
-  - Le brief donne une plage (180–280 ms), pas une valeur. Le dépôt a déjà tranché en pratique : `200 ms` est la valeur du fondu de chrome qui ship aujourd'hui (`emby_controls_layer.dart:185`) et `180 ms` celle des onglets de nav (`glass_chrome.dart:232`). Les deux sont dans la plage ; ce plan les retient comme `standard` et `micro`.
+  - Le brief donne une plage (180–280 ms), pas une valeur. Le dépôt a déjà tranché en pratique : `200 ms` est la valeur du fondu de chrome qui ship aujourd'hui (`onyx_controls_layer.dart:185`) et `180 ms` celle des onglets de nav (`glass_chrome.dart:232`). Les deux sont dans la plage ; ce plan les retient comme `standard` et `micro`.
   - « Response » au sens Apple **n'est pas une durée** : c'est un paramètre de ressort dont le temps de stabilisation émerge. La plage 180–280 ms du brief gouverne les animations à durée (fondus, transitions implicites) ; elle ne s'applique pas littéralement au paramètre de ressort. Ce plan expose les deux et documente la distinction dans le fichier.
 
 ## Design decision
@@ -37,7 +37,7 @@ La distinction `fade` / `move` porte la nuance de §14 et n'est pas cosmétique 
 
 ## Reuse
 
-- Valeurs : `200 ms` et `Curves.easeOut` sont déjà la combinaison qui ship dans `emby_controls_layer.dart:185-186` ; `180 ms` / `easeOut` celle de `glass_chrome.dart:232-233`. `AppMotion` ne propose aucune valeur nouvelle, il nomme celles qui existent déjà et sont dans la plage du brief.
+- Valeurs : `200 ms` et `Curves.easeOut` sont déjà la combinaison qui ship dans `onyx_controls_layer.dart:185-186` ; `180 ms` / `easeOut` celle de `glass_chrome.dart:232-233`. `AppMotion` ne propose aucune valeur nouvelle, il nomme celles qui existent déjà et sont dans la plage du brief.
 - Primitive de plateforme : `MediaQuery.disableAnimationsOf` (Flutter ≥ 3.10 ; le SDK du projet est `>=3.0.0 <4.0.0`, `pubspec.yaml:6`). **Aucune dépendance à ajouter.**
 - Convention de fichier : `abstract final class` avec des membres `static const`, exactement comme `AppColors` (`app/lib/theme/app_colors.dart:4`) et `AppTheme` (`app/lib/theme/app_theme.dart:5`).
 

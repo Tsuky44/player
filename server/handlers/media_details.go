@@ -48,7 +48,7 @@ func writeMediaByID(w http.ResponseWriter, mediaID int) {
 	json.NewEncoder(w).Encode(m)
 }
 
-// GetMediaDetails returns rich, Emby-style catalog details for a movie/show
+// GetMediaDetails returns rich catalog details for a movie/show
 // (GET /api/media/:id/details). Local library data (id, title, poster, overview,
 // release date) is merged with live TMDB metadata (cast, genres, rating,
 // backdrop, crew). Degrades gracefully to local-only when TMDB is unavailable.

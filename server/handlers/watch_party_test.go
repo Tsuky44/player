@@ -100,3 +100,57 @@ func TestWatchPartyWakesWaitersAndDisappearsWhenEmpty(t *testing.T) {
 		t.Fatal("empty party was not removed")
 	}
 }
+
+func TestWatchPartyWaitsForANewcomerThenResumesTogether(t *testing.T) {
+	store := newTestWatchPartyStore()
+	start := time.Unix(1_000_000, 0)
+	party, _ := store.create(&watchPartyMember{ID: "a", UserID: 1}, 42, 100, true, start)
+
+	// b joins 10 s in: the party stops at 110 until b has its picture.
+	if err := store.join(party.Code, &watchPartyMember{ID: "b", UserID: 2}, start.Add(10*time.Second)); err != nil {
+		t.Fatal(err)
+	}
+	if got := party.positionAt(start.Add(30 * time.Second)); got != 110 {
+		t.Fatalf("position while waiting = %v, want 110", got)
+	}
+
+	ready := false
+	if err := store.update(party.Code, 2, watchPartyUpdate{MemberID: "b", Action: "loading", Loading: &ready}, start.Add(30*time.Second)); err != nil {
+		t.Fatal(err)
+	}
+	if got := party.positionAt(start.Add(32 * time.Second)); got != 112 {
+		t.Fatalf("position after resuming = %v, want 112", got)
+	}
+}
+
+func TestWatchPartyStallRewindsToTheStalledDevice(t *testing.T) {
+	store := newTestWatchPartyStore()
+	start := time.Unix(1_000_000, 0)
+	party, _ := store.create(&watchPartyMember{ID: "a", UserID: 1}, 42, 100, true, start)
+	party.Members["a"].Waiting = false
+
+	loading := true
+	stalledAt := 108.5
+	if err := store.update(party.Code, 1, watchPartyUpdate{MemberID: "a", Action: "loading", Loading: &loading, Position: &stalledAt}, start.Add(10*time.Second)); err != nil {
+		t.Fatal(err)
+	}
+	if !party.Playing {
+		t.Fatal("a stall must not turn the party's intent into a pause")
+	}
+	if got := party.positionAt(start.Add(20 * time.Second)); got != 108.5 {
+		t.Fatalf("frozen position = %v, want the stalled device's 108.5", got)
+	}
+}
+
+func TestWatchPartyStopsWaitingForAStuckDevice(t *testing.T) {
+	store := newTestWatchPartyStore()
+	start := time.Unix(1_000_000, 0)
+	party, _ := store.create(&watchPartyMember{ID: "a", UserID: 1}, 42, 100, true, start)
+	if err := store.join(party.Code, &watchPartyMember{ID: "b", UserID: 2}, start); err != nil {
+		t.Fatal(err)
+	}
+	store.expireWaits(start.Add(watchPartyWaitLimit + time.Second))
+	if party.waiting() {
+		t.Fatal("a device stuck loading is still holding the party")
+	}
+}

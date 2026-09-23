@@ -477,6 +477,7 @@ class PlayerController {
     PlayerPlaybackPreferences? inheritedPreferences,
     int knownDurationSeconds = 0,
     Future<int>? resumePositionFuture,
+    int provisionalResumeSeconds = 0,
   }) async {
     _startupWatch.start();
     _logMark = ClientLog.sequence;
@@ -613,6 +614,7 @@ class PlayerController {
         return;
       }
       _playbackAccess = access;
+      _mark('ticket');
     }
     final streamUrl = _directPlaySource(apiClient, media.id);
 
@@ -656,13 +658,23 @@ class PlayerController {
       // normally costs nothing. If the server is slow to answer, give up on the
       // fast path rather than hold the picture hostage: -1 falls back to the
       // legacy open-then-seek in [startPlayback].
+      //
+      // A point already known on this device (the home row carries it) makes
+      // the server's answer a confirmation rather than a prerequisite: it gets
+      // a short head start, then the open goes ahead at the known point. The
+      // server can take seconds when it first asks Emby, and missing the 1.5s
+      // window used to mean opening at 0 and seeking — the whole start twice.
       var startAt = -1;
       if (resumePositionFuture != null) {
+        final hint = provisionalResumeSeconds >= 3 ? provisionalResumeSeconds : 0;
         try {
-          startAt = await resumePositionFuture
-              .timeout(const Duration(milliseconds: 1500));
+          startAt = await resumePositionFuture.timeout(hint > 0
+              ? const Duration(milliseconds: 400)
+              : const Duration(milliseconds: 1500));
         } catch (_) {
-          startAt = -1;
+          startAt = hint > 0 ? hint : -1;
+          debugPrint('Player: reprise pas encore confirmée par le serveur — '
+              'ouverture à ${startAt}s');
         }
       } else {
         startAt = 0;
@@ -905,6 +917,12 @@ class PlayerController {
 
   void _scheduleDeferredSubtitleExtraction() {
     if (_autoExtractStarted || _disposed) return;
+    // Direct Play lit les sous-titres du fichier lui-même : les .vtt ne servent
+    // qu'au HLS, qui lance l'extraction à son ouverture. Les préparer ici
+    // relisait le fichier entier sur le disque du serveur — des minutes pour
+    // un remux — et une reprise lancée pendant ce temps démarrait en quinze
+    // secondes au lieu de deux.
+    if (currentQuality == null && !_hlsOnly) return;
     if (!_hasPendingSubtitles()) return;
 
     _deferredSubtitleExtractTimer?.cancel();
@@ -1063,6 +1081,10 @@ class PlayerController {
     }
   }
 
+  /// How far the server's resume point may sit from the one the stream was
+  /// opened at before it is worth a seek.
+  static const _resumeToleranceSeconds = 5;
+
   /// Starts playback, optionally resuming at an absolute position in the media.
   Future<void> startPlayback({
     required int mediaId,
@@ -1078,18 +1100,23 @@ class PlayerController {
       // arrives after this runs), _startWebTranscode is what applies the offset,
       // and it opens with play:true.
       await session.play();
-    } else if (_openedAtSeconds == resumeAtSeconds && currentQuality == null) {
-      // Already positioned: init() opened the stream at this exact second via
+    } else if (currentQuality == null &&
+        _openedAtSeconds >= 0 &&
+        (resumeAtSeconds - _openedAtSeconds).abs() <= _resumeToleranceSeconds) {
+      // Already positioned: init() opened the stream at this second via
       // `Media.start`, which media_kit applies inside mpv's `on_load` hook —
       // i.e. before the file is loaded, so the offset is part of the load
-      // instead of a seek that undoes it. Nothing left to do but play.
+      // instead of a seek that undoes it. Nothing left to do but play. A few
+      // seconds off the server's answer (the known point it confirmed) is not
+      // worth a second start.
       await session.play();
-    } else if (resumeAtSeconds > 0 &&
-        currentQuality == null &&
-        _media != null) {
+    } else if (currentQuality == null &&
+        _media != null &&
+        (resumeAtSeconds > 0 || _openedAtSeconds > 0)) {
       // Fallback when the resume point arrived too late to be part of the open
-      // (slow /progress response). Start playing, wait for the first buffering
-      // cycle to complete, then seek. Setting the mpv `start` property by hand
+      // (slow /progress response), or corrected the point it was opened at.
+      // Start playing, wait for the first buffering cycle to complete, then
+      // seek. Setting the mpv `start` property by hand
       // at this stage does not work with media_kit 1.2.6: open() returns before
       // mpv processes the loadfile command, and the immediate `start=0` reset
       // cancels the resume offset before mpv applies it.
@@ -1628,6 +1655,29 @@ class PlayerController {
     position = Duration(seconds: target);
     _onPositionChanged?.call();
     await session.seek(Duration(seconds: target - _hlsStartOffset));
+  }
+
+  /// [seekToAbsoluteSeconds] à la milliseconde près.
+  ///
+  /// Pour « Regarder ensemble », où tomber sur la seconde entière laissait
+  /// jusqu'à une demi-seconde d'écart entre deux appareils. Une cible hors de
+  /// la session HLS la reconstruit à la seconde : le rattrapage fin se fait
+  /// ensuite par la vitesse.
+  Future<void> seekToAbsolutePosition(Duration target) async {
+    if (target.isNegative) target = Duration.zero;
+    if (currentQuality == null) {
+      position = target;
+      _onPositionChanged?.call();
+      await session.seek(target);
+      return;
+    }
+    if (!canSeekWithinSession(target.inSeconds)) {
+      await reloadHlsAtPosition(target.inSeconds);
+      return;
+    }
+    position = target;
+    _onPositionChanged?.call();
+    await session.seek(target - Duration(seconds: _hlsStartOffset));
   }
 
   // ==================== Audio / subtitle selection ====================

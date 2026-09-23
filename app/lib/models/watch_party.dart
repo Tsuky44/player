@@ -67,6 +67,8 @@ class WatchPartySnapshot {
     required this.members,
     required this.lastAction,
     required this.receivedAt,
+    this.waitingFor = const [],
+    this.waitingForYou = false,
   });
 
   final String code;
@@ -81,12 +83,24 @@ class WatchPartySnapshot {
   final List<WatchPartyMember> members;
   final WatchPartyAction? lastAction;
 
-  /// Horloge monotone locale, au moment de la réception.
+  /// Horloge monotone locale, à l'instant où le serveur a répondu — la
+  /// réception moins le trajet retour estimé.
   final Duration receivedAt;
+
+  /// Les autres participants que la séance attend (ils chargent).
+  final List<String> waitingFor;
+
+  /// La séance attend cet appareil.
+  final bool waitingForYou;
+
+  bool get isWaiting => waitingFor.isNotEmpty || waitingForYou;
+
+  /// La position avance : lecture voulue, et personne à attendre.
+  bool get isRunning => playing && !isWaiting;
 
   /// Où la séance en est « maintenant », d'après cet état.
   Duration expectedPosition(Duration now) {
-    if (!playing) return position;
+    if (!isRunning) return position;
     final elapsed = now - receivedAt;
     return position + (elapsed.isNegative ? Duration.zero : elapsed);
   }
@@ -116,6 +130,11 @@ class WatchPartySnapshot {
           ? WatchPartyAction.fromJson(action)
           : null,
       receivedAt: receivedAt,
+      waitingFor: [
+        for (final name in (json['waiting_for'] as List? ?? const []))
+          if (name is String) name,
+      ],
+      waitingForYou: json['waiting_for_you'] as bool? ?? false,
     );
   }
 }

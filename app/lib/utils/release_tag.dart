@@ -36,7 +36,7 @@ String? releaseTagFromFilePath(String? filePath) {
   return tag.isEmpty ? null : tag;
 }
 
-/// Composes an Emby-style episode line, e.g.
+/// Composes an episode line, e.g.
 /// "S2:E1 - Silo - S02E01 - The Engineer WEBDL-2160p Proper", from a season/
 /// episode code, a title, and the release tag parsed from [filePath].
 String composeEpisodeInfoLine({

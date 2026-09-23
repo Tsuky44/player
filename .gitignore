@@ -37,3 +37,4 @@ Thumbs.db
 # release; the previously published image is what carries them between hosts.
 server/downloads/*
 !server/downloads/.gitkeep
+jellyfin code/

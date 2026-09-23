@@ -4,7 +4,7 @@ import '../models/models.dart';
 import 'format.dart';
 import 'poster_url.dart';
 
-/// One slide in the home hero carousel (Netflix-style rotating header).
+/// One slide in the home hero carousel (rotating header).
 class HeroSlide {
   final Media media;
   final HomeMediaItem? continueItem;

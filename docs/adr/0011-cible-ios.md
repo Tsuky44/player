@@ -47,7 +47,7 @@ tasserait toute la plage utile dans le bas de la barre.
 **Le chrome est dessiné 10 % plus petit sur iPhone.** À largeur égale il y lisait plus gros que sur
 Android. Seul ce qui est *dessiné* rétrécit — textes, icônes, marges : les cibles tactiles gardent
 leur taille, parce qu'un chrome 10 % plus petit et 10 % plus dur à toucher n'est pas le même
-échange (`EmbyChromeMetrics.scaledBy`).
+échange (`OnyxChromeMetrics.scaledBy`).
 
 ### 2. Le HTTP en clair est autorisé, explicitement
 

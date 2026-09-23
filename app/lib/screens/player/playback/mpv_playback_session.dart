@@ -95,6 +95,9 @@ class MpvPlaybackSession implements PlaybackSession {
 
   @override
   Future<void> open(String url, {Duration? start, bool play = false}) {
+    _endSeekWatch(log: false);
+    _cachePausedSince = null;
+    _openedAt = DateTime.now();
     return _player.open(mk.Media(url, start: start), play: play);
   }
 
@@ -465,14 +468,46 @@ class MpvPlaybackSession implements PlaybackSession {
     timeline?.notePausedForCache(on);
     // Une mise en pause pendant qu'un seek repart est l'attente voulue, pas une
     // coupure : seule celle qui interrompt une lecture en cours compte.
-    if (!on || timeline != null || !_adaptCachePause || !_pictureLive) return;
-    if (!_cachePause.noteUnderrun(DateTime.now())) return;
+    if (timeline != null || !_adaptCachePause || !_pictureLive) {
+      _cachePausedSince = null;
+      return;
+    }
+    final now = DateTime.now();
+    if (on) {
+      // Le remplissage qui suit une ouverture est un chargement, pas une
+      // coupure : un retour du transcodage le comptait comme telle.
+      final opened = _openedAt;
+      if (opened != null && now.difference(opened) < _openGrace) return;
+      _cachePausedSince ??= now;
+      return;
+    }
+    // La pause se juge à sa fin : c'est sa durée qui dit si le réseau suit.
+    final since = _cachePausedSince;
+    _cachePausedSince = null;
+    if (since == null) return;
+    final paused = now.difference(since);
     final wait = _cachePause.waitSeconds;
-    debugPrint('mpv: la connexion ne suit pas le débit — reprise après '
-        '${wait}s en mémoire');
+    if (!_cachePause.blamesNetwork(paused)) {
+      debugPrint('mpv: tampon vide, ${wait}s regarnies en '
+          '${(paused.inMilliseconds / 1000).toStringAsFixed(2)}s — le réseau '
+          'suit, la cause est locale (décodage, sortie ou changement de piste)');
+      return;
+    }
+    if (!_cachePause.noteUnderrun(now)) return;
+    final next = _cachePause.waitSeconds;
+    debugPrint('mpv: la connexion ne suit pas le débit (${wait}s de média '
+        'en ${(paused.inMilliseconds / 1000).toStringAsFixed(1)}s) — reprise '
+        'après ${next}s en mémoire');
     unawaited(
-        _set(_player.platform as dynamic, 'cache-pause-wait', '$wait'));
+        _set(_player.platform as dynamic, 'cache-pause-wait', '$next'));
   }
+
+  /// Début de la mise en pause du cache en cours, hors seek.
+  DateTime? _cachePausedSince;
+
+  /// La dernière ouverture, pour ne pas prendre son chargement pour une coupure.
+  DateTime? _openedAt;
+  static const _openGrace = Duration(seconds: 10);
 
   /// Suit le seek vers [target] jusqu'à ce que la lecture reparte, et le dit
   /// dans le log.
@@ -485,6 +520,16 @@ class MpvPlaybackSession implements PlaybackSession {
     // Un glissement de la tête de lecture enchaîne les seeks : seul le
     // dernier a une reprise à mesurer.
     _endSeekWatch(log: false);
+    // Une pause interrompue par le seek n'a plus de durée qui veuille dire
+    // quelque chose sur le réseau.
+    _cachePausedSince = null;
+    // Moins d'une seconde — le rattrapage fin de « Regarder ensemble » : la
+    // tête ne « saute » jamais au sens de [SeekTimeline], qui attendait alors
+    // ses trente secondes, écrivait « toujours à l'arrêt » sur une lecture qui
+    // tournait, et masquait pendant ce temps toute vraie coupure.
+    if ((target - _player.state.position).abs() <= const Duration(seconds: 1)) {
+      return;
+    }
     final clock = Stopwatch()..start();
     final timeline = SeekTimeline(
       target: target,

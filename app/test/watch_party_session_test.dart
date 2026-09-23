@@ -24,6 +24,9 @@ class _FakePartyApi extends ApiClient {
       _party(version: 1, mediaId: mediaId, playing: playing,
           position: positionSeconds);
 
+  /// Ce que rend une mesure de latence (un poll sur une version dépassée).
+  Map<String, dynamic> current = _party(version: 1);
+
   @override
   Future<Map<String, dynamic>> pollWatchParty(
     String code, {
@@ -31,6 +34,7 @@ class _FakePartyApi extends ApiClient {
     required int since,
     CancelToken? cancelToken,
   }) {
+    if (since == 0) return Future.value(current);
     final completer = Completer<Map<String, dynamic>>();
     polls.add(completer);
     return completer.future;
@@ -44,12 +48,14 @@ class _FakePartyApi extends ApiClient {
     bool? playing,
     double? positionSeconds,
     int? mediaId,
+    bool? loading,
   }) async {
     final update = {
       'action': action,
       'playing': playing,
       'position': positionSeconds,
       'media_id': mediaId,
+      'loading': loading,
     };
     updates.add(update);
     return onUpdate!(update);
@@ -68,6 +74,8 @@ Map<String, dynamic> _party({
   double position = 100,
   String? actionKind,
   bool byYou = false,
+  List<String> waitingFor = const [],
+  bool waitingForYou = false,
 }) =>
     {
       'code': 'ABC234',
@@ -77,6 +85,8 @@ Map<String, dynamic> _party({
       'media': {'id': mediaId, 'type': 'episode', 'title': 'Épisode $mediaId'},
       'playing': playing,
       'position_seconds': position,
+      'waiting_for': waitingFor,
+      'waiting_for_you': waitingForYou,
       'members': [
         {'username': 'moi', 'is_you': true, 'is_host': true},
         {'username': 'alex'},
@@ -104,10 +114,16 @@ class _FakePlayer implements WatchPartyPlayer {
   bool isReady = true;
   @override
   bool isBusy = false;
+  @override
+  bool isLoading = false;
 
   final List<bool> playingApplied = [];
   final List<Duration> seeks = [];
   final List<int> opened = [];
+  final List<double> rates = [];
+
+  @override
+  Future<void> applyRateFactor(double factor) async => rates.add(factor);
 
   @override
   Future<void> applyPlaying(bool playing) async {
@@ -178,7 +194,7 @@ void main() {
     expect(player.seeks.single.inSeconds, inInclusiveRange(1500, 1501));
   });
 
-  test('a small drift is left alone', () async {
+  test('a small lag is caught up by speed, not by a seek', () async {
     final (session, api) = await open();
     final player = _FakePlayer(seconds: 100);
     session.attach(player);
@@ -187,6 +203,59 @@ void main() {
     await _settle();
 
     expect(player.seeks, isEmpty);
+    expect(player.rates, isNotEmpty);
+    expect(player.rates.last, greaterThan(1));
+    expect(player.rates.last, lessThanOrEqualTo(1.08));
+  });
+
+  test('a tiny drift is left alone', () async {
+    final (session, api) = await open();
+    final player = _FakePlayer(seconds: 100);
+    session.attach(player);
+
+    api.polls.last.complete(_party(version: 2, position: 100.02));
+    await _settle();
+
+    expect(player.seeks, isEmpty);
+    expect(player.rates, isEmpty);
+  });
+
+  test('everyone pauses while someone else is loading', () async {
+    final (session, api) = await open();
+    final player = _FakePlayer();
+    session.attach(player);
+
+    api.polls.last.complete(
+        _party(version: 2, position: 98, waitingFor: ['alex']));
+    await _settle();
+
+    expect(player.playingApplied, [false]);
+    expect(player.seeks.single.inMilliseconds, 98000,
+        reason: 'the party froze where alex stalled');
+    expect(session.waitingMessage, 'En attente de alex…');
+  });
+
+  test('a device the party waits for keeps loading, then holds until the '
+      'server lets everyone go', () async {
+    final (session, api) = await open();
+    final player = _FakePlayer()..isLoading = true;
+    session.attach(player);
+    api.onUpdate = (_) => _party(version: 3, position: 100);
+
+    api.polls.last.complete(
+        _party(version: 2, position: 100, waitingForYou: true));
+    await _settle();
+    expect(player.playingApplied, isEmpty,
+        reason: 'a loading player is not paused for itself');
+
+    player.isLoading = false;
+    session.resync();
+    await _settle();
+
+    expect(api.updates.single['action'], 'loading');
+    expect(api.updates.single['loading'], false);
+    expect(player.playingApplied, [false, true],
+        reason: 'held while the server had not answered, then released');
   });
 
   test('another episode chosen elsewhere is opened here', () async {

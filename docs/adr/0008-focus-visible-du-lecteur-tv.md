@@ -26,8 +26,8 @@ C'est le défaut rapporté mot pour mot : « des moments je vois où je suis car
 bleu, et d'autres fois rien n'est sélectionné et les flèches avancent ou reculent dans le temps ».
 Ce n'est pas un focus perdu : c'est le modèle lui-même, dont l'état courant n'est pas lisible.
 
-Le lecteur d'Emby, pris comme référence, n'a pas ce partage. Son OSD affiché a toujours une
-commande sélectionnée, et c'est la barre de progression.
+Le modèle retenu n'a pas ce partage : l'OSD affiché a toujours une commande sélectionnée, et
+c'est la barre de progression.
 
 ## Décision
 
@@ -69,7 +69,7 @@ espace pour lecture/pause.
 ## Conséquences
 
 - Un appui de plus pour le premier déplacement dans le film depuis un chrome baissé. C'est le prix
-  de l'invariant, et c'est le comportement d'Emby.
+  de l'invariant.
 - Retour garde la pile de l'ADR-0006 §5 (menu, panneau, barre, film) ; comme le chrome affiché
   implique désormais que la télécommande est dessus, le premier Retour baisse le chrome et le
   second quitte le film — ce que faisait déjà le modèle, mais de façon prévisible cette fois.
@@ -135,7 +135,7 @@ penser — il ne sait pas ce qui était focalisé — c'est au garde-fou.
 
 ## Amendement (2026-09-02) — un focus invisible est un focus absent
 
-Le menu de réglages du chrome Emby s'ouvrait bien à la télécommande, et les flèches y déplaçaient
+Le menu de réglages du Chrome Onyx s'ouvrait bien à la télécommande, et les flèches y déplaçaient
 bel et bien le focus. Rien ne le montrait. Ses lignes étaient des `InkWell`, dont le halo est peint
 par le `Material` englobant — donc **sous** le fond opaque du panneau. Anneau, survol, ondulation :
 tout atterrissait derrière, et l'utilisateur voyait un menu figé sur lequel OK déclenchait une

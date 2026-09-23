@@ -1,6 +1,6 @@
 # Banc de qualité de lecture
 
-Phase 0 de [la roadmap](roadmap-parite-plex-emby.md). Les attentes ci-dessous sont des contrats à vérifier, pas des validations matérielles déjà effectuées.
+Phase 0 de [la roadmap](roadmap-lecture.md). Les attentes ci-dessous sont des contrats à vérifier, pas des validations matérielles déjà effectuées.
 
 ## Corpus
 
@@ -42,11 +42,11 @@ Pour exercer FFmpeg, fournir un extrait local contenant une vidéo prise en char
 
 Un premier extrait H.264 SDR avec E-AC-3 5.1 et AAC stéréo se génère avec `bash scripts/generate-playback-fixture.sh /tmp/onyx-quality-fixture.mkv`. La première piste est silencieuse : ce fichier valide conteneurs, canaux et encodage, pas l'écoute surround ni la synchronisation A/V. Le script refuse d'écraser un fichier existant.
 
-Couverture existante à conserver : `master_playlist_test.go`, `handler_files_test.go`, `ffmpeg_test.go`, `integration_test.go`, `roadmap_matrix_test.go` ; côté Flutter, `playback_session_lifecycle_test.dart`, `web_quality_test.dart`, `progress_sync_test.dart`, `emby_controls_layer_test.dart`, `emby_settings_menu_tv_test.dart`, `seek_feedback_overlay_test.dart` et les tests de focus et de téléchargements.
+Couverture existante à conserver : `master_playlist_test.go`, `handler_files_test.go`, `ffmpeg_test.go`, `integration_test.go`, `roadmap_matrix_test.go` ; côté Flutter, `playback_session_lifecycle_test.dart`, `web_quality_test.dart`, `progress_sync_test.dart`, `onyx_controls_layer_test.dart`, `onyx_settings_menu_tv_test.dart`, `seek_feedback_overlay_test.dart` et les tests de focus et de téléchargements.
 
 ## Procédure sur appareils réels
 
-Créer une copie du relevé ci-dessous par appareil, moteur, chrome (standard, Emby, Studio) et extrait. Répéter trois fois à froid puis à chaud. Garder le même écran, sortie audio et réseau entre deux versions comparées.
+Créer une copie du relevé ci-dessous par appareil, moteur, chrome (standard, Chrome Onyx, Studio) et extrait. Répéter trois fois à froid puis à chaud. Garder le même écran, sortie audio et réseau entre deux versions comparées.
 
 1. Ouvrir la fiche et lancer la lecture. Mesurer jusqu'à la première image visible, pas seulement jusqu'à l'état « playing ».
 2. Relever le chemin, la raison du transcodage, les codecs, le débit et les compteurs d'images perdues au départ puis après 60 secondes.

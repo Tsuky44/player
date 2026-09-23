@@ -8,7 +8,7 @@ import '../../../theme/app_colors.dart';
 import '../../../utils/poster_url.dart';
 import '../../../widgets/global/app_network_image.dart';
 
-/// Emby-style "Info" card: poster, title, episode line, duration/CC badge,
+/// "Info" card: poster, title, episode line, duration/CC badge,
 /// technical stream line, and a restart-from-beginning action.
 class PlayerInfoSheet extends StatelessWidget {
   final Media media;

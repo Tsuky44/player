@@ -5,8 +5,8 @@
 - **Date :** 2026-09-17
 - **Portée :** les curseurs de l'interface (`app/lib/widgets/global/app_slider.dart` et ses sept
   appelants : volume des deux chromes du lecteur, chrome global, quatre réglages du studio). La
-  barre de progression du lecteur (`emby_progress_bar.dart`) et le curseur de luminosité
-  (`emby_brightness_slider.dart`) étaient déjà des dessins maison et ne changent pas.
+  barre de progression du lecteur (`onyx_progress_bar.dart`) et le curseur de luminosité
+  (`onyx_brightness_slider.dart`) étaient déjà des dessins maison et ne changent pas.
 
 ## Contexte
 

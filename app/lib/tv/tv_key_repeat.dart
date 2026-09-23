@@ -9,8 +9,8 @@ import 'tv_mode.dart';
 /// répétition déplaçait le focus d'une carte et relançait le défilement animé
 /// qui la ramène à l'écran ; au bout de quelques cartes, le focus courait devant
 /// une rangée qui n'avait pas fini de défiler, arrivait sur des cartes pas encore
-/// construites, et s'arrêtait net — la rangée « bloquait » au milieu. Leanback,
-/// sur lequel repose Jellyfin, régule ce débit ; Flutter ne le fait pas.
+/// construites, et s'arrêtait net — la rangée « bloquait » au milieu. Les
+/// interfaces TV natives d'Android régulent ce débit ; Flutter ne le fait pas.
 ///
 /// On observe donc les touches avant le système de focus pour savoir si la flèche
 /// en cours est une répétition, et [TvDirectionalFocusAction] laisse passer au
@@ -67,7 +67,7 @@ abstract final class TvKeyRepeat {
 ///   où sur l'écran : l'avatar du compte dans l'en-tête, une affiche d'une autre
 ///   rangée qui dépasse plus loin. Le focus sautait alors à l'autre bout de
 ///   l'écran, et l'on ne savait plus où l'on était. Ici, sans rien sur la même
-///   ligne, le focus reste où il est — comme sur Jellyfin.
+///   ligne, le focus reste où il est.
 class TvDirectionalFocusAction extends DirectionalFocusAction {
   TvDirectionalFocusAction();
 

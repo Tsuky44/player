@@ -11,7 +11,7 @@ Le serveur est chez soi. L'app, elle, part dans un train, dans un avion, dans un
 sert plus à rien : l'authentification au démarrage repose sur `GET /api/auth/me`, chaque écran
 tient d'un appel réseau, et la lecture est un `GET /stream` en Direct Play.
 
-Ce que fait Netflix, ce que fait Emby : un bouton qui garde l'épisode sur l'appareil, et une app
+Ce qu'on attend : un bouton qui garde l'épisode sur l'appareil, et une app
 qui continue de le lire quand il n'y a plus personne au bout du câble. La difficulté n'est pas le
 transfert du fichier — `/stream` est déjà une route publique qui gère les requêtes `Range`. Elle
 est dans ce qui vient après : **la progression prise hors ligne doit revenir au serveur sans

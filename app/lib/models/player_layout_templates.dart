@@ -116,7 +116,7 @@ abstract final class PlayerLayoutTemplates {
           name: 'Classique',
           tagline: 'Barre dense familière',
           description:
-              'CORE dans une timeline Emby : transport et utilitaires regroupés en bas.',
+              'CORE dans une timeline épurée : transport et utilitaires regroupés en bas.',
           icon: Icons.view_timeline_outlined,
           extrasLabels: [],
           useModular: true,
@@ -276,7 +276,7 @@ abstract final class PlayerLayoutTemplates {
     );
   }
 
-  /// CORE via Emby-style timeline chrome (+ top back/title).
+  /// CORE via the minimal timeline chrome (+ top back/title).
   static PlayerLayoutConfig classic() {
     return PlayerLayoutConfig(
       blurIntensity: 6,
@@ -288,14 +288,14 @@ abstract final class PlayerLayoutTemplates {
         _btn('mediaTitle', PlayerControlType.mediaTitle,
             x: 0.35, y: 0.08, size: 0.06),
         _bar(
-          'timelineEmby',
-          PlayerControlType.timelineEmby,
+          'timelineOnyx',
+          PlayerControlType.timelineOnyx,
           x: 0.5,
           y: 0.88,
           size: 0.06,
           width: 0.94,
           timelineOptions: const TimelineChromeOptions(
-            visualStyle: TimelineVisualStyle.emby,
+            visualStyle: TimelineVisualStyle.onyx,
             showSkipPrevious: false,
             showRewind: true,
             showPlayPause: true,

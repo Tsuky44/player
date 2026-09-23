@@ -15,7 +15,7 @@ Plans d'implémentation issus des audits UI. Chaque plan est autonome : son exé
 
 | Plan | Résultat visé | Fichiers touchés | Ordre |
 | --- | --- | --- | --- |
-| [01 — Marque et chrome Accueil](01-marque-et-chrome-accueil.md) | Supprimer le rouge Netflix de la marque et faire consommer au chrome de l'Accueil mobile les owners du shell (marque + menu compte) | `glass_chrome.dart`, `main_shell.dart`, `home_screen.dart` | 1er |
+| [01 — Marque et chrome Accueil](01-marque-et-chrome-accueil.md) | Supprimer le rouge vif de la marque et faire consommer au chrome de l'Accueil mobile les owners du shell (marque + menu compte) | `glass_chrome.dart`, `main_shell.dart`, `home_screen.dart` | 1er |
 | [02 — Demandes sur les tokens](02-demandes-tokens.md) | Remplacer la palette Tailwind parallèle de l'onglet Demandes par les tokens `AppColors` | 6 fichiers de `screens/requests/` | indépendant |
 | [03 — Cartes poster](03-cartes-poster.md) | Un seul rayon (12) et un seul liseré de survol (1 px blanc 16 %) sur les trois cartes poster | `media_card.dart`, `continue_watching_card.dart`, `request_media_card.dart` | indépendant |
 
@@ -37,4 +37,4 @@ Intersection avec la vague 1 : le plan 06 touche `poster_card.dart` et `continue
 
 ## Findings sans plan
 
-Les findings 3 et 5 à 10 de [audit-fluidite.md](audit-fluidite.md) restent ouverts, sans plan écrit. Le plus proche d'être prêt est le **finding 3** (scrubbers qui affichent la position du décodeur au lieu de celle du doigt) : l'implémentation de référence existe déjà dans `emby_progress_bar.dart`, comme pour le 05.
+Les findings 3 et 5 à 10 de [audit-fluidite.md](audit-fluidite.md) restent ouverts, sans plan écrit. Le plus proche d'être prêt est le **finding 3** (scrubbers qui affichent la position du décodeur au lieu de celle du doigt) : l'implémentation de référence existe déjà dans `onyx_progress_bar.dart`, comme pour le 05.

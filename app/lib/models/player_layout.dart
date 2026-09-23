@@ -89,7 +89,7 @@ enum PlayerControlType {
   forward,
   progressBar,
   timeline,
-  timelineEmby,
+  timelineOnyx,
   timelineGlassInline,
   skipPrevious,
   skipNext,
@@ -101,7 +101,7 @@ enum PlayerControlType {
   settings,
   subtitles,
   upNext,
-  upNextEmby,
+  upNextOnyx,
   // Pack Cinéma Essentiel (Player Studio shop)
   skipIntro,
   playbackSpeed,
@@ -111,15 +111,25 @@ enum PlayerControlType {
   timeRemaining,
   rewind30,
   forward30,
-  // Emby template extras
+  // Chrome Onyx template extras
   episodeTitleBlock,
-  chaptersEmby,
+  chaptersOnyx,
   mediaInfo,
+  // Regarder ensemble (ADR-0029)
+  watchParty,
 }
 
 extension PlayerControlTypeX on PlayerControlType {
   /// Stable string id used as JSON key (never change once persisted).
   String get id => name;
+
+  /// Ids written before these controls took the Chrome Onyx name, still
+  /// found in presets saved on the server.
+  static const _legacyIds = {
+    'timelineEmby': 'timelineOnyx',
+    'upNextEmby': 'upNextOnyx',
+    'chaptersEmby': 'chaptersOnyx',
+  };
 
   String get label {
     switch (this) {
@@ -139,8 +149,8 @@ extension PlayerControlTypeX on PlayerControlType {
         return 'Barre de progression';
       case PlayerControlType.timeline:
         return 'Timeline verre';
-      case PlayerControlType.timelineEmby:
-        return 'Timeline Emby';
+      case PlayerControlType.timelineOnyx:
+        return 'Timeline épurée';
       case PlayerControlType.timelineGlassInline:
         return 'Timeline verre fin';
       case PlayerControlType.skipPrevious:
@@ -163,8 +173,8 @@ extension PlayerControlTypeX on PlayerControlType {
         return 'Sous-titres';
       case PlayerControlType.upNext:
         return 'À suivre';
-      case PlayerControlType.upNextEmby:
-        return 'À suivre Emby';
+      case PlayerControlType.upNextOnyx:
+        return 'À suivre (lien)';
       case PlayerControlType.skipIntro:
         return 'Passer l\'intro';
       case PlayerControlType.playbackSpeed:
@@ -182,11 +192,13 @@ extension PlayerControlTypeX on PlayerControlType {
       case PlayerControlType.forward30:
         return 'Avancer 30s';
       case PlayerControlType.episodeTitleBlock:
-        return 'Bloc titre (Emby)';
-      case PlayerControlType.chaptersEmby:
+        return 'Bloc titre';
+      case PlayerControlType.chaptersOnyx:
         return 'Chapitres (lien texte)';
       case PlayerControlType.mediaInfo:
         return 'Infos média';
+      case PlayerControlType.watchParty:
+        return 'Regarder ensemble';
     }
   }
 
@@ -208,7 +220,7 @@ extension PlayerControlTypeX on PlayerControlType {
         return Icons.linear_scale_rounded;
       case PlayerControlType.timeline:
         return Icons.timeline_rounded;
-      case PlayerControlType.timelineEmby:
+      case PlayerControlType.timelineOnyx:
         return Icons.view_timeline_outlined;
       case PlayerControlType.timelineGlassInline:
         return Icons.view_agenda_outlined;
@@ -232,7 +244,7 @@ extension PlayerControlTypeX on PlayerControlType {
         return Icons.subtitles_outlined;
       case PlayerControlType.upNext:
         return Icons.playlist_play_rounded;
-      case PlayerControlType.upNextEmby:
+      case PlayerControlType.upNextOnyx:
         return Icons.view_list_rounded;
       case PlayerControlType.skipIntro:
         return Icons.fast_forward_rounded;
@@ -252,17 +264,19 @@ extension PlayerControlTypeX on PlayerControlType {
         return Icons.forward_30_rounded;
       case PlayerControlType.episodeTitleBlock:
         return Icons.subtitles_outlined;
-      case PlayerControlType.chaptersEmby:
+      case PlayerControlType.chaptersOnyx:
         return Icons.list_alt_rounded;
       case PlayerControlType.mediaInfo:
         return Icons.info_outline_rounded;
+      case PlayerControlType.watchParty:
+        return Icons.groups_rounded;
     }
   }
 
-  /// Timeline bar variant (glass pill or Emby minimal overlay).
+  /// Timeline bar variant (glass pill or minimal overlay).
   bool get isTimelineBar =>
       this == PlayerControlType.timeline ||
-      this == PlayerControlType.timelineEmby ||
+      this == PlayerControlType.timelineOnyx ||
       this == PlayerControlType.timelineGlassInline;
 
   /// Whether this control should only appear once in the layout.
@@ -273,7 +287,7 @@ extension PlayerControlTypeX on PlayerControlType {
       this == PlayerControlType.mediaLogo ||
       this == PlayerControlType.volumeSlider ||
       this == PlayerControlType.upNext ||
-      this == PlayerControlType.upNextEmby ||
+      this == PlayerControlType.upNextOnyx ||
       this == PlayerControlType.skipIntro ||
       this == PlayerControlType.playbackSpeed ||
       this == PlayerControlType.aspectFit ||
@@ -281,8 +295,9 @@ extension PlayerControlTypeX on PlayerControlType {
       this == PlayerControlType.chapters ||
       this == PlayerControlType.timeRemaining ||
       this == PlayerControlType.episodeTitleBlock ||
-      this == PlayerControlType.chaptersEmby ||
-      this == PlayerControlType.mediaInfo;
+      this == PlayerControlType.chaptersOnyx ||
+      this == PlayerControlType.mediaInfo ||
+      this == PlayerControlType.watchParty;
 
   /// Pack Cinéma Essentiel — new shop section.
   bool get isCinemaPack =>
@@ -300,8 +315,9 @@ extension PlayerControlTypeX on PlayerControlType {
       this == PlayerControlType.progressBar || isTimelineBar;
 
   static PlayerControlType fromId(String value) {
+    final id = _legacyIds[value] ?? value;
     return PlayerControlType.values.firstWhere(
-      (e) => e.id == value,
+      (e) => e.id == id,
       orElse: () => PlayerControlType.playPause,
     );
   }
@@ -314,20 +330,21 @@ extension PlayerControlTypeX on PlayerControlType {
 /// every other appearance field are ignored. Player Studio shows such a preset
 /// as a frozen preview — there is nothing in it to move.
 enum FixedChromeId {
-  /// Clone of the Emby web player chrome.
-  emby;
+  /// Chrome Onyx: the house player chrome.
+  onyx;
 
   String get id => name;
 
   String get label => switch (this) {
-        FixedChromeId.emby => 'Emby',
+        FixedChromeId.onyx => 'Chrome Onyx',
       };
 
   /// Unknown ids decode to null so a preset written by a newer client
   /// degrades to its modular layout instead of failing to load.
   static FixedChromeId? fromId(String? value) {
     return switch (value) {
-      'emby' => FixedChromeId.emby,
+      // 'emby': the id presets were saved with before the rename.
+      'onyx' || 'emby' => FixedChromeId.onyx,
       _ => null,
     };
   }
@@ -392,8 +409,8 @@ enum TimelineVisualStyle {
   /// Frosted pill with accent-colour progress (default legacy look).
   glass,
 
-  /// Minimal Emby-style overlay: no background, thin white bar, flat icons.
-  emby,
+  /// Minimal overlay: no background, thin white bar, flat icons.
+  onyx,
 
   /// Opaque flat pill matching the Flat control skin.
   flat,
@@ -405,14 +422,15 @@ enum TimelineVisualStyle {
 
   String get label => switch (this) {
         TimelineVisualStyle.glass => 'Verre',
-        TimelineVisualStyle.emby => 'Emby',
+        TimelineVisualStyle.onyx => 'Épuré',
         TimelineVisualStyle.flat => 'Net',
         TimelineVisualStyle.neumorphic => 'Doux',
       };
 
   static TimelineVisualStyle fromId(String? value) {
     return switch (value) {
-      'emby' => TimelineVisualStyle.emby,
+      // 'emby': the id presets were saved with before the rename.
+      'onyx' || 'emby' => TimelineVisualStyle.onyx,
       'flat' => TimelineVisualStyle.flat,
       'neumorphic' => TimelineVisualStyle.neumorphic,
       _ => TimelineVisualStyle.glass,
@@ -463,9 +481,9 @@ class TimelineChromeOptions {
         showFullscreen: true,
       );
 
-  /// Emby-style defaults for [PlayerControlType.timelineEmby].
-  factory TimelineChromeOptions.emby() => const TimelineChromeOptions(
-        visualStyle: TimelineVisualStyle.emby,
+  /// Minimal-overlay defaults for [PlayerControlType.timelineOnyx].
+  factory TimelineChromeOptions.onyx() => const TimelineChromeOptions(
+        visualStyle: TimelineVisualStyle.onyx,
         showSkipPrevious: true,
         showRewind: true,
         showPlayPause: true,
@@ -507,7 +525,7 @@ class TimelineChromeOptions {
     return switch (type) {
       PlayerControlType.timeline => TimelineChromeOptions.glass(),
       PlayerControlType.timelineGlassInline => TimelineChromeOptions.glass(),
-      PlayerControlType.timelineEmby => TimelineChromeOptions.emby(),
+      PlayerControlType.timelineOnyx => TimelineChromeOptions.onyx(),
       _ => TimelineChromeOptions.legacy(),
     };
   }
@@ -626,7 +644,7 @@ class ControlConfig {
   final TimelineChromeOptions? timelineOptions;
 
   /// Keeps [PlayerControlType.volumeSlider] permanently expanded instead of
-  /// only on hover (Emby-style always-visible slider).
+  /// only on hover (always-visible slider).
   final bool alwaysExpanded;
 
   const ControlConfig({
@@ -1061,7 +1079,7 @@ class SubtitlePaddingCalculator {
 }
 
 extension PlayerLayoutSubtitleLayout on PlayerLayoutConfig {
-  /// Bottom padding target: just above the timeline / progress bar (YouTube-style).
+  /// Bottom padding target: just above the timeline / progress bar.
   double subtitleInsetAboveTimeline(Size screenSize) {
     PlacedControl? bottomTimeline;
     for (final placed in controls) {
@@ -1120,16 +1138,16 @@ extension PlayerLayoutSubtitleLayout on PlayerLayoutConfig {
           barHeight + verticalPadding,
         );
       case PlayerControlType.timeline:
-      case PlayerControlType.timelineEmby:
+      case PlayerControlType.timelineOnyx:
       case PlayerControlType.timelineGlassInline:
         final opts = config.resolvedTimelineOptions;
-        final isEmby = placed.type == PlayerControlType.timelineEmby ||
-            opts.visualStyle == TimelineVisualStyle.emby;
+        final isOnyx = placed.type == PlayerControlType.timelineOnyx ||
+            opts.visualStyle == TimelineVisualStyle.onyx;
         final isInline = placed.type == PlayerControlType.timelineGlassInline;
         final baseHeight = (pixelSize * 0.5).clamp(14.0, 40.0);
         final iconSize = (baseHeight * 0.72).clamp(16.0, 26.0);
         final textLineHeight = (baseHeight * 0.45).clamp(10.0, 16.0) * 1.25;
-        if (isEmby) {
+        if (isOnyx) {
           var height = 12.0 + 8 + textLineHeight + 8;
           if (opts.hasLeftCluster) height += iconSize + 12;
           height += 8;
@@ -1164,7 +1182,7 @@ extension PlayerLayoutSubtitleLayout on PlayerLayoutConfig {
         final height =
             (pixelSize * kControlChromePaddingFactor).clamp(36.0, 52.0);
         return Size(height * 2.75, height);
-      case PlayerControlType.upNextEmby:
+      case PlayerControlType.upNextOnyx:
         final height = (pixelSize * 1.2).clamp(28.0, 40.0);
         return Size(height * 2.5, height);
       case PlayerControlType.skipIntro:

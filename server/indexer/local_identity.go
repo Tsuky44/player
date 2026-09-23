@@ -11,7 +11,7 @@ import (
 	"project-player/server/models"
 )
 
-// LocalIdentityHints holds Emby/Jellyfin-style identity signals found on disk
+// LocalIdentityHints holds the identity signals found on disk
 // before any remote TMDB search (provider IDs in names, NFO sidecars, folder hints).
 type LocalIdentityHints struct {
 	TMDBID int
@@ -27,7 +27,7 @@ var (
 	providerIMDbRe = regexp.MustCompile(`(?i)[\[{](?:imdb(?:id)?)[-_]?(tt\d+)[\]}]`)
 	providerTVDBRe = regexp.MustCompile(`(?i)[\[{](?:tvdb(?:id)?|thetvdb)[-_]?(\d+)[\]}]`)
 
-	// Expanded episode patterns (Emby/Jellyfin naming engine style).
+	// Expanded episode patterns (common library naming conventions).
 	episodePatterns = []*regexp.Regexp{
 		regexp.MustCompile(`(?i)\b[Ss](\d{1,2})[Ee](\d{1,3})\b`),
 		regexp.MustCompile(`(?i)\b[Ss](\d{1,2})\.?[Ee](\d{1,3})\b`),
@@ -36,7 +36,7 @@ var (
 	}
 )
 
-// ExtractProviderIDs parses Emby/Jellyfin provider tags from a folder or file name.
+// ExtractProviderIDs parses provider tags ([tmdbid-…], [imdbid-…]…) from a folder or file name.
 func ExtractProviderIDs(name string) (tmdbID int, imdbID string, tvdbID int) {
 	name = strings.TrimSpace(name)
 	if name == "" {
@@ -62,7 +62,7 @@ func StripProviderIDs(name string) string {
 	return strings.TrimSpace(spaceRe.ReplaceAllString(name, " "))
 }
 
-// ParseEpisodeNumbers extracts season/episode from common Emby-compatible patterns.
+// ParseEpisodeNumbers extracts season/episode from common naming patterns.
 func ParseEpisodeNumbers(filename string) (seasonNum, episodeNum int, ok bool) {
 	base := strings.TrimSuffix(filepath.Base(filename), filepath.Ext(filename))
 	for _, re := range episodePatterns {
@@ -144,7 +144,7 @@ func episodeNumberFromFileName(fileName string, hasSeasonFolder bool) (int, bool
 }
 
 // ResolveEpisodeNumbers finds season/episode numbers from the filename, then
-// from the folder layout — Emby indexes "Saison 1/01 - Titre.mkv" too, and
+// from the folder layout — "Saison 1/01 - Titre.mkv" is a common layout, and
 // dropping those files silently loses whole seasons.
 func ResolveEpisodeNumbers(relParts []string, fileName string) (seasonNum, episodeNum int, ok bool) {
 	if s, e, found := ParseEpisodeNumbers(fileName); found {
@@ -163,7 +163,7 @@ func ResolveEpisodeNumbers(relParts []string, fileName string) (seasonNum, episo
 
 // ResolveMovieLookupName returns the name a movie should be identified from.
 //
-// Emby rule: the folder names the movie only when the movie owns that folder
+// Rule: the folder names the movie only when the movie owns that folder
 // ("Inception (2010)/movie.mkv"). A folder holding several different movies is a
 // category/saga folder ("Films/Action/…", "Saga Harry Potter/…") and must never
 // name them — doing so gives every file in it the same identity, which then
@@ -196,7 +196,7 @@ func ResolveMovieLookupName(videoPath, moviesRoot string) string {
 	if looksLikeGenericVideoName(fileBase) {
 		return parentName
 	}
-	// Single-movie folder: Emby trusts the folder, it is usually the cleaner name.
+	// Single-movie folder: trust the folder, it is usually the cleaner name.
 	return parentName
 }
 
@@ -295,7 +295,7 @@ type nfoUnique struct {
 	Value   string `xml:",chardata"`
 }
 
-// ReadNFOIdentity reads Emby/Kodi-compatible NFO beside a video or in a show folder.
+// ReadNFOIdentity reads a standard NFO sidecar beside a video or in a show folder.
 func ReadNFOIdentity(paths ...string) LocalIdentityHints {
 	for _, p := range paths {
 		if hints, ok := parseNFOFile(p); ok {
@@ -400,7 +400,7 @@ func normalizeIMDbID(id string) string {
 	return id
 }
 
-// MovieNFOCandidates returns likely NFO paths Emby/Kodi would look for.
+// MovieNFOCandidates returns the usual NFO sidecar paths for a movie.
 func MovieNFOCandidates(videoPath string) []string {
 	dir := filepath.Dir(videoPath)
 	base := strings.TrimSuffix(filepath.Base(videoPath), filepath.Ext(videoPath))
@@ -423,7 +423,7 @@ func ShowNFOCandidates(showFolderPath string) []string {
 	}
 }
 
-// CollectMovieLocalIdentity gathers Emby-style local signals for a movie file.
+// CollectMovieLocalIdentity gathers local identity signals for a movie file.
 func CollectMovieLocalIdentity(videoPath, moviesRoot string) LocalIdentityHints {
 	lookupName := ResolveMovieLookupName(videoPath, moviesRoot)
 	hints := LocalIdentityHints{Source: "folder", Title: lookupName}
@@ -490,7 +490,7 @@ func CollectMovieLocalIdentity(videoPath, moviesRoot string) LocalIdentityHints 
 	return hints
 }
 
-// CollectShowLocalIdentity gathers Emby-style local signals for a show folder/name.
+// CollectShowLocalIdentity gathers local identity signals for a show folder/name.
 func CollectShowLocalIdentity(showFolderPath, rawSearchKey string) LocalIdentityHints {
 	hints := LocalIdentityHints{Source: "folder", Title: rawSearchKey}
 

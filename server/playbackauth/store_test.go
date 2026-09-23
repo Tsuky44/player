@@ -1,7 +1,9 @@
 package playbackauth
 
 import (
+	"io"
 	"net/http/httptest"
+	"strings"
 	"testing"
 	"time"
 )
@@ -96,5 +98,46 @@ func TestRevocationStopsOpenResponse(t *testing.T) {
 	}
 	if recorder.Body.String() != "first" {
 		t.Fatal("bytes leaked after revocation")
+	}
+}
+
+func TestOpenResponseFollowsExpiryAndRenewal(t *testing.T) {
+	s := NewStore()
+	now := time.Date(2026, 9, 13, 12, 0, 0, 0, time.UTC)
+	s.now = func() time.Time { return now }
+	token, _, _ := s.Issue(1, 7)
+	r := httptest.NewRequest("GET", "/stream?media_id=7&ticket="+token, nil)
+	w, _ := Protect(httptest.NewRecorder(), r, s, 7)
+
+	now = now.Add(TTL - time.Minute)
+	if _, err := s.Renew(token, 1); err != nil {
+		t.Fatal(err)
+	}
+	now = now.Add(2 * time.Minute) // past the first deadline, inside the renewed one
+	if _, err := w.Write([]byte("a")); err != nil {
+		t.Fatal("renewed ticket refused mid-stream")
+	}
+	now = now.Add(TTL)
+	if _, err := w.Write([]byte("b")); err == nil {
+		t.Fatal("expired ticket kept streaming")
+	}
+}
+
+func TestRevocationStopsCopiedResponse(t *testing.T) {
+	s := NewStore()
+	token, _, _ := s.Issue(1, 7)
+	r := httptest.NewRequest("GET", "/stream?media_id=7&ticket="+token, nil)
+	recorder := httptest.NewRecorder()
+	w, _ := Protect(recorder, r, s, 7)
+	body := strings.Repeat("x", copyBufferSize+10)
+	if _, err := io.CopyN(w, strings.NewReader(body), int64(len(body))); err != nil {
+		t.Fatal(err)
+	}
+	if recorder.Body.Len() != len(body) {
+		t.Fatalf("copied %d bytes, want %d", recorder.Body.Len(), len(body))
+	}
+	s.Revoke(token, 1)
+	if _, err := io.Copy(w, strings.NewReader("secret")); err == nil {
+		t.Fatal("copy after revocation accepted")
 	}
 }
