@@ -28,6 +28,8 @@ abstract final class AppUpdater {
 
   static void discardWorkDir(String path) {}
 
+  static Future<void> purgeStaleWorkDirs() async {}
+
   static Future<PreparedUpdate> prepare({
     required String archivePath,
     required String workDir,

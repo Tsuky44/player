@@ -62,6 +62,25 @@ leur runner, donc chaque publication repart d'artefacts frais.
 
 ## Secrets à configurer
 
+### Signature des mises à jour Windows (indispensable)
+
+Les postes Windows se mettent à jour à partir du ZIP portable, que
+`onyx-updater.exe` n'applique que s'il est signé par la clé dont la moitié
+publique est compilée dans l'exe (`app/windows/updater/update_public_key.h`,
+voir l'ADR-0030). Sans ce secret, le workflow émet un avertissement et publie un
+ZIP non signé : les installations existantes le refusent et restent sur leur
+version.
+
+| Secret | Valeur |
+|---|---|
+| `ONYX_UPDATE_SIGNING_KEY` | contenu du fichier produit par `scripts/sign-windows-update.ps1 -NewKey` (clé privée PKCS#8 en base64) |
+
+À conserver hors du dépôt, comme le keystore Android. La perdre oblige à générer
+une nouvelle clé, et les versions déjà installées refuseront alors toute mise à
+jour signée par elle : il faudra les réinstaller une fois. Pour signer un build
+local, poser la même valeur dans la variable d'environnement
+`ONYX_UPDATE_SIGNING_KEY` avant `scripts/build-releases.ps1`.
+
 ### Signature Android (recommandé)
 
 Sans ces secrets le workflow n'échoue pas : il émet un avertissement et signe

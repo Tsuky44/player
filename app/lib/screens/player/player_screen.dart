@@ -18,6 +18,7 @@ import '../../services/server_reachability.dart';
 import '../../services/media_details_cache.dart';
 import '../../services/picture_in_picture.dart';
 import '../../services/screen_brightness_control.dart';
+import '../../services/watch_party.dart';
 import 'display_cutouts.dart';
 import 'video_fit.dart';
 import '../../tv/tv_focus.dart';
@@ -42,6 +43,7 @@ import 'widgets/player_settings_anchor.dart';
 import 'widgets/player_subtitles_sheet.dart';
 import 'widgets/player_info_sheet.dart';
 import 'widgets/player_episodes_panel.dart';
+import 'widgets/watch_party_overlay.dart';
 import '../../services/client_log.dart';
 import 'playback/playback_session.dart';
 import 'pinch_zoom_fit.dart';
@@ -114,6 +116,22 @@ class _PlayerScreenState extends State<PlayerScreen> {
   bool _wantsPlayback = true;
   String? _sourceAccountId;
   int _resumePosition = 0;
+
+  /// La séance « Regarder ensemble » à laquelle ce lecteur est accroché, s'il
+  /// y en a une. Voir [WatchPartySession].
+  WatchPartySession? _party;
+  late final _WatchPartyBinding _partyBinding = _WatchPartyBinding(this);
+  StreamSubscription<String>? _partyNotices;
+  String? _partyNotice;
+  bool _partyNoticeVisible = false;
+  Timer? _partyNoticeTimer;
+
+  /// Jusqu'à quand un recalage demandé par la séance est en train de se poser.
+  DateTime? _partySeekSettlesAt;
+
+  /// Ce lecteur cède la place à un autre (épisode suivant, relance) : la
+  /// séance continue avec lui, elle ne doit pas être quittée ici.
+  bool _partyHandOver = false;
 
 
   /// How the video is fitted inside the player viewport.
@@ -501,6 +519,7 @@ class _PlayerScreenState extends State<PlayerScreen> {
     PictureInPicture.active.addListener(_handlePictureInPictureChanged);
     PictureInPicture.closed.addListener(_handlePictureInPictureClosed);
     _keyboardFocusNode.addListener(_handlePlayerFocusChanged);
+    WatchPartySession.active.addListener(_handleWatchPartyChanged);
     _playerController = PlayerController();
     _mediaKeys = PlayerMediaKeysBinding(
       onPlayPause: _togglePlayPause,
@@ -521,6 +540,7 @@ class _PlayerScreenState extends State<PlayerScreen> {
     final apiClient = _sourceAccountId == null ? sharedApi : await sharedApi.pinToAccount(_sourceAccountId!);
     if (!mounted || _isLeaving) return;
     _apiClient = apiClient;
+    _handleWatchPartyChanged();
     if (_sourceAccountId != null) {
       unawaited(sharedApi.mediaFailover.refreshIdentities(_sourceAccountId!));
       _relayTimer = Timer.periodic(const Duration(seconds: 10), (_) => _tryRelay());
@@ -577,6 +597,9 @@ class _PlayerScreenState extends State<PlayerScreen> {
       onFirstFrame: () {
         // The picture is here; nothing left for the deadline to catch.
         _startupWatchdog?.cancel();
+        // Le lecteur sait enfin où il en est : c'est le moment de le caler sur
+        // la séance, au lieu d'attendre la prochaine vérification.
+        _party?.resync();
         // Lifts the start-up cover: the texture now holds this media.
         _safeSetState(() {});
         // Restart the auto-hide countdown here rather than leave the one armed
@@ -871,6 +894,9 @@ class _PlayerScreenState extends State<PlayerScreen> {
   Future<void> _tryRelay() async {
     final source = _sourceAccountId;
     if (!mounted || _isLeaving || _isDisposing || _findingRelay || source == null) return;
+    // Une séance vit sur un serveur : basculer sur un autre y couperait
+    // l'appareil des autres participants.
+    if (_party != null) return;
     if (DownloadManager.instance.localVideoPath(_actualMedia.id) != null) return;
     final auth = context.read<AuthProvider>();
     if (auth.activeServer?.id != source) return;
@@ -947,6 +973,7 @@ class _PlayerScreenState extends State<PlayerScreen> {
     if (!mounted) return;
     _startupWatchdog?.cancel();
     _isLeaving = true;
+    _partyHandOver = true;
     _playerController.cancelStreams();
     final inheritedPreferences = _playerController.exportPreferences();
     final videoFit = _videoFit;
@@ -1149,7 +1176,7 @@ class _PlayerScreenState extends State<PlayerScreen> {
     var target = _playerController.position.inSeconds + seconds;
     if (target < 0) target = 0;
     if (maxSeconds > 0 && target > maxSeconds) target = maxSeconds;
-    _playerController.seekToAbsoluteSeconds(target);
+    _seekTo(target);
     _showControlsTransient();
   }
 
@@ -1249,7 +1276,7 @@ class _PlayerScreenState extends State<PlayerScreen> {
     if (target == null || !mounted || _isDisposing) return;
     // Both seek paths move the reported position to the target before they
     // return, so letting go of the target here does not flash the old time.
-    _playerController.seekToAbsoluteSeconds(target);
+    _seekTo(target);
     _remoteSeekTarget = null;
     _remoteSeekChain = 0;
     _safeSetState(() {});
@@ -1479,7 +1506,12 @@ class _PlayerScreenState extends State<PlayerScreen> {
     _navigateToEpisode(episode);
   }
 
-  void _navigateToEpisode(HomeMediaItem next) {
+  void _navigateToEpisode(
+    HomeMediaItem next, {
+    bool fromParty = false,
+    int? resumeAtSeconds,
+    bool startPaused = false,
+  }) {
     if (next.media.id == _currentEpisodeId) {
       _closeEpisodesPanel();
       return;
@@ -1488,6 +1520,15 @@ class _PlayerScreenState extends State<PlayerScreen> {
     _closeEpisodesPanel();
     _isEpisodeTransition = true;
     _isLeaving = true;
+    // La séance passe à l'épisode avec ce lecteur — sauf si c'est elle qui
+    // l'a demandé, auquel cas elle y est déjà.
+    final party = _party;
+    if (party != null) {
+      _partyHandOver = true;
+      party.detach(_partyBinding);
+      if (!fromParty) unawaited(party.sendMedia(next.media.id));
+      resumeAtSeconds ??= 0;
+    }
     final inheritedPreferences = _playerController.exportPreferences();
     final videoFit = _videoFit;
 
@@ -1525,6 +1566,8 @@ class _PlayerScreenState extends State<PlayerScreen> {
             autoAdvance: true,
             initialVideoFit: videoFit,
             seasonNumber: _seasonNumberFor(next),
+            resumeAtSeconds: resumeAtSeconds,
+            startPaused: startPaused,
           ),
         ),
       );
@@ -1604,6 +1647,9 @@ class _PlayerScreenState extends State<PlayerScreen> {
     // pas celles du moteur — l'arrêter d'abord ne les perd pas.
     unawaited(_playerController.session.stop());
     _safeSetState(() => _isLeaving = true);
+    // Quitter le lecteur, c'est quitter la séance : les autres continuent.
+    final party = _party;
+    if (party != null && !_partyHandOver) unawaited(party.leave());
     return _syncProgressOnExit(popAfter: true);
   }
 
@@ -1621,6 +1667,14 @@ class _PlayerScreenState extends State<PlayerScreen> {
     PictureInPicture.closed.removeListener(_handlePictureInPictureClosed);
     unawaited(PictureInPicture.disarm());
     _keyboardFocusNode.removeListener(_handlePlayerFocusChanged);
+    WatchPartySession.active.removeListener(_handleWatchPartyChanged);
+    final party = _party;
+    if (party != null) {
+      party.detach(_partyBinding);
+      if (!_partyHandOver) unawaited(party.leave());
+    }
+    unawaited(_partyNotices?.cancel() ?? Future<void>.value());
+    _partyNoticeTimer?.cancel();
     _keyboardFocusNode.dispose();
     _playPauseFocusNode.dispose();
     _progressFocusNode.dispose();
@@ -1880,7 +1934,7 @@ class _PlayerScreenState extends State<PlayerScreen> {
                       onClose: dismiss,
                       playerController: _playerController,
                       episodeNav: _episodeNav,
-                      onSeekToAbsolute: _playerController.seekToAbsoluteSeconds,
+                      onSeekToAbsolute: _seekTo,
                       initialTabIndex: tab,
                     ),
                   ),
@@ -1957,7 +2011,7 @@ class _PlayerScreenState extends State<PlayerScreen> {
                       playbackRates: _playbackRates,
                       onRateChanged: _setPlaybackRate,
                       onSeekToAbsolute:
-                          _playerController.seekToAbsoluteSeconds,
+                          _seekTo,
                       initialSection: section,
                       onClose: dismiss,
                     ),
@@ -2134,14 +2188,14 @@ class _PlayerScreenState extends State<PlayerScreen> {
   Future<void> _autoSkipIntro() async {
     final nav = _episodeNav;
     if (nav == null || _isDisposing || !mounted) return;
-    await _playerController.seekToAbsoluteSeconds(nav.introSkipTarget);
+    await _seekTo(nav.introSkipTarget);
   }
 
   Future<void> _skipIntroFromControl() async {
     final nav = _episodeNav;
     if (nav == null || !nav.showSkipIntro) return;
     final end = nav.introSkipTarget;
-    await _playerController.seekToAbsoluteSeconds(end);
+    await _seekTo(end);
     nav.skipIntro();
     _showControlsTransient();
   }
@@ -2315,7 +2369,7 @@ class _PlayerScreenState extends State<PlayerScreen> {
                       duration: _playerController.duration,
                       onRestart: () {
                         dismiss();
-                        _playerController.seekToAbsoluteSeconds(0);
+                        _seekTo(0);
                       },
                       onClose: dismiss,
                     ),
@@ -2355,7 +2409,117 @@ class _PlayerScreenState extends State<PlayerScreen> {
   void _togglePlayPause() {
     _wantsPlayback = !_playerController.isPlaying;
     _playerController.togglePlayPause();
+    final party = _party;
+    if (party != null) {
+      unawaited(party.sendPlaying(
+          _playerController.isPlaying, _playerController.position));
+    }
     _hideControlsWithDelay();
+  }
+
+  /// Toute recherche voulue par la personne devant l'écran passe ici, pour que
+  /// la séance, s'il y en a une, suive. Les recalages venus de la séance, eux,
+  /// vont droit au contrôleur ([_WatchPartyBinding.applySeek]).
+  Future<void> _seekTo(int absoluteSeconds) async {
+    final target = absoluteSeconds < 0 ? 0 : absoluteSeconds;
+    // Annoncé avant d'attendre : une reconstruction de session HLS peut
+    // prendre plusieurs secondes, les autres n'ont pas à les attendre.
+    final party = _party;
+    if (party != null) {
+      unawaited(party.sendSeek(Duration(seconds: target),
+          playing: _playerController.isPlaying));
+    }
+    await _playerController.seekToAbsoluteSeconds(target);
+  }
+
+  // ==================== Regarder ensemble ====================
+
+  void _handleWatchPartyChanged() {
+    final next = WatchPartySession.active.value;
+    final eligible = next != null &&
+        !next.isClosed &&
+        _sourceAccountId != null &&
+        next.accountId == _sourceAccountId;
+    final target = eligible ? next : null;
+    if (identical(target, _party)) return;
+    _party?.detach(_partyBinding);
+    _party = target;
+    if (target != null) {
+      // L'abonnement précédent n'est coupé qu'ici, pas à la fin de la séance :
+      // son dernier message (« La séance est terminée ») arrive après.
+      unawaited(_partyNotices?.cancel());
+      _partyNotices = target.notices.listen(_showPartyNotice);
+      target.attach(_partyBinding);
+    }
+    _safeSetState(() {});
+  }
+
+  void _showPartyNotice(String text) {
+    _partyNoticeTimer?.cancel();
+    _safeSetState(() {
+      _partyNotice = text;
+      _partyNoticeVisible = true;
+    });
+    _partyNoticeTimer = Timer(const Duration(seconds: 3), () {
+      _safeSetState(() => _partyNoticeVisible = false);
+    });
+  }
+
+  Future<void> _startWatchParty() async {
+    final api = _apiClient;
+    final accountId = _sourceAccountId;
+    if (api == null || accountId == null) {
+      throw StateError('Aucun serveur pour héberger la séance');
+    }
+    await WatchPartySession.create(
+      api: api,
+      accountId: accountId,
+      mediaId: _actualMedia.id,
+      position: _playerController.position,
+      playing: _playerController.isPlaying,
+    );
+  }
+
+  void _leaveWatchParty() {
+    final party = _party;
+    if (party == null) return;
+    unawaited(party.leave());
+    _showPartyNotice('Vous avez quitté la séance');
+  }
+
+  void _showWatchPartyPanel() {
+    _controlsTimer?.cancel();
+    _insertPlayerPopup(
+      (dismiss) => GestureDetector(
+        onTap: dismiss,
+        behavior: HitTestBehavior.translucent,
+        child: Material(
+          type: MaterialType.transparency,
+          child: Center(
+            child: GestureDetector(
+              // Un tap dans le panneau ne doit pas le fermer.
+              onTap: () {},
+              child: WatchPartyPanel(
+                party: _party,
+                onStart: () async {
+                  await _startWatchParty();
+                  dismiss();
+                  if (mounted) _showWatchPartyPanel();
+                },
+                onLeave: () {
+                  dismiss();
+                  _leaveWatchParty();
+                },
+                onClose: () {
+                  dismiss();
+                  _hideControlsWithDelay();
+                },
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
   }
 
   /// Seek from a progress-bar fraction — the modular (Player Studio) layout's
@@ -2372,8 +2536,7 @@ class _PlayerScreenState extends State<PlayerScreen> {
   void _seekToFraction(double fraction) {
     final totalSeconds = _playerController.duration.inSeconds;
     if (totalSeconds <= 0) return;
-    _playerController
-        .seekToAbsoluteSeconds((fraction * totalSeconds).round());
+    _seekTo((fraction * totalSeconds).round());
     _showControlsTransient();
   }
 
@@ -2817,8 +2980,7 @@ class _PlayerScreenState extends State<PlayerScreen> {
                       // One decision point: this rebuilds the HLS session only
                       // if the target is outside what it can serve. Rewinding
                       // stays a plain seek.
-                      await _playerController
-                          .seekToAbsoluteSeconds(value.toInt());
+                      await _seekTo(value.toInt());
                       _hideControlsWithDelay();
                     },
                     onNextEpisode: (_episodeNav?.nextEpisode != null)
@@ -2832,8 +2994,42 @@ class _PlayerScreenState extends State<PlayerScreen> {
                     onFitChanged: _updateVideoFit,
                     playerController: _playerController,
                     episodeNav: _episodeNav,
-                    onSeekToAbsolute: _playerController.seekToAbsoluteSeconds,
+                    onSeekToAbsolute: _seekTo,
                   )),
+                // Regarder ensemble : au-dessus de tous les habillages, au
+                // centre, pour ne rien disputer à leurs boutons.
+                if (!_endCardVisible &&
+                    _apiClient != null &&
+                    _sourceAccountId != null)
+                  Positioned(
+                    top: macOSWindowControlsTopInset + 16,
+                    left: 0,
+                    right: 0,
+                    child: SafeArea(
+                      bottom: false,
+                      child: Column(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          IgnorePointer(
+                            ignoring: !_controlsVisible,
+                            child: AnimatedOpacity(
+                              opacity: _controlsVisible ? 1 : 0,
+                              duration: const Duration(milliseconds: 200),
+                              child: WatchPartyChip(
+                                party: _party,
+                                onTap: _showWatchPartyPanel,
+                              ),
+                            ),
+                          ),
+                          const SizedBox(height: 10),
+                          WatchPartyToast(
+                            message: _partyNotice,
+                            visible: _partyNoticeVisible,
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
                 // Overlays must be AFTER HUD in Stack to render on top.
                 // If the Studio layout already places a skip-intro control —
                 // or the fixed chrome draws its own — hide the built-in
@@ -2848,7 +3044,7 @@ class _PlayerScreenState extends State<PlayerScreen> {
                     countdownSeconds: _episodeNav!.introCountdownSeconds,
                     onSkip: () async {
                       final end = _episodeNav!.introSkipTarget;
-                      await _playerController.seekToAbsoluteSeconds(end);
+                      await _seekTo(end);
                       _episodeNav!.skipIntro();
                     },
                   ),
@@ -3210,3 +3406,60 @@ class _ResolvedChrome {
 
 /// Where the remote lands when the player's HUD comes up.
 enum _RemoteEntry { playPause, scrubber }
+
+/// Le lecteur, tel que la séance le voit. Tout ce qui arrive par ici vient
+/// des autres appareils et ne repart donc pas : voir [WatchPartyPlayer].
+class _WatchPartyBinding implements WatchPartyPlayer {
+  _WatchPartyBinding(this._state);
+
+  final _PlayerScreenState _state;
+  PlayerController get _controller => _state._playerController;
+
+  @override
+  int get mediaId => _state._actualMedia.id;
+
+  @override
+  bool get isReady =>
+      _controller.hasFirstFrame && !_state._isLeaving && !_state._isDisposing;
+
+  @override
+  bool get isBusy {
+    final settles = _state._partySeekSettlesAt;
+    return _controller.isBuffering ||
+        _controller.isSwitchingQuality ||
+        (settles != null && DateTime.now().isBefore(settles));
+  }
+
+  @override
+  bool get isPlaying => _controller.isPlaying;
+
+  @override
+  Duration get position => _controller.position;
+
+  @override
+  Future<void> applyPlaying(bool playing) async {
+    if (_controller.isPlaying == playing) return;
+    _state._wantsPlayback = playing;
+    _controller.togglePlayPause();
+    _state._safeSetState(() {});
+  }
+
+  @override
+  Future<void> applySeek(Duration position) async {
+    _state._partySeekSettlesAt = DateTime.now().add(const Duration(seconds: 4));
+    await _controller
+        .seekToAbsoluteSeconds((position.inMilliseconds / 1000).round());
+  }
+
+  @override
+  void openMedia(HomeMediaItem media, Duration position,
+      {required bool playing}) {
+    if (_state._isLeaving || _state._isDisposing || !_state.mounted) return;
+    _state._navigateToEpisode(
+      media,
+      fromParty: true,
+      resumeAtSeconds: position.inSeconds,
+      startPaused: !playing,
+    );
+  }
+}

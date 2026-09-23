@@ -13,6 +13,7 @@ import 'utils/mpv_native_view.dart';
 import 'utils/window_controls.dart';
 import 'services/api_client.dart';
 import 'services/app_image_cache.dart';
+import 'services/app_updater.dart';
 import 'services/client_identity.dart';
 import 'services/client_log.dart';
 import 'services/auto_download.dart';
@@ -202,6 +203,10 @@ void main() async {
   }
 
   final searchRouteObserver = SearchRouteObserver();
+
+  // L'installeur d'une mise à jour Windows ne peut pas effacer le dossier
+  // temporaire d'où il a tourné : c'est l'app qu'il relance qui s'en charge.
+  unawaited(AppUpdater.purgeStaleWorkDirs());
 
   // Les téléchargements se relisent depuis le disque, pas depuis le serveur :
   // c'est ce qui permet à l'app de savoir ce qu'elle possède avant même de

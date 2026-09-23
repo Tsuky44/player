@@ -1261,6 +1261,75 @@ class ApiClient {
     return response.data["is_finished"] as bool? ?? isFinished;
   }
 
+  // ==================== REGARDER ENSEMBLE ====================
+  //
+  // Voir server/handlers/watch_party.go. Les réponses sont rendues brutes :
+  // c'est [WatchPartySession] qui les date à la réception, ce dont dépend
+  // toute la synchronisation.
+
+  Future<Map<String, dynamic>> createWatchParty({
+    required int mediaId,
+    required double positionSeconds,
+    required bool playing,
+  }) async {
+    final response = await _dio.post('/api/watch-parties', data: {
+      'media_id': mediaId,
+      'position_seconds': positionSeconds,
+      'playing': playing,
+    });
+    return response.data as Map<String, dynamic>;
+  }
+
+  Future<Map<String, dynamic>> joinWatchParty(String code) async {
+    final response =
+        await _dio.post('/api/watch-parties/${Uri.encodeComponent(code)}/join');
+    return response.data as Map<String, dynamic>;
+  }
+
+  /// Attend le prochain changement après [since] — jusqu'à une vingtaine de
+  /// secondes, sous le délai de réception du client.
+  Future<Map<String, dynamic>> pollWatchParty(
+    String code, {
+    required String memberId,
+    required int since,
+    CancelToken? cancelToken,
+  }) async {
+    final response = await _dio.get(
+      '/api/watch-parties/${Uri.encodeComponent(code)}',
+      queryParameters: {'member': memberId, 'since': since},
+      cancelToken: cancelToken,
+    );
+    return response.data as Map<String, dynamic>;
+  }
+
+  Future<Map<String, dynamic>> updateWatchParty(
+    String code, {
+    required String memberId,
+    required String action,
+    bool? playing,
+    double? positionSeconds,
+    int? mediaId,
+  }) async {
+    final response = await _dio.post(
+      '/api/watch-parties/${Uri.encodeComponent(code)}/state',
+      data: {
+        'member_id': memberId,
+        'action': action,
+        if (playing != null) 'playing': playing,
+        if (positionSeconds != null) 'position_seconds': positionSeconds,
+        if (mediaId != null) 'media_id': mediaId,
+      },
+    );
+    return response.data as Map<String, dynamic>;
+  }
+
+  Future<void> leaveWatchParty(String code, {required String memberId}) async {
+    await _dio.post(
+      '/api/watch-parties/${Uri.encodeComponent(code)}/leave',
+      data: {'member_id': memberId},
+    );
+  }
+
   Future<Map<String, dynamic>> setMediaWatched(
       int mediaId, bool watched) async {
     final response = await _dio.post("/api/media/$mediaId/watched", data: {

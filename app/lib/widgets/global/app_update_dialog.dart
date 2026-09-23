@@ -148,7 +148,15 @@ class _AppUpdateDialogState extends State<_AppUpdateDialog> {
     final prepared = _prepared;
     if (prepared == null) return;
     _autoRestartTimer?.cancel();
-    await AppUpdater.applyAndRestart(prepared);
+    try {
+      await AppUpdater.applyAndRestart(prepared);
+    } catch (_) {
+      // The helper never started (Windows updater missing or blocked): the
+      // app is still running, so say so instead of hanging on this dialog.
+      _prepared = null;
+      _fail('Impossible de lancer la mise à jour.');
+      return;
+    }
     // Desktop never reaches here — the helper it just launched is waiting on
     // this process to exit. Android does: its installer takes over the
     // screen on its own, so the dialog underneath is just clutter once that
