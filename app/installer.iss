@@ -58,7 +58,21 @@ Name: "{group}\Onyx"; Filename: "{app}\app.exe"
 Name: "{commondesktop}\Onyx"; Filename: "{app}\app.exe"
 
 [Run]
+; Le service de mise a jour (ADR-0030), installe avec les droits admin de
+; l'installation pour que les mises a jour n'en demandent plus jamais.
+; Relance a chaque installation pour remettre sa configuration d'aplomb.
+Filename: "{app}\onyx-updater.exe"; Parameters: "install-service"; Flags: runhidden waituntilterminated
 Filename: "{app}\app.exe"; Description: "Lancer Onyx"; Flags: nowait postinstall skipifsilent
+
+[UninstallRun]
+Filename: "{app}\onyx-updater.exe"; Parameters: "uninstall-service"; Flags: runhidden waituntilterminated; RunOnceId: "OnyxUpdaterService"
+
+[UninstallDelete]
+; Les mises a jour remplacent les fichiers sans passer par Inno : ceux qu'une
+; version a ajoutes manquent au journal de desinstallation, les restes d'une
+; mise a jour (.update-old-*) aussi. Le dossier est a nous : l'emplacement
+; choisi a l'installation finit toujours par \Onyx (voir DirLinkClick).
+Type: filesandordirs; Name: "{app}"
 
 [Code]
 const

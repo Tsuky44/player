@@ -62,6 +62,7 @@ func main() {
 	go handlers.RunFederation(playbackContext)
 	go handlers.RunEmbySync(playbackContext)
 	go handlers.RunPlaybackActivity(playbackContext)
+	go handlers.RunWatchParties(playbackContext)
 
 	// Initialize router
 	router := httprouter.New()
@@ -193,6 +194,13 @@ func main() {
 	router.POST("/api/playing", handlers.RequireAuth(handlers.ReportPlayback))
 	// Le journal du client pour la lecture en cours, envoyé avant son arrêt.
 	router.POST("/api/playing/logs", handlers.RequireAuth(handlers.AttachPlaybackLogs))
+	// Regarder ensemble : une séance partagée entre plusieurs appareils et
+	// comptes, synchronisée par long-polling (handlers/watch_party.go).
+	router.POST("/api/watch-parties", handlers.RequireAuth(handlers.CreateWatchParty))
+	router.GET("/api/watch-parties/:code", handlers.RequireAuth(handlers.PollWatchParty))
+	router.POST("/api/watch-parties/:code/join", handlers.RequireAuth(handlers.JoinWatchParty))
+	router.POST("/api/watch-parties/:code/state", handlers.RequireAuth(handlers.UpdateWatchParty))
+	router.POST("/api/watch-parties/:code/leave", handlers.RequireAuth(handlers.LeaveWatchParty))
 	router.GET("/api/me/stats", handlers.RequireAuth(handlers.GetMyPlaybackStats))
 	router.GET("/api/me/devices", handlers.RequireAuth(handlers.ListMyDevices))
 	router.DELETE("/api/me/devices/:id", handlers.RequireAuth(handlers.RevokeMyDevice))

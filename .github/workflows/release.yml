@@ -499,6 +499,23 @@ jobs:
             -DestinationPath "out\Onyx-$env:VERSION-windows-portable.zip" -Force
           Get-ChildItem out
 
+      # Le ZIP portable est aussi le paquet de mise a jour : onyx-updater.exe
+      # ne l'applique que signe par cette cle (ADR-0030). Sans elle, les postes
+      # Windows deja installes restent sur leur version.
+      - name: Signer la mise a jour Windows
+        env:
+          VERSION: ${{ needs.prepare.outputs.version }}
+          ONYX_UPDATE_SIGNING_KEY: ${{ secrets.ONYX_UPDATE_SIGNING_KEY }}
+        run: |
+          $ErrorActionPreference = "Stop"
+          if (-not $env:ONYX_UPDATE_SIGNING_KEY) {
+            Write-Host "::warning::ONYX_UPDATE_SIGNING_KEY absent — ZIP Windows non signe : les installations existantes refuseront cette mise a jour. Voir docs/release-ci.md."
+            exit 0
+          }
+          & scripts\sign-windows-update.ps1 `
+            -Zip "out\Onyx-$env:VERSION-windows-portable.zip" `
+            -Version $env:VERSION
+
       - uses: actions/upload-artifact@v4
         with:
           name: installer-windows

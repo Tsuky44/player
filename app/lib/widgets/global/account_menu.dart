@@ -8,6 +8,7 @@ import '../../theme/app_colors.dart';
 import '../../tv/tv_mode.dart';
 import '../../utils/app_platform.dart';
 import 'glass_chrome.dart';
+import 'join_watch_party_dialog.dart';
 
 /// Single owner of the account menu — consumed by the desktop header, the
 /// compact tab bar and the Home overlay bar so all three stay identical.
@@ -79,6 +80,17 @@ class AccountMenu extends StatelessWidget {
               ),
           const PopupMenuDivider(),
         ],
+        const PopupMenuItem(
+          value: 'watch-party',
+          child: Row(
+            children: [
+              Icon(Icons.groups_rounded, size: 16),
+              SizedBox(width: 8),
+              Text('Rejoindre une séance'),
+            ],
+          ),
+        ),
+        const PopupMenuDivider(),
         const PopupMenuItem(value: 'servers', child: Text('Serveurs')),
         const PopupMenuItem(value: 'settings', child: Text('Paramètres')),
         const PopupMenuItem(value: 'studio', child: Text('Player Studio')),
@@ -96,6 +108,8 @@ class AccountMenu extends StatelessWidget {
           return;
         }
         switch (value) {
+          case 'watch-party':
+            await showJoinWatchPartyDialog(context, authProvider: authProvider);
           case 'servers':
             Navigator.of(context, rootNavigator: true).push(
               MaterialPageRoute(

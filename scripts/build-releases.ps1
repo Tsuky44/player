@@ -81,6 +81,13 @@ try {
         $zipPath = Join-Path $WindowsOut "Playeur-$Version-windows-x64.zip"
         if (Test-Path $zipPath) { Remove-Item $zipPath -Force }
         Compress-Archive -Path (Join-Path $release "*") -DestinationPath $zipPath -Force
+        # Le ZIP sert aussi de paquet de mise a jour, qui n'est applique que
+        # signe (ADR-0030).
+        if ($env:ONYX_UPDATE_SIGNING_KEY) {
+            & (Join-Path $PSScriptRoot "sign-windows-update.ps1") -Zip $zipPath -Version $Version
+        } else {
+            Write-Warning "ONYX_UPDATE_SIGNING_KEY absent : ZIP non signe, les installations Windows refuseront cette mise a jour."
+        }
         Write-Host "    ✓ ZIP → $zipPath"
         Add-Content $Manifest "windows_zip: $zipPath"
 

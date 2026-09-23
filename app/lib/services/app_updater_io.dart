@@ -6,19 +6,17 @@ import 'android_apk_installer.dart';
 ///
 /// On macOS and Windows the whole point is that the user never handles a
 /// file: we fetch the same artifact the download page serves, unpack it while
-/// the app keeps running, and leave a small helper script behind that
-/// performs the swap in the two seconds after we quit — that last part has to
-/// happen outside our process, since nothing can overwrite a running .app
-/// bundle or a locked .exe from within.
+/// the app keeps running, and hand over to something outside our process that
+/// performs the swap in the seconds after we quit — nothing can overwrite a
+/// running .app bundle or a locked .exe from within. On macOS that is a small
+/// shell script; on Windows it is `onyx-updater.exe`, shipped next to the app
+/// (see `windows/updater/` and ADR-0030).
 ///
 /// Android has no such swap to perform — the APK *is* the installable
 /// artifact — so it skips straight to handing it to the system installer (see
 /// `android_apk_installer.dart`). That installer's confirmation screen is the
 /// OS's own and cannot be skipped, which is also why the app is never quit on
 /// that path: unlike the desktop helper, nothing here is waiting on our PID.
-///
-/// The Windows portable ZIP has no install step at all, so it simply reports
-/// unsupported and the caller hides its button.
 
 /// Something went wrong in a way the user can act on — the message is shown
 /// as-is in the update dialog.
@@ -36,14 +34,15 @@ class UpdateException implements Exception {
 /// matter of quitting and letting the helper run — or, on Android, handing the
 /// APK to the system installer.
 class PreparedUpdate {
-  /// The desktop helper script that waits for our exit and swaps the app, or
-  /// the downloaded APK's own path on Android — which one [_isAndroidApk]
-  /// says.
+  /// The macOS helper script that waits for our exit and swaps the app, the
+  /// signed ZIP on Windows, or the downloaded APK on Android — which one the
+  /// platform and [_isAndroidApk] say.
   final String _launcherPath;
 
   /// Temp directory holding the download and the staged app, removed by the
-  /// helper once the swap succeeded (desktop), or by [discard] directly
-  /// (Android, which has no helper to do it).
+  /// helper once the swap succeeded (macOS), by [AppUpdater.purgeStaleWorkDirs]
+  /// on the next launch (Windows, whose updater only copies the ZIP out), or by
+  /// [discard] directly (Android, which has no helper to do it).
   final String _workDir;
 
   final bool _isAndroidApk;
@@ -66,11 +65,16 @@ class PreparedUpdate {
 abstract final class AppUpdater {
   /// True when we can install this artifact over the running app.
   ///
-  /// Keyed on the server's platform string so `windows-portable` — a ZIP with
-  /// no installer — is correctly rejected on a Windows host.
+  /// Keyed on the server's platform string. On Windows that is
+  /// `windows-portable`: the signed ZIP is what `onyx-updater.exe` applies,
+  /// the installer only serves first installs. An install without the updater
+  /// next to it (older than ADR-0030) cannot apply it.
   static bool supports(String platform) {
     if (Platform.isMacOS) return platform == 'macos';
-    if (Platform.isWindows) return platform == 'windows';
+    if (Platform.isWindows) {
+      return platform == 'windows-portable' &&
+          File(_windowsUpdaterPath()).existsSync();
+    }
     if (Platform.isAndroid) return platform == 'android';
     return false;
   }
@@ -89,6 +93,24 @@ abstract final class AppUpdater {
   /// directory is not worth an error path.
   static void discardWorkDir(String path) {
     Directory(path).delete(recursive: true).ignore();
+  }
+
+  /// Removes what an update applied in a previous session left in the temp
+  /// directory. On Windows nothing else does: the updater copies the ZIP out
+  /// and never touches our temp directory, so the app it relaunches cleans
+  /// up. Best effort — a file still locked is simply retried on the next
+  /// launch.
+  static Future<void> purgeStaleWorkDirs() async {
+    if (!Platform.isWindows) return;
+    try {
+      await for (final entry in Directory.systemTemp.list(followLinks: false)) {
+        final name = entry.path.split(Platform.pathSeparator).last;
+        // Also catches `onyx-update-cleanup-*.cmd`, which the batch-based
+        // updater of earlier versions left behind.
+        if (!name.startsWith('onyx-update-')) continue;
+        entry.delete(recursive: true).ignore();
+      }
+    } catch (_) {}
   }
 
   /// Unpacks [archivePath] and writes the helper that will apply it.
@@ -110,11 +132,11 @@ abstract final class AppUpdater {
 
   /// Hands the update over and, on desktop, quits.
   ///
-  /// On macOS and Windows this never returns: the helper is already waiting on
-  /// our PID, and staying alive would only make it wait longer. On Android the
-  /// system installer takes over the screen on its own — the app is not
-  /// quit, because cancelling that screen must leave a working app behind, not
-  /// a process that already exited.
+  /// On macOS and Windows this never returns once the handoff succeeded: the
+  /// helper is already waiting on our PID, and staying alive would only make
+  /// it wait longer. On Android the system installer takes over the screen on
+  /// its own — the app is not quit, because cancelling that screen must leave
+  /// a working app behind, not a process that already exited.
   static Future<void> applyAndRestart(PreparedUpdate update) async {
     if (update._isAndroidApk) {
       await AndroidApkInstaller.install(update._launcherPath);
@@ -122,9 +144,11 @@ abstract final class AppUpdater {
     }
 
     if (Platform.isWindows) {
+      // A GUI executable: no console flashes, and the app it relaunches has
+      // no console to attach to either.
       await Process.start(
-        'cmd',
-        ['/c', 'start', '', '/min', update._launcherPath],
+        _windowsUpdaterPath(),
+        ['apply', '--package', update._launcherPath, '--pid', '$pid'],
         mode: ProcessStartMode.detached,
       );
     } else {
@@ -294,104 +318,40 @@ open $t
 // Windows
 // -----------------------------------------------------------------------------
 
-/// Nothing to unpack: the artifact *is* the installer. It runs silently after
-/// we quit, then the helper starts the freshly installed executable — the Inno
-/// script marks its own post-install launch `skipifsilent`, so the relaunch is
-/// ours to do.
-Future<PreparedUpdate> _prepareWindows(
-    String setupPath, String workDir) async {
-  final target = Platform.resolvedExecutable;
+/// `onyx-updater.exe`, next to `app.exe`: `flutter build windows` puts it
+/// there (windows/CMakeLists.txt), so both the installer and the ZIP carry it.
+String _windowsUpdaterPath() =>
+    '${File(Platform.resolvedExecutable).parent.path}\\onyx-updater.exe';
 
-  // Lives next to workDir, not inside it: the cleanup step it runs deletes
-  // workDir, and a script cannot survive deleting its own containing folder —
-  // see the comment on _windowsCleanup below.
-  final cleanup = File(
-      '${Directory.systemTemp.path}\\onyx-update-cleanup-$pid.cmd');
-  await cleanup.writeAsString(_windowsCleanup(workDir: workDir));
-
-  final script = File('$workDir\\apply-update.cmd');
-  await script.writeAsString(_windowsLauncher(
-    pid: pid,
-    setup: setupPath,
-    target: target,
-    cleanupScript: cleanup.path,
-  ));
-  return PreparedUpdate._(script.path, workDir);
-}
-
-/// `/SILENT` still shows a progress window (and the UAC prompt the installer
-/// requires), which is the honest thing to show while system files change.
-String _windowsLauncher({
-  required int pid,
-  required String setup,
-  required String target,
-  required String cleanupScript,
-}) {
-  final s = _windowsQuote(setup);
-  final t = _windowsQuote(target);
-  final c = _windowsQuote(cleanupScript);
-  return '''
-@echo off
-rem Genere par Onyx - applique la mise a jour des que l'app est fermee.
-setlocal
-set /a tries=0
-:wait
-tasklist /FI "PID eq $pid" 2>nul | find "$pid" >nul || goto run
-set /a tries+=1
-if %tries% gtr 150 exit /b 1
-ping -n 2 127.0.0.1 >nul
-goto wait
-
-:run
-start "" /wait $s /SILENT /NOCANCEL /NORESTART /SUPPRESSMSGBOXES
-start "" $t
-start "" /min $c
-''';
-}
-
-/// Deletes the temp directory this update was staged in — but from outside
-/// it, and after a short delay.
+/// Nothing to unpack here: the updater verifies the ZIP's signature, extracts
+/// it and swaps the files itself, showing its own small window meanwhile, then
+/// relaunches the app. It goes through the `OnyxUpdater` service when the app
+/// lives in Program Files, so updating never asks for admin rights.
 ///
-/// This used to be the last line of [_windowsLauncher] itself
-/// (`rmdir /s /q` on its own containing folder). cmd.exe reads a batch file
-/// from disk one line at a time rather than loading it upfront, so deleting
-/// the folder out from under a script that is still executing *from a file in
-/// that folder* made it lose track of where it was: it failed with "Le chemin
-/// d'accès spécifié est introuvable" instead of exiting, leaving a console
-/// window behind — one the freshly relaunched app then appeared to depend on,
-/// since closing it took Onyx down too. This script never reads itself from
-/// workDir, so deleting workDir out from under it is safe; the delay just
-/// gives the launcher's own console time to close first.
-///
-/// Left behind afterward rather than self-deleted: a few hundred leftover
-/// bytes in the system temp directory is a better trade than reintroducing
-/// the very same class of bug to shave them off.
-String _windowsCleanup({required String workDir}) {
-  final w = _windowsQuote(workDir);
-  return '''
-@echo off
-ping -n 3 127.0.0.1 >nul
-rmdir /s /q $w
-''';
+/// This used to run the Inno installer from a generated `.cmd` helper, which
+/// left two console windows behind — `start` runs a batch file under
+/// `cmd /K` — and relaunched the app attached to one of them, so closing it
+/// closed Onyx.
+Future<PreparedUpdate> _prepareWindows(String zipPath, String workDir) async {
+  if (!File(_windowsUpdaterPath()).existsSync()) {
+    throw UpdateException(
+      'Programme de mise à jour introuvable. Réinstallez Onyx une fois '
+      'depuis la page de téléchargement.',
+    );
+  }
+  return PreparedUpdate._(zipPath, workDir);
 }
 
 // -----------------------------------------------------------------------------
 // Quoting
 // -----------------------------------------------------------------------------
 
-/// Both launchers are generated text, so a path carrying the shell's own quote
-/// character would break out of the string. Temp dirs and install paths never
+/// The macOS launcher is generated text, so a path carrying the shell's own
+/// quote character would break out of the string. Temp dirs and install paths never
 /// contain one; refusing is the safe answer if it ever happens.
 String _shellQuote(String path) {
   if (path.contains("'") || path.contains('\n')) {
     throw UpdateException('Chemin non supporté pour la mise à jour : $path');
   }
   return "'$path'";
-}
-
-String _windowsQuote(String path) {
-  if (path.contains('"') || path.contains('\n')) {
-    throw UpdateException('Chemin non supporté pour la mise à jour : $path');
-  }
-  return '"$path"';
 }

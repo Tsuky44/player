@@ -12,7 +12,7 @@ import 'app_updater.dart';
 abstract final class UpdateChecker {
   /// An update to auto-install over the running app, or null when there is
   /// none — no newer artifact, nothing published for this OS, or an artifact
-  /// we cannot install over ourselves (Android, the Windows portable ZIP).
+  /// we cannot install over ourselves.
   ///
   /// A version we cannot compare (unnamed artifact, unreadable package info)
   /// is treated as "no update" — staying quiet beats nagging about a phantom
@@ -20,7 +20,7 @@ abstract final class UpdateChecker {
   static Future<AppDownload?> findAvailableUpdate(ApiClient api) async {
     if (AppPlatform.isWeb) return null;
     try {
-      final match = pickDownloadForCurrentPlatform(await api.getAppDownloads());
+      final match = _pickUpdateArtifact(await api.getAppDownloads());
       if (match == null) return null;
       if (!AppUpdater.supports(match.platform)) return null;
 
@@ -41,6 +41,20 @@ abstract final class UpdateChecker {
       return null;
     }
   }
+}
+
+/// What an installed app updates itself from. On Windows that is the signed
+/// portable ZIP, which `onyx-updater.exe` applies in place — the installer is
+/// only for first installs (ADR-0030). Elsewhere, the same artifact the
+/// download page offers.
+AppDownload? _pickUpdateArtifact(List<AppDownload> downloads) {
+  if (AppPlatform.isWindows) {
+    for (final download in downloads) {
+      if (download.platform == 'windows-portable') return download;
+    }
+    return null;
+  }
+  return pickDownloadForCurrentPlatform(downloads);
 }
 
 /// The artifact matching the OS we run on, or null when nobody published it.
