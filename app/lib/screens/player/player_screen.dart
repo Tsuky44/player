@@ -2434,12 +2434,17 @@ class _PlayerScreenState extends State<PlayerScreen> {
 
   // ==================== Regarder ensemble ====================
 
+  /// Le serveur qui héberge une séance ouverte d'ici. Une installation sans
+  /// carnet de comptes n'a pas d'identifiant : la séance n'en dépend pas.
+  String get _partyAccountKey =>
+      _sourceAccountId ?? WatchPartySession.defaultAccountKey;
+
   void _handleWatchPartyChanged() {
     final next = WatchPartySession.active.value;
     final eligible = next != null &&
         !next.isClosed &&
-        _sourceAccountId != null &&
-        next.accountId == _sourceAccountId;
+        _apiClient != null &&
+        next.accountId == _partyAccountKey;
     final target = eligible ? next : null;
     if (identical(target, _party)) return;
     _party?.detach(_partyBinding);
@@ -2467,13 +2472,12 @@ class _PlayerScreenState extends State<PlayerScreen> {
 
   Future<void> _startWatchParty() async {
     final api = _apiClient;
-    final accountId = _sourceAccountId;
-    if (api == null || accountId == null) {
+    if (api == null) {
       throw StateError('Aucun serveur pour héberger la séance');
     }
     await WatchPartySession.create(
       api: api,
-      accountId: accountId,
+      accountId: _partyAccountKey,
       mediaId: _actualMedia.id,
       position: _playerController.position,
       playing: _playerController.isPlaying,
@@ -2998,9 +3002,7 @@ class _PlayerScreenState extends State<PlayerScreen> {
                   )),
                 // Regarder ensemble : au-dessus de tous les habillages, au
                 // centre, pour ne rien disputer à leurs boutons.
-                if (!_endCardVisible &&
-                    _apiClient != null &&
-                    _sourceAccountId != null)
+                if (!_endCardVisible && _apiClient != null)
                   Positioned(
                     top: macOSWindowControlsTopInset + 16,
                     left: 0,

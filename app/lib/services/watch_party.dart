@@ -48,6 +48,10 @@ class WatchPartySession extends ChangeNotifier {
     _driftTimer = Timer.periodic(_driftCheckInterval, (_) => _reconcile());
   }
 
+  /// La clé de compte quand le client n'en désigne aucun (installation à un
+  /// seul serveur, d'avant le carnet de comptes).
+  static const String defaultAccountKey = '_default';
+
   /// La séance en cours sur cet appareil, s'il y en a une.
   static final ValueNotifier<WatchPartySession?> active = ValueNotifier(null);
 

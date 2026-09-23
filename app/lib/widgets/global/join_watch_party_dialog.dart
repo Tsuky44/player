@@ -70,20 +70,19 @@ class _JoinWatchPartyDialogState extends State<_JoinWatchPartyDialog> {
       setState(() => _error = 'Entrez le code affiché chez l’hôte.');
       return;
     }
-    final accountId = widget.authProvider.activeServer?.id;
-    if (accountId == null) {
-      setState(() => _error = 'Aucun serveur actif.');
-      return;
-    }
+    // Le même compte que celui sur lequel le lecteur s'ouvrira.
+    final shared = widget.authProvider.apiClient;
+    final accountId = shared.accountId;
     setState(() {
       _joining = true;
       _error = null;
     });
     try {
-      final api = await widget.authProvider.apiClient.pinToAccount(accountId);
+      final api =
+          accountId == null ? shared : await shared.pinToAccount(accountId);
       final session = await WatchPartySession.join(
         api: api,
-        accountId: accountId,
+        accountId: accountId ?? WatchPartySession.defaultAccountKey,
         code: code,
       );
       if (!mounted) {
