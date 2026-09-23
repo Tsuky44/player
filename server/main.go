@@ -192,6 +192,8 @@ func main() {
 	// Activité : le lecteur signale ce qu'il lit, les administrateurs voient
 	// qui regarde quoi, l'historique et les statistiques. Voir activity.go.
 	router.POST("/api/playing", handlers.RequireAuth(handlers.ReportPlayback))
+	router.GET("/api/playing/handoff", handlers.RequireAuth(handlers.GetPlaybackHandoff))
+	router.GET("/api/me/now-playing", handlers.RequireAuth(handlers.GetMyRemotePlaybacks))
 	// Le journal du client pour la lecture en cours, envoyé avant son arrêt.
 	router.POST("/api/playing/logs", handlers.RequireAuth(handlers.AttachPlaybackLogs))
 	// Regarder ensemble : une séance partagée entre plusieurs appareils et
