@@ -11,6 +11,7 @@ import 'package:media_kit/media_kit.dart';
 import 'utils/app_platform.dart';
 import 'utils/mpv_native_view.dart';
 import 'utils/window_controls.dart';
+import 'utils/detached_output.dart';
 import 'services/api_client.dart';
 import 'services/app_image_cache.dart';
 import 'services/app_updater.dart';
@@ -119,7 +120,9 @@ Future<void> _configureSystemUi() async {
   );
 }
 
-void main() async {
+void main(List<String> args) => DetachedOutput.run(args, _main);
+
+Future<void> _main() async {
   WidgetsFlutterBinding.ensureInitialized();
   // Avant tout le reste : ce qui s'écrit pendant le démarrage — les capacités
   // de l'appareil, le profil de lecture retenu, une requête qui échoue — est

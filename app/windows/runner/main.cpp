@@ -22,6 +22,14 @@ int APIENTRY wWinMain(_In_ HINSTANCE instance, _In_opt_ HINSTANCE prev,
   std::vector<std::string> command_line_arguments =
       GetCommandLineArguments();
 
+  // Lancée depuis le menu Démarrer, l'app n'a ni console ni sortie redirigée,
+  // et le moteur tombait (0xc0000409) en y recopiant les print de Dart au
+  // lancement d'un média. L'app coupe alors print : voir DetachedOutput
+  // (lib/utils/detached_output.dart), dont kNoStdoutFlag est le drapeau.
+  if (!HasStandardOutput()) {
+    command_line_arguments.push_back(kNoStdoutFlag);
+  }
+
   project.set_dart_entrypoint_arguments(std::move(command_line_arguments));
 
   FlutterWindow window(project);
