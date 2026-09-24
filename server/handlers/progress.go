@@ -57,6 +57,20 @@ func parseClientUpdatedAt(raw string) (time.Time, bool) {
 	return parsed, true
 }
 
+// watchedThresholdPercent est la part d'un média à partir de laquelle il
+// compte comme vu : pour la progression d'un compte comme pour la destruction
+// d'un lien de partage à usage unique.
+const watchedThresholdPercent = 90.0
+
+// reachedWatchedThreshold dit si une lecture arrivée à positionSeconds a vu le
+// média. Une durée inconnue ne permet pas de le dire.
+func reachedWatchedThreshold(positionSeconds, durationSeconds int) bool {
+	if durationSeconds <= 0 || positionSeconds <= 0 {
+		return false
+	}
+	return float64(positionSeconds)/float64(durationSeconds)*100 >= watchedThresholdPercent
+}
+
 // UpdateProgress handles the streaming heartbeat and saves progress (POST /api/progress)
 func UpdateProgress(w http.ResponseWriter, r *http.Request, _ httprouter.Params, userID int) {
 	w.Header().Set("Content-Type", "application/json")
@@ -89,14 +103,7 @@ func UpdateProgress(w http.ResponseWriter, r *http.Request, _ httprouter.Params,
 		).Scan(&effectiveDuration)
 	}
 
-	// Determine if finished. If position is >= 90% of duration, mark as finished.
-	isFinished := req.IsFinished
-	if !isFinished && effectiveDuration > 0 && req.CurrentPositionSeconds > 0 {
-		percentWatched := (float64(req.CurrentPositionSeconds) / float64(effectiveDuration)) * 100
-		if percentWatched >= 90.0 {
-			isFinished = true
-		}
-	}
+	isFinished := req.IsFinished || reachedWatchedThreshold(req.CurrentPositionSeconds, effectiveDuration)
 
 	// When the play is being replayed after the fact, it carries its own time
 	// and only wins if nothing more recent has landed since. A live heartbeat

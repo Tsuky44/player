@@ -9,6 +9,7 @@ import '../../providers/auth_provider.dart';
 import '../../providers/home_provider.dart';
 import '../../screens/player/player_screen.dart';
 import '../../theme/app_colors.dart';
+import '../../utils/on_screen.dart';
 import '../../utils/poster_url.dart';
 
 /// « Lecture en cours sur un autre appareil » : ce que le compte lit ailleurs,
@@ -23,7 +24,8 @@ class RemotePlaybackBanner extends StatefulWidget {
   State<RemotePlaybackBanner> createState() => _RemotePlaybackBannerState();
 }
 
-class _RemotePlaybackBannerState extends State<RemotePlaybackBanner> {
+class _RemotePlaybackBannerState extends State<RemotePlaybackBanner>
+    with OnScreenState {
   static const _pollInterval = Duration(seconds: 10);
 
   Timer? _timer;
@@ -31,9 +33,15 @@ class _RemotePlaybackBannerState extends State<RemotePlaybackBanner> {
   final Set<String> _dismissed = {};
   bool _opening = false;
 
+  /// Le sondage ne tourne que quand l'accueil est vu : sous le lecteur, dans
+  /// un autre onglet ou fenêtre réduite, il demandait au serveur toutes les
+  /// dix secondes un bandeau que personne ne verrait. Au retour, une relecture
+  /// tout de suite remet le bandeau à jour.
   @override
-  void initState() {
-    super.initState();
+  void didChangeOnScreen(bool onScreen) {
+    _timer?.cancel();
+    _timer = null;
+    if (!onScreen) return;
     WidgetsBinding.instance.addPostFrameCallback((_) => _refresh());
     _timer = Timer.periodic(_pollInterval, (_) => _refresh());
   }

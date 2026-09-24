@@ -21,6 +21,7 @@ import (
 	"project-player/server/logging"
 	"project-player/server/middleware"
 	"project-player/server/models"
+	"project-player/server/sharepage"
 	"project-player/server/streaming"
 	"project-player/server/webui"
 
@@ -209,6 +210,25 @@ func main() {
 	router.POST("/api/watch-parties/:code/join", handlers.RequireAuth(handlers.JoinWatchParty))
 	router.POST("/api/watch-parties/:code/state", handlers.RequireAuth(handlers.UpdateWatchParty))
 	router.POST("/api/watch-parties/:code/leave", handlers.RequireAuth(handlers.LeaveWatchParty))
+	// Liens de partage publics (ADR-0037). Les créer fait lire le serveur par
+	// un inconnu : c'est un droit à part, share_media.
+	router.GET("/api/shares", handlers.RequirePermission(models.PermShareMedia, handlers.ListMediaShares))
+	router.POST("/api/shares", handlers.RequirePermission(models.PermShareMedia, handlers.CreateMediaShare))
+	router.DELETE("/api/shares/:id", handlers.RequirePermission(models.PermShareMedia, handlers.DeleteMediaShare))
+	// Le visiteur du lien, sans compte. Publiques parce qu'un lien s'ouvre sans
+	// compte ; elles ne parlent qu'en code aléatoire (128 bits, porté dans le
+	// corps), et n'exposent que le média de ce lien. L'ouverture, qui vérifie
+	// le mot de passe, a la limite de la connexion ; les autres suivent le
+	// rythme d'une lecture.
+	router.POST("/api/shared/info", handlers.RateLimited(handlers.PollLimiter, handlers.SharedMediaInfo))
+	router.POST("/api/shared/open", handlers.RateLimited(handlers.LoginLimiter, handlers.OpenSharedMedia))
+	router.POST("/api/shared/renew", handlers.RateLimited(handlers.PollLimiter, handlers.RenewSharedMedia))
+	router.POST("/api/shared/progress", handlers.RateLimited(handlers.PollLimiter, handlers.ReportSharedMediaProgress))
+	router.POST("/api/shared/close", handlers.RateLimited(handlers.PollLimiter, handlers.CloseSharedMedia))
+	// La page du lien : /share#code. Statique, le code reste dans le fragment.
+	router.GET("/share", sharepage.Page)
+	router.HEAD("/share", sharepage.Page)
+	router.GET("/share/assets/:file", sharepage.Asset)
 	router.GET("/api/me/stats", handlers.RequireAuth(handlers.GetMyPlaybackStats))
 	router.GET("/api/me/devices", handlers.RequireAuth(handlers.ListMyDevices))
 	router.DELETE("/api/me/devices/:id", handlers.RequireAuth(handlers.RevokeMyDevice))

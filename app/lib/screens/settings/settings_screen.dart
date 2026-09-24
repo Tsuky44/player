@@ -21,6 +21,7 @@ import 'pages/linked_servers_page.dart';
 import 'pages/logs_page.dart';
 import 'pages/playback_page.dart';
 import 'pages/servers_page.dart';
+import 'pages/shares_page.dart';
 import 'pages/stats_page.dart';
 import 'pages/users_page.dart';
 import 'widgets/settings_ui.dart';
@@ -31,6 +32,7 @@ abstract final class SettingsSections {
   static const playback = 'playback';
   static const downloads = 'downloads';
   static const servers = 'servers';
+  static const shares = 'shares';
   static const emby = 'emby';
   static const device = 'device';
   static const apps = 'apps';
@@ -107,6 +109,15 @@ List<_Category> _categoriesFor(Permissions p) {
       admin: false,
       builder: (_) => const ServersPage(),
     ),
+    if (p.shareMedia)
+      _Category(
+        id: SettingsSections.shares,
+        label: 'Liens de partage',
+        icon: Icons.link_rounded,
+        hint: 'Les médias partagés par lien, et de quoi les couper',
+        admin: false,
+        builder: (_) => const SharesPage(),
+      ),
     _Category(
       id: SettingsSections.emby,
       label: 'Synchro Emby',

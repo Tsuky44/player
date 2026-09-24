@@ -125,11 +125,11 @@ func UpdateUserPermissions(w http.ResponseWriter, r *http.Request, ps httprouter
 		`UPDATE users SET
 			perm_manage_settings = ?, perm_manage_library = ?, perm_manage_users = ?,
 			perm_delete_media = ?, perm_invite_users = ?, perm_request_media = ?,
-			invite_grants = ?
+			perm_share_media = ?, invite_grants = ?
 		 WHERE id = ?`,
 		req.Permissions.ManageSettings, req.Permissions.ManageLibrary, req.Permissions.ManageUsers,
 		req.Permissions.DeleteMedia, req.Permissions.InviteUsers, req.Permissions.RequestMedia,
-		models.EncodePermissions(inviteGrants), target.ID,
+		req.Permissions.ShareMedia, models.EncodePermissions(inviteGrants), target.ID,
 	)
 	if err != nil {
 		log.Printf("UpdateUserPermissions update error: %v", err)
@@ -143,6 +143,14 @@ func UpdateUserPermissions(w http.ResponseWriter, r *http.Request, ps httprouter
 	if target.Permissions.InviteUsers && !req.Permissions.InviteUsers {
 		if err := revokePendingInvitations(target.ID); err != nil {
 			log.Printf("UpdateUserPermissions: failed to revoke invitations of %d: %v", target.ID, err)
+		}
+	}
+
+	// De même pour les liens de partage : sans le droit, plus aucun lien public
+	// de ce compte ne fait lire le serveur.
+	if target.Permissions.ShareMedia && !req.Permissions.ShareMedia {
+		if err := revokeMediaShares(target.ID); err != nil {
+			log.Printf("UpdateUserPermissions: failed to revoke share links of %d: %v", target.ID, err)
 		}
 	}
 
@@ -297,7 +305,8 @@ func TransferOwnership(w http.ResponseWriter, r *http.Request, ps httprouter.Par
 	if _, err := tx.Exec(
 		`UPDATE users SET is_owner = 1,
 			perm_manage_settings = 1, perm_manage_library = 1, perm_manage_users = 1,
-			perm_delete_media = 1, perm_invite_users = 1, perm_request_media = 1
+			perm_delete_media = 1, perm_invite_users = 1, perm_request_media = 1,
+			perm_share_media = 1
 		 WHERE id = ?`, target.ID); err != nil {
 		log.Printf("TransferOwnership: promote failed: %v", err)
 		writeJSONError(w, http.StatusInternalServerError, "Internal server error")

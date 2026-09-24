@@ -24,7 +24,6 @@ import '../../widgets/global/glass_chrome.dart';
 import '../../widgets/global/sticky_glass_search.dart';
 import '../../desktop_window.dart';
 import '../../navigation/shell_navigator.dart';
-import '../../tv/tv_focus_memory.dart';
 import '../../tv/tv_mode.dart';
 import '../../tv/tv_pairing_link.dart';
 import '../settings/tv_pairing_screen.dart';
@@ -33,6 +32,7 @@ import '../home/home_screen.dart';
 import '../library/movies_screen.dart';
 import '../library/shows_screen.dart';
 import '../requests/requests_screen.dart';
+import 'shell_tab_stack.dart';
 
 class MainShell extends StatefulWidget {
   const MainShell({super.key});
@@ -45,7 +45,7 @@ class _MainShellState extends State<MainShell> {
   int _selectedIndex = 0;
 
   /// Un nœud par onglet de l'en-tête, pour que Retour puisse y ramener la
-  /// télécommande. Indexés comme les écrans de l'[IndexedStack].
+  /// télécommande. Indexés comme les écrans de [ShellTabStack].
   final List<FocusNode> _tabNodes = List<FocusNode>.generate(
     5,
     (index) => FocusNode(debugLabel: 'nav-tab-$index'),
@@ -64,7 +64,7 @@ class _MainShellState extends State<MainShell> {
   DateTime? _exitArmedAt;
   static const Duration _exitWindow = Duration(seconds: 3);
 
-  /// Les onglets réellement montés dans l'[IndexedStack].
+  /// Les onglets réellement montés dans [ShellTabStack].
   ///
   /// La pile les gardait tous les cinq vivants dès la première image. Aucun
   /// n'est gratuit : films et séries construisent chacun la grille de toute la
@@ -283,34 +283,19 @@ class _MainShellState extends State<MainShell> {
     final isTv = TvScope.of(context);
     final isWide = AppLayout.isWide(context) || isTv;
 
-    final tabs = IndexedStack(
-      index: _selectedIndex,
-      // An IndexedStack keeps every tab in the tree and paints
-      // one. That is what makes switching instant, and it is also
-      // what would let the D-pad walk into posters nobody can
-      // see: focus traversal reads the widget tree, not what is
-      // on screen. Excluding the hidden tabs keeps the remote
-      // inside the tab the user is actually looking at.
-      children: [
-        for (final (index, screen) in <Widget>[
-          HomeScreen(
-            embedded: isWide,
-            onNavigateToMovies: () => _selectTab(1),
-            onNavigateToShows: () => _selectTab(2),
-          ),
-          MoviesScreen(embedded: isWide),
-          ShowsScreen(embedded: isWide),
-          RequestsScreen(embedded: isWide),
-          DownloadsScreen(embedded: isWide),
-        ].indexed)
-          ExcludeFocus(
-            excluding: index != _selectedIndex,
-            // Redescendre de l'en-tête ramène là où l'on était
-            // dans cet onglet — voir [TvFocusMemory].
-            child: _mountedTabs.contains(index)
-                ? TvFocusMemory(child: screen)
-                : const SizedBox.shrink(),
-          ),
+    final tabs = ShellTabStack(
+      selectedIndex: _selectedIndex,
+      mounted: _mountedTabs,
+      tabs: [
+        HomeScreen(
+          embedded: isWide,
+          onNavigateToMovies: () => _selectTab(1),
+          onNavigateToShows: () => _selectTab(2),
+        ),
+        MoviesScreen(embedded: isWide),
+        ShowsScreen(embedded: isWide),
+        RequestsScreen(embedded: isWide),
+        DownloadsScreen(embedded: isWide),
       ],
     );
 

@@ -39,30 +39,44 @@ String? extractYear(String? releaseDate) {
   return releaseDate.split('-').first;
 }
 
+const _shortMonths = [
+  'janv.',
+  'févr.',
+  'mars',
+  'avr.',
+  'mai',
+  'juin',
+  'juil.',
+  'août',
+  'sept.',
+  'oct.',
+  'nov.',
+  'déc.',
+];
+
+/// Date TMDB (YYYY-MM-DD) en toutes lettres : « 12 mars 2024 ».
+///
+/// Sert aux épisodes déjà sur le serveur, où la date seule suffit : un
+/// « Sorti le » devant chaque ligne d'une saison ne dirait rien de plus.
+String? formatReleaseDay(String? raw) {
+  if (raw == null || raw.trim().isEmpty) return null;
+  final parsed = DateTime.tryParse(raw.trim());
+  if (parsed == null) return raw.trim();
+  return '${parsed.day} ${_shortMonths[parsed.month - 1]} ${parsed.year}';
+}
+
 /// Formats a TMDB air/release date (YYYY-MM-DD) for unavailable episode tiles.
-String? formatAirDate(String? raw) {
+///
+/// [now] is injectable so the result is testable without freezing the clock.
+String? formatAirDate(String? raw, {DateTime? now}) {
   if (raw == null || raw.trim().isEmpty) return null;
   final parsed = DateTime.tryParse(raw.trim());
   if (parsed == null) return raw.trim();
 
-  const months = [
-    'janv.',
-    'févr.',
-    'mars',
-    'avr.',
-    'mai',
-    'juin',
-    'juil.',
-    'août',
-    'sept.',
-    'oct.',
-    'nov.',
-    'déc.',
-  ];
-  final now = DateTime.now();
-  final today = DateTime(now.year, now.month, now.day);
+  final clock = now ?? DateTime.now();
+  final today = DateTime(clock.year, clock.month, clock.day);
   final day = DateTime(parsed.year, parsed.month, parsed.day);
-  final label = '${day.day} ${months[day.month - 1]} ${day.year}';
+  final label = formatReleaseDay(raw)!;
 
   if (day.isAfter(today)) {
     return 'Sortie prévue le $label';

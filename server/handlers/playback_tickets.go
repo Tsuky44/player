@@ -5,11 +5,14 @@ import (
 	"net/http"
 
 	"github.com/julienschmidt/httprouter"
-	"project-player/server/database"
 	"project-player/server/playbackauth"
 )
 
 var PlaybackTickets = playbackauth.NewStore()
+
+// ticketRenewAfterSeconds est l'intervalle de renouvellement annoncé aux
+// lecteurs, bien en deçà de playbackauth.TTL.
+const ticketRenewAfterSeconds = 300
 
 // Authenticated accounts currently share the catalogue (ADR-0001). Profile
 // restrictions will be applied here as well as on catalogue routes in phase 4.
@@ -21,8 +24,7 @@ func CreatePlaybackTicket(w http.ResponseWriter, r *http.Request, _ httprouter.P
 		writeJSONError(w, http.StatusBadRequest, "Invalid media id")
 		return
 	}
-	var found int
-	if err := database.DB.QueryRow("SELECT id FROM medias WHERE id = ? AND type IN ('movie', 'episode') AND COALESCE(file_path, '') != ''", body.MediaID).Scan(&found); err != nil {
+	if !isPlayableMedia(body.MediaID) {
 		writeJSONError(w, http.StatusNotFound, "Playable media not found")
 		return
 	}
@@ -33,7 +35,7 @@ func CreatePlaybackTicket(w http.ResponseWriter, r *http.Request, _ httprouter.P
 	}
 	w.Header().Set("Content-Type", "application/json")
 	w.Header().Set("Cache-Control", "no-store")
-	json.NewEncoder(w).Encode(map[string]interface{}{"ticket": token, "expires_at": ticket.ExpiresAt, "renew_after_seconds": 300})
+	json.NewEncoder(w).Encode(map[string]interface{}{"ticket": token, "expires_at": ticket.ExpiresAt, "renew_after_seconds": ticketRenewAfterSeconds})
 }
 
 // Secrets travel in the body, never in the management URL or access logs.

@@ -1,0 +1,295 @@
+/* Page d'un lien de partage public. Mêmes couleurs que l'app (AppColors) :
+   scène charbon, un seul accent bleu. */
+:root {
+  color-scheme: dark;
+  --background: #0a0a0a;
+  --surface: #141414;
+  --surface-elevated: #1c1c1c;
+  --border: #2c2c2e;
+  --accent: #0a84ff;
+  --text-primary: #f5f5f7;
+  --text-secondary: #a1a1a6;
+  --text-muted: #6e6e73;
+  --error: #ff453a;
+  --success: #30d158;
+  --motion: 220ms cubic-bezier(0.2, 0, 0, 1);
+}
+
+* { box-sizing: border-box; }
+
+html, body {
+  margin: 0;
+  min-height: 100%;
+  background: var(--background);
+  color: var(--text-primary);
+  font-family: Manrope, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  -webkit-font-smoothing: antialiased;
+}
+
+[hidden] { display: none !important; }
+
+button, input { font: inherit; color: inherit; }
+
+.landing {
+  position: relative;
+  min-height: 100vh;
+  min-height: 100dvh;
+  display: grid;
+  place-items: center;
+  padding: 24px 16px;
+  overflow: hidden;
+}
+
+.backdrop {
+  position: absolute;
+  inset: -40px;
+  background-size: cover;
+  background-position: center;
+  filter: blur(40px) saturate(1.1);
+  opacity: 0.35;
+  transition: opacity var(--motion);
+}
+.backdrop::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(180deg, rgba(10, 10, 10, 0.2), var(--background) 85%);
+}
+
+.card {
+  position: relative;
+  width: min(760px, 100%);
+  display: grid;
+  grid-template-columns: 200px 1fr;
+  gap: 28px;
+  align-items: center;
+  padding: 28px;
+  border-radius: 20px;
+  background: rgba(20, 20, 20, 0.78);
+  border: 1px solid var(--border);
+  backdrop-filter: blur(24px);
+}
+
+.poster {
+  aspect-ratio: 2 / 3;
+  display: grid;
+  place-items: center;
+  border-radius: 12px;
+  background: var(--surface-elevated) center / cover no-repeat;
+  box-shadow: 0 18px 40px rgba(0, 0, 0, 0.45);
+}
+.poster svg { width: 40%; fill: var(--text-muted); }
+.poster.has-art svg { display: none; }
+
+.brand {
+  margin: 0 0 8px;
+  color: var(--text-muted);
+  font-size: 13px;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+}
+
+h1 {
+  margin: 0;
+  font-size: clamp(24px, 4vw, 34px);
+  line-height: 1.15;
+  font-weight: 700;
+}
+
+.subtitle {
+  margin: 8px 0 0;
+  color: var(--text-secondary);
+  font-size: 16px;
+}
+
+.badges {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin: 16px 0 0;
+  padding: 0;
+  list-style: none;
+}
+.badges li {
+  padding: 5px 10px;
+  border-radius: 999px;
+  background: var(--surface-elevated);
+  border: 1px solid var(--border);
+  color: var(--text-secondary);
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.password { margin-top: 22px; }
+.password label {
+  display: block;
+  margin-bottom: 10px;
+  color: var(--text-secondary);
+  font-size: 14px;
+}
+.row { display: flex; gap: 10px; }
+.password input {
+  flex: 1;
+  min-width: 0;
+  min-height: 48px;
+  padding: 0 14px;
+  border-radius: 12px;
+  border: 1px solid var(--border);
+  background: var(--surface);
+  outline: none;
+  transition: border-color var(--motion);
+}
+.password input:focus { border-color: var(--accent); }
+
+.primary {
+  min-height: 48px;
+  padding: 0 20px;
+  border: 0;
+  border-radius: 12px;
+  background: var(--accent);
+  color: #fff;
+  font-weight: 700;
+  cursor: pointer;
+  transition: filter var(--motion), opacity var(--motion);
+}
+.primary:hover { filter: brightness(1.1); }
+.primary:disabled { opacity: 0.5; cursor: default; }
+.primary:focus-visible, .icon:focus-visible, .seek:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+.play {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  margin-top: 24px;
+  padding: 0 26px;
+  font-size: 16px;
+}
+.play svg { width: 22px; height: 22px; fill: currentColor; }
+
+.message {
+  margin: 16px 0 0;
+  color: var(--error);
+  font-size: 14px;
+}
+.message.info { color: var(--text-secondary); }
+
+/* ------------------------------------------------------------ Lecteur */
+
+.player {
+  position: fixed;
+  inset: 0;
+  background: #000;
+  display: grid;
+  place-items: center;
+}
+.player video {
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+  background: #000;
+}
+
+.spinner {
+  position: absolute;
+  width: 44px;
+  height: 44px;
+  border-radius: 50%;
+  border: 3px solid rgba(255, 255, 255, 0.2);
+  border-top-color: #fff;
+  animation: spin 900ms linear infinite;
+  opacity: 0;
+  transition: opacity var(--motion);
+  pointer-events: none;
+}
+.player.loading .spinner { opacity: 1; }
+@keyframes spin { to { transform: rotate(360deg); } }
+
+.chrome {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  opacity: 1;
+  transition: opacity var(--motion);
+  background:
+    linear-gradient(180deg, rgba(0, 0, 0, 0.65), transparent 22%),
+    linear-gradient(0deg, rgba(0, 0, 0, 0.75), transparent 30%);
+}
+.player.idle .chrome { opacity: 0; }
+.player.idle { cursor: none; }
+
+.top { padding: max(16px, env(safe-area-inset-top)) 20px 0; }
+.top-title { margin: 0; font-size: 18px; font-weight: 700; }
+.top-subtitle { margin: 4px 0 0; color: var(--text-secondary); font-size: 14px; }
+
+.notice {
+  align-self: center;
+  margin: 0 16px;
+  padding: 10px 16px;
+  border-radius: 12px;
+  background: rgba(20, 20, 20, 0.85);
+  color: var(--text-secondary);
+  font-size: 14px;
+  text-align: center;
+}
+
+.bottom { padding: 0 16px max(14px, env(safe-area-inset-bottom)); }
+
+.seek {
+  width: 100%;
+  height: 24px;
+  margin: 0;
+  background: transparent;
+  accent-color: var(--accent);
+  cursor: pointer;
+}
+
+.controls {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+.spacer { flex: 1; }
+.time {
+  margin-left: 8px;
+  color: var(--text-secondary);
+  font-size: 14px;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.icon {
+  width: 44px;
+  height: 44px;
+  display: grid;
+  place-items: center;
+  border: 0;
+  border-radius: 50%;
+  background: transparent;
+  cursor: pointer;
+  transition: background var(--motion);
+}
+.icon:hover { background: rgba(255, 255, 255, 0.12); }
+.icon svg { width: 24px; height: 24px; fill: #fff; }
+
+@media (max-width: 600px) {
+  .card {
+    grid-template-columns: 1fr;
+    gap: 20px;
+    padding: 20px;
+    text-align: center;
+  }
+  .poster { width: 150px; margin: 0 auto; }
+  .badges { justify-content: center; }
+  .row { flex-direction: column; }
+  .play { width: 100%; justify-content: center; }
+  #back10, #fwd10 { display: none; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  :root { --motion: 0ms linear; }
+}

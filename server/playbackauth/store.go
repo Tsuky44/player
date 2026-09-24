@@ -20,7 +20,11 @@ const TTL = 15 * time.Minute
 var ErrDenied = errors.New("invalid or expired playback ticket")
 
 type Ticket struct {
+	// UserID est le compte qui a demandé la lecture, ou 0 pour un ticket
+	// délivré par un lien de partage (ShareID) : aucun compte ne porte l'id 0,
+	// donc Renew, Revoke et Holds d'un compte ne l'atteignent jamais.
 	UserID       int
+	ShareID      int
 	MediaID      int
 	ExpiresAt    time.Time
 	LastActivity time.Time
@@ -42,6 +46,12 @@ func (s *Store) Issue(userID, mediaID int) (string, Ticket, error) {
 	if userID <= 0 || mediaID <= 0 {
 		return "", Ticket{}, ErrDenied
 	}
+	return s.issue(Ticket{UserID: userID, MediaID: mediaID}, func(t Ticket) bool { return t.UserID == userID }, 32)
+}
+
+// issue enregistre un ticket neuf pour ticket.MediaID, tant que le store n'est
+// pas plein et que moins de perOwner tickets satisfont sameOwner.
+func (s *Store) issue(ticket Ticket, sameOwner func(Ticket) bool, perOwner int) (string, Ticket, error) {
 	var secret [32]byte
 	if _, err := rand.Read(secret[:]); err != nil {
 		return "", Ticket{}, err
@@ -52,15 +62,16 @@ func (s *Store) Issue(userID, mediaID int) (string, Ticket, error) {
 	now := s.now()
 	s.reapLocked(now)
 	count := 0
-	for _, ticket := range s.tickets {
-		if ticket.UserID == userID {
+	for _, existing := range s.tickets {
+		if sameOwner(existing) {
 			count++
 		}
 	}
-	if len(s.tickets) >= 4096 || count >= 32 {
+	if len(s.tickets) >= 4096 || count >= perOwner {
 		return "", Ticket{}, errors.New("playback ticket capacity reached")
 	}
-	ticket := Ticket{UserID: userID, MediaID: mediaID, ExpiresAt: now.Add(TTL), LastActivity: now}
+	ticket.ExpiresAt = now.Add(TTL)
+	ticket.LastActivity = now
 	s.tickets[Digest(token)] = ticket
 	return token, ticket, nil
 }
@@ -93,7 +104,7 @@ func (s *Store) Renew(token string, userID int) (Ticket, error) {
 	key := Digest(token)
 	ticket, ok := s.tickets[key]
 	now := s.now()
-	if !ok || ticket.UserID != userID || !now.Before(ticket.ExpiresAt) {
+	if !ok || userID <= 0 || ticket.UserID != userID || !now.Before(ticket.ExpiresAt) {
 		return Ticket{}, ErrDenied
 	}
 	ticket.ExpiresAt = now.Add(TTL)
@@ -107,7 +118,7 @@ func (s *Store) Revoke(token string, userID int) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	key := Digest(token)
-	if ticket, ok := s.tickets[key]; ok && ticket.UserID == userID {
+	if ticket, ok := s.tickets[key]; ok && userID > 0 && ticket.UserID == userID {
 		delete(s.tickets, key)
 		s.generation.Add(1)
 	}
@@ -125,6 +136,9 @@ func (s *Store) IsLive(key [32]byte, mediaID int) bool {
 // Holds dit si userID détient un ticket encore valide pour mediaID, c'est-à-
 // dire s'il est en train de lire ce média.
 func (s *Store) Holds(userID, mediaID int) bool {
+	if userID <= 0 {
+		return false
+	}
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	now := s.now()

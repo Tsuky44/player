@@ -2,6 +2,7 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import '../../theme/app_colors.dart';
 import '../../utils/hero_slides.dart';
+import '../../utils/on_screen.dart';
 import 'hero_banner.dart';
 
 class HeroCarousel extends StatefulWidget {
@@ -25,7 +26,7 @@ class HeroCarousel extends StatefulWidget {
   State<HeroCarousel> createState() => _HeroCarouselState();
 }
 
-class _HeroCarouselState extends State<HeroCarousel> {
+class _HeroCarouselState extends State<HeroCarousel> with OnScreenState {
   static const _autoInterval = Duration(seconds: 7);
 
   late final PageController _pageController;
@@ -42,8 +43,13 @@ class _HeroCarouselState extends State<HeroCarousel> {
   void initState() {
     super.initState();
     _pageController = PageController();
-    _scheduleAutoAdvance();
   }
+
+  /// Le carrousel n'avance que sous les yeux de quelqu'un : caché sous le
+  /// lecteur, dans un autre onglet ou fenêtre réduite, chaque diapositive
+  /// relançait une transition d'une seconde que personne ne voyait.
+  @override
+  void didChangeOnScreen(bool onScreen) => _scheduleAutoAdvance();
 
   @override
   void didUpdateWidget(covariant HeroCarousel oldWidget) {
@@ -66,7 +72,9 @@ class _HeroCarouselState extends State<HeroCarousel> {
 
   void _scheduleAutoAdvance() {
     _autoTimer?.cancel();
-    if (widget.slides.length <= 1 || _hovered || _focused) return;
+    if (widget.slides.length <= 1 || _hovered || _focused || !isOnScreen) {
+      return;
+    }
 
     _autoTimer = Timer.periodic(_autoInterval, (_) {
       if (!mounted || _hovered || _focused || widget.slides.length <= 1) return;

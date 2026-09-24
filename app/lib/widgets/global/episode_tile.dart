@@ -6,6 +6,7 @@ import '../../utils/format.dart';
 import '../../utils/responsive.dart';
 import 'media_download_button.dart';
 import 'media_poster.dart';
+import 'share_media_button.dart';
 import 'watched_action_button.dart';
 
 class EpisodeTile extends StatefulWidget {
@@ -72,6 +73,14 @@ class _EpisodeTileState extends State<EpisodeTile> {
         ? widget.episode.duration
         : widget.episode.media.duration;
     final airDateLabel = formatAirDate(widget.episode.media.releaseDate);
+    // Un épisode indisponible dit déjà sa date dans sa ligne d'état.
+    final releaseDay = _isAvailable
+        ? formatReleaseDay(widget.episode.media.releaseDate)
+        : null;
+    final compactMeta = [
+      if (_isAvailable && duration > 0) formatDuration(duration),
+      if (releaseDay != null) releaseDay,
+    ].join(' · ');
 
     final compact = AppLayout.isCompact(context);
     final pad = AppLayout.pagePadding(context);
@@ -247,6 +256,14 @@ class _EpisodeTileState extends State<EpisodeTile> {
                               showPosterUrl: widget.showPosterUrl,
                               seasonNumber: widget.seasonNumber,
                             ),
+                          if (_isAvailable)
+                            ShareMediaButton(
+                              item: widget.episode,
+                              compact: true,
+                              title: widget.showTitle == null
+                                  ? null
+                                  : '${widget.showTitle} · ${widget.episode.media.title}',
+                            ),
                           if (_isAvailable && widget.onToggleWatched != null)
                             WatchedActionButton(
                               compact: true,
@@ -256,13 +273,23 @@ class _EpisodeTileState extends State<EpisodeTile> {
                             ),
                         ],
                       ),
-                      if (compact && _isAvailable && duration > 0) ...[
+                      if (compact && compactMeta.isNotEmpty) ...[
                         const SizedBox(height: 4),
                         Text(
-                          formatDuration(duration),
+                          compactMeta,
                           style: const TextStyle(
                             color: AppColors.textMuted,
                             fontSize: 12,
+                          ),
+                        ),
+                      ],
+                      if (!compact && releaseDay != null) ...[
+                        const SizedBox(height: 4),
+                        Text(
+                          releaseDay,
+                          style: const TextStyle(
+                            color: AppColors.textMuted,
+                            fontSize: 13,
                           ),
                         ),
                       ],

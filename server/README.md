@@ -166,8 +166,9 @@ ré-encoder. Build, installation et limites : [ADR-0028](docs/adr/0028-cible-app
 
 ### 👥 1 bis. Droits, utilisateurs & invitations
 
-Six permissions indépendantes par compte : `manage_settings`, `manage_library`, `manage_users`,
-`delete_media`, `invite_users`, `request_media` (seule accordée par défaut). « Administrateur »
+Sept permissions indépendantes par compte : `manage_settings`, `manage_library`, `manage_users`,
+`delete_media`, `invite_users`, `request_media` (seule accordée par défaut) et `share_media`
+(créer des liens de partage publics, section 5 bis). « Administrateur »
 n'est qu'un raccourci d'interface qui les coche toutes.
 
 Le **propriétaire** (premier compte) est asymétrique : il peut retirer ses droits à n'importe quel
@@ -298,6 +299,42 @@ n'affecte que les liens futurs.
   * `HLS_MIN_FREE_MB` : espace libre minimal sur ce dossier pour ouvrir une session (`2048` par défaut, `0` pour désactiver).
   * `HLS_RETAIN_MINUTES` : ce qu'une session garde derrière la lecture quand le client sait rouvrir une session pour reculer plus loin (`30` par défaut). Les clients plus anciens gardent toute leur session.
 * **Comportement :** une seule session par ticket de lecture. Celle que remplace une nouvelle session (saut, changement de qualité) est arrêtée trente secondes plus tard si le client ne l'a pas fait lui-même.
+
+---
+
+### 🔗 5 bis. Liens de partage publics
+
+Un film ou un épisode partagé par un lien qui s'ouvre sans compte, dans un navigateur :
+`https://serveur/share#<code>`. Le code est dans le fragment, que le navigateur n'envoie jamais :
+il ne finit dans aucun journal. Décisions détaillées : `docs/adr/0037-liens-de-partage-publics.md`.
+
+Côté créateur (`share_media`) :
+
+* `POST /api/shares` — corps `{"media_id": 42, "password": "", "single_use": true, "expires_in_hours": 168}`.
+  `expires_in_hours` vaut `0` (sans échéance), `24`, `168` ou `720`. Répond `201` avec le lien et son
+  `code`, rendu **cette fois seulement** : le serveur n'en garde que l'empreinte SHA-256.
+* `GET /api/shares` — ses liens, avec leur `status` : `active`, `expired` ou `watched`.
+* `DELETE /api/shares/:id` — supprime le lien et coupe aussitôt les lectures qu'il a ouvertes.
+
+Retirer `share_media` à un compte supprime ses liens.
+
+Côté visiteur, sans compte — le code voyage dans le corps JSON :
+
+* `GET /share` — la page de lecture (HTML + JS, hls.js chargé depuis cdnjs).
+* `POST /api/shared/info` `{"code", "viewer"}` — faut-il un mot de passe ; le média n'est décrit
+  qu'une fois le mot de passe donné. `404` inconnu, `410` expiré ou vu, `409` réservé ailleurs.
+* `POST /api/shared/open` `{"code", "password", "viewer"}` — délivre un ticket de lecture au nom du
+  lien, et le jeton `viewer` du navigateur. Un lien à usage unique est réservé par ce navigateur.
+  Limité comme la connexion, par adresse et par lien.
+* `POST /api/shared/renew` `{"code", "viewer", "ticket"}` — prolonge le ticket (toutes les 5 min).
+* `POST /api/shared/progress` `{"code", "viewer", "ticket", "position_seconds"}` — au seuil « vu »
+  (90 %), un lien à usage unique est détruit (`{"consumed": true}`). Le navigateur qui l'a vu peut
+  encore renouveler son ticket pendant une heure, le temps du générique.
+* `POST /api/shared/close` `{"code", "ticket"}` — révoque le ticket à la fermeture de la page.
+
+Le ticket ouvre ensuite les routes HLS habituelles (`/api/v1/stream/…?ticket=…`). La page ne
+déclare aucune capacité : elle reçoit du H.264 + AAC stéréo en MPEG-TS. Un lien tient au plus
+quatre lectures simultanées.
 
 ---
 

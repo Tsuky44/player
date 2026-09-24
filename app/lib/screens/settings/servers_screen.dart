@@ -10,6 +10,7 @@ import '../../services/api_client.dart';
 import '../../services/server_discovery.dart';
 import '../../theme/app_colors.dart';
 import '../../tv/tv_deferred_keyboard.dart';
+import '../../utils/on_screen.dart';
 
 /// Les serveurs de cet appareil : celui qui est actif, ceux sur lesquels on
 /// peut basculer, et les demandes d'accès encore sans réponse.
@@ -31,7 +32,7 @@ class ServersScreen extends StatefulWidget {
   State<ServersScreen> createState() => _ServersScreenState();
 }
 
-class _ServersScreenState extends State<ServersScreen> {
+class _ServersScreenState extends State<ServersScreen> with OnScreenState {
   /// Le sondage des demandes en attente pendant que l'écran est ouvert. C'est
   /// exactement le moment où quelqu'un regarde si on lui a répondu.
   Timer? _poll;
@@ -40,9 +41,18 @@ class _ServersScreenState extends State<ServersScreen> {
   @override
   void initState() {
     super.initState();
-    _checkPending();
-    _poll = Timer.periodic(const Duration(seconds: 5), (_) => _checkPending());
     _refreshLinks();
+  }
+
+  /// Recouvert par une autre page ou fenêtre réduite, personne ne lit la
+  /// réponse : le sondage attend le retour, et reprend par une vérification.
+  @override
+  void didChangeOnScreen(bool onScreen) {
+    _poll?.cancel();
+    _poll = null;
+    if (!onScreen) return;
+    WidgetsBinding.instance.addPostFrameCallback((_) => _checkPending());
+    _poll = Timer.periodic(const Duration(seconds: 5), (_) => _checkPending());
   }
 
   Future<void> _refreshLinks() async {

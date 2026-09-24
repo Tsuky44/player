@@ -3,6 +3,8 @@ import 'dart:io';
 
 import 'package:flutter/foundation.dart';
 
+import '../utils/on_screen.dart';
+
 /// Les adresses des serveurs, résolues en arrière-plan et gardées par l'app.
 ///
 /// Sous Windows, un serveur DNS mort sur une des cartes réseau (la box, un
@@ -44,6 +46,9 @@ abstract final class DnsWarmup {
     }
     if (_hosts.isNotEmpty) {
       _timer ??= Timer.periodic(_interval, (_) {
+        // Fenêtre réduite : personne ne va lancer de lecture, et la dernière
+        // adresse connue reste valable jusqu'au retour.
+        if (!AppForeground.isVisible) return;
         for (final host in _hosts) {
           unawaited(_resolve(host));
         }

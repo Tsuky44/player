@@ -168,6 +168,10 @@ void main() {
     final api = await pump(tester, width: 1100, permissions: Permissions.all);
 
     expect(find.text('Administration'), findsOneWidget);
+    // La barre latérale défile : avec « Liens de partage », les catégories
+    // d'administration passent sous la ligne de flottaison à 900 px.
+    await tester.ensureVisible(find.text('Statistiques'));
+    await tester.pumpAndSettle();
     await tester.tap(find.text('Statistiques'));
     await tester.pumpAndSettle();
 

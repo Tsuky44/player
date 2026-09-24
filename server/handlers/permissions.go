@@ -16,7 +16,8 @@ import (
 // scan order in scanUser stays in one place.
 const userColumns = `id, username, is_owner,
 	perm_manage_settings, perm_manage_library, perm_manage_users,
-	perm_delete_media, perm_invite_users, perm_request_media, invite_grants`
+	perm_delete_media, perm_invite_users, perm_request_media, perm_share_media,
+	invite_grants`
 
 type rowScanner interface {
 	Scan(dest ...any) error
@@ -29,6 +30,7 @@ func scanUser(row rowScanner) (models.User, error) {
 		&u.ID, &u.Username, &u.IsOwner,
 		&u.Permissions.ManageSettings, &u.Permissions.ManageLibrary, &u.Permissions.ManageUsers,
 		&u.Permissions.DeleteMedia, &u.Permissions.InviteUsers, &u.Permissions.RequestMedia,
+		&u.Permissions.ShareMedia,
 		&grants,
 	)
 	if err != nil {

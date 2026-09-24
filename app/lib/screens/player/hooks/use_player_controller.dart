@@ -819,11 +819,9 @@ class PlayerController {
 
       mediaTracks = tracks;
 
-      // The track list is what carries the source resolution, so this is the
-      // first moment the web can pick a quality. Nothing is playing yet on that
-      // platform — init deliberately opened nothing.
-      if (await _startWebTranscode()) return;
-
+      // La piste d'abord : une session HLS s'ouvre avec la piste demandée
+      // (`?audio=N`). Choisie après, AVPlayer et le web partaient sur la
+      // première piste du fichier — l'anglais d'un film réglé en français.
       if (inheritedPreferences != null) {
         _applyInheritedPreferences(inheritedPreferences);
       } else if (tracks.audio.isNotEmpty) {
@@ -835,6 +833,11 @@ class PlayerController {
           defaultLang,
         );
       }
+
+      // The track list is what carries the source resolution, so this is the
+      // first moment the web can pick a quality. Nothing is playing yet on that
+      // platform — init deliberately opened nothing.
+      if (await _startWebTranscode()) return;
 
       if (_directPlayCannotDecodeAudio(_selectedAudioIndex)) {
         _notifyTracksChanged();

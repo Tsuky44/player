@@ -8,6 +8,7 @@ import '../../../providers/auth_provider.dart';
 import '../../../services/api_client.dart';
 import '../../../theme/app_colors.dart';
 import '../../../utils/format.dart';
+import '../../../utils/on_screen.dart';
 import '../playback_logs_screen.dart';
 import '../widgets/history_tile.dart';
 import '../widgets/media_thumb.dart';
@@ -21,7 +22,7 @@ class DashboardPage extends StatefulWidget {
   State<DashboardPage> createState() => _DashboardPageState();
 }
 
-class _DashboardPageState extends State<DashboardPage> {
+class _DashboardPageState extends State<DashboardPage> with OnScreenState {
   static const _refreshEvery = Duration(seconds: 5);
 
   ServerInfo? _server;
@@ -34,9 +35,23 @@ class _DashboardPageState extends State<DashboardPage> {
   void initState() {
     super.initState();
     _load();
-    // Assez souvent pour suivre une barre de progression, pas au point de
-    // charger le serveur : un écran de tableau de bord reste ouvert longtemps.
+  }
+
+  /// Assez souvent pour suivre une barre de progression, pas au point de
+  /// charger le serveur : un écran de tableau de bord reste ouvert longtemps.
+  /// Seulement quand on le regarde — recouvert par l'historique ou fenêtre
+  /// réduite, il n'a rien à suivre ; au retour, il se remet à jour aussitôt.
+  @override
+  void didChangeOnScreen(bool onScreen) {
+    final wasPaused = _timer == null;
+    _timer?.cancel();
+    _timer = null;
+    if (!onScreen) return;
     _timer = Timer.periodic(_refreshEvery, (_) => _load(live: true));
+    if (wasPaused && _server != null) {
+      WidgetsBinding.instance
+          .addPostFrameCallback((_) => mounted ? _load(live: true) : null);
+    }
   }
 
   @override

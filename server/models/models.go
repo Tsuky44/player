@@ -24,6 +24,9 @@ type Permissions struct {
 	DeleteMedia    bool `json:"delete_media"`
 	InviteUsers    bool `json:"invite_users"`
 	RequestMedia   bool `json:"request_media"`
+	// ShareMedia permet de créer des liens publics vers un film ou un épisode
+	// (ADR-0037) : un inconnu, sans compte, fait alors lire le serveur.
+	ShareMedia bool `json:"share_media"`
 }
 
 // DefaultPermissions is what a freshly created account gets: it may ask for
@@ -42,6 +45,7 @@ func AllPermissions() Permissions {
 		DeleteMedia:    true,
 		InviteUsers:    true,
 		RequestMedia:   true,
+		ShareMedia:     true,
 	}
 }
 
@@ -62,6 +66,7 @@ const (
 	PermDeleteMedia    Permission = "delete_media"
 	PermInviteUsers    Permission = "invite_users"
 	PermRequestMedia   Permission = "request_media"
+	PermShareMedia     Permission = "share_media"
 )
 
 // Has reports whether the set grants perm. An unknown name is never granted.
@@ -79,6 +84,8 @@ func (p Permissions) Has(perm Permission) bool {
 		return p.InviteUsers
 	case PermRequestMedia:
 		return p.RequestMedia
+	case PermShareMedia:
+		return p.ShareMedia
 	default:
 		return false
 	}
@@ -90,7 +97,7 @@ func EncodePermissions(p Permissions) string {
 	var granted []string
 	for _, perm := range []Permission{
 		PermManageSettings, PermManageLibrary, PermManageUsers,
-		PermDeleteMedia, PermInviteUsers, PermRequestMedia,
+		PermDeleteMedia, PermInviteUsers, PermRequestMedia, PermShareMedia,
 	} {
 		if p.Has(perm) {
 			granted = append(granted, string(perm))
@@ -117,6 +124,8 @@ func DecodePermissions(raw string) Permissions {
 			p.InviteUsers = true
 		case PermRequestMedia:
 			p.RequestMedia = true
+		case PermShareMedia:
+			p.ShareMedia = true
 		}
 	}
 	return p

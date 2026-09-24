@@ -31,11 +31,11 @@ func createTestUser(t *testing.T, username string, owner bool, perms models.Perm
 		`INSERT INTO users (
 			username, password_hash, is_owner,
 			perm_manage_settings, perm_manage_library, perm_manage_users,
-			perm_delete_media, perm_invite_users, perm_request_media
-		) VALUES (?, 'x', ?, ?, ?, ?, ?, ?, ?)`,
+			perm_delete_media, perm_invite_users, perm_request_media, perm_share_media
+		) VALUES (?, 'x', ?, ?, ?, ?, ?, ?, ?, ?)`,
 		username, owner,
 		perms.ManageSettings, perms.ManageLibrary, perms.ManageUsers,
-		perms.DeleteMedia, perms.InviteUsers, perms.RequestMedia)
+		perms.DeleteMedia, perms.InviteUsers, perms.RequestMedia, perms.ShareMedia)
 	if err != nil {
 		t.Fatalf("insert user %s: %v", username, err)
 	}
@@ -320,6 +320,11 @@ func TestMigration_OldestAccountBecomesOwner(t *testing.T) {
 		WHERE id = (SELECT MIN(id) FROM users)
 		  AND NOT EXISTS (SELECT 1 FROM users WHERE is_owner = 1);`); err != nil {
 		t.Fatalf("backfill: %v", err)
+	}
+	// Puis celui de la migration 14, qui suit toujours la 1 : le droit de
+	// partager, arrivé après, revient au propriétaire.
+	if _, err := database.DB.Exec(`UPDATE users SET perm_share_media = 1 WHERE is_owner = 1`); err != nil {
+		t.Fatalf("share backfill: %v", err)
 	}
 
 	first, _ := LoadUser(1)

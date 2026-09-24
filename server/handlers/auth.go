@@ -216,11 +216,13 @@ func insertRegisteredUser(username, passwordHash string, owner bool, permissions
 		`INSERT INTO users (
 			username, password_hash, is_owner,
 			perm_manage_settings, perm_manage_library, perm_manage_users,
-			perm_delete_media, perm_invite_users, perm_request_media
-		) SELECT ?, ?, ?, ?, ?, ?, ?, ?, ?`+guard,
+			perm_delete_media, perm_invite_users, perm_request_media,
+			perm_share_media
+		) SELECT ?, ?, ?, ?, ?, ?, ?, ?, ?, ?`+guard,
 		username, passwordHash, owner,
 		permissions.ManageSettings, permissions.ManageLibrary, permissions.ManageUsers,
 		permissions.DeleteMedia, permissions.InviteUsers, permissions.RequestMedia,
+		permissions.ShareMedia,
 	)
 	if err != nil {
 		if strings.Contains(err.Error(), "UNIQUE constraint failed") {

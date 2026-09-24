@@ -537,6 +537,45 @@ var migrations = []migration{
 		// c'est le jeton qu'ils présentent qui est haché à chaque requête.
 		run: hashStoredSessionTokens,
 	},
+	{
+		id:   14,
+		name: "media share links",
+		// Voir ADR-0037 et le package sharelinks.
+		stmts: []string{
+			// Le droit de créer un lien public. Donné d'office à ceux qui
+			// avaient déjà tous les droits, pour qu'un administrateur le reste
+			// (models.Permissions.IsAdmin compare à l'ensemble complet).
+			`ALTER TABLE users ADD COLUMN perm_share_media BOOLEAN NOT NULL DEFAULT 0;`,
+			`UPDATE users SET perm_share_media = 1
+			WHERE is_owner = 1
+			   OR (perm_manage_settings = 1 AND perm_manage_library = 1
+			       AND perm_manage_users = 1 AND perm_delete_media = 1
+			       AND perm_invite_users = 1 AND perm_request_media = 1);`,
+			// Le code du lien n'est gardé qu'en empreinte, comme les jetons de
+			// session (ADR-0032) : une copie de la base n'ouvre aucun lien.
+			// viewer_digest est l'empreinte du navigateur qui a réservé un lien
+			// à usage unique ; consumed_at, le moment où il a été vu. Les dates
+			// sont des secondes Unix : écrites et relues par le seul package
+			// sharelinks, sans passer par les formats texte de SQLite.
+			`CREATE TABLE IF NOT EXISTS media_shares (
+				id INTEGER PRIMARY KEY AUTOINCREMENT,
+				code_digest TEXT NOT NULL UNIQUE,
+				media_id INTEGER NOT NULL,
+				created_by INTEGER NOT NULL,
+				password_hash TEXT NOT NULL DEFAULT '',
+				single_use BOOLEAN NOT NULL DEFAULT 0,
+				expires_at INTEGER,
+				viewer_digest TEXT NOT NULL DEFAULT '',
+				consumed_at INTEGER,
+				views INTEGER NOT NULL DEFAULT 0,
+				created_at INTEGER NOT NULL,
+				FOREIGN KEY (media_id) REFERENCES medias(id) ON DELETE CASCADE,
+				FOREIGN KEY (created_by) REFERENCES users(id) ON DELETE CASCADE
+			);`,
+			`CREATE INDEX IF NOT EXISTS idx_media_shares_created_by ON media_shares(created_by);`,
+			`CREATE INDEX IF NOT EXISTS idx_media_shares_media_id ON media_shares(media_id);`,
+		},
+	},
 }
 
 // applyMigrations brings the database up to the latest schema version.

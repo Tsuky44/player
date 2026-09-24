@@ -141,3 +141,77 @@ func TestRevocationStopsCopiedResponse(t *testing.T) {
 		t.Fatal("copy after revocation accepted")
 	}
 }
+
+// Un ticket de lien de partage n'appartient à aucun compte : un compte ne peut
+// ni le renouveler ni le révoquer, et il ne compte pas comme « en train de
+// lire » pour lui.
+func TestShareTicketsAreScopedToTheirLink(t *testing.T) {
+	s := NewStore()
+	token, _, err := s.IssueShare(5, 42)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if ticket, ok := s.Validate(token, 42); !ok || ticket.ShareID != 5 || ticket.UserID != 0 {
+		t.Fatalf("share ticket = %+v, %v", ticket, ok)
+	}
+	if _, err := s.Renew(token, 0); err == nil {
+		t.Fatal("an account renewed a share ticket")
+	}
+	if _, err := s.RenewShare(token, 6); err == nil {
+		t.Fatal("another link renewed the ticket")
+	}
+	if _, err := s.RenewShare(token, 5); err != nil {
+		t.Fatalf("own link renewal: %v", err)
+	}
+	if s.Holds(0, 42) {
+		t.Fatal("a share ticket counts as an account playing")
+	}
+	s.RevokeShareTicket(token, 6)
+	if _, ok := s.Validate(token, 42); !ok {
+		t.Fatal("another link revoked the ticket")
+	}
+}
+
+// Supprimer un lien arrête ce qu'il a ouvert, y compris une réponse déjà en
+// cours d'envoi.
+func TestRevokeShareStopsOpenResponses(t *testing.T) {
+	s := NewStore()
+	token, _, err := s.IssueShare(5, 42)
+	if err != nil {
+		t.Fatal(err)
+	}
+	other, _, _ := s.IssueShare(9, 42)
+	rec := httptest.NewRecorder()
+	w, ok := Protect(rec, httptest.NewRequest("GET", "/stream?ticket="+token, nil), s, 42)
+	if !ok {
+		t.Fatal("share ticket refused")
+	}
+	if _, err := w.Write([]byte("a")); err != nil {
+		t.Fatalf("write before revoke: %v", err)
+	}
+	s.RevokeShare(5)
+	if _, err := w.Write([]byte("b")); err == nil {
+		t.Fatal("open response kept streaming after the link was revoked")
+	}
+	if _, ok := s.Validate(other, 42); !ok {
+		t.Fatal("revoking one link revoked another")
+	}
+}
+
+func TestShareTicketsAreBoundedPerLink(t *testing.T) {
+	s := NewStore()
+	for i := 0; i < perShareTickets; i++ {
+		if _, _, err := s.IssueShare(5, 42); err != nil {
+			t.Fatalf("ticket %d: %v", i, err)
+		}
+	}
+	if _, _, err := s.IssueShare(5, 42); err == nil {
+		t.Fatal("one link held more than perShareTickets playbacks")
+	}
+	if _, _, err := s.IssueShare(6, 42); err != nil {
+		t.Fatalf("another link was starved: %v", err)
+	}
+	if _, _, err := s.Issue(1, 42); err != nil {
+		t.Fatalf("an account was starved: %v", err)
+	}
+}

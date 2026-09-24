@@ -9,6 +9,9 @@ class Permissions {
   final bool inviteUsers;
   final bool requestMedia;
 
+  /// Créer des liens publics vers un film ou un épisode (ADR-0037).
+  final bool shareMedia;
+
   const Permissions({
     this.manageSettings = false,
     this.manageLibrary = false,
@@ -16,6 +19,7 @@ class Permissions {
     this.deleteMedia = false,
     this.inviteUsers = false,
     this.requestMedia = false,
+    this.shareMedia = false,
   });
 
   /// What the "Admin" shortcut ticks.
@@ -26,6 +30,7 @@ class Permissions {
     deleteMedia: true,
     inviteUsers: true,
     requestMedia: true,
+    shareMedia: true,
   );
 
   bool get isAdmin =>
@@ -34,7 +39,8 @@ class Permissions {
       manageUsers &&
       deleteMedia &&
       inviteUsers &&
-      requestMedia;
+      requestMedia &&
+      shareMedia;
 
   /// True when nothing at all is granted — used to label an empty template.
   bool get isEmpty =>
@@ -43,7 +49,8 @@ class Permissions {
       !manageUsers &&
       !deleteMedia &&
       !inviteUsers &&
-      !requestMedia;
+      !requestMedia &&
+      !shareMedia;
 
   factory Permissions.fromJson(Map<String, dynamic>? json) {
     if (json == null) return const Permissions();
@@ -55,6 +62,7 @@ class Permissions {
       deleteMedia: flag('delete_media'),
       inviteUsers: flag('invite_users'),
       requestMedia: flag('request_media'),
+      shareMedia: flag('share_media'),
     );
   }
 
@@ -65,6 +73,7 @@ class Permissions {
         'delete_media': deleteMedia,
         'invite_users': inviteUsers,
         'request_media': requestMedia,
+        'share_media': shareMedia,
       };
 
   Permissions copyWith({
@@ -74,6 +83,7 @@ class Permissions {
     bool? deleteMedia,
     bool? inviteUsers,
     bool? requestMedia,
+    bool? shareMedia,
   }) {
     return Permissions(
       manageSettings: manageSettings ?? this.manageSettings,
@@ -82,6 +92,7 @@ class Permissions {
       deleteMedia: deleteMedia ?? this.deleteMedia,
       inviteUsers: inviteUsers ?? this.inviteUsers,
       requestMedia: requestMedia ?? this.requestMedia,
+      shareMedia: shareMedia ?? this.shareMedia,
     );
   }
 }

@@ -11,7 +11,7 @@ import '../../providers/auth_provider.dart';
 import '../../services/api_client.dart';
 import '../../theme/app_colors.dart';
 
-/// Human labels for the six administration rights, in the order they are shown.
+/// Human labels for the administration rights, in the order they are shown.
 const permissionLabels = <(String, String)>[
   ('manage_settings', 'Gérer les paramètres du serveur'),
   ('manage_library', 'Gérer la bibliothèque (scans, métadonnées)'),
@@ -19,6 +19,7 @@ const permissionLabels = <(String, String)>[
   ('delete_media', 'Supprimer des médias'),
   ('invite_users', 'Créer des invitations'),
   ('request_media', 'Demander des médias'),
+  ('share_media', 'Partager des médias par lien public'),
 ];
 
 bool readPermission(Permissions p, String key) => p.toJson()[key] == true;
@@ -37,6 +38,8 @@ Permissions writePermission(Permissions p, String key, bool value) {
       return p.copyWith(inviteUsers: value);
     case 'request_media':
       return p.copyWith(requestMedia: value);
+    case 'share_media':
+      return p.copyWith(shareMedia: value);
   }
   return p;
 }

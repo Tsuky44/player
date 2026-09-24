@@ -13,6 +13,7 @@ import '../../widgets/global/media_detail_widgets.dart';
 import '../../widgets/global/media_download_button.dart';
 import '../../widgets/global/media_technical_section.dart';
 import '../../widgets/global/metadata_fix_sheet.dart';
+import '../../widgets/global/share_media_button.dart';
 import '../../widgets/global/watched_action_button.dart';
 import '../../navigation/search_route_observer.dart';
 import '../player/player_screen.dart';
@@ -358,6 +359,7 @@ class _MovieDetailScreenState extends State<MovieDetailScreen> {
                   const SizedBox(width: 4),
                   MediaDownloadButton(item: _playbackItem),
                   const SizedBox(width: 4),
+                  ShareMediaButton(item: _playbackItem),
                   IconButton(
                     onPressed: _rematch,
                     tooltip: 'Corriger la fiche',

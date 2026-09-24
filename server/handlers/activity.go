@@ -112,27 +112,62 @@ type mediaSnapshot struct {
 	posterURL string
 }
 
-func loadMediaSnapshot(mediaID int) (mediaSnapshot, error) {
-	var snap mediaSnapshot
-	var season, episode int
-	var poster sql.NullString
-	err := database.DB.QueryRow(`
-		SELECT m.type, m.title, COALESCE(m.season_number, 0), COALESCE(m.episode_number, 0),
+// mediaSnapshotQuery lit ce qu'il faut pour nommer un média : la série d'un
+// épisode vient de son saison-parent. Suivi d'une clause WHERE sur m.
+const mediaSnapshotQuery = `
+		SELECT m.id, m.type, m.title, COALESCE(m.season_number, 0), COALESCE(m.episode_number, 0),
 		       show.id, COALESCE(show.title, ''),
 		       COALESCE(NULLIF(show.poster_url, ''), NULLIF(m.poster_url, ''), '')
 		FROM medias m
 		LEFT JOIN medias season ON season.id = m.parent_id AND m.type = 'episode'
 		LEFT JOIN medias show ON show.id = season.parent_id
-		WHERE m.id = ?`, mediaID,
-	).Scan(&snap.mediaType, &snap.title, &season, &episode, &snap.showID, &snap.showTitle, &poster)
+		`
+
+func scanMediaSnapshot(row interface{ Scan(dest ...any) error }) (int, mediaSnapshot, error) {
+	var snap mediaSnapshot
+	var id, season, episode int
+	var poster sql.NullString
+	err := row.Scan(&id, &snap.mediaType, &snap.title, &season, &episode, &snap.showID, &snap.showTitle, &poster)
 	if err != nil {
-		return snap, err
+		return 0, snap, err
 	}
 	snap.posterURL = poster.String
 	if snap.mediaType == string(models.TypeEpisode) && (season > 0 || episode > 0) {
 		snap.subtitle = fmt.Sprintf("S%02dE%02d", season, episode)
 	}
-	return snap, nil
+	return id, snap, nil
+}
+
+func loadMediaSnapshot(mediaID int) (mediaSnapshot, error) {
+	_, snap, err := scanMediaSnapshot(database.DB.QueryRow(mediaSnapshotQuery+`WHERE m.id = ?`, mediaID))
+	return snap, err
+}
+
+// loadMediaSnapshots est loadMediaSnapshot pour plusieurs médias, en une
+// requête.
+func loadMediaSnapshots(mediaIDs []int) (map[int]mediaSnapshot, error) {
+	out := make(map[int]mediaSnapshot, len(mediaIDs))
+	if len(mediaIDs) == 0 {
+		return out, nil
+	}
+	args := make([]any, len(mediaIDs))
+	for i, id := range mediaIDs {
+		args[i] = id
+	}
+	rows, err := database.DB.Query(
+		fmt.Sprintf(mediaSnapshotQuery+`WHERE m.id IN (%s)`, sqlPlaceholders(len(mediaIDs))), args...)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	for rows.Next() {
+		id, snap, err := scanMediaSnapshot(rows)
+		if err != nil {
+			return nil, err
+		}
+		out[id] = snap
+	}
+	return out, rows.Err()
 }
 
 func historyStamp(t time.Time) string { return t.UTC().Format(sqliteTimeLayout) }

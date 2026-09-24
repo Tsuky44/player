@@ -446,11 +446,13 @@ func ApproveAccessRequest(w http.ResponseWriter, r *http.Request, ps httprouter.
 		INSERT INTO users (
 			username, password_hash, is_owner,
 			perm_manage_settings, perm_manage_library, perm_manage_users,
-			perm_delete_media, perm_invite_users, perm_request_media
-		) VALUES (?, ?, 0, ?, ?, ?, ?, ?, ?)`,
+			perm_delete_media, perm_invite_users, perm_request_media,
+			perm_share_media
+		) VALUES (?, ?, 0, ?, ?, ?, ?, ?, ?, ?)`,
 		username, passwordHash,
 		permissions.ManageSettings, permissions.ManageLibrary, permissions.ManageUsers,
 		permissions.DeleteMedia, permissions.InviteUsers, permissions.RequestMedia,
+		permissions.ShareMedia,
 	)
 	if err != nil {
 		log.Printf("ApproveAccessRequest: user insert failed: %v", err)
