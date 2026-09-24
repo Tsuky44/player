@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:onyx/models/media_share.dart';
+import 'package:onyx/models/player_layout.dart';
+import 'package:onyx/providers/player_layout_provider.dart';
 import 'package:onyx/providers/auth_provider.dart';
 import 'package:onyx/screens/shared_link/shared_link_app.dart';
 import 'package:onyx/services/api_client.dart';
@@ -78,5 +80,14 @@ void main() {
     expect(
         find.text('Ce lien a expiré ou a déjà été utilisé.'), findsOneWidget);
     expect(find.text('Regarder'), findsNothing);
+  });
+
+  // Le visiteur voit le playeur maison, pas celui qu'un compte connecté dans
+  // ce navigateur aurait choisi.
+  test('le lecteur du visiteur est figé sur le Chrome Onyx', () {
+    final layout = PlayerLayoutProvider.fixed(
+        FixedChromeId.onyx, _Api(const SharedMediaInfo()));
+    expect(layout.isLoaded, isTrue);
+    expect(layout.fixedChrome, FixedChromeId.onyx);
   });
 }

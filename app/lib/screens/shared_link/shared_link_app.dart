@@ -1,13 +1,13 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
+import '../../models/player_layout.dart';
 import '../../providers/auth_provider.dart';
 import '../../providers/home_provider.dart';
 import '../../providers/library_provider.dart';
 import '../../providers/player_layout_provider.dart';
 import '../../services/api_client.dart';
 import '../../services/download_manager.dart';
-import '../../services/layout_storage.dart';
 import '../../services/server_reachability.dart';
 import '../../theme/app_colors.dart';
 import '../../theme/app_theme.dart';
@@ -57,8 +57,10 @@ void runSharedLinkApp(String code) {
         ChangeNotifierProvider(create: (_) => ServerReachability(api)),
         ChangeNotifierProvider(create: (_) => HomeProvider(api)),
         ChangeNotifierProvider(create: (_) => LibraryProvider(api)),
+        // Toujours le Chrome Onyx, le playeur maison : pas celui qu'un compte
+        // connecté dans ce navigateur aurait choisi.
         ChangeNotifierProvider(
-            create: (_) => PlayerLayoutProvider(LayoutStorage(), api)),
+            create: (_) => PlayerLayoutProvider.fixed(FixedChromeId.onyx, api)),
       ],
       child: SharedLinkApp(api: api),
     ),

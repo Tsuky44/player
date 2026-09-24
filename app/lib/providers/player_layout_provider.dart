@@ -36,9 +36,20 @@ class PlayerLayoutProvider extends ChangeNotifier {
     _init();
   }
 
+  /// Un playeur figé sur [chrome], sans compte ni lecture du stockage local :
+  /// celui du visiteur d'un lien de partage (ADR-0037). Ce navigateur peut
+  /// tenir le playeur d'un compte connecté par ailleurs ; le visiteur ne le
+  /// voit pas.
+  PlayerLayoutProvider.fixed(FixedChromeId chrome, this._apiClient)
+      : _storage = LayoutStorage() {
+    _config = PlayerLayoutConfig.fixed(chrome);
+    _isLoaded = true;
+  }
+
   PlayerLayoutConfig get config => _config;
   bool get isLoaded => _isLoaded;
   bool get isSyncing => _isSyncing;
+
   /// Only meaningful when [fixedChrome] is null — a fixed chrome is neither
   /// the default HUD nor the modular layer.
   bool get useModularLayout => _useModularLayout;
@@ -132,8 +143,7 @@ class PlayerLayoutProvider extends ChangeNotifier {
       debugPrint('PlayerLayoutProvider.syncFromAccount: $e');
       // Keep local cache / current layout usable offline.
       if (_presets.isNotEmpty) {
-        final selected =
-            _resolvePreset(_activePresetId) ?? _presets.first;
+        final selected = _resolvePreset(_activePresetId) ?? _presets.first;
         await _applyPreset(selected, persistActiveId: false);
       }
     } finally {
@@ -262,9 +272,8 @@ class PlayerLayoutProvider extends ChangeNotifier {
   }) async {
     try {
       final created = await _apiClient.createPlayerLayout(
-        name: name?.trim().isNotEmpty == true
-            ? name!.trim()
-            : _nextDefaultName(),
+        name:
+            name?.trim().isNotEmpty == true ? name!.trim() : _nextDefaultName(),
         config: config ?? PlayerLayoutConfig.standard(),
         useModular: useModular ?? false,
       );
@@ -295,7 +304,8 @@ class PlayerLayoutProvider extends ChangeNotifier {
     final trimmed = name.trim();
     if (trimmed.isEmpty) return false;
     try {
-      final updated = await _apiClient.updatePlayerLayout(id: id, name: trimmed);
+      final updated =
+          await _apiClient.updatePlayerLayout(id: id, name: trimmed);
       _presets = [
         for (final preset in _presets)
           if (preset.id == id) updated else preset,
