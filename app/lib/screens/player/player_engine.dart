@@ -7,6 +7,7 @@ import 'package:onyx_mpv_macos/onyx_mpv_macos.dart';
 
 import '../../utils/app_platform.dart';
 import '../../utils/mpv_native_view.dart';
+import 'playback/mpv_startup_trace.dart';
 
 /// A libmpv instance together with the video texture it renders into.
 ///
@@ -46,7 +47,10 @@ class PlayerEngine {
       // Aucune sortie vidéo tant qu'aucune vue n'est là : sans `vo=null`, mpv
       // ouvrirait sa propre fenêtre dès le premier film.
       final player = mk.Player(
-        configuration: const mk.PlayerConfiguration(vo: 'null'),
+        configuration: const mk.PlayerConfiguration(
+          vo: 'null',
+          logLevel: _logLevel,
+        ),
       );
       // media_kit démarre avec `vid=no` et compte sur le VideoController pour
       // poser `vid=auto`. Sans lui, la piste vidéo resterait coupée : le son
@@ -58,9 +62,19 @@ class PlayerEngine {
       );
       return PlayerEngine._(player, null);
     }
-    final player = mk.Player();
+    final player = mk.Player(
+      configuration: const mk.PlayerConfiguration(logLevel: _logLevel),
+    );
     return PlayerEngine._(player, VideoController(player));
   }
+
+  /// Verbeux, pour que la trace de démarrage ([MpvStartupProbe]) voie
+  /// l'ouverture du flux, l'index et le seek initial — rien de tout ça n'est
+  /// écrit en `info`. Le niveau se fixe à la création du contexte libmpv, pas
+  /// après. Hors démarrage, personne n'écoute : en lecture établie, mpv
+  /// n'écrit presque rien à ce niveau (debug et trace, eux, suivent chaque
+  /// paquet et restent coupés).
+  static const _logLevel = mk.MPVLogLevel.v;
 
   /// Waits out the parked unload, if there is one. Idempotent.
   Future<void> settle() async {

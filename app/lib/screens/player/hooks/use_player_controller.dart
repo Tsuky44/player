@@ -11,6 +11,7 @@ import '../playback/live_subtitles.dart';
 import '../playback/playback_engine.dart';
 import '../playback/playback_session.dart';
 import '../playback/playback_stats.dart';
+import '../playback/startup_timeline.dart';
 import 'playback_reporter.dart';
 import '../playback/timeline_previews.dart';
 import '../playback_profile.dart';
@@ -106,6 +107,8 @@ class PlayerController {
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (_disposed || hasFirstFrame) return;
       hasFirstFrame = true;
+      _mark('shown');
+      _printStartup();
       _startTimelinePreviews();
       _onFirstFrame?.call();
       unawaited(_onPictureLive());
@@ -444,35 +447,26 @@ class PlayerController {
   /// [_startWebTranscode], which is the only place it can be applied there.
   Future<int>? _resumePositionFuture;
 
-  /// Milestones of the current start-up, printed once playback is rolling.
+  /// Milestones of the current start-up. See [StartupTimeline].
   ///
-  /// "It takes a while to start" is otherwise unattributable: the wait is split
-  /// between the resume lookup, mpv opening the stream, the first frame being
-  /// decoded and the first frame being painted, and only the breakdown says
-  /// which one to attack.
-  final Stopwatch _startupWatch = Stopwatch();
-  final List<String> _startupMarks = [];
-  bool _startupReported = false;
+  /// Started with the controller, which the screen builds in `initState` :
+  /// what the screen does before calling [init] shows up as the `init` step.
+  final StartupTimeline _startup = StartupTimeline()..start();
 
-  /// Records the first occurrence of [label]; later ones are ignored, so a
-  /// milestone driven by a stream (the first decoded frame) can be marked from
-  /// inside a listener that fires many times.
-  void _mark(String label) {
-    if (!_startupWatch.isRunning || _startupReported) return;
-    if (_startupMarks.any((m) => m.startsWith('$label='))) return;
-    _startupMarks.add('$label=${_startupWatch.elapsedMilliseconds}ms');
+  void _mark(String label) => _startup.mark(label);
+
+  /// The clock is running: that is the start-up the stats report.
+  void _notePlaying() {
+    final millis = _startup.notePlaying();
+    if (millis != null) _stats.noteStartup(millis);
   }
 
-  void _reportStartup() {
-    if (_startupReported || !_startupWatch.isRunning) return;
-    _startupReported = true;
-    _mark('playing');
-    _startupWatch.stop();
-    _stats.noteStartup(_startupWatch.elapsedMilliseconds);
-    debugPrint('PLAYER STARTUP: ${_startupMarks.join(' ')}');
+  /// Prints the start-up line, once. An unfinished one is printed too — on the
+  /// way out — since a start that never lands is the one worth reading.
+  void _printStartup({bool complete = true}) {
+    final line = _startup.close(complete: complete);
+    if (line != null) debugPrint(line);
   }
-
-  /// The pooled libmpv instance this controller drives. Held so it can be given
 
   PlayerController() {
     session = createPlaybackSession();
@@ -495,7 +489,7 @@ class PlayerController {
     Future<int>? resumePositionFuture,
     int provisionalResumeSeconds = 0,
   }) async {
-    _startupWatch.start();
+    _mark('init');
     _reporter.markLogStart();
     // Un moteur repris au vestiaire peut encore décharger le film précédent.
     // Ouvrir par-dessus est ce qui laissait une lecture derrière un indicateur
@@ -514,6 +508,7 @@ class PlayerController {
       debugPrint(
           "Player: failed to apply native MPV properties: ${redactPlaybackDiagnostic(e)}");
     }
+    _mark('tuned');
 
     if (_disposed) return;
     _positionSubscription = session.positions.listen((pos) {
@@ -529,7 +524,7 @@ class PlayerController {
           : pos;
       // The clock advancing is the first moment the user is genuinely watching.
       if (isPlaying) {
-        _reportStartup();
+        _notePlaying();
         _clockRunning = true;
         _maybeMarkFirstFrame();
       }
@@ -556,6 +551,9 @@ class PlayerController {
       // currentQuality may momentarily still read as Direct Play, so the swap
       // guard has to stand in for it — otherwise the growing HLS duration
       // overwrites the real one and every later position looks out of range.
+      // Le fichier est ouvert et son index lu : l'étape entre `play` et la
+      // première image.
+      if (dur > Duration.zero) _mark('loaded');
       if (_hlsSwapInFlight || currentQuality != null) return;
       duration = dur;
       onDurationChanged();
@@ -574,7 +572,9 @@ class PlayerController {
       if (_disposed) return;
       final aspect = params.aspect;
       if (aspect == null || aspect <= 0) return;
-      _mark('firstFrame');
+      // Le décodeur connaît les dimensions : il a lu l'en-tête de la vidéo,
+      // pas encore forcément peint une image.
+      _mark('decoder');
       videoAspectRatio = aspect;
       _videoParamsReady = true;
       _maybeMarkFirstFrame();
@@ -696,6 +696,7 @@ class PlayerController {
       }
       if (_disposed) return;
       _mark('resume');
+      if (startAt > 0) _startup.note('reprise à ${startAt}s');
 
       try {
         await session.open(
@@ -743,6 +744,9 @@ class PlayerController {
     try {
       final tracks = await _loadTracks(apiClient, mediaId);
       if (_disposed || tracks == null) return;
+      // Arrivée pendant le démarrage, la liste peut faire changer de piste
+      // audio — ce qui relance le chargement : la ligne doit le situer.
+      _mark('tracks');
 
       mediaTracks = tracks;
 
@@ -2152,6 +2156,7 @@ class PlayerController {
   }
 
   void cancelStreams() {
+    _printStartup(complete: false);
     _reportActivityStopped();
     _stats.stop();
     _disposeTimelinePreviews();
@@ -2181,6 +2186,7 @@ class PlayerController {
   }
 
   void dispose() {
+    _printStartup(complete: false);
     _reportActivityStopped();
     _stats.stop();
     _disposeTimelinePreviews();

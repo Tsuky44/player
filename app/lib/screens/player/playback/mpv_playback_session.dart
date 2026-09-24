@@ -11,6 +11,7 @@ import '../player_engine.dart';
 import '../playback_profile.dart';
 import 'cache_pause_policy.dart';
 import 'mpv_native_surface.dart';
+import 'mpv_startup_trace.dart';
 import 'mpv_subtitle_overlay.dart';
 import 'playback_session.dart';
 import 'seek_timeline.dart';
@@ -37,6 +38,9 @@ class MpvPlaybackSession implements PlaybackSession {
 
   final PlayerEngine _engine;
 
+  /// La trace de l'ouverture à la première image. Voir [MpvStartupProbe].
+  late final MpvStartupProbe _startup = MpvStartupProbe(_player);
+
   /// Clé de la vue vidéo, pour lui demander de décaler ses sous-titres.
   final GlobalKey<VideoState> _videoKey = GlobalKey<VideoState>();
 
@@ -59,6 +63,7 @@ class MpvPlaybackSession implements PlaybackSession {
   @override
   Future<void> dispose() async {
     _endSeekWatch(log: false);
+    _startup.cancel();
     await _stopObserving();
     // Rendu plutôt que détruit : la lecture suivante réutilise cette instance
     // libmpv et sa texture au lieu de payer leur construction.
@@ -94,12 +99,33 @@ class MpvPlaybackSession implements PlaybackSession {
   // --- Commandes ---------------------------------------------------------
 
   @override
-  Future<void> open(String url, {Duration? start, bool play = false}) {
+  Future<void> open(String url, {Duration? start, bool play = false}) async {
     _endSeekWatch(log: false);
     _cachePausedSince = null;
     _openedAt = DateTime.now();
+    // Une reprise démarre sur l'image clé qui précède le point, pas sur l'image
+    // exacte. En précis, mpv doit télécharger et décoder tout ce qui sépare
+    // l'image clé du point avant d'afficher quoi que ce soit — jusqu'à une
+    // dizaine de secondes d'un HEVC 4K sur les encodages à GOP long, sur un
+    // lien qui tient à peine le débit du film. Revoir deux secondes déjà vues
+    // ne coûte rien. Seulement avant la première image : le retour du
+    // transcodage, lui, doit tomber à la seconde près. Rétabli par
+    // [onPictureLive].
+    if (!AppPlatform.isWeb &&
+        !_pictureLive &&
+        start != null &&
+        start > Duration.zero) {
+      await _set(_player.platform as dynamic, 'hr-seek', 'no');
+      _exactSeekDeferred = true;
+    }
+    if (!AppPlatform.isWeb && !_pictureLive) {
+      _startup.begin(start: start, keyframeStart: _exactSeekDeferred);
+    }
     return _player.open(mk.Media(url, start: start), play: play);
   }
+
+  /// `hr-seek` a été coupé pour l'ouverture et attend la première image.
+  bool _exactSeekDeferred = false;
 
   @override
   Future<void> play() => _player.play();
@@ -121,6 +147,13 @@ class MpvPlaybackSession implements PlaybackSession {
 
   @override
   Future<void> setAudioTrack(PlaybackTrack track) {
+    final current = _player.state.track.audio.id;
+    if (current != track.id) {
+      _trackSwitchedAt = DateTime.now();
+      // Relance le chargement pour la nouvelle piste : à voir dans la trace.
+      _startup.note('piste audio changée pendant le démarrage '
+          '($current → ${track.id})');
+    }
     return _player.setAudioTrack(
       mk.AudioTrack(track.id, track.title, track.language),
     );
@@ -130,14 +163,21 @@ class MpvPlaybackSession implements PlaybackSession {
   Future<void> setSubtitles(SubtitleSelection selection) {
     return switch (selection) {
       SubtitleNone() => _player.setSubtitleTrack(mk.SubtitleTrack.no()),
-      SubtitleFromTrack(:final track) => _player.setSubtitleTrack(
-          mk.SubtitleTrack(track.id, track.title, track.language),
-        ),
+      SubtitleFromTrack(:final track) => _selectEmbeddedSubtitle(track),
       SubtitleFromVtt(:final content, :final title, :final language) =>
         _player.setSubtitleTrack(
           mk.SubtitleTrack.data(content, title: title, language: language),
         ),
     };
+  }
+
+  Future<void> _selectEmbeddedSubtitle(PlaybackTrack track) {
+    if (_player.state.track.subtitle.id != track.id) {
+      _trackSwitchedAt = DateTime.now();
+    }
+    return _player.setSubtitleTrack(
+      mk.SubtitleTrack(track.id, track.title, track.language),
+    );
   }
 
   @override
@@ -459,6 +499,7 @@ class MpvPlaybackSession implements PlaybackSession {
   }
 
   void _onObserved(String name, String value) {
+    _startup.note('$name=$value');
     final on = value == 'yes';
     final timeline = _seekTimeline;
     if (name == 'seeking') {
@@ -481,29 +522,34 @@ class MpvPlaybackSession implements PlaybackSession {
       _cachePausedSince ??= now;
       return;
     }
-    // La pause se juge à sa fin : c'est sa durée qui dit si le réseau suit.
+    // Jugée à sa fin, pour dire dans le log combien de temps elle a duré.
     final since = _cachePausedSince;
     _cachePausedSince = null;
     if (since == null) return;
-    final paused = now.difference(since);
+    final refill =
+        '${(now.difference(since).inMilliseconds / 1000).toStringAsFixed(2)}s';
     final wait = _cachePause.waitSeconds;
-    if (!_cachePause.blamesNetwork(paused)) {
-      debugPrint('mpv: tampon vide, ${wait}s regarnies en '
-          '${(paused.inMilliseconds / 1000).toStringAsFixed(2)}s — le réseau '
-          'suit, la cause est locale (décodage, sortie ou changement de piste)');
+    if (!_cachePause.blamesNetwork(since, lastTrackSwitch: _trackSwitchedAt)) {
+      debugPrint('mpv: tampon vide après un changement de piste, ${wait}s '
+          'regarnies en $refill');
       return;
     }
-    if (!_cachePause.noteUnderrun(now)) return;
+    final escalated = _cachePause.noteUnderrun(now);
     final next = _cachePause.waitSeconds;
-    debugPrint('mpv: la connexion ne suit pas le débit (${wait}s de média '
-        'en ${(paused.inMilliseconds / 1000).toStringAsFixed(1)}s) — reprise '
-        'après ${next}s en mémoire');
+    debugPrint('mpv: cache vide en pleine lecture — la réception ne tient pas '
+        'le débit du film en moyenne (${wait}s regarnies en $refill, par '
+        'rafales)${escalated ? ' — reprise après ${next}s en mémoire' : ''}');
+    if (!escalated) return;
     unawaited(
         _set(_player.platform as dynamic, 'cache-pause-wait', '$next'));
   }
 
   /// Début de la mise en pause du cache en cours, hors seek.
   DateTime? _cachePausedSince;
+
+  /// Le dernier changement de piste intégrée : mpv relit le fichier pour elle,
+  /// et le cache vide qui suit ne dit rien de la connexion.
+  DateTime? _trackSwitchedAt;
 
   /// La dernière ouverture, pour ne pas prendre son chargement pour une coupure.
   DateTime? _openedAt;
@@ -644,6 +690,13 @@ class MpvPlaybackSession implements PlaybackSession {
   Future<void> onPictureLive() async {
     if (!AppPlatform.isWeb) {
       _pictureLive = true;
+      // La reprise a démarré sur son image clé ([open]) : les seeks suivants
+      // redeviennent précis.
+      await _startup.finish((name) => _read(_player.platform as dynamic, name));
+      if (_exactSeekDeferred) {
+        _exactSeekDeferred = false;
+        await _set(_player.platform as dynamic, 'hr-seek', 'yes');
+      }
       // Désormais, un seek hors du cache montre sa première image tout de suite
       // puis attend d'avoir de quoi lire avant de repartir. Sans ça, mpv
       // repartait sur la seule image décodée, tombait à sec une demi-seconde

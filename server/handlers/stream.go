@@ -20,7 +20,7 @@ import (
 
 var (
 	streamLookupStmt *sql.Stmt
-	streamDebug      = flag.Bool("stream-debug", false, "Log per-request /stream timing metrics")
+	streamDebug      = flag.Bool("stream-debug", false, "Log per-request /stream timings (also STREAM_DEBUG=1)")
 
 	errInvalidStreamType = errors.New("invalid stream type")
 	errEmptyFilePath     = errors.New("empty file path")
@@ -64,6 +64,11 @@ func StreamMedia(w http.ResponseWriter, r *http.Request, _ httprouter.Params) {
 	if !allowed {
 		return
 	}
+	var metrics *streamMetrics
+	if streamDebugEnabled() {
+		metrics = newStreamMetrics(w, r, mediaID, start)
+		w = metrics
+	}
 	entry, err := resolveStreamEntry(mediaID)
 	if err != nil {
 		switch {
@@ -99,11 +104,12 @@ func StreamMedia(w http.ResponseWriter, r *http.Request, _ httprouter.Params) {
 	}
 	defer file.Close()
 
+	if metrics != nil {
+		metrics.noteOpened()
+	}
 	http.ServeContent(w, r, entry.FilePath, entry.ModTime, file)
-
-	if *streamDebug {
-		log.Printf("stream metric media_id=%d range=%q bytes=%d duration_ms=%d",
-			mediaID, r.Header.Get("Range"), entry.FileSize, time.Since(start).Milliseconds())
+	if metrics != nil {
+		log.Print(metrics.describe())
 	}
 }
 

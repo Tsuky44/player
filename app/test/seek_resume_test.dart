@@ -37,23 +37,25 @@ void main() {
       expect(policy.waitSeconds, 2);
     });
 
-    test('a pause refilled faster than real time does not blame the network',
+    test('an empty cache mid-playback blames reception, however fast it refills',
         () {
-      final policy = CachePausePolicy();
-      // 2 s of film fetched in 0.3 s: the link is ~7x the bitrate.
-      expect(policy.blamesNetwork(const Duration(milliseconds: 300)), isFalse);
-      expect(policy.blamesNetwork(const Duration(milliseconds: 1999)), isFalse);
-      // 2 s of film took 3 s: the link is slower than the film.
-      expect(policy.blamesNetwork(const Duration(seconds: 3)), isTrue);
+      // The refill speed is a burst, not an average: with minutes of
+      // read-ahead, the cache only empties when the average fell short.
+      expect(CachePausePolicy().blamesNetwork(t0), isTrue);
+      expect(
+        CachePausePolicy().blamesNetwork(t0,
+            lastTrackSwitch: t0.subtract(const Duration(minutes: 1))),
+        isTrue,
+      );
     });
 
-    test('the bar for blaming the network follows the current wait', () {
-      final policy = CachePausePolicy();
-      policy.noteUnderrun(t0);
-      policy.noteUnderrun(t0.add(const Duration(seconds: 30)));
-      expect(policy.waitSeconds, 5);
-      expect(policy.blamesNetwork(const Duration(seconds: 3)), isFalse);
-      expect(policy.blamesNetwork(const Duration(seconds: 6)), isTrue);
+    test('an empty cache right after a track switch is the switch reloading',
+        () {
+      expect(
+        CachePausePolicy().blamesNetwork(t0,
+            lastTrackSwitch: t0.subtract(const Duration(seconds: 3))),
+        isFalse,
+      );
     });
 
     test('a calm stretch brings a seek back to the short wait', () {

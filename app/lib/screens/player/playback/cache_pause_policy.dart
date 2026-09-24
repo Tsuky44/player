@@ -32,15 +32,27 @@ class CachePausePolicy {
 
   int get waitSeconds => levels[_level];
 
-  /// Vrai quand une mise en pause du cache, qui a duré [paused], accuse la
-  /// connexion.
+  /// Après un changement de piste, le cache vide est le rechargement de la
+  /// nouvelle piste.
+  static const trackSwitchGrace = Duration(seconds: 10);
+
+  /// Vrai quand une mise en pause du cache, commencée à [pausedAt], accuse la
+  /// réception — hors changement de piste, toujours.
   ///
-  /// mpv ne se met en pause qu'une fois la sortie à sec, cache presque vide :
-  /// la pause dure donc le temps de télécharger [waitSeconds] de média. Plus
-  /// court que ça en temps réel, le réseau a livré plus vite que le film ne se
-  /// lit — la coupure vient du décodage, de la sortie ou d'un rechargement de
-  /// piste, et allonger l'attente ne ferait que ralentir chaque seek suivant.
-  bool blamesNetwork(Duration paused) => paused >= Duration(seconds: waitSeconds);
+  /// mpv ne se met en pause que quand un décodeur réclame un paquet que le
+  /// démultiplexeur n'a pas. Un décodage lent ne vide pas le cache, il le
+  /// laisse grossir. Avec quatre minutes de lecture anticipée, un cache vide en
+  /// pleine lecture dit donc que le débit reçu en moyenne est passé sous celui
+  /// du film, quelle que soit la vitesse de la reprise qui suit.
+  ///
+  /// Le critère était cette vitesse : une pause plus courte que [waitSeconds]
+  /// innocentait le réseau. Elle ne mesure qu'une rafale. Sur un lien en dents
+  /// de scie, ce critère a absous quatre coupures en une minute (« 5 s
+  /// regarnies en 1,81 s ») et laissé l'attente à son minimum pendant que le
+  /// film se coupait.
+  bool blamesNetwork(DateTime pausedAt, {DateTime? lastTrackSwitch}) =>
+      lastTrackSwitch == null ||
+      pausedAt.difference(lastTrackSwitch) > trackSwitchGrace;
 
   /// Une coupure en pleine lecture. Renvoie `true` si l'attente a changé.
   bool noteUnderrun(DateTime now) {
