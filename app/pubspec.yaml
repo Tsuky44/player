@@ -127,6 +127,12 @@ dependency_overrides:
     path: ../packages/media_kit_libs_ios_video
   media_kit_libs_windows_video:
     path: ../packages/media_kit_libs_windows_video
+  # Le plugin vidéo 2.0.1 tel quel, sauf windows/video_output.cc : la texture
+  # retaillée pendant la lecture faisait planter l'app Windows par
+  # intermittence (voir les commentaires « Onyx : » de ce fichier). À retirer
+  # quand une version publiée corrige la course.
+  media_kit_video:
+    path: ../packages/media_kit_video
 
 dev_dependencies:
   flutter_test:

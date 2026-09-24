@@ -21,11 +21,6 @@ void CreateAndAttachConsole() {
   }
 }
 
-bool HasStandardOutput() {
-  HANDLE output = ::GetStdHandle(STD_OUTPUT_HANDLE);
-  return output != nullptr && output != INVALID_HANDLE_VALUE;
-}
-
 std::vector<std::string> GetCommandLineArguments() {
   // Convert the UTF-16 command line arguments to UTF-8 for the Engine to use.
   int argc;
