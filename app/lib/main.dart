@@ -18,6 +18,7 @@ import 'services/client_identity.dart';
 import 'services/client_log.dart';
 import 'services/auto_download.dart';
 import 'services/download_manager.dart';
+import 'services/dns_warmup.dart';
 import 'services/download_preferences.dart';
 import 'services/network_status.dart';
 import 'services/server_reachability.dart';
@@ -218,6 +219,13 @@ void main() async {
   final authProvider = AuthProvider(apiClient);
   final reachability = ServerReachability(apiClient);
 
+  // Le lecteur résout le nom du serveur au moment d'ouvrir le flux : ce nom
+  // doit déjà être dans le cache DNS du système. Voir [DnsWarmup].
+  final servers = apiClient.servers;
+  void warmServerNames() => DnsWarmup.watch(servers.knownUrls);
+  servers.addListener(warmServerNames);
+  warmServerNames();
+
   // Sur quoi passent les octets. Une question distincte de celle que pose
   // [ServerReachability] : un NAS joignable en 4G est joignable, et rapatrier
   // une saison dessus vide un forfait.
@@ -226,8 +234,8 @@ void main() async {
 
   // Le seul endroit où le réseau et le réglage se croisent. Le magasin hors
   // ligne pose la question à chaque média de la file, sans rien savoir des deux.
-  downloads.transferGate = () =>
-      !network.isMetered || downloadPreferences.allowsMeteredNow;
+  downloads.transferGate =
+      () => !network.isMetered || downloadPreferences.allowsMeteredNow;
 
   final autoDownloads = AutoDownloadService(
     manager: downloads,
@@ -349,7 +357,7 @@ class OnyxApp extends StatelessWidget {
           // Le focus est le seul moyen d'agir avec une télécommande : s'il se
           // perd, l'app a l'air gelée. Voir [TvFocusGuard].
           child: TvFocusGuard(
-              child: SearchOverlayScope(
+            child: SearchOverlayScope(
               routeObserver: searchRouteObserver,
               navigatorKey: rootNavigatorKey,
               child: MaterialApp(
@@ -429,9 +437,7 @@ class OnyxApp extends StatelessWidget {
                       // A television gets the QR pairing instead of a password
                       // form. The form is still reachable from it, for the first
                       // account on a server and for anyone without a phone.
-                      return isTv
-                          ? const TvLoginScreen()
-                          : const LoginScreen();
+                      return isTv ? const TvLoginScreen() : const LoginScreen();
                     }
                     return const MainShell();
                   },

@@ -134,6 +134,14 @@ class ServerRegistry extends ChangeNotifier {
     return null;
   }
 
+  /// Toutes les adresses que l'app peut joindre : les comptes, et les serveurs
+  /// liés d'où viennent les médias partagés.
+  Iterable<String> get knownUrls => {
+        for (final account in _accounts) account.url,
+        for (final links in _serverLinks.values)
+          for (final link in links) link.url,
+      };
+
   List<AccountLink> serverLinksFor(String id) =>
       List.unmodifiable(_serverLinks[id] ?? const []);
 
@@ -216,8 +224,7 @@ class ServerRegistry extends ChangeNotifier {
           .where((g) => g.length > 1)
           .toList();
       _serverLinks = {
-        for (final entry
-            in (data['server_links'] as Map? ?? const {}).entries)
+        for (final entry in (data['server_links'] as Map? ?? const {}).entries)
           if (accountById(entry.key as String) != null)
             entry.key as String: (entry.value as List)
                 .map((e) => AccountLink.fromJson(e as Map<String, dynamic>))

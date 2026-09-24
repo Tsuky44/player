@@ -11,6 +11,9 @@ name: Server
 # reinjectes tels quels. Sans cela le dossier /app/downloads de l'image serait
 # vide et les liens de Parametres -> Applications disparaitraient, alors que
 # seul le serveur a change.
+#
+# Publie par defaut sur :latest, le tag que suit docker-compose.prod.yml : le
+# serveur de test recupere le build par un simple `docker compose pull`.
 
 on:
   workflow_dispatch:
@@ -18,19 +21,8 @@ on:
       tag:
         description: "Tag Docker a publier"
         required: true
-        default: "dev"
+        default: "latest"
         type: string
-  push:
-    branches: [main]
-    # Un changement de README ou de doc n'a pas a declencher un build d'image.
-    paths:
-      - "server/**"
-      - "app/lib/**"
-      - "app/web/**"
-      - "app/pubspec.yaml"
-      - "app/pubspec.lock"
-      - "scripts/build-web.sh"
-      - ".github/workflows/server.yml"
 
 permissions:
   contents: read
@@ -40,8 +32,8 @@ env:
   FLUTTER_VERSION: "3.44.2"
   IMAGE_NAME: playeur-server
 
-# Deux pushs rapproches sur main n'ont pas a produire deux images concurrentes :
-# seul le dernier commit compte.
+# Deux lancements rapproches n'ont pas a produire deux images concurrentes :
+# seul le dernier compte.
 concurrency:
   group: server-image-${{ github.ref }}
   cancel-in-progress: true
@@ -71,14 +63,7 @@ jobs:
           OWNER_LC="$(printf '%s' "${{ github.repository_owner }}" | tr '[:upper:]' '[:lower:]')"
           IMAGE="ghcr.io/$OWNER_LC/$IMAGE_NAME"
 
-          # Jamais :latest par defaut. Ce tag designe la derniere version
-          # complete validee par release.yml ; un build serveur seul, declenche
-          # a chaque push sur main, n'a pas a se faire passer pour elle.
-          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
-            TAG="${TAG_INPUT:-dev}"
-          else
-            TAG="dev"
-          fi
+          TAG="${TAG_INPUT:-latest}"
 
           {
             echo "image=$IMAGE"
@@ -150,6 +135,4 @@ jobs:
             echo '```'
             echo ""
             echo "Egalement taguee \`$SHA_TAG\`."
-            echo ""
-            echo "> Le tag \`latest\` n'a pas ete touche : il reste sur la derniere version complete publiee par le workflow Release."
           } >> "$GITHUB_STEP_SUMMARY"

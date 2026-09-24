@@ -19,6 +19,7 @@ import '../web_quality.dart';
 import '../../../services/api_client.dart';
 import '../../../services/client_log.dart';
 import '../../../services/playback_access.dart';
+import '../../../services/dns_warmup.dart';
 import '../../../services/download_manager.dart';
 import '../../../services/playback_capabilities.dart';
 import '../../../services/playback_preferences_storage.dart';
@@ -629,6 +630,9 @@ class PlayerController {
         return;
       }
       _playbackAccess = access;
+      // Un média partagé arrive d'un autre serveur : son nom rejoint ceux
+      // qu'on garde en cache DNS, pour les lectures suivantes.
+      DnsWarmup.watch([access.origin]);
       _mark('ticket');
     }
     final streamUrl = _directPlaySource(apiClient, media.id);

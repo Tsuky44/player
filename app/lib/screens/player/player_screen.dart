@@ -47,6 +47,7 @@ import 'widgets/player_episodes_panel.dart';
 import 'widgets/player_status_panels.dart';
 import 'widgets/watch_party_overlay.dart';
 import 'playback/live_subtitles.dart';
+import 'playback/relay_trigger.dart';
 import 'pinch_zoom_fit.dart';
 import 'player_playback_preferences.dart';
 import '../../desktop_window.dart';
@@ -113,6 +114,9 @@ class _PlayerScreenState extends State<PlayerScreen> {
   bool _progressFlushed = false;
   ApiClient? _apiClient;
   Timer? _relayTimer;
+
+  /// Quand le relais peut seulement s'envisager. Voir [RelayTrigger].
+  final RelayTrigger _relayTrigger = RelayTrigger();
 
   /// Reprise sur un autre appareil : le serveur est interrogé toutes les
   /// quelques secondes pour savoir si ce titre a démarré ailleurs sur le même
@@ -608,6 +612,7 @@ class _PlayerScreenState extends State<PlayerScreen> {
         _safeSetState(() {});
       },
       onBufferingChanged: () {
+        _relayTrigger.noteBuffering(_playerController.isBuffering);
         _safeSetState(() {});
       },
       onFirstFrame: () {
@@ -917,6 +922,7 @@ class _PlayerScreenState extends State<PlayerScreen> {
     if (DownloadManager.instance.localVideoPath(_actualMedia.id) != null) return;
     final auth = context.read<AuthProvider>();
     if (auth.activeServer?.id != source) return;
+    if (!_relayTrigger.inTrouble(hasFirstFrame: _playerController.hasFirstFrame)) return;
     _findingRelay = true;
     try {
       final relay = await auth.apiClient.mediaFailover.findReplacement(
