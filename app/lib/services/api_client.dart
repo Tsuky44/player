@@ -38,6 +38,7 @@ part 'api/library_admin.dart';
 part 'api/activity.dart';
 part 'api/player_layouts.dart';
 part 'api/media_shares.dart';
+part 'api/shared_link_client.dart';
 
 class _PlaybackRequestScope {
   const _PlaybackRequestScope(this.origin, this.authorization);
@@ -351,6 +352,10 @@ class ApiClient
   // Get current active base URL
   @override
   String get baseUrl => _baseUrl ?? _defaultBaseUrl;
+
+  /// Vrai pour le visiteur d'un lien de partage, qui n'a pas de compte
+  /// ([SharedLinkApiClient]) : le lecteur n'offre alors rien qui en suppose un.
+  bool get isGuest => false;
 
   /// True once a server address has been picked — remembered from a previous
   /// run, entered by hand, or found on the network — rather than defaulted.

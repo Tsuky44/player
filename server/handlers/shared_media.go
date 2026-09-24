@@ -5,6 +5,7 @@ import (
 	"errors"
 	"log"
 	"net/http"
+	"strconv"
 	"time"
 
 	"github.com/julienschmidt/httprouter"
@@ -17,8 +18,8 @@ import (
 //
 // Toutes ces routes sont publiques : le code du lien est la seule clé. Il
 // voyage dans le corps JSON, jamais dans l'URL, pour ne pas finir dans les
-// journaux d'un proxy — la page le lit dans le fragment (#code), que le
-// navigateur n'envoie jamais au serveur.
+// journaux d'un proxy — l'app web le lit dans le fragment (/share#code), que
+// le navigateur n'envoie jamais au serveur.
 
 // shareLinkLimiter compte les mauvais mots de passe par lien, toutes adresses
 // confondues, comme accountLoginLimiter le fait par compte.
@@ -193,6 +194,27 @@ func ReportSharedMediaProgress(w http.ResponseWriter, r *http.Request, _ httprou
 	}
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(models.SharedMediaProgress{Consumed: consumed})
+}
+
+// SharedMediaTracks liste les pistes audio et de sous-titres du média d'un
+// lien (POST /api/shared/tracks), pour que le lecteur de l'app les propose au
+// visiteur comme à un compte. Il faut un ticket vivant de ce lien : c'est lui
+// qui prouve que le mot de passe a été donné.
+func SharedMediaTracks(w http.ResponseWriter, r *http.Request, _ httprouter.Params) {
+	req, ok := decodeSharedMediaRequest(w, r)
+	if !ok {
+		return
+	}
+	share, err := shareLinks().Authorize(req.Code, req.Viewer)
+	if err != nil {
+		writeShareError(w, "SharedMediaTracks", err)
+		return
+	}
+	if ticket, live := PlaybackTickets.Validate(req.Ticket, share.MediaID); !live || ticket.ShareID != share.ID {
+		writeJSONError(w, http.StatusUnauthorized, "La lecture a expiré, recharge la page.")
+		return
+	}
+	GetMediaTracks(w, r, httprouter.Params{{Key: "id", Value: strconv.Itoa(share.MediaID)}}, 0)
 }
 
 // CloseSharedMedia révoque le ticket d'une page qui se ferme

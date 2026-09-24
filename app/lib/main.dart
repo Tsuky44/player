@@ -30,6 +30,7 @@ import 'providers/player_layout_provider.dart';
 import 'services/layout_storage.dart';
 import 'providers/search_provider.dart';
 import 'navigation/search_route_observer.dart';
+import 'screens/shared_link/shared_link_app.dart';
 import 'screens/auth/login_screen.dart';
 import 'screens/auth/server_choice_screen.dart';
 import 'screens/auth/tv_login_screen.dart';
@@ -194,6 +195,14 @@ void main() async {
   independent.add(_configureSystemUi());
 
   await Future.wait(independent);
+
+  // Un lien de partage public (/share#code) ouvre l'app en invité : la page du
+  // lien et le lecteur, sans compte ni bibliothèque. Voir ADR-0037.
+  final sharedCode = sharedLinkCode(Uri.base);
+  if (sharedCode != null) {
+    runSharedLinkApp(sharedCode);
+    return;
+  }
 
   // A scanned pairing link names its own server. Point the client at it before
   // anything else runs: the phone that scans may have been signed in to another

@@ -3,10 +3,11 @@
 - **Statut :** accepté, réalisé — testé automatiquement, pas encore essayé sur un vrai serveur
   depuis un réseau extérieur
 - **Date :** 2026-09-24
-- **Portée :** le serveur (`server/sharelinks`, `server/sharepage`, `server/handlers/media_shares.go`,
+- **Portée :** le serveur (`server/sharelinks`, `server/handlers/media_shares.go`,
   `server/handlers/shared_media.go`, `server/playbackauth/share.go`, migration 14) et l'app
   (`app/lib/widgets/global/share_media_dialog.dart`, `share_media_button.dart`,
-  `app/lib/screens/settings/pages/shares_page.dart`, le droit `share_media`)
+  `app/lib/screens/settings/pages/shares_page.dart`, `app/lib/screens/shared_link/`,
+  `app/lib/services/api/shared_link_client.dart`, le droit `share_media`)
 
 ## Contexte
 
@@ -75,21 +76,32 @@ simultanées. **Supprimer un lien révoque tous ses tickets** : une réponse dé
 bloc suivant, comme pour un ticket de compte.
 
 La lecture d'un visiteur n'écrit rien dans la progression ni dans l'historique du créateur : le
-visiteur n'est pas lui. La page garde sa propre position dans le `localStorage` du navigateur.
+visiteur n'est pas lui. L'app invitée garde sa propre position dans le stockage du navigateur.
 
-### 6. Une page à part, pas l'app web
+### 6. Le lecteur Onyx, en invité
 
-`GET /share` sert une page statique de quelques kilo-octets (`server/sharepage`), et non le bundle
-Flutter : le visiteur vient souvent d'un téléphone, pour un seul média, et le lecteur de l'app
-suppose un compte. La page :
+`/share` sert l'app web elle-même. Au démarrage, `main.dart` reconnaît l'adresse
+(`sharedLinkCode`) et lance l'app **en invité** (`screens/shared_link/`) : une page qui montre le
+média, demande le mot de passe, puis ouvre le **lecteur Onyx habituel** (`PlayerScreen`), avec ses
+pistes audio, ses sous-titres, sa qualité et ses aperçus.
 
-- lit toujours en HLS **sans déclarer de capacités** : le serveur rend du H.264 + AAC stéréo en
-  MPEG-TS, que tout navigateur lit, et recopie l'image quand elle est déjà en H.264 ;
-- charge hls.js 1.4.10 depuis cdnjs, la même version et la même source que media_kit sur le web,
-  avec la configuration du pont web de l'app ; Safari sans MSE lit le flux nativement ;
-- rouvre une session au bon endroit pour un saut au-delà de ce que la session a produit ;
-- n'autorise, par sa politique de sécurité, que ses propres fichiers, hls.js, les affiches et les
-  flux du serveur ; elle est marquée `noindex` et `no-referrer`.
+Le lecteur tourne sur un `SharedLinkApiClient` (`services/api/shared_link_client.dart`) :
+
+- son registre de comptes est vide : même si ce navigateur est connecté par ailleurs à ce serveur,
+  le visiteur n'utilise aucun compte ;
+- le ticket de lecture vient de `/api/shared/open` et se renouvelle par `/api/shared/renew` ;
+- les pistes viennent de `/api/shared/tracks`, qui exige un ticket vivant du lien ;
+- la position est gardée sur l'appareil et envoyée à `/api/shared/progress` ;
+- ce qui suppose un compte (historique, épisode suivant, séance « Regarder ensemble », journal)
+  est vide ou masqué (`ApiClient.isGuest`).
+
+Le reste — HLS, Direct Play, sous-titres, aperçus — passait déjà par le ticket seul.
+
+La page d'accueil du lien porte comme nom de route le code lui-même : sous le « / » habituel, le
+routeur de Flutter réécrirait l'adresse en `/share#/`, et un rechargement perdrait le lien.
+
+Écarté : une page HTML légère servie par le serveur, essayée d'abord. Elle chargeait plus vite,
+mais sans les pistes, les sous-titres ni l'habillage du lecteur Onyx.
 
 ### 7. Routes publiques limitées
 
@@ -100,9 +112,8 @@ dit pas quel média le lien ouvre.
 
 ## Conséquences
 
-- **Pas de sous-titres ni de choix de piste audio sur la page** : elle lit la piste par défaut.
-  Les ajouter demanderait d'ouvrir `/api/media/:id/tracks` et les sous-titres de session au ticket
-  de lien.
+- **Le visiteur charge l'app web entière** (plusieurs mégaoctets) pour un seul média : quelques
+  secondes de plus au premier affichage, surtout sur un téléphone.
 - **Un visiteur qui bloque l'envoi de sa position empêche la destruction** d'un lien à usage
   unique. La réservation limite ce lien à son seul navigateur, et l'échéance finit par le fermer.
 - **Le lien dépend de l'adresse de connexion de l'app.** Un lien créé depuis le réseau local ne
@@ -111,4 +122,5 @@ dit pas quel média le lien ouvre.
 - **Un redémarrage du serveur coupe les lectures en cours** (les tickets vivent en mémoire), mais
   pas les liens : la page rouvre une lecture au rechargement, le lien réservé reconnaît son
   navigateur.
-- **hls.js vient d'un CDN.** Sans accès à cdnjs, la page ne lit que sur Safari.
+- **Sans bundle web embarqué** (un serveur compilé sans `scripts/build-web.sh`), `/share` ne
+  répond pas.

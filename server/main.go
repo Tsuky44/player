@@ -21,7 +21,6 @@ import (
 	"project-player/server/logging"
 	"project-player/server/middleware"
 	"project-player/server/models"
-	"project-player/server/sharepage"
 	"project-player/server/streaming"
 	"project-player/server/webui"
 
@@ -225,10 +224,9 @@ func main() {
 	router.POST("/api/shared/renew", handlers.RateLimited(handlers.PollLimiter, handlers.RenewSharedMedia))
 	router.POST("/api/shared/progress", handlers.RateLimited(handlers.PollLimiter, handlers.ReportSharedMediaProgress))
 	router.POST("/api/shared/close", handlers.RateLimited(handlers.PollLimiter, handlers.CloseSharedMedia))
-	// La page du lien : /share#code. Statique, le code reste dans le fragment.
-	router.GET("/share", sharepage.Page)
-	router.HEAD("/share", sharepage.Page)
-	router.GET("/share/assets/:file", sharepage.Asset)
+	router.POST("/api/shared/tracks", handlers.RateLimited(handlers.PollLimiter, handlers.SharedMediaTracks))
+	// La page du lien, /share#code, est l'app web elle-même (webui, plus bas) :
+	// elle ouvre le lecteur Onyx en invité. Le code reste dans le fragment.
 	router.GET("/api/me/stats", handlers.RequireAuth(handlers.GetMyPlaybackStats))
 	router.GET("/api/me/devices", handlers.RequireAuth(handlers.ListMyDevices))
 	router.DELETE("/api/me/devices/:id", handlers.RequireAuth(handlers.RevokeMyDevice))

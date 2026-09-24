@@ -2555,9 +2555,11 @@ class _PlayerScreenState extends State<PlayerScreen> {
   /// « En attente de… » suivent.
   void _handlePartyUpdated() => _safeSetState(() {});
 
-  /// Le panneau s'ouvre partout où un serveur peut héberger une séance.
+  /// Le panneau s'ouvre partout où un serveur peut héberger une séance — pas
+  /// pour le visiteur d'un lien de partage, qui n'a pas de compte pour en
+  /// ouvrir une.
   VoidCallback? get _watchPartyAction =>
-      _apiClient != null ? _showWatchPartyPanel : null;
+      _apiClient != null && !_apiClient!.isGuest ? _showWatchPartyPanel : null;
 
   void _showPartyNotice(String text) {
     _partyNoticeTimer?.cancel();

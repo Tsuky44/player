@@ -320,7 +320,7 @@ Retirer `share_media` à un compte supprime ses liens.
 
 Côté visiteur, sans compte — le code voyage dans le corps JSON :
 
-* `GET /share` — la page de lecture (HTML + JS, hls.js chargé depuis cdnjs).
+* `GET /share` — l'app web, qui ouvre le lien en invité dans le lecteur Onyx.
 * `POST /api/shared/info` `{"code", "viewer"}` — faut-il un mot de passe ; le média n'est décrit
   qu'une fois le mot de passe donné. `404` inconnu, `410` expiré ou vu, `409` réservé ailleurs.
 * `POST /api/shared/open` `{"code", "password", "viewer"}` — délivre un ticket de lecture au nom du
@@ -330,11 +330,12 @@ Côté visiteur, sans compte — le code voyage dans le corps JSON :
 * `POST /api/shared/progress` `{"code", "viewer", "ticket", "position_seconds"}` — au seuil « vu »
   (90 %), un lien à usage unique est détruit (`{"consumed": true}`). Le navigateur qui l'a vu peut
   encore renouveler son ticket pendant une heure, le temps du générique.
-* `POST /api/shared/close` `{"code", "ticket"}` — révoque le ticket à la fermeture de la page.
+* `POST /api/shared/tracks` `{"code", "viewer", "ticket"}` — pistes audio et sous-titres, comme
+  `GET /api/media/:id/tracks` ; exige un ticket vivant du lien.
+* `POST /api/shared/close` `{"code", "ticket"}` — révoque le ticket à la fermeture du lecteur.
 
-Le ticket ouvre ensuite les routes HLS habituelles (`/api/v1/stream/…?ticket=…`). La page ne
-déclare aucune capacité : elle reçoit du H.264 + AAC stéréo en MPEG-TS. Un lien tient au plus
-quatre lectures simultanées.
+Le ticket ouvre ensuite les routes habituelles (`/stream`, `/api/v1/stream/…`, sous-titres,
+aperçus). Un lien tient au plus quatre lectures simultanées.
 
 ---
 

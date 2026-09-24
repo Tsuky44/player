@@ -88,3 +88,57 @@ enum ShareLifetime {
   final int hours;
   final String label;
 }
+
+/// Ce qu'un visiteur sans compte apprend d'un lien (POST /api/shared/info et
+/// /open). Tant qu'un mot de passe est exigé, [title] et les suivants sont
+/// vides : le serveur ne dit pas quel média le lien ouvre.
+class SharedMediaInfo {
+  const SharedMediaInfo({
+    this.needsPassword = false,
+    this.singleUse = false,
+    this.expiresAt,
+    this.mediaType = '',
+    this.title = '',
+    this.subtitle = '',
+    this.posterUrl,
+    this.duration = 0,
+  });
+
+  final bool needsPassword;
+  final bool singleUse;
+  final DateTime? expiresAt;
+  final String mediaType;
+  final String title;
+  final String subtitle;
+  final String? posterUrl;
+  final int duration;
+
+  factory SharedMediaInfo.fromJson(Map<String, dynamic> json) {
+    final expires = json['expires_at'];
+    final poster = json['poster_url'] as String?;
+    return SharedMediaInfo(
+      needsPassword: json['needs_password'] == true,
+      singleUse: json['single_use'] == true,
+      expiresAt:
+          expires is String ? DateTime.tryParse(expires)?.toLocal() : null,
+      mediaType: json['media_type'] as String? ?? '',
+      title: json['title'] as String? ?? '',
+      subtitle: json['subtitle'] as String? ?? '',
+      posterUrl: poster == null || poster.isEmpty ? null : poster,
+      duration: json['duration'] as int? ?? 0,
+    );
+  }
+}
+
+/// Un refus du serveur sur un lien : [message] est la phrase à montrer telle
+/// quelle au visiteur, [status] le code HTTP (404 inconnu, 410 expiré ou vu,
+/// 409 ouvert ailleurs, 401 mauvais mot de passe, 0 serveur injoignable).
+class SharedLinkException implements Exception {
+  const SharedLinkException(this.status, this.message);
+
+  final int status;
+  final String message;
+
+  @override
+  String toString() => 'SharedLinkException($status, $message)';
+}

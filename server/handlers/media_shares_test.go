@@ -212,3 +212,20 @@ func TestListMediaShares_OnlyTheCallersLinks(t *testing.T) {
 		t.Fatalf("list = %+v", list)
 	}
 }
+
+// Les pistes d'un lien protégé ne se lisent qu'avec un ticket du lien : le
+// code seul ne prouve pas que le mot de passe a été donné.
+func TestSharedMediaTracks_NeedsTheLinksTicket(t *testing.T) {
+	ownerID, episodeID := setupShareTest(t)
+	share := createShare(t, ownerID, fmt.Sprintf(`{"media_id":%d,"password":"popcorn"}`, episodeID))
+	if status := callShared(t, SharedMediaTracks, map[string]string{"code": share.Code, "ticket": "forged"}, nil); status != http.StatusUnauthorized {
+		t.Fatalf("tracks without a ticket: %d, want 401", status)
+	}
+	var access models.SharedMediaAccess
+	callShared(t, OpenSharedMedia, map[string]string{"code": share.Code, "password": "popcorn"}, &access)
+	// Le fichier de l'épisode n'existe pas ici : passé le contrôle d'accès,
+	// c'est GetMediaTracks qui répond, et il répond 404.
+	if status := callShared(t, SharedMediaTracks, map[string]string{"code": share.Code, "viewer": access.Viewer, "ticket": access.Ticket}, nil); status != http.StatusNotFound {
+		t.Fatalf("tracks with the ticket: %d, want 404 from GetMediaTracks", status)
+	}
+}
