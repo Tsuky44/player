@@ -282,7 +282,7 @@ func (h *Handler) handleStart(w http.ResponseWriter, r *http.Request, mediaID in
 	// browser only ever needed a different container and a different audio codec,
 	// not different frames.
 	bitrate := h.sourceBitrate(mediaID)
-	videoPlan := PlanVideo(probe, quality, burnSubtitle >= 0, bitrate, copyBitrateCeiling(), caps)
+	videoPlan := PlanVideo(probe, quality, burnSubtitle >= 0, bitrate, caps.CopyCeiling(copyBitrateCeiling()), caps)
 
 	args := BuildFFmpegArgs(TranscodeOptions{
 		InputPath:              inputPath,

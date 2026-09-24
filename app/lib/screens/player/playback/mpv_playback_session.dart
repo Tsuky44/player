@@ -4,6 +4,7 @@ import 'package:flutter/widgets.dart';
 import 'package:media_kit/media_kit.dart' as mk;
 import 'package:media_kit_video/media_kit_video.dart';
 
+import '../../../services/stream_proxy.dart';
 import '../../../utils/app_platform.dart';
 import '../../../utils/mpv_native_view.dart';
 import '../hardware_decoding.dart';
@@ -91,7 +92,8 @@ class MpvPlaybackSession implements PlaybackSession {
   }
 
   @override
-  void setSubtitlePadding(EdgeInsets padding, {Duration duration = Duration.zero}) {
+  void setSubtitlePadding(EdgeInsets padding,
+      {Duration duration = Duration.zero}) {
     _videoKey.currentState?.setSubtitleViewPadding(padding, duration: duration);
     _subtitleKey.currentState?.setPadding(padding, duration: duration);
   }
@@ -120,6 +122,13 @@ class MpvPlaybackSession implements PlaybackSession {
     }
     if (!AppPlatform.isWeb && !_pictureLive) {
       _startup.begin(start: start, keyframeStart: _exactSeekDeferred);
+    }
+    if (!AppPlatform.isWeb) {
+      // Par le relais local, qui connaît déjà l'adresse du serveur : mpv ne
+      // demande jamais le nom au DNS du système. Voir [StreamProxy].
+      final proxy = await StreamProxy.routeFor(url);
+      await _set(_player.platform as dynamic, 'http-proxy', proxy);
+      if (proxy.isNotEmpty) _startup.note('flux par le relais local');
     }
     return _player.open(mk.Media(url, start: start), play: play);
   }
@@ -271,11 +280,10 @@ class MpvPlaybackSession implements PlaybackSession {
         (width) => PlaybackVideoParams(
           width: width,
           height: _player.state.height,
-          aspect: (width != null &&
-                  width > 0 &&
-                  (_player.state.height ?? 0) > 0)
-              ? width / _player.state.height!
-              : null,
+          aspect:
+              (width != null && width > 0 && (_player.state.height ?? 0) > 0)
+                  ? width / _player.state.height!
+                  : null,
         ),
       );
     }
@@ -335,7 +343,8 @@ class MpvPlaybackSession implements PlaybackSession {
     await _set(platform, 'demuxer-max-bytes', '${profile.demuxerMaxBytes}');
     await _set(platform, 'demuxer-readahead-secs', '${profile.readaheadSecs}');
     await _set(platform, 'demuxer-seekable-cache', 'yes');
-    await _set(platform, 'demuxer-max-back-bytes', '${profile.demuxerBackBytes}');
+    await _set(
+        platform, 'demuxer-max-back-bytes', '${profile.demuxerBackBytes}');
     await _set(platform, 'hr-seek', 'yes');
     await _set(platform, 'hwdec', HardwareDecoding.mpvValue);
     await _resetZeroCopyCrop(platform);
@@ -418,7 +427,8 @@ class MpvPlaybackSession implements PlaybackSession {
     await _set(platform, 'cache', 'yes');
     await _set(platform, 'demuxer-seekable-cache', 'yes');
     await _set(platform, 'demuxer-max-bytes', '${profile.hlsDemuxerMaxBytes}');
-    await _set(platform, 'demuxer-readahead-secs', '${profile.hlsReadaheadSecs}');
+    await _set(
+        platform, 'demuxer-readahead-secs', '${profile.hlsReadaheadSecs}');
     await _set(platform, 'hwdec', HardwareDecoding.mpvValue);
     await _resetZeroCopyCrop(platform);
     if (!AppPlatform.isAndroid && !MpvNativeView.enabled) {
@@ -540,8 +550,7 @@ class MpvPlaybackSession implements PlaybackSession {
         'le débit du film en moyenne (${wait}s regarnies en $refill, par '
         'rafales)${escalated ? ' — reprise après ${next}s en mémoire' : ''}');
     if (!escalated) return;
-    unawaited(
-        _set(_player.platform as dynamic, 'cache-pause-wait', '$next'));
+    unawaited(_set(_player.platform as dynamic, 'cache-pause-wait', '$next'));
   }
 
   /// Début de la mise en pause du cache en cours, hors seek.
@@ -709,9 +718,13 @@ class MpvPlaybackSession implements PlaybackSession {
     if (AppPlatform.isWeb) return;
     await _cropZeroCopyPadding();
     if (_softwareDecodeHandled) return;
-    // Les deux plateformes où le chemin sans copie peut échouer vers le
-    // logiciel : MediaCodec sur Android, l'interop d3d11-egl sur Windows.
-    if (!AppPlatform.isAndroid && !AppPlatform.isWindows) return;
+    // Les plateformes où le chemin sans copie peut échouer vers le logiciel :
+    // MediaCodec sur Android, l'interop d3d11-egl sur Windows, l'interop
+    // VideoToolbox → Vulkan de gpu-next sur macOS.
+    final zeroCopyAsked = AppPlatform.isAndroid ||
+        AppPlatform.isWindows ||
+        (AppPlatform.isMacOS && MpvNativeView.enabled);
+    if (!zeroCopyAsked) return;
     if (HardwareDecoding.preference != HardwareDecodingPreference.auto) return;
 
     final platform = _player.platform as dynamic;
@@ -719,9 +732,10 @@ class MpvPlaybackSession implements PlaybackSession {
     if (height == null || height < 1440) return;
 
     // « no » quand rien n'a pris ; certaines constructions répondent une chaîne
-    // vide. mpv se rabat de `mediacodec` **directement** sur le logiciel — il
-    // n'y a pas d'étape intermédiaire — donc le chemin compatible, qui est du
-    // matériel lui aussi, n'est jamais essayé. C'est cette étape-là.
+    // vide. mpv se rabat du décodeur sans copie **directement** sur le
+    // logiciel — il n'y a pas d'étape intermédiaire — donc le chemin
+    // compatible, qui est du matériel lui aussi, n'est jamais essayé. C'est
+    // cette étape-là.
     final decoded = (await _read(platform, 'hwdec-current') ?? '').trim();
     if (decoded.isNotEmpty && decoded != 'no') return;
 
@@ -750,8 +764,7 @@ class MpvPlaybackSession implements PlaybackSession {
       sourceChannels: await _read(platform, 'audio-params/channel-count'),
       outputChannels: await _read(platform, 'audio-out-params/channel-count'),
       audioCodec: await _read(platform, 'audio-codec-name'),
-      renderedFrames:
-          int.tryParse(await _read(platform, 'frame-count') ?? ''),
+      renderedFrames: int.tryParse(await _read(platform, 'frame-count') ?? ''),
       // La cadence telle qu'elle sort, pas telle qu'elle est annoncée. mpv la
       // moyenne lui-même sur les dernières images, ce qui évite d'avoir à
       // dériver un compteur sur deux relevés.

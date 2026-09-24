@@ -150,6 +150,11 @@ class _AppUpdateDialogState extends State<_AppUpdateDialog> {
     _autoRestartTimer?.cancel();
     try {
       await AppUpdater.applyAndRestart(prepared);
+    } on UpdateException catch (e) {
+      // L'installeur Android n'a pas pu s'ouvrir : sa raison est lisible.
+      _prepared = null;
+      _fail(e.message);
+      return;
     } catch (_) {
       // The helper never started (Windows updater missing or blocked): the
       // app is still running, so say so instead of hanging on this dialog.

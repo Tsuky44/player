@@ -1,6 +1,7 @@
 import 'dart:async';
 
 import 'package:flutter/widgets.dart';
+import 'package:media_kit/media_kit.dart' show VideoParams;
 import 'package:media_kit_video/media_kit_video.dart';
 
 /// La surface du lecteur quand mpv dessine dans une texture Flutter, avec la
@@ -89,13 +90,48 @@ class _TextureVideoSurfaceState extends State<TextureVideoSurface> {
   ({int width, int height})? _applied;
   Timer? _settle;
 
+  /// La dernière place connue, pour retailler quand le média, lui, change.
+  Size? _logical;
+  double _pixelRatio = 1;
+
+  /// Les dimensions du média arrivent après le premier build : sans cette
+  /// écoute, la texture n'était retaillée qu'à la reconstruction suivante de
+  /// l'écran, et un film ouvert sans rien bouger restait rendu en 4K.
+  StreamSubscription<VideoParams>? _videoParams;
+
+  @override
+  void initState() {
+    super.initState();
+    _listenToVideoParams();
+  }
+
+  @override
+  void didUpdateWidget(TextureVideoSurface oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.controller != widget.controller) {
+      _applied = null;
+      _listenToVideoParams();
+    }
+  }
+
+  void _listenToVideoParams() {
+    _videoParams?.cancel();
+    _videoParams = widget.controller.player.stream.videoParams.listen((_) {
+      final logical = _logical;
+      if (mounted && logical != null) _requestSize(logical, _pixelRatio);
+    });
+  }
+
   @override
   void dispose() {
     _settle?.cancel();
+    _videoParams?.cancel();
     super.dispose();
   }
 
   void _requestSize(Size logical, double pixelRatio) {
+    _logical = logical;
+    _pixelRatio = pixelRatio;
     final params = widget.controller.player.state.videoParams;
     final size = TextureVideoSurface.nextSize(
       logical: logical,

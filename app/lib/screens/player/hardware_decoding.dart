@@ -2,6 +2,7 @@ import 'package:flutter/foundation.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import '../../utils/app_platform.dart';
+import '../../utils/mpv_native_view.dart';
 
 /// Which hardware decoding path libmpv is asked for.
 ///
@@ -90,6 +91,7 @@ abstract final class HardwareDecoding {
         isAndroid: AppPlatform.isAndroid,
         isMacOS: AppPlatform.isMacOS,
         isWindows: AppPlatform.isWindows,
+        macOSNativeOutput: MpvNativeView.enabled,
         zeroCopyFailed: _zeroCopyFailed,
       );
 
@@ -100,6 +102,7 @@ abstract final class HardwareDecoding {
     required bool isAndroid,
     required bool isMacOS,
     bool isWindows = false,
+    bool macOSNativeOutput = false,
     bool zeroCopyFailed = false,
   }) {
     switch (preference) {
@@ -122,10 +125,18 @@ abstract final class HardwareDecoding {
         // two frames a second and an app the low-memory killer takes out. The
         // copy path is hardware too, and it is the compatible one.
         if (isAndroid) return zeroCopyFailed ? 'mediacodec-copy' : 'mediacodec';
-        // macOS 27 beta: plain VideoToolbox can freeze the video while audio
-        // continues; the copy is compatible with the CVPixelBuffer/Metal path.
-        // The two settings deliberately coincide there.
-        if (isMacOS) return 'videotoolbox-copy';
+        // macOS : sans copie quand mpv dessine lui-même avec gpu-next
+        // (ADR-0015). La copie ramenait chaque image décodée en mémoire vive
+        // pour la renvoyer au GPU par MoltenVK : ~600 Mo/s sur un 4K HDR, et
+        // un Mac qui chauffe pour rien. Le gel image figée / son qui continue
+        // de la bêta de macOS 27 a été vu sur la texture de media_kit
+        // (CVPixelBuffer → Metal) : elle garde la copie. Un Mac pris à décoder
+        // en logiciel repasse sur la copie, comme Android et Windows.
+        if (isMacOS) {
+          return macOSNativeOutput && !zeroCopyFailed
+              ? 'videotoolbox'
+              : 'videotoolbox-copy';
+        }
         // Windows : `auto-safe` essaie d3d11va sans copie en premier — possible
         // depuis le correctif de libmpv, voir l'ADR-0019 — et prend la copie
         // quand l'interop ne se charge pas. Mais une interop chargée qui échoue

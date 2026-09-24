@@ -1,5 +1,7 @@
 import 'dart:io';
 
+import 'package:path_provider/path_provider.dart';
+
 import 'android_apk_installer.dart';
 
 /// Native in-place updater — see `app_updater.dart`.
@@ -84,8 +86,20 @@ abstract final class AppUpdater {
   /// A path rather than a `Directory`, so the same signature type-checks
   /// against the web stub, which has no `dart:io`.
   static Future<String> createWorkDir() async {
-    final dir = await Directory.systemTemp.createTemp('onyx-update-');
+    final dir = await (await _workDirParent()).createTemp('onyx-update-');
     return dir.path;
+  }
+
+  /// Where work directories are created.
+  ///
+  /// Sur Android, `Directory.systemTemp` n'est pas `cache/` mais `code_cache/`
+  /// (le moteur Flutter lui passe `getCodeCacheDir()`), que le FileProvider de
+  /// `res/xml/file_paths.xml` n'expose pas : `getUriForFile` refusait l'APK et
+  /// l'installeur ne s'ouvrait jamais, sans un mot. `getTemporaryDirectory()`
+  /// est, lui, le vrai `getCacheDir()`.
+  static Future<Directory> _workDirParent() async {
+    if (Platform.isAndroid) return getTemporaryDirectory();
+    return Directory.systemTemp;
   }
 
   /// Drops a scratch directory whose update will never be applied — a cancelled
@@ -98,12 +112,14 @@ abstract final class AppUpdater {
   /// Removes what an update applied in a previous session left in the temp
   /// directory. On Windows nothing else does: the updater copies the ZIP out
   /// and never touches our temp directory, so the app it relaunches cleans
-  /// up. Best effort — a file still locked is simply retried on the next
-  /// launch.
+  /// up. Android non plus : l'installeur système lit l'APK sans jamais le
+  /// supprimer, et la nouvelle version démarre avec lui encore dans `cache/`.
+  /// Best effort — a file still locked is simply retried on the next launch.
   static Future<void> purgeStaleWorkDirs() async {
-    if (!Platform.isWindows) return;
+    if (!Platform.isWindows && !Platform.isAndroid) return;
     try {
-      await for (final entry in Directory.systemTemp.list(followLinks: false)) {
+      final parent = await _workDirParent();
+      await for (final entry in parent.list(followLinks: false)) {
         final name = entry.path.split(Platform.pathSeparator).last;
         // Also catches `onyx-update-cleanup-*.cmd`, which the batch-based
         // updater of earlier versions left behind.
@@ -139,7 +155,12 @@ abstract final class AppUpdater {
   /// a working app behind, not a process that already exited.
   static Future<void> applyAndRestart(PreparedUpdate update) async {
     if (update._isAndroidApk) {
-      await AndroidApkInstaller.install(update._launcherPath);
+      if (!await AndroidApkInstaller.install(update._launcherPath)) {
+        throw UpdateException(
+          'L’installeur Android n’a pas pu s’ouvrir. Réessayez, ou installez '
+          'l’APK depuis la page de téléchargement.',
+        );
+      }
       return;
     }
 

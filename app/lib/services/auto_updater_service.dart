@@ -1,19 +1,24 @@
 import 'dart:async';
 
 import '../models/app_download.dart';
-import 'api_client.dart';
-import 'update_checker.dart';
+import 'player_presence.dart';
 
 /// Polls the server for a newer build and hands it to [onUpdateFound] once,
 /// per version, so the app updates itself without anyone having to notice the
 /// header button.
 ///
-/// Kept separate from [UpdateChecker] because that one just answers a
+/// Kept separate from `UpdateChecker` because that one just answers a
 /// question ("is there an update"); this one decides *when* to ask it and
 /// remembers what it already surfaced.
 class AutoUpdateService {
-  final ApiClient api;
+  /// `UpdateChecker.findAvailableUpdate` en production ; une doublure en test.
+  final Future<AppDownload?> Function() findUpdate;
   final void Function(AppDownload download) onUpdateFound;
+
+  /// Vrai pendant qu'un film tourne. Une mise à jour trouvée à ce moment-là
+  /// attend le prochain démarrage : le dialogue, son téléchargement et son
+  /// redémarrage automatique couperaient la lecture.
+  final bool Function() isPlaying;
 
   /// First check, run once the app has settled rather than racing the home
   /// screen's own startup requests.
@@ -30,8 +35,9 @@ class AutoUpdateService {
   String? _lastHandledVersion;
 
   AutoUpdateService({
-    required this.api,
+    required this.findUpdate,
     required this.onUpdateFound,
+    this.isPlaying = PlayerPresence.isOpen,
     this.initialDelay = const Duration(seconds: 5),
     this.interval = const Duration(minutes: 30),
   });
@@ -52,8 +58,15 @@ class AutoUpdateService {
     if (_checking) return;
     _checking = true;
     try {
-      final update = await UpdateChecker.findAvailableUpdate(api);
+      final update = await findUpdate();
       if (update == null || update.version == _lastHandledVersion) return;
+      if (isPlaying()) {
+        // Reportée au prochain démarrage, dont la première vérification la
+        // retrouvera : plus rien ne s'affiche dans cette session, pas même
+        // à la fin du film.
+        dispose();
+        return;
+      }
       _lastHandledVersion = update.version;
       onUpdateFound(update);
     } finally {

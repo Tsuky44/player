@@ -6,6 +6,8 @@ import '../../../utils/app_platform.dart';
 import '../web/web_playback.dart';
 import '../display_frame_rate.dart';
 import '../hardware_decoding.dart';
+import '../playback/apple_playback_session.dart';
+import '../playback/avplayer_remux.dart';
 import '../playback/hls_retain_window.dart';
 import '../playback/live_subtitles.dart';
 import '../playback/playback_engine.dart';
@@ -21,6 +23,7 @@ import '../../../services/client_log.dart';
 import '../../../services/playback_access.dart';
 import '../../../services/dns_warmup.dart';
 import '../../../services/download_manager.dart';
+import '../../../services/media_tracks_cache.dart';
 import '../../../services/playback_capabilities.dart';
 import '../../../services/playback_preferences_storage.dart';
 import '../player_playback_preferences.dart';
@@ -185,12 +188,32 @@ class PlayerController {
     debugPrint('Playback: dropped frames — display=$display decoder=$decoder');
   }
 
-  /// Whether this platform only ever plays through an HLS session.
+  /// Whether this playback only ever goes through an HLS session.
   ///
   /// A browser cannot open the containers and codecs a private library is made
-  /// of, and AVPlayer on the Apple TV refuses MKV: both skip Direct Play and
-  /// start a session as soon as the track list says which tier to ask for.
-  static bool get _hlsOnly => AppPlatform.isWeb || AppPlatform.isTvOS;
+  /// of, and AVPlayer refuses MKV: the web, the Apple TV and an iPhone or Mac
+  /// playing through AVPlayer skip Direct Play and start a session as soon as
+  /// the track list says which tier to ask for.
+  bool get _hlsOnly =>
+      AppPlatform.isWeb || AppPlatform.isTvOS || _avPlayerRemux;
+
+  /// AVPlayer lit ce film sur iPhone ou Mac, en recopie HLS — ADR-0035.
+  bool _avPlayerRemux = false;
+
+  void _setAvPlayerRemux(bool on) {
+    _avPlayerRemux = on;
+    final apple = session;
+    if (apple is ApplePlaybackSession) apple.streamsOnAvPlayer = on;
+  }
+
+  /// L'ouverture de session HLS en cours, pour qui doit attendre qu'elle se
+  /// pose avant de repartir du fichier.
+  Completer<void>? _hlsSwap;
+
+  /// Le temps qu'on accorde à la liste de pistes pour choisir le moteur. La
+  /// page du film l'a presque toujours mise en cache ; sans elle, mpv lit en
+  /// Direct Play, ce qui marche toujours.
+  static const _engineChoiceBudget = Duration(milliseconds: 1500);
 
   /// In HLS mode the stream timeline resets to 0 at this offset (seconds) into
   /// the original media. Used to display the absolute position and to compute
@@ -651,6 +674,8 @@ class PlayerController {
     // out of it a moment later, the web waits for the track list and starts
     // straight in HLS, at the source's own resolution. The Apple TV does the
     // same for its own reason: AVPlayer refuses MKV outright.
+    await _chooseAppleEngine(apiClient, media.id);
+    if (_disposed) return;
     if (!_hlsOnly) {
       // Which audio track to load with. The episode being carried over from
       // knows best; otherwise it is the user's standing preference, which lives
@@ -731,6 +756,46 @@ class PlayerController {
         session.setSubtitles(const SubtitleSelection.none());
       } catch (_) {}
     }
+  }
+
+  /// Sur iPhone et Mac, AVPlayer si le serveur peut recopier ce fichier tel
+  /// quel, mpv en Direct Play sinon — voir [AvPlayerRemux].
+  ///
+  /// Décidé avant d'ouvrir quoi que ce soit : changer de moteur après coup
+  /// ferait payer deux démarrages.
+  Future<void> _chooseAppleEngine(ApiClient apiClient, int mediaId) async {
+    if (session is! ApplePlaybackSession || _localFilePath != null) return;
+    MediaTracks? tracks;
+    try {
+      tracks = await MediaTracksCache.load(apiClient, mediaId)
+          .timeout(_engineChoiceBudget);
+    } catch (_) {
+      tracks = null;
+    }
+    final refusal = tracks == null
+        ? 'pistes pas encore connues'
+        : AvPlayerRemux.refusal(
+            tracks,
+            subtitleLang: _subtitlesExplicitlyOff ? null : _selectedSubtitleLang,
+          );
+    _setAvPlayerRemux(refusal == null);
+    _startup.note(refusal == null
+        ? 'AVPlayer, recopie HLS'
+        : 'mpv en Direct Play ($refusal)');
+  }
+
+  /// Rend la lecture à mpv, qui lit le fichier lui-même.
+  ///
+  /// Ce qui l'amène : AVPlayer a refusé la session, le serveur n'a pas pu
+  /// l'ouvrir, ou l'utilisateur a choisi des sous-titres image — que seule une
+  /// incrustation, donc un ré-encodage du film, ferait passer en HLS.
+  Future<void> _leaveAvPlayer(String reason) async {
+    if (!_avPlayerRemux) return;
+    debugPrint('Player: AVPlayer abandonné ($reason) — mpv en Direct Play');
+    _setAvPlayerRemux(false);
+    await _hlsSwap?.future;
+    if (_disposed) return;
+    await switchToDirectPlay(withoutSession: true);
   }
 
   /// Ce que le moteur doit ouvrir en Direct Play : le fichier local s'il est
@@ -853,10 +918,11 @@ class PlayerController {
 
     final height = tracks.video?.height ?? 0;
     final surface = _surfacePixelHeight();
-    // The Apple TV asks for the source's own tier, always: AVPlayer decodes
-    // HEVC as well as H.264, so the server copies either instead of encoding,
-    // and a television is the one screen that shows every one of those pixels.
-    final quality = AppPlatform.isTvOS
+    // AVPlayer asks for the source's own tier, always: it decodes HEVC as well
+    // as H.264, so the server copies either instead of encoding. On a
+    // television every one of those pixels shows; on an iPhone or a Mac the
+    // copy stands in for Direct Play, which would have sent them all anyway.
+    final quality = AppPlatform.isTvOS || _avPlayerRemux
         ? qualityForSourceHeight(height)
         : webQualityFor(
             sourceHeight: height,
@@ -878,6 +944,11 @@ class PlayerController {
         "Player: web session — source ${height}px, surface ${surface}px, "
         "asking $quality from ${startSeconds}s (video=${tracks.video?.codec})");
     await switchToQuality(quality, startSeconds: startSeconds);
+    // Le serveur n'a pas ouvert la session (plafond de sessions, disque
+    // plein…) : mpv lit le fichier plutôt que de laisser un écran noir.
+    if (_avPlayerRemux && currentQuality == null && !_disposed) {
+      await _leaveAvPlayer('session HLS refusée par le serveur');
+    }
     return true;
   }
 
@@ -1313,6 +1384,7 @@ class PlayerController {
 
     isSwitchingQuality = true;
     _hlsSwapInFlight = true;
+    _hlsSwap = Completer<void>();
     _hlsQualityInFlight = quality;
     // Move the reported position to the target straight away. The rebuild takes
     // a few seconds, during which the swap guard (rightly) suppresses mpv's
@@ -1346,6 +1418,7 @@ class PlayerController {
         audioIndex: _selectedAudioIndex,
         burnSubtitleIndex: _hlsBurnedSubTypedIndex,
         access: access,
+        capabilities: _avPlayerRemux ? PlaybackCapabilities.avPlayer : null,
       );
       pendingSession = hls;
       if (_disposed) return;
@@ -1420,6 +1493,8 @@ class PlayerController {
       _hlsSwapInFlight = false;
       if (!_disposed) _onQualitySwitchingChanged?.call();
     } finally {
+      _hlsSwap?.complete();
+      _hlsSwap = null;
       _hlsQualityInFlight = null;
       if (!adopted && pendingSession != null) {
         await api.destroyHlsSession(mediaId, pendingSession.sessionId,
@@ -1441,9 +1516,15 @@ class PlayerController {
   }
 
   /// Switch back to Direct Play from HLS, resuming at the same second.
-  Future<void> switchToDirectPlay() async {
+  ///
+  /// [withoutSession] also opens the file when no HLS session ever started —
+  /// an iPhone or Mac whose AVPlayer start failed ([_leaveAvPlayer]).
+  Future<void> switchToDirectPlay({bool withoutSession = false}) async {
     if (_media == null || _apiClient == null) return;
-    if (currentQuality == null) return;
+    if (currentQuality == null && !withoutSession) return;
+    // Le fichier n'est lu que par mpv : les sessions suivantes (une autre
+    // qualité) lui reviennent aussi.
+    _setAvPlayerRemux(false);
 
     final savedSeconds = position.inSeconds;
     isSwitchingQuality = true;
@@ -1697,6 +1778,11 @@ class PlayerController {
       return;
     }
 
+    if (_avPlayerRemux) {
+      await _leaveAvPlayer('$failure');
+      return;
+    }
+
     // Ce que l'appareil ne décode pas, le serveur le décode : c'est
     // exactement ce que fait déjà [_transcodeForUndecodableAudio] pour une
     // piste audio muette, à la résolution de la source pour que l'image reste
@@ -1794,6 +1880,10 @@ class PlayerController {
     // tracks stay out of band and switch instantly.
     if (currentQuality != null) {
       final wanted = _burnIndexFor(lang);
+      if (wanted >= 0 && _avPlayerRemux) {
+        await _leaveAvPlayer('sous-titres image');
+        return;
+      }
       if (wanted != _hlsBurnedSubTypedIndex) {
         _hlsBurnedSubTypedIndex = wanted;
         await reloadHlsAtPosition(position.inSeconds);

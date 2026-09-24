@@ -18,6 +18,7 @@ import '../../services/download_manager.dart';
 import '../../services/server_reachability.dart';
 import '../../services/media_details_cache.dart';
 import '../../services/picture_in_picture.dart';
+import '../../services/player_presence.dart';
 import '../../services/screen_brightness_control.dart';
 import '../../services/watch_party.dart';
 import 'display_cutouts.dart';
@@ -517,6 +518,7 @@ class _PlayerScreenState extends State<PlayerScreen> {
   @override
   void initState() {
     super.initState();
+    PlayerPresence.enter();
     _showControls = !widget.autoAdvance;
     _wantsPlayback = !widget.startPaused;
     _videoFit = widget.initialVideoFit ?? BoxFit.contain;
@@ -1679,6 +1681,7 @@ class _PlayerScreenState extends State<PlayerScreen> {
   @override
   void dispose() {
     _isDisposing = true;
+    PlayerPresence.leave();
     // A menu belongs to the app's overlay, not to this route: left open, it
     // would still be on screen after the player is gone.
     _dismissTopPopup();

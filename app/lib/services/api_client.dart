@@ -501,6 +501,7 @@ class ApiClient
     int audioIndex = 0,
     int burnSubtitleIndex = -1,
     PlaybackAccess? access,
+    PlaybackCapabilities? capabilities,
   }) async {
     final stopwatch = Stopwatch()..start();
     final response = await _dio.post(
@@ -520,7 +521,10 @@ class ApiClient
         // What this device can decode and play back. Without it the server
         // assumes the weakest client it has ever had to serve — H.264 8-bit and
         // stereo AAC — and re-encodes a file this one could have taken as it is.
-        ...PlaybackCapabilitiesResolver.current.toQueryParameters(),
+        // Celles du moteur qui lira la session quand ce n'est pas celui de
+        // l'appareil — AVPlayer à côté de mpv sur iPhone et Mac (ADR-0035).
+        ...(capabilities ?? PlaybackCapabilitiesResolver.current)
+            .toQueryParameters(),
       },
     );
     stopwatch.stop();

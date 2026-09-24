@@ -3,14 +3,17 @@ import 'dart:async';
 import 'package:flutter/services.dart';
 import 'package:flutter/widgets.dart';
 import 'package:video_player_platform_interface/video_player_platform_interface.dart';
+import 'package:wakelock_plus/wakelock_plus.dart';
 
 import '../../../services/client_log.dart';
+import '../../../utils/app_platform.dart';
 import '../playback_profile.dart';
 import 'playback_session.dart';
 import 'subtitle_overlay.dart';
 import 'vtt_cues.dart';
 
-/// [PlaybackSession] adossée à AVPlayer, sur l'Apple TV.
+/// [PlaybackSession] adossée à AVPlayer : sur l'Apple TV, et sur iPhone et Mac
+/// pour les fichiers que le serveur recopie (ADR-0035).
 ///
 /// Ni mpv ni ExoPlayer n'existent sur tvOS : c'est le lecteur du système, par
 /// le portage tvOS de `video_player` (`video_player_tvos`). On lui parle par
@@ -29,7 +32,16 @@ import 'vtt_cues.dart';
 /// seconde, et le WebVTT du serveur est découpé puis peint par
 /// [SubtitleOverlay], comme sur Android.
 class AvPlayerPlaybackSession implements PlaybackSession {
-  AvPlayerPlaybackSession();
+  AvPlayerPlaybackSession({this.viewType = VideoViewType.textureView});
+
+  /// Comment l'image arrive à l'écran.
+  ///
+  /// La texture est le seul chemin que le portage tvOS a vérifié sur une vraie
+  /// Apple TV, mais elle recopie chaque image en BGRA 8 bits : le HDR y est
+  /// perdu, et la copie coûte. Sur iPhone et Mac, la vue native
+  /// (`AVPlayerLayer`) pose l'image décodée telle quelle dans la couche
+  /// d'affichage — le chemin le plus économe, et le seul qui garde le HDR.
+  final VideoViewType viewType;
 
   static VideoPlayerPlatform get _platform => VideoPlayerPlatform.instance;
 
@@ -138,10 +150,9 @@ class AvPlayerPlaybackSession implements PlaybackSession {
             // L'URL de session porte déjà son ticket d'accès.
             formatHint: url.contains('.m3u8') ? VideoFormat.hls : null,
           ),
-          // La texture est le seul chemin que le port a vérifié sur une vraie
-          // Apple TV. Elle passe en BGRA 8 bits, d'où `hdr: false` dans
-          // `PlaybackCapabilities.appleTv`.
-          viewType: VideoViewType.textureView,
+          // Texture sur l'Apple TV, en BGRA 8 bits, d'où `hdr: false` dans
+          // `PlaybackCapabilities.appleTv`. Voir [viewType].
+          viewType: viewType,
         ),
       );
     } catch (error) {
@@ -387,8 +398,9 @@ class AvPlayerPlaybackSession implements PlaybackSession {
     _isPlaying = playing;
     _playing.add(playing);
     if (playing) _setBuffering(false);
-    // L'économiseur d'écran de tvOS ne sait pas qu'une texture Flutter est un
-    // film : sans ça, il se lance au milieu de la lecture.
+    // Ni l'économiseur d'écran de tvOS ni la mise en veille d'un iPhone ou d'un
+    // Mac ne savent qu'une vue Flutter est un film : sans ça, l'écran s'éteint
+    // au milieu de la lecture.
     unawaited(_keepScreenOn(playing));
   }
 
@@ -416,7 +428,12 @@ class AvPlayerPlaybackSession implements PlaybackSession {
 
   static Future<void> _keepScreenOn(bool on) async {
     try {
-      await _device.invokeMethod<void>('setKeepScreenOn', on);
+      // wakelock_plus n'a pas de portage tvOS : l'hôte le fait lui-même.
+      if (AppPlatform.isTvOS) {
+        await _device.invokeMethod<void>('setKeepScreenOn', on);
+      } else {
+        await WakelockPlus.toggle(enable: on);
+      }
     } catch (_) {
       // Un hôte sans ce canal : l'écran s'éteindra, la lecture continuera.
     }
@@ -594,6 +611,13 @@ class _AvPlayerSurface extends StatelessWidget {
             final id = session._playerId.value;
             if (id == null) return const SizedBox.shrink();
             final ratio = aspectRatio ?? session.videoParams.aspect ?? 16 / 9;
+            if (session.viewType == VideoViewType.platformView) {
+              return _NativeFraming(
+                fit: fit,
+                aspectRatio: ratio,
+                child: _platformView(id),
+              );
+            }
             // Une texture n'a pas de taille propre : on lui en donne une au
             // bon rapport, que FittedBox cadre comme `BoxFit` le demande.
             return FittedBox(
@@ -616,4 +640,40 @@ class _AvPlayerSurface extends StatelessWidget {
       VideoPlayerPlatform.instance.buildViewWithOptions(
         VideoViewOptions(playerId: id),
       );
+}
+
+/// Cadre une vue native par sa taille, sans transformation.
+///
+/// FittedBox met une texture à l'échelle ; une vue native, elle, ne suit une
+/// mise à l'échelle que de façon inégale selon la plateforme (c'est aussi
+/// pourquoi mpv reçoit son cadrage en options sur macOS). La vue reçoit donc
+/// directement la taille que [fit] lui donne, centrée — et `AVPlayerLayer`,
+/// qui garde le rapport de l'image, la remplit exactement.
+class _NativeFraming extends StatelessWidget {
+  const _NativeFraming({
+    required this.fit,
+    required this.aspectRatio,
+    required this.child,
+  });
+
+  final BoxFit fit;
+  final double aspectRatio;
+  final Widget child;
+
+  @override
+  Widget build(BuildContext context) {
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final box = constraints.biggest;
+        final size = applyBoxFit(fit, Size(aspectRatio, 1), box).destination;
+        return ClipRect(
+          child: OverflowBox(
+            maxWidth: size.width,
+            maxHeight: size.height,
+            child: SizedBox.fromSize(size: size, child: child),
+          ),
+        );
+      },
+    );
+  }
 }

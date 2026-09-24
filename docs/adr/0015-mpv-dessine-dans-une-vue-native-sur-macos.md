@@ -86,6 +86,17 @@ Deux choix qui ne se devinent pas :
 Vérifié : chargement, intégration dans la vue et rendu sur arm64 et sur x86_64 (Rosetta), et build
 release de l'app universel, framework compris.
 
+## Décodage sans copie (2026-09-24)
+
+Ce chemin décode en `hwdec=videotoolbox`, sans copie : l'image décodée passe directement de
+VideoToolbox à gpu-next. `videotoolbox-copy`, que tous les Mac recevaient jusque-là, ramenait chaque
+image en mémoire vive avant de la renvoyer au GPU par MoltenVK, soit environ 600 Mo/s pour un 4K HDR
+et un Mac qui chauffe. La copie reste en place dans trois cas : sur la texture de media_kit, où le
+gel de la bêta de macOS 27 (image figée, son qui continue) a été observé ; quand le réglage
+« décodage matériel » est sur *copie* ; et pour le reste de la session quand un Mac est pris à
+décoder en logiciel un média de 1440p ou plus (`HardwareDecoding.noteZeroCopyFailure`, le même
+filet qu'Android et Windows).
+
 ## Ce qui reste
 
 - **Le patch à maintenir.** Il doit être réappliqué à chaque montée de version de mpv. Il est

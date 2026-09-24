@@ -13,6 +13,7 @@ import '../../services/api_client.dart';
 import '../../services/auto_updater_service.dart';
 import '../../services/download_manager.dart';
 import '../../services/server_reachability.dart';
+import '../../services/update_checker.dart';
 import '../../theme/app_colors.dart';
 import '../../utils/responsive.dart';
 import '../../widgets/global/account_menu.dart';
@@ -127,8 +128,9 @@ class _MainShellState extends State<MainShell> {
         MaterialPageRoute(builder: (_) => TvPairingScreen(initialCode: code)),
       );
     });
+    final api = context.read<ApiClient>();
     _autoUpdate = AutoUpdateService(
-      api: context.read<ApiClient>(),
+      findUpdate: () => UpdateChecker.findAvailableUpdate(api),
       onUpdateFound: _handleUpdateFound,
     )..start();
   }

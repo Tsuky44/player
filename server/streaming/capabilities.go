@@ -42,6 +42,12 @@ type Capabilities struct {
 	// merely an HDR display. It is a separate flag because only one profile
 	// actually needs it — see needsDolbyVisionDecoder.
 	DolbyVision bool
+	// Remux marks a session that stands in for Direct Play: a player that
+	// cannot open the file itself (AVPlayer refuses MKV) asks for the same
+	// bytes in another container. It would have pulled the file's own bitrate
+	// anyway, so the copy ceiling does not apply — without this, a 4K remux
+	// was re-encoded to H.264, a whole core busy for a worse picture.
+	Remux bool
 }
 
 // SegmentContainer is the muxer the HLS segments are written with.
@@ -116,6 +122,7 @@ func ParseCapabilities(q url.Values) Capabilities {
 	}
 	caps.HDR = isTruthy(q.Get("hdr"))
 	caps.DolbyVision = isTruthy(q.Get("dv"))
+	caps.Remux = isTruthy(q.Get("remux"))
 	// Dolby Vision without HDR is not a thing a display can be: the flag is
 	// about the metadata layer on top of an HDR signal, so it implies the
 	// signal. Accepting the pair as sent would let a typo produce a client that
@@ -169,6 +176,15 @@ func (c Capabilities) CanCarryAudio(codec string) bool {
 		}
 	}
 	return false
+}
+
+// CopyCeiling is the bitrate above which the picture is re-encoded rather
+// than copied, or 0 for none. See Capabilities.Remux.
+func (c Capabilities) CopyCeiling(configured int64) int64 {
+	if c.Remux {
+		return 0
+	}
+	return configured
 }
 
 // DecodesVideo / DecodesAudio report what the client itself declared.

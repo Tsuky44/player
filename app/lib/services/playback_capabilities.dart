@@ -30,6 +30,7 @@ class PlaybackCapabilities {
     required this.dolbyVision,
     required this.label,
     this.missingDirectPlayAudio = const {},
+    this.remux = false,
   });
 
   /// `fmp4` ou `ts`. Le format de segment décide autant que le décodeur : le
@@ -74,6 +75,12 @@ class PlaybackCapabilities {
   /// piste ne produit pas d'erreur, l'image défile sans son, et le seul remède
   /// est de laisser le serveur la décoder — donc de passer en HLS.
   final Set<String> missingDirectPlayAudio;
+
+  /// Les sessions de ce lecteur remplacent le Direct Play : AVPlayer ne sait
+  /// pas ouvrir le MKV, alors il demande les mêmes octets dans un autre
+  /// conteneur. Il aurait tiré le débit du fichier de toute façon, donc le
+  /// serveur recopie au-delà de son plafond de débit au lieu de ré-encoder.
+  final bool remux;
 
   /// Si le moteur local sait décoder [codec] (nom ffprobe) en Direct Play.
   bool decodesInDirectPlay(String codec) {
@@ -158,6 +165,31 @@ class PlaybackCapabilities {
     hdr: false,
     dolbyVision: false,
     label: 'avplayer (apple tv)',
+    remux: true,
+  );
+
+  /// AVPlayer sur iPhone et Mac, pour les fichiers que le serveur peut
+  /// recopier tels quels (ADR-0035). Le reste est lu par mpv en Direct Play.
+  ///
+  /// Contrairement à l'Apple TV, l'image passe par la vue native
+  /// (`AVPlayerLayer`) : le HDR arrive jusqu'à l'écran, qui le tone-mappe
+  /// lui-même s'il ne l'affiche pas. `dolbyVision` reste faux : le serveur
+  /// étiquette le HEVC recopié en `hvc1`, et un profil 5 lu comme du HEVC
+  /// ordinaire sort vert. Les fichiers Dolby Vision restent donc sur mpv.
+  ///
+  /// Ni AV1 ni VP9 : AVPlayer ne décode l'AV1 que sur les puces qui l'ont en
+  /// matériel, ce que l'app ne sait pas demander, et jamais le VP9. mpv les
+  /// lit en Direct Play, ce qui ne coûte rien au serveur.
+  static const avPlayer = PlaybackCapabilities(
+    container: 'fmp4',
+    videoCodecs: {'h264', 'hevc'},
+    audioCodecs: {'aac', 'ac3', 'eac3', 'alac', 'flac'},
+    maxAudioChannels: 8,
+    maxVideoBitDepth: 10,
+    hdr: true,
+    dolbyVision: false,
+    label: 'avplayer (recopie)',
+    remux: true,
   );
 
   /// Ce qu'ExoPlayer a mesuré sur cet appareil.
@@ -258,6 +290,7 @@ class PlaybackCapabilities {
         'bitdepth': '$maxVideoBitDepth',
         'hdr': hdr ? '1' : '0',
         'dv': dolbyVision ? '1' : '0',
+        if (remux) 'remux': '1',
       };
 
   @override

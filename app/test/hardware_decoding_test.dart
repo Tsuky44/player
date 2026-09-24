@@ -5,11 +5,12 @@ import 'package:onyx/screens/player/hardware_decoding.dart';
 void main() {
   _zeroCopyFallback();
   _zeroCopyEdgeCrop();
-  tearDown(() =>
-      HardwareDecoding.overrideWith(HardwareDecodingPreference.auto));
+  tearDown(
+      () => HardwareDecoding.overrideWith(HardwareDecodingPreference.auto));
 
-  String android(HardwareDecodingPreference preference) => HardwareDecoding
-      .resolve(preference: preference, isAndroid: true, isMacOS: false);
+  String android(HardwareDecodingPreference preference) =>
+      HardwareDecoding.resolve(
+          preference: preference, isAndroid: true, isMacOS: false);
 
   // The point of the whole change: the default asks for the zero-copy decoder
   // by name. `auto-safe` left the choice to mpv's whitelist, which is
@@ -24,19 +25,41 @@ void main() {
   });
 
   test('Android offers three genuinely different paths', () {
-    final values =
-        HardwareDecodingPreference.values.map(android).toSet();
+    final values = HardwareDecodingPreference.values.map(android).toSet();
     expect(values.length, HardwareDecodingPreference.values.length);
   });
 
-  test('macOS keeps its VideoToolbox copy on both hardware settings', () {
-    for (final preference in [
-      HardwareDecodingPreference.auto,
-      HardwareDecodingPreference.copy,
-    ]) {
+  String macOS(HardwareDecodingPreference preference,
+          {bool nativeOutput = true, bool zeroCopyFailed = false}) =>
+      HardwareDecoding.resolve(
+        preference: preference,
+        isAndroid: false,
+        isMacOS: true,
+        macOSNativeOutput: nativeOutput,
+        zeroCopyFailed: zeroCopyFailed,
+      );
+
+  // La copie renvoyait chaque image décodée par la RAM avant de la remonter
+  // au GPU : ~600 Mo/s sur un 4K HDR, et un Mac qui chauffe.
+  test('macOS drawing through gpu-next decodes without a copy', () {
+    expect(macOS(HardwareDecodingPreference.auto), 'videotoolbox');
+  });
+
+  // Le gel de la bêta de macOS 27 a été vu sur la texture de media_kit.
+  test('the media_kit texture on macOS keeps the VideoToolbox copy', () {
+    expect(macOS(HardwareDecodingPreference.auto, nativeOutput: false),
+        'videotoolbox-copy');
+  });
+
+  test('a Mac caught decoding in software falls back to the copy', () {
+    expect(macOS(HardwareDecodingPreference.auto, zeroCopyFailed: true),
+        'videotoolbox-copy');
+  });
+
+  test('the macOS escape hatch is the copy, whatever the output', () {
+    for (final nativeOutput in [true, false]) {
       expect(
-        HardwareDecoding.resolve(
-            preference: preference, isAndroid: false, isMacOS: true),
+        macOS(HardwareDecodingPreference.copy, nativeOutput: nativeOutput),
         'videotoolbox-copy',
       );
     }
@@ -58,7 +81,8 @@ void main() {
     expect(windows(HardwareDecodingPreference.auto), 'auto-safe');
   });
 
-  test('Windows caught decoding in software falls back to the copy, not the CPU',
+  test(
+      'Windows caught decoding in software falls back to the copy, not the CPU',
       () {
     expect(
       windows(HardwareDecodingPreference.auto, zeroCopyFailed: true),
@@ -133,17 +157,7 @@ void _zeroCopyFallback() {
       }
     });
 
-    test('the observation is Android-shaped and stays there', () {
-      // Nothing about a failed Android surface path says anything about macOS.
-      expect(
-        HardwareDecoding.resolve(
-          preference: HardwareDecodingPreference.auto,
-          isAndroid: false,
-          isMacOS: true,
-          zeroCopyFailed: true,
-        ),
-        'videotoolbox-copy',
-      );
+    test('a platform with no copy fallback ignores the observation', () {
       expect(
         HardwareDecoding.resolve(
           preference: HardwareDecodingPreference.auto,

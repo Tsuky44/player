@@ -80,6 +80,16 @@ dependencies:
   # (native/build_libmpv.sh) — voir lib/utils/mpv_native_view.dart.
   onyx_mpv_macos:
     path: ../packages/onyx_mpv_macos
+  # AVPlayer sur iPhone et Mac, pour les fichiers que le serveur peut recopier
+  # tels quels en HLS (ADR-0035) : le pipeline vidéo d'Apple chauffe bien moins
+  # que mpv. Par l'interface de plateforme, comme sur tvOS ; l'implémentation
+  # officielle ne déclare qu'iOS et macOS. 2.9 est la première qui ouvre la vue
+  # native (`AVPlayerLayer`) sur les deux, le seul chemin qui garde le HDR.
+  video_player_avfoundation: ^2.9.4
+  # Garde l'écran allumé pendant une lecture AVPlayer. mpv l'avait sans rien
+  # demander : le widget `Video` de media_kit s'en sert (d'où la version, celle
+  # que media_kit tire déjà). La vue d'AVPlayer, elle, ne le fait pas.
+  wakelock_plus: ^1.1.6
 
   # --- Apple TV (tvOS) ---------------------------------------------------
   # tvOS se construit avec flutter-tvos (voir l'ADR-0028), qui n'embarque que

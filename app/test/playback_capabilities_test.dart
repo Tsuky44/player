@@ -135,7 +135,14 @@ void main() {
     test('mpv (FFmpeg complet) garde toutes les pistes en Direct Play', () {
       const caps = PlaybackCapabilities.mpv;
       for (final codec in [
-        'truehd', 'mlp', 'eac3', 'ac3', 'dts', 'aac', 'flac', 'opus',
+        'truehd',
+        'mlp',
+        'eac3',
+        'ac3',
+        'dts',
+        'aac',
+        'flac',
+        'opus',
       ]) {
         expect(caps.decodesInDirectPlay(codec), isTrue, reason: codec);
       }
@@ -189,5 +196,33 @@ void main() {
       params.keys.toSet(),
       {'container', 'vcodec', 'acodec', 'channels', 'bitdepth', 'hdr', 'dv'},
     );
+  });
+
+  group('AVPlayer en recopie (ADR-0035)', () {
+    // Sans `remux`, un remux 4K au-dessus du plafond de débit du serveur était
+    // ré-encodé en H.264 : un cœur occupé pour une image moins bonne, sur un
+    // appareil qui aurait tiré ce débit de toute façon en Direct Play.
+    test('iPhone et Mac demandent la recopie au-delà du plafond de débit', () {
+      expect(PlaybackCapabilities.avPlayer.toQueryParameters()['remux'], '1');
+    });
+
+    test('l’Apple TV aussi, qui ne lit jamais le fichier lui-même', () {
+      expect(PlaybackCapabilities.appleTv.toQueryParameters()['remux'], '1');
+    });
+
+    test('mpv lit le fichier : ses sessions restent sous le plafond', () {
+      expect(
+        PlaybackCapabilities.mpv.toQueryParameters().containsKey('remux'),
+        isFalse,
+      );
+    });
+
+    test('la vue native garde le HDR, pas le Dolby Vision', () {
+      // Un profil 5 étiqueté `hvc1` sortirait vert dans AVPlayer.
+      const caps = PlaybackCapabilities.avPlayer;
+      expect(caps.hdr, isTrue);
+      expect(caps.dolbyVision, isFalse);
+      expect(caps.videoCodecs, {'h264', 'hevc'});
+    });
   });
 }

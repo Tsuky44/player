@@ -113,6 +113,20 @@ func TestParseCapabilities_DolbyVisionImpliesHDR(t *testing.T) {
 	}
 }
 
+func TestCopyCeiling_ARemuxInPlaceOfDirectPlayIsNeverReEncodedForItsBitrate(t *testing.T) {
+	// The player would have pulled the file's own bitrate in Direct Play: a
+	// 40 Mb/s remux re-encoded because it crosses the ceiling is a whole core
+	// busy for a worse picture.
+	remux := ParseCapabilities(url.Values{"remux": {"1"}})
+	if got := remux.CopyCeiling(12_000_000); got != 0 {
+		t.Errorf("remux ceiling = %d, want none", got)
+	}
+	plain := ParseCapabilities(url.Values{})
+	if got := plain.CopyCeiling(12_000_000); got != 12_000_000 {
+		t.Errorf("ceiling without remux = %d, want the configured one", got)
+	}
+}
+
 func TestCanCarry_TheContainerVetoesIndependentlyOfTheDecoder(t *testing.T) {
 	ts := Capabilities{Container: ContainerTS}
 	fmp4 := Capabilities{Container: ContainerFMP4}

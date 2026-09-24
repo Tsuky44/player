@@ -1,4 +1,5 @@
 import '../../../utils/app_platform.dart';
+import 'apple_playback_session.dart';
 import 'avplayer_playback_session.dart';
 import 'exo_playback_session.dart';
 import 'mpv_playback_session.dart';
@@ -13,5 +14,8 @@ PlaybackSession createPlaybackSession() {
   if (AppPlatform.isAndroid) return ExoPlaybackSession();
   // Pas de libmpv pour tvOS : le lecteur du système, voir l'ADR-0028.
   if (AppPlatform.isTvOS) return AvPlayerPlaybackSession();
+  // AVPlayer pour ce que le serveur recopie, mpv pour le reste : voir
+  // l'ADR-0035.
+  if (AppPlatform.isIOS || AppPlatform.isMacOS) return ApplePlaybackSession();
   return MpvPlaybackSession();
 }
