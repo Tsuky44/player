@@ -32,6 +32,7 @@ import '../home/home_screen.dart';
 import '../library/movies_screen.dart';
 import '../library/shows_screen.dart';
 import '../requests/requests_screen.dart';
+import 'shell_page_open_listener.dart';
 import 'shell_tab_stack.dart';
 
 class MainShell extends StatefulWidget {
@@ -204,13 +205,10 @@ class _MainShellState extends State<MainShell> {
     return NavigatorPopHandler<Object?>(
       // Retour (Android, souris, clavier) ferme d'abord la fiche ouverte.
       onPopWithResult: (_) => shellNavigatorKey.currentState?.maybePop(),
-      child: NotificationListener<NavigationNotification>(
-        onNotification: (notification) {
-          if (notification.canHandlePop != _pageOpen) {
-            setState(() => _pageOpen = notification.canHandlePop);
-          }
-          return false;
-        },
+      child: ShellPageOpenListener(
+        navigatorKey: shellNavigatorKey,
+        pageOpen: _pageOpen,
+        onPageOpenChanged: (open) => setState(() => _pageOpen = open),
         child: navigator,
       ),
     );
