@@ -39,9 +39,13 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  # Pas d'image tant que les tests ne passent pas.
+  # Pas d'image tant que les tests du serveur ne passent pas. Ceux de l'app ne
+  # bloquent pas un build serveur : release.yml, qui publie les applications,
+  # les exige toujours.
   test:
     uses: ./.github/workflows/ci.yml
+    with:
+      app_tests: false
 
   build:
     needs: test

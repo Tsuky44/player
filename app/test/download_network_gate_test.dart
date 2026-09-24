@@ -61,7 +61,23 @@ void main() {
   });
 
   tearDownAll(() async {
-    if (await root.exists()) await root.delete(recursive: true);
+    // Le dernier test rouvre le réseau : la file repart vers le NAS fictif et
+    // écrit encore (dossiers de médias, manifeste) pendant qu'on efface. La
+    // suppression échouait alors par intermittence en CI (« Directory not
+    // empty »). On referme la file, puis on laisse ses dernières écritures
+    // se poser avant de réessayer.
+    networkAllows = false;
+    manager.onNetworkChanged();
+    for (var attempt = 0;; attempt++) {
+      if (!await root.exists()) return;
+      try {
+        await root.delete(recursive: true);
+        return;
+      } on FileSystemException {
+        if (attempt >= 20) rethrow;
+        await Future<void>.delayed(const Duration(milliseconds: 50));
+      }
+    }
   });
 
   test('un réseau facturé retient la file sans rien perdre', () async {
