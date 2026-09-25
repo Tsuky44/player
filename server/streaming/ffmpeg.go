@@ -382,6 +382,7 @@ func audioAndMuxerArgs(opt TranscodeOptions, preset qualityPreset, audioIdxs []i
 		args = append(args,
 			"-hls_segment_type", "fmp4",
 			"-hls_fmp4_init_filename", "init_%v.mp4",
+			"-hls_segment_options", fmp4SegmentMovflags,
 		)
 	}
 
@@ -397,6 +398,27 @@ func audioAndMuxerArgs(opt TranscodeOptions, preset qualityPreset, audioIdxs []i
 
 	return args
 }
+
+// fmp4SegmentMovflags garde l'écart réel entre l'audio et l'image dans les
+// segments eux-mêmes. Sans lui, le navigateur désynchronise le son de l'image.
+//
+// Chaque rendu de -var_stream_map a son propre muxer MP4, qui fait partir sa
+// piste de zéro et ne note son vrai départ que dans l'edit list de l'init. Or
+// l'écart entre les pistes est courant : une recopie repart de l'image clé qui
+// précède le point de reprise alors que l'audio part du point exact, et
+// beaucoup de fichiers ont un retard audio intégré. mpv, ExoPlayer et AVPlayer
+// lisent l'edit list, hls.js ne la lit pas. Il cale donc les deux pistes sur
+// zéro. Mesuré sous FFmpeg 8.1 : sur une reprise à 13 s avec des images clés
+// toutes les 5 s, l'audio passait 3,06 s avant l'image. D'un fichier à l'autre,
+// le décalage va de rien à plusieurs secondes.
+//
+// frag_discont écrit dans le tfdt de chaque fragment l'horodatage réel de son
+// premier échantillon, sur la même échelle pour toutes les pistes. hls.js et
+// les lecteurs natifs y retrouvent le même écart. Avec use_editlist=0, le muxer
+// remet chaque piste à zéro, ce qui ne règle rien. skip_sidx retire un index
+// que HLS n'utilise pas et que FFmpeg réécrit en déplaçant les PTS en bord de
+// GOP ouvert. Jellyfin passe exactement ces options, pour la même raison.
+const fmp4SegmentMovflags = "movflags=+frag_discont+skip_sidx"
 
 // buildVarStreamMap lays out one video variant plus an audio rendition group.
 //

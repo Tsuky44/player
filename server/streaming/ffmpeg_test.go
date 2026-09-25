@@ -820,8 +820,33 @@ func TestBuildFFmpegArgs_FMP4SessionsPublishAnInitSegment(t *testing.T) {
 	if hasArg(legacy, "-hls_segment_type") {
 		t.Error("a legacy session must not switch container")
 	}
+	if hasArg(legacy, "-hls_segment_options") {
+		t.Error("movflags belong to the MP4 muxer; the MPEG-TS one would refuse them")
+	}
 	if got, _ := argValue(legacy, "-hls_segment_filename"); !strings.HasSuffix(got, ".ts") {
 		t.Errorf("legacy segments must stay .ts, got %q", got)
+	}
+}
+
+// hls.js ignore l'edit list des inits fMP4 : sans frag_discont, chaque piste
+// repart de zéro et l'audio se décale de l'image. Voir fmp4SegmentMovflags.
+func TestBuildFFmpegArgs_FMP4SegmentsCarryTheRealTrackOffset(t *testing.T) {
+	for _, videoCopy := range []bool{true, false} {
+		args := BuildFFmpegArgs(TranscodeOptions{
+			InputPath: "/x.mkv", Quality: "1080p", TmpDir: "/tmp/x", SegmentDuration: 2,
+			StartSeconds:      754,
+			Probe:             probeWith(1920, 1080, 24, AudioStreamInfo{Codec: "dts", Channels: 6}),
+			AudioTypedIndexes: []int{0},
+			Video:             VideoPlan{Copy: videoCopy},
+			Caps:              surroundCaps(),
+		})
+		got, _ := argValue(args, "-hls_segment_options")
+		if !strings.Contains(got, "+frag_discont") {
+			t.Errorf("copy=%v: -hls_segment_options = %q, want +frag_discont", videoCopy, got)
+		}
+		if strings.Contains(got, "use_editlist=0") {
+			t.Errorf("copy=%v: use_editlist=0 rebases every track to zero", videoCopy)
+		}
 	}
 }
 
