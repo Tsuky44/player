@@ -79,6 +79,13 @@ final class AetherPlayer {
     // listées (le MKV les déclare) ; seule leur taille est résolue plus tard.
     options.probesize = 8 * 1024 * 1024
     options.maxAnalyzeDuration = 5_000_000
+    // Un seul GET tenu en HTTP/1.1 sur TCP pour le fichier brut. Par défaut, le
+    // moteur rouvre une requête tous les 32 Mo et URLSession passe en HTTP/3
+    // derrière Cloudflare : mesuré à ~60 Mb/s sur un lien qui en tient bien
+    // plus, un remux 4K à 52 Mb/s se mettait en tampon toutes les 20 s. mpv,
+    // en TCP sur une seule connexion, le lisait sans à-coup. Le HLS de
+    // transcodage garde le transport par défaut : ce sont de petits segments.
+    options.heldSourceConnection = source.pathExtension.lowercased() != "m3u8"
     let loadOptions = options
     let start: Double? = startMs > 0 ? Double(startMs) / 1000 : nil
     loadTask = Task { [weak self] in
