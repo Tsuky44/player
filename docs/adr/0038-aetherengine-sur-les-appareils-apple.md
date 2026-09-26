@@ -60,8 +60,11 @@ plus qu'à la qualité réduite choisie à la main, qu'AetherEngine lit comme n'
   plugin à nous entre l'app et le moteur, pour pouvoir le forker sans toucher au reste.
 - **La licence** est la LGPL-3.0 avec une exception pour les magasins : une modification du moteur
   lui-même doit être publiée, pas le code de l'app.
-- **La cohabitation avec mpv** pendant la transition est prévue par AetherEngine, dont les
-  frameworks FFmpeg portent un préfixe `Aether` pour cet usage. À vérifier sur un Mac.
+- **Pas de cohabitation avec mpv.** Vérifié sur Mac au premier build : le FFmpeg de libmpv
+  (libavcodec 60) passait devant celui d'AetherEngine (62) à l'édition des liens, et la lecture
+  plantait à l'ouverture du conteneur. libmpv n'est donc plus embarqué sur les appareils Apple :
+  les podspecs de `media_kit_libs_macos_video`, `media_kit_libs_ios_video` et `onyx_mpv_macos` ne
+  fournissent plus de framework, et `media_kit_video` y passe toujours par son bouchon.
 
 ## Dans l'app (phase 2)
 
@@ -85,6 +88,6 @@ plus qu'à la qualité réduite choisie à la main, qu'AetherEngine lit comme n'
 
 1. **Phase 3 :** Mac, puis iPhone, puis Apple TV, avec `docs/validation-lecture.md` sur un vrai
    appareil. Le premier build dira si le Swift compile, et si flutter-tvos accepte une vue native.
-2. **Phase 4 :** retirer mpv des builds Apple (`media_kit_libs_ios_video`,
-   `media_kit_libs_macos_video`, `onyx_mpv_macos`, `MpvNativeView`,
-   `PlaybackCapabilities.mpvGpuNext`), qui y sont encore embarqués sans être chargés.
+2. **Phase 4 :** retirer le code Dart de mpv qui reste inerte sur Apple (`MpvNativeView`,
+   `PlaybackCapabilities.mpvGpuNext`, le plugin `onyx_mpv_macos`). Les bibliothèques natives,
+   elles, ne sont déjà plus embarquées.

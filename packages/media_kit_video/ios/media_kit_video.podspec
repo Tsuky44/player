@@ -27,7 +27,11 @@ Pod::Spec.new do |s|
   s.swift_version    = '5.0'
   s.dependency         'Flutter'
   
-  if mku.libs_found
+  # Onyx : libmpv n'est plus embarqué sur les appareils Apple, où AetherEngine
+  # lit tout (ADR-0038). Son FFmpeg passait devant celui d'AetherEngine à
+  # l'édition des liens, et la lecture plantait dès l'ouverture du fichier.
+  # Le plugin passe donc toujours par son bouchon, sans lier Mpv.
+  if false && mku.libs_found
     # Define paths to frameworks dir
     framework_search_paths_iphoneos        = sprintf('$(PROJECT_DIR)/../.symlinks/plugins/%s/ios/Frameworks/.symlinks/mpv/ios', mku.libs_package)
     framework_search_paths_iphonesimulator = sprintf('$(PROJECT_DIR)/../.symlinks/plugins/%s/ios/Frameworks/.symlinks/mpv/ios-simulator', mku.libs_package)

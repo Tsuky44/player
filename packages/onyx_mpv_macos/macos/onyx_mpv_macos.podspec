@@ -14,11 +14,9 @@ Pod::Spec.new do |s|
   s.source_files     = 'Classes/**/*'
   s.dependency 'FlutterMacOS'
 
-  # Le libmpv livrable (native/build_release.sh), embarqué dans l'app quand il
-  # a été construit. Sans lui, l'app retombe sur la texture de media_kit.
-  if File.exist?(File.join(__dir__, 'Frameworks', 'OnyxMpv.xcframework'))
-    s.vendored_frameworks = 'Frameworks/OnyxMpv.xcframework'
-  end
+  # Onyx : le libmpv livrable (native/build_release.sh) n'est plus embarqué.
+  # AetherEngine lit tout sur Mac (ADR-0038), et un second FFmpeg dans le
+  # binaire passait devant le sien : la lecture plantait à l'ouverture.
 
   s.platform = :osx, '11.0'
   s.pod_target_xcconfig = { 'DEFINES_MODULE' => 'YES' }

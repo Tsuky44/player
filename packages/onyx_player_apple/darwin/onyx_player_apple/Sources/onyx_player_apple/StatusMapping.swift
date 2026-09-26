@@ -53,8 +53,12 @@ enum StatusMapping {
     "hdmv_pgs_subtitle", "dvd_subtitle", "dvb_subtitle", "xsub",
   ]
 
+  @MainActor
   static func track(_ info: TrackInfo) -> OnyxAppleTrack {
-    OnyxAppleTrack(
+    // Lu hors de l'autoclosure de `&&`, qui n'hérite pas de l'isolement
+    // `@MainActor` de la constante (erreur en Swift 6).
+    let closedCaptionTrackID = AetherEngine.a53ClosedCaptionTrackID
+    return OnyxAppleTrack(
       id: String(info.id),
       title: info.name.isEmpty ? nil : info.name,
       language: info.language,
@@ -64,7 +68,7 @@ enum StatusMapping {
       isForced: info.isForced,
       isAtmos: info.isAtmos,
       isBitmap: bitmapSubtitleCodecs.contains(info.codec),
-      isContainerStream: !info.isExternal && info.id != AetherEngine.a53ClosedCaptionTrackID)
+      isContainerStream: !info.isExternal && info.id != closedCaptionTrackID)
   }
 
   /// Secondes du moteur → millisecondes du contrat. Une durée inconnue arrive
