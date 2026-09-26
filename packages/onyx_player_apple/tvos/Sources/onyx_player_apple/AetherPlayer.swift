@@ -29,6 +29,10 @@ final class AetherPlayer {
   /// (une URL refusée avant toute session, par exemple). Sans elle, l'app
   /// attendrait la fin de son délai de démarrage sans savoir pourquoi.
   private var loadFailure: String?
+  /// Le dernier play/pause demandé pendant un chargement. Le contrôleur ouvre
+  /// en pause puis appelle play() tout de suite ; le moteur ignore un play
+  /// arrivé avant la fin de `load`, et la lecture restait en pause.
+  private var wantsPlay = false
 
   private var statusScheduled = false
   private var subtitlesScheduled = false
@@ -67,21 +71,38 @@ final class AetherPlayer {
     forgetExternalSubtitle()
     clearSubtitleFrame()
 
+    wantsPlay = play
     let options = LoadOptions(preferredAudioLanguages: preferredAudioLanguages, autoplay: play)
     let start: Double? = startMs > 0 ? Double(startMs) / 1000 : nil
     loadTask = Task { [weak self] in
       guard let self else { return }
       do {
         try await self.engine.load(url: source, startPosition: start, options: options)
+        guard !Task.isCancelled else { return }
+        self.loadTask = nil
+        if self.wantsPlay != play {
+          if self.wantsPlay { self.engine.play() } else { self.engine.pause() }
+        }
       } catch is CancellationError {
         // Une ouverture plus récente l'a remplacée : ce n'est pas une panne.
       } catch {
         guard !Task.isCancelled else { return }
+        self.loadTask = nil
         self.loadFailure = error.localizedDescription
         self.scheduleStatus()
       }
     }
     scheduleStatus()
+  }
+
+  func play() {
+    wantsPlay = true
+    if loadTask == nil { engine.play() }
+  }
+
+  func pause() {
+    wantsPlay = false
+    if loadTask == nil { engine.pause() }
   }
 
   func seek(toMs positionMs: Int64) {

@@ -56,11 +56,11 @@ final class PlayerHost: NSObject, OnyxApplePlayerApi {
   }
 
   func play(playerId: Int64) throws {
-    try onMain { try require(playerId).engine.play() }
+    try onMain { try require(playerId).play() }
   }
 
   func pause(playerId: Int64) throws {
-    try onMain { try require(playerId).engine.pause() }
+    try onMain { try require(playerId).pause() }
   }
 
   func seekTo(playerId: Int64, positionMs: Int64) throws {
