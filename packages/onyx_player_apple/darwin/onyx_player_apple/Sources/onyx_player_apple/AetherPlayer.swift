@@ -33,6 +33,7 @@ final class AetherPlayer {
   /// en pause puis appelle play() tout de suite ; le moteur ignore un play
   /// arrivé avant la fin de `load`, et la lecture restait en pause.
   private var wantsPlay = false
+  private let fastStart = FastStart()
 
   private var statusScheduled = false
   private var subtitlesScheduled = false
@@ -106,6 +107,7 @@ final class AetherPlayer {
         self.scheduleStatus()
       }
     }
+    fastStart.arm(engine: engine) { [weak self] in self?.wantsPlay ?? false }
     scheduleStatus()
   }
 
@@ -128,6 +130,7 @@ final class AetherPlayer {
   /// arrive souvent juste derrière, et un téléviseur qui repasse en SDR entre
   /// deux épisodes HDR, c'est deux écrans noirs de plus.
   func stop() {
+    fastStart.cancel()
     loadTask?.cancel()
     loadTask = nil
     loadFailure = nil
@@ -140,6 +143,7 @@ final class AetherPlayer {
   /// La vraie fin : le mode de l'écran est rendu, l'audio aussi.
   func release() {
     released = true
+    fastStart.cancel()
     loadTask?.cancel()
     forgetExternalSubtitle()
     subscriptions.removeAll()
