@@ -1,5 +1,8 @@
 # ADR-0015 — Sur macOS, mpv dessine lui-même dans une vue native
 
+- **Remplacé en pratique** par l'[ADR-0038](0038-aetherengine-sur-les-appareils-apple.md) le
+  2026-09-26 : le Mac lit par AetherEngine et ne charge plus libmpv. Le code reste jusqu'à la
+  phase 4 de l'ADR-0038.
 - **Statut :** accepté sur macOS. `OnyxMpv.framework`, universel et embarqué dans l'app, en fait le
   lecteur par défaut sur tous les Mac ; la texture de media_kit ne sert plus que de repli. Le Dolby
   Vision a été vérifié sur un vrai fichier (profil 8, RPU appliqué, sortie PQ).

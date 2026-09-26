@@ -198,31 +198,30 @@ void main() {
     );
   });
 
-  group('AVPlayer en recopie (ADR-0035)', () {
-    // Sans `remux`, un remux 4K au-dessus du plafond de débit du serveur était
-    // ré-encodé en H.264 : un cœur occupé pour une image moins bonne, sur un
-    // appareil qui aurait tiré ce débit de toute façon en Direct Play.
-    test('iPhone et Mac demandent la recopie au-delà du plafond de débit', () {
-      expect(PlaybackCapabilities.avPlayer.toQueryParameters()['remux'], '1');
+  group('AetherEngine sur les appareils Apple (ADR-0038)', () {
+    test('ses sessions sont celles d’AVPlayer, qui les lit en bout de chaîne',
+        () {
+      // Une session ne sert plus qu'à la qualité réduite : AetherEngine la
+      // confie à AVPlayer, qui refuse le VP9 et l'AV1 en HLS.
+      const caps = PlaybackCapabilities.aether;
+      expect(caps.videoCodecs, {'h264', 'hevc'});
+      expect(caps.container, 'fmp4');
     });
 
-    test('l’Apple TV aussi, qui ne lit jamais le fichier lui-même', () {
-      expect(PlaybackCapabilities.appleTv.toQueryParameters()['remux'], '1');
-    });
-
-    test('mpv lit le fichier : ses sessions restent sous le plafond', () {
-      expect(
-        PlaybackCapabilities.mpv.toQueryParameters().containsKey('remux'),
-        isFalse,
-      );
-    });
-
-    test('la vue native garde le HDR, pas le Dolby Vision', () {
-      // Un profil 5 étiqueté `hvc1` sortirait vert dans AVPlayer.
-      const caps = PlaybackCapabilities.avPlayer;
+    test('la vue native garde le HDR, pas le Dolby Vision recopié', () {
+      // Un profil 5 étiqueté `hvc1` par le serveur sortirait vert.
+      const caps = PlaybackCapabilities.aether;
       expect(caps.hdr, isTrue);
       expect(caps.dolbyVision, isFalse);
-      expect(caps.videoCodecs, {'h264', 'hevc'});
+    });
+
+    test('aucune piste audio n’est muette en Direct Play', () {
+      // AetherEngine convertit lui-même TrueHD et DTS : rien ne doit
+      // renvoyer vers une session serveur pour une piste audio.
+      for (final codec in ['truehd', 'dts', 'eac3', 'opus']) {
+        expect(PlaybackCapabilities.aether.decodesInDirectPlay(codec), isTrue,
+            reason: codec);
+      }
     });
   });
 }

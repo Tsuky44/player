@@ -1,6 +1,5 @@
 import '../../../utils/app_platform.dart';
-import 'apple_playback_session.dart';
-import 'avplayer_playback_session.dart';
+import 'aether_playback_session.dart';
 import 'exo_playback_session.dart';
 import 'mpv_playback_session.dart';
 import 'playback_session.dart';
@@ -12,10 +11,8 @@ import 'playback_session.dart';
 /// Le contrôleur n'a donc rien à savoir de l'un ni de l'autre.
 PlaybackSession createPlaybackSession() {
   if (AppPlatform.isAndroid) return ExoPlaybackSession();
-  // Pas de libmpv pour tvOS : le lecteur du système, voir l'ADR-0028.
-  if (AppPlatform.isTvOS) return AvPlayerPlaybackSession();
-  // AVPlayer pour ce que le serveur recopie, mpv pour le reste : voir
-  // l'ADR-0035.
-  if (AppPlatform.isIOS || AppPlatform.isMacOS) return ApplePlaybackSession();
+  // AetherEngine sur tous les appareils Apple, en Direct Play : voir
+  // l'ADR-0038.
+  if (AppPlatform.isApple) return AetherPlaybackSession();
   return MpvPlaybackSession();
 }

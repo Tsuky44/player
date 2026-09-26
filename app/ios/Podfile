@@ -1,6 +1,6 @@
-# Cible minimale : ce que Flutter 3.44 exige, et au-dessus du plancher de tous
-# les greffons embarqués (mobile_scanner 12.0, media_kit 9.0).
-platform :ios, '13.0'
+# Cible minimale : le plancher d'AetherEngine (onyx_player_apple, ADR-0038),
+# au-dessus de ce que Flutter 3.44 et les autres greffons exigent.
+platform :ios, '18.0'
 
 # CocoaPods analytics sends network stats synchronously affecting flutter build latency.
 ENV['COCOAPODS_DISABLE_STATS'] = 'true'

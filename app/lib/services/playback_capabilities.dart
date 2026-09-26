@@ -30,7 +30,6 @@ class PlaybackCapabilities {
     required this.dolbyVision,
     required this.label,
     this.missingDirectPlayAudio = const {},
-    this.remux = false,
   });
 
   /// `fmp4` ou `ts`. Le format de segment décide autant que le décodeur : le
@@ -76,11 +75,6 @@ class PlaybackCapabilities {
   /// est de laisser le serveur la décoder — donc de passer en HLS.
   final Set<String> missingDirectPlayAudio;
 
-  /// Les sessions de ce lecteur remplacent le Direct Play : AVPlayer ne sait
-  /// pas ouvrir le MKV, alors il demande les mêmes octets dans un autre
-  /// conteneur. Il aurait tiré le débit du fichier de toute façon, donc le
-  /// serveur recopie au-delà de son plafond de débit au lieu de ré-encoder.
-  final bool remux;
 
   /// Si le moteur local sait décoder [codec] (nom ffprobe) en Direct Play.
   bool decodesInDirectPlay(String codec) {
@@ -143,44 +137,17 @@ class PlaybackCapabilities {
     label: 'mpv (gpu-next, vue native)',
   );
 
-  /// AVPlayer sur l'Apple TV, qui ne lit que du HLS préparé par le serveur.
+  /// AetherEngine sur iPhone, Mac et Apple TV (ADR-0038).
   ///
-  /// Le MKV lui est fermé, donc tout passe par une session — mais une session
-  /// qui **recopie** les pistes dès qu'elles tiennent dans un segment fMP4 :
-  /// HEVC et H.264 tels quels, Dolby Digital (Plus) jusqu'à l'ampli, Atmos
-  /// compris. Ce qu'AVPlayer ne décode pas (TrueHD, DTS) est converti par le
-  /// serveur, comme pour tous les clients fMP4.
+  /// Le fichier est lu tel quel : ces capacités ne servent qu'aux sessions que
+  /// l'utilisateur demande à une qualité réduite. AetherEngine les donne à
+  /// AVPlayer, d'où la liste d'AVPlayer : HEVC et H.264, Dolby Digital (Plus)
+  /// jusqu'à l'ampli. Le HDR arrive à l'écran par la vue native.
   ///
-  /// `hdr` et `dolbyVision` restent faux, et ce n'est pas une limite
-  /// d'AVPlayer : l'image passe par une texture Flutter en 8 bits BGRA
-  /// (`video_player_tvos`), qui écrase une source HDR. Le serveur la
-  /// tone-mappe donc lui-même, ce qui donne une image juste plutôt que
-  /// délavée. La vue native (`AVPlayerLayer`) lèverait cette limite.
-  static const appleTv = PlaybackCapabilities(
-    container: 'fmp4',
-    videoCodecs: {'h264', 'hevc'},
-    audioCodecs: {'aac', 'ac3', 'eac3', 'alac', 'flac'},
-    maxAudioChannels: 8,
-    maxVideoBitDepth: 10,
-    hdr: false,
-    dolbyVision: false,
-    label: 'avplayer (apple tv)',
-    remux: true,
-  );
-
-  /// AVPlayer sur iPhone et Mac, pour les fichiers que le serveur peut
-  /// recopier tels quels (ADR-0035). Le reste est lu par mpv en Direct Play.
-  ///
-  /// Contrairement à l'Apple TV, l'image passe par la vue native
-  /// (`AVPlayerLayer`) : le HDR arrive jusqu'à l'écran, qui le tone-mappe
-  /// lui-même s'il ne l'affiche pas. `dolbyVision` reste faux : le serveur
-  /// étiquette le HEVC recopié en `hvc1`, et un profil 5 lu comme du HEVC
-  /// ordinaire sort vert. Les fichiers Dolby Vision restent donc sur mpv.
-  ///
-  /// Ni AV1 ni VP9 : AVPlayer ne décode l'AV1 que sur les puces qui l'ont en
-  /// matériel, ce que l'app ne sait pas demander, et jamais le VP9. mpv les
-  /// lit en Direct Play, ce qui ne coûte rien au serveur.
-  static const avPlayer = PlaybackCapabilities(
+  /// `dolbyVision` reste faux : le serveur étiquette le HEVC recopié en
+  /// `hvc1`, et un profil 5 lu comme du HEVC ordinaire sortirait vert. Le
+  /// Dolby Vision passe par le Direct Play, où AetherEngine lit la couche RPU.
+  static const aether = PlaybackCapabilities(
     container: 'fmp4',
     videoCodecs: {'h264', 'hevc'},
     audioCodecs: {'aac', 'ac3', 'eac3', 'alac', 'flac'},
@@ -188,8 +155,7 @@ class PlaybackCapabilities {
     maxVideoBitDepth: 10,
     hdr: true,
     dolbyVision: false,
-    label: 'avplayer (recopie)',
-    remux: true,
+    label: 'aetherengine',
   );
 
   /// Ce qu'ExoPlayer a mesuré sur cet appareil.
@@ -290,7 +256,6 @@ class PlaybackCapabilities {
         'bitdepth': '$maxVideoBitDepth',
         'hdr': hdr ? '1' : '0',
         'dv': dolbyVision ? '1' : '0',
-        if (remux) 'remux': '1',
       };
 
   @override
@@ -384,8 +349,8 @@ abstract final class PlaybackCapabilitiesResolver {
         debugPrint('PlaybackCapabilities: interrogation impossible ($error)');
         _current = PlaybackCapabilities.legacy;
       }
-    } else if (AppPlatform.isTvOS) {
-      _current = PlaybackCapabilities.appleTv;
+    } else if (AppPlatform.isApple) {
+      _current = PlaybackCapabilities.aether;
     } else if (MpvNativeView.enabled) {
       _current = PlaybackCapabilities.mpvGpuNext;
     } else {

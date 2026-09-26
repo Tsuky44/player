@@ -1,5 +1,7 @@
 # ADR-0011 — Une cible iOS, sur mpv et distribuée hors magasin
 
+- **Section 1 remplacée** par l'[ADR-0038](0038-aetherengine-sur-les-appareils-apple.md) le
+  2026-09-26 : l'iPhone lit par AetherEngine, plus par mpv.
 - **Statut :** accepté, réalisé — première compilation sur appareil encore à faire (voir
   Conséquences)
 - **Date :** 2026-09-04

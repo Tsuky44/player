@@ -1,0 +1,40 @@
+name: onyx_player_apple
+description: >-
+  Le lecteur vidéo d'Onyx sur iPhone, Mac et Apple TV : AetherEngine (FFmpeg
+  pour démultiplexer, AVPlayer pour afficher) dans une vue native, derrière un
+  contrat généré par Pigeon.
+version: 0.1.0
+publish_to: none
+
+environment:
+  sdk: ^3.12.2
+  flutter: '>=3.3.0'
+
+dependencies:
+  flutter:
+    sdk: flutter
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+  flutter_lints: ^6.0.0
+  # Le contrat Dart↔Swift est généré des deux côtés à partir de
+  # `pigeons/messages.dart`. Régénérer après toute modification :
+  #   dart run pigeon --input pigeons/messages.dart
+  #   dart run tool/sync_tvos.dart
+  pigeon: ^28.0.0
+
+# Un seul code Swift pour les trois cibles (`darwin/`). flutter-tvos ne lit que
+# `tvos/`, qui en porte une copie tenue identique par `tool/sync_tvos.dart` —
+# voir le README.
+flutter:
+  plugin:
+    platforms:
+      ios:
+        pluginClass: OnyxPlayerApplePlugin
+        sharedDarwinSource: true
+      macos:
+        pluginClass: OnyxPlayerApplePlugin
+        sharedDarwinSource: true
+      tvos:
+        pluginClass: OnyxPlayerApplePlugin

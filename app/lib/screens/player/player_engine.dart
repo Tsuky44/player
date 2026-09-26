@@ -148,8 +148,9 @@ class PlayerEnginePool {
     // The web backend is an HTMLVideoElement — there is no mpv context to
     // build, so there is nothing to gain and a stray <video> to avoid.
     if (AppPlatform.isWeb) return;
-    // L'Apple TV n'a pas de libmpv : son lecteur est AVPlayer.
-    if (AppPlatform.isTvOS) return;
+    // Les appareils Apple lisent par AetherEngine (ADR-0038) : un moteur mpv
+    // préparé d'avance n'y servirait jamais.
+    if (AppPlatform.isApple) return;
     if (_idle != null) return;
     try {
       _idle = PlayerEngine._create();

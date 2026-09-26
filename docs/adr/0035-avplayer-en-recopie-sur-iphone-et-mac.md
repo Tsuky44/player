@@ -1,5 +1,8 @@
 # ADR-0035 — AVPlayer en recopie sur iPhone et Mac, mpv pour le reste
 
+- **Remplacé** par l'[ADR-0038](0038-aetherengine-sur-les-appareils-apple.md) le 2026-09-26 :
+  AetherEngine lit tout en Direct Play sur iPhone et Mac. `ApplePlaybackSession`,
+  `AvPlayerPlaybackSession` et `AvPlayerRemux` n'existent plus.
 - **Statut :** accepté, écrit sous Windows. Le Dart et le Go sont testés ; rien n'a encore tourné sur
   un iPhone ni sur un Mac.
 - **Date :** 2026-09-24

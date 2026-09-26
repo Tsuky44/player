@@ -80,15 +80,16 @@ dependencies:
   # (native/build_libmpv.sh) — voir lib/utils/mpv_native_view.dart.
   onyx_mpv_macos:
     path: ../packages/onyx_mpv_macos
-  # AVPlayer sur iPhone et Mac, pour les fichiers que le serveur peut recopier
-  # tels quels en HLS (ADR-0035) : le pipeline vidéo d'Apple chauffe bien moins
-  # que mpv. Par l'interface de plateforme, comme sur tvOS ; l'implémentation
-  # officielle ne déclare qu'iOS et macOS. 2.9 est la première qui ouvre la vue
-  # native (`AVPlayerLayer`) sur les deux, le seul chemin qui garde le HDR.
-  video_player_avfoundation: ^2.9.4
-  # Garde l'écran allumé pendant une lecture AVPlayer. mpv l'avait sans rien
-  # demander : le widget `Video` de media_kit s'en sert (d'où la version, celle
-  # que media_kit tire déjà). La vue d'AVPlayer, elle, ne le fait pas.
+  # Le lecteur d'iPhone, de Mac et d'Apple TV : AetherEngine, qui démultiplexe
+  # le fichier sur l'appareil et le donne à AVPlayer (ADR-0038). Le serveur
+  # envoie le fichier tel quel. Le paquet déclare ios, macos et tvos, et exige
+  # iOS 18, macOS 15 et tvOS 18 (planchers d'AetherEngine) ; les autres
+  # plateformes n'en compilent que le Dart.
+  onyx_player_apple:
+    path: ../packages/onyx_player_apple
+  # Garde l'écran allumé pendant une lecture AetherEngine sur iPhone et Mac
+  # (`ScreenAwake`). mpv l'avait sans rien demander : le widget `Video` de
+  # media_kit s'en sert (d'où la version, celle que media_kit tire déjà).
   wakelock_plus: ^1.1.6
 
   # --- Apple TV (tvOS) ---------------------------------------------------
@@ -97,11 +98,7 @@ dependencies:
   # de fluttertv.dev ; ils ne déclarent que tvOS, donc aucune autre plateforme
   # n'en voit une ligne.
   #
-  # Le lecteur : AVPlayer, par l'interface de plateforme de video_player et
-  # non par `video_player` lui-même, qui ajouterait son propre ExoPlayer au
-  # build Android à côté de celui d'onyx_player_android.
-  video_player_platform_interface: ^6.6.0
-  video_player_tvos: ^0.0.1
+  # Le lecteur est onyx_player_apple, plus haut, qui déclare aussi tvOS.
   # Ce dont l'app ne peut pas se passer : réglages, jeton de session, dossiers,
   # cache des affiches (sqflite, via flutter_cache_manager), type de réseau.
   shared_preferences_tvos: ^0.0.2
@@ -110,7 +107,7 @@ dependencies:
   sqflite_tvos: ^0.0.2
   connectivity_plus_tvos: ^0.0.2
   # Délibérément absents, faute d'objet sur un téléviseur : media_kit (remplacé
-  # par AVPlayer), screen_brightness, mobile_scanner, file_picker,
+  # par AetherEngine), screen_brightness, mobile_scanner, file_picker,
   # window_manager. package_info_plus_tvos exige une interface 4.x incompatible
   # avec le package_info_plus 9 épinglé plus haut : l'hôte tvOS donne la
   # version lui-même (voir ClientIdentity).

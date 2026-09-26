@@ -97,9 +97,9 @@ class _PlaybackPageState extends State<PlaybackPage> {
             ),
           ],
         ),
-        // AVPlayer, sur l'Apple TV, ne décode qu'en matériel et ne laisse rien
-        // choisir : le groupe n'aurait rien à y proposer.
-        if (!AppPlatform.isTvOS)
+        // AetherEngine, sur les appareils Apple, choisit seul entre décodeur
+        // matériel et FFmpeg : le groupe n'aurait rien à y proposer.
+        if (!AppPlatform.isApple)
           SettingsGroup(
             title: 'Vidéo',
             children: [

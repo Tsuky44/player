@@ -1,5 +1,7 @@
 # ADR-0028 — Une cible Apple TV, par flutter-tvos et AVPlayer
 
+- **Section 2 remplacée** par l'[ADR-0038](0038-aetherengine-sur-les-appareils-apple.md) le
+  2026-09-26 : l'Apple TV lit en Direct Play par AetherEngine, plus en HLS seulement.
 - **Statut :** accepté, réalisé — première compilation sur un Mac et premier essai sur une Apple TV
   encore à faire (voir Conséquences)
 - **Date :** 2026-09-22

@@ -126,12 +126,13 @@ void main() async {
   // précisément ce qu'on vient chercher dans le journal quand l'app ne va pas
   // plus loin. Voir [ClientLog].
   ClientLog.install();
-  // Le libmpv patché qui sait dessiner dans une vue native, s'il est installé
-  // et se charge. Sinon, celui que media_kit embarque.
-  MpvNativeView.resolve();
-  // Pas sur l'Apple TV, qui n'embarque pas libmpv : la charger y ferait
-  // échouer le démarrage. Son lecteur est AVPlayer (ADR-0028).
-  if (!AppPlatform.isTvOS) {
+  // Pas sur les appareils Apple, qu'AetherEngine lit (ADR-0038) : charger
+  // libmpv y mettrait un second FFmpeg dans le processus pour rien, et l'Apple
+  // TV ne l'embarque même pas.
+  if (!AppPlatform.isApple) {
+    // Le libmpv patché qui sait dessiner dans une vue native, s'il est
+    // installé et se charge. Sinon, celui que media_kit embarque.
+    MpvNativeView.resolve();
     MediaKit.ensureInitialized(libmpv: MpvNativeView.libmpvPath);
   }
 

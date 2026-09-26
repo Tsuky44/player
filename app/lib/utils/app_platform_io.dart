@@ -23,6 +23,11 @@ abstract final class AppPlatform {
   /// qui construit toutes les autres plateformes.
   static bool get isTvOS => io.Platform.operatingSystem == 'tvos';
 
+  /// iPhone, iPad, Mac et Apple TV : les appareils qu'AetherEngine lit
+  /// (ADR-0038). Tout ce qui tient au lecteur se décide sur ce drapeau, et non
+  /// sur les trois séparément.
+  static bool get isApple => isIOS || isMacOS || isTvOS;
+
   /// True on the three platforms that carry a resizable OS window.
   static bool get isDesktop => isWindows || isMacOS || isLinux;
 
