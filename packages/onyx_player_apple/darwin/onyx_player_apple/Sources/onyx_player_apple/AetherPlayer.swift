@@ -72,12 +72,19 @@ final class AetherPlayer {
     clearSubtitleFrame()
 
     wantsPlay = play
-    let options = LoadOptions(preferredAudioLanguages: preferredAudioLanguages, autoplay: play)
+    var options = LoadOptions(preferredAudioLanguages: preferredAudioLanguages, autoplay: play)
+    // La sonde FFmpeg lit par défaut jusqu'à 50 Mo pour dimensionner les
+    // sous-titres PGS, dont le premier paquet peut être loin : sur un remux 4K
+    // servi à ~50 Mb/s, c'était 5 s de démarrage sur 12. Les pistes PGS restent
+    // listées (le MKV les déclare) ; seule leur taille est résolue plus tard.
+    options.probesize = 8 * 1024 * 1024
+    options.maxAnalyzeDuration = 5_000_000
+    let loadOptions = options
     let start: Double? = startMs > 0 ? Double(startMs) / 1000 : nil
     loadTask = Task { [weak self] in
       guard let self else { return }
       do {
-        try await self.engine.load(url: source, startPosition: start, options: options)
+        try await self.engine.load(url: source, startPosition: start, options: loadOptions)
         guard !Task.isCancelled else { return }
         self.loadTask = nil
         if self.wantsPlay != play {
