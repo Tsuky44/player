@@ -3,6 +3,7 @@ package indexer
 import (
 	"os"
 	"path/filepath"
+	"sync"
 	"testing"
 	"time"
 
@@ -269,13 +270,25 @@ func TestMonitor_NotificationIndexesANewEpisode(t *testing.T) {
 		t.Skipf("filesystem notifications unavailable: %v", err)
 	}
 	m.watcher = watcher
+	// Les boucles doivent être finies avant que le test suivant rouvre la
+	// base : un lot encore en cours lisait database.DB pendant que InitDB la
+	// remplaçait (course détectée par -race en CI).
+	var loops sync.WaitGroup
 	t.Cleanup(func() {
 		close(m.stop)
 		watcher.Close()
+		loops.Wait()
 	})
 	mapSeries(t, m, root)
-	go m.watchLoop()
-	go m.runLoop()
+	loops.Add(2)
+	go func() {
+		defer loops.Done()
+		m.watchLoop()
+	}()
+	go func() {
+		defer loops.Done()
+		m.runLoop()
+	}()
 
 	// A new season folder, then its episode inside it: the folder's own watch
 	// does not exist yet when the file lands, so the deep scan must find it.
