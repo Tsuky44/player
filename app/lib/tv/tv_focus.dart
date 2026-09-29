@@ -2,9 +2,10 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
 import '../theme/app_colors.dart';
+import '../theme/app_motion.dart';
 import '../utils/app_platform.dart';
 import 'tv_focus_memory.dart';
-import 'tv_key_repeat.dart';
+import 'tv_focus_scroll.dart';
 import 'tv_mode.dart';
 
 /// Keys that mean "activate the thing under the cursor".
@@ -171,7 +172,8 @@ class _TvFocusableState extends State<TvFocusable> {
   bool _longPressFired = false;
 
   FocusNode get _node =>
-      widget.focusNode ?? (_ownedNode ??= FocusNode(debugLabel: 'tv-focusable'));
+      widget.focusNode ??
+      (_ownedNode ??= FocusNode(debugLabel: 'tv-focusable'));
 
   /// A node can arrive already holding the focus.
   ///
@@ -183,6 +185,9 @@ class _TvFocusableState extends State<TvFocusable> {
   @override
   void initState() {
     super.initState();
+    // Ce widget place lui-même la carte à l'écran : le parcours aux flèches
+    // n'a pas à la faire défiler une seconde fois (voir [TvFocusScroll]).
+    TvFocusScroll.markSelfScrolling(_node);
     _focused = widget.focusNode?.hasFocus ?? false;
     if (_focused) _scrollIntoView();
   }
@@ -200,6 +205,8 @@ class _TvFocusableState extends State<TvFocusable> {
     super.didUpdateWidget(oldWidget);
     if (widget.focusNode == oldWidget.focusNode) return;
     if (oldWidget.focusNode != null) _memory?.forget(oldWidget.focusNode!);
+    TvFocusScroll.forgetSelfScrolling(oldWidget.focusNode ?? _ownedNode!);
+    TvFocusScroll.markSelfScrolling(_node);
     final focused = _node.hasFocus;
     if (focused == _focused) return;
     _focused = focused;
@@ -209,6 +216,7 @@ class _TvFocusableState extends State<TvFocusable> {
   @override
   void dispose() {
     _memory?.forget(_node);
+    TvFocusScroll.forgetSelfScrolling(_node);
     _ownedNode?.dispose();
     super.dispose();
   }
@@ -241,12 +249,8 @@ class _TvFocusableState extends State<TvFocusable> {
         // Every scrollable between here and the root, so a poster in a
         // horizontal row inside a vertical page centres on both axes.
         alignmentPolicy: ScrollPositionAlignmentPolicy.explicit,
-        // Plus court quand la flèche est maintenue : l'animation doit finir
-        // avant le déplacement suivant, sinon le focus court devant la rangée.
-        duration: TvKeyRepeat.isRepeating
-            ? const Duration(milliseconds: 90)
-            : const Duration(milliseconds: 220),
-        curve: Curves.easeOutCubic,
+        duration: TvFocusScroll.durationFor(context),
+        curve: AppMotion.curve,
       );
     });
   }

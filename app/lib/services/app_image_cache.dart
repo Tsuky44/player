@@ -3,6 +3,7 @@ import 'package:flutter/painting.dart';
 import 'package:flutter_cache_manager/flutter_cache_manager.dart';
 
 import '../utils/app_platform.dart';
+import 'caches_directory_repository.dart';
 
 /// The single on-disk store behind every remote image the app renders.
 ///
@@ -23,14 +24,31 @@ class AppImageCache {
   /// store another package might be using.
   static const String cacheKey = 'onyxImageCache';
 
-  static final CacheManager manager = CacheManager(
-    Config(
+  // Artwork is immutable per id; the only reason to expire is disk hygiene.
+  static const Duration _stalePeriod = Duration(days: 60);
+  static const int _maxObjects = 3000;
+
+  static final CacheManager manager = CacheManager(_config());
+
+  /// L'Apple TV n'a pas d'Application Support, où le paquet range son index :
+  /// sans son propre dépôt, aucune image ne s'y affichait. Ailleurs, `repo`
+  /// reste omis (le paramètre n'accepte pas null) et le paquet garde le sien.
+  static Config _config() {
+    final repo = imageCacheRepository(cacheKey);
+    if (repo == null) {
+      return Config(
+        cacheKey,
+        stalePeriod: _stalePeriod,
+        maxNrOfCacheObjects: _maxObjects,
+      );
+    }
+    return Config(
       cacheKey,
-      // Artwork is immutable per id; the only reason to expire is disk hygiene.
-      stalePeriod: const Duration(days: 60),
-      maxNrOfCacheObjects: 3000,
-    ),
-  );
+      stalePeriod: _stalePeriod,
+      maxNrOfCacheObjects: _maxObjects,
+      repo: repo,
+    );
+  }
 
   /// The manager to hand to `CachedNetworkImage`.
   ///

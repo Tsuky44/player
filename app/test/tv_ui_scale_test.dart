@@ -63,20 +63,50 @@ void main() {
     expect(taps, 1);
   });
 
-  testWidgets('un écran déjà assez large n’est pas touché', (tester) async {
+  testWidgets(
+      'une Apple TV de 1920 points met aussi la page en page sur 1280, agrandie',
+      (tester) async {
     setScreen(tester, const Size(1920, 1080));
     Size? seen;
 
     await tester.pumpWidget(MaterialApp(
       home: TvUiScale(
-        child: Builder(builder: (context) {
-          seen = MediaQuery.sizeOf(context);
-          return const SizedBox.expand();
-        }),
+        child: Stack(
+          children: [
+            Builder(builder: (context) {
+              seen = MediaQuery.sizeOf(context);
+              return const SizedBox.expand();
+            }),
+            const Positioned(
+              left: 100,
+              top: 100,
+              width: 200,
+              height: 100,
+              child: SizedBox(key: ValueKey('card')),
+            ),
+          ],
+        ),
       ),
     ));
 
-    expect(seen, const Size(1920, 1080));
+    expect(seen, const Size(1280, 720),
+        reason: 'sans cela, l’app se met en page comme sur un moniteur et '
+            'paraît minuscule vue du canapé');
+    final drawn = tester.getRect(find.byKey(const ValueKey('card')));
+    // Dessinée une fois et demie plus grande : 200 → 300.
+    expect(drawn.width, closeTo(300, 0.01));
+    expect(drawn.left, closeTo(150, 0.01));
+  });
+
+  testWidgets('un écran de la largeur de référence n’est pas touché',
+      (tester) async {
+    setScreen(tester, const Size(1280, 720));
+
+    await tester.pumpWidget(MaterialApp(
+      home: const TvUiScale(child: SizedBox.expand()),
+    ));
+
+    expect(find.byType(FittedBox), findsNothing);
   });
 
   testWidgets('chaque page est réduite, sauf le lecteur', (tester) async {

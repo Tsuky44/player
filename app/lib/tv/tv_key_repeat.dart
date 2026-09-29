@@ -1,7 +1,9 @@
 import 'package:flutter/services.dart';
 import 'package:flutter/widgets.dart';
 
+import 'tv_focus_scroll.dart';
 import 'tv_mode.dart';
+import 'tv_touchpad.dart';
 
 /// Ce que la télécommande fait quand on laisse une flèche enfoncée.
 ///
@@ -58,10 +60,12 @@ abstract final class TvKeyRepeat {
 
 /// Le déplacement du focus aux flèches, sur un téléviseur.
 ///
-/// Remplace [DirectionalFocusAction] à la racine de l'app. Deux différences, et
+/// Remplace [DirectionalFocusAction] à la racine de l'app. Trois différences, et
 /// hors téléviseur aucune :
 ///
 /// - la flèche maintenue est régulée, voir [TvKeyRepeat] ;
+/// - dans ce qui défile, une flèche née d'un glissé vif sur le trackpad de
+///   l'Apple TV vaut plusieurs pas, voir [TvTouchpad] ;
 /// - gauche et droite ne quittent jamais la ligne. Au bout d'une rangée ou
 ///   d'une ligne de grille, Flutter cherche « quelque chose à droite » n'importe
 ///   où sur l'écran : l'avatar du compte dans l'en-tête, une affiche d'une autre
@@ -93,20 +97,38 @@ class TvDirectionalFocusAction extends DirectionalFocusAction {
 
     final direction = intent.direction;
     final current = primaryFocus;
+    final steps =
+        current != null && TvTouchpad.acceleratesFrom(current, direction)
+            ? TvTouchpad.boostFor(direction)
+            : 1;
     if (current == null ||
         current.context == null ||
         current is FocusScopeNode ||
         (direction != TraversalDirection.left &&
             direction != TraversalDirection.right)) {
-      super.invoke(intent);
+      for (var i = 0; i < steps; i++) {
+        final before = primaryFocus;
+        super.invoke(intent);
+        if (steps == 1) return;
+        // Le focus demandé ne se pose qu'à la microtâche suivante : le pas
+        // d'après partirait encore de l'ancien élément.
+        FocusManager.instance.applyFocusChangesIfNeeded();
+        if (identical(primaryFocus, before)) return;
+      }
       return;
     }
 
-    final target = nextOnLine(current, direction);
+    // Les pas intermédiaires ne prennent pas le focus : seule la carte
+    // d'arrivée défile à l'écran et s'inscrit dans la mémoire de la rangée.
+    FocusNode? target;
+    for (var i = 0; i < steps; i++) {
+      final next = nextOnLine(target ?? current, direction);
+      if (next == null) break;
+      target = next;
+    }
     if (target == null) return;
-    target.requestFocus();
-    Scrollable.ensureVisible(
-      target.context!,
+    TvFocusScroll.requestFocus(
+      target,
       alignmentPolicy: direction == TraversalDirection.left
           ? ScrollPositionAlignmentPolicy.keepVisibleAtStart
           : ScrollPositionAlignmentPolicy.keepVisibleAtEnd,
@@ -117,7 +139,8 @@ class TvDirectionalFocusAction extends DirectionalFocusAction {
   /// partage sa ligne — ce qui chevauche verticalement sa hauteur. Nul quand il
   /// n'y en a pas.
   @visibleForTesting
-  static FocusNode? nextOnLine(FocusNode current, TraversalDirection direction) {
+  static FocusNode? nextOnLine(
+      FocusNode current, TraversalDirection direction) {
     final scope = current.nearestScope;
     if (scope == null) return null;
     final from = current.rect;
@@ -128,16 +151,16 @@ class TvDirectionalFocusAction extends DirectionalFocusAction {
       final rect = node.rect;
       if (rect.isEmpty) return false;
       // Même règle que Flutter pour « à droite de » / « à gauche de ».
-      final beyond = right
-          ? rect.center.dx >= from.right
-          : rect.center.dx <= from.left;
+      final beyond =
+          right ? rect.center.dx >= from.right : rect.center.dx <= from.left;
       return beyond && rect.top < from.bottom && rect.bottom > from.top;
     }).toList();
     if (candidates.isEmpty) return null;
 
     // Ce qui défile avec l'élément d'abord : dans une rangée, la carte
     // suivante, et pas un bouton posé à côté de la rangée.
-    final scrollable = Scrollable.maybeOf(current.context!, axis: Axis.horizontal);
+    final scrollable =
+        Scrollable.maybeOf(current.context!, axis: Axis.horizontal);
     if (scrollable != null) {
       final sameScrollable = candidates
           .where((node) =>

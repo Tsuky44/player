@@ -39,6 +39,7 @@ Chaque écran atteignable sur TV se pilote entièrement au D-pad.
 - Activer : `kTvSelectKeys`. Revenir : `kTvBackKeys`. Tous deux sont dans `tv/tv_focus.dart`, jamais réécrits par widget.
 - Le focus est toujours visible (ADR-0008), il est mémorisé par ligne au retour sur l'écran (`tv_focus_memory.dart`, `tv_focus_rows.dart`), et le premier élément utile le reçoit à l'ouverture.
 - L'échelle vient de `tv_ui_scale.dart`, et la répétition des touches de `tv_key_repeat.dart`.
+- Un seul défilement par pas de focus, celui de `TvFocusScroll` (ou de `TvFocusable`) : n'appelle pas `Scrollable.ensureVisible` à côté. Sur Apple TV, la force d'un glissé passe par `TvTouchpad.boostFor` (ADR-0039).
 - Le lecteur à la télécommande suit ADR-0006.
 - Un écran TV nouveau ou modifié reçoit un test de focus sur le modèle de `tv_focus_test.dart` ou `onyx_settings_menu_tv_test.dart`.
 

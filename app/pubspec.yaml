@@ -106,6 +106,14 @@ dependencies:
   path_provider_tvos: ^0.0.3
   sqflite_tvos: ^0.0.2
   connectivity_plus_tvos: ^0.0.2
+  # Le trackpad de la Siri Remote, lu pour la vitesse du doigt (ADR-0039). Le
+  # moteur de flutter-tvos fait déjà des flèches des glissés, mais ne transmet
+  # les points du doigt qu'après la poignée de main que ce paquet fait. Il ne
+  # sert qu'à ça : `TvOSInfo` double `AppPlatform.isTvOS`. Importé derrière un
+  # import conditionnel (`dart:io`), le web n'en compile rien. Plancher 1.1.1 :
+  # avant, la poignée de main pouvait se perdre au démarrage et le trackpad
+  # paraissait mort.
+  flutter_tvos: ^1.1.3
   # Délibérément absents, faute d'objet sur un téléviseur : media_kit (remplacé
   # par AetherEngine), screen_brightness, mobile_scanner, file_picker,
   # window_manager. package_info_plus_tvos exige une interface 4.x incompatible

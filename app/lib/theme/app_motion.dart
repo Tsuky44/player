@@ -26,6 +26,13 @@ abstract final class AppMotion {
   /// Large surfaces — sheets, panels — which read as slower at the same speed.
   static const Duration emphasis = Duration(milliseconds: 260);
 
+  /// Un défilement qui suit une entrée continue — flèche maintenue, élan du
+  /// trackpad de l'Apple TV. Hors de la plage 180–280 ms parce que ce n'est
+  /// pas une transition : chaque pas relance le défilement, qui doit avoir
+  /// fini avant le suivant (`TvKeyRepeat.repeatInterval`, 110 ms), sans quoi
+  /// le focus court devant une rangée pas encore construite.
+  static const Duration track = Duration(milliseconds: 90);
+
   /// The app's only curve (`PROJECT_DESIGN.md` §10: "ease-out").
   static const Curve curve = Curves.easeOut;
 

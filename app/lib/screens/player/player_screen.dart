@@ -25,6 +25,7 @@ import 'display_cutouts.dart';
 import 'video_fit.dart';
 import '../../tv/tv_focus.dart';
 import '../../tv/tv_mode.dart';
+import '../../tv/tv_touchpad.dart';
 import '../../utils/poster_url.dart';
 import 'hooks/use_player_controller.dart';
 import 'hooks/use_episode_navigation.dart';
@@ -49,6 +50,7 @@ import 'widgets/player_status_panels.dart';
 import 'widgets/watch_party_overlay.dart';
 import 'playback/live_subtitles.dart';
 import 'playback/relay_trigger.dart';
+import 'playback/remote_seek.dart';
 import 'pinch_zoom_fit.dart';
 import 'player_playback_preferences.dart';
 import '../../desktop_window.dart';
@@ -260,19 +262,13 @@ class _PlayerScreenState extends State<PlayerScreen> {
   /// scrubber when it arrived with a seek, play/pause otherwise.
   _RemoteEntry _remoteEntry = _RemoteEntry.playPause;
 
-  /// Where a run of remote seeks is heading, before it is committed.
-  ///
-  /// Each press or auto-repeat of left/right moves this target and restarts a
-  /// short countdown; the seek itself only happens once the presses stop. The
-  /// bar and the times show the target meanwhile. Seeking on every press used
-  /// to compute each step from a position that had not moved yet — ten presses
-  /// went ten seconds — and, over a transcode, rebuilt the session each time.
-  int? _remoteSeekTarget;
-  Timer? _remoteSeekCommit;
-  DateTime? _remoteSeekLastStep;
-  int _remoteSeekChain = 0;
-
-  static const Duration _remoteSeekSettle = Duration(milliseconds: 650);
+  /// Where a run of remote seeks is heading, before it is committed — see
+  /// [RemoteSeek].
+  late final RemoteSeek _remoteSeek = RemoteSeek(onCommit: (target) {
+    if (!mounted || _isDisposing) return;
+    _seekTo(target);
+    _safeSetState(() {});
+  });
 
   /// The settings / subtitles / info popup currently on the overlay, with the
   /// closure that dismisses it. Back goes through this before it reaches the
@@ -1265,52 +1261,24 @@ class _PlayerScreenState extends State<PlayerScreen> {
     _showControlsTransient();
   }
 
-  /// One step of a remote seek: left or right, pressed or held.
-  ///
-  /// Steps chain while they keep coming, and a long run goes faster — 10 s a
-  /// step, then 30 s, then a minute — so a held key crosses a film in a few
-  /// seconds instead of a few minutes. Nothing is sent to the player until the
-  /// presses stop; see [_remoteSeekTarget].
+  /// One step of a remote seek: left or right, pressed or held. A brisk
+  /// swipe on the Apple TV touchpad goes further than a gentle one.
   void _remoteSeekStep(int direction) {
-    final now = DateTime.now();
-    final last = _remoteSeekLastStep;
-    final chained =
-        last != null && now.difference(last) < _remoteSeekSettle;
-    _remoteSeekChain = chained ? _remoteSeekChain + 1 : 0;
-    _remoteSeekLastStep = now;
-
-    final step = _remoteSeekChain < 10
-        ? 10
-        : _remoteSeekChain < 30
-            ? 30
-            : 60;
-    final total = _playerController.duration.inSeconds;
-    var target = (_remoteSeekTarget ?? _playerController.position.inSeconds) +
-        direction * step;
-    if (target < 0) target = 0;
-    if (total > 0 && target > total) target = total;
-
-    _remoteSeekTarget = target;
-    _remoteSeekCommit?.cancel();
-    _remoteSeekCommit = Timer(_remoteSeekSettle, _commitRemoteSeek);
+    _remoteSeek.step(
+      direction,
+      fromSeconds: _playerController.position.inSeconds,
+      durationSeconds: _playerController.duration.inSeconds,
+      boost: TvTouchpad.boostFor(
+        direction < 0 ? TraversalDirection.left : TraversalDirection.right,
+      ),
+    );
     _showControlsTransient();
-  }
-
-  void _commitRemoteSeek() {
-    final target = _remoteSeekTarget;
-    if (target == null || !mounted || _isDisposing) return;
-    // Both seek paths move the reported position to the target before they
-    // return, so letting go of the target here does not flash the old time.
-    _seekTo(target);
-    _remoteSeekTarget = null;
-    _remoteSeekChain = 0;
-    _safeSetState(() {});
   }
 
   /// The position the chrome shows: a remote seek's target while one is
   /// pending, the player's own otherwise.
   Duration get _displayedPosition {
-    final target = _remoteSeekTarget;
+    final target = _remoteSeek.target;
     return target != null ? Duration(seconds: target) : _playerController.position;
   }
 
@@ -1712,7 +1680,7 @@ class _PlayerScreenState extends State<PlayerScreen> {
     _handoffTimer?.cancel();
     _zoomHintTimer?.cancel();
     _seekHintTimer?.cancel();
-    _remoteSeekCommit?.cancel();
+    _remoteSeek.dispose();
     if (!_progressFlushed && _apiClient != null) {
       unawaited(_syncProgressOnExit(popAfter: false));
     }
@@ -2991,7 +2959,7 @@ class _PlayerScreenState extends State<PlayerScreen> {
                     cutouts: DisplayCutouts.rects(context),
                     // Only non-null once the first frame is on screen.
                     previews: _playerController.timelinePreviews,
-                    remoteSeekPending: _remoteSeekTarget != null,
+                    remoteSeekPending: _remoteSeek.target != null,
                     // The phone has volume keys; the desktop has nothing but
                     // this.
                     showVolume: !AppPlatform.isMobile,

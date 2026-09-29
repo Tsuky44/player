@@ -36,9 +36,11 @@ import 'screens/auth/server_choice_screen.dart';
 import 'screens/auth/tv_login_screen.dart';
 import 'tv/tv_focus.dart';
 import 'tv/tv_focus_guard.dart';
+import 'tv/tv_focus_scroll.dart';
 import 'tv/tv_key_repeat.dart';
 import 'tv/tv_mode.dart';
 import 'tv/tv_pairing_link.dart';
+import 'tv/tv_touchpad.dart';
 import 'tv/tv_ui_scale.dart';
 import 'screens/player/display_frame_rate.dart';
 import 'services/picture_in_picture.dart';
@@ -147,6 +149,9 @@ void main() async {
   // Observe les flèches maintenues, pour que le focus ne coure pas plus vite
   // que les rangées ne défilent. Voir [TvKeyRepeat].
   TvKeyRepeat.install();
+  // Sur Apple TV, la force d'un glissé sur le trackpad accélère la navigation
+  // et l'avance rapide. Voir [TvTouchpad].
+  TvTouchpad.install();
 
   final apiClient = ApiClient();
 
@@ -374,8 +379,9 @@ class OnyxApp extends StatelessWidget {
                 navigatorKey: rootNavigatorKey,
                 title: 'Onyx',
                 debugShowCheckedModeBanner: false,
-                // Sur un téléviseur, chaque page est mise en page plus large
-                // puis réduite, pour ne pas afficher l'app en « gros plan » —
+                // Sur un téléviseur, chaque page est mise en page sur une
+                // largeur fixe puis mise à l'échelle de l'écran, pour que l'app
+                // ait la même taille quelle que soit la densité annoncée —
                 // voir [TvUiScale]. Le lecteur n'est pas concerné.
                 theme: isTv
                     ? AppTheme.dark.copyWith(
@@ -406,29 +412,37 @@ class OnyxApp extends StatelessWidget {
                   TvBackIntent: TvBackAction(),
                 },
                 builder: (context, child) {
-                  return Listener(
-                    behavior: HitTestBehavior.translucent,
-                    onPointerDown: _handleMouseBackButton,
-                    child: Column(
-                      children: [
-                        if (useDesktopCaptionBar)
-                          ValueListenableBuilder<bool>(
-                            valueListenable: showDesktopCaption,
-                            builder: (context, visible, _) {
-                              return Visibility(
-                                visible: visible,
-                                maintainState: false,
-                                child: const WindowCaptionBar(),
-                              );
-                            },
+                  // Au-dessus du Navigator, qui hérite de cette politique : un
+                  // seul défilement par pas de télécommande, animé, au lieu
+                  // d'un saut suivi d'une animation. Voir [TvFocusScroll].
+                  return FocusTraversalGroup(
+                    policy: ReadingOrderTraversalPolicy(
+                      requestFocusCallback: TvFocusScroll.requestFocus,
+                    ),
+                    child: Listener(
+                      behavior: HitTestBehavior.translucent,
+                      onPointerDown: _handleMouseBackButton,
+                      child: Column(
+                        children: [
+                          if (useDesktopCaptionBar)
+                            ValueListenableBuilder<bool>(
+                              valueListenable: showDesktopCaption,
+                              builder: (context, visible, _) {
+                                return Visibility(
+                                  visible: visible,
+                                  maintainState: false,
+                                  child: const WindowCaptionBar(),
+                                );
+                              },
+                            ),
+                          Expanded(
+                            child: ColoredBox(
+                              color: AppColors.background,
+                              child: child ?? const SizedBox.shrink(),
+                            ),
                           ),
-                        Expanded(
-                          child: ColoredBox(
-                            color: AppColors.background,
-                            child: child ?? const SizedBox.shrink(),
-                          ),
-                        ),
-                      ],
+                        ],
+                      ),
                     ),
                   );
                 },
