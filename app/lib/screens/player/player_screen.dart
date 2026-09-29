@@ -25,6 +25,7 @@ import 'display_cutouts.dart';
 import 'video_fit.dart';
 import '../../tv/tv_focus.dart';
 import '../../tv/tv_mode.dart';
+import '../../tv/touchpad_motion.dart';
 import '../../tv/tv_touchpad.dart';
 import '../../utils/poster_url.dart';
 import 'hooks/use_player_controller.dart';
@@ -515,6 +516,7 @@ class _PlayerScreenState extends State<PlayerScreen> {
   void initState() {
     super.initState();
     PlayerPresence.enter();
+    TvTouchpad.addMoveListener(_handleTouchpadMove);
     _showControls = !widget.autoAdvance;
     _wantsPlayback = !widget.startPaused;
     _videoFit = widget.initialVideoFit ?? BoxFit.contain;
@@ -1261,16 +1263,37 @@ class _PlayerScreenState extends State<PlayerScreen> {
     _showControlsTransient();
   }
 
-  /// One step of a remote seek: left or right, pressed or held. A brisk
-  /// swipe on the Apple TV touchpad goes further than a gentle one.
+  /// One step of a remote seek: left or right, pressed or held.
   void _remoteSeekStep(int direction) {
-    _remoteSeek.step(
-      direction,
+    // A swipe on the Apple TV touchpad already moves the scrubber with the
+    // finger ([_handleTouchpadMove]); the arrow the engine derives from that
+    // same swipe would count it twice.
+    if (!TvTouchpad.isSwiping) {
+      _remoteSeek.step(
+        direction,
+        fromSeconds: _playerController.position.inSeconds,
+        durationSeconds: _playerController.duration.inSeconds,
+      );
+    }
+    _showControlsTransient();
+  }
+
+  /// Le doigt glisse sur le trackpad de l'Apple TV : là où gauche et droite
+  /// feraient avancer le film (le film lui-même, ou la barre de lecture), la
+  /// cible suit le doigt, d'autant plus loin qu'il va vite (ADR-0039).
+  void _handleTouchpadMove(TouchpadMove move) {
+    if (!_isInitialized || _isDisposing || !TvMode.isTv) return;
+    // Un glissé vertical appelle les commandes, par les flèches du moteur.
+    if (move.dx.abs() < move.dy.abs()) return;
+    if (_openPopup != null || _showEpisodesPanel || _endCardVisible) return;
+    final seeks = !_remoteBrowsingControls || _progressFocusNode.hasPrimaryFocus;
+    if (!seeks) return;
+    _remoteEntry = _RemoteEntry.scrubber;
+    _remoteSeek.scrub(
+      move.dx,
+      speed: move.speed,
       fromSeconds: _playerController.position.inSeconds,
       durationSeconds: _playerController.duration.inSeconds,
-      boost: TvTouchpad.boostFor(
-        direction < 0 ? TraversalDirection.left : TraversalDirection.right,
-      ),
     );
     _showControlsTransient();
   }
@@ -1650,6 +1673,7 @@ class _PlayerScreenState extends State<PlayerScreen> {
   void dispose() {
     _isDisposing = true;
     PlayerPresence.leave();
+    TvTouchpad.removeMoveListener(_handleTouchpadMove);
     // A menu belongs to the app's overlay, not to this route: left open, it
     // would still be on screen after the player is gone.
     _dismissTopPopup();

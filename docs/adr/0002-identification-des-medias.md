@@ -87,3 +87,8 @@ préservés). Côté films, `POST /api/indexer/metadata/redetect-all` reste l'ac
 - Les dossiers `VIDEO_TS`/`BDMV` ne produisent plus un film par fragment `.VOB`.
 - Le nombre d'appels TMDB par titre baisse (cache de recherche par scan, arrêt anticipé sur une
   correspondance exacte), ce qui compense le coût des variantes de requêtes.
+- Quand aucun candidat ne passe ces seuils sur son titre ou son titre original, ses titres
+  alternatifs et ses traductions TMDB entrent dans la comparaison (5 premiers candidats, un appel
+  chacun, mis en cache pendant le scan) : un dossier « Farmer Wants a Wife » retrouve « L'amour
+  est dans le pré », affiché en français. Les seuils restent les mêmes
+  (`server/indexer/alternative_titles.go`).

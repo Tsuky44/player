@@ -54,31 +54,47 @@ clic sur le bord du pavé, et fabriquer les nôtres. Le code du moteur n'est pas
 aurait reposé sur des suppositions invérifiables sans appareil. Compléter a une propriété que
 remplacer n'a pas : si le flux tactile n'arrive jamais, tout se comporte exactement comme avant.
 
-### 3. L'accélération et l'élan, seulement dans ce qui défile
+### 3. L'accélération et l'élan, seulement dans les rangées horizontales
 
-- **Accélération.** Une flèche qui arrive pendant un glissé vif dans son sens vaut 2, 3 ou 4 pas
-  (seuils 4, 7, 10 unités de surface par seconde). Une flèche sans doigt en mouvement depuis 150 ms
+- **Accélération.** Une flèche qui arrive pendant un glissé vif dans son sens vaut 2 ou 3 pas
+  (seuils 8 et 13 unités de surface par seconde). Une flèche sans doigt en mouvement depuis 150 ms
   (pavé, manette, app Remote de l'iPhone) vaut toujours un pas, et un clic n'est jamais accéléré.
-- **Élan.** Un doigt levé à plus de 6 u/s laisse la liste continuer, un pas de plus tous les
-  1,5 u/s au-delà, 12 au plus, à intervalles qui s'allongent (60 ms, ×1,15). Poser le doigt, cliquer
+- **Élan.** Un doigt levé à plus de 10 u/s laisse la rangée continuer, un pas de plus tous les
+  3 u/s au-delà, 6 au plus, à intervalles qui s'allongent (60 ms, ×1,15). Poser le doigt, cliquer
   ou appuyer sur une autre touche l'arrête ; le bout de la rangée aussi.
 
-Les deux ne valent que si l'élément focalisé est dans un `Scrollable` de l'axe du geste : une
-rangée, une grille, une liste. Dans une barre de boutons ou un menu, sauter trois commandes d'un
-geste serait se perdre. Les rangées du chrome du lecteur (`TvFocusRows`) gèrent leurs flèches
-elles-mêmes et ne sont donc jamais accélérées.
+Les deux ne valent que si l'élément focalisé est dans un `Scrollable` **horizontal** : une rangée
+d'affiches. Dans une liste verticale, une barre de boutons ou un menu, un pas reste un pas. Les
+rangées du chrome du lecteur (`TvFocusRows`) gèrent leurs flèches elles-mêmes et ne sont jamais
+accélérées.
 
-### 4. L'avance rapide du lecteur suit la force du geste
+*Réglage après le premier essai sur une Apple TV (2026-09-29).* La première version accélérait
+aussi à la verticale, dès 4 u/s et jusqu'à 4 pas, avec un élan de 12 éléments : « trop fort sur
+l'accueil et dans les menus ». Un glissé vers le bas sautait des rangées entières. La verticale ne
+s'accélère plus, et les seuils horizontaux ont doublé.
 
-`RemoteSeek`, extrait de `player_screen.dart`, garde la logique existante (pas cumulés, envoyés
-650 ms après le dernier, 10 s puis 30 s puis 60 s au fil d'une longue suite) et multiplie le pas
-par l'accélération du trackpad : un coup sec avance de 40 s au lieu de 10.
+### 4. La barre de lecture suit le doigt
+
+La première version multipliait le pas des flèches (10 s) par l'accélération : « pas assez fort
+suivant le slide ». Le moteur ne tire qu'une ou deux flèches d'un glissé, tôt dans le geste, et
+leur nombre ne dit presque rien de la longueur ni de la vitesse du geste.
+
+Le lecteur écoute donc directement les déplacements du doigt (`TvTouchpad.addMoveListener`) là où
+gauche et droite font avancer le film : sur le film lui-même ou sur la barre de lecture. Chaque
+déplacement avance la cible de `RemoteSeek.scrub` : 20 s de film par unité de surface (un
+demi-trackpad), multipliées par le carré de la vitesse au-delà de 2 u/s, comme l'accélération d'une
+souris. Un demi-trackpad lent avance de 20 s ; le même geste quatre fois plus vif, de 5 min 20.
+Une unité ne vaut jamais plus d'un demi-film. Pendant un glissé, les flèches que le moteur en tire
+sont ignorées par l'avance rapide, qui les compterait deux fois ; le pavé directionnel garde ses
+pas de 10 s, 30 s puis 60 s (`RemoteSeek`, extrait de `player_screen.dart`).
 
 ## Conséquences
 
 - **Les seuils sont à régler sur une Apple TV.** Ce sont des constantes nommées de
   `TouchpadMotion` et `TvTouchpad`. Si un geste posé accélère, monter `_boostSpeeds` ; si l'élan
-  part trop loin, baisser `_maxFlingSteps` ou monter `_flingSpeed`.
+  part trop loin, baisser `_maxFlingSteps` ou monter `_flingSpeed`. Pour la barre de lecture,
+  `_scrubSecondsPerUnit` règle le geste lent et `_scrubKneeSpeed` le moment où la vitesse compte
+  (`RemoteSeek`).
 - **Le réglage du moteur n'est pas touché** (`TvRemoteConfig` par défaut). Si un glissé léger
   produit plusieurs flèches à lui seul, `continuousSwipeMoveThreshold` est le prochain levier.
 - **Android TV** profite du point 1 seulement : sa télécommande n'a pas de surface tactile.

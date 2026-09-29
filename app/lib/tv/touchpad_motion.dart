@@ -7,24 +7,32 @@ enum TouchpadPhase { began, moved, ended, clickDown, clickUp }
 /// et dans quel sens.
 typedef TouchpadFling = ({TraversalDirection direction, int steps});
 
+/// Un déplacement du doigt : ce qu'il a parcouru depuis le point précédent, et
+/// à quelle vitesse il va (en unités de surface par seconde, sur l'axe du
+/// déplacement horizontal).
+typedef TouchpadMove = ({double dx, double dy, double speed});
+
 /// La vitesse du doigt sur le trackpad, et ce qu'elle vaut en navigation.
 ///
 /// Le moteur de flutter-tvos traduit déjà chaque glissé en flèche, mais une
 /// flèche est la même que le doigt ait effleuré la surface ou l'ait balayée
 /// d'un coup sec. Ce modèle rend cette différence : il garde les derniers
-/// points du doigt et répond à deux questions.
+/// points du doigt et répond à trois questions.
 ///
 /// - [boostFor] : la flèche qui arrive maintenant vaut combien de pas ? Un
 ///   pour un geste posé, jusqu'à [_boostSpeeds].length + 1 pour un geste vif.
 /// - [add] en fin de geste : le doigt est-il parti avec de l'élan ? Si oui,
 ///   combien d'éléments la liste doit encore parcourir sur sa lancée.
+/// - [add] en cours de geste : de combien le doigt vient-il de bouger, et à
+///   quelle vitesse ? C'est ce que la barre de lecture suit.
 ///
 /// Les coordonnées sont celles du moteur : normalisées dans `[-1, 1]`, y vers
 /// le bas. Aucune dépendance au temps réel : l'horloge est passée à chaque
 /// appel, ce qui rend le modèle testable à la milliseconde.
 ///
-/// Les seuils sont des estimations, pas des mesures : ils se règlent sur une
-/// vraie Apple TV (voir ADR-0039).
+/// Les seuils se règlent sur une vraie Apple TV (voir ADR-0039). Premier
+/// réglage, après essai : la navigation s'emballait à l'accueil, les seuils
+/// ont doublé et l'élan a été divisé par deux.
 class TouchpadMotion {
   /// La fenêtre sur laquelle la vitesse est mesurée. Plus courte, un seul
   /// échantillon bruité fait la vitesse ; plus longue, un geste qui ralentit
@@ -37,38 +45,51 @@ class TouchpadMotion {
   static const Duration _stale = Duration(milliseconds: 150);
 
   /// Vitesses, en unités de surface par seconde, à partir desquelles une flèche
-  /// vaut 2, 3 puis 4 pas. Un glissé posé fait 2 à 3 u/s, un coup sec 10 et
-  /// plus.
-  static const List<double> _boostSpeeds = <double>[4, 7, 10];
+  /// vaut 2 puis 3 pas. Seul un vrai coup sec accélère.
+  static const List<double> _boostSpeeds = <double>[8, 13];
 
   /// Vitesse de lâcher à partir de laquelle le geste continue sur sa lancée, et
   /// ce que coûte chaque pas d'élan supplémentaire.
-  static const double _flingSpeed = 6;
-  static const double _flingSpeedPerStep = 1.5;
+  static const double _flingSpeed = 10;
+  static const double _flingSpeedPerStep = 3;
 
-  /// Une longue rangée se traverse d'un coup sec, sans que le focus parte à
-  /// l'autre bout d'un catalogue entier.
-  static const int _maxFlingSteps = 12;
+  /// Une rangée se parcourt vite d'un coup sec, sans que le focus parte si
+  /// loin qu'on ne sache plus où l'on est.
+  static const int _maxFlingSteps = 6;
 
   final List<({double x, double y, Duration at})> _samples =
       <({double x, double y, Duration at})>[];
   bool _clicking = false;
+  TouchpadMove? _lastMove;
+
+  /// Le dernier déplacement reçu par [add], nul hors d'un glissé.
+  TouchpadMove? get lastMove => _lastMove;
 
   /// Ajoute un événement du trackpad. Renvoie l'élan du geste quand il se
   /// termine lancé, nul sinon.
   TouchpadFling? add(TouchpadPhase phase, double x, double y, Duration at) {
     switch (phase) {
       case TouchpadPhase.began:
+        _lastMove = null;
         _samples
           ..clear()
           ..add((x: x, y: y, at: at));
         return null;
       case TouchpadPhase.moved:
+        final previous = _samples.isEmpty ? null : _samples.last;
         _samples.add((x: x, y: y, at: at));
         _samples.removeWhere((s) => at - s.at > _window * 2);
+        _lastMove = previous == null || _clicking
+            ? null
+            : (
+                dx: x - previous.x,
+                dy: y - previous.y,
+                speed: (_velocityAt(at)?.dx ?? 0).abs(),
+              );
         return null;
       case TouchpadPhase.clickDown:
         _clicking = true;
+        _lastMove = null;
         return null;
       case TouchpadPhase.clickUp:
         _clicking = false;
@@ -76,9 +97,14 @@ class TouchpadMotion {
       case TouchpadPhase.ended:
         final fling = _clicking ? null : _flingAt(at);
         _samples.clear();
+        _lastMove = null;
         return fling;
     }
   }
+
+  /// Vrai quand le doigt glisse en ce moment sur la surface : une flèche qui
+  /// arrive maintenant est née de ce glissé, pas du pavé directionnel.
+  bool swipingAt(Duration now) => !_clicking && _velocityAt(now) != null;
 
   /// Combien de pas vaut une flèche vers [direction] reçue à [now].
   ///

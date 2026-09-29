@@ -23,23 +23,53 @@ void main() {
     expect(seek.target, isNull);
   });
 
-  testWidgets('un glissé vif sur le trackpad va plus loin', (tester) async {
+  testWidgets('un glissé lent sur le trackpad avance finement', (tester) async {
     final seek = RemoteSeek(onCommit: (_) {});
 
-    seek.step(1, fromSeconds: 100, durationSeconds: 1000, boost: 4);
+    // Un demi-trackpad, doigt posé.
+    seek.scrub(1, speed: 1.5, fromSeconds: 100, durationSeconds: 7200);
 
-    expect(seek.target, 140);
+    expect(seek.target, 120);
+    seek.dispose();
+  });
+
+  testWidgets('le même glissé, plus vif, va bien plus loin', (tester) async {
+    final slow = RemoteSeek(onCommit: (_) {});
+    final fast = RemoteSeek(onCommit: (_) {});
+
+    // Point par point, comme le trackpad le rapporte.
+    for (var i = 0; i < 10; i++) {
+      slow.scrub(0.1, speed: 2, fromSeconds: 100, durationSeconds: 7200);
+      fast.scrub(0.1, speed: 8, fromSeconds: 100, durationSeconds: 7200);
+    }
+
+    expect(slow.target, 120);
+    expect(fast.target, 100 + 320);
+    slow.dispose();
+    fast.dispose();
+  });
+
+  testWidgets('un geste, aussi vif soit-il, ne traverse pas tout le film',
+      (tester) async {
+    final seek = RemoteSeek(onCommit: (_) {});
+
+    seek.scrub(0.5, speed: 40, fromSeconds: 0, durationSeconds: 1200);
+
+    expect(seek.target, 300);
     seek.dispose();
   });
 
   testWidgets('la cible reste dans le film', (tester) async {
     final seek = RemoteSeek(onCommit: (_) {});
 
-    seek.step(-1, fromSeconds: 5, durationSeconds: 1000, boost: 4);
+    seek.step(-1, fromSeconds: 5, durationSeconds: 1000);
     expect(seek.target, 0);
 
-    seek.step(1, fromSeconds: 5, durationSeconds: 20, boost: 4);
-    expect(seek.target, 20);
+    seek.scrub(-1, speed: 1, fromSeconds: 5, durationSeconds: 1000);
+    expect(seek.target, 0);
+
+    seek.scrub(3, speed: 20, fromSeconds: 5, durationSeconds: 1000);
+    expect(seek.target, 1000);
     seek.dispose();
   });
 }

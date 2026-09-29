@@ -264,6 +264,10 @@ func searchTMDBWithConfidence(rawTitle string, hintYear int, mediaType models.Me
 
 	var best tmdbSearchResult
 	bestScore := -1.0
+	// Tous les résultats vus, dans l'ordre de pertinence TMDB, pour le repli
+	// sur les titres alternatifs.
+	var pool []tmdbSearchResult
+	inPool := map[int]bool{}
 search:
 	for _, query := range queries {
 		for _, searchYear := range []string{yearStr, ""} {
@@ -271,6 +275,12 @@ search:
 				results := trySearch(query, searchYear, lang)
 				if len(results) == 0 {
 					continue
+				}
+				for _, r := range results {
+					if !inPool[r.ID] {
+						inPool[r.ID] = true
+						pool = append(pool, r)
+					}
 				}
 				candidate := pickBestTMDBResult(results, parsed.Title, parsed.Year, mediaType)
 				score := scoreTMDBResult(candidate, parsed.Title, parsed.Year, mediaType)
@@ -288,6 +298,11 @@ search:
 		}
 	}
 
+	if best.ID != 0 && !isConfidentTMDBMatch(best, parsed.Title, parsed.Year, mediaType, bestScore) {
+		if rescued, score, ok := rescueWithAlternativeTitles(pool, parsed.Title, parsed.Year, mediaType); ok {
+			best, bestScore = rescued, score
+		}
+	}
 	if best.ID == 0 || !isConfidentTMDBMatch(best, parsed.Title, parsed.Year, mediaType, bestScore) {
 		if best.ID != 0 {
 			log.Printf("Identify: rejected weak TMDB candidate id=%d score=%.2f for %q", best.ID, bestScore, parsed.Title)
@@ -372,6 +387,7 @@ func ResetSearchCache() {
 	searchCacheMu.Lock()
 	searchCache = map[string][]tmdbSearchResult{}
 	searchCacheMu.Unlock()
+	resetAltTitlesCache()
 }
 
 func findTMDBIDByExternal(externalID, source string, mediaType models.MediaType) int {

@@ -24,19 +24,26 @@ void main() {
     TvMode.enabled.value = false;
   });
 
-  /// Un coup sec vers la droite sur le trackpad : 1,4 unité en 112 ms.
-  void flick({bool lift = false}) {
-    TvTouchpad.handleTouch(TouchpadPhase.began, 0, 0);
+  /// Un coup sec sur le trackpad : 2,1 unités en 112 ms, vers la droite ou
+  /// vers le bas.
+  void flick({bool lift = false, bool down = false}) {
+    void touch(TouchpadPhase phase, double travel) => TvTouchpad.handleTouch(
+          phase,
+          down ? 0 : travel,
+          down ? travel : 0,
+        );
+    touch(TouchpadPhase.began, 0);
     for (var i = 1; i <= 7; i++) {
       clock += const Duration(milliseconds: 16);
-      TvTouchpad.handleTouch(TouchpadPhase.moved, 0.2 * i, 0);
+      touch(TouchpadPhase.moved, 0.3 * i);
     }
-    if (lift) TvTouchpad.handleTouch(TouchpadPhase.ended, 1.4, 0);
+    if (lift) touch(TouchpadPhase.ended, 2.1);
   }
 
   Future<List<FocusNode>> pumpRow(
     WidgetTester tester, {
     required bool scrollable,
+    Axis axis = Axis.horizontal,
   }) async {
     final nodes = [
       for (var i = 0; i < 30; i++) FocusNode(debugLabel: 'card$i'),
@@ -48,7 +55,7 @@ void main() {
     });
     final cards = [
       for (final node in nodes)
-        Focus(focusNode: node, child: const SizedBox(width: 20, height: 40)),
+        Focus(focusNode: node, child: const SizedBox(width: 20, height: 20)),
     ];
     await tester.pumpWidget(MaterialApp(
       actions: <Type, Action<Intent>>{
@@ -58,10 +65,10 @@ void main() {
       home: Align(
         alignment: Alignment.topLeft,
         child: SizedBox(
-          height: 40,
-          width: 800,
+          height: axis == Axis.horizontal ? 20 : 800,
+          width: axis == Axis.horizontal ? 800 : 20,
           child: scrollable
-              ? ListView(scrollDirection: Axis.horizontal, children: cards)
+              ? ListView(scrollDirection: axis, children: cards)
               : Row(children: cards),
         ),
       ),
@@ -82,7 +89,35 @@ void main() {
     await tester.sendKeyEvent(LogicalKeyboardKey.arrowRight);
     await tester.pump();
 
-    expect(focusedIndex(nodes), 4);
+    expect(focusedIndex(nodes), 3);
+  });
+
+  testWidgets('à la verticale, un glissé descend d’une ligne à la fois',
+      (tester) async {
+    // À l'essai, un glissé vers le bas sautait des rangées entières de
+    // l'accueil et des lignes des réglages.
+    final nodes = await pumpRow(tester, scrollable: true, axis: Axis.vertical);
+
+    flick(lift: true, down: true);
+    await tester.sendKeyEvent(LogicalKeyboardKey.arrowDown);
+    await tester.pump(const Duration(seconds: 3));
+
+    expect(TvTouchpad.isGliding, isFalse);
+    expect(focusedIndex(nodes), 1);
+  });
+
+  testWidgets('le lecteur reçoit chaque déplacement du doigt', (tester) async {
+    final moves = <double>[];
+    void listener(TouchpadMove move) => moves.add(move.dx);
+    TvTouchpad.addMoveListener(listener);
+
+    flick();
+    expect(TvTouchpad.isSwiping, isTrue);
+    TvTouchpad.removeMoveListener(listener);
+    TvTouchpad.handleTouch(TouchpadPhase.moved, 2.4, 0);
+
+    expect(moves, hasLength(7));
+    expect(moves.fold<double>(0, (a, b) => a + b), closeTo(2.1, 1e-9));
   });
 
   testWidgets('sans glissé, une flèche avance d’une seule affiche',
@@ -116,7 +151,7 @@ void main() {
     await tester.pump(const Duration(seconds: 3));
 
     expect(TvTouchpad.isGliding, isFalse);
-    expect(focusedIndex(nodes), 5);
+    expect(focusedIndex(nodes), 3);
   });
 
   testWidgets('poser le doigt arrête la lancée', (tester) async {

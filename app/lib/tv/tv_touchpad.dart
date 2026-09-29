@@ -15,18 +15,21 @@ import 'tv_mode.dart';
 /// et balayer donnaient la même flèche, donc le même pas d'une affiche, et une
 /// rangée de quarante films se traversait à coups de pouce répétés.
 ///
-/// Deux choses changent, et seulement dans ce qui défile (une rangée, une
-/// grille, une liste) : dans une barre de boutons ou un menu, un pas reste un
-/// pas.
+/// Deux choses changent, et seulement dans ce qui défile à l'horizontale (une
+/// rangée d'affiches) : dans une liste verticale, une barre de boutons ou un
+/// menu, un pas reste un pas.
 ///
 /// - **L'accélération.** Une flèche arrivée pendant un glissé vif vaut
-///   plusieurs pas ([boostFor]). Le lecteur s'en sert aussi : un coup sec fait
-///   avancer le film plus loin.
-/// - **L'élan.** Un doigt lâché en pleine vitesse laisse la liste continuer
+///   plusieurs pas ([boostFor]).
+/// - **L'élan.** Un doigt lâché en pleine vitesse laisse la rangée continuer
 ///   quelques éléments en ralentissant, comme sur l'interface d'Apple. Poser
 ///   le doigt sur la surface l'arrête net.
 ///
-/// Hors Apple TV, rien de tout cela ne s'installe : [boostFor] vaut toujours 1.
+/// Le lecteur, lui, suit le doigt directement ([addMoveListener]) : la barre
+/// de lecture avance avec lui, et d'autant plus loin qu'il va vite.
+///
+/// Hors Apple TV, rien de tout cela ne s'installe : [boostFor] vaut toujours 1
+/// et [isSwiping] toujours faux.
 abstract final class TvTouchpad {
   static final TouchpadMotion _motion = TouchpadMotion();
   static final Stopwatch _clock = Stopwatch()..start();
@@ -57,6 +60,9 @@ abstract final class TvTouchpad {
   /// n'est pas une flèche, il ne s'accélère pas lui-même.
   static bool _stepping = false;
 
+  static final List<void Function(TouchpadMove move)> _moveListeners =
+      <void Function(TouchpadMove move)>[];
+
   /// Vrai tant que la liste avance sur sa lancée. Le défilement suit alors au
   /// plus court, comme pour une flèche maintenue.
   static bool get isGliding => _glideTimer != null;
@@ -75,16 +81,33 @@ abstract final class TvTouchpad {
     return _motion.boostFor(direction, _now);
   }
 
+  /// Vrai quand le doigt glisse en ce moment sur le trackpad : la flèche qui
+  /// arrive maintenant est née de ce glissé.
+  static bool get isSwiping => _motion.swipingAt(_now);
+
+  /// Reçoit chaque déplacement du doigt pendant un glissé.
+  static void addMoveListener(void Function(TouchpadMove move) listener) {
+    _moveListeners.add(listener);
+  }
+
+  static void removeMoveListener(void Function(TouchpadMove move) listener) {
+    _moveListeners.remove(listener);
+  }
+
   /// Vrai quand un geste peut accélérer depuis [node] vers [direction] : le
-  /// nœud est dans quelque chose qui défile sur cet axe.
+  /// nœud est dans une rangée qui défile à l'horizontale.
+  ///
+  /// Jamais à la verticale : à l'essai, un glissé vers le bas sautait des
+  /// rangées entières à l'accueil et des lignes dans les réglages, et l'on ne
+  /// savait plus où l'on était. Descendre se fait une rangée à la fois.
   static bool acceleratesFrom(FocusNode node, TraversalDirection direction) {
+    if (direction == TraversalDirection.up ||
+        direction == TraversalDirection.down) {
+      return false;
+    }
     final context = node.context;
     if (context == null) return false;
-    final axis = switch (direction) {
-      TraversalDirection.left || TraversalDirection.right => Axis.horizontal,
-      TraversalDirection.up || TraversalDirection.down => Axis.vertical,
-    };
-    return Scrollable.maybeOf(context, axis: axis) != null;
+    return Scrollable.maybeOf(context, axis: Axis.horizontal) != null;
   }
 
   /// Un événement du trackpad. Public pour les tests, qui n'ont pas de
@@ -98,6 +121,12 @@ abstract final class TvTouchpad {
     }
     final fling = _motion.add(phase, x, y, _now);
     if (fling != null) _startGlide(fling);
+
+    final move = _motion.lastMove;
+    if (phase != TouchpadPhase.moved || move == null) return;
+    for (final listener in List.of(_moveListeners)) {
+      listener(move);
+    }
   }
 
   static void stopGlide() {
@@ -183,6 +212,7 @@ abstract final class TvTouchpad {
   @visibleForTesting
   static void debugReset() {
     stopGlide();
+    _moveListeners.clear();
     debugClock = null;
     _motion.add(TouchpadPhase.clickUp, 0, 0, Duration.zero);
     _motion.add(TouchpadPhase.ended, 0, 0, Duration.zero);

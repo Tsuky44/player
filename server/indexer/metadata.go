@@ -90,13 +90,16 @@ type tmdbSearchResult struct {
 	ReleaseDate   string
 	FirstAirDate  string
 	Popularity    float64
+	// AltTitles n'est rempli que par le repli sur les titres alternatifs
+	// (rescueWithAlternativeTitles) : la recherche ne les renvoie pas.
+	AltTitles []string
 }
 
 // candidateTitles lists every name a result can be matched against. Comparing
 // the original title too is what makes an English release name match a French
 // TMDB entry (and the reverse).
 func (r tmdbSearchResult) candidateTitles() []string {
-	return []string{r.Title, r.Name, r.OriginalTitle, r.OriginalName}
+	return append([]string{r.Title, r.Name, r.OriginalTitle, r.OriginalName}, r.AltTitles...)
 }
 
 func tmdbResultYear(r tmdbSearchResult, mediaType models.MediaType) int {
