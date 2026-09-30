@@ -41,6 +41,8 @@
 	</array>
 	<key>NSCameraUsageDescription</key>
 	<string>La caméra sert à scanner le QR code affiché par le téléviseur pour l'appairer.</string>
+	<key>NSPhotoLibraryUsageDescription</key>
+	<string>Onyx ouvre le sélecteur de fichiers de l'appareil pour choisir un installateur d'application à envoyer à votre serveur.</string>
 	<key>NSLocalNetworkUsageDescription</key>
 	<string>Onyx cherche votre serveur média sur le réseau local et lit vos fichiers depuis celui-ci.</string>
 	<key>UIApplicationSceneManifest</key>
