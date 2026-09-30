@@ -87,6 +87,11 @@ dependencies:
   # plateformes n'en compilent que le Dart.
   onyx_player_apple:
     path: ../packages/onyx_player_apple
+  # Ce qui fait continuer un téléchargement écran verrouillé (ADR-0040) : un
+  # service de premier plan sur Android, une session URLSession d'arrière-plan
+  # sur iPhone. Le paquet ne déclare que ces deux plateformes.
+  onyx_background_downloads:
+    path: ../packages/onyx_background_downloads
   # Garde l'écran allumé pendant une lecture AetherEngine sur iPhone et Mac
   # (`ScreenAwake`). mpv l'avait sans rien demander : le widget `Video` de
   # media_kit s'en sert (d'où la version, celle que media_kit tire déjà).

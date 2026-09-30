@@ -65,7 +65,8 @@ class SharedLinkApiClient extends ApiClient {
   }
 
   @override
-  Future<PlaybackAccess> openPlaybackAccess(int mediaId) async {
+  Future<PlaybackAccess> openPlaybackAccess(int mediaId,
+      {bool forDownload = false}) async {
     // Le premier ticket est celui de l'ouverture ; un lecteur qui en redemande
     // un (reprise après une coupure) rouvre le lien avec le même mot de passe.
     var ticket = _pending;

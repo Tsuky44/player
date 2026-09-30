@@ -227,15 +227,10 @@ class _HomeScreenState extends State<HomeScreen> {
                               data.recentMovies.isEmpty &&
                               data.recentShows.isEmpty)
                             SliverFillRemaining(
-                              child: EmptyStateView(
-                                icon: Icons.movie_filter_outlined,
-                                title: 'Bibliothèque vide',
-                                message:
-                                    'Ajoutez des fichiers dans vos dossiers Films et Séries, puis synchronisez depuis le menu profil.',
-                                actionLabel: 'Synchroniser',
-                                onAction: () => homeProvider.triggerLibraryScan(),
-                                secondaryActionLabel: 'Extraire les sous-titres',
-                                onSecondaryAction: () => homeProvider.triggerSubtitleExtract(),
+                              child: _EmptyLibraryView(
+                                canManageLibrary:
+                                    authProvider.permissions.manageLibrary,
+                                homeProvider: homeProvider,
                               ),
                             )
                           else ...[
@@ -323,6 +318,44 @@ class _HomeScreenState extends State<HomeScreen> {
                       ),
                   ],
                 ),
+    );
+  }
+}
+
+/// L'accueil d'un serveur qui n'a encore rien indexé.
+///
+/// Synchroniser et extraire les sous-titres sont réservés à `manage_library`
+/// par le serveur (ADR-0001). Un compte sans ce droit n'a rien à presser : on
+/// lui dit qui peut remplir la bibliothèque, au lieu de lui tendre deux
+/// boutons qui échouent.
+class _EmptyLibraryView extends StatelessWidget {
+  final bool canManageLibrary;
+  final HomeProvider homeProvider;
+
+  const _EmptyLibraryView({
+    required this.canManageLibrary,
+    required this.homeProvider,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    if (!canManageLibrary) {
+      return const EmptyStateView(
+        icon: Icons.movie_filter_outlined,
+        title: 'Bibliothèque vide',
+        message: 'Aucun film ni aucune série sur ce serveur pour l’instant. '
+            'Son administrateur peut en ajouter.',
+      );
+    }
+    return EmptyStateView(
+      icon: Icons.movie_filter_outlined,
+      title: 'Bibliothèque vide',
+      message: 'Ajoutez des fichiers dans vos dossiers Films et Séries, '
+          'puis lancez une synchronisation.',
+      actionLabel: 'Synchroniser',
+      onAction: homeProvider.triggerLibraryScan,
+      secondaryActionLabel: 'Extraire les sous-titres',
+      onSecondaryAction: homeProvider.triggerSubtitleExtract,
     );
   }
 }

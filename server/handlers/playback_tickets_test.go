@@ -11,6 +11,7 @@ import (
 	"project-player/server/streamcache"
 	"strings"
 	"testing"
+	"time"
 )
 
 func TestTicketIssuanceAndProtectedRange(t *testing.T) {
@@ -102,5 +103,42 @@ func TestTicketIssuanceAndProtectedRange(t *testing.T) {
 		if c.status == 200 && (!strings.Contains(w.Body.String(), "Bonjour") || w.Header().Get("Cache-Control") != "private, no-store") {
 			t.Fatal("protected subtitle changed")
 		}
+	}
+}
+
+// Le client demande un ticket de téléchargement par `purpose` ; un serveur plus
+// ancien ignore le champ et répond par un ticket de lecture, ce qui reste sûr.
+func TestDownloadPurposeIssuesLongTicket(t *testing.T) {
+	cleanup := setupContinueWatchingTestDB(t)
+	defer cleanup()
+	old := PlaybackTickets
+	PlaybackTickets = playbackauth.NewStore()
+	defer func() { PlaybackTickets = old }()
+	if err := storeSession(database.DB, "login-token", 1); err != nil {
+		t.Fatal(err)
+	}
+	issue := RequireAuth(CreatePlaybackTicket)
+	lifetime := func(body string) time.Duration {
+		t.Helper()
+		r := httptest.NewRequest("POST", "/api/playback/tickets", strings.NewReader(body))
+		r.Header.Set("Authorization", "Bearer login-token")
+		w := httptest.NewRecorder()
+		issue(w, r, nil)
+		if w.Code != 200 {
+			t.Fatalf("issue: %d %s", w.Code, w.Body.String())
+		}
+		var result struct {
+			ExpiresAt time.Time `json:"expires_at"`
+		}
+		if err := json.Unmarshal(w.Body.Bytes(), &result); err != nil {
+			t.Fatal(err)
+		}
+		return time.Until(result.ExpiresAt)
+	}
+	if got := lifetime(`{"media_id":3}`); got > playbackauth.TTL {
+		t.Fatalf("playback ticket lifetime = %v", got)
+	}
+	if got := lifetime(`{"media_id":3,"purpose":"download"}`); got <= playbackauth.TTL || got > playbackauth.DownloadTTL {
+		t.Fatalf("download ticket lifetime = %v", got)
 	}
 }

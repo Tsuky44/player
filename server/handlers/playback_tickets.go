@@ -19,6 +19,9 @@ const ticketRenewAfterSeconds = 300
 func CreatePlaybackTicket(w http.ResponseWriter, r *http.Request, _ httprouter.Params, userID int) {
 	var body struct {
 		MediaID int `json:"media_id"`
+		// "download" demande un ticket d'échéance longue
+		// (playbackauth.DownloadTTL) ; tout le reste est une lecture.
+		Purpose string `json:"purpose"`
 	}
 	if json.NewDecoder(http.MaxBytesReader(w, r.Body, 1024)).Decode(&body) != nil || body.MediaID <= 0 {
 		writeJSONError(w, http.StatusBadRequest, "Invalid media id")
@@ -28,7 +31,11 @@ func CreatePlaybackTicket(w http.ResponseWriter, r *http.Request, _ httprouter.P
 		writeJSONError(w, http.StatusNotFound, "Playable media not found")
 		return
 	}
-	token, ticket, err := PlaybackTickets.Issue(userID, body.MediaID)
+	issue := PlaybackTickets.Issue
+	if body.Purpose == "download" {
+		issue = PlaybackTickets.IssueDownload
+	}
+	token, ticket, err := issue(userID, body.MediaID)
 	if err != nil {
 		writeJSONError(w, http.StatusServiceUnavailable, "Playback ticket unavailable")
 		return

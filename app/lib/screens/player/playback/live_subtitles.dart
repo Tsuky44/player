@@ -258,6 +258,7 @@ MediaTracks withLiveSubtitles(
             typedIndex: s.typedIndex,
             forced: s.forced,
             isDefault: s.isDefault,
+            language: s.language,
           )
         else
           s,

@@ -1,3 +1,5 @@
+import 'playback/carried_subtitle.dart';
+
 /// Audio/subtitle choices carried over when auto-advancing to the next episode.
 class PlayerPlaybackPreferences {
   final int audioIndex;
@@ -11,7 +13,11 @@ class PlayerPlaybackPreferences {
   /// later, mid-sentence.
   final String? audioLang;
 
-  final String? subtitleLang;
+  /// Le sous-titre à retrouver dans le média suivant. Voir [CarriedSubtitle].
+  final CarriedSubtitle? subtitle;
+
+  /// Id mpv de la piste choisie : ne vaut que dans le média d'où il vient, donc
+  /// seulement en dernier recours, quand [subtitle] ne peut rien désigner.
   final String? internalSubId;
 
   /// True when the previous episode had no active subtitles.
@@ -20,7 +26,7 @@ class PlayerPlaybackPreferences {
   const PlayerPlaybackPreferences({
     required this.audioIndex,
     this.audioLang,
-    this.subtitleLang,
+    this.subtitle,
     this.internalSubId,
     required this.subtitlesOff,
   });

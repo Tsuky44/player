@@ -144,6 +144,7 @@ supprimé l'épisode qu'on comptait revoir le soir même.
   celles que le serveur extrait — le lecteur les injecte déjà par leur contenu, la copie locale se
   substitue donc à l'appel réseau sans rien changer en aval.
 - Le téléchargement s'arrête quand l'app s'arrête. Un service d'arrière-plan Android reste à faire.
+  → Fait, et l'iPhone avec : voir l'[ADR-0040](0040-telechargements-ecran-verrouille.md).
 - Le bouton par média est le bon geste pour un film, un mauvais pour une série : la saison d'un coup
   et la réserve d'avance qui se remplit toute seule sont venues ensuite, avec l'arbitrage du réseau
   facturé qu'elles rendaient nécessaire — voir l'[ADR-0027](0027-reserve-de-telechargements-et-reseau-facture.md).

@@ -157,10 +157,8 @@ func RequestAccess(w http.ResponseWriter, r *http.Request, _ httprouter.Params) 
 		return
 	}
 
-	var taken bool
-	if err := database.DB.QueryRow(
-		"SELECT EXISTS(SELECT 1 FROM users WHERE username = ?)", username,
-	).Scan(&taken); err != nil {
+	taken, err := usernameTaken(database.DB, username)
+	if err != nil {
 		log.Printf("RequestAccess: username lookup failed: %v", err)
 		writeJSONError(w, http.StatusInternalServerError, "Internal server error")
 		return
@@ -173,13 +171,8 @@ func RequestAccess(w http.ResponseWriter, r *http.Request, _ httprouter.Params) 
 	// Une demande en attente sur le même identifiant : c'est la même personne
 	// qui insiste, pas une nouvelle demande. Deux lignes n'apporteraient qu'un
 	// doublon dans la liste de l'administrateur.
-	var duplicate bool
-	if err := database.DB.QueryRow(`
-		SELECT EXISTS(
-			SELECT 1 FROM access_requests
-			WHERE username = ? AND status = 'pending' AND expires_at > datetime('now'))`,
-		username,
-	).Scan(&duplicate); err != nil {
+	duplicate, err := pendingAccessRequestFor(username)
+	if err != nil {
 		log.Printf("RequestAccess: duplicate lookup failed: %v", err)
 		writeJSONError(w, http.StatusInternalServerError, "Internal server error")
 		return
@@ -428,10 +421,8 @@ func ApproveAccessRequest(w http.ResponseWriter, r *http.Request, ps httprouter.
 
 	// L'identifiant était libre au moment de la demande ; une semaine a pu
 	// passer. C'est ici que la question se tranche pour de bon.
-	var taken bool
-	if err := tx.QueryRow(
-		"SELECT EXISTS(SELECT 1 FROM users WHERE username = ?)", username,
-	).Scan(&taken); err != nil {
+	taken, err := usernameTaken(tx, username)
+	if err != nil {
 		log.Printf("ApproveAccessRequest: username lookup failed: %v", err)
 		writeJSONError(w, http.StatusInternalServerError, "Internal server error")
 		return

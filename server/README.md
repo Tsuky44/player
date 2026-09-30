@@ -68,6 +68,8 @@ Toutes les routes API (sauf l'inscription/connexion et le stream) requièrent l'
 * **L'inscription libre est fermée.** Elle n'aboutit que dans deux cas : la base n'a encore aucun
   compte (ce premier compte devient le **propriétaire** et reçoit tous les droits), ou un token
   d'invitation valide est fourni.
+* Le nom d'utilisateur ne distingue pas la casse : `Mathis` est refusé (`409`) si `mathis` existe
+  déjà. La graphie choisie est conservée pour l'affichage.
 * **Corps (JSON) :**
   ```json
   {
@@ -83,7 +85,9 @@ Toutes les routes API (sauf l'inscription/connexion et le stream) requièrent l'
 
 #### ➡️ Connexion
 * **Route :** `POST /api/auth/login`
-* **Corps (JSON) :** `username` + `password`.
+* **Corps (JSON) :** `username` + `password`. Le nom d'utilisateur ne distingue pas la casse
+  (`MATHIS` ouvre le compte `Mathis`) ; si une ancienne base contient deux comptes qui ne diffèrent
+  que par la casse, la graphie exacte l'emporte.
 * **Réponse (JSON) :**
   ```json
   {
@@ -94,10 +98,35 @@ Toutes les routes API (sauf l'inscription/connexion et le stream) requièrent l'
       "is_owner": true,
       "permissions": { "manage_settings": true, "manage_library": true, "manage_users": true,
                        "delete_media": true, "invite_users": true, "request_media": true },
-      "invite_grants": { "request_media": true }
+      "invite_grants": { "request_media": true },
+      "otp_enabled": false
     }
   }
   ```
+* **Code de vérification (ADR-0041) :** quand le compte a configuré la validation en deux étapes,
+  ou que la politique du serveur la lui impose, la connexion répond `401` avec un objet `otp` au
+  lieu d'une session :
+  ```json
+  { "error": "Code de vérification requis…",
+    "otp": { "challenge": "9f2c…", "setup": false } }
+  ```
+  Avec `"setup": true`, l'objet porte aussi `secret` et `uri` (`otpauth://…`) à scanner. La session
+  s'obtient ensuite par `POST /api/auth/otp/login`, corps `{ "challenge": "…", "code": "123456" }`
+  (le code de l'application ou un code de secours) : même réponse que la connexion, plus
+  `recovery_codes` quand le code vient d'être configuré. `401` : code faux ; `410` : étape expirée
+  (5 minutes, 5 essais), il faut recommencer la connexion.
+
+#### ➡️ Validation en deux étapes du compte (ADR-0041)
+* `GET /api/auth/otp` — `{ "policy", "enabled", "required", "recovery_codes_left" }`.
+* `POST /api/auth/otp/setup` — tire un secret : `{ "secret", "uri" }`. `403` si la politique est
+  `disabled`, `409` si un code est déjà configuré.
+* `POST /api/auth/otp/enable` — `{ "code" }` ; active et rend `{ "recovery_codes": [...] }`.
+  `400` : code faux.
+* `POST /api/auth/otp/disable` — `{ "password" }`. `403` si la politique l'impose à ce compte.
+* `POST /api/auth/otp/recovery-codes` — `{ "password" }` ; remplace les codes de secours.
+* La politique est le réglage `otp_policy` de `GET/PUT /api/settings` (`manage_settings`) :
+  `disabled`, `optional` (défaut), `admins`, `everyone`. Variable d'environnement de repli :
+  `OTP_POLICY`.
 
 #### ➡️ Profil connecté
 * **Route :** `GET /api/auth/me` — même charge utile que `user` ci-dessus.
@@ -180,6 +209,8 @@ Décisions détaillées : `docs/adr/0001-user-permissions-and-invitations.md`.
 * `GET /api/users` — liste des comptes et de leurs droits (`manage_users`).
 * `PUT /api/users/:id/permissions` — corps `{ "permissions": {…}, "invite_grants": {…} }`.
 * `POST /api/users/:id/password` — réinitialisation ; ferme toutes les sessions du compte visé.
+* `DELETE /api/users/:id/otp` — retire la validation en deux étapes d'un compte qui a perdu son
+  téléphone. Celle du propriétaire, seul le propriétaire la retire.
 * `DELETE /api/users/:id` — suppression dure, en cascade. Ni le propriétaire, ni soi-même.
 * `POST /api/users/:id/transfer-ownership` — réservé au propriétaire.
 

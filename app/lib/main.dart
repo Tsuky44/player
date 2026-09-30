@@ -18,6 +18,7 @@ import 'services/client_identity.dart';
 import 'services/client_log.dart';
 import 'services/auto_download.dart';
 import 'services/download_manager.dart';
+import 'services/downloads/download_keep_alive.dart';
 import 'services/dns_warmup.dart';
 import 'services/download_preferences.dart';
 import 'services/network_status.dart';
@@ -230,6 +231,9 @@ void main() async {
   // manifeste ne retarde pas la première image.
   final downloads = DownloadManager.instance;
   unawaited(downloads.initialize(apiClient));
+  // Écran éteint, Android gèle une app sans service de premier plan : le
+  // service suit la file, et sa notification dit où elle en est (ADR-0040).
+  if (AppPlatform.isAndroid) DownloadKeepAlive(downloads).start();
 
   final authProvider = AuthProvider(apiClient);
   final reachability = ServerReachability(apiClient);

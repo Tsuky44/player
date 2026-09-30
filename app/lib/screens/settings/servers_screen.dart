@@ -4,6 +4,7 @@ import 'package:dio/dio.dart';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
+import '../../models/otp.dart';
 import '../../models/server_account.dart';
 import '../../providers/auth_provider.dart';
 import '../../services/api_client.dart';
@@ -11,6 +12,7 @@ import '../../services/server_discovery.dart';
 import '../../theme/app_colors.dart';
 import '../../tv/tv_deferred_keyboard.dart';
 import '../../utils/on_screen.dart';
+import '../../widgets/global/otp_code_dialog.dart';
 
 /// Les serveurs de cet appareil : celui qui est actif, ceux sur lesquels on
 /// peut basculer, et les demandes d'accès encore sans réponse.
@@ -622,12 +624,11 @@ class _AddServerScreenState extends State<AddServerScreen> {
     final previous = auth.activeServer;
     try {
       if (_mode == _AddMode.signIn) {
-        final account = await auth.addServerWithPassword(
-          serverUrl: url,
-          username: username,
-          password: password,
-        );
-        if (!mounted) return;
+        final account = await _signIn(auth, url, username, password);
+        if (account == null || !mounted) {
+          if (mounted) setState(() => _busy = false);
+          return;
+        }
         _snack('${account.displayName} ajouté.');
         if (previous != null && previous.id != account.id) {
           await _offerLink(previous, account);
@@ -653,6 +654,33 @@ class _AddServerScreenState extends State<AddServerScreen> {
       return;
     }
     if (mounted) setState(() => _busy = false);
+  }
+
+  /// Ouvre la session, code compris quand ce serveur en demande un
+  /// (ADR-0041). null : le code a été abandonné.
+  Future<ServerAccount?> _signIn(
+    AuthProvider auth,
+    String url,
+    String username,
+    String password,
+  ) async {
+    try {
+      return await auth.addServerWithPassword(
+        serverUrl: url,
+        username: username,
+        password: password,
+      );
+    } on OtpRequired catch (e) {
+      if (!mounted) return null;
+      final api = context.read<ApiClient>();
+      final result = await showOtpLoginDialog(
+        context,
+        challenge: e.challenge,
+        verify: (code) => api.verifyLoginOtp(e.challenge, code),
+      );
+      if (result == null) return null;
+      return auth.adoptOtpSession(result);
+    }
   }
 
   /// Juste après l'ajout, le bon moment pour demander si c'est la même

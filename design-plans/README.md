@@ -8,6 +8,7 @@ Plans d'implémentation issus des audits UI. Chaque plan est autonome : son exé
 | --- | --- | --- | --- |
 | [audit-ui.md](audit-ui.md) | Tokens statiques : couleur, rayon, palette parallèle | 2026-07-18 | Les 3 findings sont corrigés ; plans 01–03 exécutés |
 | [audit-fluidite.md](audit-fluidite.md) | Mouvement, réponse à l'entrée, matière, typographie — grille apple-design | 2026-08-15 | 10 findings ; les 3 prioritaires sont couverts par les plans 04–06 |
+| [audit-ux.md](audit-ux.md) | Parcours, droits, architecture de l'information, découverte, texte d'interface ; état des findings ouverts | 2026-09-30 | 15 findings (B3 retiré) ; A1–A4 corrigés ; plan 04 constaté exécuté, 05 et 06 toujours ouverts |
 
 ## Vague 1 — tokens statiques
 

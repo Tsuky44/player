@@ -25,6 +25,7 @@ class DownloadManager extends ChangeNotifier {
   int get totalBytesOnDisk => 0;
   int get queuedCount => 0;
   bool get isHeldForNetwork => false;
+  bool get isTransferring => false;
   bool Function()? transferGate;
   Set<int> get downloadedShowIds => const {};
   bool isDeclined(int mediaId) => false;
@@ -68,6 +69,8 @@ class DownloadManager extends ChangeNotifier {
   Future<void> resume(int mediaId) async {}
   Future<void> delete(int mediaId) async {}
   Future<int> deleteWatched() async => 0;
+  Future<int> deleteAll(Iterable<int> mediaIds) async => 0;
+  Future<int> cancelShow(int showId) async => 0;
 
   Future<void> recordProgress({
     required int mediaId,

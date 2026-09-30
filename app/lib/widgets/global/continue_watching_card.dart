@@ -70,7 +70,9 @@ class _ContinueWatchingCardState extends State<ContinueWatchingCard> {
   }
 
   Future<void> _showContextMenu(Offset globalPosition) async {
-    if (widget.onMarkAsWatched == null && widget.onRemoveFromRow == null) {
+    if (widget.onTitleTap == null &&
+        widget.onMarkAsWatched == null &&
+        widget.onRemoveFromRow == null) {
       return;
     }
 
@@ -85,6 +87,14 @@ class _ContinueWatchingCardState extends State<ContinueWatchingCard> {
       ),
       color: AppColors.surfaceElevated,
       items: [
+        // En tête : l'action sans conséquence, celle que le focus TV trouve en
+        // premier. Sur un téléviseur, le titre sous l'affiche n'est pas
+        // atteignable, la fiche ne l'est que par ici.
+        if (widget.onTitleTap != null)
+          const PopupMenuItem(
+            value: 'details',
+            child: Text("Aller à l'affiche"),
+          ),
         if (widget.onMarkAsWatched != null)
           const PopupMenuItem(
             value: 'watched',
@@ -102,6 +112,8 @@ class _ContinueWatchingCardState extends State<ContinueWatchingCard> {
 
     try {
       switch (action) {
+        case 'details':
+          widget.onTitleTap?.call(_origin());
         case 'watched':
           await widget.onMarkAsWatched?.call(widget.item);
         case 'hide':
@@ -124,7 +136,7 @@ class _ContinueWatchingCardState extends State<ContinueWatchingCard> {
 
     return TvFocusable(
       onSelect: _play,
-      // The remote's menu button reaches the same two actions the mouse gets
+      // The remote's menu button reaches the same actions the mouse gets
       // from a right-click and the phone from a long press.
       onContextMenu: _showContextMenuCentred,
       autofocus: widget.autofocus,
@@ -236,10 +248,8 @@ class _ContinueWatchingCardState extends State<ContinueWatchingCard> {
   }
 
   String? _detailLine() {
-    final remaining =
-        widget.item.effectiveDuration - widget.item.currentPositionSeconds;
-    final remainingStr =
-        remaining > 0 ? '${formatDuration(remaining)} restantes' : null;
+    final remainingStr = formatRemaining(
+        widget.item.effectiveDuration - widget.item.currentPositionSeconds);
 
     if (widget.item.media.type == MediaType.episode) {
       final parts = <String>[];

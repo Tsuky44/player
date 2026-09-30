@@ -10,6 +10,7 @@ import '../../../../tv/tv_mode.dart';
 import '../../../../utils/app_platform.dart';
 import '../../hooks/use_episode_navigation.dart';
 import '../../hooks/use_player_controller.dart';
+import '../direct_source_label.dart';
 import '../player_settings_ui.dart' show splitTrackLabel;
 import 'onyx_chrome_theme.dart';
 
@@ -174,7 +175,10 @@ class _OnyxSettingsMenuState extends State<OnyxSettingsMenu> {
 
   String get _qualityValue {
     final quality = _controller?.currentQuality;
-    if (quality == null) return 'Direct';
+    if (quality == null) {
+      return directSourceLabel(local: _controller?.isLocalPlayback ?? false)
+          .label;
+    }
     // La ligne de résumé est étroite : la résolution seule, sans le débit qui
     // l'accompagne dans le menu déroulé.
     for (final tier in _qualityTiers) {
@@ -376,14 +380,18 @@ class _OnyxSettingsMenuState extends State<OnyxSettingsMenu> {
   Widget _buildQuality() {
     final controller = _controller;
     if (controller == null) return const _OnyxMenuEmpty();
+    final direct = directSourceLabel(
+      local: controller.isLocalPlayback,
+      streamSubtitle: 'Le fichier tel quel',
+    );
 
     return _sectionList([
       // Direct Play is native-only: it hands the player the file itself, which
       // a browser cannot open.
       if (!AppPlatform.isWeb)
         _OnyxMenuOption(
-          label: 'Direct',
-          subtitle: 'Le fichier tel quel',
+          label: direct.label,
+          subtitle: direct.subtitle,
           selected: controller.currentQuality == null,
           onTap: () {
             widget.onClose();

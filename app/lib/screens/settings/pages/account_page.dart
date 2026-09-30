@@ -7,6 +7,7 @@ import '../../../services/api_client.dart';
 import '../../../theme/app_colors.dart';
 import '../user_admin_sections.dart' show promptPassword;
 import '../widgets/device_tile.dart';
+import '../widgets/otp_security_group.dart';
 import '../widgets/settings_ui.dart';
 
 class AccountPage extends StatefulWidget {
@@ -199,6 +200,7 @@ class _AccountPageState extends State<AccountPage> {
             ),
           ],
         ),
+        const OtpSecurityGroup(),
         SettingsGroup(
           title: 'Mes appareils connectés',
           trailing: others > 0

@@ -1,0 +1,20 @@
+<!-- Pas d'attribut `package` : depuis AGP 8 il est refusé quand le module
+     déclare déjà son `namespace` dans build.gradle.kts, ce qui est le cas. -->
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+    <!-- Un service de premier plan, de type « synchronisation de données »
+         depuis Android 14 : sans type déclaré, `startForeground` lève. -->
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE"/>
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_DATA_SYNC"/>
+    <!-- La notification de progression. Android 13+ la demande à l'utilisateur ;
+         refusée, le service tourne quand même, sans notification visible. -->
+    <uses-permission android:name="android.permission.POST_NOTIFICATIONS"/>
+    <!-- Verrous processeur et Wi-Fi pendant le transfert. -->
+    <uses-permission android:name="android.permission.WAKE_LOCK"/>
+
+    <application>
+        <service
+            android:name=".DownloadKeepAliveService"
+            android:exported="false"
+            android:foregroundServiceType="dataSync"/>
+    </application>
+</manifest>

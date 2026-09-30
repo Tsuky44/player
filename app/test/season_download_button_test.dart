@@ -12,7 +12,8 @@ import 'package:provider/provider.dart';
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
 
-  HomeMediaItem episode(int id, {bool available = true}) => HomeMediaItem(
+  HomeMediaItem episode(int id, {bool available = true, bool watched = false}) =>
+      HomeMediaItem(
         media: Media(
           id: id,
           type: MediaType.episode,
@@ -25,7 +26,7 @@ void main() {
         ),
         currentPositionSeconds: 0,
         duration: 2400,
-        isFinished: false,
+        isFinished: watched,
         showId: 7,
         showTitle: 'Une série au titre plutôt long',
       );
@@ -94,6 +95,45 @@ void main() {
     await tester.pump();
 
     expect(tester.takeException(), isNull);
+    expect(find.text('Télécharger la saison'), findsOneWidget);
+  });
+
+  testWidgets('une saison entamée ne propose que les épisodes non vus',
+      (tester) async {
+    await tester.pumpWidget(harness(
+      [for (var i = 1; i <= 12; i++) episode(i, watched: i <= 4)],
+      size: const Size(1200, 800),
+    ));
+    await tester.pump();
+
+    expect(tester.takeException(), isNull);
+    expect(find.text('Télécharger les non vus · 8 épisodes'), findsOneWidget);
+  });
+
+  testWidgets('les non vus tiennent aussi sur un téléphone étroit',
+      (tester) async {
+    tester.view.physicalSize = const Size(360, 800);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.reset);
+
+    await tester.pumpWidget(harness(
+      [for (var i = 1; i <= 12; i++) episode(i, watched: i <= 4)],
+      size: const Size(360, 800),
+    ));
+    await tester.pump();
+
+    expect(tester.takeException(), isNull);
+    expect(find.text('Non vus (8)'), findsOneWidget);
+  });
+
+  testWidgets('une saison entièrement vue se propose en entier',
+      (tester) async {
+    await tester.pumpWidget(harness(
+      [for (var i = 1; i <= 3; i++) episode(i, watched: true)],
+      size: const Size(1200, 800),
+    ));
+    await tester.pump();
+
     expect(find.text('Télécharger la saison'), findsOneWidget);
   });
 

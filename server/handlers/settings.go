@@ -2,6 +2,7 @@ package handlers
 
 import (
 	"encoding/json"
+	"errors"
 	"log"
 	"net/http"
 
@@ -27,6 +28,10 @@ func UpdateSettings(w http.ResponseWriter, r *http.Request, _ httprouter.Params,
 	}
 
 	snapshot, err := config.ApplyUpdate(req)
+	if errors.Is(err, config.ErrInvalidOTPPolicy) {
+		writeJSONError(w, http.StatusBadRequest, "Politique de validation en deux étapes inconnue")
+		return
+	}
 	if err != nil {
 		log.Printf("UpdateSettings error: %v", err)
 		writeJSONError(w, http.StatusInternalServerError, "Failed to save settings")

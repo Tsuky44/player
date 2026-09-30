@@ -1,0 +1,30 @@
+name: onyx_background_downloads
+description: >-
+  Ce qui fait continuer un téléchargement hors ligne d'Onyx écran verrouillé :
+  un service de premier plan sur Android, une session URLSession d'arrière-plan
+  sur iPhone. Voir l'ADR-0040.
+version: 0.1.0
+publish_to: none
+
+environment:
+  sdk: ^3.12.2
+  flutter: '>=3.3.0'
+
+dependencies:
+  flutter:
+    sdk: flutter
+
+dev_dependencies:
+  flutter_lints: ^6.0.0
+
+# Deux plateformes, deux mécanismes : Android garde le processus Dart vivant,
+# iOS confie les octets au système. Ni le Mac ni l'Apple TV ne sont déclarés
+# (le Mac ne suspend pas une app verrouillée, l'Apple TV ne télécharge pas).
+flutter:
+  plugin:
+    platforms:
+      android:
+        package: com.projectplayer.onyx_background_downloads
+        pluginClass: OnyxBackgroundDownloadsPlugin
+      ios:
+        pluginClass: OnyxBackgroundDownloadsPlugin

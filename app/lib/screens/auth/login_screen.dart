@@ -4,6 +4,7 @@ import 'package:dio/dio.dart' show DioException;
 import 'package:flutter/material.dart';
 import '../../tv/tv_deferred_keyboard.dart';
 import 'package:provider/provider.dart';
+import '../../models/otp.dart';
 import '../../models/server_account.dart';
 import '../../providers/auth_provider.dart';
 import '../../services/api_client.dart';
@@ -12,6 +13,8 @@ import '../../theme/app_colors.dart';
 import '../../tv/tv_mode.dart';
 import '../../utils/app_platform.dart';
 import '../../widgets/global/onyx_mark.dart';
+import '../../widgets/global/otp_code_dialog.dart';
+import 'login_password_field.dart';
 import 'phone_sign_in_panel.dart';
 
 /// Les trois façons d'arriver sur un serveur.
@@ -304,6 +307,10 @@ class _LoginScreenState extends State<LoginScreen> {
   }
 
   Future<void> _submit() async {
+    // Entrée ne passe pas par le bouton, désactivé pendant l'envoi : sans ce
+    // garde, deux appuis rapides envoyaient deux connexions.
+    if (context.read<AuthProvider>().isLoading) return;
+
     // A television's keyboard is full screen: leaving it up hides the result,
     // error message included.
     FocusScope.of(context).unfocus();
@@ -362,7 +369,25 @@ class _LoginScreenState extends State<LoginScreen> {
 
       case _LoginMode.signIn:
         await authProvider.login(serverUrl, username, password);
+        final challenge = authProvider.takeOtpChallenge();
+        if (challenge != null && mounted) await _completeOtp(challenge);
     }
+  }
+
+  /// Le mot de passe était juste, le serveur attend un code (ADR-0041). La
+  /// session n'est rangée qu'après la fermeture du dialogue : l'ouvrir plus tôt
+  /// ferait disparaître cet écran sous les codes de secours.
+  Future<void> _completeOtp(OtpChallenge challenge) async {
+    final authProvider = context.read<AuthProvider>();
+    final api = context.read<ApiClient>();
+    final result = await showOtpLoginDialog(
+      context,
+      challenge: challenge,
+      verify: (code) => api.verifyLoginOtp(challenge, code),
+    );
+    if (result == null) return;
+    await authProvider.adoptOtpSession(result);
+    await api.saveLastUsername(result.user.username);
   }
 
   /// Le serveur écrit ses refus en français (nom pris, serveur vierge, file
@@ -543,31 +568,11 @@ class _LoginScreenState extends State<LoginScreen> {
                                               ),
                       ),
                       const SizedBox(height: 16),
-                      TvDeferredKeyboard(
-                        key: _passwordKeyboard,
-                        fieldFocusNode: _passwordFocus,
-                        builder: (context, focusNode, canRequestFocus) => TextFormField(
-                          canRequestFocus: canRequestFocus,
-                          controller: _passwordController,
-                          focusNode: _passwordFocus,
-                          obscureText: true,
-                          // The last field submits. On a television the button is
-                          // behind the keyboard, so "done" has to be a way in and
-                          // not just a way out.
-                          textInputAction: TextInputAction.done,
-                          onFieldSubmitted: (_) => _submit(),
-                          style: const TextStyle(color: AppColors.textPrimary),
-                          decoration: const InputDecoration(
-                            labelText: 'Mot de passe',
-                            prefixIcon: Icon(Icons.lock_outline_rounded,
-                                color: AppColors.textMuted),
-                          ),
-                          validator: (v) {
-                            if (v == null || v.isEmpty) return 'Requis';
-                            if (v.length < 4) return 'Minimum 4 caractères';
-                            return null;
-                          },
-                                              ),
+                      LoginPasswordField(
+                        keyboardKey: _passwordKeyboard,
+                        controller: _passwordController,
+                        focusNode: _passwordFocus,
+                        onSubmit: _submit,
                       ),
                       if (_mode == _LoginMode.request) ...[
                         const SizedBox(height: 16),

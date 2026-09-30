@@ -204,3 +204,38 @@ func TestCatalog_NoProbeReportsUnknownIndex(t *testing.T) {
 		t.Errorf("typed index = %d, want -1 (unknown)", got[0].TypedIndex)
 	}
 }
+
+// Beaucoup de fichiers n'annoncent leur piste forcée que par son titre. Le
+// client doit pourtant la reconnaître pour la retrouver d'un épisode à l'autre,
+// et il a besoin de la langue sans le rang que porte la clé.
+func TestCatalog_ForcedDetectedFromTitleAndLanguageExposed(t *testing.T) {
+	setupCatalogTestDB(t, 304)
+	const mediaID = 304
+
+	probe := &streaming.ProbeResult{
+		Subtitles: []streaming.SubtitleStreamInfo{
+			{TypedIndex: 0, Language: "fra", Codec: "subrip", Title: "French"},
+			{TypedIndex: 1, Language: "fra", Codec: "subrip", Title: "French Forced"},
+			{TypedIndex: 2, Language: "fra", Codec: "hdmv_pgs_subtitle", Image: true, Title: "FR Forcés"},
+		},
+	}
+
+	got := Catalog(mediaID, probe)
+	if len(got) != 3 {
+		t.Fatalf("expected 3 tracks, got %d", len(got))
+	}
+	if got[0].Forced {
+		t.Errorf("a plain title is not forced: %+v", got[0])
+	}
+	if got[1].Lang != "fr2" || !got[1].Forced {
+		t.Errorf("\"French Forced\" must be flagged forced: %+v", got[1])
+	}
+	if !got[2].Forced {
+		t.Errorf("\"FR Forcés\" must be flagged forced: %+v", got[2])
+	}
+	for _, tr := range got {
+		if tr.Language != "fr" {
+			t.Errorf("language must be the base code, got %q for %+v", tr.Language, tr)
+		}
+	}
+}

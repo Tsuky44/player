@@ -138,6 +138,7 @@ mixin _AccountAdminEndpoints {
   }
 
   /// Ouvre une session sur un serveur tiers sans quitter celui qui est actif.
+  /// Lève [OtpRequired] quand ce serveur attend un code.
   ///
   /// C'est le cas de l'utilisateur qui a **déjà** un compte ailleurs : rien à
   /// demander à personne, il suffit de le rentrer au carnet. Sur le Dio nu pour
@@ -150,10 +151,17 @@ mixin _AccountAdminEndpoints {
     bool activate = false,
   }) async {
     final url = ServerAccount.normalizeUrl(serverUrl);
-    final response = await _bareClient().post(
-      "$url/api/auth/login",
-      data: {"username": username, "password": password},
-    );
+    final Response<dynamic> response;
+    try {
+      response = await _bareClient().post(
+        "$url/api/auth/login",
+        data: {"username": username, "password": password},
+      );
+    } on DioException catch (e) {
+      final challenge = _otpChallengeFrom(e, url);
+      if (challenge != null) throw OtpRequired(challenge);
+      rethrow;
+    }
     final token = response.data["token"] as String;
     final user = User.fromJson(response.data["user"] as Map<String, dynamic>);
     await rememberSession(
@@ -188,11 +196,20 @@ mixin _AccountAdminEndpoints {
     await _dio.post("/api/access-requests/$id/deny");
   }
 
+  /// Lève [OtpRequired] quand le mot de passe est juste mais que le serveur
+  /// attend encore un code : la session s'ouvre alors par [verifyLoginOtp].
   Future<User> login(String username, String password) async {
-    final response = await _dio.post("/api/auth/login", data: {
-      "username": username,
-      "password": password,
-    });
+    final Response<dynamic> response;
+    try {
+      response = await _dio.post("/api/auth/login", data: {
+        "username": username,
+        "password": password,
+      });
+    } on DioException catch (e) {
+      final challenge = _otpChallengeFrom(e, baseUrl);
+      if (challenge != null) throw OtpRequired(challenge);
+      rethrow;
+    }
 
     final token = response.data["token"] as String;
     final userJson = response.data["user"] as Map<String, dynamic>;

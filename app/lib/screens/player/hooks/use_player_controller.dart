@@ -6,6 +6,7 @@ import '../../../utils/app_platform.dart';
 import '../web/web_playback.dart';
 import '../display_frame_rate.dart';
 import '../hardware_decoding.dart';
+import '../playback/carried_subtitle.dart';
 import '../playback/hls_retain_window.dart';
 import '../playback/live_subtitles.dart';
 import '../playback/playback_engine.dart';
@@ -329,7 +330,23 @@ class PlayerController {
         audio[_selectedAudioIndex].language);
   }
 
+  /// Le sous-titre hérité de l'épisode précédent, tant que l'utilisateur n'en
+  /// a pas choisi un autre ici. C'est lui qui passe à l'épisode suivant, et non
+  /// ce qu'on a trouvé à sa place : un épisode sans piste forcée n'affiche rien,
+  /// et le suivant doit reprendre la forcée, pas ce « rien ».
+  CarriedSubtitle? _carriedSubtitle;
+
   PlayerPlaybackPreferences exportPreferences() {
+    if (_carriedSubtitle != null) {
+      return PlayerPlaybackPreferences(
+        audioIndex: _selectedAudioIndex,
+        audioLang: _selectedAudioLang,
+        subtitle: _carriedSubtitle,
+        internalSubId: _selectedInternalSubId,
+        subtitlesOff: false,
+      );
+    }
+
     if (_subtitlesExplicitlyOff) {
       return PlayerPlaybackPreferences(
         audioIndex: _selectedAudioIndex,
@@ -352,10 +369,16 @@ class PlayerController {
       );
     }
 
+    final key = _selectedSubtitleLang ?? _canonicalLangForEmbedded(track);
+    final canonical = key == null ? null : _trackForLang(key);
     return PlayerPlaybackPreferences(
       audioIndex: _selectedAudioIndex,
       audioLang: _selectedAudioLang,
-      subtitleLang: _selectedSubtitleLang ?? _canonicalLangForEmbedded(track),
+      subtitle: canonical != null
+          ? CarriedSubtitle.of(canonical)
+          : key == null
+              ? null
+              : CarriedSubtitle.fromKey(key),
       internalSubId: _selectedInternalSubId ?? track.id,
       subtitlesOff: false,
     );
@@ -370,47 +393,25 @@ class PlayerController {
     }
 
     _subtitlesExplicitlyOff = prefs.subtitlesOff;
+    _carriedSubtitle = prefs.subtitlesOff ? null : prefs.subtitle;
+    final wanted = _carriedSubtitle;
+    final subs = mediaTracks?.subtitles ?? const <MediaSubtitleTrack>[];
     if (prefs.subtitlesOff) {
       _selectedSubtitleLang = null;
       _selectedInternalSubId = null;
+    } else if (wanted == null || subs.isEmpty) {
+      // Rien à quoi comparer : la clé telle quelle, et l'id mpv en dernier
+      // recours. Appelé une seconde fois quand la liste des pistes arrive.
+      _selectedSubtitleLang = wanted?.key;
+      _selectedInternalSubId = prefs.internalSubId;
     } else {
-      _selectedSubtitleLang = _resolveCarriedSubtitleLang(prefs.subtitleLang);
-      // The mpv id only means anything within the media it came from.
-      _selectedInternalSubId = _selectedSubtitleLang == prefs.subtitleLang
-          ? prefs.internalSubId
-          : null;
+      final match = wanted.matchIn(subs);
+      _selectedSubtitleLang = match?.lang;
+      // L'id mpv ne vaut que dans le média d'où il vient : la piste retrouvée
+      // se désigne par sa clé, qui mène à la bonne piste embarquée.
+      _selectedInternalSubId = null;
+      if (match == null) _subtitlesExplicitlyOff = true;
     }
-  }
-
-  /// Re-resolve a subtitle key carried over from another media (auto-advance to
-  /// the next episode).
-  ///
-  /// Keys are assigned in container order — `fr`, then `fr2` for a second French
-  /// track — so the same key can mean the full track in one episode and the
-  /// forced one in the next, depending on how each file was muxed. A forced
-  /// track only subtitles foreign dialogue, so inheriting it as "French" looks
-  /// exactly like subtitles being broken. Prefer a full track of the same base
-  /// language whenever the episode has one.
-  String? _resolveCarriedSubtitleLang(String? lang) {
-    if (lang == null || lang.isEmpty) return lang;
-    final subs = mediaTracks?.subtitles ?? const <MediaSubtitleTrack>[];
-    if (subs.isEmpty) return lang;
-
-    final base = lang.replaceAll(RegExp(r'\d+$'), '');
-    MediaSubtitleTrack? exact;
-    MediaSubtitleTrack? fullSameLanguage;
-    for (final s in subs) {
-      if (s.lang == lang) exact = s;
-      if (s.lang.replaceAll(RegExp(r'\d+$'), '') == base &&
-          !s.forced &&
-          fullSameLanguage == null) {
-        fullSameLanguage = s;
-      }
-    }
-
-    if (exact != null && !exact.forced) return exact.lang;
-    if (fullSameLanguage != null) return fullSameLanguage.lang;
-    return lang;
   }
 
   Timer? _deferredSubtitleExtractTimer;
@@ -1186,6 +1187,7 @@ class PlayerController {
   void _setPlaying(bool playing) {
     if (isPlaying == playing) return;
     isPlaying = playing;
+    if (playing) _reporter.reclaimProgress();
     _onPlayingChanged?.call();
   }
 
@@ -1239,6 +1241,10 @@ class PlayerController {
     if (media == null || api == null) return;
     _reporter.announceHere(mediaId: media.id, apiClient: api);
   }
+
+  /// Ce que le lecteur dit au serveur. Exposé pour la reprise entre
+  /// appareils (voir `away_from_screen.dart`), qui en règle la progression.
+  PlaybackReporter get reporter => _reporter;
 
   void _reportActivityStopped() {
     final media = _media;
@@ -1524,11 +1530,12 @@ class PlayerController {
     // Before this session's timeline begins: unreachable without a new session.
     if (absoluteSeconds < _hlsStartOffset) return false;
     // Behind what the server still keeps: those segments are gone.
-    if (absoluteSeconds < retainedFloorSeconds(
-      startOffset: _hlsStartOffset,
-      bufferedEnd: _bufferedAbsoluteSeconds(),
-      retainSeconds: _hlsRetainSeconds,
-    )) {
+    if (absoluteSeconds <
+        retainedFloorSeconds(
+          startOffset: _hlsStartOffset,
+          bufferedEnd: _bufferedAbsoluteSeconds(),
+          retainSeconds: _hlsRetainSeconds,
+        )) {
       return false;
     }
 
@@ -1775,6 +1782,7 @@ class PlayerController {
 
   Future<void> setSubtitle(String? lang) async {
     if (_media == null || _apiClient == null) return;
+    _carriedSubtitle = null;
     _selectedSubtitleLang = lang;
     _selectedInternalSubId = null;
     _subtitlesExplicitlyOff = lang == null || lang.isEmpty;
@@ -1812,6 +1820,7 @@ class PlayerController {
   /// source change.
   void selectInternalSubtitle(PlaybackTrack track) {
     final isOff = track.id == 'no';
+    _carriedSubtitle = null;
     _selectedInternalSubId = isOff ? null : track.id;
     _selectedSubtitleLang = isOff ? null : _canonicalLangForEmbedded(track);
     _subtitlesExplicitlyOff = isOff;

@@ -195,14 +195,14 @@ class DetailBackdropHeader extends StatelessWidget {
             ),
           ),
         ],
-        if (actions != null) ...[
+        if (actions != null && !compact) ...[
           const SizedBox(height: 22),
           actions!,
         ],
       ],
     );
 
-    return SizedBox(
+    final header = SizedBox(
       height: headerHeight,
       width: double.infinity,
       child: Stack(
@@ -290,6 +290,22 @@ class DetailBackdropHeader extends StatelessWidget {
           ),
         ],
       ),
+    );
+
+    if (actions == null || !compact) return header;
+    // Sur téléphone, les actions passent sous l'image plutôt que dessus : le
+    // titre, le logo, les puces et quatre lignes de synopsis remplissent déjà
+    // l'en-tête, et un bouton pleine largeur de plus le faisait remonter
+    // jusque sous le bouton retour.
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        header,
+        Padding(
+          padding: EdgeInsets.fromLTRB(pad, 4, pad, 8),
+          child: actions,
+        ),
+      ],
     );
   }
 }

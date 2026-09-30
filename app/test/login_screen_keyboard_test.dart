@@ -101,4 +101,40 @@ void main() {
     // the sign-in produced is behind it.
     expect(hasFocus(tester, 2), isFalse);
   });
+
+  // Au clavier physique (Windows, web), Entrée dans le mot de passe ne
+  // soumettait rien : il fallait aller cliquer sur « Se connecter ».
+  for (final key in [LogicalKeyboardKey.enter, LogicalKeyboardKey.numpadEnter]) {
+    testWidgets('a hardware ${key.keyLabel} in the password signs in',
+        (tester) async {
+      final apiClient = await pumpLogin(tester);
+
+      await tester.enterText(
+          find.byType(TextFormField).at(0), 'http://192.168.1.50:8080');
+      await tester.enterText(find.byType(TextFormField).at(1), 'mathis');
+      await tester.enterText(find.byType(TextFormField).at(2), 'motdepasse');
+      await tester.pump();
+
+      await tester.sendKeyEvent(key);
+      await tester.pump();
+
+      expect(apiClient.logins, ['mathis']);
+    });
+  }
+
+  testWidgets('the eye reveals the password and hides it again',
+      (tester) async {
+    await pumpLogin(tester);
+
+    bool obscured() =>
+        tester.widget<EditableText>(find.byType(EditableText).at(2)).obscureText;
+
+    expect(obscured(), isTrue);
+    await tester.tap(find.byTooltip('Afficher le mot de passe'));
+    await tester.pump();
+    expect(obscured(), isFalse);
+    await tester.tap(find.byTooltip('Masquer le mot de passe'));
+    await tester.pump();
+    expect(obscured(), isTrue);
+  });
 }

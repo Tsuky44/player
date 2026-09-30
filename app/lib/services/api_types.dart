@@ -2,6 +2,8 @@
 /// sorties de api_client.dart, qui les exporte toujours.
 library;
 
+import '../models/otp.dart';
+
 /// État du lien Emby d'un compte (GET/PUT/DELETE /api/me/emby).
 class EmbyLinkStatus {
   final bool linked;
@@ -46,6 +48,9 @@ class ServerSettings {
   /// toute la lecture, là où le journal ne coûte rien avant la fin.
   final bool playbackStatsEnabled;
 
+  /// La validation en deux étapes exigée sur ce serveur (ADR-0041).
+  final OtpPolicy otpPolicy;
+
   ServerSettings({
     required this.mediaHubUrl,
     required this.mediaHubApiKeySet,
@@ -57,6 +62,7 @@ class ServerSettings {
     required this.seriesDir,
     required this.playbackLogsEnabled,
     required this.playbackStatsEnabled,
+    this.otpPolicy = OtpPolicy.optional,
   });
 
   factory ServerSettings.fromJson(Map<String, dynamic> json) {
@@ -71,6 +77,7 @@ class ServerSettings {
       seriesDir: json['series_dir'] as String? ?? '',
       playbackLogsEnabled: json['playback_logs_enabled'] as bool? ?? true,
       playbackStatsEnabled: json['playback_stats_enabled'] as bool? ?? true,
+      otpPolicy: OtpPolicy.parse(json['otp_policy'] as String?),
     );
   }
 }

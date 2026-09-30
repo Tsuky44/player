@@ -21,6 +21,7 @@ import '../models/remote_playback.dart';
 import '../utils/app_platform.dart';
 import '../models/request_catalog_filters.dart';
 import '../models/models.dart';
+import '../models/otp.dart';
 import '../models/player_layout.dart';
 import '../models/player_layout_preset.dart';
 import 'conditional_get.dart';
@@ -39,6 +40,7 @@ part 'api/activity.dart';
 part 'api/player_layouts.dart';
 part 'api/media_shares.dart';
 part 'api/shared_link_client.dart';
+part 'api/otp.dart';
 
 class _PlaybackRequestScope {
   const _PlaybackRequestScope(this.origin, this.authorization);
@@ -53,7 +55,8 @@ class ApiClient
         _LibraryAdminEndpoints,
         _ActivityEndpoints,
         _PlayerLayoutEndpoints,
-        _MediaShareEndpoints {
+        _MediaShareEndpoints,
+        _OtpEndpoints {
   static String get _defaultBaseUrl {
     // On web the Go server serves this very bundle, so the page origin is
     // already the API root. Hardcoding a host here would turn every call into a
@@ -382,7 +385,11 @@ class ApiClient
     return access?.protect(url) ?? url;
   }
 
-  Future<PlaybackAccess> openPlaybackAccess(int mediaId) async {
+  /// [forDownload] demande un ticket d'échéance longue : sur iPhone, un
+  /// téléchargement continue écran verrouillé sans que l'app puisse le
+  /// renouveler (ADR-0040). Un serveur qui ne connaît pas `purpose` l'ignore.
+  Future<PlaybackAccess> openPlaybackAccess(int mediaId,
+      {bool forDownload = false}) async {
     if (!_configLoaded) await _loadConfig();
     final scope = _PlaybackRequestScope(baseUrl, _token);
     Options scoped(String method) => Options(
@@ -392,7 +399,11 @@ class ApiClient
     Response<dynamic> response;
     try {
       response = await _dio.request('/api/playback/tickets',
-          data: {'media_id': mediaId}, options: scoped('POST'));
+          data: {
+            'media_id': mediaId,
+            if (forDownload) 'purpose': 'download',
+          },
+          options: scoped('POST'));
     } on DioException catch (error) {
       if (error.response?.statusCode != 404 &&
           error.response?.statusCode != 405) {

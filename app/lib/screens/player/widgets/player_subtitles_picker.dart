@@ -3,6 +3,7 @@ import '../playback/playback_session.dart';
 
 import '../../../models/models.dart';
 import '../hooks/use_player_controller.dart';
+import 'extract_subtitles_button.dart';
 import 'player_settings_ui.dart';
 
 /// Subtitle track list shared by the settings sheet and the subtitles popup.
@@ -23,8 +24,6 @@ class PlayerSubtitlesPicker extends StatefulWidget {
 }
 
 class _PlayerSubtitlesPickerState extends State<PlayerSubtitlesPicker> {
-  bool _isExtractingSubtitles = false;
-
   PlayerController get _controller => widget.playerController;
 
   String _subtitleTrackName(PlaybackTrack track, int index) {
@@ -52,64 +51,9 @@ class _PlayerSubtitlesPickerState extends State<PlayerSubtitlesPicker> {
               : _buildCanonicalSubtitleList(mediaTracks.subtitles),
         ),
         if (mediaTracks.subtitles.any((s) => !s.ready))
-          Padding(
-            padding: const EdgeInsets.only(top: 6),
-            child: SizedBox(
-              width: double.infinity,
-              child: TextButton.icon(
-                onPressed: (_isExtractingSubtitles || _controller.isExtractingSubtitles)
-                    ? null
-                    : () => _forceExtractSubtitles(),
-                icon: (_isExtractingSubtitles || _controller.isExtractingSubtitles)
-                    ? const SizedBox(
-                        width: 14,
-                        height: 14,
-                        child: CircularProgressIndicator(strokeWidth: 2),
-                      )
-                    : const Icon(Icons.download_outlined, size: 16),
-                label: Text(
-                  (_isExtractingSubtitles || _controller.isExtractingSubtitles)
-                      ? 'Extraction en cours…'
-                      : 'Extraire les sous-titres',
-                  style: const TextStyle(fontSize: 12, fontFamily: 'Manrope'),
-                ),
-                style: TextButton.styleFrom(
-                  foregroundColor: const Color(0xFF0A84FF),
-                  padding: const EdgeInsets.symmetric(vertical: 10),
-                ),
-              ),
-            ),
-          ),
+          ExtractSubtitlesButton(controller: _controller),
       ],
     );
-  }
-
-  Future<void> _forceExtractSubtitles() async {
-    setState(() => _isExtractingSubtitles = true);
-    try {
-      final subs = await _controller.forceExtractSubtitles();
-      if (!mounted) return;
-      setState(() => _isExtractingSubtitles = false);
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(
-            subs.isEmpty
-                ? 'Aucun sous-titre texte trouvé dans ce fichier'
-                : '${subs.length} piste${subs.length > 1 ? 's' : ''} extraite${subs.length > 1 ? 's' : ''}',
-          ),
-          backgroundColor: subs.isEmpty ? Colors.orange.shade800 : Colors.green.shade800,
-        ),
-      );
-    } catch (e) {
-      if (!mounted) return;
-      setState(() => _isExtractingSubtitles = false);
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text('Extraction échouée : $e'),
-          backgroundColor: Colors.red.shade800,
-        ),
-      );
-    }
   }
 
   Widget _buildInternalSubtitleList() {

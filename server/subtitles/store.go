@@ -8,9 +8,14 @@ import (
 
 // Track is an external subtitle exposed to the client via /api/media/:id/tracks.
 type Track struct {
-	Lang  string `json:"lang"`
-	Name  string `json:"name"`
-	Ready bool   `json:"ready"`
+	Lang string `json:"lang"`
+	// Language is the stream's normalized language code ("fr"), without the
+	// rank suffix Lang carries ("fr2") nor the bitmap namespace ("img3"). Keys
+	// are assigned per file, so this is what lets the client find the same
+	// language again in the next episode. Empty when only the DB row is known.
+	Language string `json:"language,omitempty"`
+	Name     string `json:"name"`
+	Ready    bool   `json:"ready"`
 	// TypedIndex is the track's position among the container's subtitle streams
 	// (the N in 0:s:N), or -1 when it could not be determined. It lets the client
 	// pair an embedded track it sees in Direct Play with this canonical entry

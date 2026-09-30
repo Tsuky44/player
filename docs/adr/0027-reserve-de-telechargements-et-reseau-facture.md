@@ -135,5 +135,6 @@ n'est introduit : les entrées restent en file, qui est précisément ce qu'elle
   il demanderait un `NWPathMonitor` natif pour le seul `isExpensive`.
 - Le téléchargement s'arrête toujours quand l'app s'arrête (ADR-0010) : la réserve se remplit app
   ouverte. Un service d'arrière-plan Android reste à faire, et il vaut maintenant plus qu'avant.
+  → Fait : voir l'[ADR-0040](0040-telechargements-ecran-verrouille.md).
 - Le mode « toute la série » peut mettre plusieurs centaines de gigaoctets en file. Il est écrit
   dans les réglages qu'il est fait pour les séries qu'on emporte, pas pour toutes.

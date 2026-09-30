@@ -1,3 +1,7 @@
+import 'media_subtitle_track.dart';
+
+export 'media_subtitle_track.dart';
+
 /// Administration rights carried by an account. Mirrors the server's
 /// `models.Permissions`; hiding a section on these flags is comfort only, the
 /// real guard is the server middleware.
@@ -111,12 +115,16 @@ class User {
   /// a path to admin.
   final Permissions inviteGrants;
 
+  /// Le compte a configuré la validation en deux étapes (ADR-0041).
+  final bool otpEnabled;
+
   User({
     required this.id,
     required this.username,
     this.isOwner = false,
     this.permissions = const Permissions(),
     this.inviteGrants = const Permissions(),
+    this.otpEnabled = false,
   });
 
   factory User.fromJson(Map<String, dynamic> json) {
@@ -128,6 +136,7 @@ class User {
           Permissions.fromJson(json['permissions'] as Map<String, dynamic>?),
       inviteGrants:
           Permissions.fromJson(json['invite_grants'] as Map<String, dynamic>?),
+      otpEnabled: json['otp_enabled'] == true,
     );
   }
 
@@ -138,6 +147,7 @@ class User {
       'is_owner': isOwner,
       'permissions': permissions.toJson(),
       'invite_grants': inviteGrants.toJson(),
+      'otp_enabled': otpEnabled,
     };
   }
 }
@@ -1444,72 +1454,6 @@ class MediaAudioTrack {
     final lang = languageName(language);
     return parts.isEmpty ? lang : '$lang (${parts.join(' ')})';
   }
-}
-
-/// An external subtitle language offered by the server (sidecar file or
-/// OpenSubtitles download), addressed by its ISO-639 [lang] code.
-///
-/// MKV-embedded subtitle extraction has been abandoned: subtitles are always
-/// clean external .vtt files served by the backend and injected into the player
-/// as external tracks.
-class MediaSubtitleTrack {
-  final String lang;
-  final String name;
-  // True when a local file already exists (no download needed). When false the
-  // server will fetch it on first request, which may take a moment.
-  final bool ready;
-
-  /// True while the server has only extracted the beginning of this track. It is
-  /// usable immediately, but the complete version is still being produced and
-  /// will need re-attaching once it lands.
-  final bool partial;
-
-  /// Position among the file's subtitle streams (the N in ffmpeg's 0:s:N), or
-  /// -1 when unknown. This is what pairs an embedded track seen in Direct Play
-  /// with its canonical entry here, so the client never has to derive a language
-  /// code itself.
-  final int typedIndex;
-
-  /// True for a track that only subtitles foreign dialogue rather than the whole
-  /// film. A file commonly ships both a full and a forced track for the same
-  /// language, and picking the forced one by mistake looks like broken subtitles.
-  final bool forced;
-
-  /// True when the container flags this track as its preferred one.
-  final bool isDefault;
-
-  /// True for a bitmap track (PGS/VOBSUB). It has no .vtt: Direct Play renders it
-  /// natively, while transcoding has to paint it into the picture — which makes
-  /// it the one subtitle choice that costs a new HLS session.
-  final bool image;
-
-  MediaSubtitleTrack({
-    required this.lang,
-    required this.name,
-    this.ready = false,
-    this.partial = false,
-    this.typedIndex = -1,
-    this.forced = false,
-    this.isDefault = false,
-    this.image = false,
-  });
-
-  factory MediaSubtitleTrack.fromJson(Map<String, dynamic> json) {
-    final lang = (json['lang'] as String?) ?? '';
-    final name = (json['name'] as String?) ?? '';
-    return MediaSubtitleTrack(
-      lang: lang,
-      name: name.isNotEmpty ? name : languageName(lang),
-      ready: json['ready'] as bool? ?? false,
-      partial: json['partial'] as bool? ?? false,
-      typedIndex: (json['typed_index'] as num?)?.toInt() ?? -1,
-      forced: json['forced'] as bool? ?? false,
-      isDefault: json['default'] as bool? ?? false,
-      image: json['image'] as bool? ?? false,
-    );
-  }
-
-  String get displayName => name.isNotEmpty ? name : languageName(lang);
 }
 
 /// Primary video stream metadata (codec, pixel dimensions, dynamic range).

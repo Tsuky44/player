@@ -6,7 +6,9 @@ import '../../../models/models.dart';
 import '../../../tv/tv_mode.dart';
 import '../../../theme/app_colors.dart';
 import '../../../utils/format.dart';
+import '../../../widgets/global/media_download_button.dart';
 import '../../../widgets/global/media_poster.dart';
+import '../../../widgets/global/season_download_button.dart';
 
 const Color _kAccent = AppColors.primary;
 const Color _kPanelBg = AppColors.surface;
@@ -74,6 +76,15 @@ class _PlayerEpisodesPanelState extends State<PlayerEpisodesPanel> {
   void dispose() {
     _scrollController.dispose();
     super.dispose();
+  }
+
+  int? _selectedSeasonNumber() {
+    for (final season in widget.seasons) {
+      if (season.id == widget.selectedSeasonId) {
+        return season.effectiveSeasonNumber;
+      }
+    }
+    return widget.episodes.first.media.effectiveSeasonNumber;
   }
 
   int? _currentIndex() {
@@ -250,6 +261,12 @@ class _PlayerEpisodesPanelState extends State<PlayerEpisodesPanel> {
       );
     }
 
+    // Ce que le serveur dit de la série, relu sur ses épisodes : le lecteur
+    // n'a pas toujours son identifiant (ouvert depuis autre chose qu'une
+    // ligne d'accueil), la liste de la saison, si.
+    final showId = widget.episodes.first.showId;
+    final seasonNumber = _selectedSeasonNumber();
+
     return ListView(
       controller: _scrollController,
       padding: const EdgeInsets.fromLTRB(24, 12, 24, 24),
@@ -273,6 +290,9 @@ class _PlayerEpisodesPanelState extends State<PlayerEpisodesPanel> {
                   episode: episode,
                   isCurrent: false,
                   isNext: isNext,
+                  showTitle: widget.showTitle,
+                  showId: showId,
+                  seasonNumber: seasonNumber,
                   onTap: () => widget.onEpisodeSelected(episode),
                 );
               },
@@ -280,9 +300,19 @@ class _PlayerEpisodesPanelState extends State<PlayerEpisodesPanel> {
           ),
           const SizedBox(height: 24),
         ],
-        const _SectionLabel(
+        _SectionLabel(
           title: 'Saison en cours',
           subtitle: 'Tous les épisodes',
+          // Emporter la suite sans quitter le lecteur : sur une saison
+          // entamée, le bouton ne propose que les épisodes non vus.
+          trailing: showId == null || showId <= 0
+              ? null
+              : SeasonDownloadButton(
+                  episodes: widget.episodes,
+                  showTitle: widget.showTitle,
+                  showId: showId,
+                  seasonNumber: seasonNumber,
+                ),
         ),
         const SizedBox(height: 12),
         SizedBox(
@@ -299,6 +329,9 @@ class _PlayerEpisodesPanelState extends State<PlayerEpisodesPanel> {
                 episode: episode,
                 isCurrent: isCurrent,
                 isNext: false,
+                showTitle: widget.showTitle,
+                showId: showId,
+                seasonNumber: seasonNumber,
                 onTap: () => widget.onEpisodeSelected(episode),
               );
             },
@@ -312,11 +345,28 @@ class _PlayerEpisodesPanelState extends State<PlayerEpisodesPanel> {
 class _SectionLabel extends StatelessWidget {
   final String title;
   final String subtitle;
+  final Widget? trailing;
 
-  const _SectionLabel({required this.title, required this.subtitle});
+  const _SectionLabel({
+    required this.title,
+    required this.subtitle,
+    this.trailing,
+  });
 
   @override
   Widget build(BuildContext context) {
+    final label = _label();
+    if (trailing == null) return label;
+    return Row(
+      children: [
+        Expanded(child: label),
+        const SizedBox(width: 12),
+        trailing!,
+      ],
+    );
+  }
+
+  Widget _label() {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -345,6 +395,9 @@ class _EpisodeCard extends StatelessWidget {
   final HomeMediaItem episode;
   final bool isCurrent;
   final bool isNext;
+  final String showTitle;
+  final int? showId;
+  final int? seasonNumber;
   final VoidCallback onTap;
 
   const _EpisodeCard({
@@ -352,6 +405,9 @@ class _EpisodeCard extends StatelessWidget {
     required this.episode,
     required this.isCurrent,
     required this.isNext,
+    required this.showTitle,
+    required this.showId,
+    required this.seasonNumber,
     required this.onTap,
   });
 
@@ -445,6 +501,27 @@ class _EpisodeCard extends StatelessWidget {
                             fontSize: 11,
                             fontWeight: FontWeight.w700,
                           ),
+                        ),
+                      ),
+                    ),
+                  // Pas sur TV : un second arrêt de focus dans chaque carte
+                  // doublerait les pas de télécommande pour parcourir la
+                  // saison, et le bouton de saison au-dessus couvre le besoin.
+                  if (!TvMode.isTv)
+                    Positioned(
+                      right: 4,
+                      bottom: 4,
+                      child: DecoratedBox(
+                        decoration: BoxDecoration(
+                          color: Colors.black.withValues(alpha: 0.65),
+                          shape: BoxShape.circle,
+                        ),
+                        child: MediaDownloadButton(
+                          item: episode,
+                          showTitle: showTitle,
+                          showId: showId,
+                          seasonNumber: seasonNumber,
+                          compact: true,
                         ),
                       ),
                     ),

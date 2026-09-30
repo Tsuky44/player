@@ -94,4 +94,33 @@ void main() {
     expect(api.calls, contains('progress@950'));
     expect(api.lastFinished, isTrue);
   });
+
+  // La TV éteinte sur le lecteur, un épisode vu sur le téléphone, puis la TV
+  // rallumée et quittée : sa position périmée écrasait celle du téléphone.
+  test('une progression cédée ne s\'écrit plus en quittant', () async {
+    reporter.open(mediaId: 1, apiClient: api);
+    await reporter.suspend(mediaId: 1, apiClient: api);
+    expect(api.calls.where((c) => c.startsWith('progress@')), hasLength(1));
+
+    reporter.startHeartbeat(mediaId: 1, apiClient: api, announce: false);
+    await reporter.finish(mediaId: 1, apiClient: api);
+    reporter.cancelHeartbeat();
+    expect(api.calls.where((c) => c.startsWith('progress@')), hasLength(1));
+  });
+
+  test('relire reprend la main sur la progression', () async {
+    reporter.open(mediaId: 1, apiClient: api);
+    reporter.yieldProgress();
+    reporter.reclaimProgress();
+    await reporter.finish(mediaId: 1, apiClient: api);
+    expect(api.calls, contains('progress@120'));
+  });
+
+  test('la séance rouverte au retour à l\'écran ne coupe pas les autres',
+      () async {
+    reporter.startHeartbeat(mediaId: 1, apiClient: api, announce: false);
+    reporter.cancelHeartbeat();
+    await settle();
+    expect(api.calls, ['playing:progress@120']);
+  });
 }

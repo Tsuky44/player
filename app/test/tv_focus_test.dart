@@ -187,6 +187,66 @@ void main() {
     expect(taps, 0, reason: 'releasing a long press must not also launch it');
   });
 
+  testWidgets(
+      'the menu opened by a long OK survives the rest of the press '
+      'and picks nothing on its own', (tester) async {
+    String? picked;
+    var menuClosed = false;
+    final node = FocusNode();
+    addTearDown(node.dispose);
+
+    await tester.pumpWidget(_app(
+      child: Builder(
+        builder: (context) => TvFocusable(
+          focusNode: node,
+          onSelect: () {},
+          onContextMenu: () async {
+            picked = await showMenu<String>(
+              context: context,
+              position: const RelativeRect.fromLTRB(100, 100, 100, 100),
+              items: const [
+                PopupMenuItem(value: 'first', child: Text('Premier')),
+                PopupMenuItem(value: 'second', child: Text('Second')),
+              ],
+            );
+            menuClosed = true;
+          },
+          child: const SizedBox(width: 100, height: 100),
+        ),
+      ),
+    ));
+
+    node.requestFocus();
+    await tester.pump();
+
+    // La touche continue de se répéter après l'ouverture du menu, puis se
+    // relâche : ces évènements appartiennent encore à l'appui long.
+    await tester.sendKeyDownEvent(LogicalKeyboardKey.select);
+    await tester.sendKeyRepeatEvent(LogicalKeyboardKey.select);
+    await tester.pumpAndSettle();
+    // Sur un téléviseur, le premier élément du menu prend le focus : c'est lui
+    // que les répétitions activaient.
+    Focus.of(tester.element(find.text('Premier'))).requestFocus();
+    await tester.pump();
+    for (var i = 0; i < 5; i++) {
+      await tester.sendKeyRepeatEvent(LogicalKeyboardKey.select);
+      await tester.pump();
+    }
+    await tester.sendKeyUpEvent(LogicalKeyboardKey.select);
+    await tester.pumpAndSettle();
+
+    expect(find.text('Premier'), findsOneWidget,
+        reason: 'the held key must not close the menu it just opened');
+    expect(menuClosed, isFalse);
+    expect(picked, isNull);
+
+    // L'appui suivant, lui, appartient au menu.
+    await tester.sendKeyEvent(LogicalKeyboardKey.select);
+    await tester.pumpAndSettle();
+    expect(menuClosed, isTrue);
+    expect(picked, 'first');
+  });
+
   testWidgets('a focused card is scrolled into view', (tester) async {
     final node = FocusNode();
     final controller = ScrollController();

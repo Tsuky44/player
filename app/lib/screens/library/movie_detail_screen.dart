@@ -9,6 +9,9 @@ import '../../services/media_details_cache.dart';
 import '../../services/media_tracks_cache.dart';
 import '../../theme/app_colors.dart';
 import '../../tv/tv_mode.dart';
+import '../../utils/format.dart';
+import '../../utils/responsive.dart';
+import '../../widgets/global/detail_actions.dart';
 import '../../widgets/global/media_detail_widgets.dart';
 import '../../widgets/global/media_download_button.dart';
 import '../../widgets/global/media_technical_section.dart';
@@ -328,6 +331,10 @@ class _MovieDetailScreenState extends State<MovieDetailScreen> {
       durationSeconds: _playbackMedia.duration,
       rating: _details?.voteAverage ?? 0,
     );
+    // Le serveur réserve la correction à `manage_library` (ADR-0001) : sans
+    // ce droit, le bouton menait au bout d'une recherche TMDB pour un refus.
+    final canFixMetadata = context
+        .select<AuthProvider, bool>((a) => a.permissions.manageLibrary);
 
     return Scaffold(
       backgroundColor: AppColors.background,
@@ -340,40 +347,30 @@ class _MovieDetailScreenState extends State<MovieDetailScreen> {
               metadata: metadata,
               onBack: () => Navigator.of(context).pop(),
               loading: _loadingDetails,
-              actions: Row(
-                children: [
-                  ElevatedButton.icon(
-                    // The remote lands on Play: on a detail screen opened from
-                    // a couch there is exactly one thing anyone came for.
-                    autofocus: TvMode.isTv,
-                    onPressed: _play,
-                    icon: const Icon(Icons.play_arrow_rounded),
-                    label: Text(_hasProgress ? 'REPRENDRE' : 'LECTURE'),
-                  ),
-                  const SizedBox(width: 12),
+              actions: DetailActions(
+                playLabel: detailPlayLabel(resuming: _hasProgress),
+                onPlay: _play,
+                autofocusPlay: TvMode.isTv,
+                progress: _hasProgress ? _progress : null,
+                progressLabel: _hasProgress
+                    ? formatRemaining(_playbackMedia.duration - _currentPosition)
+                    : null,
+                secondary: [
                   WatchedActionButton(
                     isWatched: _isFinished,
                     isLoading: _loadingWatched || _loadingProgress,
                     onPressed: _toggleWatched,
+                    compact: AppLayout.isCompact(context),
                   ),
-                  const SizedBox(width: 4),
                   MediaDownloadButton(item: _playbackItem),
-                  const SizedBox(width: 4),
                   ShareMediaButton(item: _playbackItem),
-                  IconButton(
-                    onPressed: _rematch,
-                    tooltip: 'Corriger la fiche',
-                    icon: const Icon(Icons.edit_note_rounded),
-                    color: AppColors.textSecondary,
-                  ),
-                  if (_hasProgress && _progress != null) ...[
-                    const SizedBox(width: 16),
-                    Text(
-                      '${(_progress! * 100).round()}% visionné',
-                      style: const TextStyle(
-                          color: AppColors.textMuted, fontSize: 13),
+                  if (canFixMetadata)
+                    IconButton(
+                      onPressed: _rematch,
+                      tooltip: 'Corriger la fiche',
+                      icon: const Icon(Icons.edit_note_rounded),
+                      color: AppColors.textSecondary,
                     ),
-                  ],
                 ],
               ),
             ),

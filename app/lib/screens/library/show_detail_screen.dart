@@ -12,6 +12,8 @@ import '../../theme/app_colors.dart';
 import '../../tv/tv_focus.dart';
 import '../../tv/tv_mode.dart';
 import '../../utils/responsive.dart';
+import '../../utils/format.dart';
+import '../../widgets/global/detail_actions.dart';
 import '../../widgets/global/episode_tile.dart';
 import '../../widgets/global/media_detail_widgets.dart';
 import '../../widgets/global/metadata_fix_sheet.dart';
@@ -21,6 +23,7 @@ import '../player/player_screen.dart';
 import '../requests/widgets/season_selector_dialog.dart';
 import '../../navigation/search_route_observer.dart';
 import 'widgets/missing_season_banner.dart';
+import 'widgets/show_metadata_menu.dart';
 
 class ShowDetailScreen extends StatefulWidget {
   final Media show;
@@ -568,17 +571,6 @@ class _ShowDetailScreenState extends State<ShowDetailScreen> {
     }
   }
 
-  void _onMetadataMenuSelected(String value) {
-    switch (value) {
-      case 'auto':
-        _autoRedetect();
-        break;
-      case 'manual':
-        _rematch();
-        break;
-    }
-  }
-
   Media? _resolveSelectedSeason(List<Media> seasons) {
     final selected = _selectedSeason;
     if (selected == null || seasons.isEmpty) return null;
@@ -614,6 +606,10 @@ class _ShowDetailScreenState extends State<ShowDetailScreen> {
     // screen, which on opening the page is season 1 — so a show never started
     // gets a plain "watch episode 1" entry point.
     final firstEpisode = resumeEp == null ? _firstPlayable(lp.episodes) : null;
+    final playTarget = resumeEp ?? firstEpisode;
+    final resumeInProgress = resumeEp != null &&
+        resumeEp.currentPositionSeconds > 0 &&
+        !resumeEp.isFinished;
 
     final metadata = buildMetadataChips(
       type: MediaType.show,
@@ -633,65 +629,29 @@ class _ShowDetailScreenState extends State<ShowDetailScreen> {
               metadata: metadata,
               onBack: () => Navigator.of(context).pop(),
               loading: _loadingDetails,
-              actions: Row(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  if (resumeEp != null) ...[
-                    ElevatedButton.icon(
-                      // Same as on a film: the remote starts on Play.
-                      autofocus: TvMode.isTv,
-                      onPressed: () => _playEpisode(resumeEp),
-                      icon: const Icon(Icons.play_arrow_rounded),
-                      label: Text(
-                        resumeEp.currentPositionSeconds > 0 &&
-                                !resumeEp.isFinished
-                            ? 'REPRENDRE'
-                            : 'LECTURE',
+              actions: DetailActions(
+                playLabel: resumeEp != null
+                    ? detailPlayLabel(
+                        resuming: resumeInProgress,
+                        episode: resumeEp.media,
+                      )
+                    : detailPlayLabel(
+                        resuming: false,
+                        episode: firstEpisode?.media,
+                        seasonOverride: _playerSeasonNumber,
                       ),
-                    ),
-                    const SizedBox(width: 8),
-                  ] else if (firstEpisode != null) ...[
-                    ElevatedButton.icon(
-                      onPressed: () => _playEpisode(firstEpisode),
-                      icon: const Icon(Icons.play_arrow_rounded),
-                      label: const Text('REGARDER'),
-                    ),
-                    const SizedBox(width: 8),
-                  ],
-                  PopupMenuButton<String>(
-                    tooltip: 'Métadonnées série',
-                    onSelected: _onMetadataMenuSelected,
-                    icon: const Icon(
-                      Icons.edit_note_rounded,
-                      color: AppColors.textSecondary,
-                    ),
-                    color: AppColors.surfaceElevated,
-                    itemBuilder: (context) => const [
-                      PopupMenuItem(
-                        value: 'auto',
-                        child: ListTile(
-                          contentPadding: EdgeInsets.zero,
-                          leading: Icon(Icons.auto_fix_high_outlined),
-                          title: Text('Relancer la détection auto'),
-                          subtitle: Text(
-                            'À partir du dossier / fichiers locaux',
-                            style: TextStyle(fontSize: 12),
-                          ),
-                        ),
-                      ),
-                      PopupMenuItem(
-                        value: 'manual',
-                        child: ListTile(
-                          contentPadding: EdgeInsets.zero,
-                          leading: Icon(Icons.search_rounded),
-                          title: Text('Choisir sur TMDB'),
-                          subtitle: Text(
-                            'Correction manuelle de l’affiche',
-                            style: TextStyle(fontSize: 12),
-                          ),
-                        ),
-                      ),
-                    ],
+                onPlay: playTarget == null ? null : () => _playEpisode(playTarget),
+                // Même chose que sur un film : la télécommande part de Lecture.
+                autofocusPlay: TvMode.isTv,
+                progress: resumeInProgress ? resumeEp.percentWatched : null,
+                progressLabel: resumeInProgress
+                    ? formatRemaining(resumeEp.effectiveDuration -
+                        resumeEp.currentPositionSeconds)
+                    : null,
+                secondary: [
+                  ShowMetadataMenu(
+                    onRedetect: _autoRedetect,
+                    onPickOnTmdb: _rematch,
                   ),
                 ],
               ),

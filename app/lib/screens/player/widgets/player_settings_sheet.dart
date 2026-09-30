@@ -9,6 +9,7 @@ import '../../../utils/app_platform.dart';
 import '../hooks/use_episode_navigation.dart';
 import '../hooks/use_player_controller.dart';
 import 'chapters_debug_panel.dart';
+import 'direct_source_label.dart';
 import 'player_settings_ui.dart';
 import 'player_subtitles_picker.dart';
 
@@ -254,13 +255,18 @@ class _PlayerSettingsSheetState extends State<PlayerSettingsSheet> {
     // sous-titre « ~8 Mb/s » écrit ici à la main annonçait 8 pour un barreau
     // encodé à 12. Un serveur plus ancien ne renvoie rien, d'où le repli.
     final tiers = controller?.mediaTracks?.qualities ?? const <QualityTier>[];
+    final local = controller?.isLocalPlayback ?? false;
+    final direct = directSourceLabel(
+      local: local,
+      streamSubtitle: 'Lecture directe, aucune transcodation',
+    );
     final qualities = <(String, String?, IconData, String)>[
       if (!AppPlatform.isWeb)
         (
-          'Direct',
+          direct.label,
           null,
-          Icons.bolt_rounded,
-          'Lecture directe, aucune transcodation'
+          local ? Icons.download_done_rounded : Icons.bolt_rounded,
+          direct.subtitle,
         ),
       if (tiers.isEmpty)
         ...[

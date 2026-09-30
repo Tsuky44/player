@@ -576,6 +576,19 @@ var migrations = []migration{
 			`CREATE INDEX IF NOT EXISTS idx_media_shares_media_id ON media_shares(media_id);`,
 		},
 	},
+	{
+		id:   15,
+		name: "totp second factor",
+		// Voir ADR-0041 et le package otp. Un secret vide veut dire « pas de
+		// code configuré ». totp_last_step est la dernière période acceptée,
+		// pour qu'un code ne serve qu'une fois ; totp_recovery, les empreintes
+		// des codes de secours restants, séparées par des virgules.
+		stmts: []string{
+			`ALTER TABLE users ADD COLUMN totp_secret TEXT NOT NULL DEFAULT '';`,
+			`ALTER TABLE users ADD COLUMN totp_last_step INTEGER NOT NULL DEFAULT 0;`,
+			`ALTER TABLE users ADD COLUMN totp_recovery TEXT NOT NULL DEFAULT '';`,
+		},
+	},
 }
 
 // applyMigrations brings the database up to the latest schema version.

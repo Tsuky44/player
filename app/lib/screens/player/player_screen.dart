@@ -21,6 +21,7 @@ import '../../services/picture_in_picture.dart';
 import '../../services/player_presence.dart';
 import '../../services/screen_brightness_control.dart';
 import '../../services/watch_party.dart';
+import 'chrome_auto_hide.dart';
 import 'display_cutouts.dart';
 import 'video_fit.dart';
 import '../../tv/tv_focus.dart';
@@ -49,6 +50,7 @@ import 'widgets/player_info_sheet.dart';
 import 'widgets/player_episodes_panel.dart';
 import 'widgets/player_status_panels.dart';
 import 'widgets/watch_party_overlay.dart';
+import 'playback/away_from_screen.dart';
 import 'playback/live_subtitles.dart';
 import 'playback/relay_trigger.dart';
 import 'playback/remote_seek.dart';
@@ -1102,9 +1104,13 @@ class _PlayerScreenState extends State<PlayerScreen> {
     _controlsTimer = Timer(const Duration(seconds: 4), () {
       if (_isDisposing) return;
       if (!mounted) return;
-      if (_playerController.isDraggingSlider) return;
-      // A paused film keeps its chrome: there is nothing behind it to watch.
-      if (!_playerController.isPlaying) return;
+      if (!chromeMayAutoHide(
+        isPlaying: _playerController.isPlaying,
+        isDraggingSlider: _playerController.isDraggingSlider,
+        menuOpen: _openPopup != null,
+      )) {
+        return;
+      }
       // The remote has been parked on a button for the whole countdown. The
       // bar goes — but the focus has to leave with it, or the next arrow press
       // lands on a control nobody can see and the player stops answering its
@@ -1623,7 +1629,9 @@ class _PlayerScreenState extends State<PlayerScreen> {
     if (mounted) {
       homeProvider = Provider.of<HomeProvider>(context, listen: false);
       libraryProvider = Provider.of<LibraryProvider>(context, listen: false);
-      if (posSeconds > 0) {
+      // Une progression cédée à un autre appareil n'a rien à montrer ici :
+      // la rangée attend ce que le serveur dira de lui.
+      if (posSeconds > 0 && _playerController.reporter.ownsProgress) {
         homeProvider.updateContinueWatchingProgress(
           mediaId: actualMedia.id,
           positionSeconds: posSeconds,
@@ -1702,6 +1710,7 @@ class _PlayerScreenState extends State<PlayerScreen> {
     _startupWatchdog?.cancel();
     _relayTimer?.cancel();
     _handoffTimer?.cancel();
+    _awayGuard.dispose();
     _zoomHintTimer?.cancel();
     _seekHintTimer?.cancel();
     _remoteSeek.dispose();
@@ -1845,6 +1854,9 @@ class _PlayerScreenState extends State<PlayerScreen> {
         _enterControlBar();
       } else {
         _keyboardFocusNode.requestFocus();
+        // Le chrome est resté affiché tout le temps du menu (voir
+        // [chromeMayAutoHide]) : son compte à rebours repart d'ici.
+        if (_showControls) _hideControlsWithDelay();
       }
     }
 
@@ -2468,7 +2480,51 @@ class _PlayerScreenState extends State<PlayerScreen> {
     _handoffTimer?.cancel();
     _handoffTimer =
         Timer.periodic(_handoffPollInterval, (_) => _pollHandoff());
+    _awayGuard.attach();
   }
+
+  /// La TV éteinte puis rallumée sur le lecteur. Voir [PlayerAwayGuard].
+  late final PlayerAwayGuard _awayGuard = PlayerAwayGuard(
+    // Une séance « Regarder ensemble » garde ses propres règles.
+    enabled: () =>
+        TvMode.isTv && _party == null && !_isLeaving && _apiClient != null,
+    pause: () {
+      _wantsPlayback = false;
+      if (_playerController.isPlaying) _playerController.togglePlayPause();
+    },
+    closeSession: () async {
+      final api = _apiClient;
+      final mediaId = _playerController.mediaId;
+      if (api == null || mediaId == null) return;
+      await _playerController.reporter
+          .suspend(mediaId: mediaId, apiClient: api);
+    },
+    reopenSession: () {
+      final api = _apiClient;
+      final mediaId = _playerController.mediaId;
+      if (api == null || mediaId == null || _isLeaving) return;
+      _playerController.reporter
+          .startHeartbeat(mediaId: mediaId, apiClient: api, announce: false);
+    },
+    localSeconds: () => _playerController.position.inSeconds,
+    fetchProgress: () async {
+      final api = _apiClient;
+      final mediaId = _playerController.mediaId;
+      if (api == null || mediaId == null) return null;
+      return parseServerProgress(await api.getProgress(mediaId));
+    },
+    apply: (verdict) {
+      if (!mounted || _isLeaving) return;
+      switch (verdict) {
+        case StayHere():
+          break;
+        case SeekTo(:final seconds):
+          unawaited(_playerController.seekToAbsoluteSeconds(seconds));
+        case LeavePlayer():
+          unawaited(_leavePlayer());
+      }
+    },
+  );
 
   Future<void> _pollHandoff() async {
     final api = _apiClient;
@@ -2488,6 +2544,9 @@ class _PlayerScreenState extends State<PlayerScreen> {
     }
     _wantsPlayback = false;
     if (_playerController.isPlaying) _playerController.togglePlayPause();
+    // Sa position d'ici est désormais en retard : quitter le lecteur ne doit
+    // pas l'écrire par-dessus celle de l'appareil qui lit.
+    _playerController.reporter.yieldProgress();
     _safeSetState(() => _handedOffTo = handoff!.deviceName);
   }
 
@@ -2497,20 +2556,31 @@ class _PlayerScreenState extends State<PlayerScreen> {
     final api = _apiClient;
     if (api == null || _resumingHere) return;
     _safeSetState(() => _resumingHere = true);
+    AwayVerdict verdict = const StayHere();
     try {
       final handoff = await api.getPlaybackHandoff().catchError((_) => null);
       final remote = handoff?.playback;
-      if (remote != null && remote.mediaId == _playerController.mediaId) {
-        await _playerController.seekToAbsoluteSeconds(remote.positionSeconds);
+      // L'autre appareil s'est arrêté, ou lit autre chose : sa dernière
+      // position de ce média est sur le serveur, pas ici.
+      verdict = remote != null && remote.mediaId == _playerController.mediaId
+          ? SeekTo(remote.positionSeconds)
+          : await _awayGuard.reconcile();
+      if (verdict case SeekTo(:final seconds)) {
+        await _playerController.seekToAbsoluteSeconds(seconds);
       }
     } finally {
-      _playerController.announcePlaybackHere();
-      _wantsPlayback = true;
-      if (!_playerController.isPlaying) _playerController.togglePlayPause();
-      _safeSetState(() {
-        _handedOffTo = null;
-        _resumingHere = false;
-      });
+      if (verdict is LeavePlayer) {
+        _safeSetState(() => _resumingHere = false);
+        if (mounted && !_isLeaving) unawaited(_leavePlayer());
+      } else {
+        _playerController.announcePlaybackHere();
+        _wantsPlayback = true;
+        if (!_playerController.isPlaying) _playerController.togglePlayPause();
+        _safeSetState(() {
+          _handedOffTo = null;
+          _resumingHere = false;
+        });
+      }
     }
   }
 

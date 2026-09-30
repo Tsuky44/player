@@ -2,6 +2,7 @@ package subtitles
 
 import (
 	"fmt"
+	"strings"
 
 	"project-player/server/streaming"
 )
@@ -37,11 +38,12 @@ func Catalog(mediaID int, probe *streaming.ProbeResult) []Track {
 			// break the pairing with planTextSubtitles.
 			out = append(out, Track{
 				Lang:       fmt.Sprintf("img%d", s.TypedIndex),
+				Language:   code,
 				Name:       subtitleTitle(code, s),
 				Ready:      true,
 				TypedIndex: s.TypedIndex,
 				Image:      true,
-				Forced:     s.Forced,
+				Forced:     isForced(s),
 				Default:    s.Default,
 			})
 			continue
@@ -58,7 +60,8 @@ func Catalog(mediaID int, probe *streaming.ProbeResult) []Track {
 			// stream itself comes from the probe, which is the only source that
 			// knows about positions and dispositions.
 			rt.TypedIndex = s.TypedIndex
-			rt.Forced = s.Forced
+			rt.Language = code
+			rt.Forced = isForced(s)
 			rt.Default = s.Default
 			out = append(out, rt)
 			continue
@@ -68,12 +71,26 @@ func Catalog(mediaID int, probe *streaming.ProbeResult) []Track {
 		// "extraction en cours" state.
 		out = append(out, Track{
 			Lang:       key,
+			Language:   code,
 			Name:       subtitleTitle(code, s),
 			Ready:      false,
 			TypedIndex: s.TypedIndex,
-			Forced:     s.Forced,
+			Forced:     isForced(s),
 			Default:    s.Default,
 		})
 	}
 	return out
+}
+
+// isForced dit si une piste ne sous-titre que les dialogues étrangers. Le
+// drapeau du conteneur d'abord ; à défaut, le titre, parce que beaucoup de
+// fichiers n'annoncent leur piste forcée que par son nom (« French Forced »,
+// « FR Forcés »). Sans ça, le client ne distinguait pas la piste forcée de la
+// complète et, d'un épisode à l'autre, basculait de l'une à l'autre.
+func isForced(s streaming.SubtitleStreamInfo) bool {
+	if s.Forced {
+		return true
+	}
+	title := strings.ToLower(s.Title)
+	return strings.Contains(title, "forced") || strings.Contains(title, "forcé")
 }

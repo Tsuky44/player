@@ -169,7 +169,6 @@ class _TvFocusableState extends State<TvFocusable> {
   /// OK est enfoncé sur une carte qui a un menu : l'action part au relâchement,
   /// sauf si l'appui a duré assez longtemps pour devenir un appui long.
   bool _selectPending = false;
-  bool _longPressFired = false;
 
   FocusNode get _node =>
       widget.focusNode ??
@@ -255,6 +254,32 @@ class _TvFocusableState extends State<TvFocusable> {
     });
   }
 
+  /// Le reste d'un appui long appartient à l'appui long.
+  ///
+  /// Le menu s'ouvre pendant que OK est encore enfoncé : les répétitions
+  /// suivantes et le relâchement partaient vers le menu, qui se refermait
+  /// aussitôt sur Google TV et Apple TV (l'élément focalisé s'activait, ou le
+  /// relâchement non traité repartait vers la plateforme). On les consomme
+  /// avant le système de focus jusqu'au relâchement ; l'appui suivant, lui,
+  /// appartient au menu.
+  static void _swallowRestOfPress(LogicalKeyboardKey key) {
+    late final OnKeyEventCallback swallow;
+    swallow = (event) {
+      if (event.logicalKey != key) return KeyEventResult.ignored;
+      // Un nouvel appui sans relâchement vu (touche perdue pendant un
+      // changement de fenêtre) : on rend la main plutôt que d'avaler OK.
+      if (event is KeyDownEvent) {
+        FocusManager.instance.removeEarlyKeyEventHandler(swallow);
+        return KeyEventResult.ignored;
+      }
+      if (event is KeyUpEvent) {
+        FocusManager.instance.removeEarlyKeyEventHandler(swallow);
+      }
+      return KeyEventResult.handled;
+    };
+    FocusManager.instance.addEarlyKeyEventHandler(swallow);
+  }
+
   KeyEventResult _handleKey(FocusNode node, KeyEvent event) {
     if (!widget.enabled) return KeyEventResult.ignored;
 
@@ -269,20 +294,19 @@ class _TvFocusableState extends State<TvFocusable> {
           (context.getInheritedWidgetOfExactType<TvScope>()?.isTv ?? false)) {
         if (event is KeyDownEvent) {
           _selectPending = true;
-          _longPressFired = false;
           return KeyEventResult.handled;
         }
         if (event is KeyRepeatEvent) {
-          if (_selectPending && !_longPressFired) {
-            _longPressFired = true;
+          if (_selectPending) {
+            _selectPending = false;
+            _swallowRestOfPress(event.logicalKey);
             onContextMenu();
           }
           return KeyEventResult.handled;
         }
         if (event is KeyUpEvent) {
-          final fire = _selectPending && !_longPressFired;
+          final fire = _selectPending;
           _selectPending = false;
-          _longPressFired = false;
           if (!fire || onSelect == null) return KeyEventResult.ignored;
           onSelect();
           return KeyEventResult.handled;

@@ -8,6 +8,16 @@ String formatDuration(int seconds) {
   return '${m}min';
 }
 
+/// Le temps qu'il reste à regarder : « 1h 15min restantes ».
+///
+/// Un temps restant se lit d'un coup d'œil, un pourcentage demande de
+/// connaître la durée pour savoir si l'on a le temps. Null quand il ne reste
+/// rien, pour que l'appelant n'affiche pas « restantes » tout seul.
+String? formatRemaining(int remainingSeconds) {
+  final duration = formatDuration(remainingSeconds);
+  return duration.isEmpty ? null : '$duration restantes';
+}
+
 /// Formats seconds as mm:ss or hh:mm:ss for playback/chapter debug UI.
 String formatPlaybackTime(int totalSeconds) {
   if (totalSeconds < 0) totalSeconds = 0;

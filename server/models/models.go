@@ -55,6 +55,14 @@ func (p Permissions) IsAdmin() bool {
 	return p == AllPermissions()
 }
 
+// Administers dit si le compte tient au moins un droit d'administration du
+// serveur (réglages, bibliothèque, comptes) ou en est le propriétaire. C'est
+// le public de la politique de validation en deux étapes « admins »
+// (ADR-0041) : les mêmes droits que ceux des routes /api/admin.
+func (u User) Administers() bool {
+	return u.IsOwner || u.Permissions.ManageSettings || u.Permissions.ManageLibrary || u.Permissions.ManageUsers
+}
+
 // Permission names a single right, used by the RequirePermission middleware and
 // as the wire format for invitation templates.
 type Permission string
@@ -142,6 +150,9 @@ type User struct {
 	// InviteGrants is the template applied to accounts created through this
 	// user's invitation links. Meaningless unless Permissions.InviteUsers.
 	InviteGrants Permissions `json:"invite_grants"`
+	// OTPEnabled : le compte a configuré la validation en deux étapes. Le
+	// secret, lui, ne quitte jamais le serveur.
+	OTPEnabled bool `json:"otp_enabled"`
 }
 
 // Media represents any media entity (movie, show, season, episode)

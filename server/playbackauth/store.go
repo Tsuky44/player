@@ -17,6 +17,14 @@ import (
 
 const TTL = 15 * time.Minute
 
+// DownloadTTL est l'échéance d'un ticket de téléchargement. Sur iPhone, le
+// transfert continue écran verrouillé dans le processus du système, pendant que
+// l'app suspendue ne peut plus renouveler quoi que ce soit : avec l'échéance
+// d'une lecture, GuardWriter coupait le fichier au bout d'un quart d'heure. Le
+// ticket reste celui d'un seul média et d'un seul compte, et reste révocable.
+// Voir ADR-0040.
+const DownloadTTL = 6 * time.Hour
+
 var ErrDenied = errors.New("invalid or expired playback ticket")
 
 type Ticket struct {
@@ -28,6 +36,16 @@ type Ticket struct {
 	MediaID      int
 	ExpiresAt    time.Time
 	LastActivity time.Time
+	// ttl est ce qu'un renouvellement redonne : TTL pour une lecture,
+	// DownloadTTL pour un téléchargement.
+	ttl time.Duration
+}
+
+func (t Ticket) lifetime() time.Duration {
+	if t.ttl > 0 {
+		return t.ttl
+	}
+	return TTL
 }
 
 type Store struct {
@@ -47,6 +65,15 @@ func (s *Store) Issue(userID, mediaID int) (string, Ticket, error) {
 		return "", Ticket{}, ErrDenied
 	}
 	return s.issue(Ticket{UserID: userID, MediaID: mediaID}, func(t Ticket) bool { return t.UserID == userID }, 32)
+}
+
+// IssueDownload délivre un ticket d'échéance DownloadTTL, pour un
+// téléchargement hors ligne.
+func (s *Store) IssueDownload(userID, mediaID int) (string, Ticket, error) {
+	if userID <= 0 || mediaID <= 0 {
+		return "", Ticket{}, ErrDenied
+	}
+	return s.issue(Ticket{UserID: userID, MediaID: mediaID, ttl: DownloadTTL}, func(t Ticket) bool { return t.UserID == userID }, 32)
 }
 
 // issue enregistre un ticket neuf pour ticket.MediaID, tant que le store n'est
@@ -70,7 +97,7 @@ func (s *Store) issue(ticket Ticket, sameOwner func(Ticket) bool, perOwner int) 
 	if len(s.tickets) >= 4096 || count >= perOwner {
 		return "", Ticket{}, errors.New("playback ticket capacity reached")
 	}
-	ticket.ExpiresAt = now.Add(TTL)
+	ticket.ExpiresAt = now.Add(ticket.lifetime())
 	ticket.LastActivity = now
 	s.tickets[Digest(token)] = ticket
 	return token, ticket, nil
@@ -107,7 +134,7 @@ func (s *Store) Renew(token string, userID int) (Ticket, error) {
 	if !ok || userID <= 0 || ticket.UserID != userID || !now.Before(ticket.ExpiresAt) {
 		return Ticket{}, ErrDenied
 	}
-	ticket.ExpiresAt = now.Add(TTL)
+	ticket.ExpiresAt = now.Add(ticket.lifetime())
 	ticket.LastActivity = now
 	s.tickets[key] = ticket
 	s.generation.Add(1)

@@ -15,6 +15,8 @@ import '../utils/poster_url.dart';
 import 'api_client.dart';
 import 'playback_access.dart';
 import 'app_image_cache.dart';
+import 'downloads/background_media_transfer_io.dart';
+import 'downloads/media_transfer_io.dart';
 
 /// Le magasin hors ligne : ce qui a été rapatrié sur cet appareil, ce qui est
 /// en train de l'être, et ce qui en a été vu sans que le serveur le sache
@@ -48,12 +50,12 @@ import 'app_image_cache.dart';
 ///
 /// ## Reprise
 ///
-/// Le transfert est un GET `Range:` sur `/stream`, écrit en append. Une app
-/// tuée en plein téléchargement laisse donc un fichier partiel parfaitement
-/// utilisable : au démarrage suivant l'entrée repasse en file et repart à
-/// l'octet où elle s'était arrêtée. Un serveur qui ignorerait le `Range`
-/// (réponse 200 au lieu de 206) fait repartir de zéro plutôt que de produire un
-/// fichier corrompu.
+/// Le fichier sur le disque est toujours un préfixe exact de celui du serveur.
+/// Une app tuée en plein téléchargement laisse donc un fichier partiel
+/// parfaitement utilisable : au démarrage suivant l'entrée repasse en file et
+/// repart à l'octet où elle s'était arrêtée. Comment les octets arrivent est
+/// l'affaire de [MediaTransfer] — dans le processus de l'app, ou dans celui du
+/// système sur iPhone pour continuer écran verrouillé (ADR-0040).
 class DownloadManager extends ChangeNotifier {
   DownloadManager._();
 
@@ -69,6 +71,14 @@ class DownloadManager extends ChangeNotifier {
     // 8 Go ne doit pas expirer, un lien mort doit lâcher.
     receiveTimeout: const Duration(seconds: 60),
   ));
+
+  /// Sur iPhone, l'app suspendue ne fait plus rien : les octets passent par
+  /// une session d'arrière-plan du système. Ailleurs le processus continue de
+  /// tourner (un service de premier plan le garde sur Android), et le
+  /// transfert reste le sien.
+  late final MediaTransfer _transfer = AppPlatform.isIOS
+      ? BackgroundMediaTransfer(dio: _transferDio)
+      : DioMediaTransfer(_transferDio);
 
   ApiClient? _api;
   Directory? _root;
@@ -89,7 +99,7 @@ class DownloadManager extends ChangeNotifier {
 
   /// Adresse normalisée du serveur dont [_entries] tient les téléchargements.
   String _scope = '';
-  final Map<int, CancelToken> _cancelTokens = {};
+  final Map<int, TransferCancellation> _cancellations = {};
 
   /// Les fiches rapatriées, indexées par l'identifiant de la série (ou du film
   /// pour un film). Relues d'un bloc au démarrage : l'écran des
@@ -102,6 +112,10 @@ class DownloadManager extends ChangeNotifier {
 
   int? _activeMediaId;
   bool _pumping = false;
+
+  /// La file tourne, entre deux médias compris. Tant que c'est vrai, Android
+  /// garde le service de premier plan (voir `DownloadKeepAlive`).
+  bool get isTransferring => _pumping;
 
   /// « A-t-on le droit de faire passer des octets maintenant ? »
   ///
@@ -378,10 +392,10 @@ class DownloadManager extends ChangeNotifier {
 
     // Le transfert en cours est coupé net : il tire sur une adresse dont on
     // vient de changer. Il repartira à l'octet près au retour.
-    for (final token in _cancelTokens.values) {
-      token.cancel('server switched');
+    for (final cancellation in _cancellations.values) {
+      cancellation.cancel();
     }
-    _cancelTokens.clear();
+    _cancellations.clear();
     _activeMediaId = null;
 
     for (final entry in _entries.values) {
@@ -684,7 +698,7 @@ class DownloadManager extends ChangeNotifier {
   Future<void> pause(int mediaId) async {
     final entry = _entries[mediaId];
     if (entry == null || entry.isCompleted) return;
-    _cancelTokens.remove(mediaId)?.cancel('paused');
+    _cancellations.remove(mediaId)?.cancel();
     _entries[mediaId] = entry.copyWith(status: DownloadStatus.paused);
     _markDirty();
     notifyListeners();
@@ -706,7 +720,48 @@ class DownloadManager extends ChangeNotifier {
   /// position dans un média absent n'a nulle part où s'afficher. Un appel à
   /// [syncPending] est tenté avant, pour que ce qui pouvait être sauvé le soit.
   Future<void> delete(int mediaId) async {
-    _cancelTokens.remove(mediaId)?.cancel('deleted');
+    await _forget(mediaId);
+    await _saveManifest();
+    notifyListeners();
+    unawaited(_pump());
+  }
+
+  /// Supprime un lot d'un coup — une saison, une série — et renvoie le nombre
+  /// d'entrées réellement retirées.
+  ///
+  /// Même raison que [downloadAll] : [delete] en boucle sur vingt épisodes
+  /// réécrirait vingt fois le manifeste et relancerait vingt fois la file.
+  Future<int> deleteAll(Iterable<int> mediaIds) async {
+    final present = [
+      for (final id in mediaIds.toSet())
+        if (_entries.containsKey(id)) id,
+    ];
+    if (present.isEmpty) return 0;
+    for (final mediaId in present) {
+      await _forget(mediaId);
+    }
+    await _saveManifest();
+    notifyListeners();
+    unawaited(_pump());
+    return present.length;
+  }
+
+  /// Arrête tout ce qui n'est pas encore sur l'appareil pour cette série :
+  /// en cours, en file, en pause ou en échec. Ce qui est déjà complet reste.
+  /// Renvoie le nombre d'entrées retirées.
+  ///
+  /// Chaque épisode annulé est aussi refusé (voir [delete]), ce qui tient la
+  /// réserve automatique à l'écart au lieu de relancer ce qu'on vient
+  /// d'arrêter.
+  Future<int> cancelShow(int showId) => deleteAll([
+        for (final entry in _entries.values)
+          if (entry.showId == showId && !entry.isCompleted) entry.mediaId,
+      ]);
+
+  /// Retire l'entrée et son dossier, sans écrire le manifeste ni relancer la
+  /// file : c'est à l'appelant de le faire, une fois pour tout son lot.
+  Future<void> _forget(int mediaId) async {
+    _cancellations.remove(mediaId)?.cancel();
     final entry = _entries.remove(mediaId);
     // Effacer un épisode déjà vu ne dit rien de plus que « c'est vu » ; effacer
     // un épisode qu'on n'a pas regardé dit « pas celui-là », et c'est ce qui
@@ -729,9 +784,6 @@ class DownloadManager extends ChangeNotifier {
       }
     }
     if (entry != null) await _dropOrphanShowInfo(entry.infoId);
-    await _saveManifest();
-    notifyListeners();
-    unawaited(_pump());
   }
 
   /// Efface la fiche d'une série dont plus aucun épisode n'est là.
@@ -793,6 +845,7 @@ class DownloadManager extends ChangeNotifier {
       }
     } finally {
       _pumping = false;
+      notifyListeners();
       await _saveManifest();
     }
   }
@@ -836,7 +889,7 @@ class DownloadManager extends ChangeNotifier {
     }
     final target = File(p.join(dir.path, entry.fileName));
 
-    var received = await target.exists() ? await target.length() : 0;
+    final received = await target.exists() ? await target.length() : 0;
     _activeMediaId = mediaId;
     _entries[mediaId] = entry.copyWith(
       status: DownloadStatus.downloading,
@@ -849,149 +902,75 @@ class DownloadManager extends ChangeNotifier {
     // que les octets arrivent, et les pistes ne dépendent pas du transfert.
     await _fetchMetadata(api, mediaId, dir);
 
-    final cancelToken = CancelToken();
-    _cancelTokens[mediaId] = cancelToken;
+    final cancellation = TransferCancellation();
+    _cancellations[mediaId] = cancellation;
+    // Mis en pause ou supprimé pendant les métadonnées, avant que le signal
+    // existe : le transfert ne doit pas partir quand même.
+    if (_entries[mediaId]?.status != DownloadStatus.downloading) {
+      cancellation.cancel();
+    }
 
-    IOSink? sink;
     PlaybackAccess? access;
     try {
-      access = await api.openPlaybackAccess(mediaId);
-      final response = await _transferDio.get<ResponseBody>(
-        api.getStreamUrl(mediaId, access: access),
-        cancelToken: cancelToken,
-        options: Options(
-          responseType: ResponseType.stream,
-          headers: received > 0 ? {'Range': 'bytes=$received-'} : null,
-          // 416 signifie « tu as déjà tout » — une réponse à traiter, pas une
-          // exception à propager.
-          validateStatus: (code) => code != null && code < 500,
-        ),
+      access = await api.openPlaybackAccess(mediaId, forDownload: true);
+      final outcome = await _transfer.fetch(
+        url: api.getStreamUrl(mediaId, access: access),
+        target: target,
+        cancellation: cancellation,
+        onProgress: (received, total) {
+          final current = _entries[mediaId];
+          // L'entrée a disparu (suppression) ou a changé d'état (pause) : on
+          // n'écrit pas par-dessus la décision.
+          if (current == null ||
+              current.status != DownloadStatus.downloading) {
+            return;
+          }
+          _entries[mediaId] = current.copyWith(
+            bytesReceived: received,
+            bytesTotal: total > 0 ? total : current.bytesTotal,
+          );
+          _notifyThrottled();
+          _markDirty();
+        },
       );
-
-      final status = response.statusCode ?? 0;
-      if (status == 416) {
-        await _complete(mediaId, api, dir, target);
-        return true;
+      switch (outcome) {
+        case TransferCompleted():
+          await _complete(mediaId, api, dir, target);
+          return true;
+        case TransferCancelled():
+          // pause() / delete() / changement de serveur ont déjà posé l'état
+          // voulu ; reste à écrire ce qui est arrivé.
+          if (_entries.containsKey(mediaId)) {
+            _markDirty();
+            notifyListeners();
+          }
+          return true;
+        case TransferFailed(:final message):
+          _fail(mediaId, message);
+          return false;
       }
-      if (status != 200 && status != 206) {
-        throw DioException(
-          requestOptions: response.requestOptions,
-          message: 'HTTP $status',
-        );
-      }
-      if (received > 0 && status == 200) {
-        // Le serveur a ignoré le Range et renvoie le fichier entier : repartir
-        // de zéro est la seule façon de ne pas concaténer deux débuts.
-        received = 0;
-      }
-
-      // Supprimé pendant que la réponse arrivait : réécrire l'entrée ici la
-      // ferait revenir dans la liste, et le transfert continuerait pour rien.
-      final opened = _entries[mediaId];
-      if (opened == null) return true;
-
-      final total = _totalBytesOf(response, alreadyHave: received);
-      _entries[mediaId] =
-          opened.copyWith(bytesTotal: total, bytesReceived: received);
-      notifyListeners();
-
-      final out = target.openWrite(
-        mode: received > 0 ? FileMode.append : FileMode.write,
-      );
-      sink = out;
-
-      await for (final chunk in response.data!.stream) {
-        out.add(chunk);
-        received += chunk.length;
-        final current = _entries[mediaId];
-        // L'entrée a disparu (suppression) ou a changé d'état (pause) pendant
-        // le transfert : on lâche sans écrire par-dessus la décision.
-        if (current == null || current.status != DownloadStatus.downloading) {
-          await out.close();
-          sink = null;
-          return current != null;
-        }
-        _entries[mediaId] = current.copyWith(bytesReceived: received);
-        _notifyThrottled();
-        _markDirty();
-      }
-
-      await out.flush();
-      await out.close();
-      sink = null;
-
-      await _complete(mediaId, api, dir, target);
-      return true;
     } on DioException catch (e) {
-      await sink?.close();
-      final paused = CancelToken.isCancel(e);
-      final current = _entries[mediaId];
-      if (current == null) return true; // supprimé en cours de route
-      if (paused) {
-        // pause() / delete() ont déjà posé l'état voulu.
-        _entries[mediaId] = current.copyWith(bytesReceived: received);
-        _markDirty();
-        notifyListeners();
-        return true;
-      }
-      _entries[mediaId] = current.copyWith(
-        status: DownloadStatus.failed,
-        bytesReceived: received,
-        error: _humanError(e),
-      );
-      _markDirty();
-      notifyListeners();
+      _fail(mediaId, describeTransferError(e));
       return false;
     } catch (e) {
-      await sink?.close();
-      final current = _entries[mediaId];
-      if (current != null) {
-        _entries[mediaId] = current.copyWith(
-          status: DownloadStatus.failed,
-          bytesReceived: received,
-          error: redactPlaybackDiagnostic(e),
-        );
-        _markDirty();
-        notifyListeners();
-      }
+      _fail(mediaId, redactPlaybackDiagnostic(e));
       return false;
     } finally {
       await access?.close();
-      _cancelTokens.remove(mediaId);
+      if (identical(_cancellations[mediaId], cancellation)) {
+        _cancellations.remove(mediaId);
+      }
       if (_activeMediaId == mediaId) _activeMediaId = null;
     }
   }
 
-  /// Taille finale du fichier, déduite de l'en-tête qui la porte.
-  ///
-  /// En réponse partielle c'est `Content-Range: bytes a-b/total` qui la donne ;
-  /// `Content-Length` ne décrit alors que le morceau restant, d'où l'addition
-  /// avec ce qui est déjà sur le disque.
-  static int _totalBytesOf(Response<ResponseBody> response,
-      {required int alreadyHave}) {
-    final range = response.headers.value('content-range');
-    if (range != null) {
-      final slash = range.lastIndexOf('/');
-      if (slash > 0) {
-        final parsed = int.tryParse(range.substring(slash + 1).trim());
-        if (parsed != null && parsed > 0) return parsed;
-      }
-    }
-    final length = int.tryParse(response.headers.value('content-length') ?? '');
-    if (length != null && length > 0) return length + alreadyHave;
-    return 0;
-  }
-
-  static String _humanError(DioException e) {
-    switch (e.type) {
-      case DioExceptionType.connectionTimeout:
-      case DioExceptionType.connectionError:
-        return 'Serveur injoignable';
-      case DioExceptionType.receiveTimeout:
-        return 'Transfert interrompu';
-      default:
-        return e.message ?? 'Téléchargement impossible';
-    }
+  void _fail(int mediaId, String message) {
+    final current = _entries[mediaId];
+    if (current == null) return; // supprimé en cours de route
+    _entries[mediaId] =
+        current.copyWith(status: DownloadStatus.failed, error: message);
+    _markDirty();
+    notifyListeners();
   }
 
   Future<void> _complete(
@@ -1301,8 +1280,8 @@ class DownloadManager extends ChangeNotifier {
   @override
   void dispose() {
     _manifestTimer?.cancel();
-    for (final token in _cancelTokens.values) {
-      token.cancel('dispose');
+    for (final cancellation in _cancellations.values) {
+      cancellation.cancel();
     }
     super.dispose();
   }

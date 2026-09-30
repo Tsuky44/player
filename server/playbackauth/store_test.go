@@ -215,3 +215,44 @@ func TestShareTicketsAreBoundedPerLink(t *testing.T) {
 		t.Fatalf("an account was starved: %v", err)
 	}
 }
+
+// Un téléchargement iPhone continue écran verrouillé sans que l'app puisse
+// renouveler son ticket : il doit tenir des heures, et son renouvellement
+// redonner des heures, pas le quart d'heure d'une lecture.
+func TestDownloadTicketOutlivesPlaybackTTLAndRenewsToItsOwnLifetime(t *testing.T) {
+	s := NewStore()
+	now := time.Date(2026, 9, 30, 12, 0, 0, 0, time.UTC)
+	s.now = func() time.Time { return now }
+	playback, _, _ := s.Issue(1, 42)
+	download, ticket, err := s.IssueDownload(1, 42)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := ticket.ExpiresAt.Sub(now); got != DownloadTTL {
+		t.Fatalf("download ticket lifetime = %v, want %v", got, DownloadTTL)
+	}
+	now = now.Add(5 * time.Hour)
+	if _, ok := s.Validate(playback, 42); ok {
+		t.Fatal("playback ticket outlived its TTL")
+	}
+	if _, ok := s.Validate(download, 42); !ok {
+		t.Fatal("download ticket expired before DownloadTTL")
+	}
+	renewed, err := s.Renew(download, 1)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := renewed.ExpiresAt.Sub(now); got != DownloadTTL {
+		t.Fatalf("renewed download ticket lifetime = %v, want %v", got, DownloadTTL)
+	}
+	if _, ok := s.Validate(download, 43); ok {
+		t.Fatal("download ticket crossed media boundary")
+	}
+	s.Revoke(download, 1)
+	if _, ok := s.Validate(download, 42); ok {
+		t.Fatal("revoked download ticket accepted")
+	}
+	if _, _, err := s.IssueDownload(0, 42); err == nil {
+		t.Fatal("anonymous download ticket issued")
+	}
+}

@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:dio/dio.dart';
 import '../models/models.dart';
+import '../models/otp.dart';
 import '../models/server_account.dart';
 import '../services/api_client.dart';
 import '../utils/app_platform.dart';
@@ -193,10 +194,23 @@ class AuthProvider extends ChangeNotifier {
     } catch (_) {}
   }
 
+  /// La connexion en cours attend un code (ADR-0041). L'écran de connexion le
+  /// reprend avec [takeOtpChallenge] et ouvre la session par
+  /// [adoptOtpSession].
+  OtpChallenge? _otpChallenge;
+
+  /// Rend la connexion arrêtée sur un code, une seule fois.
+  OtpChallenge? takeOtpChallenge() {
+    final challenge = _otpChallenge;
+    _otpChallenge = null;
+    return challenge;
+  }
+
   // Connect user
   Future<bool> login(String serverUrl, String username, String password) async {
     _isLoading = true;
     _errorMessage = null;
+    _otpChallenge = null;
     notifyListeners();
 
     try {
@@ -211,6 +225,12 @@ class AuthProvider extends ChangeNotifier {
       _isLoading = false;
       notifyListeners();
       return true;
+    } on OtpRequired catch (e) {
+      // Le mot de passe est juste : ce n'est pas une erreur à afficher.
+      _otpChallenge = e.challenge;
+      _isLoading = false;
+      notifyListeners();
+      return false;
     } catch (e) {
       _currentUser = null;
       _isAuthenticated = false;
@@ -510,7 +530,8 @@ class AuthProvider extends ChangeNotifier {
 
   /// Ajoute un serveur sur lequel on a déjà un compte.
   ///
-  /// Rien à demander à personne : le mot de passe suffit. La session n'est pas
+  /// Rien à demander à personne : le mot de passe suffit, ou lève
+  /// [OtpRequired] quand ce serveur attend un code. La session n'est pas
   /// activée quand une autre est déjà ouverte — le carnet s'allonge, l'écran ne
   /// bouge pas.
   Future<ServerAccount> addServerWithPassword({
@@ -535,6 +556,32 @@ class AuthProvider extends ChangeNotifier {
     }
     notifyListeners();
     return apiClient.servers.accountForUrl(serverUrl)!;
+  }
+
+  /// Range au carnet une session ouverte par un code (ADR-0041).
+  ///
+  /// La même règle que [addServerWithPassword] : elle devient la session
+  /// active quand aucune n'est ouverte — c'est le cas de l'écran de
+  /// connexion — et s'ajoute sans basculer sinon.
+  Future<ServerAccount> adoptOtpSession(OtpLoginResult result) async {
+    final activate = !_isAuthenticated;
+    final account = await apiClient.rememberSession(
+      serverUrl: result.serverUrl,
+      username: result.user.username,
+      token: result.token,
+      userId: result.user.id,
+      activate: activate,
+    );
+    if (activate) {
+      _onServerChanged?.call();
+      _currentUser = result.user;
+      _isAuthenticated = true;
+      _isOfflineSession = false;
+      _errorMessage = null;
+      await apiClient.cacheProfile(result.user);
+    }
+    notifyListeners();
+    return account;
   }
 
   // ==================== DEMANDES D'ACCÈS ====================

@@ -103,6 +103,15 @@ func main() {
 	router.PUT("/api/playback/tickets", handlers.RequireAuth(handlers.UpdatePlaybackTicket))
 	router.DELETE("/api/playback/tickets", handlers.RequireAuth(handlers.UpdatePlaybackTicket))
 	router.POST("/api/auth/password", handlers.RequireAuth(handlers.ChangePassword))
+	// Validation en deux étapes (ADR-0041). otp/login est publique comme
+	// login : elle n'accepte qu'un jeton d'étape qu'un mot de passe correct a
+	// obtenu, et elle ne révèle rien d'autre que « code juste ou non ».
+	router.POST("/api/auth/otp/login", handlers.RateLimited(handlers.LoginLimiter, handlers.VerifyLoginOTP))
+	router.GET("/api/auth/otp", handlers.RequireAuth(handlers.GetOTPStatus))
+	router.POST("/api/auth/otp/setup", handlers.RequireAuth(handlers.StartOTPSetup))
+	router.POST("/api/auth/otp/enable", handlers.RequireAuth(handlers.EnableOTP))
+	router.POST("/api/auth/otp/disable", handlers.RequireAuth(handlers.DisableOTP))
+	router.POST("/api/auth/otp/recovery-codes", handlers.RequireAuth(handlers.RegenerateOTPRecoveryCodes))
 
 	// TV pairing (RFC 8628-shaped device flow). start/poll are unauthenticated
 	// because the caller is a television that has no account yet; both only ever
@@ -128,6 +137,7 @@ func main() {
 	router.GET("/api/users", handlers.RequirePermission(models.PermManageUsers, handlers.ListUsers))
 	router.PUT("/api/users/:id/permissions", handlers.RequirePermission(models.PermManageUsers, handlers.UpdateUserPermissions))
 	router.POST("/api/users/:id/password", handlers.RequirePermission(models.PermManageUsers, handlers.ResetUserPassword))
+	router.DELETE("/api/users/:id/otp", handlers.RequirePermission(models.PermManageUsers, handlers.ResetUserOTP))
 	router.DELETE("/api/users/:id", handlers.RequirePermission(models.PermManageUsers, handlers.DeleteUser))
 	// Ownership transfer is owner-only; the handler checks that itself.
 	router.POST("/api/users/:id/transfer-ownership", handlers.RequirePermission(models.PermManageUsers, handlers.TransferOwnership))

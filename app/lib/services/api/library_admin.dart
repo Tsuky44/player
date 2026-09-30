@@ -130,6 +130,7 @@ mixin _LibraryAdminEndpoints {
     String? seriesDir,
     bool? playbackLogsEnabled,
     bool? playbackStatsEnabled,
+    OtpPolicy? otpPolicy,
   }) async {
     final response = await _dio.put('/api/settings', data: {
       if (mediaHubUrl != null) 'mediahub_url': mediaHubUrl,
@@ -143,6 +144,7 @@ mixin _LibraryAdminEndpoints {
       if (playbackLogsEnabled != null) 'playback_logs_enabled': playbackLogsEnabled,
       if (playbackStatsEnabled != null)
         'playback_stats_enabled': playbackStatsEnabled,
+      if (otpPolicy != null) 'otp_policy': otpPolicy.wire,
     });
     return ServerSettings.fromJson(response.data as Map<String, dynamic>);
   }

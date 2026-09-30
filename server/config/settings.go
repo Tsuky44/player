@@ -2,12 +2,14 @@ package config
 
 import (
 	"database/sql"
+	"errors"
 	"log"
 	"os"
 	"strings"
 	"sync"
 
 	"project-player/server/database"
+	"project-player/server/otp"
 )
 
 const (
@@ -19,6 +21,7 @@ const (
 	KeySeriesDir            = "series_dir"
 	KeyPlaybackLogsEnabled  = "playback_logs_enabled"
 	KeyPlaybackStatsEnabled = "playback_stats_enabled"
+	KeyOTPPolicy            = "otp_policy"
 )
 
 var (
@@ -201,6 +204,21 @@ func PlaybackStatsEnabled() bool {
 	return true
 }
 
+// OTPPolicy est la politique de validation en deux étapes du serveur
+// (db → OTP_POLICY → facultative). Une valeur inconnue retombe sur la
+// politique par défaut plutôt que de fermer ou d'ouvrir la porte au hasard.
+func OTPPolicy() otp.Policy {
+	if v, ok := getStored(KeyOTPPolicy); ok {
+		if p, valid := otp.ParsePolicy(v); valid {
+			return p
+		}
+	}
+	if p, valid := otp.ParsePolicy(strings.TrimSpace(os.Getenv("OTP_POLICY"))); valid {
+		return p
+	}
+	return otp.DefaultPolicy
+}
+
 // PublicSettings is the safe API payload (secrets never returned in clear).
 type PublicSettings struct {
 	MediaHubURL          string `json:"mediahub_url"`
@@ -213,6 +231,7 @@ type PublicSettings struct {
 	SeriesDir            string `json:"series_dir"`
 	PlaybackLogsEnabled  bool   `json:"playback_logs_enabled"`
 	PlaybackStatsEnabled bool   `json:"playback_stats_enabled"`
+	OTPPolicy            string `json:"otp_policy"`
 }
 
 func maskSecret(secret string) string {
@@ -241,6 +260,7 @@ func Snapshot() PublicSettings {
 		SeriesDir:            SeriesDir(),
 		PlaybackLogsEnabled:  PlaybackLogsEnabled(),
 		PlaybackStatsEnabled: PlaybackStatsEnabled(),
+		OTPPolicy:            string(OTPPolicy()),
 	}
 }
 
@@ -256,10 +276,23 @@ type UpdateRequest struct {
 	SeriesDir            *string `json:"series_dir"`
 	PlaybackLogsEnabled  *bool   `json:"playback_logs_enabled"`
 	PlaybackStatsEnabled *bool   `json:"playback_stats_enabled"`
+	// OTPPolicy : une des valeurs d'otp.Policy. Le handler refuse les autres
+	// avant d'arriver ici.
+	OTPPolicy *string `json:"otp_policy"`
 }
 
 // ApplyUpdate persists partial updates and returns the new public snapshot.
 func ApplyUpdate(req UpdateRequest) (PublicSettings, error) {
+	// Refusée avant toute écriture : une requête invalide ne laisse pas la
+	// moitié de ses réglages enregistrés.
+	var policy otp.Policy
+	if req.OTPPolicy != nil {
+		var ok bool
+		if policy, ok = otp.ParsePolicy(*req.OTPPolicy); !ok {
+			return PublicSettings{}, ErrInvalidOTPPolicy
+		}
+	}
+
 	if req.MediaHubURL != nil {
 		if err := setStored(KeyMediaHubURL, strings.TrimRight(strings.TrimSpace(*req.MediaHubURL), "/")); err != nil {
 			return PublicSettings{}, err
@@ -323,5 +356,14 @@ func ApplyUpdate(req UpdateRequest) (PublicSettings, error) {
 		}
 	}
 
+	if req.OTPPolicy != nil {
+		if err := setStored(KeyOTPPolicy, string(policy)); err != nil {
+			return PublicSettings{}, err
+		}
+	}
+
 	return Snapshot(), nil
 }
+
+// ErrInvalidOTPPolicy : la politique demandée n'existe pas.
+var ErrInvalidOTPPolicy = errors.New("config: invalid otp policy")

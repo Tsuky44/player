@@ -58,18 +58,44 @@ class PlaybackReporter {
     _report(mediaId: mediaId, apiClient: apiClient, event: 'start');
   }
 
-  void startHeartbeat({required int mediaId, required ApiClient apiClient}) {
+  /// La progression de ce média appartient à un autre appareil : celui à qui
+  /// la lecture est passée, ou celui qui a pris le relais pendant que l'app
+  /// n'était plus à l'écran. Tant que ce lecteur ne relit pas, il n'écrit plus
+  /// sa position — elle est périmée, et un battement ordinaire l'emporte
+  /// toujours côté serveur (voir `progress.go`).
+  bool _yielded = false;
+
+  bool get ownsProgress => !_yielded;
+
+  /// Cède la progression jusqu'à la prochaine lecture ([reclaimProgress]).
+  void yieldProgress() => _yielded = true;
+
+  /// Le lecteur relit : ce qu'il voit redevient la position qui compte.
+  void reclaimProgress() => _yielded = false;
+
+  /// [announce] envoie un « start », qui met en pause ce même titre sur les
+  /// autres appareils du compte. Une séance rouverte au retour de l'app à
+  /// l'écran ne le fait pas : la TV qu'on rallume n'a pas à couper le
+  /// téléphone tant qu'on n'y a pas relancé la lecture.
+  void startHeartbeat({
+    required int mediaId,
+    required ApiClient apiClient,
+    bool announce = true,
+  }) {
     _heartbeat?.cancel();
     _stopped = false;
     // La séance est déjà ouverte depuis `open()` ; ce second signal ne la
     // duplique pas — le serveur reconnaît la même clé et le même média — il
     // rafraîchit la méthode de lecture, qui n'était pas encore résolue là-bas.
-    _report(mediaId: mediaId, apiClient: apiClient, event: 'start');
+    _report(
+        mediaId: mediaId,
+        apiClient: apiClient,
+        event: announce ? 'start' : 'progress');
     _heartbeat = Timer.periodic(const Duration(seconds: 15), (_) {
       // The activity signal goes out paused too: a film on pause is still
       // someone watching, and the dashboard says so.
       _report(mediaId: mediaId, apiClient: apiClient);
-      if (moment().playing) {
+      if (moment().playing && !_yielded) {
         _sendProgress(
             mediaId: mediaId, apiClient: apiClient, isFinished: false);
       }
@@ -113,6 +139,7 @@ class PlaybackReporter {
   }) async {
     cancelHeartbeat();
     _report(mediaId: mediaId, apiClient: apiClient, event: 'stop');
+    if (_yielded) return;
 
     final now = moment();
     if (now.positionSeconds > 0) {
@@ -125,6 +152,16 @@ class PlaybackReporter {
       await _sendProgress(
           mediaId: mediaId, apiClient: apiClient, isFinished: finalIsFinished);
     }
+  }
+
+  /// L'app a quitté l'écran : dernière position, fin de séance, puis la
+  /// progression est cédée à qui lira entre-temps. Voir `PlayerAwayGuard`.
+  Future<void> suspend({required int mediaId, required ApiClient apiClient}) {
+    // `finish` décide d'envoyer la position avant sa première attente : céder
+    // juste après la laisse partir une dernière fois, et plus ensuite.
+    final done = finish(mediaId: mediaId, apiClient: apiClient);
+    _yielded = true;
+    return done;
   }
 
   /// Tells the server what this player is doing, for its dashboard and

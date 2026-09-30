@@ -121,6 +121,41 @@ class _UsersSectionState extends State<UsersSection> {
     }
   }
 
+  /// Retire le code d'un compte qui a perdu son téléphone et ses codes de
+  /// secours (ADR-0041).
+  Future<void> _resetOtp(User user) async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        backgroundColor: AppColors.surface,
+        title: Text('Réinitialiser la validation en deux étapes de ${user.username} ?'),
+        content: const Text(
+          'Son mot de passe suffira à sa prochaine connexion. Si la politique '
+          'du serveur l’impose, il devra alors configurer un nouveau code.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(ctx).pop(false),
+            child: const Text('Annuler'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.of(ctx).pop(true),
+            child: const Text('Réinitialiser'),
+          ),
+        ],
+      ),
+    );
+    if (confirmed != true || !mounted) return;
+    try {
+      await context.read<ApiClient>().resetUserOtp(user.id);
+      if (!mounted) return;
+      _toast('Validation en deux étapes réinitialisée.');
+      _load();
+    } catch (e) {
+      _toast(_errorText(e), error: true);
+    }
+  }
+
   Future<void> _delete(User user) async {
     final confirmed = await showDialog<bool>(
       context: context,
@@ -235,7 +270,10 @@ class _UsersSectionState extends State<UsersSection> {
               ],
             ),
             subtitle: Text(
-              _summary(user.permissions),
+              [
+                _summary(user.permissions),
+                if (user.otpEnabled) 'Validation en deux étapes',
+              ].join(' · '),
               style: const TextStyle(color: AppColors.textSecondary),
             ),
             trailing: PopupMenuButton<String>(
@@ -245,6 +283,8 @@ class _UsersSectionState extends State<UsersSection> {
                     _editPermissions(user);
                   case 'password':
                     _resetPassword(user);
+                  case 'otp':
+                    _resetOtp(user);
                   case 'delete':
                     _delete(user);
                   case 'transfer':
@@ -262,6 +302,11 @@ class _UsersSectionState extends State<UsersSection> {
                   const PopupMenuItem(
                     value: 'password',
                     child: Text('Réinitialiser le mot de passe'),
+                  ),
+                if (user.otpEnabled && (!user.isOwner || auth.isOwner))
+                  const PopupMenuItem(
+                    value: 'otp',
+                    child: Text('Réinitialiser la validation en deux étapes'),
                   ),
                 if (auth.isOwner && !user.isOwner)
                   const PopupMenuItem(

@@ -2,11 +2,12 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
 import '../../models/models.dart';
-import '../../models/offline_download.dart';
 import '../../services/download_manager.dart';
 import '../../theme/app_colors.dart';
 import '../../utils/responsive.dart';
+import 'bulk_download_delete.dart';
 import 'metered_download_dialog.dart';
+import 'season_download_plan.dart';
 
 /// « Garder toute la saison sur l'appareil », en un geste.
 ///
@@ -39,56 +40,76 @@ class SeasonDownloadButton extends StatelessWidget {
     // compte de disponibles : il se dit en un mot ou il déborde.
     final compact = AppLayout.isCompact(context);
 
-    final downloadable = [
-      for (final episode in episodes)
-        if (episode.isAvailable && episode.media.type == MediaType.episode)
-          episode,
-    ];
-    if (downloadable.isEmpty) return const SizedBox.shrink();
-
-    final entries = <OfflineDownload?>[
-      for (final episode in downloadable) manager.entryFor(episode.media.id),
-    ];
-    final done = entries.where((e) => e?.isCompleted ?? false).length;
-    final running = entries.where((e) => e?.isActive ?? false).length;
-    final missing = downloadable.length - done - running;
+    final plan = SeasonDownloadPlan.of(episodes, manager.entryFor);
+    if (plan.isEmpty) return const SizedBox.shrink();
+    final nextBatch = plan.nextBatch;
+    final VoidCallback? addNext = nextBatch == null
+        ? null
+        : () => _downloadSeason(context, manager, nextBatch,
+            unwatchedOnly: plan.nextBatchIsUnwatched);
 
     // Tout est là : le bouton devient la sortie — c'est le seul endroit d'où
     // une saison entière se libère d'un coup.
-    if (missing == 0 && running == 0) {
+    if (plan.isComplete) {
       return TextButton.icon(
-        onPressed: () => _deleteSeason(context, manager, downloadable),
+        onPressed: () => _deleteSeason(context, manager, plan.downloadable),
         icon: const Icon(Icons.download_done_rounded, size: 18),
         label: Text(
-          compact ? 'Téléchargée' : 'Saison téléchargée · ${_labelFor(done)}',
+          compact
+              ? 'Téléchargée'
+              : 'Saison téléchargée · ${_labelFor(plan.done)}',
         ),
         style: TextButton.styleFrom(foregroundColor: AppColors.success),
       );
     }
 
-    if (running > 0) {
-      return TextButton.icon(
-        onPressed: missing == 0
-            ? null
-            : () => _downloadSeason(context, manager, downloadable),
-        icon: const SizedBox(
-          width: 14,
-          height: 14,
-          child: CircularProgressIndicator(strokeWidth: 2),
-        ),
-        label: Text('$done/${downloadable.length}'),
-        style: TextButton.styleFrom(foregroundColor: AppColors.textSecondary),
+    if (plan.running > 0) {
+      return Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          TextButton.icon(
+            onPressed: addNext,
+            icon: const SizedBox(
+              width: 14,
+              height: 14,
+              child: CircularProgressIndicator(strokeWidth: 2),
+            ),
+            label: Text('${plan.done}/${plan.requested}'),
+            style:
+                TextButton.styleFrom(foregroundColor: AppColors.textSecondary),
+          ),
+          // Une saison lancée par erreur, ou sur le mauvais réseau, se
+          // défaisait épisode par épisode depuis l'écran des téléchargements.
+          // L'arrêt porte sur toute la série : la réserve automatique a pu
+          // mettre en file la saison suivante, et elle fait partie du même
+          // geste.
+          IconButton(
+            onPressed: () => _cancelShow(context, manager),
+            tooltip: 'Annuler les téléchargements de la série',
+            icon: const Icon(Icons.close_rounded, size: 18),
+            visualDensity: VisualDensity.compact,
+            color: AppColors.textSecondary,
+          ),
+        ],
       );
     }
 
+    final String label;
+    if (plan.nextBatchIsUnwatched) {
+      label = compact
+          ? 'Non vus (${plan.unwatchedMissing})'
+          : 'Télécharger les non vus · ${_labelFor(plan.unwatchedMissing)}';
+    } else if (plan.done > 0) {
+      label = compact
+          ? 'Compléter (${plan.missing})'
+          : 'Compléter · ${_labelFor(plan.missing)}';
+    } else {
+      label = compact ? 'La saison' : 'Télécharger la saison';
+    }
     return TextButton.icon(
-      onPressed: () => _downloadSeason(context, manager, downloadable),
+      onPressed: addNext,
       icon: const Icon(Icons.download_outlined, size: 18),
-      label: Text(
-        done > 0
-            ? (compact ? 'Compléter ($missing)' : 'Compléter · ${_labelFor(missing)}')
-            : (compact ? 'La saison' : 'Télécharger la saison'),
-      ),
+      label: Text(label),
       style: TextButton.styleFrom(foregroundColor: AppColors.textSecondary),
     );
   }
@@ -99,17 +120,20 @@ class SeasonDownloadButton extends StatelessWidget {
   Future<void> _downloadSeason(
     BuildContext context,
     DownloadManager manager,
-    List<HomeMediaItem> downloadable,
-  ) async {
+    List<HomeMediaItem> candidates, {
+    bool unwatchedOnly = false,
+  }) async {
     final pending = [
-      for (final episode in downloadable)
+      for (final episode in candidates)
         if (!(manager.entryFor(episode.media.id)?.isCompleted ?? false)) episode,
     ];
     if (pending.isEmpty) return;
 
     final proceed = await confirmDownloadOnThisNetwork(
       context,
-      what: 'les ${_labelFor(pending.length)} de cette saison',
+      what: unwatchedOnly
+          ? 'les ${_labelFor(pending.length)} non vus de cette saison'
+          : 'les ${_labelFor(pending.length)} de cette saison',
     );
     if (!proceed) return;
 
@@ -122,41 +146,58 @@ class SeasonDownloadButton extends StatelessWidget {
     );
   }
 
-  Future<void> _deleteSeason(
+  Future<void> _cancelShow(
     BuildContext context,
     DownloadManager manager,
-    List<HomeMediaItem> downloadable,
   ) async {
     final messenger = ScaffoldMessenger.of(context);
     final confirmed = await showDialog<bool>(
       context: context,
       builder: (context) => AlertDialog(
         backgroundColor: AppColors.surface,
-        title: const Text('Supprimer la saison ?'),
+        title: const Text('Annuler les téléchargements ?'),
         content: Text(
-          '${_labelFor(downloadable.length)} seront effacés de cet appareil. '
-          'Ils restent disponibles sur le serveur.',
+          'Les épisodes de $showTitle pas encore sur l’appareil sont retirés '
+          'de la file. Ceux déjà téléchargés restent.',
         ),
         actions: [
           TextButton(
             onPressed: () => Navigator.of(context).pop(false),
-            child: const Text('Annuler'),
+            child: const Text('Continuer'),
           ),
           TextButton(
             onPressed: () => Navigator.of(context).pop(true),
             style: TextButton.styleFrom(foregroundColor: AppColors.error),
-            child: const Text('Supprimer'),
+            child: const Text('Tout annuler'),
           ),
         ],
       ),
     );
     if (confirmed != true) return;
 
-    for (final episode in downloadable) {
-      await manager.delete(episode.media.id);
-    }
+    final cancelled = await manager.cancelShow(showId);
+    if (cancelled == 0) return;
     messenger.showSnackBar(
-      SnackBar(content: Text('${_labelFor(downloadable.length)} supprimés')),
+      SnackBar(
+        content: Text(
+          '$cancelled téléchargement${cancelled > 1 ? 's' : ''} '
+          'annulé${cancelled > 1 ? 's' : ''}',
+        ),
+      ),
     );
   }
+
+  Future<void> _deleteSeason(
+    BuildContext context,
+    DownloadManager manager,
+    List<HomeMediaItem> downloadable,
+  ) =>
+      confirmDeleteDownloads(
+        context,
+        what: seasonNumber == null ? 'la saison' : 'la saison $seasonNumber',
+        entries: [
+          for (final episode in downloadable)
+            if (manager.entryFor(episode.media.id) case final entry?) entry,
+        ],
+      );
 }

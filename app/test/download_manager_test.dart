@@ -2,6 +2,7 @@ import 'dart:convert';
 import 'dart:io';
 
 import 'package:flutter_test/flutter_test.dart';
+import 'package:onyx/models/models.dart';
 import 'package:onyx/models/offline_chrome.dart';
 import 'package:onyx/models/offline_download.dart';
 import 'package:onyx/models/player_layout.dart';
@@ -241,6 +242,79 @@ void main() {
         'http://nas:8080');
     expect(OfflineChrome.normalizeServerUrl('  http://nas:8080//  '),
         'http://nas:8080');
+  });
+
+  test('annuler une série retire ce qui reste à rapatrier, pas ce qui est là',
+      () async {
+    final manager = DownloadManager.instance;
+    // Réseau refusé : la file se remplit sans qu'aucun octet ne parte, ce qui
+    // fige l'état « en file » que l'annulation doit défaire.
+    manager.transferGate = () => false;
+    addTearDown(() => manager.transferGate = null);
+
+    HomeMediaItem episode(int id, int showId) => HomeMediaItem(
+          media: Media(
+            id: id,
+            type: MediaType.episode,
+            title: 'Épisode $id',
+            duration: 2400,
+            seasonNumber: 2,
+            episodeNumber: id,
+            createdAt: DateTime(2026),
+          ),
+          currentPositionSeconds: 0,
+          duration: 2400,
+          isFinished: false,
+          showId: showId,
+        );
+    await manager.downloadAll([episode(11, 7), episode(12, 7), episode(21, 8)]);
+    expect(manager.entryFor(11)?.isActive, isTrue);
+
+    final cancelled = await manager.cancelShow(7);
+
+    expect(cancelled, 2);
+    expect(manager.entryFor(11), isNull);
+    expect(manager.entryFor(12), isNull);
+    // Les épisodes complets de la même série et la file d'une autre série ne
+    // sont pas concernés.
+    expect(manager.entryFor(1)?.isCompleted, isTrue);
+    expect(manager.entryFor(21)?.isActive, isTrue);
+    // Arrêté par l'utilisateur : la réserve automatique ne le relance pas.
+    expect(manager.isDeclined(11), isTrue);
+
+    await manager.delete(21);
+  });
+
+  test('supprimer une saison retire le lot, et seulement lui', () async {
+    final manager = DownloadManager.instance;
+    manager.transferGate = () => false;
+    addTearDown(() => manager.transferGate = null);
+
+    HomeMediaItem episode(int id) => HomeMediaItem(
+          media: Media(
+            id: id,
+            type: MediaType.episode,
+            title: 'Épisode $id',
+            duration: 2400,
+            seasonNumber: 3,
+            episodeNumber: id,
+            createdAt: DateTime(2026),
+          ),
+          currentPositionSeconds: 0,
+          duration: 2400,
+          isFinished: false,
+          showId: 7,
+        );
+    await manager.downloadAll([episode(31), episode(32)]);
+
+    // Un identifiant inconnu ou répété ne compte pas : le nombre renvoyé est
+    // celui que l'écran annonce.
+    final deleted = await manager.deleteAll([31, 32, 32, 999]);
+
+    expect(deleted, 2);
+    expect(manager.entryFor(31), isNull);
+    expect(manager.entryFor(32), isNull);
+    expect(manager.entryFor(1)?.isCompleted, isTrue);
   });
 
   test('le ménage des vus efface le média et son dossier', () async {

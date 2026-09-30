@@ -153,9 +153,7 @@ func Register(w http.ResponseWriter, r *http.Request, _ httprouter.Params) {
 		permissions = invitation.Grants
 	}
 
-	// Check if user already exists
-	var exists bool
-	err = database.DB.QueryRow("SELECT EXISTS(SELECT 1 FROM users WHERE username = ?)", req.Username).Scan(&exists)
+	exists, err := usernameTaken(database.DB, req.Username)
 	if err != nil {
 		log.Printf("Failed to check if user exists: %v", err)
 		writeJSONError(w, http.StatusInternalServerError, "Internal server error")
@@ -264,6 +262,9 @@ type LoginRequest struct {
 type LoginResponse struct {
 	Token string      `json:"token"`
 	User  models.User `json:"user"`
+	// RecoveryCodes : les codes de secours d'une validation en deux étapes
+	// configurée pendant cette connexion, à montrer une seule fois.
+	RecoveryCodes []string `json:"recovery_codes,omitempty"`
 }
 
 // Login handles user login (POST /api/auth/login)
@@ -276,17 +277,15 @@ func Login(w http.ResponseWriter, r *http.Request, _ httprouter.Params) {
 		return
 	}
 
-	account := strings.ToLower(strings.TrimSpace(req.Username))
+	req.Username = strings.TrimSpace(req.Username)
+	account := strings.ToLower(req.Username)
 	if accountLoginLimiter.exhausted(account) {
 		w.Header().Set("Retry-After", "30")
 		writeJSONError(w, http.StatusTooManyRequests, "Trop de tentatives sur ce compte, réessaie dans un moment")
 		return
 	}
 
-	// Find user
-	var passwordHash string
-	var userID int
-	err := database.DB.QueryRow("SELECT id, password_hash FROM users WHERE username = ?", req.Username).Scan(&userID, &passwordHash)
+	userID, passwordHash, err := findLoginAccount(req.Username)
 	if err != nil {
 		if err == sql.ErrNoRows {
 			// Même coût qu'un mauvais mot de passe : sans cette comparaison
@@ -317,7 +316,19 @@ func Login(w http.ResponseWriter, r *http.Request, _ httprouter.Params) {
 		return
 	}
 
-	// Generate secure token
+	// Le mot de passe est juste, mais la session attend peut-être un code
+	// (ADR-0041) : l'étape suivante passe alors par /api/auth/otp/login.
+	if beginLoginOTP(w, user) {
+		return
+	}
+
+	openLoginSession(w, user, nil)
+}
+
+// openLoginSession ouvre la session d'une connexion réussie et répond avec son
+// jeton. recoveryCodes n'est rempli que lorsque la connexion vient de
+// configurer la validation en deux étapes.
+func openLoginSession(w http.ResponseWriter, user models.User, recoveryCodes []string) {
 	token, err := GenerateRandomToken()
 	if err != nil {
 		log.Printf("Failed to generate token: %v", err)
@@ -325,17 +336,17 @@ func Login(w http.ResponseWriter, r *http.Request, _ httprouter.Params) {
 		return
 	}
 
-	// Store session in DB
 	if err := storeSession(database.DB, token, user.ID); err != nil {
 		log.Printf("Failed to save session token: %v", err)
 		writeJSONError(w, http.StatusInternalServerError, "Internal server error")
 		return
 	}
 
-	// Return token and user info
+	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(LoginResponse{
-		Token: token,
-		User:  user,
+		Token:         token,
+		User:          user,
+		RecoveryCodes: recoveryCodes,
 	})
 }
 
