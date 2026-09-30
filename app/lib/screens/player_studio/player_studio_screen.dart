@@ -13,6 +13,7 @@ import 'widgets/studio_preview.dart';
 import 'widgets/player_layouts_sheet.dart';
 import 'widgets/player_template_picker_sheet.dart';
 import 'widgets/fixed_chrome_preview.dart';
+import '../../theme/app_colors.dart';
 
 enum _StudioDrawerMode { layout, glass, control }
 
@@ -92,7 +93,7 @@ class _PlayerStudioScreenState extends State<PlayerStudioScreen> {
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
         content: Text('« $name » enregistré sur ton compte'),
-        backgroundColor: const Color(0xFF0A84FF),
+        backgroundColor: AppColors.accent,
       ),
     );
   }
@@ -200,7 +201,7 @@ class _PlayerStudioScreenState extends State<PlayerStudioScreen> {
     if (compact) {
       return [
         IconButton(
-          icon: const Icon(Icons.save_outlined, color: Color(0xFF0A84FF)),
+          icon: const Icon(Icons.save_outlined, color: AppColors.accent),
           tooltip: 'Enregistrer',
           onPressed: _save,
         ),
@@ -287,7 +288,7 @@ class _PlayerStudioScreenState extends State<PlayerStudioScreen> {
           icon: const Icon(Icons.save_outlined, size: 18),
           label: const Text('Enregistrer'),
           style: ElevatedButton.styleFrom(
-            backgroundColor: const Color(0xFF0A84FF),
+            backgroundColor: AppColors.accent,
             foregroundColor: Colors.white,
           ),
         ),

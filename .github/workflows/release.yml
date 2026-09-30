@@ -275,11 +275,11 @@ jobs:
   # Meme sortie que `scripts/build-ios-ipa.sh` sans --signed : le .ipa est
   # resigne a l'installation par Sideloadly ou AltStore.
   #
-  # La meme archive part aussi sur TestFlight quand la cle API App Store
-  # Connect est configuree (secrets ASC_KEY_ID, ASC_ISSUER_ID, ASC_KEY_P8). La
-  # signature se fait a l'export, par les certificats de distribution qu'Apple
-  # gere dans le cloud : aucun .p12 ni profil a renouveler dans les secrets,
-  # mais la cle doit avoir le role Admin.
+  # TestFlight : les etapes dediees ne tournent que si la cle API App Store
+  # Connect est configuree (secrets ASC_KEY_ID, ASC_ISSUER_ID, ASC_KEY_P8, voir
+  # scripts/ci/testflight-upload.sh). Sans elle, le job fait exactement ce
+  # qu'il faisait avant. Un echec d'envoi ne bloque pas la Release : l'etape
+  # apparait en echec dans l'onglet Actions et le resume du run le signale.
   build-ios:
     needs: prepare
     runs-on: macos-latest
@@ -306,12 +306,8 @@ jobs:
           # CocoaPods refuse de tourner sous une locale non UTF-8, et c'est le
           # build Flutter qui lance `pod install`.
           LANG: en_US.UTF-8
-        # `build ipa --no-codesign` s'arrete a l'archive : elle sert a la fois
-        # au .ipa de sideloading et a l'export signe pour TestFlight.
-        # run_number ne fait que croitre, ce qu'exige TestFlight pour le numero
-        # de build d'une meme version.
         run: |
-          flutter build ipa --release --no-codesign \
+          flutter build ios --release --no-codesign \
             --build-name="${{ needs.prepare.outputs.version }}" \
             --build-number="${{ github.run_number }}"
 
@@ -321,9 +317,9 @@ jobs:
           VERSION: ${{ needs.prepare.outputs.version }}
         run: |
           set -euo pipefail
-          APP_BUNDLE="app/build/ios/archive/Runner.xcarchive/Products/Applications/Runner.app"
+          APP_BUNDLE="app/build/ios/iphoneos/Runner.app"
           if [ ! -d "$APP_BUNDLE" ]; then
-            echo "::error::Runner.app introuvable dans app/build/ios/archive/"
+            echo "::error::Runner.app introuvable dans app/build/ios/iphoneos/"
             exit 1
           fi
 
@@ -347,54 +343,41 @@ jobs:
           retention-days: 7
           if-no-files-found: error
 
-      # Un echec d'envoi ne bloque pas la Release : l'etape apparait en echec
-      # dans l'onglet Actions et le resume du run le signale.
-      - name: Envoyer sur TestFlight
+      # TestFlight veut une archive Xcode, pas un .app. Elle reste non signee :
+      # la signature se fait a l'export. run_number ne fait que croitre, ce
+      # qu'exige TestFlight pour les builds d'une meme version.
+      - name: Archiver pour TestFlight
+        id: ios-archive
         if: env.ASC_KEY_ID != ''
         continue-on-error: true
         working-directory: app
+        env:
+          LANG: en_US.UTF-8
         run: |
-          set -euo pipefail
-          KEY_PATH="$RUNNER_TEMP/AuthKey_${ASC_KEY_ID}.p8"
-          printf '%s' "$ASC_KEY_P8" > "$KEY_PATH"
+          flutter build ipa --release --no-codesign \
+            --build-name="${{ needs.prepare.outputs.version }}" \
+            --build-number="${{ github.run_number }}"
 
-          # destination=upload : xcodebuild signe et envoie a App Store Connect
-          # en une passe. L'equipe est celle du projet (DEVELOPMENT_TEAM).
-          PLIST="$RUNNER_TEMP/ExportOptions.plist"
-          printf '%s\n' \
-            '<?xml version="1.0" encoding="UTF-8"?>' \
-            '<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">' \
-            '<plist version="1.0"><dict>' \
-            '<key>method</key><string>app-store-connect</string>' \
-            '<key>destination</key><string>upload</string>' \
-            '<key>teamID</key><string>J399YTMT5R</string>' \
-            '<key>signingStyle</key><string>automatic</string>' \
-            '<key>uploadSymbols</key><true/>' \
-            '<key>manageAppVersionAndBuildNumber</key><false/>' \
-            '</dict></plist>' > "$PLIST"
-
-          if xcodebuild -exportArchive \
-              -archivePath build/ios/archive/Runner.xcarchive \
-              -exportOptionsPlist "$PLIST" \
-              -exportPath "$RUNNER_TEMP/testflight" \
-              -allowProvisioningUpdates \
-              -authenticationKeyPath "$KEY_PATH" \
-              -authenticationKeyID "$ASC_KEY_ID" \
-              -authenticationKeyIssuerID "$ASC_ISSUER_ID"; then
-            echo "TestFlight : build ${{ github.run_number }} envoye, disponible apres le traitement Apple (10 a 30 min)." >> "$GITHUB_STEP_SUMMARY"
+      - name: Envoyer sur TestFlight
+        if: env.ASC_KEY_ID != '' && steps.ios-archive.outcome == 'success'
+        continue-on-error: true
+        run: |
+          if bash scripts/ci/testflight-upload.sh app/build/ios/archive/Runner.xcarchive; then
+            echo "TestFlight iOS : build ${{ github.run_number }} envoye, disponible apres le traitement Apple (10 a 30 min)." >> "$GITHUB_STEP_SUMMARY"
           else
-            echo "::error::Envoi TestFlight en echec, voir le log de l'etape."
-            echo "TestFlight : envoi en ECHEC." >> "$GITHUB_STEP_SUMMARY"
+            echo "::error::Envoi TestFlight iOS en echec, voir le log de l'etape."
+            echo "TestFlight iOS : envoi en ECHEC." >> "$GITHUB_STEP_SUMMARY"
             exit 1
           fi
 
   # ---------------------------------------------------------------------------
-  # Apple TV (tvOS) — IPA non signe
+  # Apple TV (tvOS) — IPA non signe + TestFlight
   # ---------------------------------------------------------------------------
   # Flutter ne cible pas tvOS : le build passe par flutter-tvos (ADR-0028), qui
   # apporte son propre moteur et son propre Flutter, epingle sur la meme ligne
   # 3.44 que le reste. Meme sortie que `scripts/build-tvos-ipa.sh` sans
-  # --signed.
+  # --signed. TestFlight : memes conditions que pour iOS ; l'app tvOS partage
+  # le bundle ID de l'iPhone, donc la meme fiche App Store Connect.
   #
   # continue-on-error : cette cible s'appuie sur un outillage communautaire. Un
   # echec ici ne doit pas priver les autres plateformes de leur publication —
@@ -405,6 +388,9 @@ jobs:
     continue-on-error: true
     env:
       FLUTTER_TVOS_VERSION: v3.44.9-tvos.1.5.1
+      ASC_KEY_ID: ${{ secrets.ASC_KEY_ID }}
+      ASC_ISSUER_ID: ${{ secrets.ASC_ISSUER_ID }}
+      ASC_KEY_P8: ${{ secrets.ASC_KEY_P8 }}
     steps:
       - uses: actions/checkout@v4
 
@@ -481,6 +467,37 @@ jobs:
           path: out/*.ipa
           retention-days: 7
           if-no-files-found: error
+
+      # flutter-tvos ne sait pas archiver : on archive le projet Xcode que son
+      # build vient de preparer (Generated.xcconfig porte deja version et
+      # numero de build), toujours sans signature, par le meme xcconfig.
+      - name: Archiver pour TestFlight
+        id: tvos-archive
+        if: env.ASC_KEY_ID != ''
+        continue-on-error: true
+        working-directory: app/tvos
+        env:
+          LANG: en_US.UTF-8
+          XCODE_XCCONFIG_FILE: ${{ runner.temp }}/no-codesign.xcconfig
+        run: |
+          xcodebuild archive \
+            -workspace Runner.xcworkspace \
+            -scheme Runner \
+            -configuration Release \
+            -destination 'generic/platform=tvOS' \
+            -archivePath ../build/tvos/archive/Runner.xcarchive
+
+      - name: Envoyer sur TestFlight
+        if: env.ASC_KEY_ID != '' && steps.tvos-archive.outcome == 'success'
+        continue-on-error: true
+        run: |
+          if bash scripts/ci/testflight-upload.sh app/build/tvos/archive/Runner.xcarchive; then
+            echo "TestFlight Apple TV : build ${{ github.run_number }} envoye, disponible apres le traitement Apple (10 a 30 min)." >> "$GITHUB_STEP_SUMMARY"
+          else
+            echo "::error::Envoi TestFlight Apple TV en echec, voir le log de l'etape."
+            echo "TestFlight Apple TV : envoi en ECHEC." >> "$GITHUB_STEP_SUMMARY"
+            exit 1
+          fi
 
   # ---------------------------------------------------------------------------
   # Windows — EXE (installeur Inno Setup) + ZIP portable

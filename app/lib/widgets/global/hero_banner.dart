@@ -2,13 +2,16 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../../models/models.dart';
 import '../../services/api_client.dart';
+import '../../services/media_details_cache.dart';
 import '../../theme/app_colors.dart';
+import '../../theme/app_motion.dart';
 import '../../utils/format.dart';
 import '../../utils/poster_url.dart';
 import '../../tv/tv_mode.dart';
 import 'app_network_image.dart';
+import 'media_logo_display.dart';
 
-class HeroBanner extends StatelessWidget {
+class HeroBanner extends StatefulWidget {
   final Media media;
   final String? subtitle;
   final String? titleOverride;
@@ -17,12 +20,10 @@ class HeroBanner extends StatelessWidget {
   final VoidCallback onPlay;
   final VoidCallback? onInfo;
 
-  /// Where the remote lands when the home screen opens on a television.
-  ///
-  /// Something has to hold the focus on a screen with no pointer, and the play
-  /// button of the banner already filling the screen is the one control the
-  /// user is looking at. The alternative — the first poster of a row further
-  /// down — scrolls the page to it before the user has seen the page.
+  /// Le média dont on lit la fiche TMDB pour l'image de fond et le logo : la
+  /// série pour un épisode, le média lui-même sinon.
+  final int? detailsMediaId;
+
   final bool autofocusPlay;
 
   const HeroBanner({
@@ -31,17 +32,13 @@ class HeroBanner extends StatelessWidget {
     this.subtitle,
     this.titleOverride,
     this.backgroundUrlOverride,
-    this.playLabel = 'LECTURE',
+    this.playLabel = 'Lecture',
     required this.onPlay,
     this.onInfo,
+    this.detailsMediaId,
     this.autofocusPlay = false,
   });
 
-  /// The banner's height, shared with [HeroCarousel] so the pages and the
-  /// carousel agree.
-  ///
-  /// Shorter on a television: the rows are what a remote browses, and a
-  /// banner over two thirds of the screen left one row in view.
   static double heightFor(BuildContext context) {
     final size = MediaQuery.sizeOf(context);
     final fraction = TvScope.of(context)
@@ -53,16 +50,92 @@ class HeroBanner extends StatelessWidget {
   }
 
   @override
+  State<HeroBanner> createState() => _HeroBannerState();
+}
+
+class _HeroBannerState extends State<HeroBanner> {
+  MediaDetails? _details;
+  bool _detailsSettled = false;
+
+  int get _detailsId => widget.detailsMediaId ?? widget.media.id;
+
+  @override
+  void initState() {
+    super.initState();
+    _resolveDetails();
+  }
+
+  @override
+  void didUpdateWidget(covariant HeroBanner oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.detailsMediaId != widget.detailsMediaId ||
+        oldWidget.media.id != widget.media.id) {
+      _resolveDetails();
+    }
+  }
+
+  /// La fiche TMDB porte l'image de fond en paysage et le logo du titre. Le
+  /// bandeau étirait jusqu'ici l'affiche — un portrait 2:3 recadré en 16:9,
+  /// agrandi jusqu'au flou, visages coupés — sous un titre en texte brut.
+  void _resolveDetails() {
+    final id = _detailsId;
+    _details = MediaDetailsCache.peek(id);
+    _detailsSettled = _details != null || id <= 0;
+    if (_detailsSettled) return;
+    final api = Provider.of<ApiClient>(context, listen: false);
+    MediaDetailsCache.load(api, id).then((details) {
+      if (!mounted || id != _detailsId) return;
+      setState(() {
+        _details = details;
+        _detailsSettled = true;
+      });
+    }, onError: (_) {
+      if (!mounted || id != _detailsId) return;
+      setState(() => _detailsSettled = true);
+    });
+  }
+
+  String? _backgroundUrl(String baseUrl) {
+    final media = widget.media;
+    // Un épisode a déjà son image en paysage : l'arrêt sur image de
+    // l'épisode, plus parlant que le fond générique de la série.
+    if (media.type == MediaType.episode &&
+        widget.backgroundUrlOverride != null) {
+      return widget.backgroundUrlOverride;
+    }
+    final backdrop = _details?.backdropUrl;
+    if (backdrop != null && backdrop.isNotEmpty) {
+      return backdropImageUrl(backdrop, serverBaseUrl: baseUrl);
+    }
+    // Tant que la fiche n'a pas répondu, rien plutôt que l'affiche : elle
+    // serait remplacée une demi-seconde plus tard par une autre image.
+    if (!_detailsSettled) return null;
+    return widget.backgroundUrlOverride ??
+        resolveHeroImageUrl(media.posterUrl, serverBaseUrl: baseUrl);
+  }
+
+  @override
   Widget build(BuildContext context) {
     final apiClient = Provider.of<ApiClient>(context, listen: false);
-    final posterUrl = backgroundUrlOverride ??
-        resolveHeroImageUrl(media.posterUrl, serverBaseUrl: apiClient.baseUrl);
-    final title = titleOverride ?? media.title;
+    final media = widget.media;
+    final backgroundUrl = _backgroundUrl(apiClient.baseUrl);
+    final title = widget.titleOverride ?? media.title;
     final year = extractYear(media.releaseDate);
+    final meta = [
+      if (year != null) year,
+      if (widget.subtitle != null && widget.subtitle!.isNotEmpty)
+        widget.subtitle!,
+    ];
     final screenWidth = MediaQuery.sizeOf(context).width;
     final isCompact = screenWidth < 600;
     final horizontalPadding = isCompact ? 16.0 : 48.0;
     final bannerHeight = HeroBanner.heightFor(context);
+    final detailsOverview = _details?.overview;
+    final overview = media.type != MediaType.episode &&
+            detailsOverview != null &&
+            detailsOverview.isNotEmpty
+        ? detailsOverview
+        : media.overview;
 
     return SizedBox(
       height: bannerHeight,
@@ -70,127 +143,143 @@ class HeroBanner extends StatelessWidget {
       child: Stack(
         fit: StackFit.expand,
         children: [
-          AppNetworkImage(
-            url: posterUrl,
-            fit: BoxFit.cover,
-            alignment: Alignment.topCenter,
-            filterQuality: FilterQuality.high,
-            // Logical width — AppNetworkImage applies the device pixel ratio.
-            decodeWidth: screenWidth,
-            fadeInDuration: const Duration(milliseconds: 220),
-            placeholder: const ColoredBox(color: AppColors.surfaceElevated),
-            errorWidget: const ColoredBox(color: AppColors.surfaceElevated),
-          ),
-
-          // Gradients
-          DecoratedBox(
-            decoration: BoxDecoration(
-              gradient: LinearGradient(
-                begin: Alignment.topCenter,
-                end: Alignment.bottomCenter,
-                colors: [
-                  Colors.black.withValues(alpha: 0.2),
-                  Colors.black.withValues(alpha: 0.5),
-                  AppColors.background,
-                ],
-                stops: const [0.0, 0.55, 1.0],
-              ),
+          const ColoredBox(color: AppColors.background),
+          if (backgroundUrl != null)
+            AppNetworkImage(
+              url: backgroundUrl,
+              fit: BoxFit.cover,
+              alignment: Alignment.topCenter,
+              filterQuality: FilterQuality.high,
+              // Logical width — AppNetworkImage applies the device pixel ratio.
+              decodeWidth: screenWidth,
+              fadeInDuration: AppMotion.emphasis,
+              placeholder: const ColoredBox(color: AppColors.background),
+              errorWidget: const ColoredBox(color: AppColors.background),
             ),
-          ),
+
+          // Le voile latéral d'abord, le vertical ensuite, et tous deux vers
+          // la couleur de la page : peint en noir pur par-dessus le fondu
+          // vertical, le voile latéral laissait une marche visible entre le
+          // bas du bandeau et la première rangée.
           DecoratedBox(
             decoration: BoxDecoration(
               gradient: LinearGradient(
                 begin: Alignment.centerLeft,
                 end: Alignment.centerRight,
                 colors: [
-                  Colors.black.withValues(alpha: 0.85),
-                  Colors.black.withValues(alpha: 0.3),
-                  Colors.transparent,
+                  AppColors.background
+                      .withValues(alpha: isCompact ? 0.55 : 0.9),
+                  AppColors.background
+                      .withValues(alpha: isCompact ? 0.2 : 0.45),
+                  AppColors.background.withValues(alpha: 0),
                 ],
-                stops: const [0.0, 0.35, 0.7],
+                stops: const [0.0, 0.4, 0.75],
+              ),
+            ),
+          ),
+          DecoratedBox(
+            decoration: BoxDecoration(
+              gradient: LinearGradient(
+                begin: Alignment.topCenter,
+                end: Alignment.bottomCenter,
+                colors: [
+                  // Un voile en haut, pour que l'en-tête reste lisible sur un
+                  // fond clair.
+                  AppColors.background.withValues(alpha: 0.45),
+                  AppColors.background.withValues(alpha: 0),
+                  AppColors.background.withValues(alpha: 0.35),
+                  AppColors.background,
+                ],
+                stops: const [0.0, 0.25, 0.6, 1.0],
               ),
             ),
           ),
 
-          // Content
           Positioned(
             left: horizontalPadding,
             right: horizontalPadding,
-            bottom: isCompact ? 48 : 80,
-            child: ConstrainedBox(
-              constraints: BoxConstraints(maxWidth: isCompact ? double.infinity : 560),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  Text(
-                    mediaTypeLabel(media.type),
-                    style: const TextStyle(
-                      color: AppColors.accentMuted,
-                      fontWeight: FontWeight.w600,
-                      fontSize: 13,
-                      letterSpacing: 0.2,
-                    ),
-                  ),
-                  const SizedBox(height: 8),
-                  Text(
-                    title,
-                    style: Theme.of(context).textTheme.displaySmall?.copyWith(
-                          fontWeight: FontWeight.w700,
-                          fontSize: isCompact ? 28 : 42,
-                          height: 1.05,
-                          letterSpacing: -0.8,
-                          shadows: [
-                            Shadow(
-                              color: Colors.black.withValues(alpha: 0.8),
-                              blurRadius: 16,
-                            ),
-                          ],
-                        ),
-                  ),
-                  if (year != null || subtitle != null) ...[
-                    const SizedBox(height: 8),
+            bottom: isCompact ? 52 : 84,
+            // L'Align relâche la largeur imposée par le Positioned : sans lui,
+            // la limite de 560 px était ignorée et le synopsis courait sur toute
+            // la largeur de l'écran.
+            child: Align(
+              alignment: Alignment.bottomLeft,
+              child: ConstrainedBox(
+                constraints:
+                    BoxConstraints(maxWidth: isCompact ? double.infinity : 560),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
                     Text(
-                      [if (year != null) year, if (subtitle != null) subtitle]
-                          .join(' · '),
+                      mediaTypeLabel(media.type).toUpperCase(),
                       style: const TextStyle(
                         color: AppColors.textSecondary,
-                        fontSize: 15,
-                        fontWeight: FontWeight.w500,
+                        fontWeight: FontWeight.w600,
+                        fontSize: 11,
+                        letterSpacing: 1.6,
                       ),
                     ),
-                  ],
-                  if (media.overview != null && media.overview!.isNotEmpty) ...[
-                    const SizedBox(height: 16),
-                    Text(
-                      media.overview!,
-                      maxLines: 3,
-                      overflow: TextOverflow.ellipsis,
-                      style: const TextStyle(
-                        color: AppColors.textSecondary,
-                        fontSize: 15,
-                        height: 1.5,
-                      ),
+                    const SizedBox(height: 12),
+                    MediaLogoDisplay(
+                      title: title,
+                      logoUrl: logoImageUrl(_details?.logoUrl,
+                          serverBaseUrl: apiClient.baseUrl),
+                      maxHeight: isCompact ? 72 : 128,
+                      maxWidth: isCompact ? screenWidth * 0.8 : 560,
+                      textStyle:
+                          Theme.of(context).textTheme.displaySmall?.copyWith(
+                                fontWeight: FontWeight.w700,
+                                fontSize: isCompact ? 30 : 44,
+                                height: 1.05,
+                                letterSpacing: isCompact ? -0.6 : -1.0,
+                              ),
                     ),
-                  ],
-                  const SizedBox(height: 24),
-                  Wrap(
-                    spacing: 12,
-                    runSpacing: 12,
-                    children: [
-                      _PlayButton(
-                        label: playLabel,
-                        onPressed: onPlay,
-                        autofocus: autofocusPlay,
-                      ),
-                      if (onInfo != null)
-                        _InfoButton(
-                          onPressed: onInfo!,
-                          compact: isCompact,
+                    if (meta.isNotEmpty) ...[
+                      const SizedBox(height: 12),
+                      Text(
+                        meta.join('  ·  '),
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: const TextStyle(
+                          color: AppColors.textSecondary,
+                          fontSize: 14,
+                          fontWeight: FontWeight.w500,
                         ),
+                      ),
                     ],
-                  ),
-                ],
+                    if (overview != null && overview.isNotEmpty) ...[
+                      const SizedBox(height: 12),
+                      Text(
+                        overview,
+                        maxLines: isCompact ? 2 : 3,
+                        overflow: TextOverflow.ellipsis,
+                        style: const TextStyle(
+                          color: AppColors.textSecondary,
+                          fontSize: 15,
+                          height: 1.5,
+                        ),
+                      ),
+                    ],
+                    const SizedBox(height: 24),
+                    Wrap(
+                      spacing: 12,
+                      runSpacing: 12,
+                      children: [
+                        _PlayButton(
+                          label: widget.playLabel,
+                          onPressed: widget.onPlay,
+                          autofocus: widget.autofocusPlay,
+                        ),
+                        if (widget.onInfo != null)
+                          _InfoButton(
+                            onPressed: widget.onInfo!,
+                            compact: isCompact,
+                          ),
+                      ],
+                    ),
+                  ],
+                ),
               ),
             ),
           ),
@@ -237,7 +326,7 @@ class _InfoButton extends StatelessWidget {
     return OutlinedButton.icon(
       onPressed: onPressed,
       icon: const Icon(Icons.info_outline_rounded, size: 22),
-      label: Text(compact ? 'INFOS' : 'PLUS D\'INFOS'),
+      label: Text(compact ? 'Infos' : 'Plus d’infos'),
       style: OutlinedButton.styleFrom(
         backgroundColor: Colors.white.withValues(alpha: 0.15),
         side: BorderSide.none,
@@ -245,183 +334,6 @@ class _InfoButton extends StatelessWidget {
         padding: EdgeInsets.symmetric(
           horizontal: compact ? 16 : 24,
           vertical: 14,
-        ),
-      ),
-    );
-  }
-}
-
-class DetailHero extends StatelessWidget {
-  final Media media;
-  final Widget? actions;
-  final List<Widget>? metadata;
-
-  const DetailHero({
-    super.key,
-    required this.media,
-    this.actions,
-    this.metadata,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    final apiClient = Provider.of<ApiClient>(context, listen: false);
-    final baseUrl = apiClient.baseUrl;
-    // The blurred background and the sharp poster are the same artwork. Asking
-    // for the same normalised URL means one download and one decode for both.
-    final posterUrl = detailPosterUrl(media.posterUrl, serverBaseUrl: baseUrl);
-    const heroHeight = 480.0;
-
-    return SizedBox(
-      height: heroHeight,
-      width: double.infinity,
-      child: Stack(
-        fit: StackFit.expand,
-        children: [
-          AppNetworkImage(
-            url: posterUrl,
-            fit: BoxFit.cover,
-            alignment: Alignment.topCenter,
-            decodeWidth: MediaQuery.sizeOf(context).width,
-            placeholder: const ColoredBox(color: AppColors.surfaceElevated),
-            errorWidget: const ColoredBox(color: AppColors.surfaceElevated),
-          ),
-
-          DecoratedBox(
-            decoration: BoxDecoration(
-              gradient: LinearGradient(
-                begin: Alignment.topCenter,
-                end: Alignment.bottomCenter,
-                colors: [
-                  Colors.black.withValues(alpha: 0.3),
-                  AppColors.background,
-                ],
-              ),
-            ),
-          ),
-          DecoratedBox(
-            decoration: BoxDecoration(
-              gradient: LinearGradient(
-                begin: Alignment.centerLeft,
-                end: Alignment.centerRight,
-                colors: [
-                  AppColors.background.withValues(alpha: 0.95),
-                  AppColors.background.withValues(alpha: 0.4),
-                  Colors.transparent,
-                ],
-                stops: const [0.0, 0.45, 0.8],
-              ),
-            ),
-          ),
-
-          Positioned(
-            left: 48,
-            right: 48,
-            bottom: 32,
-            child: Row(
-              crossAxisAlignment: CrossAxisAlignment.end,
-              children: [
-                if (posterUrl != null)
-                  ClipRRect(
-                    borderRadius: BorderRadius.circular(8),
-                    child: AppNetworkImage(
-                      url: posterUrl,
-                      width: 180,
-                      height: 270,
-                      fit: BoxFit.cover,
-                    ),
-                  )
-                else
-                  Container(
-                    width: 180,
-                    height: 270,
-                    decoration: BoxDecoration(
-                      color: AppColors.surfaceElevated,
-                      borderRadius: BorderRadius.circular(8),
-                    ),
-                    child: const Icon(Icons.movie_rounded, size: 48, color: AppColors.textMuted),
-                  ),
-                const SizedBox(width: 32),
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      Text(
-                        mediaTypeLabel(media.type),
-                        style: const TextStyle(
-                          color: AppColors.accentMuted,
-                          fontWeight: FontWeight.w600,
-                          fontSize: 12,
-                          letterSpacing: 0.2,
-                        ),
-                      ),
-                      const SizedBox(height: 6),
-                      Text(
-                        media.title,
-                        style: Theme.of(context).textTheme.headlineMedium?.copyWith(
-                              fontWeight: FontWeight.w700,
-                              height: 1.1,
-                              letterSpacing: -0.4,
-                            ),
-                      ),
-                      if (metadata != null && metadata!.isNotEmpty) ...[
-                        const SizedBox(height: 10),
-                        Wrap(
-                          spacing: 8,
-                          runSpacing: 6,
-                          children: metadata!,
-                        ),
-                      ],
-                      if (media.overview != null && media.overview!.isNotEmpty) ...[
-                        const SizedBox(height: 14),
-                        Text(
-                          media.overview!,
-                          maxLines: 4,
-                          overflow: TextOverflow.ellipsis,
-                          style: const TextStyle(
-                            color: AppColors.textSecondary,
-                            fontSize: 14,
-                            height: 1.55,
-                          ),
-                        ),
-                      ],
-                      if (actions != null) ...[
-                        const SizedBox(height: 20),
-                        actions!,
-                      ],
-                    ],
-                  ),
-                ),
-              ],
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-class MetadataChip extends StatelessWidget {
-  final String label;
-
-  const MetadataChip({super.key, required this.label});
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-      decoration: BoxDecoration(
-        color: AppColors.surfaceElevated.withValues(alpha: 0.8),
-        borderRadius: BorderRadius.circular(4),
-        border: Border.all(color: AppColors.border),
-      ),
-      child: Text(
-        label,
-        style: const TextStyle(
-          color: AppColors.textSecondary,
-          fontSize: 12,
-          fontWeight: FontWeight.w500,
         ),
       ),
     );

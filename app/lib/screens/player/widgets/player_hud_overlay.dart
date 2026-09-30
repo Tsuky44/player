@@ -1,8 +1,9 @@
 import 'dart:ui';
 import 'package:flutter/material.dart';
-import 'package:flutter_animate/flutter_animate.dart';
 import 'package:audio_video_progress_bar/audio_video_progress_bar.dart';
 import '../playback/playback_session.dart';
+import '../../../theme/app_colors.dart';
+import 'player_chrome_fade.dart';
 import 'player_top_bar.dart';
 import 'watch_party_overlay.dart';
 
@@ -68,12 +69,9 @@ class PlayerHUDOverlay extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    if (!visible) return const SizedBox.shrink();
-
-    const accentBlue = Color(0xFF007AFF);
-    final rawPos = isDraggingSlider
-        ? Duration(seconds: dragValue.toInt())
-        : position;
+    const accentBlue = AppColors.accent;
+    final rawPos =
+        isDraggingSlider ? Duration(seconds: dragValue.toInt()) : position;
     final totalDuration =
         duration.inSeconds > 0 ? duration : const Duration(seconds: 1);
     // ProgressBar asserts progress <= total and throws otherwise. A transient
@@ -86,177 +84,191 @@ class PlayerHUDOverlay extends StatelessWidget {
     // Remplit la place sans être un `Positioned` : l'écran l'enveloppe dans un
     // `Padding` (les découpes de l'écran), et un `Positioned` n'est valide
     // qu'en enfant direct d'un `Stack`.
-    return SizedBox.expand(
-      child: GestureDetector(
-        onTap: onToggleControls,
-        child: Container(
-          color: Colors.transparent,
-          padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 16),
-          child: Column(
-            children: [
-              // TOP BAR - Title only
-              PlayerTopBar(
-                title: mediaTitle,
-                onBack: onBack,
-              ),
+    return PlayerChromeFade(
+      visible: visible,
+      child: SizedBox.expand(
+        child: GestureDetector(
+          onTap: onToggleControls,
+          child: Container(
+            color: Colors.transparent,
+            padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 16),
+            child: Column(
+              children: [
+                // TOP BAR - Title only
+                PlayerTopBar(
+                  title: mediaTitle,
+                  onBack: onBack,
+                ),
 
-              const Spacer(),
+                const Spacer(),
 
-              // BOTTOM GLASS PANEL
-              ClipRRect(
-                borderRadius: BorderRadius.circular(24),
-                child: BackdropFilter.grouped(
-                  filter: ImageFilter.blur(sigmaX: 24, sigmaY: 24),
-                  child: Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
-                    decoration: BoxDecoration(
-                      color: const Color(0xFF1A1A1A).withValues(alpha: 0.6),
-                      borderRadius: BorderRadius.circular(24),
-                      border: Border(
-                        top: BorderSide(
-                          color: Colors.white.withValues(alpha: 0.15),
-                          width: 1,
+                // BOTTOM GLASS PANEL
+                ClipRRect(
+                  borderRadius: BorderRadius.circular(24),
+                  child: BackdropFilter.grouped(
+                    filter: ImageFilter.blur(sigmaX: 24, sigmaY: 24),
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(
+                          horizontal: 20, vertical: 16),
+                      decoration: BoxDecoration(
+                        color: const Color(0xFF1A1A1A).withValues(alpha: 0.6),
+                        borderRadius: BorderRadius.circular(24),
+                        border: Border(
+                          top: BorderSide(
+                            color: Colors.white.withValues(alpha: 0.15),
+                            width: 1,
+                          ),
                         ),
                       ),
-                    ),
-                    child: Column(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        // Progress bar with time
-                        KeyedSubtree(
-                          key: timelineAnchorKey,
-                          child: Row(
-                          children: [
-                            Text(
-                              _formatDuration(currentPos),
-                              style: TextStyle(
-                                color: Colors.white.withValues(alpha: 0.7),
-                                fontSize: 12,
-                                fontFamily: 'Geist',
-                                fontWeight: FontWeight.w500,
-                              ),
-                            ),
-                            const SizedBox(width: 12),
-                            Expanded(
-                              child: MouseRegion(
-                                cursor: SystemMouseCursors.grab,
-                                child: _DragProgressBar(
-                                  progress: currentPos,
-                                  buffered: currentPos + const Duration(seconds: 30) > totalDuration
-                                      ? totalDuration
-                                      : currentPos + const Duration(seconds: 30),
-                                  total: totalDuration,
-                                  progressBarColor: accentBlue,
-                                  baseBarColor: Colors.white.withValues(alpha: 0.2),
-                                  bufferedBarColor: Colors.white.withValues(alpha: 0.35),
-                                  thumbColor: Colors.white,
-                                  thumbGlowColor: Colors.white.withValues(alpha: 0.3),
-                                  thumbRadius: 8,
-                                  barHeight: 5,
-                                  timeLabelLocation: TimeLabelLocation.none,
-                                  isPlaying: isPlaying,
-                                  onPlayPause: onPlayPause,
-                                  onSliderChangeStart: onSliderChangeStart,
-                                  onSliderChanged: onSliderChanged,
-                                  onSliderChangeEnd: onSliderChangeEnd,
-                                  onHideControlsWithDelay: onHideControlsWithDelay,
-                                ),
-                              ),
-                            ),
-                            const SizedBox(width: 12),
-                            Text(
-                              _formatDuration(duration),
-                              style: TextStyle(
-                                color: Colors.white.withValues(alpha: 0.7),
-                                fontSize: 12,
-                                fontFamily: 'Geist',
-                                fontWeight: FontWeight.w500,
-                              ),
-                            ),
-                          ],
-                        ),
-                        ),
-                        const SizedBox(height: 12),
-                        // Control buttons row
-                        Row(
-                          mainAxisAlignment: MainAxisAlignment.center,
-                          children: [
-                            _GlassIconButton(
-                              icon: Icons.replay_10,
-                              onPressed: () => onSeekRelative(-10),
-                              size: 24,
-                            ),
-                            const SizedBox(width: 20),
-                            Material(
-                              color: Colors.transparent,
-                              child: InkWell(
-                                onTap: onPlayPause,
-                                borderRadius: BorderRadius.circular(28),
-                                child: Container(
-                                  width: 56,
-                                  height: 56,
-                                  decoration: BoxDecoration(
-                                    color: Colors.white.withValues(alpha: 0.15),
-                                    borderRadius: BorderRadius.circular(28),
-                                    border: Border.all(
-                                      color: Colors.white.withValues(alpha: 0.2),
-                                      width: 1,
-                                    ),
+                      child: Column(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          // Progress bar with time
+                          KeyedSubtree(
+                            key: timelineAnchorKey,
+                            child: Row(
+                              children: [
+                                Text(
+                                  _formatDuration(currentPos),
+                                  style: TextStyle(
+                                    color: Colors.white.withValues(alpha: 0.7),
+                                    fontSize: 12,
+                                    fontFamily: 'Geist',
+                                    fontWeight: FontWeight.w500,
                                   ),
-                                  child: AnimatedSwitcher(
-                                    duration: const Duration(milliseconds: 120),
-                                    switchInCurve: Curves.easeOut,
-                                    switchOutCurve: Curves.easeIn,
-                                    transitionBuilder: (child, animation) =>
-                                        ScaleTransition(scale: animation, child: child),
-                                    child: Icon(
-                                      isPlaying ? Icons.pause : Icons.play_arrow,
-                                      key: ValueKey(isPlaying),
-                                      color: Colors.white,
-                                      size: 28,
+                                ),
+                                const SizedBox(width: 12),
+                                Expanded(
+                                  child: MouseRegion(
+                                    cursor: SystemMouseCursors.grab,
+                                    child: _DragProgressBar(
+                                      progress: currentPos,
+                                      buffered: currentPos +
+                                                  const Duration(seconds: 30) >
+                                              totalDuration
+                                          ? totalDuration
+                                          : currentPos +
+                                              const Duration(seconds: 30),
+                                      total: totalDuration,
+                                      progressBarColor: accentBlue,
+                                      baseBarColor:
+                                          Colors.white.withValues(alpha: 0.2),
+                                      bufferedBarColor:
+                                          Colors.white.withValues(alpha: 0.35),
+                                      thumbColor: Colors.white,
+                                      thumbGlowColor:
+                                          Colors.white.withValues(alpha: 0.3),
+                                      thumbRadius: 8,
+                                      barHeight: 5,
+                                      timeLabelLocation: TimeLabelLocation.none,
+                                      isPlaying: isPlaying,
+                                      onPlayPause: onPlayPause,
+                                      onSliderChangeStart: onSliderChangeStart,
+                                      onSliderChanged: onSliderChanged,
+                                      onSliderChangeEnd: onSliderChangeEnd,
+                                      onHideControlsWithDelay:
+                                          onHideControlsWithDelay,
                                     ),
                                   ),
                                 ),
-                              ),
+                                const SizedBox(width: 12),
+                                Text(
+                                  _formatDuration(duration),
+                                  style: TextStyle(
+                                    color: Colors.white.withValues(alpha: 0.7),
+                                    fontSize: 12,
+                                    fontFamily: 'Geist',
+                                    fontWeight: FontWeight.w500,
+                                  ),
+                                ),
+                              ],
                             ),
-                            const SizedBox(width: 20),
-                            _GlassIconButton(
-                              icon: Icons.forward_10,
-                              onPressed: () => onSeekRelative(10),
-                              size: 24,
-                            ),
-                            const SizedBox(width: 24),
-                            if (onNextEpisode != null)
+                          ),
+                          const SizedBox(height: 12),
+                          // Control buttons row
+                          Row(
+                            mainAxisAlignment: MainAxisAlignment.center,
+                            children: [
                               _GlassIconButton(
-                                icon: Icons.skip_next,
-                                onPressed: onNextEpisode,
+                                icon: Icons.replay_10,
+                                onPressed: () => onSeekRelative(-10),
+                                size: 24,
+                              ),
+                              const SizedBox(width: 20),
+                              Material(
+                                color: Colors.transparent,
+                                child: InkWell(
+                                  onTap: onPlayPause,
+                                  borderRadius: BorderRadius.circular(28),
+                                  child: Container(
+                                    width: 56,
+                                    height: 56,
+                                    decoration: BoxDecoration(
+                                      color:
+                                          Colors.white.withValues(alpha: 0.15),
+                                      borderRadius: BorderRadius.circular(28),
+                                      border: Border.all(
+                                        color:
+                                            Colors.white.withValues(alpha: 0.2),
+                                        width: 1,
+                                      ),
+                                    ),
+                                    child: AnimatedSwitcher(
+                                      duration:
+                                          const Duration(milliseconds: 120),
+                                      switchInCurve: Curves.easeOut,
+                                      switchOutCurve: Curves.easeIn,
+                                      transitionBuilder: (child, animation) =>
+                                          ScaleTransition(
+                                              scale: animation, child: child),
+                                      child: Icon(
+                                        isPlaying
+                                            ? Icons.pause
+                                            : Icons.play_arrow,
+                                        key: ValueKey(isPlaying),
+                                        color: Colors.white,
+                                        size: 28,
+                                      ),
+                                    ),
+                                  ),
+                                ),
+                              ),
+                              const SizedBox(width: 20),
+                              _GlassIconButton(
+                                icon: Icons.forward_10,
+                                onPressed: () => onSeekRelative(10),
+                                size: 24,
+                              ),
+                              const SizedBox(width: 24),
+                              if (onNextEpisode != null)
+                                _GlassIconButton(
+                                  icon: Icons.skip_next,
+                                  onPressed: onNextEpisode,
+                                  size: 22,
+                                ),
+                              if (onNextEpisode != null)
+                                const SizedBox(width: 24),
+                              _GlassIconButton(
+                                icon: Icons.fullscreen,
+                                onPressed: () {},
                                 size: 22,
                               ),
-                            if (onNextEpisode != null)
-                              const SizedBox(width: 24),
-                            _GlassIconButton(
-                              icon: Icons.fullscreen,
-                              onPressed: () {},
-                              size: 22,
-                            ),
-                            if (onOpenWatchParty != null) ...[
-                              const SizedBox(width: 24),
-                              WatchPartyBarButton(
-                                active: watchPartyActive,
-                                onPressed: onOpenWatchParty!,
-                              ),
+                              if (onOpenWatchParty != null) ...[
+                                const SizedBox(width: 24),
+                                WatchPartyBarButton(
+                                  active: watchPartyActive,
+                                  onPressed: onOpenWatchParty!,
+                                ),
+                              ],
                             ],
-                          ],
-                        ),
-                      ],
+                          ),
+                        ],
+                      ),
                     ),
                   ),
                 ),
-              ),
-            ]
-                .animate(interval: 40.ms)
-                .fadeIn(duration: 300.ms, curve: Curves.easeOut)
-                .slideY(begin: 0.05, end: 0, duration: 300.ms, curve: Curves.easeOut),
+              ],
+            ),
           ),
         ),
       ),

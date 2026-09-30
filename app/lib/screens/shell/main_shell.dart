@@ -249,7 +249,8 @@ class _MainShellState extends State<MainShell> {
     // Un onglet absent de l'en-tête (pas de droit de demande, pas de
     // téléchargements sur cet appareil) n'a pas de nœud monté : l'accueil, lui,
     // est toujours là.
-    final node = _tabNodes[index].context != null ? _tabNodes[index] : _tabNodes[0];
+    final node =
+        _tabNodes[index].context != null ? _tabNodes[index] : _tabNodes[0];
     node.requestFocus();
   }
 
@@ -311,7 +312,8 @@ class _MainShellState extends State<MainShell> {
                   // Retour de [_handleTvBack] tels qu'ils sont réglés.
                   child: isTv
                       ? tabs
-                      : _buildPageNavigator(context, tabs: tabs, isWide: isWide),
+                      : _buildPageNavigator(context,
+                          tabs: tabs, isWide: isWide),
                 ),
                 if (!isWide)
                   _MobileBottomNav(
@@ -506,12 +508,16 @@ class _MobileBottomNav extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    // La plus grande surface structurelle de l'app sur téléphone : elle se lit
+    // en verre sombre et dense, pas en voile blanc à 5 % — plus légère que
+    // n'importe quel menu, elle laissait passer les affiches en pleine
+    // couleur sous les libellés.
     return ClipRRect(
       child: BackdropFilter.grouped(
-        filter: ImageFilter.blur(sigmaX: 20, sigmaY: 20),
+        filter: ImageFilter.blur(sigmaX: 28, sigmaY: 28),
         child: Container(
           decoration: BoxDecoration(
-            color: Colors.white.withValues(alpha: 0.05),
+            color: AppColors.background.withValues(alpha: 0.72),
             border: Border(
                 top: BorderSide(color: Colors.white.withValues(alpha: 0.08))),
           ),
@@ -522,19 +528,22 @@ class _MobileBottomNav extends StatelessWidget {
               child: Row(
                 children: [
                   _BottomNavItem(
-                    icon: Icons.home_rounded,
+                    icon: Icons.home_outlined,
+                    selectedIcon: Icons.home_rounded,
                     label: 'Accueil',
                     selected: selectedIndex == 0,
                     onTap: () => onTabSelected(0),
                   ),
                   _BottomNavItem(
-                    icon: Icons.movie_rounded,
+                    icon: Icons.movie_outlined,
+                    selectedIcon: Icons.movie_rounded,
                     label: 'Films',
                     selected: selectedIndex == 1,
                     onTap: () => onTabSelected(1),
                   ),
                   _BottomNavItem(
-                    icon: Icons.tv_rounded,
+                    icon: Icons.tv_outlined,
+                    selectedIcon: Icons.tv_rounded,
                     label: 'Séries',
                     selected: selectedIndex == 2,
                     onTap: () => onTabSelected(2),
@@ -542,13 +551,15 @@ class _MobileBottomNav extends StatelessWidget {
                   if (canRequestMedia)
                     _BottomNavItem(
                       icon: Icons.add_circle_outline_rounded,
+                      selectedIcon: Icons.add_circle_rounded,
                       label: 'Demandes',
                       selected: selectedIndex == 3,
                       onTap: () => onTabSelected(3),
                     ),
                   if (canDownload)
                     _BottomNavItem(
-                      icon: Icons.download_rounded,
+                      icon: Icons.download_for_offline_outlined,
+                      selectedIcon: Icons.download_for_offline_rounded,
                       label: 'Hors ligne',
                       selected: selectedIndex == 4,
                       onTap: () => onTabSelected(4),
@@ -565,12 +576,17 @@ class _MobileBottomNav extends StatelessWidget {
 
 class _BottomNavItem extends StatelessWidget {
   final IconData icon;
+
+  /// Plein quand l'onglet est actif, creux sinon : la sélection se lit à la
+  /// forme autant qu'à la couleur.
+  final IconData selectedIcon;
   final String label;
   final bool selected;
   final VoidCallback onTap;
 
   const _BottomNavItem({
     required this.icon,
+    required this.selectedIcon,
     required this.label,
     required this.selected,
     required this.onTap,
@@ -586,9 +602,12 @@ class _BottomNavItem extends StatelessWidget {
           child: Column(
             mainAxisAlignment: MainAxisAlignment.center,
             children: [
+              // Blanc et non bleu : l'accent est réservé au focus et à la
+              // progression, et cinq onglets en bas d'écran ne sont ni l'un ni
+              // l'autre.
               Icon(
-                icon,
-                color: selected ? AppColors.primary : AppColors.textMuted,
+                selected ? selectedIcon : icon,
+                color: selected ? AppColors.textPrimary : AppColors.textMuted,
                 size: 24,
               ),
               const SizedBox(height: 4),
@@ -681,8 +700,6 @@ class _StatusBadge extends StatelessWidget {
     );
   }
 }
-
-
 
 /// L'app quand le serveur n'a pas répondu au démarrage.
 ///

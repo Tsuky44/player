@@ -1,4 +1,4 @@
-﻿import 'package:flutter/material.dart';
+import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:provider/provider.dart';
@@ -126,7 +126,7 @@ void main() {
       await pumpMovie(tester, size: const Size(700, 1000), position: 2700);
 
       expect(tester.takeException(), isNull);
-      expect(find.text('Marquer vu'), findsOneWidget);
+      expect(find.byTooltip('Marquer vu'), findsOneWidget);
     });
   });
 

@@ -12,7 +12,7 @@ import 'app_slider.dart';
 /// - [live]: real, interactive control rendered over the video.
 enum ControlChromeVariant { studio, live }
 
-const Color _kAccent = Color(0xFF0A84FF);
+const Color _kAccent = AppColors.accent;
 
 /// Single source of truth for how a modular control LOOKS, shared by the
 /// Player Studio (preview) and the real player (live). Behaviour is injected
@@ -1668,7 +1668,7 @@ class _VolumeSliderButtonState extends State<_VolumeSliderButton> {
                       trackHeight: 3,
                       thumbShape: const RoundSliderThumbShape(enabledThumbRadius: 5, elevation: 0, pressedElevation: 0),
                       overlayShape: const RoundSliderOverlayShape(overlayRadius: 0),
-                      activeTrackColor: const Color(0xFF0A84FF),
+                      activeTrackColor: AppColors.accent,
                       inactiveTrackColor: Colors.white.withValues(alpha: 0.25),
                       thumbColor: Colors.white,
                     ),

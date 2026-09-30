@@ -1444,14 +1444,25 @@ class MediaAudioTrack {
   }
 
   /// Readable name, e.g. "Français (Dolby Atmos 5.1)".
+  ///
+  /// Le titre de piste que porte le fichier répète souvent la langue et les
+  /// canaux (« Français 5.1 ») : ce qu'il redit n'est pas écrit une seconde
+  /// fois, sans quoi on lisait « Français (Français 5.1 5.1) ».
   String get displayName {
-    final parts = <String>[];
-    final t = title?.trim() ?? '';
-    if (t.isNotEmpty) parts.add(t);
-    if (codec.isNotEmpty) parts.add(formatLabel);
-    final ch = _channelsLabel(channels);
-    if (ch != null) parts.add(ch);
     final lang = languageName(language);
+    var t = title?.trim() ?? '';
+    if (t.toLowerCase().startsWith(lang.toLowerCase())) {
+      t = t.substring(lang.length).trim();
+    }
+    final lowerTitle = t.toLowerCase();
+    final parts = <String>[];
+    if (t.isNotEmpty) parts.add(t);
+    if (codec.isNotEmpty &&
+        !lowerTitle.contains(formatLabel.toLowerCase())) {
+      parts.add(formatLabel);
+    }
+    final ch = _channelsLabel(channels);
+    if (ch != null && !lowerTitle.contains(ch)) parts.add(ch);
     return parts.isEmpty ? lang : '$lang (${parts.join(' ')})';
   }
 }

@@ -3,6 +3,7 @@ import '../hooks/use_studio_controller.dart';
 import '../utils/alignment_guides.dart';
 import 'control_context_menu.dart';
 import 'draggable_control.dart';
+import '../../../theme/app_colors.dart';
 
 /// The 16:9 editing surface. Renders a dummy poster background, a snap grid,
 /// and all the draggable controls positioned via relative percentages.
@@ -239,7 +240,7 @@ class _StudioCanvasState extends State<StudioCanvas> {
                                   vertical: 4,
                                 ),
                                 decoration: BoxDecoration(
-                                  color: const Color(0xFF0A84FF),
+                                  color: AppColors.accent,
                                   borderRadius: BorderRadius.circular(6),
                                 ),
                                 child: Text(

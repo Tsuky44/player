@@ -3,6 +3,7 @@ import '../../../tv/tv_deferred_keyboard.dart';
 import '../../../models/player_layout.dart';
 import 'studio_drawer_shell.dart';
 import '../../../widgets/global/app_slider.dart';
+import '../../../theme/app_colors.dart';
 
 /// Side drawer to tune size/width of the selected control on the canvas.
 class ControlEditDrawer extends StatelessWidget {
@@ -82,10 +83,10 @@ class ControlEditDrawer extends StatelessWidget {
                 ),
                 SliderTheme(
                   data: SliderTheme.of(context).copyWith(
-                    activeTrackColor: const Color(0xFF0A84FF),
+                    activeTrackColor: AppColors.accent,
                     inactiveTrackColor: Colors.white.withValues(alpha: 0.15),
                     thumbColor: Colors.white,
-                    overlayColor: const Color(0xFF0A84FF).withValues(alpha: 0.2),
+                    overlayColor: AppColors.accent.withValues(alpha: 0.2),
                   ),
                   child: AppSlider(
                     min: kMinSizePct,
@@ -120,10 +121,10 @@ class ControlEditDrawer extends StatelessWidget {
                   ),
                   SliderTheme(
                     data: SliderTheme.of(context).copyWith(
-                      activeTrackColor: const Color(0xFF0A84FF),
+                      activeTrackColor: AppColors.accent,
                       inactiveTrackColor: Colors.white.withValues(alpha: 0.15),
                       thumbColor: Colors.white,
-                      overlayColor: const Color(0xFF0A84FF).withValues(alpha: 0.2),
+                      overlayColor: AppColors.accent.withValues(alpha: 0.2),
                     ),
                     child: AppSlider(
                       min: 0.1,
@@ -283,7 +284,7 @@ class _TimelineToggle extends StatelessWidget {
         style: const TextStyle(color: Colors.white70, fontSize: 13),
       ),
       value: value,
-      activeThumbColor: const Color(0xFF0A84FF),
+      activeThumbColor: AppColors.accent,
       onChanged: onChanged,
     );
   }
@@ -385,7 +386,7 @@ class _PercentageFieldState extends State<_PercentageField> {
             ),
             focusedBorder: OutlineInputBorder(
               borderRadius: BorderRadius.all(Radius.circular(6)),
-              borderSide: BorderSide(color: Color(0xFF0A84FF)),
+              borderSide: BorderSide(color: AppColors.accent),
             ),
             suffixText: '%',
             suffixStyle: TextStyle(color: Colors.grey, fontSize: 13),

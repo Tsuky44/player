@@ -3,7 +3,7 @@ import 'package:flutter/material.dart';
 import '../../models/models.dart';
 import '../../theme/app_colors.dart';
 import '../../utils/responsive.dart';
-import 'hero_banner.dart' show MetadataChip;
+import 'detail_metadata.dart';
 
 /// Describes the original file, independently of the playback device.
 class MediaTechnicalSection extends StatelessWidget {
@@ -43,10 +43,8 @@ class MediaTechnicalSection extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text('Média sur le serveur',
-              style: Theme.of(context).textTheme.titleLarge?.copyWith(
-                    fontWeight: FontWeight.w700,
-                  )),
+          Text('Informations techniques',
+              style: detailSectionTitleStyle(context)),
           const SizedBox(height: 12),
           if (loading)
             const Text('Chargement des formats…',
@@ -64,7 +62,7 @@ class MediaTechnicalSection extends StatelessWidget {
                 spacing: 8,
                 runSpacing: 8,
                 children: [
-                  for (final label in videoLabels) MetadataChip(label: label),
+                  for (final label in videoLabels) TechBadge(label),
                 ],
               ),
               if (video!.width > 0 && video.height > 0) ...[

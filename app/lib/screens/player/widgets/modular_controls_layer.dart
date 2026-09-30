@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import '../../../models/player_layout.dart';
 import '../../../tv/tv_focus.dart';
 import '../../../widgets/global/control_chrome.dart';
+import 'player_chrome_fade.dart';
 import 'watch_party_overlay.dart';
 
 /// Real, interactive control layer driven by a [PlayerLayoutConfig].
@@ -141,10 +142,12 @@ class ModularControlsLayer extends StatelessWidget {
       PlayerControlType.forward => onForward,
       PlayerControlType.rewind30 => onRewind30,
       PlayerControlType.forward30 => onForward30,
-      PlayerControlType.playPause || PlayerControlType.progressBar => onPlayPause,
+      PlayerControlType.playPause ||
+      PlayerControlType.progressBar =>
+        onPlayPause,
       PlayerControlType.timeline ||
-          PlayerControlType.timelineOnyx ||
-          PlayerControlType.timelineGlassInline =>
+      PlayerControlType.timelineOnyx ||
+      PlayerControlType.timelineGlassInline =>
         null,
       PlayerControlType.skipPrevious => onSkipPrevious,
       PlayerControlType.skipNext => onSkipNext,
@@ -159,45 +162,48 @@ class ModularControlsLayer extends StatelessWidget {
       PlayerControlType.playbackSpeed => onCycleSpeed,
       PlayerControlType.aspectFit => onToggleAspectFit,
       PlayerControlType.audioTracks => onOpenAudio,
-      PlayerControlType.chapters || PlayerControlType.chaptersOnyx => onOpenChapters,
+      PlayerControlType.chapters ||
+      PlayerControlType.chaptersOnyx =>
+        onOpenChapters,
       PlayerControlType.mediaInfo => onOpenInfo,
       PlayerControlType.watchParty => onOpenWatchParty,
       PlayerControlType.mediaTitle ||
-          PlayerControlType.mediaLogo ||
-          PlayerControlType.episodeTitleBlock ||
-          PlayerControlType.volumeSlider ||
-          PlayerControlType.timeRemaining =>
+      PlayerControlType.mediaLogo ||
+      PlayerControlType.episodeTitleBlock ||
+      PlayerControlType.volumeSlider ||
+      PlayerControlType.timeRemaining =>
         null,
     };
   }
 
   @override
   Widget build(BuildContext context) {
-    if (!visible) return const SizedBox.shrink();
-
     final timelineAnchorId = _timelineAnchorId();
 
     return Positioned.fill(
-      child: LayoutBuilder(
-        builder: (context, constraints) {
-          final canvasSize = constraints.biggest;
-          return Stack(
-            children: [
-              for (final placed in config.controls)
-                _positioned(placed, canvasSize, timelineAnchorId),
-              if (onOpenWatchParty != null &&
-                  !config.hasControl(PlayerControlType.watchParty))
-                Positioned(
-                  right: 20,
-                  bottom: 20,
-                  child: WatchPartyBarButton(
-                    active: watchPartyActive,
-                    onPressed: onOpenWatchParty!,
+      child: PlayerChromeFade(
+        visible: visible,
+        child: LayoutBuilder(
+          builder: (context, constraints) {
+            final canvasSize = constraints.biggest;
+            return Stack(
+              children: [
+                for (final placed in config.controls)
+                  _positioned(placed, canvasSize, timelineAnchorId),
+                if (onOpenWatchParty != null &&
+                    !config.hasControl(PlayerControlType.watchParty))
+                  Positioned(
+                    right: 20,
+                    bottom: 20,
+                    child: WatchPartyBarButton(
+                      active: watchPartyActive,
+                      onPressed: onOpenWatchParty!,
+                    ),
                   ),
-                ),
-            ],
-          );
-        },
+              ],
+            );
+          },
+        ),
       ),
     );
   }
@@ -233,8 +239,7 @@ class ModularControlsLayer extends StatelessWidget {
 
   bool _timelineHasEmbeddedSettings() {
     final primary = _primaryTimelineBar();
-    return primary != null &&
-        _resolvedTimelineOptions(primary).showSettings;
+    return primary != null && _resolvedTimelineOptions(primary).showSettings;
   }
 
   bool _attachSettingsKeyToTimeline(PlacedControl placed) {
@@ -251,8 +256,7 @@ class ModularControlsLayer extends StatelessWidget {
 
   bool _timelineHasEmbeddedSubtitles() {
     final primary = _primaryTimelineBar();
-    return primary != null &&
-        _resolvedTimelineOptions(primary).showSubtitles;
+    return primary != null && _resolvedTimelineOptions(primary).showSubtitles;
   }
 
   bool _attachSubtitlesKeyToTimeline(PlacedControl placed) {
@@ -323,14 +327,13 @@ class ModularControlsLayer extends StatelessWidget {
       mediaLogoUrl:
           placed.type == PlayerControlType.mediaLogo ? mediaLogoUrl : null,
       volume: placed.type == PlayerControlType.volumeSlider ? volume : null,
-      onVolumeChanged:
-          placed.type == PlayerControlType.volumeSlider ? onVolumeChanged : null,
-      onBack: placed.type == PlayerControlType.back ? onBack : null,
-      playbackRate: placed.type == PlayerControlType.playbackSpeed
-          ? playbackRate
+      onVolumeChanged: placed.type == PlayerControlType.volumeSlider
+          ? onVolumeChanged
           : null,
-      videoFit:
-          placed.type == PlayerControlType.aspectFit ? videoFit : null,
+      onBack: placed.type == PlayerControlType.back ? onBack : null,
+      playbackRate:
+          placed.type == PlayerControlType.playbackSpeed ? playbackRate : null,
+      videoFit: placed.type == PlayerControlType.aspectFit ? videoFit : null,
       blurSigma: config.blurIntensity,
       glassOpacity: config.glassOpacity,
       liquidGlass: config.liquidGlass,
@@ -338,8 +341,9 @@ class ModularControlsLayer extends StatelessWidget {
       flatAccentColor: config.flatAccentColor,
       flatElevation: config.flatElevation,
       neumorphicIntensity: config.neumorphicIntensity,
-      episodeInfoLine:
-          placed.type == PlayerControlType.episodeTitleBlock ? episodeInfoLine : null,
+      episodeInfoLine: placed.type == PlayerControlType.episodeTitleBlock
+          ? episodeInfoLine
+          : null,
       alwaysExpanded: c.alwaysExpanded,
     );
 

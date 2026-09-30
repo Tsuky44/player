@@ -693,7 +693,7 @@ class UserAvatar extends StatelessWidget {
   final double size;
 
   static const _palette = [
-    Color(0xFF0A84FF),
+    AppColors.accent,
     Color(0xFF30D158),
     Color(0xFFFF9F0A),
     Color(0xFFBF5AF2),

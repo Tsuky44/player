@@ -85,7 +85,8 @@ abstract final class AppTheme {
       chipTheme: ChipThemeData(
         backgroundColor: AppColors.surfaceElevated,
         selectedColor: AppColors.primary.withValues(alpha: 0.22),
-        labelStyle: textTheme.labelLarge?.copyWith(color: AppColors.textSecondary),
+        labelStyle:
+            textTheme.labelLarge?.copyWith(color: AppColors.textSecondary),
         secondaryLabelStyle: textTheme.labelLarge?.copyWith(
           color: AppColors.textPrimary,
           fontWeight: FontWeight.w600,
@@ -102,8 +103,10 @@ abstract final class AppTheme {
         filled: true,
         fillColor: AppColors.surfaceElevated,
         hintStyle: textTheme.bodyMedium?.copyWith(color: AppColors.textMuted),
-        labelStyle: textTheme.bodyMedium?.copyWith(color: AppColors.textSecondary),
-        contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+        labelStyle:
+            textTheme.bodyMedium?.copyWith(color: AppColors.textSecondary),
+        contentPadding:
+            const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
         border: OutlineInputBorder(
           borderRadius: BorderRadius.circular(12),
           borderSide: BorderSide.none,
@@ -125,7 +128,8 @@ abstract final class AppTheme {
           disabledForegroundColor: AppColors.textMuted,
           elevation: 0,
           padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 14),
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+          shape:
+              RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
           textStyle: textTheme.labelLarge?.copyWith(
             fontWeight: FontWeight.w700,
             letterSpacing: 0.2,
@@ -135,21 +139,23 @@ abstract final class AppTheme {
       outlinedButtonTheme: OutlinedButtonThemeData(
         style: _focusRinged(
           OutlinedButton.styleFrom(
-          foregroundColor: AppColors.textPrimary,
-          side: BorderSide(color: AppColors.glassBorder),
-          padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 14),
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-          textStyle: textTheme.labelLarge?.copyWith(
-            fontWeight: FontWeight.w600,
+            foregroundColor: AppColors.textPrimary,
+            side: BorderSide(color: AppColors.glassBorder),
+            padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 14),
+            shape:
+                RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+            textStyle: textTheme.labelLarge?.copyWith(
+              fontWeight: FontWeight.w600,
+            ),
           ),
-        ),
           resting: BorderSide(color: AppColors.glassBorder),
         ),
       ),
       textButtonTheme: TextButtonThemeData(
         style: _focusRinged(TextButton.styleFrom(
           foregroundColor: AppColors.textSecondary,
-          textStyle: textTheme.labelLarge?.copyWith(fontWeight: FontWeight.w500),
+          textStyle:
+              textTheme.labelLarge?.copyWith(fontWeight: FontWeight.w500),
         )),
       ),
       snackBarTheme: SnackBarThemeData(
@@ -177,8 +183,63 @@ abstract final class AppTheme {
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
       ),
       focusColor: AppColors.primary.withValues(alpha: 0.24),
+      // Pas d'ondulation Material : l'onde qui se propage depuis le doigt est
+      // l'idiome d'Android, et sur un fond charbon elle se lisait comme une
+      // tache grise sous chaque ligne pressée. Les boutons gardent leur voile
+      // d'appui (overlayColor), les cartes leur échelle (`Pressable`).
+      splashFactory: NoSplash.splashFactory,
+      highlightColor: Colors.white.withValues(alpha: 0.04),
+      hoverColor: Colors.white.withValues(alpha: 0.04),
+      // Menus, listes déroulantes et infobulles : une seule matière, celle
+      // des popovers de verre (`GlassSurface`) — un fond élevé, un filet clair
+      // et une ombre ample, plutôt que la teinte de surface de Material 3.
+      popupMenuTheme: PopupMenuThemeData(
+        color: AppColors.surfaceElevated,
+        surfaceTintColor: Colors.transparent,
+        elevation: 12,
+        shadowColor: Colors.black.withValues(alpha: 0.6),
+        shape: _menuShape,
+        textStyle: textTheme.bodyMedium?.copyWith(
+          color: AppColors.textPrimary,
+          fontWeight: FontWeight.w500,
+        ),
+        labelTextStyle: WidgetStatePropertyAll(textTheme.bodyMedium?.copyWith(
+          color: AppColors.textPrimary,
+          fontWeight: FontWeight.w500,
+        )),
+      ),
+      menuTheme: MenuThemeData(style: _menuStyle),
+      dropdownMenuTheme: DropdownMenuThemeData(menuStyle: _menuStyle),
+      tooltipTheme: TooltipThemeData(
+        waitDuration: const Duration(milliseconds: 500),
+        decoration: BoxDecoration(
+          color: AppColors.surfaceHover,
+          borderRadius: BorderRadius.circular(8),
+          border: Border.all(color: AppColors.glassBorder),
+        ),
+        textStyle: textTheme.bodySmall?.copyWith(
+          color: AppColors.textPrimary,
+          fontWeight: FontWeight.w500,
+        ),
+      ),
     );
   }
+
+  static final ShapeBorder _menuShape = RoundedRectangleBorder(
+    borderRadius: BorderRadius.circular(14),
+    side: BorderSide(color: AppColors.glassBorder),
+  );
+
+  static final MenuStyle _menuStyle = MenuStyle(
+    backgroundColor: const WidgetStatePropertyAll(AppColors.surfaceElevated),
+    surfaceTintColor: const WidgetStatePropertyAll(Colors.transparent),
+    elevation: const WidgetStatePropertyAll(12),
+    shadowColor: WidgetStatePropertyAll(Colors.black.withValues(alpha: 0.6)),
+    shape: WidgetStatePropertyAll(RoundedRectangleBorder(
+      borderRadius: BorderRadius.circular(14),
+      side: BorderSide(color: AppColors.glassBorder),
+    )),
+  );
 
   /// Adds the focus ring to a button style without disturbing anything else it
   /// declares. [resting] is the border the button wears when it is not focused.

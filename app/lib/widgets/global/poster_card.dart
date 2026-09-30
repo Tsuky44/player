@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import '../../theme/app_colors.dart';
 import '../../tv/tv_focus.dart';
 import 'app_network_image.dart';
+import 'pressable.dart';
 
 /// Single poster card used by every catalog grid (films, séries, bibliothèque,
 /// demandes). The poster fills the whole grid cell above the metadata block, so
@@ -150,45 +151,43 @@ class _PosterCardState extends State<PosterCard> {
           setState(() => _hovered = false);
           _cancelPrefetch();
         },
-        child: InkWell(
+        child: Pressable(
           onTap: widget.onTap,
           // Touch has no hover: the press itself is the earliest signal, a
           // hundred-odd ms before the tap is confirmed.
-          onTapDown:
-              widget.onPrefetch == null ? null : (_) => _prefetchNow(),
-          // The wrapper above owns the focus. Leaving the ink well focusable too
-          // would put two stops on every card, so the remote would need two
-          // presses to cross one poster.
-          canRequestFocus: false,
-          borderRadius: BorderRadius.circular(PosterCard.radius),
-          child: Column(
+          onTapDown: widget.onPrefetch == null ? null : _prefetchNow,
+          builder: (context, pressed) => Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               Expanded(
-                child: PosterLift(
-                  active: _active,
-                  child: Stack(
-                    fit: StackFit.expand,
-                    children: [
-                      ClipRRect(
-                        borderRadius: BorderRadius.circular(PosterCard.radius),
-                        child: _poster(),
-                      ),
-                      PosterHoverOverlay(
-                        active: _active,
-                        focused: _focused,
-                        showPlay: widget.showPlayOnHover,
-                        playSize: compact ? 44 : 50,
-                      ),
-                      ...widget.overlays,
-                      if (widget.footerOverlay != null)
-                        Positioned(
-                          left: PosterCard.overlayInset,
-                          right: PosterCard.overlayInset,
-                          bottom: PosterCard.overlayInset,
-                          child: widget.footerOverlay!,
+                child: PressScale(
+                  pressed: pressed,
+                  child: PosterLift(
+                    active: _active,
+                    child: Stack(
+                      fit: StackFit.expand,
+                      children: [
+                        ClipRRect(
+                          borderRadius:
+                              BorderRadius.circular(PosterCard.radius),
+                          child: _poster(),
                         ),
-                    ],
+                        PosterHoverOverlay(
+                          active: _active,
+                          focused: _focused,
+                          showPlay: widget.showPlayOnHover,
+                          playSize: compact ? 44 : 50,
+                        ),
+                        ...widget.overlays,
+                        if (widget.footerOverlay != null)
+                          Positioned(
+                            left: PosterCard.overlayInset,
+                            right: PosterCard.overlayInset,
+                            bottom: PosterCard.overlayInset,
+                            child: widget.footerOverlay!,
+                          ),
+                      ],
+                    ),
                   ),
                 ),
               ),

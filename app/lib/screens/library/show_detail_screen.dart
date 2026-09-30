@@ -9,11 +9,11 @@ import '../../providers/library_provider.dart';
 import '../../services/api_client.dart';
 import '../../services/media_details_cache.dart';
 import '../../theme/app_colors.dart';
-import '../../tv/tv_focus.dart';
 import '../../tv/tv_mode.dart';
 import '../../utils/responsive.dart';
 import '../../utils/format.dart';
 import '../../widgets/global/detail_actions.dart';
+import '../../widgets/global/detail_metadata.dart';
 import '../../widgets/global/episode_tile.dart';
 import '../../widgets/global/media_detail_widgets.dart';
 import '../../widgets/global/metadata_fix_sheet.dart';
@@ -23,6 +23,7 @@ import '../player/player_screen.dart';
 import '../requests/widgets/season_selector_dialog.dart';
 import '../../navigation/search_route_observer.dart';
 import 'widgets/missing_season_banner.dart';
+import 'widgets/season_tabs.dart';
 import 'widgets/show_metadata_menu.dart';
 
 class ShowDetailScreen extends StatefulWidget {
@@ -75,12 +76,14 @@ class _ShowDetailScreenState extends State<ShowDetailScreen> {
     lp.adoptCachedShow(_show.id, season: season);
     _showDataId = _show.id;
     _selectedSeason = season;
-    _resumeEpisode = resume != null && resume.hasEpisode ? resume.episode : null;
+    _resumeEpisode =
+        resume != null && resume.hasEpisode ? resume.episode : null;
   }
 
   /// The season the page opens on: the one holding the resume episode, else
   /// the first season with files, else the first season.
-  static Media? _initialSeason(List<Media> seasons, ShowResumeResponse? resume) {
+  static Media? _initialSeason(
+      List<Media> seasons, ShowResumeResponse? resume) {
     if (seasons.isEmpty) return null;
     final episode = resume != null && resume.hasEpisode ? resume.episode : null;
     if (episode != null) {
@@ -97,7 +100,8 @@ class _ShowDetailScreenState extends State<ShowDetailScreen> {
         }
       }
     }
-    return seasons.firstWhere((s) => s.isAvailable, orElse: () => seasons.first);
+    return seasons.firstWhere((s) => s.isAvailable,
+        orElse: () => seasons.first);
   }
 
   /// Folds a details payload into the page state. The server may answer with a
@@ -170,10 +174,9 @@ class _ShowDetailScreenState extends State<ShowDetailScreen> {
     final resume = await resumeRequest ?? lp.cachedResume(showId);
     if (!mounted || showId != _show.id) return;
 
-    final season = (_seasonPickedByUser
-            ? _resolveSelectedSeason(lp.seasons)
-            : null) ??
-        _initialSeason(lp.seasons, resume);
+    final season =
+        (_seasonPickedByUser ? _resolveSelectedSeason(lp.seasons) : null) ??
+            _initialSeason(lp.seasons, resume);
     setState(() {
       _resumeEpisode =
           resume != null && resume.hasEpisode ? resume.episode : null;
@@ -640,7 +643,8 @@ class _ShowDetailScreenState extends State<ShowDetailScreen> {
                         episode: firstEpisode?.media,
                         seasonOverride: _playerSeasonNumber,
                       ),
-                onPlay: playTarget == null ? null : () => _playEpisode(playTarget),
+                onPlay:
+                    playTarget == null ? null : () => _playEpisode(playTarget),
                 // Même chose que sur un film : la télécommande part de Lecture.
                 autofocusPlay: TvMode.isTv,
                 progress: resumeInProgress ? resumeEp.percentWatched : null,
@@ -689,75 +693,18 @@ class _ShowDetailScreenState extends State<ShowDetailScreen> {
             SliverToBoxAdapter(
               child: Padding(
                 padding: AppLayout.pageInsets(context, top: 24, bottom: 8),
-                // A DropdownButton forces its menu to the anchor's width, so a
-                // compact button clipped the "· manquante" annotations. A popup
-                // menu sizes itself to its own content instead.
-                // Le bouton passe à la ligne plutôt que de pousser le
-                // sélecteur hors de l'écran quand une saison porte un nom long.
-                child: Wrap(
-                  spacing: 8,
-                  runSpacing: 4,
-                  crossAxisAlignment: WrapCrossAlignment.center,
+                // Les onglets d'un côté, « marquer la saison vue » de l'autre :
+                // la ligne qui dit de quelle saison on parle est aussi celle
+                // d'où on la solde d'un coup.
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    PopupMenuButton<Media>(
-                      tooltip: 'Choisir une saison',
-                      position: PopupMenuPosition.under,
-                      offset: const Offset(0, 6),
-                      padding: EdgeInsets.zero,
-                      color: AppColors.surfaceElevated,
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(12),
-                        side: BorderSide(color: AppColors.glassBorder),
-                      ),
+                    SeasonTabs(
+                      seasons: lp.seasons,
+                      selected: selectedSeason,
                       onSelected: _onSeasonChanged,
-                      itemBuilder: (_) => lp.seasons
-                          .map((s) => PopupMenuItem<Media>(
-                                value: s,
-                                child: _SeasonMenuLabel(
-                                  season: s,
-                                  selected: identical(s, selectedSeason),
-                                ),
-                              ))
-                          .toList(),
-                      // The popup's ink well holds the focus; the halo is how a
-                      // remote sees it landed here.
-                      child: TvFocusHalo(
-                        child: Container(
-                          padding: const EdgeInsets.symmetric(
-                              horizontal: 14, vertical: 9),
-                          decoration: BoxDecoration(
-                            color: AppColors.surfaceElevated,
-                            borderRadius: BorderRadius.circular(12),
-                            border: Border.all(color: AppColors.border),
-                          ),
-                          child: Row(
-                            mainAxisSize: MainAxisSize.min,
-                            children: [
-                              Text(
-                                selectedSeason == null
-                                    ? 'Saison'
-                                    : seasonLabel(selectedSeason),
-                                style: Theme.of(context)
-                                    .textTheme
-                                    .bodyMedium
-                                    ?.copyWith(
-                                      color: selectedSeason == null
-                                          ? AppColors.textSecondary
-                                          : AppColors.textPrimary,
-                                      fontWeight: FontWeight.w600,
-                                    ),
-                              ),
-                              const SizedBox(width: 8),
-                              const Icon(Icons.expand_more_rounded,
-                                  size: 18, color: AppColors.textSecondary),
-                            ],
-                          ),
-                        ),
-                      ),
                     ),
-                    // Le même geste que « télécharger la saison », de l'autre
-                    // côté du visionnage : la ligne qui dit de quelle saison on
-                    // parle est aussi celle d'où on la solde d'un coup.
+                    const SizedBox(height: 12),
                     SeasonWatchedButton(
                       episodes: lp.episodes,
                       busy: _updatingSeasonWatched,
@@ -789,13 +736,14 @@ class _ShowDetailScreenState extends State<ShowDetailScreen> {
                 children: [
                   Text(
                     'Épisodes',
-                    style: Theme.of(context).textTheme.titleLarge?.copyWith(
-                          fontWeight: FontWeight.w700,
-                        ),
+                    style: detailSectionTitleStyle(context),
                   ),
                   if (totalCount > 0) ...[
                     const SizedBox(width: 12),
-                    Flexible(
+                    Expanded(
+                      // Expanded et non Flexible + Spacer : les deux se partageaient
+                      // l'espace libre, et le bouton de téléchargement flottait
+                      // au milieu de la ligne au lieu de se caler à droite.
                       child: Text(
                         '$availableCount/$totalCount disponibles',
                         overflow: TextOverflow.ellipsis,
@@ -804,8 +752,8 @@ class _ShowDetailScreenState extends State<ShowDetailScreen> {
                             ),
                       ),
                     ),
-                  ],
-                  const Spacer(),
+                  ] else
+                    const Spacer(),
                   // Le geste qu'on fait avant de partir : toute la saison d'un
                   // coup, plutôt que vingt appuis sur vingt lignes.
                   SeasonDownloadButton(
@@ -877,56 +825,6 @@ class _ShowDetailScreenState extends State<ShowDetailScreen> {
           const SliverToBoxAdapter(child: SizedBox(height: 48)),
         ],
       ),
-    );
-  }
-}
-
-/// Shared by the closed button and the menu entries so both read the same.
-String seasonLabel(Media season) {
-  final number = season.effectiveSeasonNumber;
-  return number != null && number > 0 ? 'Saison $number' : season.title;
-}
-
-/// One entry of the season picker. Seasons the server does not hold are marked
-/// in the menu itself, so the state is visible before selecting them.
-class _SeasonMenuLabel extends StatelessWidget {
-  final Media season;
-  final bool selected;
-
-  const _SeasonMenuLabel({required this.season, this.selected = false});
-
-  @override
-  Widget build(BuildContext context) {
-    final label = seasonLabel(season);
-    final weight = selected ? FontWeight.w700 : FontWeight.w500;
-
-    if (season.isAvailable) {
-      return Text(
-        label,
-        style: TextStyle(color: AppColors.textPrimary, fontWeight: weight),
-      );
-    }
-
-    return Row(
-      mainAxisSize: MainAxisSize.min,
-      children: [
-        Icon(
-          season.isRequested
-              ? Icons.hourglass_top_rounded
-              : Icons.cloud_off_outlined,
-          size: 15,
-          color:
-              season.isRequested ? AppColors.accentMuted : AppColors.textMuted,
-        ),
-        const SizedBox(width: 6),
-        Text(
-          season.isRequested ? '$label · demandée' : '$label · manquante',
-          style: TextStyle(
-            color: selected ? AppColors.textPrimary : AppColors.textSecondary,
-            fontWeight: weight,
-          ),
-        ),
-      ],
     );
   }
 }

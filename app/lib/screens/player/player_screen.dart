@@ -56,6 +56,7 @@ import 'playback/relay_trigger.dart';
 import 'playback/remote_seek.dart';
 import 'pinch_zoom_fit.dart';
 import 'player_playback_preferences.dart';
+import 'player_shortcuts.dart';
 import '../../desktop_window.dart';
 import '../../utils/release_tag.dart';
 import '../../utils/format.dart';
@@ -1209,6 +1210,29 @@ class _PlayerScreenState extends State<PlayerScreen> {
     _showControlsTransient();
   }
 
+  void _runShortcut(PlayerShortcutMatch match) {
+    switch (match.shortcut) {
+      case PlayerShortcut.playPause:
+        _togglePlayPause();
+      case PlayerShortcut.seekBack:
+        _seekRelative(-10);
+      case PlayerShortcut.seekForward:
+        _seekRelative(10);
+      case PlayerShortcut.toggleFullscreen:
+        if (AppPlatform.isDesktop) unawaited(_toggleFullscreen());
+      case PlayerShortcut.toggleMute:
+        togglePlayerMute(_playerController.session);
+        _showControlsTransient();
+        _safeSetState(() {});
+      case PlayerShortcut.nextEpisode:
+        if (_episodeNav?.nextEpisode != null) _goToNextEpisode();
+      case PlayerShortcut.seekToFraction:
+        _seekToFraction(match.fraction);
+      case PlayerShortcut.showHelp:
+        unawaited(showPlayerShortcutsHelp(context));
+    }
+  }
+
   void _adjustVolume(double delta) {
     final session = _playerController.session;
     final next = (session.volume + delta).clamp(0.0, 100.0);
@@ -1407,6 +1431,17 @@ class _PlayerScreenState extends State<PlayerScreen> {
       if (event is KeyRepeatEvent) return KeyEventResult.handled;
       _togglePlayPause();
       return KeyEventResult.handled;
+    }
+
+    // Les lettres et les chiffres d'un clavier d'ordinateur (voir
+    // [matchPlayerShortcut]). Pas sur un téléviseur : une télécommande n'en a
+    // pas, et ses touches de couleur ne doivent rien déclencher par surprise.
+    if (!TvMode.isTv) {
+      final shortcut = matchPlayerShortcut(event);
+      if (shortcut != null) {
+        _runShortcut(shortcut);
+        return KeyEventResult.handled;
+      }
     }
 
     // While the remote is on the control bar the arrows belong to focus

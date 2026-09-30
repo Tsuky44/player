@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import '../../../models/player_layout.dart';
 import '../hooks/use_studio_controller.dart';
 import '../../../widgets/global/app_slider.dart';
+import '../../../theme/app_colors.dart';
 
 /// Compact floating menu shown on right-click over a canvas control.
 class ControlContextMenu extends StatelessWidget {
@@ -179,7 +180,7 @@ class ControlContextMenu extends StatelessWidget {
                             icon: const Icon(Icons.tune, size: 16),
                             label: const Text('Tous les réglages'),
                             style: TextButton.styleFrom(
-                              foregroundColor: const Color(0xFF0A84FF),
+                              foregroundColor: AppColors.accent,
                               padding: const EdgeInsets.symmetric(vertical: 4),
                               visualDensity: VisualDensity.compact,
                             ),
@@ -270,10 +271,10 @@ class _CompactSlider extends StatelessWidget {
         SliderTheme(
           data: SliderTheme.of(context).copyWith(
             trackHeight: 3,
-            activeTrackColor: const Color(0xFF0A84FF),
+            activeTrackColor: AppColors.accent,
             inactiveTrackColor: Colors.white.withValues(alpha: 0.12),
             thumbColor: Colors.white,
-            overlayColor: const Color(0xFF0A84FF).withValues(alpha: 0.15),
+            overlayColor: AppColors.accent.withValues(alpha: 0.15),
             thumbShape: const RoundSliderThumbShape(enabledThumbRadius: 6),
             overlayShape: const RoundSliderOverlayShape(overlayRadius: 12),
           ),
@@ -318,7 +319,7 @@ class _CompactToggle extends StatelessWidget {
           Switch.adaptive(
             value: value,
             onChanged: onChanged,
-            activeThumbColor: const Color(0xFF0A84FF),
+            activeThumbColor: AppColors.accent,
             materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
           ),
         ],

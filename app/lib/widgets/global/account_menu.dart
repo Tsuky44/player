@@ -1,7 +1,6 @@
 import 'package:flutter/material.dart';
 
 import '../../providers/auth_provider.dart';
-import '../../screens/player_studio/player_studio_screen.dart';
 import '../../screens/settings/settings_screen.dart';
 import '../../screens/settings/tv_link_scanner_screen.dart';
 import '../../theme/app_colors.dart';
@@ -35,8 +34,6 @@ class AccountMenu extends StatelessWidget {
       tooltip: 'Menu',
       offset: const Offset(0, 44),
       padding: EdgeInsets.zero,
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-      color: AppColors.surfaceElevated.withValues(alpha: 0.96),
       itemBuilder: (_) => [
         PopupMenuItem(
           enabled: false,
@@ -50,7 +47,11 @@ class AccountMenu extends StatelessWidget {
               ),
               if (authProvider.activeServer != null)
                 Text(
-                  authProvider.activeServer!.displayName,
+                  // Le rôle, pour qu'un membre sache d'emblée ce qu'il peut
+                  // faire sur ce serveur — et pourquoi il ne voit pas les
+                  // actions d'administration.
+                  '${authProvider.activeServer!.displayName} · '
+                  '${authProvider.permissions.isAdmin ? 'Administrateur' : 'Membre'}',
                   style: const TextStyle(
                     fontSize: 11,
                     color: AppColors.textMuted,
@@ -91,16 +92,26 @@ class AccountMenu extends StatelessWidget {
           ),
         ),
         const PopupMenuDivider(),
-        const PopupMenuItem(value: 'servers', child: Text('Serveurs')),
-        const PopupMenuItem(value: 'settings', child: Text('Paramètres')),
-        const PopupMenuItem(value: 'studio', child: Text('Player Studio')),
+        // « Serveurs » et « Player Studio » ont quitté ce menu : le premier
+        // ouvrait les mêmes Paramètres sur une autre section, le second est
+        // dans Paramètres › Lecture, avec le reste de l'interface du lecteur.
+        const PopupMenuItem(
+          value: 'settings',
+          child: _MenuRow(icon: Icons.settings_outlined, label: 'Paramètres'),
+        ),
         if (canLinkTv)
           const PopupMenuItem(
             value: 'tv',
-            child: Text('Connecter un appareil'),
+            child: _MenuRow(
+              icon: Icons.qr_code_scanner_rounded,
+              label: 'Connecter un appareil',
+            ),
           ),
         const PopupMenuDivider(),
-        const PopupMenuItem(value: 'logout', child: Text('Se déconnecter')),
+        const PopupMenuItem(
+          value: 'logout',
+          child: _MenuRow(icon: Icons.logout_rounded, label: 'Se déconnecter'),
+        ),
       ],
       onSelected: (value) async {
         if (value.startsWith('switch:')) {
@@ -110,21 +121,9 @@ class AccountMenu extends StatelessWidget {
         switch (value) {
           case 'watch-party':
             await showJoinWatchPartyDialog(context, authProvider: authProvider);
-          case 'servers':
-            Navigator.of(context, rootNavigator: true).push(
-              MaterialPageRoute(
-                builder: (_) => const SettingsScreen(
-                  initialSection: SettingsSections.servers,
-                ),
-              ),
-            );
           case 'settings':
             Navigator.of(context, rootNavigator: true).push(
               MaterialPageRoute(builder: (_) => const SettingsScreen()),
-            );
-          case 'studio':
-            Navigator.of(context, rootNavigator: true).push(
-              MaterialPageRoute(builder: (_) => const PlayerStudioScreen()),
             );
           case 'tv':
             Navigator.of(context, rootNavigator: true).push(
@@ -145,6 +144,26 @@ class AccountMenu extends StatelessWidget {
           ),
         ),
       ),
+    );
+  }
+}
+
+/// Une entrée du menu : une icône de 16 px et son libellé, comme les entrées
+/// « Passer sur… » et « Rejoindre une séance » au-dessus.
+class _MenuRow extends StatelessWidget {
+  final IconData icon;
+  final String label;
+
+  const _MenuRow({required this.icon, required this.label});
+
+  @override
+  Widget build(BuildContext context) {
+    return Row(
+      children: [
+        Icon(icon, size: 16),
+        const SizedBox(width: 8),
+        Text(label),
+      ],
     );
   }
 }

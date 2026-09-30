@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import '../../../models/player_layout.dart';
 import 'studio_drawer_shell.dart';
 import '../../../widgets/global/app_slider.dart';
+import '../../../theme/app_colors.dart';
 
 /// Side drawer for choosing the preset's control skin (Verre/Net/Doux) and
 /// tuning that skin's own parameters (glass blur/opacity/liquid, flat accent
@@ -60,7 +61,7 @@ class GlassStyleDrawer extends StatelessWidget {
               backgroundColor: const Color(0xFF252525),
               foregroundColor: Colors.grey,
               selectedForegroundColor: Colors.white,
-              selectedBackgroundColor: const Color(0xFF0A84FF),
+              selectedBackgroundColor: AppColors.accent,
             ),
           ),
           const SizedBox(height: 24),
@@ -116,7 +117,7 @@ class _GlassSection extends StatelessWidget {
           contentPadding: EdgeInsets.zero,
           value: liquidGlass,
           onChanged: onLiquidGlassChanged,
-          activeThumbColor: const Color(0xFF0A84FF),
+          activeThumbColor: AppColors.accent,
           title: const Text(
             'Effet liquide (style Apple)',
             style: TextStyle(color: Colors.white, fontSize: 14),
@@ -214,7 +215,7 @@ class _FlatSection extends StatelessWidget {
             backgroundColor: const Color(0xFF252525),
             foregroundColor: Colors.grey,
             selectedForegroundColor: Colors.white,
-            selectedBackgroundColor: const Color(0xFF0A84FF),
+            selectedBackgroundColor: AppColors.accent,
           ),
         ),
       ],
@@ -316,7 +317,7 @@ class _GlassSliderRow extends StatelessWidget {
           data: SliderTheme.of(context).copyWith(
             trackHeight: 3,
             overlayShape: const RoundSliderOverlayShape(overlayRadius: 14),
-            activeTrackColor: const Color(0xFF0A84FF),
+            activeTrackColor: AppColors.accent,
             inactiveTrackColor: const Color(0xFF2A2A2A),
             thumbColor: Colors.white,
           ),

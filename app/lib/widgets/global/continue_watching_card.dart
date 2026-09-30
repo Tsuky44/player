@@ -3,12 +3,16 @@ import 'package:provider/provider.dart';
 import '../../models/models.dart';
 import '../../services/api_client.dart';
 import '../../theme/app_colors.dart';
+import '../../theme/app_motion.dart';
 import '../../tv/tv_focus.dart';
+import '../../tv/tv_mode.dart';
 import '../../utils/format.dart';
 import '../../utils/poster_url.dart';
+import '../../utils/app_platform.dart';
 import 'media_poster.dart';
 import 'poster_card.dart';
 import 'poster_launch_route.dart';
+import 'pressable.dart';
 import 'progress_pill.dart';
 
 class ContinueWatchingCard extends StatefulWidget {
@@ -69,12 +73,20 @@ class _ContinueWatchingCardState extends State<ContinueWatchingCard> {
     _showContextMenu(Offset(size.width / 2, size.height / 2));
   }
 
+  bool get _hasMenu =>
+      widget.onTitleTap != null ||
+      widget.onMarkAsWatched != null ||
+      widget.onRemoveFromRow != null;
+
+  /// Le menu ouvert depuis le bouton « ⋯ », sous son coin.
+  void _showContextMenuFromButton(BuildContext buttonContext) {
+    final box = buttonContext.findRenderObject() as RenderBox?;
+    if (box == null) return;
+    _showContextMenu(box.localToGlobal(box.size.bottomRight(Offset.zero)));
+  }
+
   Future<void> _showContextMenu(Offset globalPosition) async {
-    if (widget.onTitleTap == null &&
-        widget.onMarkAsWatched == null &&
-        widget.onRemoveFromRow == null) {
-      return;
-    }
+    if (!_hasMenu) return;
 
     final action = await showMenu<String>(
       context: context,
@@ -160,47 +172,61 @@ class _ContinueWatchingCardState extends State<ContinueWatchingCard> {
               crossAxisAlignment: CrossAxisAlignment.start,
               mainAxisSize: MainAxisSize.min,
               children: [
-                GestureDetector(
+                Pressable(
                   onTap: _play,
-                  child: SizedBox(
+                  builder: (context, pressed) => SizedBox(
                     key: _posterKey,
                     width: width,
                     height: height,
-                    child: PosterLift(
-                      active: _active,
-                      child: Stack(
-                        fit: StackFit.expand,
-                        clipBehavior: Clip.hardEdge,
-                        children: [
-                          MediaPoster(
-                            media: widget.item.media,
-                            posterUrlOverride: widget.item.displayPosterUrl,
-                            width: width,
-                            height: height,
-                            fit: BoxFit.cover,
-                            alignment: Alignment.center,
-                          ),
-                          PosterHoverOverlay(
-                            active: _active,
-                            focused: _focused,
-                            playSize: 54,
-                          ),
-                          if (widget.item.hasNewEpisode)
-                            const Positioned(
-                              top: PosterCard.overlayInset,
-                              left: PosterCard.overlayInset,
-                              child: _NewEpisodeBadge(),
+                    child: PressScale(
+                      pressed: pressed,
+                      child: PosterLift(
+                        active: _active,
+                        child: Stack(
+                          fit: StackFit.expand,
+                          clipBehavior: Clip.hardEdge,
+                          children: [
+                            MediaPoster(
+                              media: widget.item.media,
+                              posterUrlOverride: widget.item.displayPosterUrl,
+                              width: width,
+                              height: height,
+                              fit: BoxFit.cover,
+                              alignment: Alignment.center,
                             ),
-                          // Même retrait que le badge ci-dessus, et le même que sur
-                          // les affiches du catalogue : la barre flotte au lieu de se
-                          // faire découper par l'arrondi du coin bas.
-                          Positioned(
-                            left: PosterCard.overlayInset,
-                            right: PosterCard.overlayInset,
-                            bottom: PosterCard.overlayInset,
-                            child: ProgressPill(value: progress),
-                          ),
-                        ],
+                            PosterHoverOverlay(
+                              active: _active,
+                              focused: _focused,
+                              playSize: 54,
+                            ),
+                            if (widget.item.hasNewEpisode)
+                              const Positioned(
+                                top: PosterCard.overlayInset,
+                                left: PosterCard.overlayInset,
+                                child: _NewEpisodeBadge(),
+                              ),
+                            // Même retrait que le badge ci-dessus, et le même que sur
+                            // les affiches du catalogue : la barre flotte au lieu de se
+                            // faire découper par l'arrondi du coin bas.
+                            Positioned(
+                              left: PosterCard.overlayInset,
+                              right: PosterCard.overlayInset,
+                              bottom: PosterCard.overlayInset,
+                              child: ProgressPill(value: progress),
+                            ),
+                            if (_hasMenu && !TvScope.of(context))
+                              Positioned(
+                                top: PosterCard.overlayInset - 4,
+                                right: PosterCard.overlayInset - 4,
+                                child: _MoreButton(
+                                  // Au doigt il n'y a pas de survol pour le
+                                  // révéler : il reste visible.
+                                  visible: _active || AppPlatform.isMobile,
+                                  onPressed: _showContextMenuFromButton,
+                                ),
+                              ),
+                          ],
+                        ),
                       ),
                     ),
                   ),
@@ -300,6 +326,39 @@ class _NewEpisodeBadge extends StatelessWidget {
             ),
           ),
         ],
+      ),
+    );
+  }
+}
+
+/// « ⋯ » en haut à droite de la vignette : les actions « Marquer comme vu » et
+/// « Retirer » n'existaient qu'au clic droit et à l'appui long, deux gestes
+/// que rien n'annonçait — un film abandonné restait alors en tête de l'accueil.
+class _MoreButton extends StatelessWidget {
+  final bool visible;
+  final void Function(BuildContext buttonContext) onPressed;
+
+  const _MoreButton({required this.visible, required this.onPressed});
+
+  @override
+  Widget build(BuildContext context) {
+    return AnimatedOpacity(
+      opacity: visible ? 1 : 0,
+      duration: AppMotion.fade(context, AppMotion.micro),
+      curve: AppMotion.curve,
+      child: Builder(
+        builder: (buttonContext) => IconButton(
+          tooltip: 'Plus d’actions',
+          onPressed: () => onPressed(buttonContext),
+          style: IconButton.styleFrom(
+            backgroundColor: Colors.black.withValues(alpha: 0.55),
+            foregroundColor: AppColors.textPrimary,
+            minimumSize: const Size(32, 32),
+            fixedSize: const Size(32, 32),
+            padding: EdgeInsets.zero,
+          ),
+          icon: const Icon(Icons.more_horiz_rounded, size: 20),
+        ),
       ),
     );
   }

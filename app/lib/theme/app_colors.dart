@@ -23,6 +23,10 @@ abstract final class AppColors {
   static const warning = Color(0xFFFF9F0A);
   static const error = Color(0xFFFF453A);
 
+  /// L'étoile des notes : l'or que le public associe aux notes de films,
+  /// réservé à ce seul usage.
+  static const rating = Color(0xFFF5C518);
+
   static const gradientBottom = Color(0xFF0A0A0A);
   static const gradientTop = Colors.transparent;
 

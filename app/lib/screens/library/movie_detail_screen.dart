@@ -10,8 +10,8 @@ import '../../services/media_tracks_cache.dart';
 import '../../theme/app_colors.dart';
 import '../../tv/tv_mode.dart';
 import '../../utils/format.dart';
-import '../../utils/responsive.dart';
 import '../../widgets/global/detail_actions.dart';
+import '../../widgets/global/detail_metadata.dart';
 import '../../widgets/global/media_detail_widgets.dart';
 import '../../widgets/global/media_download_button.dart';
 import '../../widgets/global/media_technical_section.dart';
@@ -333,8 +333,8 @@ class _MovieDetailScreenState extends State<MovieDetailScreen> {
     );
     // Le serveur réserve la correction à `manage_library` (ADR-0001) : sans
     // ce droit, le bouton menait au bout d'une recherche TMDB pour un refus.
-    final canFixMetadata = context
-        .select<AuthProvider, bool>((a) => a.permissions.manageLibrary);
+    final canFixMetadata =
+        context.select<AuthProvider, bool>((a) => a.permissions.manageLibrary);
 
     return Scaffold(
       backgroundColor: AppColors.background,
@@ -347,20 +347,22 @@ class _MovieDetailScreenState extends State<MovieDetailScreen> {
               metadata: metadata,
               onBack: () => Navigator.of(context).pop(),
               loading: _loadingDetails,
+              badges: techBadgesFor(_tracks),
               actions: DetailActions(
                 playLabel: detailPlayLabel(resuming: _hasProgress),
                 onPlay: _play,
                 autofocusPlay: TvMode.isTv,
                 progress: _hasProgress ? _progress : null,
                 progressLabel: _hasProgress
-                    ? formatRemaining(_playbackMedia.duration - _currentPosition)
+                    ? formatRemaining(
+                        _playbackMedia.duration - _currentPosition)
                     : null,
                 secondary: [
                   WatchedActionButton(
                     isWatched: _isFinished,
                     isLoading: _loadingWatched || _loadingProgress,
                     onPressed: _toggleWatched,
-                    compact: AppLayout.isCompact(context),
+                    compact: true,
                   ),
                   MediaDownloadButton(item: _playbackItem),
                   ShareMediaButton(item: _playbackItem),
@@ -406,14 +408,6 @@ class _MovieDetailScreenState extends State<MovieDetailScreen> {
               ),
             ),
           SliverToBoxAdapter(
-            child: MediaTechnicalSection(
-              tracks: _tracks,
-              loading: _loadingTracks,
-              failed: _tracksFailed,
-              onRetry: _loadTracks,
-            ),
-          ),
-          SliverToBoxAdapter(
             child: DetailInfoSection(
               details: _details,
               fallbackOverview: _media.overview,
@@ -450,6 +444,18 @@ class _MovieDetailScreenState extends State<MovieDetailScreen> {
                 ),
               ),
             ),
+          // Codec, définition exacte, pistes : ce qui intéresse qui vérifie un
+          // fichier, pas qui choisit un film. Il ouvrait la fiche, avant même
+          // le synopsis ; il la ferme. Les badges de l'en-tête en disent
+          // l'essentiel.
+          SliverToBoxAdapter(
+            child: MediaTechnicalSection(
+              tracks: _tracks,
+              loading: _loadingTracks,
+              failed: _tracksFailed,
+              onRetry: _loadTracks,
+            ),
+          ),
           const SliverToBoxAdapter(child: SizedBox(height: 48)),
         ],
       ),

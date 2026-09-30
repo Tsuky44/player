@@ -5,11 +5,19 @@ import '../../desktop_window.dart';
 import '../../providers/library_provider.dart';
 import '../../theme/app_colors.dart';
 import '../../utils/responsive.dart';
+import 'widgets/catalog_header.dart';
 import '../../widgets/global/empty_state.dart';
+import '../../utils/search_match.dart';
 import '../../widgets/global/media_card.dart';
+import '../../widgets/global/skeleton.dart';
 import 'show_detail_screen.dart';
 
 enum _SortOption { title, recent }
+
+const Map<_SortOption, String> _sortLabels = {
+  _SortOption.recent: 'Récents',
+  _SortOption.title: 'A → Z',
+};
 
 class ShowsScreen extends StatefulWidget {
   final bool embedded;
@@ -35,7 +43,8 @@ class _ShowsScreenState extends State<ShowsScreen> {
     var items = List.of(lp.shows);
     switch (_sort) {
       case _SortOption.title:
-        items.sort((a, b) => a.title.compareTo(b.title));
+        items.sort(
+            (a, b) => titleSortKey(a.title).compareTo(titleSortKey(b.title)));
       case _SortOption.recent:
         items.sort((a, b) => b.createdAt.compareTo(a.createdAt));
     }
@@ -51,148 +60,97 @@ class _ShowsScreenState extends State<ShowsScreen> {
 
     return Scaffold(
       backgroundColor: AppColors.background,
-      body: lp.isLoadingShows
-          ? const LoadingView()
-          : lp.errorMessage != null
-              ? ErrorStateView(
-                  message: lp.errorMessage!,
-                  onRetry: () => lp.loadShows(),
-                )
-              : CustomScrollView(
-                  slivers: [
-                    SliverToBoxAdapter(
-                      child: Padding(
-                        padding: EdgeInsets.fromLTRB(
-                          horizontalPadding,
-                          widget.embedded
-                              ? embeddedShellContentTopInset(context)
-                              : (compact
-                                  ? MediaQuery.paddingOf(context).top + 56
-                                  : 48),
-                          horizontalPadding,
-                          0,
+      body: lp.errorMessage != null
+          ? ErrorStateView(
+              message: lp.errorMessage!,
+              onRetry: () => lp.loadShows(),
+            )
+          : CustomScrollView(
+              slivers: [
+                SliverToBoxAdapter(
+                  child: Padding(
+                    padding: EdgeInsets.fromLTRB(
+                      horizontalPadding,
+                      widget.embedded
+                          ? embeddedShellContentTopInset(context)
+                          : (compact
+                              ? MediaQuery.paddingOf(context).top + 56
+                              : 48),
+                      horizontalPadding,
+                      0,
+                    ),
+                    child: CatalogHeader<_SortOption>(
+                      title: 'Séries',
+                      countLabel: lp.isLoadingShows
+                          ? null
+                          : '${filtered.length} série${filtered.length > 1 ? 's' : ''}',
+                      sortOptions: _sortLabels,
+                      sort: _sort,
+                      onSortChanged: (v) => setState(() => _sort = v),
+                      compact: compact,
+                    ),
+                  ),
+                ),
+                if (lp.isLoadingShows)
+                  SliverPadding(
+                    padding: EdgeInsets.fromLTRB(
+                        horizontalPadding, 24, horizontalPadding, 48),
+                    sliver: const PosterGridSkeleton(),
+                  )
+                else if (lp.shows.isEmpty)
+                  const SliverFillRemaining(
+                    child: EmptyStateView(
+                      icon: Icons.tv_off_rounded,
+                      title: 'Aucune série',
+                      message:
+                          'Ajoutez des dossiers de séries avec des épisodes SxxExx puis synchronisez la bibliothèque.',
+                    ),
+                  )
+                else if (filtered.isEmpty)
+                  const SliverFillRemaining(
+                    child: Center(
+                      child: Text(
+                        'Aucune série trouvée',
+                        style: TextStyle(color: AppColors.textMuted),
+                      ),
+                    ),
+                  )
+                else
+                  SliverPadding(
+                    padding: EdgeInsets.fromLTRB(
+                      horizontalPadding,
+                      24,
+                      horizontalPadding,
+                      MediaQuery.paddingOf(context).bottom + 48,
+                    ),
+                    sliver: SliverLayoutBuilder(
+                      builder: (context, constraints) => SliverGrid(
+                        gridDelegate: AppLayout.posterGridDelegate(
+                          constraints.crossAxisExtent,
+                          compact: compact,
                         ),
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Text(
-                              'Séries',
-                              style: Theme.of(context)
-                                  .textTheme
-                                  .displaySmall
-                                  ?.copyWith(
-                                    fontWeight: FontWeight.w800,
-                                    fontSize: compact ? 26 : 32,
+                        delegate: SliverChildBuilderDelegate(
+                          (context, index) {
+                            final show = filtered[index];
+                            return MediaCard(
+                              media: show,
+                              onTap: () {
+                                Navigator.of(context).push(
+                                  MaterialPageRoute(
+                                    builder: (_) =>
+                                        ShowDetailScreen(show: show),
                                   ),
-                            ),
-                            const SizedBox(height: 20),
-                            Row(
-                              children: [
-                                const Spacer(),
-                                _SortDropdown(
-                                  value: _sort,
-                                  onChanged: (v) => setState(() => _sort = v),
-                                ),
-                              ],
-                            ),
-                            const SizedBox(height: 8),
-                            Text(
-                              '${filtered.length} série${filtered.length > 1 ? 's' : ''}',
-                              style: const TextStyle(
-                                  color: AppColors.textMuted, fontSize: 13),
-                            ),
-                          ],
+                                );
+                              },
+                            );
+                          },
+                          childCount: filtered.length,
                         ),
                       ),
                     ),
-                    if (lp.shows.isEmpty)
-                      const SliverFillRemaining(
-                        child: EmptyStateView(
-                          icon: Icons.tv_off_rounded,
-                          title: 'Aucune série',
-                          message:
-                              'Ajoutez des dossiers de séries avec des épisodes SxxExx puis synchronisez la bibliothèque.',
-                        ),
-                      )
-                    else if (filtered.isEmpty)
-                      const SliverFillRemaining(
-                        child: Center(
-                          child: Text(
-                            'Aucune série trouvée',
-                            style: TextStyle(color: AppColors.textMuted),
-                          ),
-                        ),
-                      )
-                    else
-                      SliverPadding(
-                        padding: EdgeInsets.fromLTRB(
-                          horizontalPadding,
-                          24,
-                          horizontalPadding,
-                          MediaQuery.paddingOf(context).bottom + 48,
-                        ),
-                        sliver: SliverLayoutBuilder(
-                          builder: (context, constraints) => SliverGrid(
-                            gridDelegate: AppLayout.posterGridDelegate(
-                              constraints.crossAxisExtent,
-                              compact: compact,
-                            ),
-                            delegate: SliverChildBuilderDelegate(
-                              (context, index) {
-                                final show = filtered[index];
-                                return MediaCard(
-                                  media: show,
-                                  onTap: () {
-                                    Navigator.of(context).push(
-                                      MaterialPageRoute(
-                                        builder: (_) =>
-                                            ShowDetailScreen(show: show),
-                                      ),
-                                    );
-                                  },
-                                );
-                              },
-                              childCount: filtered.length,
-                            ),
-                          ),
-                        ),
-                      ),
-                  ],
-                ),
-    );
-  }
-}
-
-class _SortDropdown extends StatelessWidget {
-  final _SortOption value;
-  final ValueChanged<_SortOption> onChanged;
-
-  const _SortDropdown({required this.value, required this.onChanged});
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 12),
-      decoration: BoxDecoration(
-        color: AppColors.surfaceElevated,
-        borderRadius: BorderRadius.circular(8),
-        border: Border.all(color: AppColors.border),
-      ),
-      child: DropdownButtonHideUnderline(
-        child: DropdownButton<_SortOption>(
-          value: value,
-          dropdownColor: AppColors.surfaceElevated,
-          icon: const Icon(Icons.sort_rounded,
-              color: AppColors.textSecondary, size: 20),
-          items: const [
-            DropdownMenuItem(value: _SortOption.recent, child: Text('Récents')),
-            DropdownMenuItem(value: _SortOption.title, child: Text('A → Z')),
-          ],
-          onChanged: (v) {
-            if (v != null) onChanged(v);
-          },
-        ),
-      ),
+                  ),
+              ],
+            ),
     );
   }
 }

@@ -59,6 +59,8 @@ Un membre de la famille voit un crayon sur chaque fiche, fait l'effort de corrig
 
 ### A5 — La carte « Reprendre la lecture » cache ses actions
 
+> **Corrigé le 2026-09-30.** Bouton « ⋯ » en haut à droite de la vignette : visible au survol et au focus, toujours visible au tactile.
+
 **Confiance : élevée.**
 
 « Marquer comme vu » et « Retirer » n'existent que par clic droit ou appui long (`widgets/global/continue_watching_card.dart:141-144`). Aucun signe visuel ne l'indique. Sur mobile, l'appui long est un geste que peu de gens essaient sur une affiche. Sans ça, un film abandonné reste en tête de l'accueil pour toujours.
@@ -74,6 +76,8 @@ Un membre de la famille voit un crayon sur chaque fiche, fait l'effort de corrig
 `main_shell.dart:457` : « Téléchargements » sur desktop ; `main_shell.dart:552` : « Hors ligne » sur mobile. Même écran, même index. Choisir un nom — « Téléchargements » est plus explicite, « Hors ligne » dit mieux pourquoi on y va — et l'appliquer partout, réglages compris (`settings_screen.dart:98`).
 
 ### B2 — Le menu compte mélange trois niveaux d'importance
+
+> **Corrigé le 2026-09-30.** « Serveurs » et « Player Studio » retirés du menu (tous deux dans Paramètres), icônes sur toutes les entrées, rôle affiché sous le serveur.
 
 `account_menu.dart:66-105`, dans l'ordre : changer de serveur · **Rejoindre une séance** · Serveurs · Paramètres · **Player Studio** · Connecter un appareil · Se déconnecter.
 
@@ -94,6 +98,8 @@ Erreur de lecture : la barre latérale sépare déjà « Mon espace » et « Adm
 
 ### C1 — L'accueil n'a que trois rangées
 
+> **En partie corrigé le 2026-09-30.** Rangée « À découvrir » avec la sélection aléatoire que le serveur envoyait déjà (`discovery_movies`/`discovery_shows`). Restent « Épisode suivant » et les rangées par genre, qui demandent le serveur.
+
 `home_screen.dart:243-297` : Reprendre, Films récents, Séries récentes. Pour une médiathèque de quelques centaines de titres, c'est un accueil qui ne change que quand on ajoute des fichiers.
 
 Données déjà disponibles côté client qui ne servent pas à la découverte : `genres` sur les détails TMDB (`models/models.dart:911`), collections (`CollectionSection`), acteurs.
@@ -106,6 +112,8 @@ Données déjà disponibles côté client qui ne servent pas à la découverte :
 
 ### C2 — Le catalogue n'a qu'un tri, et le tri alphabétique est faux en français
 
+> **Tri corrigé le 2026-09-30** (`titleSortKey` : accents et articles). Filtres, rail A–Z et tri mémorisé restent à faire.
+
 `movies_screen.dart:11,33-46` : tris Récents / A → Z / En cours, aucun filtre.
 
 - `a.media.title.compareTo(b.media.title)` (ligne 37) compare les unités UTF-16 : **« Éternels » est rangé après « Zodiac »**, et une minuscule initiale après toutes les majuscules. Il faut une clé normalisée (minuscules, accents retirés, articles « Le/La/Les/L'/The » ignorés).
@@ -114,6 +122,8 @@ Données déjà disponibles côté client qui ne servent pas à la découverte :
 - Le tri choisi est un `setState` local (ligne 23) : il revient à « Récents » à chaque relance de l'app.
 
 ### C3 — La recherche ne trouve que des sous-chaînes exactes du titre
+
+> **En partie corrigé le 2026-09-30.** `utils/search_match.dart` : insensible à la casse, aux accents et aux ligatures ; la ponctuation sépare les mots ; les mots de la requête peuvent venir dans n'importe quel ordre ; « spiderman » trouve « Spider-Man ». `LibraryProvider.searchCatalog` range par pertinence (titre exact, début de titre, début de mot, mots dans le désordre, sous-chaîne), puis par titre. Épinglé par `test/catalog_search_test.dart`. **Reste ouvert** : recherche par acteur ou titre original (données absentes du catalogue local) et raccourci clavier.
 
 `providers/library_provider.dart:93-109` : `title.toLowerCase().contains(q)`, résultats triés par ordre alphabétique.
 
@@ -127,6 +137,8 @@ Données déjà disponibles côté client qui ne servent pas à la découverte :
 ## D. Lecteur
 
 ### D1 — Raccourcis clavier desktop incomplets
+
+> **Corrigé le 2026-09-30** (`screens/player/player_shortcuts.dart`), sauf `C`/`S` pour les sous-titres, qui demandent de toucher à la sélection de pistes du contrôleur.
 
 `player_screen.dart:1376-1470` gère Espace, Entrée, flèches (±10 s, volume) et Échap. Il manque ceux que tout utilisateur de YouTube, Plex ou VLC tape par réflexe :
 
@@ -152,6 +164,8 @@ Le lecteur a trois habillages (HUD par défaut, Modulaire, Onyx) plus Player Stu
 
 ### E1 — Capitales forcées sur les boutons
 
+> **Corrigé le 2026-09-30** sur les fiches, le bandeau et les états vides/erreur.
+
 « LECTURE », « REPRENDRE », « REGARDER », « PLUS D'INFOS », « RÉESSAYER », et `EmptyStateView` qui met tout libellé en capitales (`empty_state.dart:57,65`). Le brief est *Quiet Premium* : les capitales crient, se lisent plus lentement et ne correspondent à aucun autre bouton de l'app (« Se connecter », « Envoyer la demande »… sont en casse normale). Passer en casse de phrase partout.
 
 ### E2 — La dérive typographique s'aggrave
@@ -169,6 +183,8 @@ Le finding 8 de l'audit fluidité (échelle typographique) n'a pas été traité
 
 ### E3 — Couleurs hors tokens restantes
 
+> **Bleu corrigé le 2026-09-30** (41 occurrences → `AppColors.accent`) ; jaune de note → `AppColors.rating`. Restent `#00A4DC` et le violet des palettes au choix de l'utilisateur.
+
 `#0A84FF` est écrit en dur 41 fois au lieu de `AppColors.accent` (surtout dans `screens/player_studio/`). Plus : `#00A4DC` (bleu Jellyfin, `player_screen.dart:3317,3344`), `#F5C518` (jaune IMDb, 3 endroits — acceptable si c'est la note IMDb, sinon `AppColors.warning`), `#BF5AF2` violet (`settings_ui.dart:699`, `player_layout.dart:31`) alors que le brief exclut le violet.
 
 ---
@@ -178,12 +194,12 @@ Le finding 8 de l'audit fluidité (échelle typographique) n'a pas été traité
 | Finding | Source | État au 2026-09-30 |
 | --- | --- | --- |
 | Owner de mouvement `AppMotion` | fluidité, plan 04 | **Fait** (`theme/app_motion.dart`) |
-| Fondu symétrique des 3 chromes | fluidité 1–2, plan 05 | **Ouvert** : `player_chrome_fade.dart` n'existe pas ; `modular_controls_layer.dart:176` et `player_hud_overlay.dart:71` coupent toujours net |
+| Fondu symétrique des 3 chromes | fluidité 1–2, plan 05 | **Fait** (`screens/player/widgets/player_chrome_fade.dart`) |
 | Scrubber qui suit le doigt | fluidité 3 | **Ouvert** : `modular_controls_layer.dart:425` et `control_chrome.dart:1767` émettent toujours à chaque drag |
-| Rétroaction à l'appui (`Pressable`) | fluidité 4, plan 06 | **Ouvert** : `pressable.dart` n'existe pas ; `ContinueWatchingCard` n'a toujours aucun retour tactile |
+| Rétroaction à l'appui (`Pressable`) | fluidité 4, plan 06 | **Fait** (`widgets/global/pressable.dart`) |
 | Continuité affiche → fiche | fluidité 5 | **Partiel** : `pushPosterLaunch` existe mais n'est utilisé que depuis l'accueil (« Reprendre » et lecture du bandeau) ; les rangées Films/Séries récents, les fiches et la recherche utilisent `MaterialPageRoute` nu |
-| Carrousel et « Réduire les animations » | fluidité 6 | **Ouvert** : `hero_carousel.dart:74-86`, toujours 7 s / 900 ms, pause au survol et au focus seulement, `disableAnimations` non lu |
-| Squelettes de chargement | fluidité 9 | **Ouvert**, et 65 spinners au lieu de 36 |
+| Carrousel et « Réduire les animations » | fluidité 6 | **Fait** : plus d'avance automatique sous mouvement réduit ni après un appui au doigt |
+| Squelettes de chargement | fluidité 9 | **En partie** : accueil, Films et Séries (`widgets/global/skeleton.dart`) |
 | `minTouchTarget` consommé | fluidité 10 | **Ouvert** : zéro consommateur |
 
 ---
@@ -192,7 +208,7 @@ Le finding 8 de l'audit fluidité (échelle typographique) n'a pas été traité
 
 1. ~~**A1 — masquer les actions d'admin aux non-admins.**~~ Fait.
 2. ~~**A3 + A4 — la rangée d'actions des fiches.**~~ Fait.
-3. **C3 — recherche insensible aux accents + tri par pertinence.** Une fonction de normalisation, réutilisable aussi pour le tri A → Z de C2.
-4. **Plan 06 (`Pressable`) déjà écrit** — le plus rentable des findings ouverts, à exécuter tel quel.
+3. ~~**C3 — recherche insensible aux accents + tri par pertinence.**~~ Fait ; `foldForSearch` est réutilisable pour le tri A → Z de C2.
+4. ~~**Plan 06 (`Pressable`)**~~ Fait.
 
 Les points B1–B2 (onglet, menu compte) et C1 (rangées d'accueil) demandent une décision produit avant d'être planifiés.

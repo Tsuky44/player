@@ -16,7 +16,9 @@ import '../../widgets/global/hero_carousel.dart';
 import '../../widgets/global/media_row.dart';
 import '../../widgets/global/poster_launch_route.dart';
 import '../../widgets/global/remote_playback_banner.dart';
+import '../../widgets/global/skeleton.dart';
 import '../../widgets/global/sticky_glass_search.dart';
+import '../../widgets/global/hero_banner.dart' show HeroBanner;
 import '../library/movie_detail_screen.dart';
 import '../library/show_detail_screen.dart';
 import '../player/player_screen.dart';
@@ -52,7 +54,8 @@ class _HomeScreenState extends State<HomeScreen> {
       _homeProvider = Provider.of<HomeProvider>(context, listen: false);
       _homeProvider!.addListener(_onHomeProviderChanged);
       _homeProvider!.loadHome();
-      Provider.of<LibraryProvider>(context, listen: false).ensureCatalogLoaded();
+      Provider.of<LibraryProvider>(context, listen: false)
+          .ensureCatalogLoaded();
     });
   }
 
@@ -77,7 +80,6 @@ class _HomeScreenState extends State<HomeScreen> {
       }
     }
   }
-
 
   void _openMedia(BuildContext context, Media media) {
     if (media.type == MediaType.movie) {
@@ -166,6 +168,9 @@ class _HomeScreenState extends State<HomeScreen> {
     final authProvider = Provider.of<AuthProvider>(context);
     final isTv = TvScope.of(context);
     final data = homeProvider.homeData;
+    final discovery = data == null
+        ? const <Media>[]
+        : _interleave(data.discoveryMovies, data.discoveryShows);
     final heroSlides = data != null
         ? buildHeroSlides(
             data,
@@ -177,7 +182,7 @@ class _HomeScreenState extends State<HomeScreen> {
     return Scaffold(
       backgroundColor: AppColors.background,
       body: homeProvider.isLoading
-          ? const LoadingView()
+          ? HomeSkeleton(heroHeight: HeroBanner.heightFor(context))
           : homeProvider.errorMessage != null
               ? ErrorStateView(
                   message: homeProvider.errorMessage!,
@@ -216,12 +221,13 @@ class _HomeScreenState extends State<HomeScreen> {
                                 child: Center(
                                   child: Text(
                                     'Bienvenue sur Onyx',
-                                    style: Theme.of(context).textTheme.headlineSmall,
+                                    style: Theme.of(context)
+                                        .textTheme
+                                        .headlineSmall,
                                   ),
                                 ),
                               ),
                             ),
-
                           if (data != null &&
                               data.continueWatching.isEmpty &&
                               data.recentMovies.isEmpty &&
@@ -234,8 +240,10 @@ class _HomeScreenState extends State<HomeScreen> {
                               ),
                             )
                           else ...[
-                            const SliverToBoxAdapter(child: SizedBox(height: 8)),
-                            if (data != null && data.continueWatching.isNotEmpty)
+                            const SliverToBoxAdapter(
+                                child: SizedBox(height: 8)),
+                            if (data != null &&
+                                data.continueWatching.isNotEmpty)
                               SliverToBoxAdapter(
                                 child: MediaRow(
                                   title: 'Reprendre la lecture',
@@ -248,7 +256,8 @@ class _HomeScreenState extends State<HomeScreen> {
                                   // screen opens on a poster. The banner's play
                                   // button holds the focus there instead.
                                   autofocusFirstItem: !isTv,
-                                  onItemTap: (item) => _playMedia(context, item),
+                                  onItemTap: (item) =>
+                                      _playMedia(context, item),
                                   onContinueWatchingPlay: (item, origin) =>
                                       _playMedia(context, item, origin: origin),
                                   onContinueWatchingTitleTap: (item, origin) =>
@@ -258,13 +267,17 @@ class _HomeScreenState extends State<HomeScreen> {
                                     origin: origin,
                                   ),
                                   onContinueWatchingMarkWatched: (item) =>
-                                      homeProvider.markContinueWatchingAsWatched(item),
+                                      homeProvider
+                                          .markContinueWatchingAsWatched(item),
                                   onContinueWatchingRemove: (item) =>
-                                      homeProvider.hideContinueWatchingItem(item),
+                                      homeProvider
+                                          .hideContinueWatchingItem(item),
                                 ),
                               ),
-                            if (data != null && data.recentMovies.isNotEmpty) ...[
-                              const SliverToBoxAdapter(child: SizedBox(height: 32)),
+                            if (data != null &&
+                                data.recentMovies.isNotEmpty) ...[
+                              const SliverToBoxAdapter(
+                                  child: SizedBox(height: 32)),
                               SliverToBoxAdapter(
                                 child: MediaRow(
                                   title: 'Films récents',
@@ -272,12 +285,15 @@ class _HomeScreenState extends State<HomeScreen> {
                                   autofocusFirstItem:
                                       !isTv && data.continueWatching.isEmpty,
                                   onSeeAll: widget.onNavigateToMovies,
-                                  onItemTap: (item) => _openMedia(context, item as Media),
+                                  onItemTap: (item) =>
+                                      _openMedia(context, item as Media),
                                 ),
                               ),
                             ],
-                            if (data != null && data.recentShows.isNotEmpty) ...[
-                              const SliverToBoxAdapter(child: SizedBox(height: 32)),
+                            if (data != null &&
+                                data.recentShows.isNotEmpty) ...[
+                              const SliverToBoxAdapter(
+                                  child: SizedBox(height: 32)),
                               SliverToBoxAdapter(
                                 child: MediaRow(
                                   title: 'Séries récentes',
@@ -286,16 +302,34 @@ class _HomeScreenState extends State<HomeScreen> {
                                       data.continueWatching.isEmpty &&
                                       data.recentMovies.isEmpty,
                                   onSeeAll: widget.onNavigateToShows,
-                                  onItemTap: (item) => _openMedia(context, item as Media),
+                                  onItemTap: (item) =>
+                                      _openMedia(context, item as Media),
                                 ),
                               ),
                             ],
-                            const SliverToBoxAdapter(child: SizedBox(height: 48)),
+                            if (data != null && discovery.isNotEmpty) ...[
+                              const SliverToBoxAdapter(
+                                  child: SizedBox(height: 32)),
+                              // Le serveur tire ces titres au hasard dans la
+                              // bibliothèque pour des rangées « découverte »
+                              // que l'accueil n'affichait pas : seul le bandeau
+                              // en piochait quelques-uns. Sans elle, l'accueil
+                              // ne changeait qu'à l'ajout d'un fichier.
+                              SliverToBoxAdapter(
+                                child: MediaRow(
+                                  title: 'À découvrir',
+                                  items: discovery,
+                                  onItemTap: (item) =>
+                                      _openMedia(context, item as Media),
+                                ),
+                              ),
+                            ],
+                            const SliverToBoxAdapter(
+                                child: SizedBox(height: 48)),
                           ],
                         ],
                       ),
                     ),
-
                     const Positioned(
                       left: 16,
                       right: 16,
@@ -360,6 +394,18 @@ class _EmptyLibraryView extends StatelessWidget {
   }
 }
 
+/// Films et séries en alternance, pour qu'une rangée ne soit pas faite de
+/// vingt films puis de vingt séries.
+List<Media> _interleave(List<Media> movies, List<Media> shows) {
+  final merged = <Media>[];
+  final length = movies.length > shows.length ? movies.length : shows.length;
+  for (var i = 0; i < length; i++) {
+    if (i < movies.length) merged.add(movies[i]);
+    if (i < shows.length) merged.add(shows[i]);
+  }
+  return merged;
+}
+
 class _HomeOverlayBar extends StatelessWidget {
   final double scrollOffset;
   final HomeProvider homeProvider;
@@ -378,9 +424,14 @@ class _HomeOverlayBar extends StatelessWidget {
     return AnimatedContainer(
       duration: const Duration(milliseconds: 200),
       decoration: BoxDecoration(
-        color: opaque ? AppColors.background : Colors.black.withValues(alpha: 0.35),
+        color: opaque
+            ? AppColors.background
+            : Colors.black.withValues(alpha: 0.35),
         boxShadow: opaque
-            ? [BoxShadow(color: Colors.black.withValues(alpha: 0.5), blurRadius: 12)]
+            ? [
+                BoxShadow(
+                    color: Colors.black.withValues(alpha: 0.5), blurRadius: 12)
+              ]
             : null,
       ),
       child: SafeArea(

@@ -54,15 +54,16 @@ class EmptyStateView extends StatelessWidget {
                 ElevatedButton.icon(
                   onPressed: onAction,
                   icon: const Icon(Icons.sync_rounded, size: 20),
-                  label: Text(actionLabel!.toUpperCase()),
+                  label: Text(actionLabel!),
                 ),
               ],
-              if (secondaryActionLabel != null && onSecondaryAction != null) ...[
+              if (secondaryActionLabel != null &&
+                  onSecondaryAction != null) ...[
                 const SizedBox(height: 12),
                 OutlinedButton.icon(
                   onPressed: onSecondaryAction,
                   icon: const Icon(Icons.subtitles_outlined, size: 20),
-                  label: Text(secondaryActionLabel!.toUpperCase()),
+                  label: Text(secondaryActionLabel!),
                 ),
               ],
             ],
@@ -91,7 +92,11 @@ class ErrorStateView extends StatelessWidget {
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
-            const Icon(Icons.error_outline_rounded, size: 64, color: AppColors.error),
+            // Gris et non rouge : un serveur qui ne répond pas est un état
+            // passager, pas une faute. Le rouge vif à 64 px en faisait une
+            // alarme au milieu d'une page de films.
+            const Icon(Icons.cloud_off_rounded,
+                size: 44, color: AppColors.textMuted),
             const SizedBox(height: 16),
             Text(
               message,
@@ -103,7 +108,7 @@ class ErrorStateView extends StatelessWidget {
             const SizedBox(height: 24),
             ElevatedButton(
               onPressed: onRetry,
-              child: const Text('RÉESSAYER'),
+              child: const Text('Réessayer'),
             ),
           ],
         ),

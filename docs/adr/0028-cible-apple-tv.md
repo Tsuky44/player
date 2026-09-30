@@ -35,7 +35,7 @@ version mineure que le reste de la CI (3.44). Le Dart qui compile ici compile do
 
 `app/tvos/` est le projet Xcode que `flutter-tvos create` génère, rendu depuis le modèle de ce tag.
 Il est indépendant de `app/ios/` : autre SDK, autre Podfile, autre `AppDelegate`. L'identifiant
-d'app (`com.projectplayer.onyx`) et l'équipe de signature sont ceux du projet iOS.
+d'app (`com.tsuky.onyx`) et l'équipe de signature sont ceux du projet iOS.
 
 ### 2. AVPlayer, en HLS seulement
 

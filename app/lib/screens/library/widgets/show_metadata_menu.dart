@@ -35,7 +35,6 @@ class ShowMetadataMenu extends StatelessWidget {
         Icons.edit_note_rounded,
         color: AppColors.textSecondary,
       ),
-      color: AppColors.surfaceElevated,
       itemBuilder: (context) => [
         PopupMenuItem(
           value: onRedetect,

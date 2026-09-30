@@ -7,6 +7,7 @@ import '../hooks/use_episode_navigation.dart';
 import 'settings_menu.dart';
 import 'player_settings_anchor.dart';
 import '../../../widgets/global/app_slider.dart';
+import '../../../theme/app_colors.dart';
 
 class TopRightControls extends StatefulWidget {
   final PlaybackSession session;
@@ -140,7 +141,7 @@ class _TopRightControlsState extends State<TopRightControls> {
                             padding: const EdgeInsets.only(right: 16),
                             child: SliderTheme(
                               data: SliderTheme.of(context).copyWith(
-                                activeTrackColor: const Color(0xFF0A84FF),
+                                activeTrackColor: AppColors.accent,
                                 inactiveTrackColor: Colors.white.withValues(alpha: 0.2),
                                 thumbColor: Colors.white,
                                 trackHeight: 3,

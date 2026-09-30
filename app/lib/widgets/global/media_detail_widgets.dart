@@ -10,7 +10,7 @@ import '../../utils/format.dart';
 import '../../utils/poster_url.dart';
 import '../../utils/responsive.dart';
 import 'app_network_image.dart';
-import 'hero_banner.dart' show MetadataChip;
+import 'detail_metadata.dart';
 import '../../tv/tv_focus_memory.dart';
 import 'media_logo_display.dart';
 import 'poster_card.dart';
@@ -28,6 +28,10 @@ class DetailBackdropHeader extends StatelessWidget {
   final Widget? actions;
   final VoidCallback onBack;
 
+  /// Badges techniques du fichier (« 4K », « Dolby Atmos »), après la ligne
+  /// de métadonnées. Voir [techBadgesFor].
+  final List<String> badges;
+
   /// True while [details] is still on its way. The backdrop then holds a flat
   /// surface instead of borrowing the poster: stretching a portrait poster to
   /// 1280 px cost a download of its own and was swapped for the real backdrop
@@ -41,10 +45,52 @@ class DetailBackdropHeader extends StatelessWidget {
     required this.metadata,
     required this.onBack,
     this.actions,
+    this.badges = const [],
     this.loading = false,
   });
 
   static const double heightDesktop = 540;
+
+  /// Le synopsis de l'en-tête : sa police, sa largeur et son nombre de lignes
+  /// servent aussi à [overviewTruncated], qui décide si la fiche le répète en
+  /// entier plus bas.
+  static const TextStyle overviewStyle = TextStyle(
+    color: AppColors.textSecondary,
+    fontSize: 14,
+    height: 1.55,
+  );
+  static const double overviewMaxWidth = 720;
+  static int overviewMaxLines(BuildContext context) =>
+      AppLayout.isCompact(context) ? 4 : 3;
+
+  /// Vrai quand [overview] ne tient pas dans l'en-tête et y est coupé.
+  ///
+  /// La fiche répétait jusqu'ici le synopsis en entier sous l'en-tête,
+  /// toujours — deux fois le même paragraphe, l'un sous l'autre, dès qu'il
+  /// était court.
+  static bool overviewTruncated(BuildContext context, String overview) {
+    final screen = MediaQuery.sizeOf(context).width;
+    final pad = AppLayout.pagePadding(context);
+    final compact = AppLayout.isCompact(context);
+    final available = compact
+        ? screen - 2 * pad
+        : (screen - 2 * pad - posterWidth - 36).clamp(0.0, overviewMaxWidth);
+    final painter = TextPainter(
+      // La police vient du thème, comme pour le Text de l'en-tête : mesuré
+      // dans la police par défaut, le synopsis n'a pas la même largeur.
+      text: TextSpan(
+        text: overview,
+        style: DefaultTextStyle.of(context).style.merge(overviewStyle),
+      ),
+      maxLines: overviewMaxLines(context),
+      textDirection: TextDirection.ltr,
+      textScaler: MediaQuery.textScalerOf(context),
+    )..layout(maxWidth: available);
+    final truncated = painter.didExceedMaxLines;
+    painter.dispose();
+    return truncated;
+  }
+
   static const double posterWidth = 190;
   static const double posterHeight = 285;
 
@@ -115,9 +161,8 @@ class DetailBackdropHeader extends StatelessWidget {
     final compact = AppLayout.isCompact(context);
     final pad = AppLayout.pagePadding(context);
     final screenH = MediaQuery.sizeOf(context).height;
-    final headerHeight = compact
-        ? (screenH * 0.62).clamp(420.0, 520.0)
-        : heightDesktop;
+    final headerHeight =
+        compact ? (screenH * 0.62).clamp(420.0, 520.0) : heightDesktop;
 
     final posterUrl = detailPosterUrl(
       details?.posterUrl ?? fallback.posterUrl,
@@ -136,13 +181,15 @@ class DetailBackdropHeader extends StatelessWidget {
       crossAxisAlignment: CrossAxisAlignment.start,
       mainAxisSize: MainAxisSize.min,
       children: [
+        // Même surtitre que le bandeau de l'accueil : en capitales espacées,
+        // gris — l'accent bleu reste au focus et à la progression.
         Text(
-          mediaTypeLabel(fallback.type),
+          mediaTypeLabel(fallback.type).toUpperCase(),
           style: const TextStyle(
-            color: AppColors.accentMuted,
+            color: AppColors.textSecondary,
             fontWeight: FontWeight.w600,
-            fontSize: 12,
-            letterSpacing: 0.2,
+            fontSize: 11,
+            letterSpacing: 1.6,
           ),
         ),
         const SizedBox(height: 8),
@@ -170,28 +217,34 @@ class DetailBackdropHeader extends StatelessWidget {
             ),
           ),
         ],
-        if (metadata.isNotEmpty) ...[
+        if (metadata.isNotEmpty || badges.isNotEmpty) ...[
           const SizedBox(height: 14),
           Wrap(
             spacing: 8,
             runSpacing: 8,
             crossAxisAlignment: WrapCrossAlignment.center,
-            children: metadata,
+            children: [
+              for (var i = 0; i < metadata.length; i++) ...[
+                if (i > 0) const MetadataDot(),
+                metadata[i],
+              ],
+              if (badges.isNotEmpty) ...[
+                if (metadata.isNotEmpty) const SizedBox(width: 4),
+                for (final badge in badges) TechBadge(badge),
+              ],
+            ],
           ),
         ],
         if (overview != null && overview.isNotEmpty) ...[
           const SizedBox(height: 16),
           ConstrainedBox(
-            constraints: BoxConstraints(maxWidth: compact ? double.infinity : 720),
+            constraints: BoxConstraints(
+                maxWidth: compact ? double.infinity : overviewMaxWidth),
             child: Text(
               overview,
-              maxLines: compact ? 4 : 3,
+              maxLines: overviewMaxLines(context),
               overflow: TextOverflow.ellipsis,
-              style: const TextStyle(
-                color: AppColors.textSecondary,
-                fontSize: 14,
-                height: 1.55,
-              ),
+              style: overviewStyle,
             ),
           ),
         ],
@@ -341,104 +394,13 @@ class _Poster extends StatelessWidget {
             width: w,
             height: h,
             color: AppColors.surfaceElevated,
-            child: const Icon(Icons.movie_rounded, size: 48, color: AppColors.textMuted),
+            child: const Icon(Icons.movie_rounded,
+                size: 48, color: AppColors.textMuted),
           ),
         ),
       ),
     );
   }
-}
-
-/// A gold star rating badge (TMDB vote average out of 10).
-class RatingBadge extends StatelessWidget {
-  final double rating;
-
-  const RatingBadge({super.key, required this.rating});
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-      decoration: BoxDecoration(
-        color: AppColors.surfaceElevated.withValues(alpha: 0.8),
-        borderRadius: BorderRadius.circular(4),
-        border: Border.all(color: AppColors.border),
-      ),
-      child: Row(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          const Icon(Icons.star_rounded, color: Color(0xFFF5C518), size: 16),
-          const SizedBox(width: 4),
-          Text(
-            rating.toStringAsFixed(1),
-            style: const TextStyle(
-              color: AppColors.textPrimary,
-              fontSize: 12,
-              fontWeight: FontWeight.w700,
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-/// Small colored pill used for genres.
-class GenrePill extends StatelessWidget {
-  final String label;
-
-  const GenrePill({super.key, required this.label});
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 5),
-      decoration: BoxDecoration(
-        color: AppColors.accent.withValues(alpha: 0.12),
-        borderRadius: BorderRadius.circular(20),
-        border: Border.all(color: AppColors.accent.withValues(alpha: 0.35)),
-      ),
-      child: Text(
-        label,
-        style: const TextStyle(
-          color: AppColors.accent,
-          fontSize: 12,
-          fontWeight: FontWeight.w600,
-        ),
-      ),
-    );
-  }
-}
-
-/// Builds the metadata chip list (year, runtime, rating, type) shared by the
-/// movie and show hero headers.
-List<Widget> buildMetadataChips({
-  required MediaType type,
-  String? releaseDate,
-  int runtimeMinutes = 0,
-  int durationSeconds = 0,
-  double rating = 0,
-  int seasons = 0,
-  String? statusLabel,
-}) {
-  final year = extractYear(releaseDate);
-  final chips = <Widget>[];
-  if (year != null) chips.add(MetadataChip(label: year));
-
-  if (type == MediaType.show) {
-    if (seasons > 0) {
-      chips.add(MetadataChip(label: '$seasons saison${seasons > 1 ? 's' : ''}'));
-    }
-  } else {
-    final seconds = runtimeMinutes > 0 ? runtimeMinutes * 60 : durationSeconds;
-    if (seconds > 0) chips.add(MetadataChip(label: formatDuration(seconds)));
-  }
-
-  if (rating > 0) chips.add(RatingBadge(rating: rating));
-  if (statusLabel != null && statusLabel.isNotEmpty) {
-    chips.add(MetadataChip(label: statusLabel));
-  }
-  return chips;
 }
 
 /// Horizontal, scrollable cast row ("Têtes d'affiche"). Tapping an actor opens
@@ -466,9 +428,7 @@ class CastSection extends StatelessWidget {
           padding: EdgeInsets.fromLTRB(pad, 8, pad, 16),
           child: Text(
             "Têtes d'affiche",
-            style: Theme.of(context).textTheme.titleLarge?.copyWith(
-                  fontWeight: FontWeight.w700,
-                ),
+            style: detailSectionTitleStyle(context),
           ),
         ),
         // La rangée se souvient de la personne sur laquelle la télécommande
@@ -485,7 +445,9 @@ class CastSection extends StatelessWidget {
                 member: cast[index],
                 width: cardW,
                 imageHeight: cardH,
-                onTap: onTapMember == null ? null : () => onTapMember!(cast[index]),
+                onTap: onTapMember == null
+                    ? null
+                    : () => onTapMember!(cast[index]),
               ),
             ),
           ),
@@ -516,51 +478,51 @@ class _CastCard extends StatelessWidget {
       onSelect: onTap,
       borderRadius: BorderRadius.circular(10),
       child: SizedBox(
-      width: width,
-      child: MouseRegion(
-        cursor: onTap != null ? SystemMouseCursors.click : MouseCursor.defer,
-        child: GestureDetector(
-          onTap: onTap,
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              ClipRRect(
-                borderRadius: BorderRadius.circular(10),
-                child: AppNetworkImage(
-                  // The catalog serves h632 portraits — ~6x the pixels a card
-                  // this size can show, fetched a dozen at a time.
-                  url: castProfileUrl(member.profileUrl),
-                  width: width,
-                  height: imageHeight,
-                  fit: BoxFit.cover,
-                  errorWidget: const _CastPlaceholder(),
+        width: width,
+        child: MouseRegion(
+          cursor: onTap != null ? SystemMouseCursors.click : MouseCursor.defer,
+          child: GestureDetector(
+            onTap: onTap,
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                ClipRRect(
+                  borderRadius: BorderRadius.circular(10),
+                  child: AppNetworkImage(
+                    // The catalog serves h632 portraits — ~6x the pixels a card
+                    // this size can show, fetched a dozen at a time.
+                    url: castProfileUrl(member.profileUrl),
+                    width: width,
+                    height: imageHeight,
+                    fit: BoxFit.cover,
+                    errorWidget: const _CastPlaceholder(),
+                  ),
                 ),
-              ),
-              const SizedBox(height: 8),
-              Text(
-                member.name,
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
-                style: const TextStyle(
-                  color: AppColors.textPrimary,
-                  fontSize: 13,
-                  fontWeight: FontWeight.w600,
-                ),
-              ),
-              if (member.character != null && member.character!.isNotEmpty)
+                const SizedBox(height: 8),
                 Text(
-                  member.character!,
+                  member.name,
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
                   style: const TextStyle(
-                    color: AppColors.textMuted,
-                    fontSize: 11,
+                    color: AppColors.textPrimary,
+                    fontSize: 13,
+                    fontWeight: FontWeight.w600,
                   ),
                 ),
-            ],
+                if (member.character != null && member.character!.isNotEmpty)
+                  Text(
+                    member.character!,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: const TextStyle(
+                      color: AppColors.textMuted,
+                      fontSize: 11,
+                    ),
+                  ),
+              ],
+            ),
           ),
         ),
-      ),
       ),
     );
   }
@@ -655,9 +617,11 @@ class CollectionSection extends StatelessWidget {
                       if (!compact) ...[
                         const SizedBox(width: 12),
                         Container(
-                          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                          padding: const EdgeInsets.symmetric(
+                              horizontal: 16, vertical: 8),
                           decoration: BoxDecoration(
-                            color: AppColors.surfaceElevated.withValues(alpha: 0.9),
+                            color: AppColors.surfaceElevated
+                                .withValues(alpha: 0.9),
                             borderRadius: BorderRadius.circular(20),
                             border: Border.all(color: AppColors.border),
                           ),
@@ -784,9 +748,7 @@ class SimilarTitlesSection extends StatelessWidget {
               EdgeInsets.fromLTRB(pad, 8, pad, 16 - PosterCard.liftHeadroom),
           child: Text(
             'Titres similaires',
-            style: Theme.of(context).textTheme.titleLarge?.copyWith(
-                  fontWeight: FontWeight.w700,
-                ),
+            style: detailSectionTitleStyle(context),
           ),
         ),
         // Même mémoire que les rangées de l'accueil — voir [TvFocusMemory].
@@ -797,7 +759,8 @@ class SimilarTitlesSection extends StatelessWidget {
             height: mediaCardHeight(cardWidth) + PosterCard.liftHeadroom,
             child: ListView.separated(
               scrollDirection: Axis.horizontal,
-              padding: EdgeInsets.fromLTRB(pad, PosterCard.liftHeadroom, pad, 0),
+              padding:
+                  EdgeInsets.fromLTRB(pad, PosterCard.liftHeadroom, pad, 0),
               itemCount: items.length,
               separatorBuilder: (_, __) => const SizedBox(width: 14),
               itemBuilder: (context, index) => SizedBox(
@@ -823,7 +786,8 @@ class _CastPlaceholder extends StatelessWidget {
     return Container(
       color: AppColors.surfaceElevated,
       alignment: Alignment.center,
-      child: const Icon(Icons.person_rounded, size: 40, color: AppColors.textMuted),
+      child: const Icon(Icons.person_rounded,
+          size: 40, color: AppColors.textMuted),
     );
   }
 }
@@ -865,23 +829,27 @@ class DetailInfoSection extends StatelessWidget {
             ),
             const SizedBox(height: 24),
           ],
-          Text(
-            'Synopsis',
-            style: Theme.of(context).textTheme.titleLarge?.copyWith(
-                  fontWeight: FontWeight.w700,
+          if (overview == null || overview.isEmpty)
+            Text(
+              emptyOverviewLabel,
+              style: const TextStyle(color: AppColors.textMuted, fontSize: 15),
+            )
+          else if (DetailBackdropHeader.overviewTruncated(
+              context, overview)) ...[
+            Text('Synopsis', style: detailSectionTitleStyle(context)),
+            const SizedBox(height: 12),
+            ConstrainedBox(
+              constraints: const BoxConstraints(maxWidth: 860),
+              child: Text(
+                overview,
+                style: const TextStyle(
+                  color: AppColors.textSecondary,
+                  fontSize: 15,
+                  height: 1.6,
                 ),
-          ),
-          const SizedBox(height: 12),
-          Text(
-            overview != null && overview.isNotEmpty ? overview : emptyOverviewLabel,
-            style: TextStyle(
-              color: overview != null && overview.isNotEmpty
-                  ? AppColors.textSecondary
-                  : AppColors.textMuted,
-              fontSize: 15,
-              height: 1.6,
+              ),
             ),
-          ),
+          ],
           if (director != null && director.isNotEmpty ||
               writers.isNotEmpty ||
               studios.isNotEmpty) ...[

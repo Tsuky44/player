@@ -114,7 +114,7 @@ class _PlayerLayoutsSheet extends StatelessWidget {
                   final selected = preset.id == layout.activePresetId;
                   return Material(
                     color: selected
-                        ? const Color(0xFF0A84FF).withValues(alpha: 0.18)
+                        ? AppColors.accent.withValues(alpha: 0.18)
                         : const Color(0xFF252525),
                     borderRadius: BorderRadius.circular(14),
                     child: InkWell(
@@ -132,7 +132,7 @@ class _PlayerLayoutsSheet extends StatelessWidget {
                                   ? Icons.check_circle_rounded
                                   : Icons.dashboard_customize_outlined,
                               color: selected
-                                  ? const Color(0xFF0A84FF)
+                                  ? AppColors.accent
                                   : Colors.white54,
                             ),
                             const SizedBox(width: 12),
@@ -358,7 +358,7 @@ class _FixedChromeCard extends StatelessWidget {
   Widget build(BuildContext context) {
     return Material(
       color: selected
-          ? const Color(0xFF0A84FF).withValues(alpha: 0.18)
+          ? AppColors.accent.withValues(alpha: 0.18)
           : const Color(0xFF252525),
       borderRadius: BorderRadius.circular(14),
       child: InkWell(
@@ -373,7 +373,7 @@ class _FixedChromeCard extends StatelessWidget {
                     ? Icons.check_circle_rounded
                     : Icons.movie_creation_outlined,
                 color:
-                    selected ? const Color(0xFF0A84FF) : Colors.white54,
+                    selected ? AppColors.accent : Colors.white54,
               ),
               const SizedBox(width: 12),
               Expanded(

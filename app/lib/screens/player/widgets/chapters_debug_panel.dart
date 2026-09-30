@@ -4,6 +4,7 @@ import '../../../models/models.dart';
 import '../../../utils/format.dart';
 import '../hooks/use_episode_navigation.dart';
 import '../hooks/use_player_controller.dart';
+import '../../../theme/app_colors.dart';
 
 /// Debug panel listing MKV chapters and DB intro/outro markers for an episode.
 class ChaptersDebugPanel extends StatefulWidget {
@@ -338,7 +339,7 @@ class _ChapterRow extends StatelessWidget {
             borderRadius: BorderRadius.circular(8),
             border: Border.all(
               color: isCurrent
-                  ? const Color(0xFF0A84FF).withValues(alpha: 0.4)
+                  ? AppColors.accent.withValues(alpha: 0.4)
                   : Colors.white.withValues(alpha: 0.06),
             ),
           ),
@@ -379,7 +380,7 @@ class _ChapterRow extends StatelessWidget {
                   ],
                 ),
               ),
-              if (isIntro) const _Badge('INTRO', Color(0xFF0A84FF)),
+              if (isIntro) const _Badge('INTRO', AppColors.accent),
               if (isOutro) const _Badge('OUTRO', Colors.orangeAccent),
               if (isCurrent) const _Badge('ACTUEL', Colors.greenAccent),
             ],

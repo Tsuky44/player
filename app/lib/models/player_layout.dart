@@ -1,6 +1,7 @@
 import 'dart:convert';
 import 'dart:math';
 import 'package:flutter/material.dart';
+import '../theme/app_colors.dart';
 
 /// Relative size boundaries for controls (fraction of shortest screen side).
 const double kMinSizePct = 0.03;
@@ -24,7 +25,7 @@ const bool kDefaultLiquidGlass = false;
 /// Accent colour swatches offered for the Flat skin (restricted palette,
 /// no free colour picker).
 const List<Color> kFlatAccentPalette = [
-  Color(0xFF0A84FF), // blue (matches the glass accent)
+  AppColors.accent, // blue (matches the glass accent)
   Color(0xFFFF453A), // red
   Color(0xFFFF9F0A), // orange
   Color(0xFF30D158), // green
@@ -32,7 +33,7 @@ const List<Color> kFlatAccentPalette = [
   Color(0xFFFFD60A), // yellow
 ];
 
-const Color kDefaultFlatAccentColor = Color(0xFF0A84FF);
+const Color kDefaultFlatAccentColor = AppColors.accent;
 const FlatElevation kDefaultFlatElevation = FlatElevation.light;
 
 /// Shadow depth for the Neumorphic skin (0 = flat, 1 = deeply extruded).

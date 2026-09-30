@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import '../models/models.dart';
 import '../services/api_client.dart';
 import '../services/download_manager.dart';
+import '../utils/search_match.dart';
 
 class LibraryProvider extends ChangeNotifier {
   final ApiClient apiClient;
@@ -89,26 +90,28 @@ class LibraryProvider extends ChangeNotifier {
     }
   }
 
+  /// Les films et séries qui correspondent à [query], les plus pertinents
+  /// d'abord (voir [searchMatchRank]), puis par titre.
   List<Media> searchCatalog(String query) {
-    final q = query.trim().toLowerCase();
-    if (q.isEmpty) return const [];
+    final ranked = <({Media media, int rank, String key})>[];
+    void consider(Media media) {
+      final rank = searchMatchRank(media.title, query);
+      if (rank == null) return;
+      ranked.add((media: media, rank: rank, key: foldForSearch(media.title)));
+    }
 
-    final results = <Media>[];
     for (final item in _movies) {
-      if (item.media.title.toLowerCase().contains(q)) {
-        results.add(item.media);
-      }
+      consider(item.media);
     }
     for (final show in _shows) {
-      if (show.title.toLowerCase().contains(q)) {
-        results.add(show);
-      }
+      consider(show);
     }
 
-    results.sort(
-      (a, b) => a.title.toLowerCase().compareTo(b.title.toLowerCase()),
-    );
-    return results;
+    ranked.sort((a, b) {
+      final byRank = a.rank.compareTo(b.rank);
+      return byRank != 0 ? byRank : a.key.compareTo(b.key);
+    });
+    return [for (final entry in ranked) entry.media];
   }
 
   HomeMediaItem? movieItemFor(int mediaId) {

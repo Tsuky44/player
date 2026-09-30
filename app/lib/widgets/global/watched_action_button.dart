@@ -18,7 +18,9 @@ class WatchedActionButton extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final label = isWatched ? 'Marquer non vu' : 'Marquer vu';
-    final icon = isWatched ? Icons.check_circle_rounded : Icons.check_circle_outline_rounded;
+    final icon = isWatched
+        ? Icons.check_circle_rounded
+        : Icons.check_circle_outline_rounded;
 
     if (compact) {
       return IconButton(
@@ -32,7 +34,11 @@ class WatchedActionButton extends StatelessWidget {
               )
             : Icon(
                 icon,
-                color: isWatched ? AppColors.success : AppColors.textSecondary,
+                // Blanc et plein une fois vu : le vert « validé » répété sur
+                // chaque épisode d'une saison transformait la liste en
+                // formulaire coché.
+                color:
+                    isWatched ? AppColors.textPrimary : AppColors.textSecondary,
               ),
       );
     }

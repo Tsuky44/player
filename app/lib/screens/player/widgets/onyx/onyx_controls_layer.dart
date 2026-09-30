@@ -1,5 +1,5 @@
-
 import 'package:flutter/material.dart';
+import '../player_chrome_fade.dart';
 
 import '../../../../desktop_window.dart';
 import '../../../../theme/app_colors.dart';
@@ -247,9 +247,8 @@ class OnyxControlsLayer extends StatelessWidget {
 
   /// Moves one row of the chrome clear of a camera bubble, if the bubble is
   /// actually on it. Everything else stays exactly where it was.
-  Widget _dodgeCutouts(Widget child) => cutouts.isEmpty
-      ? child
-      : AvoidCutouts(cutouts: cutouts, child: child);
+  Widget _dodgeCutouts(Widget child) =>
+      cutouts.isEmpty ? child : AvoidCutouts(cutouts: cutouts, child: child);
 
   double get _progressFraction {
     final total = duration.inSeconds;
@@ -272,8 +271,7 @@ class OnyxControlsLayer extends StatelessWidget {
         final width = constraints.maxWidth;
         final m = OnyxChromeTheme.metricsFor(width, scale: scale, tv: isTv);
         if (isTv) return _buildTvChrome(m);
-        final hasBrightness =
-            brightness != null && onBrightnessChanged != null;
+        final hasBrightness = brightness != null && onBrightnessChanged != null;
         // Not a Stack.
         //
         // The brightness bar shares the right edge with the utilities cluster
@@ -521,23 +519,8 @@ class OnyxControlsLayer extends StatelessWidget {
 
   /// Wraps a part of the chrome in the show/hide fade — and takes it out of
   /// hit-testing while it is invisible, so a hidden control cannot be clicked.
-  Widget _fadeWithChrome(Widget child) {
-    return ExcludeFocus(
-      // A faded-out button is still a focusable button: without this the
-      // remote walks a control bar nobody can see, and the player never gets
-      // its own focus — and therefore its arrow keys — back.
-      excluding: !visible,
-      child: IgnorePointer(
-        ignoring: !visible,
-        child: AnimatedOpacity(
-          opacity: visible ? 1 : 0,
-          duration: const Duration(milliseconds: 200),
-          curve: Curves.easeOut,
-          child: child,
-        ),
-      ),
-    );
-  }
+  Widget _fadeWithChrome(Widget child) =>
+      PlayerChromeFade(visible: visible, child: child);
 
   // --- Top ----------------------------------------------------------------
 
@@ -555,30 +538,30 @@ class OnyxControlsLayer extends StatelessWidget {
       child: _dodgeCutouts(
         Row(
           children: [
-          _OnyxIconButton(
-            icon: Icons.arrow_back_ios_new_rounded,
-            tooltip: 'Retour',
-            metrics: m,
-            onPressed: onBack,
-          ),
-          const SizedBox(width: 8),
-          Flexible(child: _buildBrand(m)),
-          const Spacer(),
-          // Left out entirely on a television: the set and its remote own the
-          // volume, so the slider would do a job that is already done — and,
-          // being the one focusable widget up here, it would collect the
-          // remote's focus and hold it. Same conclusion on a phone, for the
-          // same reason with different hardware — see [showVolume].
-          if (!isTv && showVolume)
-            _OnyxVolumeControl(
-              volume: volume,
-              onChanged: onVolumeChanged,
+            _OnyxIconButton(
+              icon: Icons.arrow_back_ios_new_rounded,
+              tooltip: 'Retour',
               metrics: m,
-              // Below this the slider squeezes the title out of the top row.
-              // The mute button alone still leaves the volume reachable, and
-              // the settings sheet carries the fine control.
-              showSlider: width >= 560,
+              onPressed: onBack,
             ),
+            const SizedBox(width: 8),
+            Flexible(child: _buildBrand(m)),
+            const Spacer(),
+            // Left out entirely on a television: the set and its remote own the
+            // volume, so the slider would do a job that is already done — and,
+            // being the one focusable widget up here, it would collect the
+            // remote's focus and hold it. Same conclusion on a phone, for the
+            // same reason with different hardware — see [showVolume].
+            if (!isTv && showVolume)
+              _OnyxVolumeControl(
+                volume: volume,
+                onChanged: onVolumeChanged,
+                metrics: m,
+                // Below this the slider squeezes the title out of the top row.
+                // The mute button alone still leaves the volume reachable, and
+                // the settings sheet carries the fine control.
+                showSlider: width >= 560,
+              ),
           ],
         ),
       ),
@@ -670,50 +653,50 @@ class OnyxControlsLayer extends StatelessWidget {
     // bar is half the height of the screen, so a bubble on the edge lands on
     // one of these rows and not on the others.
     return Column(
-        mainAxisSize: MainAxisSize.min,
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          if (m.isCompact) ...[
-            _dodgeCutouts(_buildTitleBlock(m)),
-            const SizedBox(height: 10),
-          ] else
-            _dodgeCutouts(
-              Row(
-                crossAxisAlignment: CrossAxisAlignment.end,
-                children: [
-                  Expanded(child: _buildTitleBlock(m)),
-                  const SizedBox(width: 24),
-                  _buildUtilities(m),
-                ],
-              ),
-            ),
-          const SizedBox(height: 6),
+      mainAxisSize: MainAxisSize.min,
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        if (m.isCompact) ...[
+          _dodgeCutouts(_buildTitleBlock(m)),
+          const SizedBox(height: 10),
+        ] else
           _dodgeCutouts(
-            KeyedSubtree(
-              key: timelineAnchorKey,
-              child: OnyxProgressBar(
-                progress: _progressFraction,
-                buffered: buffered,
-                duration: duration,
-                chapterMarks: chapterMarks,
-                metrics: m,
-                onSeek: onSeekFraction,
-                onScrubbingChanged: onScrubbingChanged,
-                previews: previews,
-              ),
+            Row(
+              crossAxisAlignment: CrossAxisAlignment.end,
+              children: [
+                Expanded(child: _buildTitleBlock(m)),
+                const SizedBox(width: 24),
+                _buildUtilities(m),
+              ],
             ),
           ),
-          _dodgeCutouts(_buildTimes(m)),
-          const SizedBox(height: 4),
-          // Compact gives the utilities their own centred row: side by side
-          // with the transport they need ~414px, which does not fit a phone.
-          if (m.isCompact) ...[
-            _dodgeCutouts(Center(child: _buildTransport(m))),
-            const SizedBox(height: 2),
-            _dodgeCutouts(Center(child: _buildUtilities(m))),
-          ] else
-            _dodgeCutouts(_buildTransport(m)),
-        ],
+        const SizedBox(height: 6),
+        _dodgeCutouts(
+          KeyedSubtree(
+            key: timelineAnchorKey,
+            child: OnyxProgressBar(
+              progress: _progressFraction,
+              buffered: buffered,
+              duration: duration,
+              chapterMarks: chapterMarks,
+              metrics: m,
+              onSeek: onSeekFraction,
+              onScrubbingChanged: onScrubbingChanged,
+              previews: previews,
+            ),
+          ),
+        ),
+        _dodgeCutouts(_buildTimes(m)),
+        const SizedBox(height: 4),
+        // Compact gives the utilities their own centred row: side by side
+        // with the transport they need ~414px, which does not fit a phone.
+        if (m.isCompact) ...[
+          _dodgeCutouts(Center(child: _buildTransport(m))),
+          const SizedBox(height: 2),
+          _dodgeCutouts(Center(child: _buildUtilities(m))),
+        ] else
+          _dodgeCutouts(_buildTransport(m)),
+      ],
     );
   }
 
@@ -1146,10 +1129,8 @@ class _OnyxVolumeControlState extends State<_OnyxVolumeControl> {
                 inactiveTrackColor: OnyxChromeTheme.progressTrack,
                 thumbColor: OnyxChromeTheme.progressPlayed,
                 overlayColor: Colors.white24,
-                thumbShape:
-                    RoundSliderThumbShape(enabledThumbRadius: 6),
-                overlayShape:
-                    RoundSliderOverlayShape(overlayRadius: 14),
+                thumbShape: RoundSliderThumbShape(enabledThumbRadius: 6),
+                overlayShape: RoundSliderOverlayShape(overlayRadius: 14),
               ),
               child: AppSlider(
                 value: volume,

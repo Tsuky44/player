@@ -1,7 +1,6 @@
 import 'dart:math';
 
 import '../models/models.dart';
-import 'format.dart';
 import 'poster_url.dart';
 
 /// One slide in the home hero carousel (rotating header).
@@ -19,7 +18,7 @@ class HeroSlide {
     required this.title,
     this.subtitle,
     this.backgroundUrl,
-    this.playLabel = 'LECTURE',
+    this.playLabel = 'Lecture',
   });
 
   bool get showInfoButton =>
@@ -69,9 +68,8 @@ List<Media> _discoveryPool(HomeResponse data) {
   final movies = data.discoveryMovies.isNotEmpty
       ? data.discoveryMovies
       : data.recentMovies;
-  final shows = data.discoveryShows.isNotEmpty
-      ? data.discoveryShows
-      : data.recentShows;
+  final shows =
+      data.discoveryShows.isNotEmpty ? data.discoveryShows : data.recentShows;
   return _interleaveMedia(movies, shows);
 }
 
@@ -95,7 +93,6 @@ HeroSlide _discoverySlide(Media media, {required String serverBaseUrl}) {
   return HeroSlide(
     media: media,
     title: media.title,
-    subtitle: extractYear(media.releaseDate),
     backgroundUrl:
         resolveHeroImageUrl(media.posterUrl, serverBaseUrl: serverBaseUrl),
   );
@@ -119,15 +116,14 @@ List<HeroSlide> buildHeroSlides(
   for (final cw in data.continueWatching) {
     if (!_isRecentlyWatched(cw)) continue;
 
-    final inProgress =
-        cw.currentPositionSeconds > 0 && !cw.isFinished;
+    final inProgress = cw.currentPositionSeconds > 0 && !cw.isFinished;
     add(HeroSlide(
       media: cw.media,
       continueItem: cw,
       title: cw.displayTitle,
       subtitle: _heroSubtitle(cw),
       backgroundUrl: heroBackgroundUrl(cw, serverBaseUrl: serverBaseUrl),
-      playLabel: inProgress ? 'REPRENDRE' : 'LECTURE',
+      playLabel: inProgress ? 'Reprendre' : 'Lecture',
     ));
   }
 
@@ -146,11 +142,6 @@ List<HeroSlide> buildHeroSlides(
   return slides;
 }
 
-String? _heroSubtitle(HomeMediaItem item) {
-  final parts = <String>[];
-  final year = extractYear(item.media.releaseDate);
-  if (year != null) parts.add(year);
-  final ep = item.continueWatchingSubtitle;
-  if (ep != null) parts.add(ep);
-  return parts.isEmpty ? null : parts.join(' · ');
-}
+/// Ce qui suit l'année sous le titre du bandeau. L'année, le bandeau la pose
+/// lui-même : l'ajouter ici l'affichait deux fois (« 2010 · 2010 »).
+String? _heroSubtitle(HomeMediaItem item) => item.continueWatchingSubtitle;

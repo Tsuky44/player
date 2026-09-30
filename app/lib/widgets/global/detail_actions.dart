@@ -68,9 +68,36 @@ class DetailActions extends StatelessWidget {
     this.secondary = const [],
   });
 
+  /// Les actions secondaires en disques de verre de 44 px, tous identiques :
+  /// un bouton « Marquer vu » souligné à côté de trois icônes nues se lisait
+  /// comme quatre composants de quatre bibliothèques différentes.
+  static final ButtonStyle secondaryStyle = IconButton.styleFrom(
+    backgroundColor: Colors.white.withValues(alpha: 0.08),
+    foregroundColor: AppColors.textPrimary,
+    hoverColor: Colors.white.withValues(alpha: 0.14),
+    highlightColor: Colors.white.withValues(alpha: 0.18),
+    fixedSize: const Size(44, 44),
+    minimumSize: const Size(44, 44),
+    iconSize: 21,
+    shape: const CircleBorder(),
+  );
+
   @override
   Widget build(BuildContext context) {
     final compact = AppLayout.isCompact(context);
+    final secondary = this.secondary.isEmpty
+        ? const <Widget>[]
+        : [
+            IconButtonTheme(
+              data: IconButtonThemeData(style: secondaryStyle),
+              child: Wrap(
+                spacing: 10,
+                runSpacing: 8,
+                crossAxisAlignment: WrapCrossAlignment.center,
+                children: this.secondary,
+              ),
+            ),
+          ];
     final play = onPlay == null
         ? null
         : ElevatedButton.icon(
@@ -94,12 +121,8 @@ class DetailActions extends StatelessWidget {
             progressLine,
           ],
           if (secondary.isNotEmpty) ...[
-            const SizedBox(height: 8),
-            Wrap(
-              spacing: 4,
-              crossAxisAlignment: WrapCrossAlignment.center,
-              children: secondary,
-            ),
+            const SizedBox(height: 14),
+            ...secondary,
           ],
         ],
       );
@@ -110,7 +133,7 @@ class DetailActions extends StatelessWidget {
       mainAxisSize: MainAxisSize.min,
       children: [
         Wrap(
-          spacing: 8,
+          spacing: 16,
           runSpacing: 8,
           crossAxisAlignment: WrapCrossAlignment.center,
           children: [if (play != null) play, ...secondary],
@@ -151,8 +174,8 @@ class _ProgressLine extends StatelessWidget {
                   // [ProgressPill], noir, y disparaîtrait avec la longueur
                   // totale qu'il sert à montrer.
                   Positioned.fill(
-                    child: ColoredBox(
-                        color: Colors.white.withValues(alpha: 0.14)),
+                    child:
+                        ColoredBox(color: Colors.white.withValues(alpha: 0.14)),
                   ),
                   FractionallySizedBox(
                     widthFactor: value.clamp(0.02, 1.0),
@@ -168,7 +191,8 @@ class _ProgressLine extends StatelessWidget {
           const SizedBox(width: 12),
           Text(
             label!,
-            style: const TextStyle(color: AppColors.textSecondary, fontSize: 13),
+            style:
+                const TextStyle(color: AppColors.textSecondary, fontSize: 13),
           ),
         ],
       ],
