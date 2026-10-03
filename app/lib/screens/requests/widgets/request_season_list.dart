@@ -6,6 +6,8 @@ import '../../../theme/app_colors.dart';
 import '../../../utils/format.dart';
 import '../../../widgets/global/app_network_image.dart';
 import 'request_status_badge.dart';
+import '../../../theme/app_icons.dart';
+import '../../../theme/app_type.dart';
 
 /// Expandable season accordion with lazy-loaded TMDB episodes.
 class RequestSeasonList extends StatelessWidget {
@@ -29,7 +31,7 @@ class RequestSeasonList extends StatelessWidget {
         const Text(
           'Saisons',
           style: TextStyle(
-            fontSize: 22,
+            fontSize: AppType.title2,
             fontWeight: FontWeight.w700,
             color: Colors.white,
           ),
@@ -177,7 +179,7 @@ class _SeasonAccordionState extends State<_SeasonAccordion> {
                                 style: const TextStyle(
                                   color: Colors.white,
                                   fontWeight: FontWeight.w700,
-                                  fontSize: 15,
+                                  fontSize: AppType.callout,
                                 ),
                               ),
                               RequestStatusBadge(status: season.status),
@@ -188,7 +190,7 @@ class _SeasonAccordionState extends State<_SeasonAccordion> {
                             '${season.episodeCount} épisodes',
                             style: TextStyle(
                               color: Colors.white.withValues(alpha: 0.45),
-                              fontSize: 13,
+                              fontSize: AppType.subhead,
                             ),
                           ),
                         ],
@@ -223,7 +225,7 @@ class _SeasonAccordionState extends State<_SeasonAccordion> {
                       turns: _open ? 0.5 : 0,
                       duration: const Duration(milliseconds: 200),
                       child: Icon(
-                        Icons.expand_more_rounded,
+                        AppIcons.expand,
                         color: Colors.white.withValues(alpha: 0.55),
                       ),
                     ),
@@ -255,7 +257,7 @@ class _SeasonAccordionState extends State<_SeasonAccordion> {
           'N/A',
           style: TextStyle(
             color: Colors.white.withValues(alpha: 0.3),
-            fontSize: 10,
+            fontSize: AppType.micro,
           ),
         ),
       ),
@@ -348,7 +350,7 @@ class _EpisodeCard extends StatelessWidget {
                 style: const TextStyle(
                   color: Colors.white,
                   fontWeight: FontWeight.w700,
-                  fontSize: 15,
+                  fontSize: AppType.callout,
                 ),
               ),
             ),
@@ -358,7 +360,7 @@ class _EpisodeCard extends StatelessWidget {
                 airDate,
                 style: TextStyle(
                   color: Colors.white.withValues(alpha: 0.4),
-                  fontSize: 12,
+                  fontSize: AppType.footnote,
                 ),
               ),
             ],
@@ -373,7 +375,7 @@ class _EpisodeCard extends StatelessWidget {
           overflow: TextOverflow.ellipsis,
           style: TextStyle(
             color: Colors.white.withValues(alpha: 0.55),
-            fontSize: 13,
+            fontSize: AppType.subhead,
             height: 1.45,
           ),
         ),
@@ -387,7 +389,7 @@ class _EpisodeCard extends StatelessWidget {
                   '${episode.runtime} min',
                   style: TextStyle(
                     color: Colors.white.withValues(alpha: 0.4),
-                    fontSize: 12,
+                    fontSize: AppType.footnote,
                   ),
                 ),
               if (episode.rating > 0)
@@ -395,7 +397,7 @@ class _EpisodeCard extends StatelessWidget {
                   '★ ${episode.rating.toStringAsFixed(1)}',
                   style: const TextStyle(
                     color: Color(0xFFF5C518),
-                    fontSize: 12,
+                    fontSize: AppType.footnote,
                   ),
                 ),
             ],
@@ -458,7 +460,7 @@ class _EpisodeCard extends StatelessWidget {
                   'E${episode.number}',
                   style: const TextStyle(
                     color: Colors.white,
-                    fontSize: 11,
+                    fontSize: AppType.caption,
                     fontWeight: FontWeight.w800,
                   ),
                 ),
@@ -475,7 +477,7 @@ class _EpisodeCard extends StatelessWidget {
       color: AppColors.background,
       child: Center(
         child: Icon(
-          Icons.movie_outlined,
+          AppIcons.movie,
           color: Colors.white.withValues(alpha: 0.2),
           size: 28,
         ),

@@ -6,6 +6,7 @@ import '../../../services/api_client.dart';
 import '../../../theme/app_colors.dart';
 import '../widgets/device_tile.dart';
 import '../widgets/settings_ui.dart';
+import '../../../theme/app_type.dart';
 
 /// Toutes les sessions ouvertes sur le serveur, rangées par compte.
 class AdminDevicesPage extends StatefulWidget {
@@ -134,7 +135,7 @@ class _AdminDevicesPageState extends State<AdminDevicesPage> {
               trailing: Text(
                 '${entry.value.length} appareil${entry.value.length > 1 ? 's' : ''}',
                 style:
-                    const TextStyle(color: AppColors.textMuted, fontSize: 12),
+                    const TextStyle(color: AppColors.textMuted, fontSize: AppType.footnote),
               ),
               children: [
                 for (final device in entry.value)

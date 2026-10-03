@@ -1,5 +1,6 @@
-// Package sharelinks porte les liens de partage publics d'un film ou d'un
-// épisode (ADR-0037) : leur création, leurs règles d'ouverture et leur fin.
+// Package sharelinks porte les liens de partage publics d'un film, d'un
+// épisode, d'une saison ou d'une série (ADR-0037) : leur création, leurs
+// règles d'ouverture et leur fin.
 //
 // Un lien s'ouvre sans compte. Ce qui le protège tient ici, et seulement ici :
 //
@@ -154,6 +155,25 @@ func (s *Store) Find(code string) (Share, error) {
 	return s.scanOne(`WHERE code_digest = ?`, digest(code))
 }
 
+// Unlock vérifie que le lien est encore valide et que password est le sien,
+// sans rien réserver ni compter : c'est ce qu'il faut pour montrer ce que le
+// lien d'une saison ou d'une série contient, avant qu'un épisode soit choisi.
+func (s *Store) Unlock(code, password string) (Share, error) {
+	share, err := s.Find(code)
+	if err != nil {
+		return Share{}, err
+	}
+	if share.Status(s.now()) != "active" {
+		return Share{}, ErrGone
+	}
+	if share.HasPassword {
+		if bcrypt.CompareHashAndPassword([]byte(share.passwordHash), []byte(password)) != nil {
+			return Share{}, ErrPassword
+		}
+	}
+	return share, nil
+}
+
 // Open vérifie qu'un visiteur peut lire le lien : encore valide, bon mot de
 // passe, et, pour un lien à usage unique, pas réservé par un autre navigateur.
 //
@@ -161,17 +181,9 @@ func (s *Store) Find(code string) (Share, error) {
 // la première fois). Open renvoie celui qu'il doit présenter désormais : c'est
 // lui qui réserve un lien à usage unique, et qui autorise ensuite Authorize.
 func (s *Store) Open(code, password, viewer string) (Share, string, error) {
-	share, err := s.Find(code)
+	share, err := s.Unlock(code, password)
 	if err != nil {
 		return Share{}, "", err
-	}
-	if share.Status(s.now()) != "active" {
-		return Share{}, "", ErrGone
-	}
-	if share.HasPassword {
-		if bcrypt.CompareHashAndPassword([]byte(share.passwordHash), []byte(password)) != nil {
-			return Share{}, "", ErrPassword
-		}
 	}
 
 	if share.SingleUse {

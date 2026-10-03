@@ -6,6 +6,8 @@ import '../../../models/request_catalog_filters.dart';
 import '../../../services/api_client.dart';
 import '../../../theme/app_colors.dart';
 import '../../../widgets/global/app_network_image.dart';
+import '../../../theme/app_icons.dart';
+import '../../../theme/app_type.dart';
 
 /// MediaHub-style advanced filters modal (FilterModal + MediaFilters).
 class RequestFiltersSheet extends StatefulWidget {
@@ -167,25 +169,25 @@ class _RequestFiltersSheetState extends State<RequestFiltersSheet> {
                   padding: const EdgeInsets.fromLTRB(20, 16, 8, 12),
                   child: Row(
                     children: [
-                      const Icon(Icons.tune_rounded, color: AppColors.primary),
+                      const Icon(AppIcons.filters, color: AppColors.primary),
                       const SizedBox(width: 10),
                       const Expanded(
                         child: Text(
                           'Filtres avancés',
                           style: TextStyle(
-                            fontSize: 20,
+                            fontSize: AppType.title3,
                             fontWeight: FontWeight.w700,
                           ),
                         ),
                       ),
                       TextButton.icon(
                         onPressed: _reset,
-                        icon: const Icon(Icons.restart_alt_rounded, size: 18),
+                        icon: const Icon(AppIcons.reset, size: 18),
                         label: const Text('Réinitialiser tout'),
                       ),
                       IconButton(
                         onPressed: () => Navigator.of(context).pop(),
-                        icon: const Icon(Icons.close_rounded),
+                        icon: const Icon(AppIcons.close),
                       ),
                     ],
                   ),
@@ -253,7 +255,7 @@ class _RequestFiltersSheetState extends State<RequestFiltersSheet> {
       children: [
         _sectionCard(
           title: 'Trier par',
-          icon: Icons.sort_rounded,
+          icon: AppIcons.sortOrder,
           child: Column(
             children: [
               for (final opt in requestCatalogSortOptions)
@@ -264,7 +266,7 @@ class _RequestFiltersSheetState extends State<RequestFiltersSheet> {
         const SizedBox(height: 16),
         _sectionCard(
           title: 'Période',
-          icon: Icons.calendar_month_outlined,
+          icon: AppIcons.calendar,
           child: Column(
             children: [
               _dateField('De', _startDateController, (v) {
@@ -280,7 +282,7 @@ class _RequestFiltersSheetState extends State<RequestFiltersSheet> {
         const SizedBox(height: 16),
         _sectionCard(
           title: 'Langue',
-          icon: Icons.language_rounded,
+          icon: AppIcons.language,
           child: DropdownButtonFormField<String>(
             initialValue: requestCatalogLanguageOptions
                     .any((e) => e.code == _draft.language)
@@ -300,7 +302,7 @@ class _RequestFiltersSheetState extends State<RequestFiltersSheet> {
         const SizedBox(height: 16),
         _sectionCard(
           title: 'Durée (minutes)',
-          icon: Icons.timer_outlined,
+          icon: AppIcons.duration,
           child: Row(
             children: [
               Expanded(
@@ -348,12 +350,12 @@ class _RequestFiltersSheetState extends State<RequestFiltersSheet> {
   Widget _genresSection() {
     return _sectionCard(
       title: 'Genres',
-      icon: Icons.filter_alt_outlined,
+      icon: AppIcons.filter,
       trailing: Text(
         '${_draft.genres.length} sélectionné${_draft.genres.length > 1 ? 's' : ''}',
         style: const TextStyle(
           color: AppColors.primary,
-          fontSize: 12,
+          fontSize: AppType.footnote,
           fontWeight: FontWeight.w600,
         ),
       ),
@@ -394,7 +396,7 @@ class _RequestFiltersSheetState extends State<RequestFiltersSheet> {
 
     return _sectionCard(
       title: 'Streaming',
-      icon: Icons.live_tv_outlined,
+      icon: AppIcons.series,
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
@@ -478,7 +480,7 @@ class _RequestFiltersSheetState extends State<RequestFiltersSheet> {
                                 maxLines: 2,
                                 overflow: TextOverflow.ellipsis,
                                 textAlign: TextAlign.center,
-                                style: const TextStyle(fontSize: 9),
+                                style: const TextStyle(fontSize: AppType.micro),
                               ),
                             ),
                     ),
@@ -527,7 +529,7 @@ class _RequestFiltersSheetState extends State<RequestFiltersSheet> {
                   title,
                   style: const TextStyle(
                     fontWeight: FontWeight.w700,
-                    fontSize: 15,
+                    fontSize: AppType.callout,
                   ),
                 ),
                 const Spacer(),
@@ -591,7 +593,7 @@ class _RequestFiltersSheetState extends State<RequestFiltersSheet> {
           hintText: 'YYYY-MM-DD',
           border: const OutlineInputBorder(),
           suffixIcon: IconButton(
-            icon: const Icon(Icons.calendar_today_outlined, size: 18),
+            icon: const Icon(AppIcons.calendar, size: 18),
             onPressed: () async {
               final value = controller.text;
               final initial = value.isNotEmpty

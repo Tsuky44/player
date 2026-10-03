@@ -6,6 +6,7 @@ import '../../../theme/app_colors.dart';
 import 'player_chrome_fade.dart';
 import 'player_top_bar.dart';
 import 'watch_party_overlay.dart';
+import '../../../theme/app_type.dart';
 
 class PlayerHUDOverlay extends StatelessWidget {
   final bool visible;
@@ -132,7 +133,7 @@ class PlayerHUDOverlay extends StatelessWidget {
                                   _formatDuration(currentPos),
                                   style: TextStyle(
                                     color: Colors.white.withValues(alpha: 0.7),
-                                    fontSize: 12,
+                                    fontSize: AppType.footnote,
                                     fontFamily: 'Geist',
                                     fontWeight: FontWeight.w500,
                                   ),
@@ -176,7 +177,7 @@ class PlayerHUDOverlay extends StatelessWidget {
                                   _formatDuration(duration),
                                   style: TextStyle(
                                     color: Colors.white.withValues(alpha: 0.7),
-                                    fontSize: 12,
+                                    fontSize: AppType.footnote,
                                     fontFamily: 'Geist',
                                     fontWeight: FontWeight.w500,
                                   ),

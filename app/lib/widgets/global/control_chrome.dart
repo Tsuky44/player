@@ -5,6 +5,7 @@ import '../../theme/app_colors.dart';
 import 'media_logo_display.dart';
 import 'optimistic_volume.dart';
 import 'app_slider.dart';
+import 'scrub_gesture.dart';
 
 /// Rendering mode for [ControlChrome].
 ///
@@ -171,7 +172,8 @@ class ControlChrome extends StatelessWidget {
       PlayerControlType.progressBar => _buildProgressBar(),
       PlayerControlType.timeline ||
       PlayerControlType.timelineOnyx ||
-      PlayerControlType.timelineGlassInline => _buildTimelineBar(),
+      PlayerControlType.timelineGlassInline =>
+        _buildTimelineBar(),
       PlayerControlType.mediaTitle => _buildMediaTitle(),
       PlayerControlType.mediaLogo => _buildMediaLogo(),
       PlayerControlType.episodeTitleBlock => _buildEpisodeTitleBlock(),
@@ -396,7 +398,8 @@ class ControlChrome extends StatelessWidget {
     // boosted (saturation + a touch of brightness) so the glass looks alive and
     // refractive rather than a flat frosted panel.
     final backdrop = ImageFilter.compose(
-      outer: ColorFilter.matrix(_liquidGlassMatrix(saturation: 1.6, brightness: 1.06)),
+      outer: ColorFilter.matrix(
+          _liquidGlassMatrix(saturation: 1.6, brightness: 1.06)),
       inner: ImageFilter.blur(sigmaX: blurSigma, sigmaY: blurSigma),
     );
 
@@ -486,10 +489,26 @@ class ControlChrome extends StatelessWidget {
     final sb = (1 - s) * lumB;
     final b = (brightness - 1.0) * 255.0;
     return [
-      sr + s, sg, sb, 0, b,
-      sr, sg + s, sb, 0, b,
-      sr, sg, sb + s, 0, b,
-      0, 0, 0, 1, 0,
+      sr + s,
+      sg,
+      sb,
+      0,
+      b,
+      sr,
+      sg + s,
+      sb,
+      0,
+      b,
+      sr,
+      sg,
+      sb + s,
+      0,
+      b,
+      0,
+      0,
+      0,
+      1,
+      0,
     ];
   }
 
@@ -535,38 +554,41 @@ class ControlChrome extends StatelessWidget {
           widthFactor: widthPercentage.clamp(0.1, 1.0),
           child: SizedBox(
             height: height,
-            child: Stack(
-              alignment: Alignment.centerLeft,
-              children: [
-                Container(
-                  height: 4,
-                  decoration: BoxDecoration(
-                    color: Colors.white.withValues(alpha: 0.25),
-                    borderRadius: BorderRadius.circular(2),
-                  ),
-                ),
-                FractionallySizedBox(
-                  widthFactor: progress.clamp(0.0, 1.0),
-                  child: Container(
+            child: ScrubFractionBuilder(
+              progress: progress,
+              builder: (context, f) => Stack(
+                alignment: Alignment.centerLeft,
+                children: [
+                  Container(
                     height: 4,
                     decoration: BoxDecoration(
-                      color: _accentColor,
+                      color: Colors.white.withValues(alpha: 0.25),
                       borderRadius: BorderRadius.circular(2),
                     ),
                   ),
-                ),
-                Align(
-                  alignment: Alignment(progress.clamp(0.0, 1.0) * 2 - 1, 0),
-                  child: Container(
-                    width: 12,
-                    height: 12,
-                    decoration: const BoxDecoration(
-                      color: Colors.white,
-                      shape: BoxShape.circle,
+                  FractionallySizedBox(
+                    widthFactor: f,
+                    child: Container(
+                      height: 4,
+                      decoration: BoxDecoration(
+                        color: _accentColor,
+                        borderRadius: BorderRadius.circular(2),
+                      ),
                     ),
                   ),
-                ),
-              ],
+                  Align(
+                    alignment: Alignment(f * 2 - 1, 0),
+                    child: Container(
+                      width: 12,
+                      height: 12,
+                      decoration: const BoxDecoration(
+                        color: Colors.white,
+                        shape: BoxShape.circle,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
             ),
           ),
         ),
@@ -595,12 +617,7 @@ class ControlChrome extends StatelessWidget {
 
   Widget _seekableTimelineTrack(Widget track) {
     if (onSeekFraction == null) return track;
-    return _TimelineSeekable(
-      onSeekFraction: onSeekFraction!,
-      onPlayPause: onPlayPause,
-      isPlaying: isPlaying,
-      child: track,
-    );
+    return ScrubGesture(onSeekFraction: onSeekFraction!, child: track);
   }
 
   Widget _buildGlassTimelineBar() => _buildPillTimelineBar(wrap: _glass);
@@ -614,7 +631,8 @@ class ControlChrome extends StatelessWidget {
   /// track, transport + action buttons below) — only the chrome [wrap]
   /// differs between the Glass, Flat and Neumorphic variants.
   Widget _buildPillTimelineBar({
-    required Widget Function({required Widget child, required BorderRadius radius})
+    required Widget Function(
+            {required Widget child, required BorderRadius radius})
         wrap,
   }) {
     final opts = timelineOptions;
@@ -635,51 +653,56 @@ class ControlChrome extends StatelessWidget {
     final barTrackHeight = height * 0.55;
     final barTrack = SizedBox(
       height: barTrackHeight,
-      child: Stack(
-        alignment: Alignment.centerLeft,
-        children: [
-          Container(
-            height: 4,
-            decoration: BoxDecoration(
-              color: Colors.white.withValues(alpha: 0.25),
-              borderRadius: BorderRadius.circular(2),
-            ),
-          ),
-          FractionallySizedBox(
-            widthFactor: frac.clamp(0.0, 1.0),
-            child: Container(
+      child: ScrubFractionBuilder(
+        progress: frac,
+        builder: (context, f) => Stack(
+          alignment: Alignment.centerLeft,
+          children: [
+            Container(
               height: 4,
               decoration: BoxDecoration(
-                color: _accentColor,
+                color: Colors.white.withValues(alpha: 0.25),
                 borderRadius: BorderRadius.circular(2),
               ),
             ),
-          ),
-          Align(
-            alignment: Alignment(frac.clamp(0.0, 1.0) * 2 - 1, 0),
-            child: Container(
-              width: 12,
-              height: 12,
-              decoration: const BoxDecoration(
-                color: Colors.white,
-                shape: BoxShape.circle,
+            FractionallySizedBox(
+              widthFactor: f,
+              child: Container(
+                height: 4,
+                decoration: BoxDecoration(
+                  color: _accentColor,
+                  borderRadius: BorderRadius.circular(2),
+                ),
               ),
             ),
-          ),
-        ],
+            Align(
+              alignment: Alignment(f * 2 - 1, 0),
+              child: Container(
+                width: 12,
+                height: 12,
+                decoration: const BoxDecoration(
+                  color: Colors.white,
+                  shape: BoxShape.circle,
+                ),
+              ),
+            ),
+          ],
+        ),
       ),
     );
 
     final bar = _seekableTimelineTrack(barTrack);
 
-    void addBtn(List<Widget> out, IconData icon, bool show, VoidCallback? onTap) {
+    void addBtn(
+        List<Widget> out, IconData icon, bool show, VoidCallback? onTap) {
       if (!show) return;
       if (variant == ControlChromeVariant.live && onTap == null) return;
       out.add(_TimelineBarIcon(icon: icon, size: iconSize, onTap: onTap));
     }
 
     final transportButtons = <Widget>[];
-    addBtn(transportButtons, Icons.skip_previous, opts.showSkipPrevious, onSkipPrevious);
+    addBtn(transportButtons, Icons.skip_previous, opts.showSkipPrevious,
+        onSkipPrevious);
     addBtn(transportButtons, Icons.replay_10, opts.showRewind, onRewind);
     addBtn(
       transportButtons,
@@ -766,8 +789,7 @@ class ControlChrome extends StatelessWidget {
                                 '-${_formatDuration(Duration(seconds: remaining))} / ${_formatEndTime(remaining)}',
                                 style: timeStyle.copyWith(
                                   color: Colors.white.withValues(alpha: 0.7),
-                                  fontSize:
-                                      (height * 0.38).clamp(9.0, 13.0),
+                                  fontSize: (height * 0.38).clamp(9.0, 13.0),
                                 ),
                                 overflow: TextOverflow.ellipsis,
                                 maxLines: 1,
@@ -833,52 +855,57 @@ class ControlChrome extends StatelessWidget {
     final barTrack = SizedBox(
       width: double.infinity,
       height: barTrackHeight,
-      child: Stack(
-        alignment: Alignment.centerLeft,
-        children: [
-          Container(
-            width: double.infinity,
-            height: barThickness,
-            decoration: BoxDecoration(
-              color: Colors.white.withValues(alpha: 0.25),
-              borderRadius: BorderRadius.circular(1.5),
-            ),
-          ),
-          FractionallySizedBox(
-            widthFactor: frac.clamp(0.0, 1.0),
-            child: Container(
+      child: ScrubFractionBuilder(
+        progress: frac,
+        builder: (context, f) => Stack(
+          alignment: Alignment.centerLeft,
+          children: [
+            Container(
+              width: double.infinity,
               height: barThickness,
               decoration: BoxDecoration(
-                color: _kAccent,
+                color: Colors.white.withValues(alpha: 0.25),
                 borderRadius: BorderRadius.circular(1.5),
               ),
             ),
-          ),
-          Align(
-            alignment: Alignment(frac.clamp(0.0, 1.0) * 2 - 1, 0),
-            child: Container(
-              width: 10,
-              height: 10,
-              decoration: const BoxDecoration(
-                color: Colors.white,
-                shape: BoxShape.circle,
+            FractionallySizedBox(
+              widthFactor: f,
+              child: Container(
+                height: barThickness,
+                decoration: BoxDecoration(
+                  color: _kAccent,
+                  borderRadius: BorderRadius.circular(1.5),
+                ),
               ),
             ),
-          ),
-        ],
+            Align(
+              alignment: Alignment(f * 2 - 1, 0),
+              child: Container(
+                width: 10,
+                height: 10,
+                decoration: const BoxDecoration(
+                  color: Colors.white,
+                  shape: BoxShape.circle,
+                ),
+              ),
+            ),
+          ],
+        ),
       ),
     );
 
     final bar = _seekableTimelineTrack(barTrack);
 
-    void addBtn(List<Widget> out, IconData icon, bool show, VoidCallback? onTap) {
+    void addBtn(
+        List<Widget> out, IconData icon, bool show, VoidCallback? onTap) {
       if (!show) return;
       if (variant == ControlChromeVariant.live && onTap == null) return;
       out.add(_TimelineBarIcon(icon: icon, size: iconSize, onTap: onTap));
     }
 
     final transportButtons = <Widget>[];
-    addBtn(transportButtons, Icons.skip_previous, opts.showSkipPrevious, onSkipPrevious);
+    addBtn(transportButtons, Icons.skip_previous, opts.showSkipPrevious,
+        onSkipPrevious);
     addBtn(transportButtons, Icons.replay_10, opts.showRewind, onRewind);
     addBtn(
       transportButtons,
@@ -913,7 +940,8 @@ class ControlChrome extends StatelessWidget {
       onTap: onOpenUpNext,
       iconSize: iconSize,
     );
-    addBtn(actionButtons, Icons.fullscreen, opts.showFullscreen, onToggleFullscreen);
+    addBtn(actionButtons, Icons.fullscreen, opts.showFullscreen,
+        onToggleFullscreen);
 
     const hPad = 12.0;
     const vPad = 5.0;
@@ -998,40 +1026,43 @@ class ControlChrome extends StatelessWidget {
       width: double.infinity,
       height: 14,
       child: Center(
-        child: Stack(
-          alignment: Alignment.centerLeft,
-          children: [
-            Container(
-              width: double.infinity,
-              height: lineHeight,
-              color: Colors.white.withValues(alpha: 0.35),
-            ),
-            FractionallySizedBox(
-              widthFactor: frac.clamp(0.0, 1.0),
-              child: Container(
+        child: ScrubFractionBuilder(
+          progress: frac,
+          builder: (context, f) => Stack(
+            alignment: Alignment.centerLeft,
+            children: [
+              Container(
+                width: double.infinity,
                 height: lineHeight,
-                color: Colors.white,
+                color: Colors.white.withValues(alpha: 0.35),
               ),
-            ),
-            Align(
-              alignment: Alignment(frac.clamp(0.0, 1.0) * 2 - 1, 0),
-              child: Container(
-                width: 12,
-                height: 12,
-                decoration: BoxDecoration(
+              FractionallySizedBox(
+                widthFactor: f,
+                child: Container(
+                  height: lineHeight,
                   color: Colors.white,
-                  shape: BoxShape.circle,
-                  boxShadow: [
-                    BoxShadow(
-                      color: Colors.black.withValues(alpha: 0.4),
-                      blurRadius: 4,
-                      offset: const Offset(0, 1),
-                    ),
-                  ],
                 ),
               ),
-            ),
-          ],
+              Align(
+                alignment: Alignment(f * 2 - 1, 0),
+                child: Container(
+                  width: 12,
+                  height: 12,
+                  decoration: BoxDecoration(
+                    color: Colors.white,
+                    shape: BoxShape.circle,
+                    boxShadow: [
+                      BoxShadow(
+                        color: Colors.black.withValues(alpha: 0.4),
+                        blurRadius: 4,
+                        offset: const Offset(0, 1),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            ],
+          ),
         ),
       ),
     );
@@ -1041,14 +1072,16 @@ class ControlChrome extends StatelessWidget {
       child: _seekableTimelineTrack(barTrack),
     );
 
-    void addOnyxBtn(List<Widget> out, IconData icon, bool show, VoidCallback? onTap) {
+    void addOnyxBtn(
+        List<Widget> out, IconData icon, bool show, VoidCallback? onTap) {
       if (!show) return;
       if (variant == ControlChromeVariant.live && onTap == null) return;
       out.add(_OnyxTimelineIcon(icon: icon, size: iconSize, onTap: onTap));
     }
 
     final transportButtons = <Widget>[];
-    addOnyxBtn(transportButtons, Icons.skip_previous, opts.showSkipPrevious, onSkipPrevious);
+    addOnyxBtn(transportButtons, Icons.skip_previous, opts.showSkipPrevious,
+        onSkipPrevious);
     addOnyxBtn(transportButtons, Icons.replay_10, opts.showRewind, onRewind);
     addOnyxBtn(
       transportButtons,
@@ -1057,7 +1090,8 @@ class ControlChrome extends StatelessWidget {
       onPlayPause,
     );
     addOnyxBtn(transportButtons, Icons.forward_10, opts.showForward, onForward);
-    addOnyxBtn(transportButtons, Icons.skip_next, opts.showSkipNext, onSkipNext);
+    addOnyxBtn(
+        transportButtons, Icons.skip_next, opts.showSkipNext, onSkipNext);
 
     final utilityButtons = <Widget>[];
     void addOnyxActionBtn(
@@ -1235,7 +1269,8 @@ class ControlChrome extends StatelessWidget {
         mainAxisSize: MainAxisSize.min,
         crossAxisAlignment: CrossAxisAlignment.center,
         children: [
-          Icon(icon, color: Colors.white.withValues(alpha: 0.92), size: iconSize),
+          Icon(icon,
+              color: Colors.white.withValues(alpha: 0.92), size: iconSize),
           SizedBox(width: height * 0.22),
           Text(
             label,
@@ -1384,7 +1419,8 @@ class ControlChrome extends StatelessWidget {
           child: Row(
             mainAxisSize: MainAxisSize.min,
             children: [
-              Icon(Icons.playlist_play_rounded, color: Colors.white, size: iconSize),
+              Icon(Icons.playlist_play_rounded,
+                  color: Colors.white, size: iconSize),
               SizedBox(width: height * 0.18),
               Text(
                 'À suivre',
@@ -1594,7 +1630,8 @@ class _VolumeSliderButtonState extends State<_VolumeSliderButton> {
       outer: ColorFilter.matrix(
         ControlChrome._liquidGlassMatrix(saturation: 1.6, brightness: 1.06),
       ),
-      inner: ImageFilter.blur(sigmaX: widget.blurSigma, sigmaY: widget.blurSigma),
+      inner:
+          ImageFilter.blur(sigmaX: widget.blurSigma, sigmaY: widget.blurSigma),
     );
     final sheen = LinearGradient(
       begin: Alignment.topLeft,
@@ -1642,47 +1679,51 @@ class _VolumeSliderButtonState extends State<_VolumeSliderButton> {
 
   Widget _volumeRow(double vol, double iconSize) {
     return Row(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            SizedBox(
-              width: widget.height,
-              height: widget.height,
-              child: InkWell(
-                onTap: () => _setVolume(vol <= 0 ? 100 : 0),
-                borderRadius: BorderRadius.circular(widget.height / 2),
-                child: Center(
-                  child: Icon(
-                    vol == 0 ? Icons.volume_off : vol < 50 ? Icons.volume_down : Icons.volume_up,
-                    color: Colors.white.withValues(alpha: 0.85),
-                    size: iconSize,
-                  ),
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        SizedBox(
+          width: widget.height,
+          height: widget.height,
+          child: InkWell(
+            onTap: () => _setVolume(vol <= 0 ? 100 : 0),
+            borderRadius: BorderRadius.circular(widget.height / 2),
+            child: Center(
+              child: Icon(
+                vol == 0
+                    ? Icons.volume_off
+                    : vol < 50
+                        ? Icons.volume_down
+                        : Icons.volume_up,
+                color: Colors.white.withValues(alpha: 0.85),
+                size: iconSize,
+              ),
+            ),
+          ),
+        ),
+        if (_expanded)
+          Expanded(
+            child: Padding(
+              padding: const EdgeInsets.only(right: 12),
+              child: SliderTheme(
+                data: SliderTheme.of(context).copyWith(
+                  trackHeight: 3,
+                  thumbShape: const RoundSliderThumbShape(
+                      enabledThumbRadius: 5, elevation: 0, pressedElevation: 0),
+                  overlayShape: const RoundSliderOverlayShape(overlayRadius: 0),
+                  activeTrackColor: AppColors.accent,
+                  inactiveTrackColor: Colors.white.withValues(alpha: 0.25),
+                  thumbColor: Colors.white,
+                ),
+                child: AppSlider(
+                  value: vol,
+                  min: 0,
+                  max: 100,
+                  onChanged: widget.onVolumeChanged == null ? null : _setVolume,
                 ),
               ),
             ),
-            if (_expanded)
-              Expanded(
-                child: Padding(
-                  padding: const EdgeInsets.only(right: 12),
-                  child: SliderTheme(
-                    data: SliderTheme.of(context).copyWith(
-                      trackHeight: 3,
-                      thumbShape: const RoundSliderThumbShape(enabledThumbRadius: 5, elevation: 0, pressedElevation: 0),
-                      overlayShape: const RoundSliderOverlayShape(overlayRadius: 0),
-                      activeTrackColor: AppColors.accent,
-                      inactiveTrackColor: Colors.white.withValues(alpha: 0.25),
-                      thumbColor: Colors.white,
-                    ),
-                    child: AppSlider(
-                      value: vol,
-                      min: 0,
-                      max: 100,
-                      onChanged:
-                          widget.onVolumeChanged == null ? null : _setVolume,
-                    ),
-                  ),
-                ),
-              ),
-              ],
+          ),
+      ],
     );
   }
 }
@@ -1719,61 +1760,6 @@ class _TimelineBarIcon extends StatelessWidget {
           ),
         ),
       ),
-    );
-  }
-}
-
-/// Wraps a timeline track so that:
-/// - a tap seeks to the tapped position
-/// - a horizontal drag seeks continuously
-/// - the player pauses at drag start and resumes at drag end if it was playing.
-class _TimelineSeekable extends StatefulWidget {
-  final Widget child;
-  final ValueChanged<double> onSeekFraction;
-  final VoidCallback? onPlayPause;
-  final bool isPlaying;
-
-  const _TimelineSeekable({
-    required this.child,
-    required this.onSeekFraction,
-    this.onPlayPause,
-    this.isPlaying = false,
-  });
-
-  @override
-  State<_TimelineSeekable> createState() => _TimelineSeekableState();
-}
-
-class _TimelineSeekableState extends State<_TimelineSeekable> {
-  bool _wasPlaying = false;
-
-  void _emit(BuildContext context, Offset localPosition) {
-    final box = context.findRenderObject() as RenderBox?;
-    if (box == null || box.size.width <= 0) return;
-    final fraction = (localPosition.dx / box.size.width).clamp(0.0, 1.0);
-    widget.onSeekFraction(fraction);
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    return GestureDetector(
-      behavior: HitTestBehavior.translucent,
-      onTapDown: (d) => _emit(context, d.localPosition),
-      onHorizontalDragStart: (d) {
-        _wasPlaying = widget.isPlaying;
-        if (_wasPlaying) widget.onPlayPause?.call();
-        _emit(context, d.localPosition);
-      },
-      onHorizontalDragUpdate: (d) => _emit(context, d.localPosition),
-      onHorizontalDragEnd: (_) {
-        if (_wasPlaying) widget.onPlayPause?.call();
-        _wasPlaying = false;
-      },
-      onHorizontalDragCancel: () {
-        if (_wasPlaying) widget.onPlayPause?.call();
-        _wasPlaying = false;
-      },
-      child: widget.child,
     );
   }
 }

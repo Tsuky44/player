@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 import '../../../models/media_request.dart';
 import '../../../theme/app_colors.dart';
+import '../../../theme/app_icons.dart';
+import '../../../theme/app_type.dart';
 
 /// Hero availability pill — Quiet Premium semantic colors.
 class RequestAvailabilityBadge extends StatelessWidget {
@@ -61,7 +63,7 @@ class _HeroBadge extends StatelessWidget {
         label,
         style: TextStyle(
           color: foreground,
-          fontSize: 11,
+          fontSize: AppType.caption,
           fontWeight: FontWeight.w600,
           letterSpacing: 0.2,
         ),
@@ -81,18 +83,18 @@ class RequestStatusBadge extends StatelessWidget {
     return switch (status) {
       RequestMediaStatus.available => const _SeasonBadge(
           label: 'Disponible',
-          icon: Icons.check_rounded,
+          icon: AppIcons.check,
           foreground: AppColors.success,
         ),
       RequestMediaStatus.partial => const _SeasonBadge(
           label: 'Partiellement disponible',
-          icon: Icons.check_rounded,
+          icon: AppIcons.check,
           foreground: AppColors.warning,
         ),
       RequestMediaStatus.pending || RequestMediaStatus.processing =>
         const _SeasonBadge(
           label: 'En attente',
-          icon: Icons.schedule_rounded,
+          icon: AppIcons.schedule,
           foreground: AppColors.accentMuted,
         ),
       RequestMediaStatus.unknown => const SizedBox.shrink(),
@@ -129,7 +131,7 @@ class _SeasonBadge extends StatelessWidget {
             label,
             style: TextStyle(
               color: foreground,
-              fontSize: 11,
+              fontSize: AppType.caption,
               fontWeight: FontWeight.w600,
             ),
           ),

@@ -6,6 +6,7 @@ import '../../providers/auth_provider.dart';
 import '../../theme/app_colors.dart';
 import '../../tv/tv_mode.dart';
 import 'share_media_dialog.dart';
+import '../../theme/app_icons.dart';
 
 /// Le bouton « Partager par lien » d'un film ou d'un épisode (ADR-0037).
 ///
@@ -51,7 +52,58 @@ class ShareMediaButton extends StatelessWidget {
       iconSize: compact ? 20 : 22,
       visualDensity: compact ? VisualDensity.compact : null,
       color: AppColors.textSecondary,
-      icon: const Icon(Icons.link_rounded),
+      icon: const Icon(AppIcons.link),
+    );
+  }
+}
+
+/// Le bouton « Partager par lien » d'une saison ou d'une série entière : un
+/// seul lien, dont le visiteur choisit les épisodes (ADR-0037 §8).
+///
+/// Mêmes absences que [ShareMediaButton], plus une : sans épisode lisible, le
+/// serveur refuserait le lien.
+class ShareCollectionButton extends StatelessWidget {
+  const ShareCollectionButton({
+    super.key,
+    required this.mediaId,
+    required this.title,
+    required this.tooltip,
+    required this.hasPlayableEpisode,
+    this.compact = false,
+  });
+
+  /// L'id de la saison ou de la série.
+  final int mediaId;
+
+  /// Le nom montré dans la boîte de dialogue : « Lioness », « Lioness ·
+  /// Saison 2 ».
+  final String title;
+  final String tooltip;
+  final bool hasPlayableEpisode;
+  final bool compact;
+
+  @override
+  Widget build(BuildContext context) {
+    final auth = context.watch<AuthProvider>();
+    if (TvMode.isTv ||
+        !auth.permissions.shareMedia ||
+        !hasPlayableEpisode ||
+        mediaId <= 0) {
+      return const SizedBox.shrink();
+    }
+    return IconButton(
+      tooltip: tooltip,
+      onPressed: () => showShareMediaDialog(
+        context,
+        api: auth.apiClient,
+        mediaId: mediaId,
+        title: title,
+        collection: true,
+      ),
+      iconSize: compact ? 20 : 22,
+      visualDensity: compact ? VisualDensity.compact : null,
+      color: AppColors.textSecondary,
+      icon: const Icon(AppIcons.link),
     );
   }
 }

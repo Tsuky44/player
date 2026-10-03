@@ -4,6 +4,8 @@ import '../../models/models.dart';
 import '../../services/api_client.dart';
 import '../../theme/app_colors.dart';
 import 'app_network_image.dart';
+import '../../theme/app_icons.dart';
+import '../../theme/app_type.dart';
 
 /// Bottom sheet that lets the user re-identify a movie/show by picking the
 /// correct entry from a live TMDB search. The original filename is shown at the
@@ -140,7 +142,7 @@ class _MetadataFixSheetState extends State<MetadataFixSheet> {
                         'Corriger la fiche',
                         style: TextStyle(
                           color: AppColors.textPrimary,
-                          fontSize: 20,
+                          fontSize: AppType.title3,
                           fontWeight: FontWeight.w700,
                         ),
                       ),
@@ -171,9 +173,9 @@ class _MetadataFixSheetState extends State<MetadataFixSheet> {
                             hintText: 'Rechercher un titre…',
                             filled: true,
                             fillColor: AppColors.surface,
-                            prefixIcon: const Icon(Icons.search),
+                            prefixIcon: const Icon(AppIcons.search),
                             suffixIcon: IconButton(
-                              icon: const Icon(Icons.arrow_forward),
+                              icon: const Icon(AppIcons.forward),
                               onPressed: _search,
                             ),
                             border: OutlineInputBorder(
@@ -260,14 +262,14 @@ class _LocalShowContextCard extends StatelessWidget {
             'Sur le serveur',
             style: TextStyle(
               color: AppColors.textSecondary,
-              fontSize: 11,
+              fontSize: AppType.caption,
               fontWeight: FontWeight.w600,
               letterSpacing: 0.2,
             ),
           ),
           const SizedBox(height: 8),
           _LocalRow(
-            icon: Icons.folder_outlined,
+            icon: AppIcons.folder,
             label: 'Dossier série',
             value: hasFolder ? folder! : '— aucun chemin indexé —',
             muted: !hasFolder,
@@ -275,7 +277,7 @@ class _LocalShowContextCard extends StatelessWidget {
           if (hasEpisode) ...[
             const SizedBox(height: 8),
             _LocalRow(
-              icon: Icons.movie_outlined,
+              icon: AppIcons.movie,
               label: 'Fichier épisode',
               value: episodeFile!,
             ),
@@ -314,7 +316,7 @@ class _LocalRow extends StatelessWidget {
                 label,
                 style: TextStyle(
                   color: AppColors.textSecondary.withValues(alpha: 0.9),
-                  fontSize: 11,
+                  fontSize: AppType.caption,
                 ),
               ),
               Text(
@@ -323,7 +325,7 @@ class _LocalRow extends StatelessWidget {
                   color: muted
                       ? AppColors.textMuted
                       : AppColors.textPrimary,
-                  fontSize: 13,
+                  fontSize: AppType.subhead,
                   fontFamily: 'monospace',
                   height: 1.35,
                 ),
@@ -361,7 +363,7 @@ class _FileNameChip extends StatelessWidget {
             label,
             style: TextStyle(
               color: AppColors.textSecondary.withValues(alpha: 0.85),
-              fontSize: 11,
+              fontSize: AppType.caption,
               fontWeight: FontWeight.w600,
               letterSpacing: 0.2,
             ),
@@ -369,7 +371,7 @@ class _FileNameChip extends StatelessWidget {
           const SizedBox(height: 4),
           Row(
             children: [
-              const Icon(Icons.insert_drive_file_outlined,
+              const Icon(AppIcons.file,
                   size: 16, color: AppColors.textSecondary),
               const SizedBox(width: 8),
               Expanded(
@@ -377,7 +379,7 @@ class _FileNameChip extends StatelessWidget {
                   fileName,
                   style: const TextStyle(
                     color: AppColors.textPrimary,
-                    fontSize: 13,
+                    fontSize: AppType.subhead,
                     fontFamily: 'monospace',
                     height: 1.3,
                   ),
@@ -428,7 +430,7 @@ class _CandidateTile extends StatelessWidget {
                       : candidate.title,
                   style: const TextStyle(
                     color: AppColors.textPrimary,
-                    fontSize: 15,
+                    fontSize: AppType.callout,
                     fontWeight: FontWeight.w600,
                   ),
                   maxLines: 2,
@@ -441,7 +443,7 @@ class _CandidateTile extends StatelessWidget {
                     candidate.overview!,
                     style: const TextStyle(
                       color: AppColors.textSecondary,
-                      fontSize: 12.5,
+                      fontSize: AppType.subhead,
                       height: 1.3,
                     ),
                     maxLines: 3,
@@ -463,7 +465,7 @@ class _PosterFallback extends StatelessWidget {
   Widget build(BuildContext context) {
     return Container(
       color: AppColors.surface,
-      child: const Icon(Icons.movie_outlined,
+      child: const Icon(AppIcons.movie,
           color: AppColors.textSecondary, size: 24),
     );
   }

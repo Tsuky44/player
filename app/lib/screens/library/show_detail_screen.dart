@@ -13,12 +13,14 @@ import '../../tv/tv_mode.dart';
 import '../../utils/responsive.dart';
 import '../../utils/format.dart';
 import '../../widgets/global/detail_actions.dart';
+import '../../widgets/global/detail_facts_section.dart';
 import '../../widgets/global/detail_metadata.dart';
 import '../../widgets/global/episode_tile.dart';
 import '../../widgets/global/media_detail_widgets.dart';
 import '../../widgets/global/metadata_fix_sheet.dart';
 import '../../widgets/global/season_download_button.dart';
 import '../../widgets/global/season_watched_button.dart';
+import '../../widgets/global/share_media_button.dart';
 import '../player/player_screen.dart';
 import '../requests/widgets/season_selector_dialog.dart';
 import '../../navigation/search_route_observer.dart';
@@ -619,6 +621,7 @@ class _ShowDetailScreenState extends State<ShowDetailScreen> {
       releaseDate: _details?.releaseDate ?? _show.releaseDate,
       rating: _details?.voteAverage ?? 0,
       seasons: seasonsCount,
+      genres: _details?.genres ?? const [],
     );
 
     return Scaffold(
@@ -632,6 +635,9 @@ class _ShowDetailScreenState extends State<ShowDetailScreen> {
               metadata: metadata,
               onBack: () => Navigator.of(context).pop(),
               loading: _loadingDetails,
+              emptyOverviewLabel: _loadingDetails
+                  ? 'Chargement des informations…'
+                  : 'Synopsis indisponible pour cette série.',
               actions: DetailActions(
                 playLabel: resumeEp != null
                     ? detailPlayLabel(
@@ -653,6 +659,12 @@ class _ShowDetailScreenState extends State<ShowDetailScreen> {
                         resumeEp.currentPositionSeconds)
                     : null,
                 secondary: [
+                  ShareCollectionButton(
+                    mediaId: _show.id,
+                    title: _show.title,
+                    tooltip: 'Partager la série par lien',
+                    hasPlayableEpisode: lp.seasons.any((s) => s.isAvailable),
+                  ),
                   ShowMetadataMenu(
                     onRedetect: _autoRedetect,
                     onPickOnTmdb: _rematch,
@@ -661,26 +673,6 @@ class _ShowDetailScreenState extends State<ShowDetailScreen> {
               ),
             ),
           ),
-          SliverToBoxAdapter(
-            child: DetailInfoSection(
-              details: _details,
-              fallbackOverview: _show.overview,
-              emptyOverviewLabel: _loadingDetails
-                  ? 'Chargement des informations…'
-                  : 'Synopsis indisponible pour cette série.',
-            ),
-          ),
-          if (_details?.cast.isNotEmpty ?? false)
-            SliverToBoxAdapter(
-              child: Padding(
-                padding: const EdgeInsets.symmetric(vertical: 16),
-                child: CastSection(
-                  cast: _details!.cast,
-                  onTapMember: (member) =>
-                      openPerson(context, member.tmdbId, name: member.name),
-                ),
-              ),
-            ),
           if (lp.isLoadingSeasons)
             SliverToBoxAdapter(
               child: Padding(
@@ -754,6 +746,15 @@ class _ShowDetailScreenState extends State<ShowDetailScreen> {
                     ),
                   ] else
                     const Spacer(),
+                  ShareCollectionButton(
+                    mediaId: selectedSeason?.id ?? 0,
+                    title: _playerSeasonNumber == null
+                        ? _show.title
+                        : '${_show.title} · Saison $_playerSeasonNumber',
+                    tooltip: 'Partager la saison par lien',
+                    hasPlayableEpisode: availableCount > 0,
+                    compact: true,
+                  ),
                   // Le geste qu'on fait avant de partir : toute la saison d'un
                   // coup, plutôt que vingt appuis sur vingt lignes.
                   SeasonDownloadButton(
@@ -812,6 +813,20 @@ class _ShowDetailScreenState extends State<ShowDetailScreen> {
                 childCount: lp.episodes.length,
               ),
             ),
+          // Sur une série, on vient pour les épisodes : la distribution et les
+          // crédits passent après eux, au lieu de les repousser sous le pli.
+          if (_details?.cast.isNotEmpty ?? false)
+            SliverToBoxAdapter(
+              child: Padding(
+                padding: const EdgeInsets.only(top: 32),
+                child: CastSection(
+                  cast: _details!.cast,
+                  onTapMember: (member) =>
+                      openPerson(context, member.tmdbId, name: member.name),
+                ),
+              ),
+            ),
+          SliverToBoxAdapter(child: DetailFactsSection(details: _details)),
           if (_details?.similarTitles.isNotEmpty ?? false)
             SliverToBoxAdapter(
               child: Padding(

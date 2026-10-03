@@ -7,6 +7,7 @@ import '../../../theme/app_colors.dart';
 import '../../../tv/tv_deferred_keyboard.dart';
 import '../servers_screen.dart';
 import '../widgets/settings_ui.dart';
+import '../../../theme/app_type.dart';
 
 class ServersPage extends StatefulWidget {
   const ServersPage({super.key});
@@ -93,7 +94,7 @@ class _ServersPageState extends State<ServersPage> {
                     const Text(
                       'Utile quand le serveur change d’adresse (IP locale, nom de domaine) : votre session est conservée.',
                       style: TextStyle(
-                          color: AppColors.textSecondary, fontSize: 12.5),
+                          color: AppColors.textSecondary, fontSize: AppType.subhead),
                     ),
                     const SizedBox(height: 12),
                     TvDeferredKeyboard(

@@ -9,6 +9,7 @@ import '../../providers/auth_provider.dart';
 import '../../services/api_client.dart';
 import '../../theme/app_colors.dart';
 import '../../utils/app_platform.dart';
+import '../../theme/app_type.dart';
 
 /// Sign in by scanning a QR with the phone — the password form's neighbour on
 /// the web and desktop sign-in screen (ADR-0020).
@@ -207,7 +208,7 @@ class _PhoneSignInPanelState extends State<PhoneSignInPanel> {
               child: Text(
                 'Code indisponible sur ce serveur.',
                 textAlign: TextAlign.center,
-                style: TextStyle(color: AppColors.textSecondary, fontSize: 13),
+                style: TextStyle(color: AppColors.textSecondary, fontSize: AppType.subhead),
               ),
             ),
             const SizedBox(height: 8),
@@ -237,7 +238,7 @@ class _PhoneSignInPanelState extends State<PhoneSignInPanel> {
             child: Text(
               'Renseignez l’adresse du serveur pour afficher le code.',
               textAlign: TextAlign.center,
-              style: TextStyle(color: AppColors.textSecondary, fontSize: 13),
+              style: TextStyle(color: AppColors.textSecondary, fontSize: AppType.subhead),
             ),
           ),
         ),

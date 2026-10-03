@@ -32,8 +32,20 @@ class SharedLinkApiClient extends ApiClient {
   @override
   bool get isGuest => true;
 
+  /// L'épisode en cours de lecture dans le lien d'une saison ou d'une série ;
+  /// nul pour un film ou un épisode, que le lien désigne seul.
+  int? _episodeId;
+
   String get _viewerKey => 'onyx-share-viewer:$code';
-  String get _positionKey => 'onyx-share-position:$code';
+
+  /// Une position par épisode dans une saison ou une série partagée.
+  String _positionKey(int? episodeId) => episodeId == null
+      ? 'onyx-share-position:$code'
+      : 'onyx-share-position:$code:$episodeId';
+
+  /// Ce que les routes de la lecture ajoutent pour nommer l'épisode lu.
+  Map<String, dynamic> get _playing =>
+      {if (_episodeId != null) 'media_id': _episodeId};
 
   /// Décrit le lien : faut-il un mot de passe, et sinon quel média il ouvre.
   Future<SharedMediaInfo> info() async {
@@ -41,13 +53,28 @@ class SharedLinkApiClient extends ApiClient {
     return SharedMediaInfo.fromJson(data);
   }
 
+  /// Décrit un lien protégé une fois son [password] donné, sans rien ouvrir :
+  /// pour une saison ou une série, la liste des épisodes à choisir.
+  Future<SharedMediaInfo> contents(String password) async {
+    final data = await _shared('contents', {
+      'password': password,
+      'viewer': await _loadViewer(),
+    });
+    _password = password;
+    return SharedMediaInfo.fromJson(data);
+  }
+
   /// Ouvre le lien avec [password] : le serveur réserve un lien à usage
   /// unique à ce navigateur et délivre un premier ticket de lecture.
-  Future<({SharedMediaInfo media, int mediaId})> open(String password) async {
+  /// [episodeId] désigne l'épisode voulu d'une saison ou d'une série.
+  Future<({SharedMediaInfo media, int mediaId})> open(String password,
+      {int? episodeId}) async {
     _password = password;
+    _episodeId = episodeId;
     final data = await _shared('open', {
       'password': password,
       'viewer': await _loadViewer(),
+      ..._playing,
     });
     await _rememberViewer(data['viewer'] as String? ?? '');
     _pending = _SharedTicket.fromJson(data);
@@ -58,10 +85,11 @@ class SharedLinkApiClient extends ApiClient {
     );
   }
 
-  /// Où ce navigateur s'était arrêté, en secondes.
-  Future<int> savedPosition() async {
+  /// Où ce navigateur s'était arrêté, en secondes : dans le média du lien, ou
+  /// dans l'épisode [episodeId] d'une saison ou d'une série.
+  Future<int> savedPosition({int? episodeId}) async {
     final prefs = await SharedPreferences.getInstance();
-    return prefs.getInt(_positionKey) ?? 0;
+    return prefs.getInt(_positionKey(episodeId)) ?? 0;
   }
 
   @override
@@ -72,7 +100,7 @@ class SharedLinkApiClient extends ApiClient {
     var ticket = _pending;
     _pending = null;
     if (ticket == null) {
-      await open(_password);
+      await open(_password, episodeId: _episodeId);
       ticket = _pending!;
       _pending = null;
     }
@@ -96,11 +124,12 @@ class SharedLinkApiClient extends ApiClient {
 
   @override
   Future<Map<String, dynamic>> getMediaTracksJson(int mediaId) =>
-      _shared('tracks', {'viewer': _viewer, 'ticket': _ticket});
+      _shared('tracks', {'viewer': _viewer, 'ticket': _ticket, ..._playing});
 
   @override
   Future<Map<String, dynamic>> getProgress(int mediaId) async => {
-        'current_position_seconds': await savedPosition(),
+        'current_position_seconds':
+            await savedPosition(episodeId: _episodeId),
         'is_finished': false,
       };
 
@@ -115,14 +144,16 @@ class SharedLinkApiClient extends ApiClient {
     DateTime? clientUpdatedAt,
   }) async {
     final prefs = await SharedPreferences.getInstance();
+    final positionKey = _positionKey(_episodeId);
     if (isFinished) {
-      await prefs.remove(_positionKey);
+      await prefs.remove(positionKey);
     } else {
-      await prefs.setInt(_positionKey, currentPositionSeconds);
+      await prefs.setInt(positionKey, currentPositionSeconds);
     }
     final data = await _shared('progress', {
       'viewer': _viewer,
       'ticket': _ticket,
+      ..._playing,
       'position_seconds': currentPositionSeconds,
       'duration_seconds': duration,
     });

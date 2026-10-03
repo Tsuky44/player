@@ -12,6 +12,8 @@ import '../../widgets/global/empty_state.dart';
 import 'request_detail_screen.dart';
 import 'widgets/request_filters_sheet.dart';
 import 'widgets/request_media_card.dart';
+import '../../theme/app_icons.dart';
+import '../../theme/app_type.dart';
 
 class RequestsScreen extends StatefulWidget {
   final bool embedded;
@@ -134,7 +136,7 @@ class _RequestsScreenState extends State<RequestsScreen> {
         onPressed: _openAdvancedFilters,
         backgroundColor: AppColors.primary,
         tooltip: 'Filtres avancés',
-        child: const Icon(Icons.tune_rounded),
+        child: const Icon(AppIcons.filters),
       ),
       body: CustomScrollView(
         controller: _scrollController,
@@ -175,7 +177,7 @@ class _RequestsScreenState extends State<RequestsScreen> {
                       textInputAction: TextInputAction.search,
                       decoration: InputDecoration(
                         hintText: 'Rechercher un film ou une série…',
-                        prefixIcon: const Icon(Icons.search_rounded),
+                        prefixIcon: const Icon(AppIcons.search),
                         suffixIcon: _searchController.text.isEmpty
                             ? null
                             : IconButton(
@@ -185,7 +187,7 @@ class _RequestsScreenState extends State<RequestsScreen> {
                                   setState(() {});
                                   _runSearch();
                                 },
-                                icon: const Icon(Icons.close_rounded),
+                                icon: const Icon(AppIcons.close),
                               ),
                       ),
                     ),
@@ -197,7 +199,7 @@ class _RequestsScreenState extends State<RequestsScreen> {
                       children: [
                         Chip(
                           label: const Text('Filtres avancés actifs'),
-                          deleteIcon: const Icon(Icons.close, size: 16),
+                          deleteIcon: const Icon(AppIcons.close, size: 16),
                           onDeleted: () {
                             setState(() {
                               _draftFilters = RequestCatalogFilters.defaults;
@@ -230,7 +232,7 @@ class _RequestsScreenState extends State<RequestsScreen> {
           else if (provider.items.isEmpty)
             const SliverFillRemaining(
               child: EmptyStateView(
-                icon: Icons.search_off_rounded,
+                icon: AppIcons.search,
                 title: 'Aucun média trouvé',
                 message: 'Essayez une autre recherche ou un autre filtre.',
               ),
@@ -355,7 +357,7 @@ class _Pill extends StatelessWidget {
                   ? Colors.white
                   : Colors.white.withValues(alpha: 0.55),
               fontWeight: FontWeight.w600,
-              fontSize: 13,
+              fontSize: AppType.subhead,
             ),
           ),
         ),

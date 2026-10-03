@@ -11,6 +11,7 @@ import '../../utils/search_match.dart';
 import '../../widgets/global/media_card.dart';
 import '../../widgets/global/skeleton.dart';
 import 'show_detail_screen.dart';
+import '../../theme/app_icons.dart';
 
 enum _SortOption { title, recent }
 
@@ -100,7 +101,7 @@ class _ShowsScreenState extends State<ShowsScreen> {
                 else if (lp.shows.isEmpty)
                   const SliverFillRemaining(
                     child: EmptyStateView(
-                      icon: Icons.tv_off_rounded,
+                      icon: AppIcons.series,
                       title: 'Aucune série',
                       message:
                           'Ajoutez des dossiers de séries avec des épisodes SxxExx puis synchronisez la bibliothèque.',

@@ -8,6 +8,8 @@ import '../../tv/tv_mode.dart';
 import '../../utils/app_platform.dart';
 import 'glass_chrome.dart';
 import 'join_watch_party_dialog.dart';
+import '../../theme/app_icons.dart';
+import '../../theme/app_type.dart';
 
 /// Single owner of the account menu — consumed by the desktop header, the
 /// compact tab bar and the Home overlay bar so all three stay identical.
@@ -53,7 +55,7 @@ class AccountMenu extends StatelessWidget {
                   '${authProvider.activeServer!.displayName} · '
                   '${authProvider.permissions.isAdmin ? 'Administrateur' : 'Membre'}',
                   style: const TextStyle(
-                    fontSize: 11,
+                    fontSize: AppType.caption,
                     color: AppColors.textMuted,
                   ),
                 ),
@@ -68,7 +70,7 @@ class AccountMenu extends StatelessWidget {
                 value: 'switch:${account.id}',
                 child: Row(
                   children: [
-                    const Icon(Icons.swap_horiz_rounded, size: 16),
+                    const Icon(AppIcons.switchServer, size: 16),
                     const SizedBox(width: 8),
                     Flexible(
                       child: Text(
@@ -85,7 +87,7 @@ class AccountMenu extends StatelessWidget {
           value: 'watch-party',
           child: Row(
             children: [
-              Icon(Icons.groups_rounded, size: 16),
+              Icon(AppIcons.watchParty, size: 16),
               SizedBox(width: 8),
               Text('Rejoindre une séance'),
             ],
@@ -97,20 +99,20 @@ class AccountMenu extends StatelessWidget {
         // dans Paramètres › Lecture, avec le reste de l'interface du lecteur.
         const PopupMenuItem(
           value: 'settings',
-          child: _MenuRow(icon: Icons.settings_outlined, label: 'Paramètres'),
+          child: _MenuRow(icon: AppIcons.settings, label: 'Paramètres'),
         ),
         if (canLinkTv)
           const PopupMenuItem(
             value: 'tv',
             child: _MenuRow(
-              icon: Icons.qr_code_scanner_rounded,
+              icon: AppIcons.scan,
               label: 'Connecter un appareil',
             ),
           ),
         const PopupMenuDivider(),
         const PopupMenuItem(
           value: 'logout',
-          child: _MenuRow(icon: Icons.logout_rounded, label: 'Se déconnecter'),
+          child: _MenuRow(icon: AppIcons.signOut, label: 'Se déconnecter'),
         ),
       ],
       onSelected: (value) async {
@@ -139,7 +141,7 @@ class AccountMenu extends StatelessWidget {
           (authProvider.currentUser?.username ?? '?')[0].toUpperCase(),
           style: const TextStyle(
             fontWeight: FontWeight.w700,
-            fontSize: 13,
+            fontSize: AppType.subhead,
             color: AppColors.textPrimary,
           ),
         ),

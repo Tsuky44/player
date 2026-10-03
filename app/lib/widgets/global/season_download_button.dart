@@ -8,6 +8,7 @@ import '../../utils/responsive.dart';
 import 'bulk_download_delete.dart';
 import 'metered_download_dialog.dart';
 import 'season_download_plan.dart';
+import '../../theme/app_icons.dart';
 
 /// « Garder toute la saison sur l'appareil », en un geste.
 ///
@@ -53,7 +54,7 @@ class SeasonDownloadButton extends StatelessWidget {
     if (plan.isComplete) {
       return TextButton.icon(
         onPressed: () => _deleteSeason(context, manager, plan.downloadable),
-        icon: const Icon(Icons.download_done_rounded, size: 18),
+        icon: const Icon(AppIcons.downloaded, size: 18),
         label: Text(
           compact
               ? 'Téléchargée'
@@ -86,7 +87,7 @@ class SeasonDownloadButton extends StatelessWidget {
           IconButton(
             onPressed: () => _cancelShow(context, manager),
             tooltip: 'Annuler les téléchargements de la série',
-            icon: const Icon(Icons.close_rounded, size: 18),
+            icon: const Icon(AppIcons.close, size: 18),
             visualDensity: VisualDensity.compact,
             color: AppColors.textSecondary,
           ),
@@ -108,7 +109,7 @@ class SeasonDownloadButton extends StatelessWidget {
     }
     return TextButton.icon(
       onPressed: addNext,
-      icon: const Icon(Icons.download_outlined, size: 18),
+      icon: const Icon(AppIcons.download, size: 18),
       label: Text(label),
       style: TextButton.styleFrom(foregroundColor: AppColors.textSecondary),
     );

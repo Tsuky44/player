@@ -22,6 +22,7 @@ import '../../widgets/global/hero_banner.dart' show HeroBanner;
 import '../library/movie_detail_screen.dart';
 import '../library/show_detail_screen.dart';
 import '../player/player_screen.dart';
+import '../../theme/app_icons.dart';
 
 class HomeScreen extends StatefulWidget {
   final bool embedded;
@@ -375,14 +376,14 @@ class _EmptyLibraryView extends StatelessWidget {
   Widget build(BuildContext context) {
     if (!canManageLibrary) {
       return const EmptyStateView(
-        icon: Icons.movie_filter_outlined,
+        icon: AppIcons.movie,
         title: 'Bibliothèque vide',
         message: 'Aucun film ni aucune série sur ce serveur pour l’instant. '
             'Son administrateur peut en ajouter.',
       );
     }
     return EmptyStateView(
-      icon: Icons.movie_filter_outlined,
+      icon: AppIcons.movie,
       title: 'Bibliothèque vide',
       message: 'Ajoutez des fichiers dans vos dossiers Films et Séries, '
           'puis lancez une synchronisation.',

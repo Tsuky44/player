@@ -4,6 +4,7 @@ import '../../../models/player_layout.dart';
 import 'studio_drawer_shell.dart';
 import '../../../widgets/global/app_slider.dart';
 import '../../../theme/app_colors.dart';
+import '../../../theme/app_type.dart';
 
 /// Side drawer to tune size/width of the selected control on the canvas.
 class ControlEditDrawer extends StatelessWidget {
@@ -53,7 +54,7 @@ class ControlEditDrawer extends StatelessWidget {
                         'Taille',
                         style: TextStyle(
                           color: Colors.white,
-                          fontSize: 13,
+                          fontSize: AppType.subhead,
                           fontWeight: FontWeight.w600,
                         ),
                       ),
@@ -106,7 +107,7 @@ class ControlEditDrawer extends StatelessWidget {
                           'Largeur',
                           style: TextStyle(
                             color: Colors.white,
-                            fontSize: 13,
+                            fontSize: AppType.subhead,
                             fontWeight: FontWeight.w600,
                           ),
                         ),
@@ -152,7 +153,7 @@ class ControlEditDrawer extends StatelessWidget {
                     },
                     style: TextStyle(
                       color: Colors.white.withValues(alpha: 0.55),
-                      fontSize: 12,
+                      fontSize: AppType.footnote,
                     ),
                   ),
                   const SizedBox(height: 16),
@@ -160,7 +161,7 @@ class ControlEditDrawer extends StatelessWidget {
                     'Transport (gauche)',
                     style: TextStyle(
                       color: Colors.white,
-                      fontSize: 13,
+                      fontSize: AppType.subhead,
                       fontWeight: FontWeight.w600,
                     ),
                   ),
@@ -208,7 +209,7 @@ class ControlEditDrawer extends StatelessWidget {
                         : 'Actions (droite)',
                     style: const TextStyle(
                       color: Colors.white,
-                      fontSize: 13,
+                      fontSize: AppType.subhead,
                       fontWeight: FontWeight.w600,
                     ),
                   ),
@@ -250,7 +251,7 @@ class ControlEditDrawer extends StatelessWidget {
                 child: Text(
                   'Clique sur un bouton ou une barre dans l’aperçu.',
                   textAlign: TextAlign.center,
-                  style: TextStyle(color: Colors.grey, fontSize: 14),
+                  style: TextStyle(color: Colors.grey, fontSize: AppType.body),
                 ),
               ),
             ),
@@ -281,7 +282,7 @@ class _TimelineToggle extends StatelessWidget {
       contentPadding: EdgeInsets.zero,
       title: Text(
         label,
-        style: const TextStyle(color: Colors.white70, fontSize: 13),
+        style: const TextStyle(color: Colors.white70, fontSize: AppType.subhead),
       ),
       value: value,
       activeThumbColor: AppColors.accent,
@@ -370,7 +371,7 @@ class _PercentageFieldState extends State<_PercentageField> {
           canRequestFocus: canRequestFocus,
           controller: _controller,
           focusNode: _focusNode,
-          style: const TextStyle(color: Colors.white, fontSize: 13),
+          style: const TextStyle(color: Colors.white, fontSize: AppType.subhead),
           textAlign: TextAlign.end,
           keyboardType: const TextInputType.numberWithOptions(decimal: true),
           decoration: const InputDecoration(
@@ -389,7 +390,7 @@ class _PercentageFieldState extends State<_PercentageField> {
               borderSide: BorderSide(color: AppColors.accent),
             ),
             suffixText: '%',
-            suffixStyle: TextStyle(color: Colors.grey, fontSize: 13),
+            suffixStyle: TextStyle(color: Colors.grey, fontSize: AppType.subhead),
           ),
           readOnly: widget.onChanged == null,
           onTap: widget.onChanged == null ? null : () => _isEditing = true,

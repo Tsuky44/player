@@ -231,6 +231,9 @@ func main() {
 	// rythme d'une lecture.
 	router.POST("/api/shared/info", handlers.RateLimited(handlers.PollLimiter, handlers.SharedMediaInfo))
 	router.POST("/api/shared/open", handlers.RateLimited(handlers.LoginLimiter, handlers.OpenSharedMedia))
+	// Vérifie aussi le mot de passe, pour lister les épisodes d'une saison ou
+	// d'une série partagée : même limite que l'ouverture.
+	router.POST("/api/shared/contents", handlers.RateLimited(handlers.LoginLimiter, handlers.SharedMediaContents))
 	router.POST("/api/shared/renew", handlers.RateLimited(handlers.PollLimiter, handlers.RenewSharedMedia))
 	router.POST("/api/shared/progress", handlers.RateLimited(handlers.PollLimiter, handlers.ReportSharedMediaProgress))
 	router.POST("/api/shared/close", handlers.RateLimited(handlers.PollLimiter, handlers.CloseSharedMedia))

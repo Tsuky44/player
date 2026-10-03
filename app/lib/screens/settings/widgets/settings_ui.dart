@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 
 import '../../../models/server_activity.dart';
 import '../../../theme/app_colors.dart';
+import '../../../theme/app_type.dart';
 
 /// Les briques des paramètres : une page, des groupes en carte, des lignes.
 ///
@@ -68,7 +69,7 @@ class SettingsPage extends StatelessWidget {
                 Text(
                   title,
                   style: textTheme.headlineSmall?.copyWith(
-                    fontSize: 32,
+                    fontSize: AppType.largeTitle,
                     fontWeight: FontWeight.w600,
                     letterSpacing: -0.8,
                   ),
@@ -164,7 +165,7 @@ class SettingsGroup extends StatelessWidget {
                       title ?? '',
                       style: const TextStyle(
                         color: AppColors.textPrimary,
-                        fontSize: 15,
+                        fontSize: AppType.callout,
                         fontWeight: FontWeight.w600,
                         letterSpacing: -0.1,
                       ),
@@ -197,7 +198,7 @@ class SettingsGroup extends StatelessWidget {
                 footer!,
                 style: const TextStyle(
                   color: AppColors.textSecondary,
-                  fontSize: 12,
+                  fontSize: AppType.footnote,
                   height: 1.4,
                 ),
               ),
@@ -288,7 +289,7 @@ class SettingsTile extends StatelessWidget {
                         style: TextStyle(
                           color: titleColor,
                           fontWeight: FontWeight.w600,
-                          fontSize: 14.5,
+                          fontSize: AppType.callout,
                         ),
                       ),
                       if (subtitle != null && subtitle!.isNotEmpty) ...[
@@ -297,7 +298,7 @@ class SettingsTile extends StatelessWidget {
                           subtitle!,
                           style: const TextStyle(
                             color: AppColors.textSecondary,
-                            fontSize: 12.5,
+                            fontSize: AppType.subhead,
                             height: 1.35,
                           ),
                         ),
@@ -396,7 +397,7 @@ class SettingsChoiceTile<T> extends StatelessWidget {
                   title,
                   style: const TextStyle(
                     fontWeight: FontWeight.w600,
-                    fontSize: 14.5,
+                    fontSize: AppType.callout,
                   ),
                 ),
                 if (subtitle != null) ...[
@@ -405,7 +406,7 @@ class SettingsChoiceTile<T> extends StatelessWidget {
                     subtitle!,
                     style: const TextStyle(
                       color: AppColors.textSecondary,
-                      fontSize: 12.5,
+                      fontSize: AppType.subhead,
                       height: 1.35,
                     ),
                   ),
@@ -438,7 +439,7 @@ class SettingsChoiceTile<T> extends StatelessWidget {
                   Text(
                     footnote!,
                     style: const TextStyle(
-                        color: AppColors.textMuted, fontSize: 11.5),
+                        color: AppColors.textMuted, fontSize: AppType.footnote),
                   ),
                 ],
               ],
@@ -478,7 +479,7 @@ class SettingsPill extends StatelessWidget {
             label,
             style: TextStyle(
               color: tint,
-              fontSize: 11,
+              fontSize: AppType.caption,
               fontWeight: FontWeight.w700,
               letterSpacing: 0.2,
             ),
@@ -538,7 +539,7 @@ class StatTile extends StatelessWidget {
                   overflow: TextOverflow.ellipsis,
                   style: const TextStyle(
                     color: AppColors.textSecondary,
-                    fontSize: 12,
+                    fontSize: AppType.footnote,
                     fontWeight: FontWeight.w600,
                   ),
                 ),
@@ -552,7 +553,7 @@ class StatTile extends StatelessWidget {
             child: Text(
               value,
               style: const TextStyle(
-                fontSize: 24,
+                fontSize: AppType.title1,
                 fontWeight: FontWeight.w700,
                 letterSpacing: -0.6,
               ),
@@ -565,7 +566,7 @@ class StatTile extends StatelessWidget {
               maxLines: 1,
               overflow: TextOverflow.ellipsis,
               style:
-                  const TextStyle(color: AppColors.textMuted, fontSize: 11.5),
+                  const TextStyle(color: AppColors.textMuted, fontSize: AppType.footnote),
             ),
           ],
         ],
@@ -620,7 +621,7 @@ class SettingsEmptyNote extends StatelessWidget {
           Flexible(
             child: Text(
               message,
-              style: const TextStyle(color: AppColors.textMuted, fontSize: 13),
+              style: const TextStyle(color: AppColors.textMuted, fontSize: AppType.subhead),
             ),
           ),
         ],
@@ -675,7 +676,7 @@ class SettingsBanner extends StatelessWidget {
           Expanded(
             child: Text(
               message,
-              style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w500),
+              style: const TextStyle(fontSize: AppType.subhead, fontWeight: FontWeight.w500),
             ),
           ),
         ],

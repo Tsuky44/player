@@ -12,6 +12,7 @@ import '../hooks/use_player_controller.dart';
 import 'chapters_debug_panel.dart';
 import 'extract_subtitles_button.dart';
 import 'player_settings_ui.dart';
+import '../../../theme/app_type.dart';
 
 class SettingsMenu extends StatefulWidget {
   final PlaybackSession session;
@@ -352,7 +353,7 @@ class _EmptyTracksMessage extends StatelessWidget {
         'Aucune piste disponible',
         style: TextStyle(
           color: Colors.white.withValues(alpha: 0.45),
-          fontSize: 13,
+          fontSize: AppType.subhead,
           fontFamily: 'Manrope',
         ),
       ),

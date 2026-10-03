@@ -3,6 +3,7 @@ import '../../../models/media_request.dart';
 import '../../../theme/app_colors.dart';
 import '../../../utils/poster_url.dart';
 import '../../../widgets/global/app_network_image.dart';
+import '../../../theme/app_type.dart';
 
 class RequestRelatedSlider extends StatelessWidget {
   final String title;
@@ -26,7 +27,7 @@ class RequestRelatedSlider extends StatelessWidget {
         Text(
           title,
           style: const TextStyle(
-            fontSize: 22,
+            fontSize: AppType.title2,
             fontWeight: FontWeight.w700,
             color: AppColors.textPrimary,
           ),
@@ -101,7 +102,7 @@ class _RelatedCardState extends State<_RelatedCard> {
                               child: Text(
                                 widget.item.rating.toStringAsFixed(1),
                                 style: const TextStyle(
-                                  fontSize: 11,
+                                  fontSize: AppType.caption,
                                   fontWeight: FontWeight.w700,
                                   color: Colors.white,
                                 ),
@@ -118,7 +119,7 @@ class _RelatedCardState extends State<_RelatedCard> {
                   maxLines: 2,
                   overflow: TextOverflow.ellipsis,
                   style: const TextStyle(
-                    fontSize: 13,
+                    fontSize: AppType.subhead,
                     fontWeight: FontWeight.w600,
                     color: AppColors.textPrimary,
                     height: 1.25,

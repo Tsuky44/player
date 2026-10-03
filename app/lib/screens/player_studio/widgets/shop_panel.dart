@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../../../models/player_layout.dart';
 import '../../../theme/app_colors.dart';
+import '../../../theme/app_type.dart';
 
 /// Category groups for the control shop.
 const _kCategories = <String, List<PlayerControlType>>{
@@ -110,7 +111,7 @@ class ShopPanel extends StatelessWidget {
                         'Boutique de contrôles',
                         style: TextStyle(
                           color: AppColors.textPrimary,
-                          fontSize: 17,
+                          fontSize: AppType.headline,
                           fontWeight: FontWeight.w700,
                           letterSpacing: -0.3,
                         ),
@@ -120,7 +121,7 @@ class ShopPanel extends StatelessWidget {
                         'Ajoute un élément au canvas du lecteur',
                         style: TextStyle(
                           color: AppColors.textMuted,
-                          fontSize: 12,
+                          fontSize: AppType.footnote,
                         ),
                       ),
                     ],
@@ -150,7 +151,7 @@ class ShopPanel extends StatelessWidget {
                           title,
                           style: const TextStyle(
                             color: AppColors.textSecondary,
-                            fontSize: 12,
+                            fontSize: AppType.footnote,
                             fontWeight: FontWeight.w600,
                             letterSpacing: 0.1,
                           ),
@@ -250,7 +251,7 @@ class _ShopItem extends StatelessWidget {
                   overflow: TextOverflow.ellipsis,
                   style: const TextStyle(
                     color: AppColors.textPrimary,
-                    fontSize: 11.5,
+                    fontSize: AppType.footnote,
                     fontWeight: FontWeight.w600,
                     height: 1.2,
                     letterSpacing: -0.1,
@@ -261,7 +262,7 @@ class _ShopItem extends StatelessWidget {
                   isPlaced ? 'Placé' : 'Ajouter',
                   style: TextStyle(
                     color: isPlaced ? AppColors.primary : AppColors.textMuted,
-                    fontSize: 10,
+                    fontSize: AppType.micro,
                     fontWeight: FontWeight.w600,
                   ),
                 ),

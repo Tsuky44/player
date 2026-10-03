@@ -7,6 +7,7 @@ import '../../../models/models.dart';
 import '../../../theme/app_colors.dart';
 import '../../../utils/poster_url.dart';
 import '../../../widgets/global/app_network_image.dart';
+import '../../../theme/app_type.dart';
 
 /// "Info" card: poster, title, episode line, duration/CC badge,
 /// technical stream line, and a restart-from-beginning action.
@@ -116,7 +117,7 @@ class PlayerInfoSheet extends StatelessWidget {
                             showTitle,
                             style: const TextStyle(
                               color: AppColors.textPrimary,
-                              fontSize: 19,
+                              fontSize: AppType.title3,
                               fontWeight: FontWeight.w700,
                               letterSpacing: -0.3,
                             ),
@@ -133,7 +134,7 @@ class PlayerInfoSheet extends StatelessWidget {
                       overflow: TextOverflow.ellipsis,
                       style: const TextStyle(
                         color: AppColors.textSecondary,
-                        fontSize: 13,
+                        fontSize: AppType.subhead,
                         height: 1.35,
                       ),
                     ),
@@ -145,7 +146,7 @@ class PlayerInfoSheet extends StatelessWidget {
                             _durationLabel,
                             style: const TextStyle(
                               color: AppColors.textSecondary,
-                              fontSize: 12,
+                              fontSize: AppType.footnote,
                             ),
                           ),
                           const SizedBox(width: 8),
@@ -159,7 +160,7 @@ class PlayerInfoSheet extends StatelessWidget {
                         _technicalLine,
                         style: const TextStyle(
                           color: AppColors.textMuted,
-                          fontSize: 12,
+                          fontSize: AppType.footnote,
                         ),
                       ),
                     ],
@@ -194,7 +195,7 @@ class _Badge extends StatelessWidget {
         label,
         style: const TextStyle(
           color: AppColors.textSecondary,
-          fontSize: 10,
+          fontSize: AppType.micro,
           fontWeight: FontWeight.w700,
         ),
       ),
@@ -228,7 +229,7 @@ class _RestartButton extends StatelessWidget {
                   'Depuis le début',
                   style: TextStyle(
                     color: Colors.white,
-                    fontSize: 12,
+                    fontSize: AppType.footnote,
                     fontWeight: FontWeight.w600,
                   ),
                 ),

@@ -8,6 +8,7 @@ import '../../utils/poster_url.dart';
 import 'poster_card.dart';
 import 'progress_pill.dart';
 import 'watch_badge.dart';
+import '../../theme/app_icons.dart';
 
 class MediaCard extends StatelessWidget {
   final Media media;
@@ -52,7 +53,7 @@ class MediaCard extends StatelessWidget {
       compact: compact,
       autofocus: autofocus,
       showPlayOnHover: true,
-      placeholderIcon: isShow ? Icons.tv_rounded : Icons.movie_rounded,
+      placeholderIcon: isShow ? AppIcons.series : AppIcons.movie,
       overlays: [
         if (badge != null)
           Positioned(

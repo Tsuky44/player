@@ -3,6 +3,7 @@ import '../../../models/player_layout.dart';
 import 'studio_drawer_shell.dart';
 import '../../../widgets/global/app_slider.dart';
 import '../../../theme/app_colors.dart';
+import '../../../theme/app_type.dart';
 
 /// Side drawer for choosing the preset's control skin (Verre/Net/Doux) and
 /// tuning that skin's own parameters (glass blur/opacity/liquid, flat accent
@@ -120,13 +121,13 @@ class _GlassSection extends StatelessWidget {
           activeThumbColor: AppColors.accent,
           title: const Text(
             'Effet liquide (style Apple)',
-            style: TextStyle(color: Colors.white, fontSize: 14),
+            style: TextStyle(color: Colors.white, fontSize: AppType.body),
           ),
           subtitle: Text(
             liquidGlass
                 ? 'Saturation, reflets et bord lumineux'
                 : 'Verre simple — plus léger',
-            style: const TextStyle(color: Colors.grey, fontSize: 12),
+            style: const TextStyle(color: Colors.grey, fontSize: AppType.footnote),
           ),
         ),
         const SizedBox(height: 20),
@@ -177,7 +178,7 @@ class _FlatSection extends StatelessWidget {
           'Couleur d’accent',
           style: TextStyle(
             color: Colors.white,
-            fontSize: 13,
+            fontSize: AppType.subhead,
             fontWeight: FontWeight.w600,
           ),
         ),
@@ -199,7 +200,7 @@ class _FlatSection extends StatelessWidget {
           'Élévation',
           style: TextStyle(
             color: Colors.white,
-            fontSize: 13,
+            fontSize: AppType.subhead,
             fontWeight: FontWeight.w600,
           ),
         ),
@@ -304,11 +305,11 @@ class _GlassSliderRow extends StatelessWidget {
           children: [
             Text(
               label,
-              style: const TextStyle(color: Colors.white, fontSize: 13),
+              style: const TextStyle(color: Colors.white, fontSize: AppType.subhead),
             ),
             Text(
               valueLabel,
-              style: const TextStyle(color: Colors.grey, fontSize: 13),
+              style: const TextStyle(color: Colors.grey, fontSize: AppType.subhead),
             ),
           ],
         ),

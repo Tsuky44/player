@@ -3,8 +3,14 @@ import 'package:flutter/material.dart';
 import '../../models/models.dart';
 import '../../theme/app_colors.dart';
 import '../../utils/format.dart';
+import '../../theme/app_icons.dart';
+import '../../theme/app_type.dart';
 
-/// La ligne de métadonnées d'une fiche : « 2024 · 2 h 46 min · ★ 8,3 ».
+/// Combien de genres la ligne de métadonnées écrit au plus.
+const int maxMetadataGenres = 3;
+
+/// La ligne de métadonnées d'une fiche :
+/// « 2024 · 2 h 46 min · ★ 8,3 · Drame, Thriller ».
 ///
 /// Elle se lisait en boîtes grises à liseré, une par valeur — un habillage de
 /// formulaire pour ce qui n'est que du texte. Les pages de films haut de gamme
@@ -17,6 +23,7 @@ List<Widget> buildMetadataChips({
   int durationSeconds = 0,
   double rating = 0,
   int seasons = 0,
+  List<String> genres = const [],
   String? statusLabel,
 }) {
   final year = extractYear(releaseDate);
@@ -33,6 +40,11 @@ List<Widget> buildMetadataChips({
   }
 
   if (rating > 0) items.add(RatingBadge(rating: rating));
+  // Trois genres suffisent à situer un titre ; au-delà la ligne passe à la
+  // suivante et pousse le synopsis hors de l'en-tête.
+  if (genres.isNotEmpty) {
+    items.add(MetadataText(genres.take(maxMetadataGenres).join(', ')));
+  }
   if (statusLabel != null && statusLabel.isNotEmpty) {
     items.add(MetadataText(statusLabel));
   }
@@ -47,7 +59,7 @@ class MetadataText extends StatelessWidget {
 
   static const TextStyle style = TextStyle(
     color: AppColors.textSecondary,
-    fontSize: 14,
+    fontSize: AppType.body,
     fontWeight: FontWeight.w500,
     height: 1.2,
   );
@@ -78,43 +90,13 @@ class RatingBadge extends StatelessWidget {
     return Row(
       mainAxisSize: MainAxisSize.min,
       children: [
-        const Icon(Icons.star_rounded, color: AppColors.rating, size: 16),
+        const Icon(AppIcons.rating, color: AppColors.rating, size: 16),
         const SizedBox(width: 3),
         Text(
           rating.toStringAsFixed(1).replaceAll('.', ','),
           style: MetadataText.style.copyWith(color: AppColors.textPrimary),
         ),
       ],
-    );
-  }
-}
-
-/// Un genre, sous le synopsis.
-///
-/// En pilule bleue il prenait la couleur d'accent — celle du focus et de la
-/// progression — pour une information qui n'est pas cliquable. Neutre, il se
-/// range avec le reste du texte.
-class GenrePill extends StatelessWidget {
-  final String label;
-
-  const GenrePill({super.key, required this.label});
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-      decoration: BoxDecoration(
-        color: Colors.white.withValues(alpha: 0.06),
-        borderRadius: BorderRadius.circular(20),
-      ),
-      child: Text(
-        label,
-        style: const TextStyle(
-          color: AppColors.textSecondary,
-          fontSize: 12.5,
-          fontWeight: FontWeight.w500,
-        ),
-      ),
     );
   }
 }
@@ -140,7 +122,7 @@ class TechBadge extends StatelessWidget {
         label,
         style: TextStyle(
           color: Colors.white.withValues(alpha: 0.85),
-          fontSize: 10.5,
+          fontSize: AppType.caption,
           fontWeight: FontWeight.w700,
           letterSpacing: 0.6,
           height: 1.1,
@@ -186,7 +168,7 @@ List<String> techBadgesFor(MediaTracks? tracks) {
 /// vedette.
 TextStyle? detailSectionTitleStyle(BuildContext context) =>
     Theme.of(context).textTheme.titleMedium?.copyWith(
-          fontSize: 19,
+          fontSize: AppType.title3,
           fontWeight: FontWeight.w600,
           letterSpacing: -0.2,
           color: AppColors.textPrimary,

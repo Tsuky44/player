@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../../../theme/app_motion.dart';
+import '../../../theme/app_type.dart';
 
 /// The answer to a double-tap: an arc of light over the half of the screen that
 /// was tapped, three chevrons running towards the edge, and how far the film
@@ -191,7 +192,7 @@ class _Readout extends StatelessWidget {
           '$seconds s',
           style: const TextStyle(
             color: Colors.white,
-            fontSize: 15,
+            fontSize: AppType.callout,
             fontWeight: FontWeight.w600,
             letterSpacing: -0.2,
             shadows: [Shadow(color: Color(0x99000000), blurRadius: 10)],

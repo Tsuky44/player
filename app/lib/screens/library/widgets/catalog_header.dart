@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 
 import '../../../theme/app_colors.dart';
+import '../../../theme/app_icons.dart';
+import '../../../theme/app_type.dart';
 
 /// L'en-tête d'un catalogue : le titre, le nombre de titres et le tri, sur une
 /// seule ligne.
@@ -49,7 +51,7 @@ class CatalogHeader<T> extends StatelessWidget {
             countLabel!,
             style: const TextStyle(
               color: AppColors.textMuted,
-              fontSize: 14,
+              fontSize: AppType.body,
               fontWeight: FontWeight.w500,
             ),
           ),
@@ -77,12 +79,12 @@ class CatalogHeader<T> extends StatelessWidget {
                   sortOptions[sort] ?? '',
                   style: const TextStyle(
                     color: AppColors.textSecondary,
-                    fontSize: 14,
+                    fontSize: AppType.body,
                     fontWeight: FontWeight.w500,
                   ),
                 ),
                 const SizedBox(width: 4),
-                const Icon(Icons.unfold_more_rounded,
+                const Icon(AppIcons.sort,
                     size: 18, color: AppColors.textSecondary),
               ],
             ),

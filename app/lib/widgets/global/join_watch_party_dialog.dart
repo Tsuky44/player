@@ -7,6 +7,7 @@ import '../../screens/player/player_screen.dart';
 import '../../services/watch_party.dart';
 import '../../theme/app_colors.dart';
 import '../../tv/tv_deferred_keyboard.dart';
+import '../../theme/app_type.dart';
 
 /// Demande le code d'une séance « Regarder ensemble », la rejoint sur le
 /// serveur actif et ouvre le lecteur là où en sont les autres.
@@ -139,7 +140,7 @@ class _JoinWatchPartyDialogState extends State<_JoinWatchPartyDialog> {
                 textCapitalization: TextCapitalization.characters,
                 textAlign: TextAlign.center,
                 style: const TextStyle(
-                  fontSize: 24,
+                  fontSize: AppType.title1,
                   fontWeight: FontWeight.w700,
                   letterSpacing: 6,
                 ),

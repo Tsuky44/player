@@ -1415,6 +1415,15 @@ class _PlayerScreenState extends State<PlayerScreen> {
       // A focused button answers for itself — the app-wide shortcut turns this
       // very key into its activation.
       if (browsingControls) return KeyEventResult.ignored;
+      // Chrome caché et « Passer l'intro » seul à l'écran : OK le presse,
+      // au lieu de réveiller un chrome dont personne n'a besoin. Chrome
+      // visible, c'est lui qui répond (le bouton y est atteignable).
+      if (TvMode.isTv &&
+          !_showControls &&
+          (_episodeNav?.showSkipIntro ?? false)) {
+        unawaited(_skipIntroFromControl());
+        return KeyEventResult.handled;
+      }
       // On a television OK never toggles playback from here: it
       // wakes the HUD with the remote on play/pause, so the next OK pauses.
       // Reaching this branch with the HUD already up means the focus slipped,

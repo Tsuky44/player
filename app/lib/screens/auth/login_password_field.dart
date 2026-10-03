@@ -19,7 +19,12 @@ class LoginPasswordField extends StatefulWidget {
     required this.controller,
     required this.focusNode,
     required this.onSubmit,
+    this.creatingAccount = false,
   });
+
+  /// Vrai quand le formulaire crée un compte : le gestionnaire de mots de passe
+  /// propose alors d'en générer un au lieu de remplir celui d'un compte existant.
+  final bool creatingAccount;
 
   /// Clé du [TvDeferredKeyboard], pour que le champ précédent puisse réclamer
   /// ce clavier-ci.
@@ -53,6 +58,11 @@ class _LoginPasswordFieldState extends State<LoginPasswordField> {
           controller: widget.controller,
           focusNode: widget.focusNode,
           obscureText: !_visible,
+          autofillHints: [
+            widget.creatingAccount
+                ? AutofillHints.newPassword
+                : AutofillHints.password,
+          ],
           // The last field submits. On a television the button is behind the
           // keyboard, so "done" has to be a way in and not just a way out.
           textInputAction: TextInputAction.done,

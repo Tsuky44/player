@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 
 import '../../../models/models.dart';
 import '../../../theme/app_colors.dart';
+import '../../../theme/app_type.dart';
 
 class NextEpisodeOverlay extends StatefulWidget {
   final HomeMediaItem? nextEpisode;
@@ -149,7 +150,7 @@ class _NextEpisodeOverlayState extends State<NextEpisodeOverlay>
                                 : 'Épisode suivant',
                             style: const TextStyle(
                               color: AppColors.textPrimary,
-                              fontSize: 14,
+                              fontSize: AppType.body,
                               fontWeight: FontWeight.w600,
                               letterSpacing: -0.2,
                             ),
@@ -160,7 +161,7 @@ class _NextEpisodeOverlayState extends State<NextEpisodeOverlay>
                               '${widget.countdownSeconds}s',
                               style: const TextStyle(
                                 color: AppColors.textSecondary,
-                                fontSize: 13,
+                                fontSize: AppType.subhead,
                                 fontWeight: FontWeight.w500,
                               ),
                             ),

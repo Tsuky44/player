@@ -335,8 +335,8 @@ n'affecte que les liens futurs.
 
 ### 🔗 5 bis. Liens de partage publics
 
-Un film ou un épisode partagé par un lien qui s'ouvre sans compte, dans un navigateur :
-`https://serveur/share#<code>`. Le code est dans le fragment, que le navigateur n'envoie jamais :
+Un film, un épisode, une saison ou une série entière partagé par un lien qui s'ouvre sans compte,
+dans un navigateur : `https://serveur/share#<code>`. Le code est dans le fragment, que le navigateur n'envoie jamais :
 il ne finit dans aucun journal. Décisions détaillées : `docs/adr/0037-liens-de-partage-publics.md`.
 
 Côté créateur (`share_media`) :
@@ -344,6 +344,8 @@ Côté créateur (`share_media`) :
 * `POST /api/shares` — corps `{"media_id": 42, "password": "", "single_use": true, "expires_in_hours": 168}`.
   `expires_in_hours` vaut `0` (sans échéance), `24`, `168` ou `720`. Répond `201` avec le lien et son
   `code`, rendu **cette fois seulement** : le serveur n'en garde que l'empreinte SHA-256.
+  `media_id` est un film, un épisode, une saison ou une série (`media_type` dans la réponse) ;
+  `404` s'il n'y a rien à lire, `400` pour `single_use` sur une saison ou une série.
 * `GET /api/shares` — ses liens, avec leur `status` : `active`, `expired` ou `watched`.
 * `DELETE /api/shares/:id` — supprime le lien et coupe aussitôt les lectures qu'il a ouvertes.
 
@@ -354,15 +356,23 @@ Côté visiteur, sans compte — le code voyage dans le corps JSON :
 * `GET /share` — l'app web, qui ouvre le lien en invité dans le lecteur Onyx.
 * `POST /api/shared/info` `{"code", "viewer"}` — faut-il un mot de passe ; le média n'est décrit
   qu'une fois le mot de passe donné. `404` inconnu, `410` expiré ou vu, `409` réservé ailleurs.
-* `POST /api/shared/open` `{"code", "password", "viewer"}` — délivre un ticket de lecture au nom du
-  lien, et le jeton `viewer` du navigateur. Un lien à usage unique est réservé par ce navigateur.
-  Limité comme la connexion, par adresse et par lien.
+  Pour une saison ou une série, `episodes` liste ce qui peut être lu :
+  `[{"id", "season_number", "episode_number", "title", "duration"}]`.
+* `POST /api/shared/contents` `{"code", "password", "viewer"}` — la même description, une fois le
+  mot de passe donné, sans rien délivrer : la liste des épisodes d'un lien protégé. Limité comme
+  l'ouverture.
+* `POST /api/shared/open` `{"code", "password", "viewer", "media_id"}` — délivre un ticket de
+  lecture au nom du lien, et le jeton `viewer` du navigateur. Un lien à usage unique est réservé
+  par ce navigateur. `media_id` choisit l'épisode d'une saison ou d'une série (`404` s'il n'en fait
+  pas partie) ; il est inutile pour un film ou un épisode. Limité comme la connexion, par adresse
+  et par lien.
 * `POST /api/shared/renew` `{"code", "viewer", "ticket"}` — prolonge le ticket (toutes les 5 min).
-* `POST /api/shared/progress` `{"code", "viewer", "ticket", "position_seconds"}` — au seuil « vu »
-  (90 %), un lien à usage unique est détruit (`{"consumed": true}`). Le navigateur qui l'a vu peut
-  encore renouveler son ticket pendant une heure, le temps du générique.
-* `POST /api/shared/tracks` `{"code", "viewer", "ticket"}` — pistes audio et sous-titres, comme
-  `GET /api/media/:id/tracks` ; exige un ticket vivant du lien.
+* `POST /api/shared/progress` `{"code", "viewer", "ticket", "media_id", "position_seconds"}` — au
+  seuil « vu » (90 %), un lien à usage unique est détruit (`{"consumed": true}`). Le navigateur qui
+  l'a vu peut encore renouveler son ticket pendant une heure, le temps du générique.
+* `POST /api/shared/tracks` `{"code", "viewer", "ticket", "media_id"}` — pistes audio et
+  sous-titres, comme `GET /api/media/:id/tracks` ; exige un ticket vivant du lien. Comme pour
+  `progress`, `media_id` nomme l'épisode lu dans une saison ou une série.
 * `POST /api/shared/close` `{"code", "ticket"}` — révoque le ticket à la fermeture du lecteur.
 
 Le ticket ouvre ensuite les routes habituelles (`/stream`, `/api/v1/stream/…`, sous-titres,

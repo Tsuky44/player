@@ -5,6 +5,8 @@ import '../../../theme/app_colors.dart';
 import '../../../theme/app_motion.dart';
 import '../../../tv/tv_focus.dart';
 import '../../../tv/tv_focus_memory.dart';
+import '../../../theme/app_icons.dart';
+import '../../../theme/app_type.dart';
 
 /// « Saison 1 », « Saison 2 »… tel que la fiche l'écrit partout.
 String seasonLabel(Media season) {
@@ -99,8 +101,8 @@ class _SeasonTab extends StatelessWidget {
                 if (missing) ...[
                   Icon(
                     season.isRequested
-                        ? Icons.hourglass_top_rounded
-                        : Icons.cloud_off_outlined,
+                        ? AppIcons.pending
+                        : AppIcons.cloudOff,
                     size: 14,
                     color:
                         selected ? AppColors.background : AppColors.textMuted,
@@ -115,7 +117,7 @@ class _SeasonTab extends StatelessWidget {
                         : missing
                             ? AppColors.textMuted
                             : AppColors.textSecondary,
-                    fontSize: 14,
+                    fontSize: AppType.body,
                     fontWeight: selected ? FontWeight.w600 : FontWeight.w500,
                   ),
                 ),

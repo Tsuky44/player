@@ -8,6 +8,8 @@ import '../../theme/app_colors.dart';
 import '../../utils/format.dart';
 import '../../widgets/global/bulk_download_delete.dart';
 import '../../widgets/global/local_file_image.dart';
+import '../../theme/app_icons.dart';
+import '../../theme/app_type.dart';
 
 /// L'en-tête d'une série, nourri par la fiche rapatriée avec ses épisodes.
 ///
@@ -57,7 +59,7 @@ class _DownloadShowHeaderState extends State<DownloadShowHeader> {
             entries: widget.entries,
           ),
           tooltip: 'Supprimer la série',
-          icon: const Icon(Icons.delete_outline_rounded, size: 20),
+          icon: const Icon(AppIcons.delete, size: 20),
           color: AppColors.textSecondary,
         ),
       ],
@@ -74,7 +76,7 @@ class _DownloadShowHeaderState extends State<DownloadShowHeader> {
       widget.title,
       style: const TextStyle(
         color: AppColors.textPrimary,
-        fontSize: 18,
+        fontSize: AppType.headline,
         fontWeight: FontWeight.w700,
       ),
     );
@@ -110,7 +112,7 @@ class _DownloadShowHeaderState extends State<DownloadShowHeader> {
                   meta,
                   style: const TextStyle(
                     color: AppColors.textMuted,
-                    fontSize: 12,
+                    fontSize: AppType.footnote,
                   ),
                 ),
               ],
@@ -126,7 +128,7 @@ class _DownloadShowHeaderState extends State<DownloadShowHeader> {
                     overflow: _expanded ? null : TextOverflow.ellipsis,
                     style: const TextStyle(
                       color: AppColors.textSecondary,
-                      fontSize: 12.5,
+                      fontSize: AppType.subhead,
                       height: 1.4,
                     ),
                   ),
@@ -195,7 +197,7 @@ class DownloadSeasonHeader extends StatelessWidget {
           label,
           style: const TextStyle(
             color: AppColors.textSecondary,
-            fontSize: 14,
+            fontSize: AppType.body,
             fontWeight: FontWeight.w600,
           ),
         ),
@@ -204,7 +206,7 @@ class DownloadSeasonHeader extends StatelessWidget {
           child: Text(
             '$count épisode${count > 1 ? 's' : ''} · ${formatBytes(bytes)}',
             overflow: TextOverflow.ellipsis,
-            style: const TextStyle(color: AppColors.textMuted, fontSize: 12),
+            style: const TextStyle(color: AppColors.textMuted, fontSize: AppType.footnote),
           ),
         ),
         IconButton(
@@ -214,7 +216,7 @@ class DownloadSeasonHeader extends StatelessWidget {
             entries: entries,
           ),
           tooltip: 'Supprimer $what',
-          icon: const Icon(Icons.delete_outline_rounded, size: 18),
+          icon: const Icon(AppIcons.delete, size: 18),
           visualDensity: VisualDensity.compact,
           color: AppColors.textMuted,
         ),

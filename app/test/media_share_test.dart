@@ -205,9 +205,74 @@ void main() {
     expect(find.text('Copié'), findsOneWidget);
   });
 
+  // Une saison n'est pas « vue » au premier épisode fini : son lien n'est
+  // jamais à usage unique, et la boîte ne le propose pas (le serveur le
+  // refuserait).
+  testWidgets(
+      'la boîte de partage d’une saison ne propose pas « Détruire après lecture »',
+      (tester) async {
+    final api = _Api();
+    await tester.binding.setSurfaceSize(const Size(900, 1400));
+    addTearDown(() => tester.binding.setSurfaceSize(null));
+    await tester.pumpWidget(MaterialApp(
+      home: Scaffold(
+        body: ShareMediaDialog(
+          api: api,
+          mediaId: 9,
+          title: 'Lioness · Saison 2',
+          collection: true,
+        ),
+      ),
+    ));
+
+    expect(find.text('Détruire après lecture'), findsNothing);
+    expect(find.textContaining('les épisodes de « Lioness · Saison 2 »'),
+        findsOneWidget);
+    await tester.tap(find.text('Créer le lien'));
+    await tester.pumpAndSettle();
+    expect(api.created?['mediaId'], 9);
+    expect(api.created?['singleUse'], isFalse);
+    expect(find.textContaining('Réutilisable'), findsOneWidget);
+  });
+
+  testWidgets(
+      'le bouton de partage d’une saison ou d’une série suit le droit et les '
+      'épisodes lisibles', (tester) async {
+    Future<bool> shown(Permissions permissions,
+        {bool playable = true, int mediaId = 9}) async {
+      final auth = _Auth(_Api(), permissions);
+      await tester.pumpWidget(ChangeNotifierProvider<AuthProvider>.value(
+        value: auth,
+        child: MaterialApp(
+          home: Scaffold(
+            body: ShareCollectionButton(
+              mediaId: mediaId,
+              title: 'Lioness',
+              tooltip: 'Partager la série par lien',
+              hasPlayableEpisode: playable,
+            ),
+          ),
+        ),
+      ));
+      final found =
+          find.byTooltip('Partager la série par lien').evaluate().isNotEmpty;
+      await tester.pumpWidget(const SizedBox());
+      auth.dispose();
+      return found;
+    }
+
+    const sharer = Permissions(shareMedia: true);
+    expect(await shown(sharer), isTrue);
+    expect(await shown(const Permissions()), isFalse);
+    expect(await shown(sharer, playable: false), isFalse,
+        reason: 'sans épisode lisible, le serveur refuserait le lien');
+    expect(await shown(sharer, mediaId: 0), isFalse,
+        reason: 'une saison annoncée mais absente du serveur n’a pas d’id');
+  });
+
   // Ce qui n'est pas dessiné ne produit pas de 403 : sans le droit, pas de
-  // bouton ; une série entière ne se partage pas, seulement un film ou un
-  // épisode.
+  // bouton. Une saison ou une série a son propre bouton,
+  // ShareCollectionButton.
   testWidgets('le bouton de partage suit le droit et le type de média',
       (tester) async {
     Future<bool> shown(Permissions permissions, MediaType type) async {

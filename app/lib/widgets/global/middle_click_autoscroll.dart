@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/scheduler.dart';
 
 import '../../theme/app_colors.dart';
+import '../../theme/app_icons.dart';
 
 /// Défilement automatique au clic molette, comme dans un navigateur sous
 /// Windows : un clic molette pose une ancre, et la page défile d'autant plus
@@ -203,8 +204,8 @@ class _AutoScrollSession {
     final vertical = _targets.containsKey(Axis.vertical);
     final horizontal = _targets.containsKey(Axis.horizontal);
     final icon = vertical && horizontal
-        ? Icons.open_with_rounded
-        : Icons.unfold_more_rounded;
+        ? AppIcons.autoscroll
+        : AppIcons.sort;
 
     // Plein écran et opaque : le clic qui arrête la séance ne doit pas aussi
     // ouvrir l'affiche qui se trouve dessous, et la molette l'arrête aussi.

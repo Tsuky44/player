@@ -6,7 +6,6 @@ import (
 	"log"
 	"net/http"
 	"strconv"
-	"strings"
 	"time"
 
 	"github.com/julienschmidt/httprouter"
@@ -31,16 +30,24 @@ type CreateMediaShareRequest struct {
 	ExpiresInHours int `json:"expires_in_hours"`
 }
 
-// CreateMediaShare crée un lien public vers un film ou un épisode
-// (POST /api/shares). Le code n'est rendu que cette fois-ci.
+// CreateMediaShare crée un lien public vers un film, un épisode, une saison
+// ou une série entière (POST /api/shares). Le code n'est rendu que cette
+// fois-ci.
 func CreateMediaShare(w http.ResponseWriter, r *http.Request, _ httprouter.Params, userID int) {
 	var req CreateMediaShareRequest
 	if err := json.NewDecoder(http.MaxBytesReader(w, r.Body, 4096)).Decode(&req); err != nil || req.MediaID <= 0 {
 		writeJSONError(w, http.StatusBadRequest, "Requête invalide")
 		return
 	}
-	if !isPlayableMedia(req.MediaID) {
+	mediaType, shareable := shareableMediaType(req.MediaID)
+	if !shareable {
 		writeJSONError(w, http.StatusNotFound, "Ce média ne peut pas être lu")
+		return
+	}
+	// « Détruit après lecture » n'a de sens que pour un seul média : une
+	// saison n'est pas « vue » au premier épisode fini (ADR-0037 §8).
+	if req.SingleUse && isShareCollection(mediaType) {
+		writeJSONError(w, http.StatusBadRequest, "Le lien d'une saison ou d'une série ne peut pas être à usage unique")
 		return
 	}
 
@@ -61,11 +68,11 @@ func CreateMediaShare(w http.ResponseWriter, r *http.Request, _ httprouter.Param
 		return
 	}
 
-	snap, err := loadMediaSnapshot(share.MediaID)
+	display, err := loadShareDisplay(share.MediaID)
 	if err != nil {
-		log.Printf("CreateMediaShare: snapshot of media %d: %v", share.MediaID, err)
+		log.Printf("CreateMediaShare: display of media %d: %v", share.MediaID, err)
 	}
-	resp := mediaShareResponse(share, snap, time.Now())
+	resp := mediaShareResponse(share, display, time.Now())
 	resp.Code = code
 	w.Header().Set("Content-Type", "application/json")
 	w.Header().Set("Cache-Control", "no-store")
@@ -87,16 +94,16 @@ func ListMediaShares(w http.ResponseWriter, r *http.Request, _ httprouter.Params
 	for _, share := range shares {
 		ids = append(ids, share.MediaID)
 	}
-	snaps, err := loadMediaSnapshots(ids)
+	displays, err := loadShareDisplays(ids)
 	if err != nil {
-		log.Printf("ListMediaShares: snapshots: %v", err)
+		log.Printf("ListMediaShares: displays: %v", err)
 		writeJSONError(w, http.StatusInternalServerError, "Internal server error")
 		return
 	}
 	now := time.Now()
 	out := make([]models.MediaShare, 0, len(shares))
 	for _, share := range shares {
-		out = append(out, mediaShareResponse(share, snaps[share.MediaID], now))
+		out = append(out, mediaShareResponse(share, displays[share.MediaID], now))
 	}
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(out)
@@ -146,15 +153,14 @@ func isPlayableMedia(mediaID int) bool {
 	return err == nil
 }
 
-func mediaShareResponse(share sharelinks.Share, snap mediaSnapshot, now time.Time) models.MediaShare {
-	title, subtitle := shareDisplayTitle(snap)
+func mediaShareResponse(share sharelinks.Share, display shareDisplay, now time.Time) models.MediaShare {
 	return models.MediaShare{
 		ID:          share.ID,
 		MediaID:     share.MediaID,
-		MediaType:   snap.mediaType,
-		Title:       title,
-		Subtitle:    subtitle,
-		PosterURL:   snap.posterURL,
+		MediaType:   display.mediaType,
+		Title:       display.title,
+		Subtitle:    display.subtitle,
+		PosterURL:   display.posterURL,
 		HasPassword: share.HasPassword,
 		SingleUse:   share.SingleUse,
 		ExpiresAt:   optionalTime(share.ExpiresAt),
@@ -164,22 +170,6 @@ func mediaShareResponse(share sharelinks.Share, snap mediaSnapshot, now time.Tim
 		Status:      share.Status(now),
 		CreatedAt:   share.CreatedAt,
 	}
-}
-
-// shareDisplayTitle nomme un média pour quelqu'un qui ne voit que le lien :
-// la série d'abord pour un épisode, le numéro et le titre de l'épisode ensuite.
-func shareDisplayTitle(snap mediaSnapshot) (string, string) {
-	if snap.mediaType != string(models.TypeEpisode) || snap.showTitle == "" {
-		return snap.title, ""
-	}
-	parts := []string{}
-	if snap.subtitle != "" {
-		parts = append(parts, snap.subtitle)
-	}
-	if snap.title != "" {
-		parts = append(parts, snap.title)
-	}
-	return snap.showTitle, strings.Join(parts, " · ")
 }
 
 func optionalTime(t time.Time) *time.Time {

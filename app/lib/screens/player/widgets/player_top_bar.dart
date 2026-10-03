@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import '../../../desktop_window.dart';
+import '../../../theme/app_type.dart';
 
 /// Top bar shown over the video: a glass back button + the media title.
 ///
@@ -52,7 +53,7 @@ class PlayerTopBar extends StatelessWidget {
               overflow: TextOverflow.ellipsis,
               style: const TextStyle(
                 color: Colors.white,
-                fontSize: 16,
+                fontSize: AppType.headline,
                 fontWeight: FontWeight.w600,
                 fontFamily: 'Manrope',
                 letterSpacing: 0.01,

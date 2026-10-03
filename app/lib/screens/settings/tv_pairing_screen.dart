@@ -8,6 +8,7 @@ import '../../models/server_account.dart';
 import '../../providers/auth_provider.dart';
 import '../../services/api_client.dart';
 import '../../theme/app_colors.dart';
+import '../../theme/app_type.dart';
 
 /// The phone's half of a server pairing — a browser, a desktop app or a
 /// television asking to be signed in.
@@ -228,7 +229,7 @@ class _TvPairingScreenState extends State<TvPairingScreen> {
             maxLength: 9, // eight characters plus the separator
             style: const TextStyle(
               color: AppColors.textPrimary,
-              fontSize: 26,
+              fontSize: AppType.display,
               letterSpacing: 6,
               fontWeight: FontWeight.w700,
             ),
@@ -255,7 +256,7 @@ class _TvPairingScreenState extends State<TvPairingScreen> {
           Text(
             _error!,
             textAlign: TextAlign.center,
-            style: const TextStyle(color: AppColors.error, fontSize: 13),
+            style: const TextStyle(color: AppColors.error, fontSize: AppType.subhead),
           ),
         ],
         const SizedBox(height: 24),
@@ -317,7 +318,7 @@ class _TvPairingScreenState extends State<TvPairingScreen> {
             'N\'acceptez que si ce code est affiché en ce moment sur un '
             'appareil devant vous. Quelqu\'un qui vous envoie un code QR '
             'cherche à entrer dans votre compte.',
-            style: TextStyle(color: AppColors.textSecondary, fontSize: 13),
+            style: TextStyle(color: AppColors.textSecondary, fontSize: AppType.subhead),
           ),
         ),
         if (_error != null) ...[
@@ -325,7 +326,7 @@ class _TvPairingScreenState extends State<TvPairingScreen> {
           Text(
             _error!,
             textAlign: TextAlign.center,
-            style: const TextStyle(color: AppColors.error, fontSize: 13),
+            style: const TextStyle(color: AppColors.error, fontSize: AppType.subhead),
           ),
         ],
         const SizedBox(height: 24),

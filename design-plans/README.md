@@ -9,7 +9,7 @@ Plans d'implémentation issus des audits UI. Chaque plan est autonome : son exé
 | [audit-ui.md](audit-ui.md) | Tokens statiques : couleur, rayon, palette parallèle | 2026-07-18 | Les 3 findings sont corrigés ; plans 01–03 exécutés |
 | [audit-fluidite.md](audit-fluidite.md) | Mouvement, réponse à l'entrée, matière, typographie — grille apple-design | 2026-08-15 | 10 findings ; les 3 prioritaires sont couverts par les plans 04–06 |
 | [audit-ux.md](audit-ux.md) | Parcours, droits, architecture de l'information, découverte, texte d'interface ; état des findings ouverts | 2026-09-30 | 15 findings (B3 retiré) ; A1–A5, B2, C2, C3, D1, E1, E3 corrigés ; plans 04, 05 et 06 exécutés |
-| [audit-premium.md](audit-premium.md) | Ce qui fait « cheap », à partir de captures d'écran rendues en test | 2026-09-30 | 8 lots corrigés ; 8 pistes restantes, par impact |
+| [audit-premium.md](audit-premium.md) | Ce qui fait « cheap », à partir de captures d'écran rendues en test | 2026-09-30 | 8 lots corrigés ; seconde passe le 2026-10-01 : 7 des 8 pistes faites (vignettes d'épisodes écartées) |
 
 ## Vague 1 — tokens statiques
 
@@ -39,4 +39,4 @@ Intersection avec la vague 1 : le plan 06 touche `poster_card.dart` et `continue
 
 ## Findings sans plan
 
-Les findings 3 et 5 à 10 de [audit-fluidite.md](audit-fluidite.md) restent ouverts, sans plan écrit. Le plus proche d'être prêt est le **finding 3** (scrubbers qui affichent la position du décodeur au lieu de celle du doigt) : l'implémentation de référence existe déjà dans `onyx_progress_bar.dart`, comme pour le 05.
+Les findings 3, 5, 6, 7, 8, 9 et 10 de [audit-fluidite.md](audit-fluidite.md) ont été traités sans plan écrit, pendant les deux passes de [audit-premium.md](audit-premium.md) : scrubbers (`ScrubGesture`), transition de page unique (sans `Hero`), carrousel, verre des barres, échelle `AppType` (les `TextStyle` locaux restent à faire lire au thème), squelettes, cibles du header.

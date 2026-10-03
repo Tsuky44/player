@@ -2,6 +2,8 @@ import 'package:flutter/material.dart';
 import '../../../models/media_request.dart';
 import '../../../theme/app_colors.dart';
 import 'request_status_badge.dart';
+import '../../../theme/app_icons.dart';
+import '../../../theme/app_type.dart';
 
 /// Modal to pick which seasons to request for a TV show.
 /// Returns the selected season numbers, or null if cancelled.
@@ -96,14 +98,14 @@ class _SeasonSelectorDialogState extends State<SeasonSelectorDialog> {
                       'Sélectionner les saisons',
                       style: TextStyle(
                         color: Colors.white,
-                        fontSize: 18,
+                        fontSize: AppType.headline,
                         fontWeight: FontWeight.w600,
                       ),
                     ),
                   ),
                   IconButton(
                     onPressed: () => Navigator.of(context).pop(),
-                    icon: Icon(Icons.close_rounded,
+                    icon: Icon(AppIcons.close,
                         color: Colors.white.withValues(alpha: 0.5)),
                   ),
                 ],
@@ -119,7 +121,7 @@ class _SeasonSelectorDialogState extends State<SeasonSelectorDialog> {
                   textAlign: TextAlign.center,
                   style: TextStyle(
                     color: Colors.white.withValues(alpha: 0.5),
-                    fontSize: 14,
+                    fontSize: AppType.body,
                   ),
                 ),
               )
@@ -135,7 +137,7 @@ class _SeasonSelectorDialogState extends State<SeasonSelectorDialog> {
                         overflow: TextOverflow.ellipsis,
                         style: TextStyle(
                           color: Colors.white.withValues(alpha: 0.45),
-                          fontSize: 13,
+                          fontSize: AppType.subhead,
                         ),
                       ),
                     ),
@@ -152,7 +154,7 @@ class _SeasonSelectorDialogState extends State<SeasonSelectorDialog> {
                           _allSelected
                               ? 'Tout désélectionner'
                               : 'Tout sélectionner',
-                          style: const TextStyle(fontSize: 13),
+                          style: const TextStyle(fontSize: AppType.subhead),
                         ),
                       ),
                   ],
@@ -166,7 +168,7 @@ class _SeasonSelectorDialogState extends State<SeasonSelectorDialog> {
                     'Toutes les saisons sont déjà disponibles ou demandées.',
                     style: TextStyle(
                       color: Colors.white.withValues(alpha: 0.45),
-                      fontSize: 13,
+                      fontSize: AppType.subhead,
                     ),
                   ),
                 ),
@@ -224,10 +226,10 @@ class _SeasonSelectorDialogState extends State<SeasonSelectorDialog> {
                                     ),
                                   ),
                                   child: selected
-                                      ? const Icon(Icons.check_rounded,
+                                      ? const Icon(AppIcons.check,
                                           size: 16, color: Colors.white)
                                       : (!selectable
-                                          ? Icon(Icons.block_rounded,
+                                          ? Icon(AppIcons.blocked,
                                               size: 14,
                                               color: Colors.white
                                                   .withValues(alpha: 0.35))
@@ -246,7 +248,7 @@ class _SeasonSelectorDialogState extends State<SeasonSelectorDialog> {
                                         style: const TextStyle(
                                           color: Colors.white,
                                           fontWeight: FontWeight.w600,
-                                          fontSize: 14,
+                                          fontSize: AppType.body,
                                         ),
                                       ),
                                       const SizedBox(height: 4),
@@ -261,7 +263,7 @@ class _SeasonSelectorDialogState extends State<SeasonSelectorDialog> {
                                             style: TextStyle(
                                               color: Colors.white
                                                   .withValues(alpha: 0.4),
-                                              fontSize: 12,
+                                              fontSize: AppType.footnote,
                                             ),
                                           ),
                                           RequestStatusBadge(

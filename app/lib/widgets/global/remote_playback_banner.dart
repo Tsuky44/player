@@ -11,6 +11,8 @@ import '../../screens/player/player_screen.dart';
 import '../../theme/app_colors.dart';
 import '../../utils/on_screen.dart';
 import '../../utils/poster_url.dart';
+import '../../theme/app_icons.dart';
+import '../../theme/app_type.dart';
 
 /// « Lecture en cours sur un autre appareil » : ce que le compte lit ailleurs,
 /// avec de quoi le reprendre ici là où il en est.
@@ -159,7 +161,7 @@ class _RemotePlaybackBannerState extends State<RemotePlaybackBanner>
                           overflow: TextOverflow.ellipsis,
                           style: const TextStyle(
                             color: AppColors.textSecondary,
-                            fontSize: 12,
+                            fontSize: AppType.footnote,
                           ),
                         ),
                         const SizedBox(height: 3),
@@ -169,7 +171,7 @@ class _RemotePlaybackBannerState extends State<RemotePlaybackBanner>
                           overflow: TextOverflow.ellipsis,
                           style: const TextStyle(
                             color: AppColors.textPrimary,
-                            fontSize: 15,
+                            fontSize: AppType.callout,
                             fontWeight: FontWeight.w600,
                           ),
                         ),
@@ -180,7 +182,7 @@ class _RemotePlaybackBannerState extends State<RemotePlaybackBanner>
                             overflow: TextOverflow.ellipsis,
                             style: const TextStyle(
                               color: AppColors.textSecondary,
-                              fontSize: 12,
+                              fontSize: AppType.footnote,
                             ),
                           ),
                       ],
@@ -189,7 +191,7 @@ class _RemotePlaybackBannerState extends State<RemotePlaybackBanner>
                   const SizedBox(width: 8),
                   FilledButton.icon(
                     onPressed: _opening ? null : _resume,
-                    icon: const Icon(Icons.play_arrow_rounded, size: 20),
+                    icon: const Icon(AppIcons.play, size: 20),
                     label: const Text('Reprendre'),
                   ),
                   IconButton(
@@ -198,7 +200,7 @@ class _RemotePlaybackBannerState extends State<RemotePlaybackBanner>
                       _dismissed.add(_dismissKey(play));
                       _current = null;
                     }),
-                    icon: const Icon(Icons.close_rounded,
+                    icon: const Icon(AppIcons.close,
                         color: AppColors.textSecondary, size: 20),
                   ),
                 ],

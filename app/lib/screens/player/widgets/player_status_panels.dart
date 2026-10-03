@@ -5,6 +5,7 @@ import 'package:flutter/services.dart';
 
 import '../../../services/client_log.dart';
 import '../playback/playback_session.dart';
+import '../../../theme/app_type.dart';
 
 /// Standalone back control, shown while the end-of-season page hides the rest
 /// of the player chrome. Kept independent of the HUD so it cannot be swept away
@@ -85,7 +86,7 @@ class PlayingElsewhere extends StatelessWidget {
                 textAlign: TextAlign.center,
                 style: TextStyle(
                   color: Colors.white,
-                  fontSize: 22,
+                  fontSize: AppType.title2,
                   fontWeight: FontWeight.w600,
                 ),
               ),
@@ -96,7 +97,7 @@ class PlayingElsewhere extends StatelessWidget {
                 textAlign: TextAlign.center,
                 style: const TextStyle(
                   color: Colors.white70,
-                  fontSize: 15,
+                  fontSize: AppType.callout,
                   height: 1.45,
                 ),
               ),
@@ -187,7 +188,7 @@ class StalledStartup extends StatelessWidget {
                 textAlign: TextAlign.center,
                 style: TextStyle(
                   color: Colors.white,
-                  fontSize: 22,
+                  fontSize: AppType.title2,
                   fontWeight: FontWeight.w600,
                 ),
               ),
@@ -197,7 +198,7 @@ class StalledStartup extends StatelessWidget {
                 textAlign: TextAlign.center,
                 style: const TextStyle(
                   color: Colors.white70,
-                  fontSize: 15,
+                  fontSize: AppType.callout,
                   height: 1.45,
                 ),
               ),
@@ -214,7 +215,7 @@ class StalledStartup extends StatelessWidget {
                   overflow: TextOverflow.ellipsis,
                   style: const TextStyle(
                     color: Colors.white38,
-                    fontSize: 12,
+                    fontSize: AppType.footnote,
                     height: 1.35,
                   ),
                 ),
@@ -279,7 +280,7 @@ class _CopyLogButtonState extends State<_CopyLogButton> {
       ),
       label: Text(
         _copied ? 'Journal copié' : 'Copier le journal',
-        style: const TextStyle(color: Colors.white54, fontSize: 13),
+        style: const TextStyle(color: Colors.white54, fontSize: AppType.subhead),
       ),
     );
   }

@@ -71,7 +71,28 @@ Barre d'onglets en voile blanc à 5 %, plus légère que n'importe quel menu, av
 
 ---
 
-## Reste à faire, par impact
+## Seconde passe (2026-10-01)
+
+Les pistes restantes, sauf les vignettes d'épisodes dans « Reprendre » (écartée par décision produit).
+
+| Piste | Fait |
+| --- | --- |
+| 1. Icônes | Phosphor (MIT) en trait régulier et plein, **polices embarquées** dans `assets/fonts/` et non le paquet `phosphor_flutter` — sa 2.1 étend `IconData`, devenue `final`, et ne compile plus. Une seule source, `theme/app_icons.dart`, consommée par la coquille, l'accueil, les catalogues, les fiches, les demandes, les téléchargements et `widgets/global/` (46 fichiers). `test/app_icons_guard_test.dart` y refuse toute icône Material. Le lecteur et les réglages restent en Material. |
+| 2. Marque | `OnyxWordmark` (`widgets/global/onyx_wordmark.dart`), le wordmark vectoriel de `brand/` redessiné en `CustomPainter`, à la place de « ONYX » composé en Manrope : header, connexion, connexion TV. |
+| 4. Transitions | `OnyxPageTransitionsBuilder` (`theme/app_page_transitions.dart`) : fondu + montée de 2,5 %, 260 ms / 200 ms au retour, sur Android, Windows, macOS et Linux. iOS garde le glissé natif et son geste de retour. Le lecteur n'a qu'un fondu ; sous « réduire les animations », la montée disparaît. Pas de `Hero` affiche → fiche : les onglets restent tous montés (`IndexedStack`) et un même titre apparaît dans plusieurs rangées, donc les étiquettes ne peuvent pas être uniques sur une route ; la continuité existe déjà depuis « Reprendre » (`pushPosterLaunch`). |
+| 5. Typographie | `AppType` (`theme/app_type.dart`) : 13 marches, plus aucune demi-taille. Les 353 tailles littérales de `lib/` y sont ramenées (à la marche la plus proche) ; `test/app_type_scale_test.dart` refuse toute nouvelle taille en chiffres. Reste : les 460 `TextStyle` construits sur place ne lisent pas encore `textTheme`. |
+| 6. Onglets desktop | Plus de pilule grise : texte qui s'éclaire au survol et trait blanc de 16 px sous l'onglet affiché. La pilule et l'anneau d'accent ne restent qu'au focus de la télécommande. |
+| 7. Barre du haut mobile | `MobileTopBar` (`screens/shell/mobile_top_bar.dart`) prend le verre dense de la barre d'onglets (`GlassBarSurface`) dès que la page quitte son haut (`ScrollEdgeListener`). |
+| 8. Cibles et scrubbers | `GlassIconButton` garde son disque de 32–34 px mais reçoit le doigt sur `AppLayout.minTouchTarget` (44 / 48 px). Les barres du Player Studio passent par `ScrubGesture` (`widgets/global/scrub_gesture.dart`) : la piste suit le doigt, un seul seek au relâchement, plus d'aller-retour pause/lecture. |
+
+## Reste à faire
+
+- Icônes du lecteur et des réglages (Material).
+- Faire lire `textTheme` aux `TextStyle` locaux, par lots d'écrans.
+- Cibles de 44 px pour les icônes des timelines du Player Studio (`_TimelineBarIcon`, `_OnyxTimelineIcon`) : elles agrandiraient les pilules, à régler avec le studio.
+
+## Pistes de la première passe
+
 
 1. **Icônes.** Le jeu Material (clap de cinéma, téléviseur, « + » cerclé) est le marqueur « app Android » le plus visible qui reste, dans la barre d'onglets surtout. Un jeu au trait fin et régulier (Lucide ou Phosphor, ou des icônes dessinées dans `brand/`) changerait la perception d'un coup. Demande une dépendance, donc une décision.
 2. **La marque.** « ONYX » en capitales espacées à côté d'un disque « play » générique se lit comme un gabarit. `brand/` contient un wordmark vectorisé : le header devrait l'utiliser.

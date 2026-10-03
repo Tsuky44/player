@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import '../../../models/models.dart';
 import '../../../theme/app_colors.dart';
 import 'end_card_chrome.dart';
+import '../../../theme/app_type.dart';
 
 /// End-of-season page, shown when the season that follows is not on the server
 /// *and* has never been requested — the server withholds the payload otherwise,
@@ -94,7 +95,7 @@ class _Body extends StatelessWidget {
                   overflow: TextOverflow.ellipsis,
                   style: const TextStyle(
                     color: AppColors.textMuted,
-                    fontSize: 12,
+                    fontSize: AppType.footnote,
                     fontWeight: FontWeight.w700,
                     letterSpacing: 1.6,
                   ),
@@ -107,7 +108,7 @@ class _Body extends StatelessWidget {
                 overflow: TextOverflow.ellipsis,
                 style: const TextStyle(
                   color: AppColors.textPrimary,
-                  fontSize: 34,
+                  fontSize: AppType.largeTitle,
                   fontWeight: FontWeight.w800,
                   letterSpacing: -0.8,
                   height: 1.1,
@@ -122,7 +123,7 @@ class _Body extends StatelessWidget {
                 overflow: TextOverflow.ellipsis,
                 style: const TextStyle(
                   color: AppColors.textSecondary,
-                  fontSize: 14,
+                  fontSize: AppType.body,
                   height: 1.55,
                 ),
               ),
@@ -241,7 +242,7 @@ class _Actions extends StatelessWidget {
               borderRadius: BorderRadius.circular(10),
             ),
             textStyle: const TextStyle(
-              fontSize: 15,
+              fontSize: AppType.callout,
               fontWeight: FontWeight.w700,
               letterSpacing: -0.2,
             ),

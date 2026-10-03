@@ -5,6 +5,7 @@ import '../../theme/app_colors.dart';
 import '../../tv/tv_focus.dart';
 import 'app_network_image.dart';
 import 'pressable.dart';
+import '../../theme/app_icons.dart';
 
 /// Single poster card used by every catalog grid (films, séries, bibliothèque,
 /// demandes). The poster fills the whole grid cell above the metadata block, so
@@ -60,7 +61,7 @@ class PosterCard extends StatefulWidget {
     this.footerOverlay,
     this.dimmed = false,
     this.showPlayOnHover = false,
-    this.placeholderIcon = Icons.movie_outlined,
+    this.placeholderIcon = AppIcons.movie,
     this.compact = false,
     this.autofocus = false,
     this.onPrefetch,
@@ -241,7 +242,7 @@ class _PosterCardState extends State<PosterCard> {
       color: AppColors.surfaceElevated,
       child: Center(
         child: Icon(
-          broken ? Icons.broken_image_outlined : widget.placeholderIcon,
+          broken ? AppIcons.imageBroken : widget.placeholderIcon,
           color: AppColors.textMuted,
           size: 42,
         ),
@@ -430,15 +431,14 @@ class _PlayDisc extends StatelessWidget {
           ),
         ],
       ),
-      // Le triangle est décalé à l'œil : centré au pixel, il paraît pencher
-      // vers la gauche dans son disque.
-      child: Padding(
-        padding: EdgeInsets.only(left: size * 0.06),
-        child: Icon(
-          Icons.play_arrow_rounded,
-          size: size * 0.62,
-          color: Colors.black.withValues(alpha: 0.88),
-        ),
+      // Pas de décalage ajouté : le glyphe Phosphor est déjà posé sur son
+      // centre de gravité, à droite du milieu de sa case. Le pousser encore
+      // le faisait sortir du centre du disque.
+      alignment: Alignment.center,
+      child: Icon(
+        AppIcons.play,
+        size: size * 0.62,
+        color: Colors.black.withValues(alpha: 0.88),
       ),
     );
   }

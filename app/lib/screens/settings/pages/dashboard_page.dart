@@ -13,6 +13,7 @@ import '../playback_logs_screen.dart';
 import '../widgets/history_tile.dart';
 import '../widgets/media_thumb.dart';
 import '../widgets/settings_ui.dart';
+import '../../../theme/app_type.dart';
 
 /// Ce qui se passe sur le serveur, maintenant.
 class DashboardPage extends StatefulWidget {
@@ -295,7 +296,7 @@ class _LiveDotState extends State<_LiveDot>
           'EN DIRECT',
           style: TextStyle(
             color: AppColors.success,
-            fontSize: 10.5,
+            fontSize: AppType.caption,
             fontWeight: FontWeight.w700,
             letterSpacing: 1.1,
           ),
@@ -341,7 +342,7 @@ class _NowPlayingCard extends StatelessWidget {
                         overflow: TextOverflow.ellipsis,
                         style: const TextStyle(
                           fontWeight: FontWeight.w700,
-                          fontSize: 15,
+                          fontSize: AppType.callout,
                         ),
                       ),
                     ),
@@ -359,7 +360,7 @@ class _NowPlayingCard extends StatelessWidget {
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
                     style: const TextStyle(
-                        color: AppColors.textSecondary, fontSize: 12.5),
+                        color: AppColors.textSecondary, fontSize: AppType.subhead),
                   ),
                 ],
                 const SizedBox(height: 10),
@@ -377,7 +378,7 @@ class _NowPlayingCard extends StatelessWidget {
                         maxLines: 1,
                         overflow: TextOverflow.ellipsis,
                         style: const TextStyle(
-                            color: AppColors.textSecondary, fontSize: 12),
+                            color: AppColors.textSecondary, fontSize: AppType.footnote),
                       ),
                     ),
                     if (session.address.isNotEmpty) ...[
@@ -433,7 +434,7 @@ class _NowPlayingCard extends StatelessWidget {
                       positions,
                       style: const TextStyle(
                         color: AppColors.textMuted,
-                        fontSize: 11.5,
+                        fontSize: AppType.footnote,
                         fontFeatures: [FontFeature.tabularFigures()],
                       ),
                     ),

@@ -9,6 +9,7 @@ import '../../services/api_client.dart';
 import '../../services/app_updater.dart';
 import '../../theme/app_colors.dart';
 import '../../utils/app_platform.dart';
+import '../../theme/app_type.dart';
 
 /// Walks the user through an in-place update: download, unpack, restart.
 ///
@@ -215,7 +216,7 @@ class _AppUpdateDialogState extends State<_AppUpdateDialog> {
         children: [
           Text(
             _message(),
-            style: const TextStyle(color: AppColors.textMuted, fontSize: 13),
+            style: const TextStyle(color: AppColors.textMuted, fontSize: AppType.subhead),
           ),
           if (_step == _Step.downloading || _step == _Step.installing) ...[
             const SizedBox(height: 16),

@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 import '../../../models/media_request.dart';
 import '../../../theme/app_colors.dart';
+import '../../../theme/app_type.dart';
 
 class RequestInfoTable extends StatelessWidget {
   final RequestMediaDetails details;
@@ -60,7 +61,7 @@ class RequestInfoTable extends StatelessWidget {
                         child: Text(
                           rows[i].label,
                           style: TextStyle(
-                            fontSize: 12,
+                            fontSize: AppType.footnote,
                             fontWeight: FontWeight.w700,
                             color: Colors.white.withValues(alpha: 0.45),
                           ),
@@ -72,7 +73,7 @@ class RequestInfoTable extends StatelessWidget {
                           rows[i].value,
                           textAlign: TextAlign.end,
                           style: const TextStyle(
-                            fontSize: 12,
+                            fontSize: AppType.footnote,
                             color: AppColors.textSecondary,
                           ),
                         ),
@@ -94,7 +95,7 @@ class RequestInfoTable extends StatelessWidget {
                     child: Text(
                       'Studios',
                       style: TextStyle(
-                        fontSize: 11,
+                        fontSize: AppType.caption,
                         fontWeight: FontWeight.w700,
                         color: Colors.white.withValues(alpha: 0.45),
                       ),
@@ -108,7 +109,7 @@ class RequestInfoTable extends StatelessWidget {
                         studio,
                         textAlign: TextAlign.end,
                         style: const TextStyle(
-                          fontSize: 11,
+                          fontSize: AppType.caption,
                           color: AppColors.textSecondary,
                           height: 1.3,
                         ),
@@ -168,7 +169,7 @@ class RequestInfoTable extends StatelessWidget {
           child: Text(
             label,
             style: TextStyle(
-              fontSize: 10,
+              fontSize: AppType.micro,
               fontWeight: FontWeight.w900,
               color: textColor,
             ),
@@ -178,7 +179,7 @@ class RequestInfoTable extends StatelessWidget {
         Text(
           value,
           style: const TextStyle(
-            fontSize: 14,
+            fontSize: AppType.body,
             fontWeight: FontWeight.w700,
             color: Colors.white,
           ),

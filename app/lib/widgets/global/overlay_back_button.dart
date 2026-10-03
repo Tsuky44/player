@@ -3,6 +3,7 @@ import 'dart:math' as math;
 import 'package:flutter/material.dart';
 import '../../desktop_window.dart';
 import '../../utils/app_platform.dart';
+import '../../theme/app_icons.dart';
 
 /// Floating back control for detail screens — sits below macOS traffic lights
 /// or below the status bar / notch on mobile.
@@ -57,7 +58,7 @@ class OverlayBackButton extends StatelessWidget {
                 color: Colors.black.withValues(alpha: 0.5),
                 shape: BoxShape.circle,
               ),
-              child: const Icon(Icons.arrow_back_rounded, size: 20),
+              child: const Icon(AppIcons.back, size: 20),
             ),
             onPressed: onPressed ?? () => Navigator.of(context).maybePop(),
           ),

@@ -1,10 +1,15 @@
 import 'dart:ui';
+import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
 import '../../theme/app_colors.dart';
 import '../../theme/app_motion.dart';
 import '../../tv/tv_mode.dart';
+import '../../utils/responsive.dart';
 import 'onyx_mark.dart';
+import 'onyx_wordmark.dart';
+import '../../theme/app_icons.dart';
+import '../../theme/app_type.dart';
 
 /// Full-width frosted strip — must float above scrolling content to blur it.
 ///
@@ -33,6 +38,43 @@ class GlassHeaderStrip extends StatelessWidget {
             border: Border(
               bottom: BorderSide(color: Colors.white.withValues(alpha: 0.08)),
             ),
+          ),
+          child: child,
+        ),
+      ),
+    );
+  }
+}
+
+/// Le verre sombre et dense des barres du téléphone — onglets en bas, barre
+/// du haut des catalogues.
+///
+/// Plus opaque que [GlassHeaderStrip] : sur un écran de 6 pouces la barre
+/// couvre des affiches en pleine couleur, et un voile léger laissait leurs
+/// couleurs passer sous les libellés. Le filet clair se pose du côté du
+/// contenu, [edge].
+class GlassBarSurface extends StatelessWidget {
+  final Widget child;
+  final AxisDirection edge;
+
+  const GlassBarSurface({
+    super.key,
+    required this.child,
+    this.edge = AxisDirection.up,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final hairline = BorderSide(color: Colors.white.withValues(alpha: 0.08));
+    return ClipRect(
+      child: BackdropFilter.grouped(
+        filter: ImageFilter.blur(sigmaX: 28, sigmaY: 28),
+        child: DecoratedBox(
+          decoration: BoxDecoration(
+            color: AppColors.background.withValues(alpha: 0.72),
+            border: edge == AxisDirection.up
+                ? Border(top: hairline)
+                : Border(bottom: hairline),
           ),
           child: child,
         ),
@@ -132,7 +174,7 @@ class GlassSearchInput extends StatelessWidget {
           cursorColor: AppColors.textPrimary,
           style: const TextStyle(
             color: AppColors.textPrimary,
-            fontSize: 13,
+            fontSize: AppType.subhead,
             fontWeight: FontWeight.w500,
             height: 1.2,
           ),
@@ -144,24 +186,27 @@ class GlassSearchInput extends StatelessWidget {
             hintText: hint,
             hintStyle: TextStyle(
               color: AppColors.textMuted.withValues(alpha: 0.7),
-              fontSize: 13,
+              fontSize: AppType.subhead,
               fontWeight: FontWeight.w400,
             ),
             prefixIcon: Icon(
-              Icons.search_rounded,
+              AppIcons.search,
               size: 17,
-              color: AppColors.textSecondary.withValues(alpha: focused ? 0.95 : 0.65),
+              color: AppColors.textSecondary
+                  .withValues(alpha: focused ? 0.95 : 0.65),
             ),
-            prefixIconConstraints: const BoxConstraints(minWidth: 36, minHeight: 34),
+            prefixIconConstraints:
+                const BoxConstraints(minWidth: 36, minHeight: 34),
             suffixIcon: hasText
                 ? IconButton(
                     icon: Icon(
-                      Icons.close_rounded,
+                      AppIcons.close,
                       size: 15,
                       color: AppColors.textMuted.withValues(alpha: 0.8),
                     ),
                     padding: EdgeInsets.zero,
-                    constraints: const BoxConstraints(minWidth: 32, minHeight: 34),
+                    constraints:
+                        const BoxConstraints(minWidth: 32, minHeight: 34),
                     onPressed: onClear,
                   )
                 : null,
@@ -198,22 +243,11 @@ class GlassBrand extends StatelessWidget {
         mainAxisSize: MainAxisSize.min,
         children: [
           const OnyxMark(size: 28),
-          const SizedBox(width: 8),
-          Text(
-            'ONYX',
-            style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                  fontWeight: FontWeight.w800,
-                  letterSpacing: 1.6,
-                  fontSize: 15,
-                  height: 1,
-                  shadows: [
-                    Shadow(
-                      color: Colors.black.withValues(alpha: 0.5),
-                      blurRadius: 8,
-                    ),
-                  ],
-                ),
-          ),
+          const SizedBox(width: 10),
+          // Le wordmark dessiné de `brand/`, et non « ONYX » en capitales
+          // espacées : composé dans la police de l'interface, le nom se lisait
+          // comme un gabarit d'app.
+          const OnyxWordmark(height: 12, shadow: true),
         ],
       ),
     );
@@ -243,6 +277,7 @@ class GlassNavTab extends StatefulWidget {
 
 class _GlassNavTabState extends State<GlassNavTab> {
   bool _focused = false;
+  bool _hovered = false;
 
   @override
   Widget build(BuildContext context) {
@@ -250,13 +285,14 @@ class _GlassNavTabState extends State<GlassNavTab> {
     // Le voile de focus de Material (10 % de blanc) ne se lit pas depuis un
     // canapé : sur un téléviseur l'onglet visé porte l'anneau de l'app.
     final ringed = _focused && TvScope.of(context);
+    final lit = selected || ringed || _hovered;
 
     return Padding(
       padding: const EdgeInsets.only(right: 4),
       child: AnimatedScale(
         scale: ringed ? 1.08 : 1.0,
-        duration: const Duration(milliseconds: 160),
-        curve: Curves.easeOutCubic,
+        duration: AppMotion.move(context, AppMotion.micro),
+        curve: AppMotion.curve,
         child: Material(
           color: Colors.transparent,
           child: InkWell(
@@ -265,16 +301,25 @@ class _GlassNavTabState extends State<GlassNavTab> {
             onFocusChange: (focused) {
               if (_focused != focused) setState(() => _focused = focused);
             },
+            onHover: (hovered) {
+              if (_hovered != hovered) setState(() => _hovered = hovered);
+            },
+            // Le survol se lit au texte qui s'éclaire, pas à un voile gris.
+            hoverColor: Colors.transparent,
             borderRadius: BorderRadius.circular(16),
             child: AnimatedContainer(
               // `move`, not `fade`: this animates padding and decoration, so it
               // is geometry — the case reduced motion is meant to cancel.
               duration: AppMotion.move(context, AppMotion.micro),
               curve: AppMotion.curve,
-              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+              padding: const EdgeInsets.fromLTRB(12, 7, 12, 5),
+              // La pilule pleine ne reste qu'au focus de la télécommande, où il
+              // faut se voir de loin. L'onglet affiché, lui, se lit à son texte
+              // et à un trait dessous (`PROJECT_DESIGN.md` §8) : une pilule
+              // grise posée sur le verre faisait bouton de formulaire.
               decoration: BoxDecoration(
-                color: selected || ringed
-                    ? Colors.white.withValues(alpha: ringed ? 0.2 : 0.14)
+                color: ringed
+                    ? Colors.white.withValues(alpha: 0.2)
                     : Colors.transparent,
                 borderRadius: BorderRadius.circular(16),
                 border: Border.all(
@@ -282,18 +327,49 @@ class _GlassNavTabState extends State<GlassNavTab> {
                   width: 2,
                 ),
               ),
-              child: Text(
-                widget.label,
-                style: TextStyle(
-                  color: selected || ringed
-                      ? AppColors.textPrimary
-                      : AppColors.textSecondary.withValues(alpha: 0.9),
-                  fontWeight: selected ? FontWeight.w700 : FontWeight.w500,
-                  fontSize: 13,
-                  shadows: selected
-                      ? null
-                      : [Shadow(color: Colors.black.withValues(alpha: 0.4), blurRadius: 6)],
-                ),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  AnimatedDefaultTextStyle(
+                    duration: AppMotion.fade(context, AppMotion.micro),
+                    curve: AppMotion.curve,
+                    // Fusionné et non remplacé : le style par défaut porte la
+                    // police de l'app, qu'un `TextStyle` nu ferait retomber
+                    // sur celle du système.
+                    style: DefaultTextStyle.of(context).style.merge(TextStyle(
+                          color: lit
+                              ? AppColors.textPrimary
+                              : AppColors.textSecondary.withValues(alpha: 0.9),
+                          fontWeight:
+                              selected ? FontWeight.w700 : FontWeight.w500,
+                          fontSize: AppType.subhead,
+                          shadows: selected
+                              ? null
+                              : [
+                                  Shadow(
+                                    color: Colors.black.withValues(alpha: 0.4),
+                                    blurRadius: 6,
+                                  ),
+                                ],
+                        )),
+                    child: Text(widget.label),
+                  ),
+                  const SizedBox(height: 4),
+                  // Blanc et non bleu, comme la barre mobile : l'accent est le
+                  // focus de la télécommande, et les deux ne doivent pas se
+                  // confondre sur un téléviseur.
+                  AnimatedContainer(
+                    key: const ValueKey('nav-tab-indicator'),
+                    duration: AppMotion.move(context, AppMotion.micro),
+                    curve: AppMotion.curve,
+                    width: selected ? 16 : 0,
+                    height: 2,
+                    decoration: BoxDecoration(
+                      color: AppColors.textPrimary,
+                      borderRadius: BorderRadius.circular(1),
+                    ),
+                  ),
+                ],
               ),
             ),
           ),
@@ -306,6 +382,9 @@ class _GlassNavTabState extends State<GlassNavTab> {
 class GlassIconButton extends StatefulWidget {
   final Widget child;
   final VoidCallback? onTap;
+
+  /// Le diamètre du disque dessiné. La zone qui reçoit le doigt, elle, ne
+  /// descend jamais sous [AppLayout.minTouchTarget].
   final double size;
 
   const GlassIconButton({
@@ -325,6 +404,11 @@ class _GlassIconButtonState extends State<GlassIconButton> {
   @override
   Widget build(BuildContext context) {
     final size = widget.size;
+    // Le disque garde sa taille de header (32–34 px, proportionné au texte des
+    // onglets) ; c'est la cible autour qui grandit. À 32 px, le compte et la
+    // recherche du header se manquaient au pouce — sous les 44 px d'Apple et
+    // les 48 px de Material.
+    final target = math.max(size, AppLayout.minTouchTarget(context));
     // Deux façons d'être visé par la télécommande : ce bouton a son propre
     // geste, ou il sert d'apparence à un menu (le compte) dont le focus est
     // tenu juste au-dessus de lui.
@@ -334,8 +418,8 @@ class _GlassIconButtonState extends State<GlassIconButton> {
 
     return AnimatedScale(
       scale: ringed ? 1.12 : 1.0,
-      duration: const Duration(milliseconds: 160),
-      curve: Curves.easeOutCubic,
+      duration: AppMotion.move(context, AppMotion.micro),
+      curve: AppMotion.curve,
       child: Material(
         color: Colors.transparent,
         child: InkWell(
@@ -343,22 +427,27 @@ class _GlassIconButtonState extends State<GlassIconButton> {
           onFocusChange: (focused) {
             if (_focused != focused) setState(() => _focused = focused);
           },
-          borderRadius: BorderRadius.circular(size / 2),
-          child: Container(
-            width: size,
-            height: size,
-            alignment: Alignment.center,
-            decoration: BoxDecoration(
-              shape: BoxShape.circle,
-              color: Colors.white.withValues(alpha: ringed ? 0.18 : 0.08),
-              border: Border.all(
-                color: ringed
-                    ? AppColors.accent
-                    : Colors.white.withValues(alpha: 0.12),
-                width: ringed ? 2 : 1,
+          customBorder: const CircleBorder(),
+          child: SizedBox.square(
+            dimension: target,
+            child: Center(
+              child: Container(
+                width: size,
+                height: size,
+                alignment: Alignment.center,
+                decoration: BoxDecoration(
+                  shape: BoxShape.circle,
+                  color: Colors.white.withValues(alpha: ringed ? 0.18 : 0.08),
+                  border: Border.all(
+                    color: ringed
+                        ? AppColors.accent
+                        : Colors.white.withValues(alpha: 0.12),
+                    width: ringed ? 2 : 1,
+                  ),
+                ),
+                child: widget.child,
               ),
             ),
-            child: widget.child,
           ),
         ),
       ),

@@ -11,7 +11,9 @@ import '../../services/tv_link_host.dart';
 import '../../theme/app_colors.dart';
 import '../../tv/tv_mode.dart';
 import '../../widgets/global/onyx_mark.dart';
+import '../../widgets/global/onyx_wordmark.dart';
 import 'login_screen.dart';
+import '../../theme/app_type.dart';
 
 /// Sign-in for a screen with no keyboard.
 ///
@@ -217,13 +219,7 @@ class _TvLoginScreenState extends State<TvLoginScreen> {
           children: [
             const OnyxMark(size: 52, showBeam: true),
             const SizedBox(width: 16),
-            Text(
-              'Onyx',
-              style: textTheme.headlineMedium?.copyWith(
-                fontWeight: FontWeight.w700,
-                letterSpacing: -0.5,
-              ),
-            ),
+            const OnyxWordmark(height: 24),
           ],
         ),
         const SizedBox(height: 28),
@@ -285,7 +281,7 @@ class _TvLoginScreenState extends State<TvLoginScreen> {
               '$number',
               style: const TextStyle(
                 color: AppColors.accentMuted,
-                fontSize: 13,
+                fontSize: AppType.subhead,
                 fontWeight: FontWeight.w700,
               ),
             ),
@@ -296,7 +292,7 @@ class _TvLoginScreenState extends State<TvLoginScreen> {
               text,
               style: const TextStyle(
                 color: AppColors.textSecondary,
-                fontSize: 16,
+                fontSize: AppType.headline,
                 height: 1.4,
               ),
             ),
@@ -404,7 +400,7 @@ class _TvLoginScreenState extends State<TvLoginScreen> {
               SizedBox(height: 16),
               Text(
                 'Compte connecté',
-                style: TextStyle(color: AppColors.textPrimary, fontSize: 18),
+                style: TextStyle(color: AppColors.textPrimary, fontSize: AppType.headline),
               ),
             ],
           ),

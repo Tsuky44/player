@@ -5,6 +5,7 @@ import '../../services/api_client.dart';
 import '../../theme/app_colors.dart';
 import '../../utils/poster_url.dart';
 import 'app_network_image.dart';
+import '../../theme/app_icons.dart';
 
 class MediaPoster extends StatelessWidget {
   final Media media;
@@ -85,7 +86,7 @@ class MediaPoster extends StatelessWidget {
       child: withIcon
           ? Center(
               child: Icon(
-                isShow ? Icons.tv_rounded : Icons.movie_rounded,
+                isShow ? AppIcons.series : AppIcons.movie,
                 size: (width * 0.22).clamp(24.0, 48.0),
                 color: AppColors.textMuted,
               ),

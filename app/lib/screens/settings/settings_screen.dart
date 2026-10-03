@@ -25,6 +25,7 @@ import 'pages/shares_page.dart';
 import 'pages/stats_page.dart';
 import 'pages/users_page.dart';
 import 'widgets/settings_ui.dart';
+import '../../theme/app_type.dart';
 
 /// Les catégories des paramètres, dans l'ordre de la navigation.
 abstract final class SettingsSections {
@@ -397,7 +398,7 @@ class _Sidebar extends StatelessWidget {
                 const Text(
                   'Paramètres',
                   style: TextStyle(
-                    fontSize: 20,
+                    fontSize: AppType.title3,
                     fontWeight: FontWeight.w700,
                     letterSpacing: -0.4,
                   ),
@@ -440,7 +441,7 @@ class _Sidebar extends StatelessWidget {
             child: Text(
               'Onyx ${ClientIdentity.version} · ${ClientIdentity.platform}',
               style:
-                  const TextStyle(color: AppColors.textMuted, fontSize: 11.5),
+                  const TextStyle(color: AppColors.textMuted, fontSize: AppType.footnote),
             ),
           ),
         ],
@@ -460,7 +461,7 @@ class _NavHeader extends StatelessWidget {
           label,
           style: const TextStyle(
             color: AppColors.textSecondary,
-            fontSize: 12,
+            fontSize: AppType.footnote,
             fontWeight: FontWeight.w500,
           ),
         ),
@@ -545,7 +546,7 @@ class _NavItemState extends State<_NavItem> {
                   child: Text(
                     widget.category.label,
                     style: TextStyle(
-                      fontSize: 14,
+                      fontSize: AppType.body,
                       fontWeight: selected ? FontWeight.w700 : FontWeight.w500,
                       color: selected
                           ? AppColors.textPrimary
@@ -610,7 +611,7 @@ class _AccountCard extends StatelessWidget {
                   overflow: TextOverflow.ellipsis,
                   style: const TextStyle(
                     color: AppColors.textSecondary,
-                    fontSize: 12,
+                    fontSize: AppType.footnote,
                   ),
                 ),
               ],
@@ -660,7 +661,7 @@ class _CompactSettings extends StatelessWidget {
           Center(
             child: Text(
               'Onyx ${ClientIdentity.version} · ${ClientIdentity.platform}',
-              style: const TextStyle(color: AppColors.textMuted, fontSize: 12),
+              style: const TextStyle(color: AppColors.textMuted, fontSize: AppType.footnote),
             ),
           ),
         ],

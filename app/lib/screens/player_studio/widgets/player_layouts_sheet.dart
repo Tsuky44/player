@@ -5,6 +5,7 @@ import '../../../models/player_layout.dart';
 import '../../../providers/player_layout_provider.dart';
 import '../../../theme/app_colors.dart';
 import 'player_template_picker_sheet.dart';
+import '../../../theme/app_type.dart';
 
 /// Bottom sheet to switch, create, rename or delete account-linked playeurs.
 Future<void> showPlayerLayoutsSheet(BuildContext context) {
@@ -56,7 +57,7 @@ class _PlayerLayoutsSheet extends StatelessWidget {
                     'Mes playeurs',
                     style: TextStyle(
                       color: Colors.white,
-                      fontSize: 20,
+                      fontSize: AppType.title3,
                       fontWeight: FontWeight.w700,
                     ),
                   ),
@@ -80,7 +81,7 @@ class _PlayerLayoutsSheet extends StatelessWidget {
               'Liés à ton compte. Choisis un modèle prêt à l’emploi, ou duplique pour customiser.',
               style: TextStyle(
                 color: Colors.white.withValues(alpha: 0.55),
-                fontSize: 13,
+                fontSize: AppType.subhead,
                 height: 1.35,
               ),
             ),
@@ -145,7 +146,7 @@ class _PlayerLayoutsSheet extends StatelessWidget {
                                     style: const TextStyle(
                                       color: Colors.white,
                                       fontWeight: FontWeight.w600,
-                                      fontSize: 15,
+                                      fontSize: AppType.callout,
                                     ),
                                   ),
                                   const SizedBox(height: 2),
@@ -155,7 +156,7 @@ class _PlayerLayoutsSheet extends StatelessWidget {
                                         : 'HUD standard',
                                     style: TextStyle(
                                       color: Colors.white.withValues(alpha: 0.45),
-                                      fontSize: 12,
+                                      fontSize: AppType.footnote,
                                     ),
                                   ),
                                 ],
@@ -239,7 +240,7 @@ class _PlayerLayoutsSheet extends StatelessWidget {
               const SizedBox(height: 10),
               Text(
                 layout.errorMessage!,
-                style: const TextStyle(color: AppColors.error, fontSize: 12),
+                style: const TextStyle(color: AppColors.error, fontSize: AppType.footnote),
               ),
             ],
           ],
@@ -331,7 +332,7 @@ class _SectionLabel extends StatelessWidget {
       text.toUpperCase(),
       style: TextStyle(
         color: Colors.white.withValues(alpha: 0.45),
-        fontSize: 11,
+        fontSize: AppType.caption,
         fontWeight: FontWeight.w700,
         letterSpacing: 0.8,
       ),
@@ -384,7 +385,7 @@ class _FixedChromeCard extends StatelessWidget {
                       chrome.label,
                       style: const TextStyle(
                         color: Colors.white,
-                        fontSize: 15,
+                        fontSize: AppType.callout,
                         fontWeight: FontWeight.w600,
                       ),
                     ),
@@ -393,7 +394,7 @@ class _FixedChromeCard extends StatelessWidget {
                       'Le chrome maison d’Onyx. Non modifiable.',
                       style: TextStyle(
                         color: Colors.white.withValues(alpha: 0.5),
-                        fontSize: 12,
+                        fontSize: AppType.footnote,
                       ),
                     ),
                   ],

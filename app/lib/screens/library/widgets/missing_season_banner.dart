@@ -2,6 +2,8 @@ import 'package:flutter/material.dart';
 import '../../../models/models.dart';
 import '../../../theme/app_colors.dart';
 import '../../../utils/format.dart';
+import '../../../theme/app_icons.dart';
+import '../../../theme/app_type.dart';
 
 /// Panel shown under the season picker when the selected season is not on the
 /// server. It offers the request when MediaHub allows it, states that the
@@ -46,8 +48,8 @@ class MissingSeasonBanner extends StatelessWidget {
             children: [
               Icon(
                 season.isRequested
-                    ? Icons.hourglass_top_rounded
-                    : Icons.cloud_off_outlined,
+                    ? AppIcons.pending
+                    : AppIcons.cloudOff,
                 size: 18,
                 color:
                     season.isRequested ? AppColors.accentMuted : AppColors.textMuted,
@@ -61,7 +63,7 @@ class MissingSeasonBanner extends StatelessWidget {
                   style: const TextStyle(
                     color: AppColors.textPrimary,
                     fontWeight: FontWeight.w600,
-                    fontSize: 14,
+                    fontSize: AppType.body,
                   ),
                 ),
               ),
@@ -70,7 +72,7 @@ class MissingSeasonBanner extends StatelessWidget {
                   '${season.episodeCount} épisodes',
                   style: const TextStyle(
                     color: AppColors.textMuted,
-                    fontSize: 12,
+                    fontSize: AppType.footnote,
                     fontWeight: FontWeight.w600,
                   ),
                 ),
@@ -82,7 +84,7 @@ class MissingSeasonBanner extends StatelessWidget {
               season.overview!,
               style: const TextStyle(
                 color: AppColors.textSecondary,
-                fontSize: 13,
+                fontSize: AppType.subhead,
                 height: 1.45,
               ),
             ),
@@ -93,7 +95,7 @@ class MissingSeasonBanner extends StatelessWidget {
               airDate,
               style: const TextStyle(
                 color: AppColors.textMuted,
-                fontSize: 12,
+                fontSize: AppType.footnote,
                 fontWeight: FontWeight.w600,
               ),
             ),
@@ -110,7 +112,7 @@ class MissingSeasonBanner extends StatelessWidget {
                           height: 16,
                           child: CircularProgressIndicator(strokeWidth: 2),
                         )
-                      : const Icon(Icons.download_rounded, size: 18),
+                      : const Icon(AppIcons.download, size: 18),
                   label: Text(
                     seasonNumber > 0
                         ? 'Demander la saison $seasonNumber'

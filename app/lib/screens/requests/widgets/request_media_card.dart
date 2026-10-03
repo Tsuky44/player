@@ -3,6 +3,7 @@ import '../../../models/media_request.dart';
 import '../../../theme/app_colors.dart';
 import '../../../utils/poster_url.dart';
 import '../../../widgets/global/poster_card.dart';
+import '../../../theme/app_type.dart';
 
 class RequestMediaCard extends StatelessWidget {
   final RequestMediaItem item;
@@ -54,7 +55,7 @@ class _TypeBadge extends StatelessWidget {
       child: Text(
         type == RequestMediaType.movie ? 'Film' : 'Série',
         style: TextStyle(
-          fontSize: 10,
+          fontSize: AppType.micro,
           fontWeight: FontWeight.w600,
           letterSpacing: 0.4,
           color: Colors.white.withValues(alpha: 0.85),

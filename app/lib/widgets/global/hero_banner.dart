@@ -10,6 +10,8 @@ import '../../utils/poster_url.dart';
 import '../../tv/tv_mode.dart';
 import 'app_network_image.dart';
 import 'media_logo_display.dart';
+import '../../theme/app_icons.dart';
+import '../../theme/app_type.dart';
 
 class HeroBanner extends StatefulWidget {
   final Media media;
@@ -216,7 +218,7 @@ class _HeroBannerState extends State<HeroBanner> {
                       style: const TextStyle(
                         color: AppColors.textSecondary,
                         fontWeight: FontWeight.w600,
-                        fontSize: 11,
+                        fontSize: AppType.caption,
                         letterSpacing: 1.6,
                       ),
                     ),
@@ -243,7 +245,7 @@ class _HeroBannerState extends State<HeroBanner> {
                         overflow: TextOverflow.ellipsis,
                         style: const TextStyle(
                           color: AppColors.textSecondary,
-                          fontSize: 14,
+                          fontSize: AppType.body,
                           fontWeight: FontWeight.w500,
                         ),
                       ),
@@ -256,7 +258,7 @@ class _HeroBannerState extends State<HeroBanner> {
                         overflow: TextOverflow.ellipsis,
                         style: const TextStyle(
                           color: AppColors.textSecondary,
-                          fontSize: 15,
+                          fontSize: AppType.callout,
                           height: 1.5,
                         ),
                       ),
@@ -305,7 +307,7 @@ class _PlayButton extends StatelessWidget {
     return ElevatedButton.icon(
       onPressed: onPressed,
       autofocus: autofocus,
-      icon: const Icon(Icons.play_arrow_rounded, size: 28),
+      icon: const Icon(AppIcons.play, size: 28),
       label: Text(label),
       style: ElevatedButton.styleFrom(
         minimumSize: const Size(48, 48),
@@ -325,7 +327,7 @@ class _InfoButton extends StatelessWidget {
   Widget build(BuildContext context) {
     return OutlinedButton.icon(
       onPressed: onPressed,
-      icon: const Icon(Icons.info_outline_rounded, size: 22),
+      icon: const Icon(AppIcons.info, size: 22),
       label: Text(compact ? 'Infos' : 'Plus d’infos'),
       style: OutlinedButton.styleFrom(
         backgroundColor: Colors.white.withValues(alpha: 0.15),

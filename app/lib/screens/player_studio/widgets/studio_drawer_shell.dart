@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../../../theme/app_colors.dart';
+import '../../../theme/app_type.dart';
 
 /// Shared chrome for Player Studio side drawers (header + scroll body).
 class StudioDrawerShell extends StatelessWidget {
@@ -40,7 +41,7 @@ class StudioDrawerShell extends StatelessWidget {
                       title,
                       style: const TextStyle(
                         color: AppColors.textPrimary,
-                        fontSize: 17,
+                        fontSize: AppType.headline,
                         fontWeight: FontWeight.w700,
                         letterSpacing: -0.3,
                       ),
@@ -66,7 +67,7 @@ class StudioDrawerShell extends StatelessWidget {
                   subtitle!,
                   style: const TextStyle(
                     color: AppColors.textMuted,
-                    fontSize: 12.5,
+                    fontSize: AppType.subhead,
                     height: 1.4,
                   ),
                 ),

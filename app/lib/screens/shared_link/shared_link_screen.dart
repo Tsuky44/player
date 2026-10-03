@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import '../../navigation/search_route_observer.dart';
 import '../../models/media_share.dart';
 import '../../models/models.dart';
 import '../../services/api_client.dart';
@@ -9,6 +10,8 @@ import '../../utils/format.dart';
 import '../../utils/poster_url.dart';
 import '../../widgets/global/app_network_image.dart';
 import '../player/player_screen.dart';
+import 'shared_link_episodes.dart';
+import '../../theme/app_type.dart';
 
 /// La page d'un lien de partage : ce qu'il ouvre, son mot de passe s'il en a
 /// un, et le bouton qui lance le lecteur Onyx (ADR-0037).
@@ -34,6 +37,14 @@ class _SharedLinkScreenState extends State<SharedLinkScreen> {
   /// Une erreur qu'on peut corriger : mauvais mot de passe, réseau.
   String? _error;
   int _resumeAt = 0;
+
+  /// L'épisode d'une saison ou d'une série en train de s'ouvrir.
+  int? _openingEpisode;
+
+  /// Le lien attend encore son mot de passe : le serveur n'a pas dit ce qu'il
+  /// ouvre.
+  static bool _locked(SharedMediaInfo info) =>
+      info.needsPassword && info.title.isEmpty;
 
   @override
   void initState() {
@@ -87,19 +98,42 @@ class _SharedLinkScreenState extends State<SharedLinkScreen> {
     }
   }
 
-  Future<void> _watch() async {
+  /// Ouvre le lecteur sur le média du lien, ou sur [episode] quand le lien est
+  /// celui d'une saison ou d'une série.
+  Future<void> _watch({SharedEpisode? episode}) async {
     final info = _info;
     if (info == null || _opening) return;
     setState(() {
       _opening = true;
+      _openingEpisode = episode?.id;
       _error = null;
     });
     try {
-      final opened = await widget.api.open(_password.text);
+      if (episode == null && _locked(info)) {
+        // Tant que le mot de passe manque, le serveur ne dit pas ce que le
+        // lien ouvre : c'est lui qui révèle une saison ou une série, dont il
+        // reste à choisir l'épisode.
+        final contents = await widget.api.contents(_password.text);
+        if (!mounted) return;
+        if (contents.isCollection) {
+          setState(() {
+            _info = contents;
+            _opening = false;
+          });
+          return;
+        }
+      }
+      final resumeAt = episode == null
+          ? _resumeAt
+          : await widget.api.savedPosition(episodeId: episode.id);
+      final opened =
+          await widget.api.open(_password.text, episodeId: episode?.id);
       if (!mounted) return;
       setState(() {
-        _info = opened.media;
+        // La liste des épisodes reste : c'est d'elle qu'on choisit le suivant.
+        if (episode == null) _info = opened.media;
         _opening = false;
+        _openingEpisode = null;
       });
       final media = Media(
         id: opened.mediaId,
@@ -114,9 +148,11 @@ class _SharedLinkScreenState extends State<SharedLinkScreen> {
         createdAt: DateTime.now(),
       );
       await Navigator.of(context).push(MaterialPageRoute<void>(
+        settings:
+            const RouteSettings(name: SearchRouteObserver.playerRouteName),
         builder: (_) => PlayerScreen(
           media: media,
-          resumeAtSeconds: _resumeAt,
+          resumeAtSeconds: resumeAt,
         ),
       ));
       if (mounted) await _load();
@@ -124,6 +160,7 @@ class _SharedLinkScreenState extends State<SharedLinkScreen> {
       if (!mounted) return;
       setState(() {
         _opening = false;
+        _openingEpisode = null;
         if (e.status == 401 || e.status == 429 || e.status == 0) {
           _error = e.message;
         } else {
@@ -164,11 +201,18 @@ class _SharedLinkScreenState extends State<SharedLinkScreen> {
                             const SizedBox(height: 20),
                             details,
                           ])
-                        : Row(children: [
-                            cover,
-                            const SizedBox(width: 28),
-                            Expanded(child: details),
-                          ]),
+                        : Row(
+                            // Devant une longue liste d'épisodes, l'affiche
+                            // reste en haut au lieu de flotter à mi-hauteur.
+                            crossAxisAlignment: info?.isCollection ?? false
+                                ? CrossAxisAlignment.start
+                                : CrossAxisAlignment.center,
+                            children: [
+                              cover,
+                              const SizedBox(width: 28),
+                              Expanded(child: details),
+                            ],
+                          ),
                   ),
                 );
               }),
@@ -190,11 +234,17 @@ class _SharedLinkScreenState extends State<SharedLinkScreen> {
             : info.title.isNotEmpty
                 ? info.title
                 : 'Contenu protégé';
+    final isCollection = info?.isCollection ?? false;
+    final episodes = info?.episodes ?? const <SharedEpisode>[];
     final badges = [
       if (info != null && info.duration > 0) formatDuration(info.duration),
+      if (episodes.isNotEmpty)
+        '${episodes.length} épisode${episodes.length > 1 ? 's' : ''}',
       if (info != null && info.singleUse) 'Lien à usage unique',
     ];
-    final needsPassword = info?.needsPassword ?? false;
+    // Une saison ou une série n'est connue qu'une fois le mot de passe donné :
+    // il n'est plus à redemander.
+    final needsPassword = (info?.needsPassword ?? false) && !isCollection;
 
     return Column(
       crossAxisAlignment: align,
@@ -204,7 +254,7 @@ class _SharedLinkScreenState extends State<SharedLinkScreen> {
           'Onyx · Partagé avec vous',
           style: TextStyle(
             color: AppColors.textMuted,
-            fontSize: 13,
+            fontSize: AppType.subhead,
             fontWeight: FontWeight.w600,
           ),
         ),
@@ -212,7 +262,7 @@ class _SharedLinkScreenState extends State<SharedLinkScreen> {
         Text(
           title,
           textAlign: textAlign,
-          style: const TextStyle(fontSize: 30, fontWeight: FontWeight.w700),
+          style: const TextStyle(fontSize: AppType.display, fontWeight: FontWeight.w700),
         ),
         if (info != null && info.subtitle.isNotEmpty && _fatal == null) ...[
           const SizedBox(height: 8),
@@ -220,7 +270,7 @@ class _SharedLinkScreenState extends State<SharedLinkScreen> {
             info.subtitle,
             textAlign: textAlign,
             style:
-                const TextStyle(color: AppColors.textSecondary, fontSize: 16),
+                const TextStyle(color: AppColors.textSecondary, fontSize: AppType.headline),
           ),
         ],
         if (badges.isNotEmpty && _fatal == null) ...[
@@ -237,6 +287,19 @@ class _SharedLinkScreenState extends State<SharedLinkScreen> {
           Text(_fatal!,
               textAlign: textAlign,
               style: const TextStyle(color: AppColors.textSecondary))
+        else if (info != null && isCollection)
+          episodes.isEmpty
+              ? Text(
+                  'Aucun épisode n’est disponible pour le moment.',
+                  textAlign: textAlign,
+                  style: const TextStyle(color: AppColors.textSecondary),
+                )
+              : SharedLinkEpisodes(
+                  episodes: episodes,
+                  openingId: _openingEpisode,
+                  onPlay:
+                      _opening ? null : (episode) => _watch(episode: episode),
+                )
         else if (info != null) ...[
           if (needsPassword) ...[
             TvDeferredKeyboard(
@@ -271,9 +334,13 @@ class _SharedLinkScreenState extends State<SharedLinkScreen> {
                       child: CircularProgressIndicator(strokeWidth: 2),
                     )
                   : const Icon(Icons.play_arrow_rounded),
-              label: Text(_resumeAt > 30
-                  ? 'Reprendre à ${formatPlaybackTime(_resumeAt)}'
-                  : 'Regarder'),
+              // Verrouillé, le lien peut encore être une série : « Ouvrir »
+              // ne promet pas une lecture.
+              label: Text(_locked(info)
+                  ? 'Ouvrir'
+                  : _resumeAt > 30
+                      ? 'Reprendre à ${formatPlaybackTime(_resumeAt)}'
+                      : 'Regarder'),
             ),
           ),
         ] else if (_loading)
@@ -347,7 +414,7 @@ class _Badge extends StatelessWidget {
           label,
           style: const TextStyle(
             color: AppColors.textSecondary,
-            fontSize: 12,
+            fontSize: AppType.footnote,
             fontWeight: FontWeight.w600,
           ),
         ),

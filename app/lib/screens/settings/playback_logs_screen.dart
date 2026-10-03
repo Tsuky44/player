@@ -6,6 +6,7 @@ import '../../models/server_activity.dart';
 import '../../services/api_client.dart';
 import '../../theme/app_colors.dart';
 import 'widgets/settings_ui.dart';
+import '../../theme/app_type.dart';
 
 /// Le journal qu'une lecture passée a laissé derrière elle.
 ///
@@ -148,7 +149,7 @@ class _Header extends StatelessWidget {
       children: [
         Text(
           entry.detail.isEmpty ? entry.headline : '${entry.headline} · ${entry.detail}',
-          style: const TextStyle(fontSize: 17, fontWeight: FontWeight.w600),
+          style: const TextStyle(fontSize: AppType.headline, fontWeight: FontWeight.w600),
         ),
         const SizedBox(height: 8),
         Wrap(
@@ -203,7 +204,7 @@ class _LogLine extends StatelessWidget {
               style: TextStyle(
                 fontFamily: 'monospace',
                 fontFamilyFallback: const ['Menlo', 'Consolas', 'Roboto Mono'],
-                fontSize: 12,
+                fontSize: AppType.footnote,
                 height: 1.4,
                 color: line.isError ? AppColors.error : AppColors.textSecondary,
               ),
@@ -378,7 +379,7 @@ class _StatsCard extends StatelessWidget {
         children: [
           const Text(
             'Mesures de la lecture',
-            style: TextStyle(fontSize: 13, fontWeight: FontWeight.w700),
+            style: TextStyle(fontSize: AppType.subhead, fontWeight: FontWeight.w700),
           ),
           const SizedBox(height: 12),
           // Une grille qui se replie : deux colonnes sur un téléphone, quatre
@@ -401,14 +402,14 @@ class _StatsCard extends StatelessWidget {
                           maxLines: 1,
                           overflow: TextOverflow.ellipsis,
                           style: const TextStyle(
-                              fontSize: 11, color: AppColors.textMuted),
+                              fontSize: AppType.caption, color: AppColors.textMuted),
                         ),
                         const SizedBox(height: 3),
                         Text(
                           metric.value,
                           maxLines: 2,
                           style: TextStyle(
-                            fontSize: 13,
+                            fontSize: AppType.subhead,
                             fontWeight: FontWeight.w600,
                             color: _color(metric.tone),
                             fontFeatures: const [FontFeature.tabularFigures()],

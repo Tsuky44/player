@@ -4,6 +4,7 @@ import '../utils/alignment_guides.dart';
 import 'control_context_menu.dart';
 import 'draggable_control.dart';
 import '../../../theme/app_colors.dart';
+import '../../../theme/app_type.dart';
 
 /// The 16:9 editing surface. Renders a dummy poster background, a snap grid,
 /// and all the draggable controls positioned via relative percentages.
@@ -248,7 +249,7 @@ class _StudioCanvasState extends State<StudioCanvas> {
                                   'Y: ${(selConfig.yPercentage * 100).round()}%',
                                   style: const TextStyle(
                                     color: Colors.white,
-                                    fontSize: 12,
+                                    fontSize: AppType.footnote,
                                     fontWeight: FontWeight.w600,
                                   ),
                                 ),
@@ -292,7 +293,7 @@ class _DummyPoster extends StatelessWidget {
               'APERÇU',
               style: TextStyle(
                 color: Colors.white.withValues(alpha: 0.15),
-                fontSize: 14,
+                fontSize: AppType.body,
                 letterSpacing: 4,
                 fontWeight: FontWeight.bold,
               ),

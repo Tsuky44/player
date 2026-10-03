@@ -5,6 +5,7 @@ import '../../models/server_account.dart';
 import '../../providers/auth_provider.dart';
 import '../../services/api_client.dart';
 import '../../theme/app_colors.dart';
+import '../../theme/app_type.dart';
 
 /// Ce que l'app affiche quand le serveur principal ne répond pas au lancement.
 ///
@@ -107,7 +108,7 @@ class _ServerChoiceScreenState extends State<ServerChoiceScreen> {
                   textAlign: TextAlign.center,
                   style: const TextStyle(
                     color: AppColors.textSecondary,
-                    fontSize: 13.5,
+                    fontSize: AppType.body,
                     height: 1.4,
                   ),
                 ),
@@ -126,7 +127,7 @@ class _ServerChoiceScreenState extends State<ServerChoiceScreen> {
                       textAlign: TextAlign.center,
                       style: TextStyle(
                         color: AppColors.textMuted,
-                        fontSize: 13,
+                        fontSize: AppType.subhead,
                       ),
                     ),
                   ),

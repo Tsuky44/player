@@ -8,6 +8,8 @@ import '../../widgets/global/empty_state.dart';
 import '../../widgets/global/media_card.dart';
 import 'movie_detail_screen.dart';
 import 'show_detail_screen.dart';
+import '../../theme/app_icons.dart';
+import '../../theme/app_type.dart';
 
 /// Full-page grid of every catalog result for a query, opened when the user
 /// presses Enter in the global search bar.
@@ -49,12 +51,12 @@ class SearchResultsScreen extends StatelessWidget {
         elevation: 0,
         title: Text(
           'Résultats pour « $query »',
-          style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w700),
+          style: const TextStyle(fontSize: AppType.headline, fontWeight: FontWeight.w700),
         ),
       ),
       body: results.isEmpty
           ? EmptyStateView(
-              icon: Icons.search_off_rounded,
+              icon: AppIcons.search,
               title: 'Aucun résultat',
               message: 'Aucun film ou série ne correspond à « $query ».',
             )
@@ -67,7 +69,7 @@ class SearchResultsScreen extends StatelessWidget {
                     child: Text(
                       '${results.length} résultat${results.length > 1 ? 's' : ''}',
                       style: const TextStyle(
-                          color: AppColors.textMuted, fontSize: 13),
+                          color: AppColors.textMuted, fontSize: AppType.subhead),
                     ),
                   ),
                 ),

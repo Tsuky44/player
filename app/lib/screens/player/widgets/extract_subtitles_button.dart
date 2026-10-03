@@ -4,6 +4,7 @@ import 'package:provider/provider.dart';
 import '../../../providers/auth_provider.dart';
 import '../../../theme/app_colors.dart';
 import '../hooks/use_player_controller.dart';
+import '../../../theme/app_type.dart';
 
 /// « Extraire les sous-titres », au pied de la liste des pistes du lecteur.
 ///
@@ -72,7 +73,7 @@ class _ExtractSubtitlesButtonState extends State<ExtractSubtitlesButton> {
               : const Icon(Icons.download_outlined, size: 16),
           label: Text(
             busy ? 'Extraction en cours…' : 'Extraire les sous-titres',
-            style: const TextStyle(fontSize: 12),
+            style: const TextStyle(fontSize: AppType.footnote),
           ),
           style: TextButton.styleFrom(
             foregroundColor: AppColors.accent,

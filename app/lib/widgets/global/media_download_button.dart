@@ -6,6 +6,7 @@ import '../../models/offline_download.dart';
 import '../../services/download_manager.dart';
 import '../../theme/app_colors.dart';
 import 'metered_download_dialog.dart';
+import '../../theme/app_icons.dart';
 
 /// Le bouton « garder sur l'appareil », partout où un média se télécharge.
 ///
@@ -65,16 +66,16 @@ class MediaDownloadButton extends StatelessWidget {
   Widget _icon(OfflineDownload? entry, double size) {
     switch (entry?.status) {
       case null:
-        return const Icon(Icons.download_outlined,
+        return const Icon(AppIcons.download,
             color: AppColors.textSecondary);
       case DownloadStatus.completed:
-        return const Icon(Icons.download_done_rounded,
+        return const Icon(AppIcons.downloaded,
             color: AppColors.success);
       case DownloadStatus.failed:
-        return const Icon(Icons.error_outline_rounded,
+        return const Icon(AppIcons.error,
             color: AppColors.textSecondary);
       case DownloadStatus.paused:
-        return const Icon(Icons.pause_circle_outline_rounded,
+        return const Icon(AppIcons.pauseCircle,
             color: AppColors.textSecondary);
       case DownloadStatus.queued:
       case DownloadStatus.downloading:
@@ -94,7 +95,7 @@ class MediaDownloadButton extends StatelessWidget {
                 valueColor:
                     const AlwaysStoppedAnimation(AppColors.textPrimary),
               ),
-              Icon(Icons.stop_rounded,
+              Icon(AppIcons.stop,
                   size: size * 0.5, color: AppColors.textSecondary),
             ],
           ),

@@ -11,6 +11,7 @@ import '../../theme/app_colors.dart';
 import '../../tv/tv_mode.dart';
 import '../../utils/format.dart';
 import '../../widgets/global/detail_actions.dart';
+import '../../widgets/global/detail_facts_section.dart';
 import '../../widgets/global/detail_metadata.dart';
 import '../../widgets/global/media_detail_widgets.dart';
 import '../../widgets/global/media_download_button.dart';
@@ -20,6 +21,7 @@ import '../../widgets/global/share_media_button.dart';
 import '../../widgets/global/watched_action_button.dart';
 import '../../navigation/search_route_observer.dart';
 import '../player/player_screen.dart';
+import '../../theme/app_icons.dart';
 
 class MovieDetailScreen extends StatefulWidget {
   final HomeMediaItem? movieItem;
@@ -330,6 +332,7 @@ class _MovieDetailScreenState extends State<MovieDetailScreen> {
       runtimeMinutes: _details?.runtime ?? 0,
       durationSeconds: _playbackMedia.duration,
       rating: _details?.voteAverage ?? 0,
+      genres: _details?.genres ?? const [],
     );
     // Le serveur réserve la correction à `manage_library` (ADR-0001) : sans
     // ce droit, le bouton menait au bout d'une recherche TMDB pour un refus.
@@ -347,6 +350,9 @@ class _MovieDetailScreenState extends State<MovieDetailScreen> {
               metadata: metadata,
               onBack: () => Navigator.of(context).pop(),
               loading: _loadingDetails,
+              emptyOverviewLabel: _loadingDetails
+                  ? 'Chargement des informations…'
+                  : 'Synopsis indisponible pour ce film.',
               badges: techBadgesFor(_tracks),
               actions: DetailActions(
                 playLabel: detailPlayLabel(resuming: _hasProgress),
@@ -370,7 +376,7 @@ class _MovieDetailScreenState extends State<MovieDetailScreen> {
                     IconButton(
                       onPressed: _rematch,
                       tooltip: 'Corriger la fiche',
-                      icon: const Icon(Icons.edit_note_rounded),
+                      icon: const Icon(AppIcons.edit),
                       color: AppColors.textSecondary,
                     ),
                 ],
@@ -407,15 +413,7 @@ class _MovieDetailScreenState extends State<MovieDetailScreen> {
                 ),
               ),
             ),
-          SliverToBoxAdapter(
-            child: DetailInfoSection(
-              details: _details,
-              fallbackOverview: _media.overview,
-              emptyOverviewLabel: _loadingDetails
-                  ? 'Chargement des informations…'
-                  : 'Synopsis indisponible pour ce film.',
-            ),
-          ),
+          SliverToBoxAdapter(child: DetailFactsSection(details: _details)),
           if (_details?.collection != null)
             SliverToBoxAdapter(
               child: CollectionSection(

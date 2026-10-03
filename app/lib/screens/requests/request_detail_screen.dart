@@ -14,6 +14,8 @@ import 'widgets/request_related_slider.dart';
 import 'widgets/request_season_list.dart';
 import 'widgets/request_status_badge.dart';
 import 'widgets/season_selector_dialog.dart';
+import '../../theme/app_icons.dart';
+import '../../theme/app_type.dart';
 
 class RequestDetailScreen extends StatefulWidget {
   final RequestMediaItem item;
@@ -172,7 +174,7 @@ class _RequestDetailScreenState extends State<RequestDetailScreen> {
                 const SizedBox(height: 40),
                 const Text('Casting',
                     style: TextStyle(
-                        fontSize: 22,
+                        fontSize: AppType.title2,
                         fontWeight: FontWeight.w700,
                         color: Colors.white)),
                 const SizedBox(height: 14),
@@ -257,7 +259,7 @@ class _RequestDetailScreenState extends State<RequestDetailScreen> {
         onTap: () => Navigator.of(context).pop(),
         child: const Padding(
           padding: EdgeInsets.all(10),
-          child: Icon(Icons.arrow_back_rounded, color: Colors.white, size: 22),
+          child: Icon(AppIcons.back, color: Colors.white, size: 22),
         ),
       ),
     );
@@ -276,23 +278,23 @@ class _RequestDetailScreenState extends State<RequestDetailScreen> {
             style: const TextStyle(
                 color: Colors.white,
                 fontWeight: FontWeight.w800,
-                fontSize: 15)),
+                fontSize: AppType.callout)),
       if (runtime.isNotEmpty)
         Row(
           mainAxisSize: MainAxisSize.min,
           children: [
-            Icon(Icons.schedule_rounded,
+            Icon(AppIcons.schedule,
                 size: 16, color: Colors.white.withValues(alpha: 0.45)),
             const SizedBox(width: 5),
             Text(runtime,
                 style: TextStyle(
-                    color: Colors.white.withValues(alpha: 0.7), fontSize: 14)),
+                    color: Colors.white.withValues(alpha: 0.7), fontSize: AppType.body)),
           ],
         ),
       ...details.genres.map(
         (genre) => Text('• $genre',
             style: TextStyle(
-                color: Colors.white.withValues(alpha: 0.75), fontSize: 14)),
+                color: Colors.white.withValues(alpha: 0.75), fontSize: AppType.body)),
       ),
     ];
 
@@ -340,7 +342,7 @@ class _RequestDetailScreenState extends State<RequestDetailScreen> {
               if (details.trailerKey != null && details.trailerKey!.isNotEmpty)
                 _primaryButton(
                   label: 'Bande-annonce',
-                  icon: Icons.play_circle_outline_rounded,
+                  icon: AppIcons.playCircle,
                   filled: false,
                   enabled: true,
                   onPressed: () => _openTrailer(details.trailerKey!),
@@ -365,14 +367,14 @@ class _RequestDetailScreenState extends State<RequestDetailScreen> {
       return [
         _statusActionButton(
           label: 'Partiellement disponible',
-          icon: Icons.check_rounded,
+          icon: AppIcons.check,
           foreground: AppColors.warning,
           background: AppColors.warning,
         ),
         if (canRequest && isTv && hasUnrequestedSeasons)
           _primaryButton(
             label: 'Compléter',
-            icon: Icons.add_rounded,
+            icon: AppIcons.add,
             filled: true,
             enabled: !_submitting,
             loading: _submitting,
@@ -385,14 +387,14 @@ class _RequestDetailScreenState extends State<RequestDetailScreen> {
       return [
         _statusActionButton(
           label: 'Disponible',
-          icon: Icons.check_rounded,
+          icon: AppIcons.check,
           foreground: AppColors.success,
           background: AppColors.success,
         ),
         if (canRequest && hasUnrequestedSeasons && isTv)
           _primaryButton(
             label: 'Demander plus',
-            icon: Icons.add_rounded,
+            icon: AppIcons.add,
             filled: true,
             enabled: !_submitting,
             loading: _submitting,
@@ -406,14 +408,14 @@ class _RequestDetailScreenState extends State<RequestDetailScreen> {
       return [
         _statusActionButton(
           label: 'En cours de traitement...',
-          icon: Icons.hourglass_top_rounded,
+          icon: AppIcons.pending,
           foreground: AppColors.accentMuted,
           background: AppColors.primary,
         ),
         if (canRequest && hasUnrequestedSeasons && isTv)
           _primaryButton(
             label: 'Demander plus',
-            icon: Icons.add_rounded,
+            icon: AppIcons.add,
             filled: true,
             enabled: !_submitting,
             loading: _submitting,
@@ -427,7 +429,7 @@ class _RequestDetailScreenState extends State<RequestDetailScreen> {
     return [
       _primaryButton(
         label: 'Demander',
-        icon: Icons.download_rounded,
+        icon: AppIcons.download,
         filled: true,
         enabled: !_submitting,
         loading: _submitting,
@@ -459,7 +461,7 @@ class _RequestDetailScreenState extends State<RequestDetailScreen> {
             style: TextStyle(
               color: foreground,
               fontWeight: FontWeight.w700,
-              fontSize: 14,
+              fontSize: AppType.body,
             ),
           ),
         ],
@@ -474,7 +476,7 @@ class _RequestDetailScreenState extends State<RequestDetailScreen> {
           TextSpan(
             text: details.title.toUpperCase(),
             style: const TextStyle(
-              fontSize: 42,
+              fontSize: AppType.hero,
               fontWeight: FontWeight.w900,
               color: Colors.white,
               height: 1.05,
@@ -485,7 +487,7 @@ class _RequestDetailScreenState extends State<RequestDetailScreen> {
             TextSpan(
               text: ' (${details.year})',
               style: TextStyle(
-                fontSize: 34,
+                fontSize: AppType.largeTitle,
                 fontWeight: FontWeight.w300,
                 color: Colors.white.withValues(alpha: 0.45),
               ),
@@ -541,7 +543,7 @@ class _RequestDetailScreenState extends State<RequestDetailScreen> {
                 style: TextStyle(
                   color: fg,
                   fontWeight: FontWeight.w700,
-                  fontSize: 14,
+                  fontSize: AppType.body,
                 ),
               ),
             ],
@@ -577,14 +579,14 @@ class _RequestDetailScreenState extends State<RequestDetailScreen> {
                     child: Row(
                       mainAxisSize: MainAxisSize.min,
                       children: [
-                        Icon(Icons.sell_outlined,
+                        Icon(AppIcons.tag,
                             size: 12,
                             color: Colors.white.withValues(alpha: 0.4)),
                         const SizedBox(width: 6),
                         Text(
                           keyword,
                           style: TextStyle(
-                            fontSize: 12,
+                            fontSize: AppType.footnote,
                             color: Colors.white.withValues(alpha: 0.55),
                           ),
                         ),
@@ -600,7 +602,7 @@ class _RequestDetailScreenState extends State<RequestDetailScreen> {
         const SizedBox(height: 18),
         const Text('Résumé',
             style: TextStyle(
-                fontSize: 22,
+                fontSize: AppType.title2,
                 fontWeight: FontWeight.w700,
                 color: Colors.white)),
         const SizedBox(height: 12),
@@ -610,7 +612,7 @@ class _RequestDetailScreenState extends State<RequestDetailScreen> {
               : details.overview,
           style: TextStyle(
             height: 1.6,
-            fontSize: 15,
+            fontSize: AppType.callout,
             color: Colors.white.withValues(alpha: 0.72),
           ),
         ),
@@ -643,12 +645,12 @@ class _RequestDetailScreenState extends State<RequestDetailScreen> {
                       style: const TextStyle(
                           color: Colors.white,
                           fontWeight: FontWeight.w700,
-                          fontSize: 14)),
+                          fontSize: AppType.body)),
                   const SizedBox(height: 4),
                   Text(entry.value,
                       style: TextStyle(
                           color: Colors.white.withValues(alpha: 0.55),
-                          fontSize: 14)),
+                          fontSize: AppType.body)),
                 ],
               ),
             );

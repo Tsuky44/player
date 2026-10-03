@@ -6,6 +6,8 @@ import 'package:qr_flutter/qr_flutter.dart';
 import '../../models/otp.dart';
 import '../../theme/app_colors.dart';
 import '../../tv/tv_deferred_keyboard.dart';
+import '../../theme/app_icons.dart';
+import '../../theme/app_type.dart';
 
 /// Validation en deux étapes (ADR-0041) : le dialogue qui demande un code,
 /// précédé du QR code quand il s'agit d'en configurer un, et suivi des codes
@@ -246,7 +248,7 @@ class _OtpCodeDialogState<T> extends State<_OtpCodeDialog<T>> {
             autofillHints: const [AutofillHints.oneTimeCode],
             textAlign: TextAlign.center,
             style: const TextStyle(
-              fontSize: 24,
+              fontSize: AppType.title1,
               fontWeight: FontWeight.w700,
               letterSpacing: 6,
             ),
@@ -321,13 +323,13 @@ class _SecretText extends StatelessWidget {
             style: const TextStyle(
               fontFeatures: [FontFeature.tabularFigures()],
               color: AppColors.textSecondary,
-              fontSize: 13,
+              fontSize: AppType.subhead,
             ),
           ),
         ),
         IconButton(
           tooltip: 'Copier la clé',
-          icon: const Icon(Icons.copy_rounded, size: 18),
+          icon: const Icon(AppIcons.copy, size: 18),
           onPressed: () => Clipboard.setData(ClipboardData(text: secret)),
         ),
       ],
@@ -371,7 +373,7 @@ class RecoveryCodesView extends StatelessWidget {
                   code,
                   style: const TextStyle(
                     fontFeatures: [FontFeature.tabularFigures()],
-                    fontSize: 15,
+                    fontSize: AppType.callout,
                     fontWeight: FontWeight.w600,
                   ),
                 ),
@@ -384,7 +386,7 @@ class RecoveryCodesView extends StatelessWidget {
           child: TextButton.icon(
             onPressed: () =>
                 Clipboard.setData(ClipboardData(text: codes.join('\n'))),
-            icon: const Icon(Icons.copy_rounded, size: 18),
+            icon: const Icon(AppIcons.copy, size: 18),
             label: const Text('Copier'),
           ),
         ),

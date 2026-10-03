@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import '../../../models/player_layout.dart';
 import '../../../tv/tv_focus.dart';
 import '../../../widgets/global/control_chrome.dart';
+import '../../../widgets/global/scrub_gesture.dart';
 import 'player_chrome_fade.dart';
 import 'watch_party_overlay.dart';
 
@@ -350,7 +351,7 @@ class ModularControlsLayer extends StatelessWidget {
     final handler = _tapHandler(placed.type);
 
     Widget child = placed.type == PlayerControlType.progressBar
-        ? _SeekableBar(onSeekFraction: onSeekFraction, child: chrome)
+        ? ScrubGesture(onSeekFraction: onSeekFraction, child: chrome)
         : placed.type.isTimelineBar
             ? chrome
             : handler != null
@@ -401,32 +402,6 @@ class ModularControlsLayer extends StatelessWidget {
 
     return Align(
       alignment: Alignment(c.xPercentage * 2 - 1, c.yPercentage * 2 - 1),
-      child: child,
-    );
-  }
-}
-
-/// Wraps the progress chrome and converts horizontal taps/drags into a
-/// 0.0 -> 1.0 seek fraction based on its own rendered width.
-class _SeekableBar extends StatelessWidget {
-  final ValueChanged<double> onSeekFraction;
-  final Widget child;
-
-  const _SeekableBar({required this.onSeekFraction, required this.child});
-
-  void _emit(BuildContext context, Offset localPosition) {
-    final box = context.findRenderObject() as RenderBox?;
-    if (box == null || box.size.width <= 0) return;
-    final fraction = (localPosition.dx / box.size.width).clamp(0.0, 1.0);
-    onSeekFraction(fraction);
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    return GestureDetector(
-      behavior: HitTestBehavior.opaque,
-      onTapDown: (d) => _emit(context, d.localPosition),
-      onHorizontalDragUpdate: (d) => _emit(context, d.localPosition),
       child: child,
     );
   }

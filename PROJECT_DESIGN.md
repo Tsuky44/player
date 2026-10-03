@@ -82,6 +82,7 @@
 - Body: Manrope 400, 15–16, line-height 1.45–1.6
 - Captions: Manrope/Geist 500, 12–13, secondary color
 - Weights: avoid ultra-light ; prefer 500/600 for UI chrome
+- Sizes: only the 13 steps of `AppType` (10, 11, 12, 13, 14, 15, 17, 20, 22, 24, 28, 34, 40) — no half sizes; enforced by `app_type_scale_test.dart`
 
 ## 8. Component Styling
 
@@ -96,8 +97,9 @@
 - Progress: 3–4px `#0A84FF` bottom edge
 
 ### Navigation
-- Desktop: frosted top strip (blur 24–30), tabs text weight, accent underline/dot not filled pill blob
-- Mobile: bottom bar frosted, selected = accent icon + label, unselected muted
+- Desktop: frosted top strip (blur 24–30), tabs text weight + short white underline, not filled pill blob (the pill is kept only for the TV remote focus, with the accent ring)
+- Mobile: bottom bar dense frosted (`GlassBarSurface`), selected = filled icon + label in white (accent stays reserved for focus and progress), unselected muted outline; the catalog top bar takes the same glass once the page scrolls
+- Icons: Phosphor regular/fill via `AppIcons` on every browsing surface (guard test `app_icons_guard_test.dart`); player and settings still on Material
 
 ### Forms (login)
 - Quiet radial charcoal (no red wash) ; fields elevated surface ; focus border accent

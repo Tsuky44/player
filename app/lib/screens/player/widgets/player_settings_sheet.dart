@@ -12,6 +12,7 @@ import 'chapters_debug_panel.dart';
 import 'direct_source_label.dart';
 import 'player_settings_ui.dart';
 import 'player_subtitles_picker.dart';
+import '../../../theme/app_type.dart';
 
 /// Bottom-sheet widget that lets the user pick audio / subtitle tracks,
 /// switch the video display mode (fit vs cover), and select transcoding quality.
@@ -354,7 +355,7 @@ class _EmptyTracksMessage extends StatelessWidget {
         'Aucune piste disponible',
         style: TextStyle(
           color: Colors.white.withValues(alpha: 0.45),
-          fontSize: 13,
+          fontSize: AppType.subhead,
           fontFamily: 'Manrope',
         ),
       ),

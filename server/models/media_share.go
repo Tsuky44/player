@@ -5,11 +5,12 @@ import "time"
 // MediaShare est un lien de partage public tel que son créateur le voit
 // (GET /api/shares, POST /api/shares). Voir ADR-0037.
 type MediaShare struct {
-	ID        int    `json:"id"`
-	MediaID   int    `json:"media_id"`
-	MediaType string `json:"media_type"`
-	// Title est le film, ou la série pour un épisode ; Subtitle porte alors
-	// « S01E02 · Titre de l'épisode ».
+	ID      int `json:"id"`
+	MediaID int `json:"media_id"`
+	// MediaType vaut "movie", "episode", "season" ou "show".
+	// Title est le film, ou la série ; Subtitle porte alors « S01E02 · Titre
+	// de l'épisode », « Saison 2 » ou « Série entière ».
+	MediaType   string     `json:"media_type"`
 	Title       string     `json:"title"`
 	Subtitle    string     `json:"subtitle,omitempty"`
 	PosterURL   string     `json:"poster_url,omitempty"`
@@ -40,6 +41,19 @@ type SharedMedia struct {
 	Subtitle      string     `json:"subtitle,omitempty"`
 	PosterURL     string     `json:"poster_url,omitempty"`
 	Duration      int        `json:"duration,omitempty"`
+	// Episodes : ce que le lien d'une saison ou d'une série permet de lire,
+	// dans l'ordre de diffusion. Vide pour un film ou un épisode.
+	Episodes []SharedEpisode `json:"episodes,omitempty"`
+}
+
+// SharedEpisode est un épisode du lien d'une saison ou d'une série. Son ID se
+// renvoie à POST /api/shared/open pour le lire.
+type SharedEpisode struct {
+	ID            int    `json:"id"`
+	SeasonNumber  int    `json:"season_number"`
+	EpisodeNumber int    `json:"episode_number"`
+	Title         string `json:"title"`
+	Duration      int    `json:"duration,omitempty"`
 }
 
 // SharedMediaAccess est la réponse à l'ouverture d'un lien

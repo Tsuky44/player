@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:onyx/models/models.dart';
 import 'package:onyx/services/api_client.dart';
+import 'package:onyx/theme/app_icons.dart';
 import 'package:onyx/widgets/global/media_card.dart';
 import 'package:onyx/widgets/global/watch_badge.dart';
 import 'package:provider/provider.dart';
@@ -100,7 +101,7 @@ void main() {
     await pumpCard(tester, show(available: 10, watched: 10));
 
     expect(find.byType(WatchBadge), findsOneWidget);
-    expect(find.byIcon(Icons.check_rounded), findsOneWidget);
+    expect(find.byIcon(AppIcons.check), findsOneWidget);
     expect(find.text('10'), findsNothing);
   });
 
@@ -109,7 +110,7 @@ void main() {
     await pumpCard(tester, show(available: 10, watched: 4));
 
     expect(find.text('6'), findsOneWidget);
-    expect(find.byIcon(Icons.check_rounded), findsNothing);
+    expect(find.byIcon(AppIcons.check), findsNothing);
   });
 
   testWidgets('série non commencée : aucune pastille', (tester) async {
@@ -120,7 +121,7 @@ void main() {
 
   testWidgets('film vu : coche ; film non vu : rien', (tester) async {
     await pumpCard(tester, movie(), watched: true);
-    expect(find.byIcon(Icons.check_rounded), findsOneWidget);
+    expect(find.byIcon(AppIcons.check), findsOneWidget);
 
     await pumpCard(tester, movie());
     expect(find.byType(WatchBadge), findsNothing);

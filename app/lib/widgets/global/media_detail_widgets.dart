@@ -11,10 +11,13 @@ import '../../utils/poster_url.dart';
 import '../../utils/responsive.dart';
 import 'app_network_image.dart';
 import 'detail_metadata.dart';
+import 'detail_synopsis.dart';
 import '../../tv/tv_focus_memory.dart';
 import 'media_logo_display.dart';
 import 'poster_card.dart';
 import 'overlay_back_button.dart';
+import '../../theme/app_icons.dart';
+import '../../theme/app_type.dart';
 
 /// Hero header for movie/show detail pages: a wide backdrop with
 /// gradients, an overlaid poster, title, tagline, metadata chips and actions.
@@ -38,6 +41,10 @@ class DetailBackdropHeader extends StatelessWidget {
   /// a moment later — a second image and a visible flash for nothing.
   final bool loading;
 
+  /// Ce que l'en-tête écrit à la place d'un synopsis absent (« Chargement… »,
+  /// « Synopsis indisponible… »).
+  final String? emptyOverviewLabel;
+
   const DetailBackdropHeader({
     super.key,
     required this.fallback,
@@ -47,52 +54,28 @@ class DetailBackdropHeader extends StatelessWidget {
     this.actions,
     this.badges = const [],
     this.loading = false,
+    this.emptyOverviewLabel,
   });
 
   static const double heightDesktop = 540;
 
-  /// Le synopsis de l'en-tête : sa police, sa largeur et son nombre de lignes
-  /// servent aussi à [overviewTruncated], qui décide si la fiche le répète en
-  /// entier plus bas.
-  static const TextStyle overviewStyle = TextStyle(
-    color: AppColors.textSecondary,
-    fontSize: 14,
-    height: 1.55,
-  );
+  /// Largeur de lecture du synopsis sur grand écran.
   static const double overviewMaxWidth = 720;
-  static int overviewMaxLines(BuildContext context) =>
-      AppLayout.isCompact(context) ? 4 : 3;
 
-  /// Vrai quand [overview] ne tient pas dans l'en-tête et y est coupé.
-  ///
-  /// La fiche répétait jusqu'ici le synopsis en entier sous l'en-tête,
-  /// toujours — deux fois le même paragraphe, l'un sous l'autre, dès qu'il
-  /// était court.
-  static bool overviewTruncated(BuildContext context, String overview) {
-    final screen = MediaQuery.sizeOf(context).width;
-    final pad = AppLayout.pagePadding(context);
-    final compact = AppLayout.isCompact(context);
-    final available = compact
-        ? screen - 2 * pad
-        : (screen - 2 * pad - posterWidth - 36).clamp(0.0, overviewMaxWidth);
-    final painter = TextPainter(
-      // La police vient du thème, comme pour le Text de l'en-tête : mesuré
-      // dans la police par défaut, le synopsis n'a pas la même largeur.
-      text: TextSpan(
-        text: overview,
-        style: DefaultTextStyle.of(context).style.merge(overviewStyle),
-      ),
-      maxLines: overviewMaxLines(context),
-      textDirection: TextDirection.ltr,
-      textScaler: MediaQuery.textScalerOf(context),
-    )..layout(maxWidth: available);
-    final truncated = painter.didExceedMaxLines;
-    painter.dispose();
-    return truncated;
-  }
+  /// Marges de l'affiche dans l'en-tête : en bas elle s'aligne sur le texte,
+  /// en haut elle laisse passer le bouton retour.
+  static const double _posterBottom = 36;
+  static const double _posterTop = 116;
 
-  static const double posterWidth = 190;
-  static const double posterHeight = 285;
+  /// Sur grand écran l'affiche monte jusque sous le bouton retour, avec un
+  /// peu d'air : collée en haut, elle passait dessous. À 285 px
+  /// elle se posait en bas, sous un vide aussi haut qu'elle, à côté d'une
+  /// colonne de texte qui, elle, montait jusqu'en haut.
+  static const double posterHeight = heightDesktop - _posterBottom - _posterTop;
+  static const double posterWidth = posterHeight * 2 / 3;
+
+  /// Sur tablette, la grande affiche ne laisserait pas sa largeur au texte.
+  static const double posterHeightMedium = 285;
 
   /// What the backdrop slot draws: the catalog backdrop, else — once we know
   /// there is none — the poster.
@@ -188,7 +171,7 @@ class DetailBackdropHeader extends StatelessWidget {
           style: const TextStyle(
             color: AppColors.textSecondary,
             fontWeight: FontWeight.w600,
-            fontSize: 11,
+            fontSize: AppType.caption,
             letterSpacing: 1.6,
           ),
         ),
@@ -212,7 +195,7 @@ class DetailBackdropHeader extends StatelessWidget {
             overflow: TextOverflow.ellipsis,
             style: const TextStyle(
               color: AppColors.textSecondary,
-              fontSize: 14,
+              fontSize: AppType.body,
               fontStyle: FontStyle.italic,
             ),
           ),
@@ -240,11 +223,19 @@ class DetailBackdropHeader extends StatelessWidget {
           ConstrainedBox(
             constraints: BoxConstraints(
                 maxWidth: compact ? double.infinity : overviewMaxWidth),
-            child: Text(
-              overview,
-              maxLines: overviewMaxLines(context),
-              overflow: TextOverflow.ellipsis,
-              style: overviewStyle,
+            child: DetailSynopsis(
+              title: title,
+              overview: overview,
+              maxLines: compact ? 4 : 3,
+            ),
+          ),
+        ] else if (emptyOverviewLabel != null) ...[
+          const SizedBox(height: 16),
+          Text(
+            emptyOverviewLabel!,
+            style: const TextStyle(
+              color: AppColors.textMuted,
+              fontSize: AppType.body,
             ),
           ),
         ],
@@ -323,13 +314,18 @@ class DetailBackdropHeader extends StatelessWidget {
           Positioned(
             left: pad,
             right: pad,
-            bottom: compact ? 20 : 36,
+            bottom: compact ? 20 : _posterBottom,
             child: compact
                 ? infoColumn
                 : Row(
                     crossAxisAlignment: CrossAxisAlignment.end,
                     children: [
-                      _Poster(url: posterUrl),
+                      _Poster(
+                        url: posterUrl,
+                        height: AppLayout.isWide(context)
+                            ? posterHeight
+                            : posterHeightMedium,
+                      ),
                       const SizedBox(width: 36),
                       Expanded(child: infoColumn),
                     ],
@@ -365,13 +361,14 @@ class DetailBackdropHeader extends StatelessWidget {
 
 class _Poster extends StatelessWidget {
   final String? url;
+  final double height;
 
-  const _Poster({required this.url});
+  const _Poster({required this.url, required this.height});
 
   @override
   Widget build(BuildContext context) {
-    const w = DetailBackdropHeader.posterWidth;
-    const h = DetailBackdropHeader.posterHeight;
+    final h = height;
+    final w = h * 2 / 3;
     return Container(
       decoration: BoxDecoration(
         borderRadius: BorderRadius.circular(10),
@@ -394,7 +391,7 @@ class _Poster extends StatelessWidget {
             width: w,
             height: h,
             color: AppColors.surfaceElevated,
-            child: const Icon(Icons.movie_rounded,
+            child: const Icon(AppIcons.movie,
                 size: 48, color: AppColors.textMuted),
           ),
         ),
@@ -505,7 +502,7 @@ class _CastCard extends StatelessWidget {
                   overflow: TextOverflow.ellipsis,
                   style: const TextStyle(
                     color: AppColors.textPrimary,
-                    fontSize: 13,
+                    fontSize: AppType.subhead,
                     fontWeight: FontWeight.w600,
                   ),
                 ),
@@ -516,7 +513,7 @@ class _CastCard extends StatelessWidget {
                     overflow: TextOverflow.ellipsis,
                     style: const TextStyle(
                       color: AppColors.textMuted,
-                      fontSize: 11,
+                      fontSize: AppType.caption,
                     ),
                   ),
               ],
@@ -583,7 +580,7 @@ class CollectionSection extends StatelessWidget {
                   ),
                   child: Row(
                     children: [
-                      const Icon(Icons.collections_bookmark_rounded,
+                      const Icon(AppIcons.collection,
                           color: AppColors.accent, size: 26),
                       const SizedBox(width: 16),
                       Expanded(
@@ -595,7 +592,7 @@ class CollectionSection extends StatelessWidget {
                               'FAIT PARTIE DE LA SAGA',
                               style: TextStyle(
                                 color: AppColors.textMuted,
-                                fontSize: 11,
+                                fontSize: AppType.caption,
                                 fontWeight: FontWeight.w700,
                                 letterSpacing: 1,
                               ),
@@ -629,7 +626,7 @@ class CollectionSection extends StatelessWidget {
                             'Voir la saga',
                             style: TextStyle(
                               color: AppColors.textPrimary,
-                              fontSize: 13,
+                              fontSize: AppType.subhead,
                               fontWeight: FontWeight.w600,
                             ),
                           ),
@@ -637,7 +634,7 @@ class CollectionSection extends StatelessWidget {
                       ] else ...[
                         const SizedBox(width: 8),
                         Icon(
-                          Icons.chevron_right_rounded,
+                          AppIcons.chevronRight,
                           color: AppColors.textPrimary.withValues(alpha: 0.85),
                         ),
                       ],
@@ -709,7 +706,7 @@ class _UnavailableBadge extends StatelessWidget {
       child: Text(
         'Indispo',
         style: TextStyle(
-          fontSize: 10,
+          fontSize: AppType.micro,
           fontWeight: FontWeight.w600,
           letterSpacing: 0.4,
           color: Colors.white.withValues(alpha: 0.85),
@@ -786,123 +783,8 @@ class _CastPlaceholder extends StatelessWidget {
     return Container(
       color: AppColors.surfaceElevated,
       alignment: Alignment.center,
-      child: const Icon(Icons.person_rounded,
+      child: const Icon(AppIcons.person,
           size: 40, color: AppColors.textMuted),
-    );
-  }
-}
-
-/// Synopsis + facts (genres, director, writers, studios) block.
-class DetailInfoSection extends StatelessWidget {
-  final MediaDetails? details;
-  final String? fallbackOverview;
-  final String emptyOverviewLabel;
-
-  const DetailInfoSection({
-    super.key,
-    required this.details,
-    this.fallbackOverview,
-    this.emptyOverviewLabel = 'Synopsis indisponible.',
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    final overview = details?.overview ?? fallbackOverview;
-    final genres = details?.genres ?? const <String>[];
-    final director = details?.director;
-    final writers = details?.writers ?? const <String>[];
-    final studios = details?.studios ?? const <String>[];
-
-    final pad = AppLayout.pagePadding(context);
-    final compact = AppLayout.isCompact(context);
-
-    return Padding(
-      padding: EdgeInsets.fromLTRB(pad, 28, pad, 12),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          if (genres.isNotEmpty) ...[
-            Wrap(
-              spacing: 8,
-              runSpacing: 8,
-              children: [for (final g in genres) GenrePill(label: g)],
-            ),
-            const SizedBox(height: 24),
-          ],
-          if (overview == null || overview.isEmpty)
-            Text(
-              emptyOverviewLabel,
-              style: const TextStyle(color: AppColors.textMuted, fontSize: 15),
-            )
-          else if (DetailBackdropHeader.overviewTruncated(
-              context, overview)) ...[
-            Text('Synopsis', style: detailSectionTitleStyle(context)),
-            const SizedBox(height: 12),
-            ConstrainedBox(
-              constraints: const BoxConstraints(maxWidth: 860),
-              child: Text(
-                overview,
-                style: const TextStyle(
-                  color: AppColors.textSecondary,
-                  fontSize: 15,
-                  height: 1.6,
-                ),
-              ),
-            ),
-          ],
-          if (director != null && director.isNotEmpty ||
-              writers.isNotEmpty ||
-              studios.isNotEmpty) ...[
-            const SizedBox(height: 24),
-            Wrap(
-              spacing: compact ? 24 : 48,
-              runSpacing: 16,
-              children: [
-                if (director != null && director.isNotEmpty)
-                  _FactColumn(label: 'Réalisation', values: [director]),
-                if (writers.isNotEmpty)
-                  _FactColumn(label: 'Scénario', values: writers),
-                if (studios.isNotEmpty)
-                  _FactColumn(label: 'Studios', values: studios),
-              ],
-            ),
-          ],
-        ],
-      ),
-    );
-  }
-}
-
-class _FactColumn extends StatelessWidget {
-  final String label;
-  final List<String> values;
-
-  const _FactColumn({required this.label, required this.values});
-
-  @override
-  Widget build(BuildContext context) {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Text(
-          label.toUpperCase(),
-          style: const TextStyle(
-            color: AppColors.textMuted,
-            fontSize: 11,
-            fontWeight: FontWeight.w700,
-            letterSpacing: 1,
-          ),
-        ),
-        const SizedBox(height: 6),
-        Text(
-          values.join(', '),
-          style: const TextStyle(
-            color: AppColors.textPrimary,
-            fontSize: 14,
-            fontWeight: FontWeight.w500,
-          ),
-        ),
-      ],
     );
   }
 }

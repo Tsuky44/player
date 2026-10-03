@@ -5,6 +5,7 @@ import '../../../models/models.dart';
 import '../hooks/use_player_controller.dart';
 import 'extract_subtitles_button.dart';
 import 'player_settings_ui.dart';
+import '../../../theme/app_type.dart';
 
 /// Subtitle track list shared by the settings sheet and the subtitles popup.
 class PlayerSubtitlesPicker extends StatefulWidget {
@@ -142,7 +143,7 @@ class _EmptySubtitlesMessage extends StatelessWidget {
         'Aucune piste disponible',
         style: TextStyle(
           color: Colors.white.withValues(alpha: 0.45),
-          fontSize: 13,
+          fontSize: AppType.subhead,
           fontFamily: 'Manrope',
         ),
       ),

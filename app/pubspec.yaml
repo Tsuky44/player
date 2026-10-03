@@ -164,6 +164,7 @@ flutter:
   # premier texte, sur une application qui doit démarrer hors ligne.
   assets:
     - assets/fonts/OFL.txt
+    - assets/fonts/Phosphor-LICENSE.txt
 
   fonts:
     - family: Manrope
@@ -180,3 +181,15 @@ flutter:
           weight: 700
         - asset: assets/fonts/Manrope-800.ttf
           weight: 800
+    # Le jeu d'icônes de la navigation (Phosphor, MIT), lu par
+    # `lib/theme/app_icons.dart`. Les polices sont embarquées et non tirées du
+    # paquet `phosphor_flutter` : sa 2.1 étend `IconData`, devenue `final` dans
+    # Flutter, et ne compile plus. Deux graisses suffisent — trait régulier au
+    # repos, plein pour l'état actif. Le tree-shaking des icônes ne garde en
+    # release que les glyphes des `IconData` constants.
+    - family: PhosphorRegular
+      fonts:
+        - asset: assets/fonts/Phosphor-Regular.ttf
+    - family: PhosphorFill
+      fonts:
+        - asset: assets/fonts/Phosphor-Fill.ttf

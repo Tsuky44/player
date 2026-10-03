@@ -5,6 +5,7 @@ import '../../../models/player_layout.dart';
 import '../../../models/player_layout_templates.dart';
 import '../../../providers/player_layout_provider.dart';
 import '../../../theme/app_colors.dart';
+import '../../../theme/app_type.dart';
 
 /// Opens the prefabricated playeur catalog, then creates an account preset.
 Future<void> showPlayerTemplatePicker(BuildContext context) {
@@ -95,7 +96,7 @@ class _PlayerTemplatePickerSheetState extends State<_PlayerTemplatePickerSheet> 
               'Choisir un modèle',
               style: TextStyle(
                 color: AppColors.textPrimary,
-                fontSize: 20,
+                fontSize: AppType.title3,
                 fontWeight: FontWeight.w700,
                 letterSpacing: -0.02 * 20,
               ),
@@ -105,7 +106,7 @@ class _PlayerTemplatePickerSheetState extends State<_PlayerTemplatePickerSheet> 
               'Tous incluent les contrôles essentiels. Certains ajoutent des boutons.',
               style: TextStyle(
                 color: AppColors.textSecondary,
-                fontSize: 13,
+                fontSize: AppType.subhead,
                 height: 1.35,
               ),
             ),
@@ -210,7 +211,7 @@ class _TemplateCard extends StatelessWidget {
                       style: const TextStyle(
                         color: AppColors.textPrimary,
                         fontWeight: FontWeight.w600,
-                        fontSize: 15,
+                        fontSize: AppType.callout,
                       ),
                     ),
                     const SizedBox(height: 2),
@@ -218,7 +219,7 @@ class _TemplateCard extends StatelessWidget {
                       template.tagline,
                       style: const TextStyle(
                         color: AppColors.textSecondary,
-                        fontSize: 12,
+                        fontSize: AppType.footnote,
                       ),
                     ),
                     const SizedBox(height: 6),
@@ -226,7 +227,7 @@ class _TemplateCard extends StatelessWidget {
                       template.description,
                       style: const TextStyle(
                         color: AppColors.textMuted,
-                        fontSize: 12,
+                        fontSize: AppType.footnote,
                         height: 1.35,
                       ),
                     ),
@@ -251,7 +252,7 @@ class _TemplateCard extends StatelessWidget {
                                 label,
                                 style: const TextStyle(
                                   color: AppColors.textSecondary,
-                                  fontSize: 11,
+                                  fontSize: AppType.caption,
                                   fontWeight: FontWeight.w500,
                                 ),
                               ),
@@ -264,7 +265,7 @@ class _TemplateCard extends StatelessWidget {
                         'CORE uniquement',
                         style: TextStyle(
                           color: AppColors.primary.withValues(alpha: 0.85),
-                          fontSize: 11,
+                          fontSize: AppType.caption,
                           fontWeight: FontWeight.w600,
                         ),
                       ),

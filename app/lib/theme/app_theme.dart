@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 import 'app_colors.dart';
+import 'app_page_transitions.dart';
+import '../theme/app_type.dart';
 
 abstract final class AppTheme {
   /// La police de l'application, embarquée dans le paquet — voir l'ADR-0025.
@@ -45,6 +47,9 @@ abstract final class AppTheme {
       // la police lui aussi au lieu de retomber sur celle du système.
       fontFamily: fontFamily,
       scaffoldBackgroundColor: AppColors.background,
+      // Une seule transition de page, quel que soit le système — voir
+      // [OnyxPageTransitionsBuilder].
+      pageTransitionsTheme: appPageTransitionsTheme,
       primaryColor: AppColors.primary,
       colorScheme: const ColorScheme.dark(
         primary: AppColors.primary,
@@ -72,7 +77,7 @@ abstract final class AppTheme {
         centerTitle: false,
         titleTextStyle: textTheme.titleLarge?.copyWith(
           fontWeight: FontWeight.w700,
-          fontSize: 20,
+          fontSize: AppType.title3,
           letterSpacing: -0.02 * 20,
         ),
         iconTheme: const IconThemeData(color: AppColors.textPrimary),

@@ -4,7 +4,8 @@
   depuis un réseau extérieur
 - **Date :** 2026-09-24
 - **Portée :** le serveur (`server/sharelinks`, `server/handlers/media_shares.go`,
-  `server/handlers/shared_media.go`, `server/playbackauth/share.go`, migration 14) et l'app
+  `server/handlers/shared_media.go`, `server/handlers/share_scope.go`,
+  `server/playbackauth/share.go`, migration 14) et l'app
   (`app/lib/widgets/global/share_media_dialog.dart`, `share_media_button.dart`,
   `app/lib/screens/settings/pages/shares_page.dart`, `app/lib/screens/shared_link/`,
   `app/lib/services/api/shared_link_client.dart`, le droit `share_media`)
@@ -110,7 +111,31 @@ seau par lien pour les mauvais mots de passe, comme le seau par compte de l'ADR-
 routes suivent le rythme d'une lecture. Tant qu'un mot de passe est exigé, `/api/shared/info` ne
 dit pas quel média le lien ouvre.
 
+### 8. Une saison ou une série entière (ajout du 2026-10-03)
+
+Un lien peut aussi désigner une **saison** ou une **série** : `media_id` est alors celui de la
+saison ou de la série, sans migration. Il ouvre les épisodes lisibles qu'elle contient **au moment
+de l'ouverture** — un épisode arrivé après la création du lien en fait partie, un épisode sans
+fichier n'y figure pas (`server/handlers/share_scope.go`).
+
+- La page du lien liste les épisodes (`episodes` dans `/api/shared/info`), et le visiteur en
+  choisit un : `/api/shared/open` reçoit son `media_id`, vérifie qu'il appartient au lien, et
+  délivre un ticket **pour cet épisode seulement**. Les routes de la lecture (`tracks`,
+  `progress`) nomment l'épisode de la même façon ; le ticket prouve qu'il fait partie du lien.
+- Avec un mot de passe, `/api/shared/info` ne dit toujours rien. `/api/shared/contents` vérifie
+  le mot de passe, avec les limites de l'ouverture, et rend la liste sans rien délivrer : la page
+  apprend là seulement qu'elle a affaire à une série.
+- **Jamais à usage unique.** « Détruit après lecture » suppose un média : le serveur refuse
+  `single_use` sur une saison ou une série, et l'app ne le propose pas. Reste l'échéance, et la
+  suppression du lien. Écarté : détruire le lien quand tous les épisodes ont été vus — il aurait
+  fallu garder côté serveur la progression d'un visiteur sans compte, épisode par épisode.
+- La position de reprise est gardée dans le navigateur, une par épisode.
+- Le lecteur invité n'enchaîne pas sur l'épisode suivant : le visiteur revient à la liste.
+
 ## Conséquences
+
+- **Le lien d'une série ouvre beaucoup à la fois.** La borne de quatre lectures simultanées par
+  lien (§5) tient toujours, mais rien ne limite le nombre d'épisodes vus d'ici l'échéance.
 
 - **Le visiteur charge l'app web entière** (plusieurs mégaoctets) pour un seul média : quelques
   secondes de plus au premier affichage, surtout sur un téléphone.

@@ -3,6 +3,8 @@ import 'package:provider/provider.dart';
 
 import '../../../providers/auth_provider.dart';
 import '../../../theme/app_colors.dart';
+import '../../../theme/app_icons.dart';
+import '../../../theme/app_type.dart';
 
 /// Le menu « Métadonnées série » de la fiche d'une série.
 ///
@@ -32,7 +34,7 @@ class ShowMetadataMenu extends StatelessWidget {
       tooltip: 'Métadonnées série',
       onSelected: (action) => action(),
       icon: const Icon(
-        Icons.edit_note_rounded,
+        AppIcons.edit,
         color: AppColors.textSecondary,
       ),
       itemBuilder: (context) => [
@@ -40,11 +42,11 @@ class ShowMetadataMenu extends StatelessWidget {
           value: onRedetect,
           child: const ListTile(
             contentPadding: EdgeInsets.zero,
-            leading: Icon(Icons.auto_fix_high_outlined),
+            leading: Icon(AppIcons.identify),
             title: Text('Relancer la détection auto'),
             subtitle: Text(
               'À partir du dossier / fichiers locaux',
-              style: TextStyle(fontSize: 12),
+              style: TextStyle(fontSize: AppType.footnote),
             ),
           ),
         ),
@@ -52,11 +54,11 @@ class ShowMetadataMenu extends StatelessWidget {
           value: onPickOnTmdb,
           child: const ListTile(
             contentPadding: EdgeInsets.zero,
-            leading: Icon(Icons.search_rounded),
+            leading: Icon(AppIcons.search),
             title: Text('Choisir sur TMDB'),
             subtitle: Text(
               'Correction manuelle de l’affiche',
-              style: TextStyle(fontSize: 12),
+              style: TextStyle(fontSize: AppType.footnote),
             ),
           ),
         ),

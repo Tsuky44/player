@@ -4,6 +4,7 @@ import 'package:flutter/services.dart';
 import '../../../models/watch_party.dart';
 import '../../../services/watch_party.dart';
 import '../../../theme/app_colors.dart';
+import '../../../theme/app_type.dart';
 
 /// Le bouton « Regarder ensemble » des barres du lecteur : une icône parmi
 /// les autres, qui ne se distingue que pendant une séance.
@@ -89,7 +90,7 @@ class WatchPartyToast extends StatelessWidget {
                 message ?? '',
                 style: const TextStyle(
                   color: AppColors.textPrimary,
-                  fontSize: 13,
+                  fontSize: AppType.subhead,
                   fontWeight: FontWeight.w500,
                 ),
               ),
@@ -177,7 +178,7 @@ class _WatchPartyPanelState extends State<WatchPartyPanel> {
                   'Regarder ensemble',
                   style: TextStyle(
                     color: AppColors.textPrimary,
-                    fontSize: 17,
+                    fontSize: AppType.headline,
                     fontWeight: FontWeight.w700,
                   ),
                 ),
@@ -237,7 +238,7 @@ class _WatchPartyPanelState extends State<WatchPartyPanel> {
         children: [
           const Text(
             'Code de la séance',
-            style: TextStyle(color: AppColors.textSecondary, fontSize: 12),
+            style: TextStyle(color: AppColors.textSecondary, fontSize: AppType.footnote),
           ),
           const SizedBox(height: 6),
           Row(
@@ -247,7 +248,7 @@ class _WatchPartyPanelState extends State<WatchPartyPanel> {
                   party.code,
                   style: const TextStyle(
                     color: AppColors.textPrimary,
-                    fontSize: 30,
+                    fontSize: AppType.display,
                     fontWeight: FontWeight.w800,
                     letterSpacing: 6,
                     fontFeatures: [FontFeature.tabularFigures()],
@@ -264,7 +265,7 @@ class _WatchPartyPanelState extends State<WatchPartyPanel> {
           const SizedBox(height: 4),
           const Text(
             'Pour rejoindre : menu du compte › Rejoindre une séance.',
-            style: TextStyle(color: AppColors.textMuted, fontSize: 12),
+            style: TextStyle(color: AppColors.textMuted, fontSize: AppType.footnote),
           ),
           const SizedBox(height: 16),
           Text(
@@ -273,7 +274,7 @@ class _WatchPartyPanelState extends State<WatchPartyPanel> {
                 : 'En attente des autres participants…',
             style: const TextStyle(
               color: AppColors.textSecondary,
-              fontSize: 12,
+              fontSize: AppType.footnote,
               fontWeight: FontWeight.w600,
             ),
           ),
@@ -314,7 +315,7 @@ class _MemberRow extends StatelessWidget {
               name[0].toUpperCase(),
               style: const TextStyle(
                 color: AppColors.textPrimary,
-                fontSize: 12,
+                fontSize: AppType.footnote,
                 fontWeight: FontWeight.w700,
               ),
             ),
@@ -332,7 +333,7 @@ class _MemberRow extends StatelessWidget {
                   Text(
                     member.device!,
                     style: const TextStyle(
-                        color: AppColors.textMuted, fontSize: 11),
+                        color: AppColors.textMuted, fontSize: AppType.caption),
                     overflow: TextOverflow.ellipsis,
                   ),
               ],
@@ -341,7 +342,7 @@ class _MemberRow extends StatelessWidget {
           if (member.isHost)
             const Text(
               'Hôte',
-              style: TextStyle(color: AppColors.accentMuted, fontSize: 12),
+              style: TextStyle(color: AppColors.accentMuted, fontSize: AppType.footnote),
             ),
         ],
       ),

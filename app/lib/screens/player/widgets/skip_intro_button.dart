@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 
 import '../../../theme/app_colors.dart';
 import '../hooks/use_episode_navigation.dart';
+import '../../../theme/app_type.dart';
 
 /// The "skip intro" offer.
 ///
@@ -115,7 +116,7 @@ class _SkipIntroButtonState extends State<SkipIntroButton>
                             "Passer l'intro",
                             style: TextStyle(
                               color: AppColors.textPrimary,
-                              fontSize: 14,
+                              fontSize: AppType.body,
                               fontWeight: FontWeight.w600,
                               letterSpacing: -0.2,
                             ),
@@ -126,7 +127,7 @@ class _SkipIntroButtonState extends State<SkipIntroButton>
                               '${widget.countdownSeconds}s',
                               style: const TextStyle(
                                 color: AppColors.textSecondary,
-                                fontSize: 13,
+                                fontSize: AppType.subhead,
                                 fontWeight: FontWeight.w500,
                               ),
                             ),

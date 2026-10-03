@@ -1,5 +1,4 @@
 import 'dart:async';
-import 'dart:ui';
 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -21,7 +20,6 @@ import '../../widgets/global/app_download_button.dart';
 import '../../widgets/global/app_update_dialog.dart';
 import '../../widgets/global/glass_catalog_search.dart';
 import '../../widgets/global/glass_chrome.dart';
-import '../../widgets/global/sticky_glass_search.dart';
 import '../../desktop_window.dart';
 import '../../navigation/shell_navigator.dart';
 import '../../tv/tv_mode.dart';
@@ -32,8 +30,12 @@ import '../home/home_screen.dart';
 import '../library/movies_screen.dart';
 import '../library/shows_screen.dart';
 import '../requests/requests_screen.dart';
+import 'mobile_bottom_nav.dart';
+import 'mobile_top_bar.dart';
 import 'shell_page_open_listener.dart';
 import 'shell_tab_stack.dart';
+import '../../theme/app_icons.dart';
+import '../../theme/app_type.dart';
 
 class MainShell extends StatefulWidget {
   const MainShell({super.key});
@@ -245,6 +247,19 @@ class _MainShellState extends State<MainShell> {
       ));
   }
 
+  /// Les onglets dont la liste a quitté son haut : la barre du haut mobile y
+  /// prend son verre ([MobileTopBar]).
+  final Set<int> _scrolledTabs = {};
+
+  Widget _trackScroll(int index, Widget tab) {
+    return ScrollEdgeListener(
+      onScrolledChanged: (scrolled) => setState(() {
+        scrolled ? _scrolledTabs.add(index) : _scrolledTabs.remove(index);
+      }),
+      child: tab,
+    );
+  }
+
   void _focusTab(int index) {
     // Un onglet absent de l'en-tête (pas de droit de demande, pas de
     // téléchargements sur cet appareil) n'a pas de nœud monté : l'accueil, lui,
@@ -291,10 +306,10 @@ class _MainShellState extends State<MainShell> {
           onNavigateToMovies: () => _selectTab(1),
           onNavigateToShows: () => _selectTab(2),
         ),
-        MoviesScreen(embedded: isWide),
-        ShowsScreen(embedded: isWide),
-        RequestsScreen(embedded: isWide),
-        DownloadsScreen(embedded: isWide),
+        _trackScroll(1, MoviesScreen(embedded: isWide)),
+        _trackScroll(2, ShowsScreen(embedded: isWide)),
+        _trackScroll(3, RequestsScreen(embedded: isWide)),
+        _trackScroll(4, DownloadsScreen(embedded: isWide)),
       ],
     );
 
@@ -316,7 +331,7 @@ class _MainShellState extends State<MainShell> {
                           tabs: tabs, isWide: isWide),
                 ),
                 if (!isWide)
-                  _MobileBottomNav(
+                  MobileBottomNav(
                     selectedIndex: _selectedIndex,
                     onTabSelected: _selectTab,
                     canRequestMedia: authProvider.permissions.requestMedia,
@@ -350,23 +365,9 @@ class _MainShellState extends State<MainShell> {
               top: 0,
               left: 0,
               right: 0,
-              child: SafeArea(
-                bottom: false,
-                child: Padding(
-                  padding: const EdgeInsets.fromLTRB(16, 6, 12, 0),
-                  child: Row(
-                    children: [
-                      const Spacer(),
-                      ConstrainedBox(
-                        constraints: const BoxConstraints(maxWidth: 220),
-                        child: const InlineCatalogSearch(),
-                      ),
-                      const SizedBox(width: 8),
-                      const AppDownloadButton(),
-                      AccountMenu(authProvider: authProvider),
-                    ],
-                  ),
-                ),
+              child: MobileTopBar(
+                scrolled: _scrolledTabs.contains(_selectedIndex),
+                authProvider: authProvider,
               ),
             ),
         ],
@@ -492,141 +493,6 @@ class _DesktopGlassHeader extends StatelessWidget {
   }
 }
 
-class _MobileBottomNav extends StatelessWidget {
-  final int selectedIndex;
-  final ValueChanged<int> onTabSelected;
-
-  final bool canRequestMedia;
-  final bool canDownload;
-
-  const _MobileBottomNav({
-    required this.selectedIndex,
-    required this.onTabSelected,
-    required this.canRequestMedia,
-    required this.canDownload,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    // La plus grande surface structurelle de l'app sur téléphone : elle se lit
-    // en verre sombre et dense, pas en voile blanc à 5 % — plus légère que
-    // n'importe quel menu, elle laissait passer les affiches en pleine
-    // couleur sous les libellés.
-    return ClipRRect(
-      child: BackdropFilter.grouped(
-        filter: ImageFilter.blur(sigmaX: 28, sigmaY: 28),
-        child: Container(
-          decoration: BoxDecoration(
-            color: AppColors.background.withValues(alpha: 0.72),
-            border: Border(
-                top: BorderSide(color: Colors.white.withValues(alpha: 0.08))),
-          ),
-          child: SafeArea(
-            top: false,
-            child: SizedBox(
-              height: 56,
-              child: Row(
-                children: [
-                  _BottomNavItem(
-                    icon: Icons.home_outlined,
-                    selectedIcon: Icons.home_rounded,
-                    label: 'Accueil',
-                    selected: selectedIndex == 0,
-                    onTap: () => onTabSelected(0),
-                  ),
-                  _BottomNavItem(
-                    icon: Icons.movie_outlined,
-                    selectedIcon: Icons.movie_rounded,
-                    label: 'Films',
-                    selected: selectedIndex == 1,
-                    onTap: () => onTabSelected(1),
-                  ),
-                  _BottomNavItem(
-                    icon: Icons.tv_outlined,
-                    selectedIcon: Icons.tv_rounded,
-                    label: 'Séries',
-                    selected: selectedIndex == 2,
-                    onTap: () => onTabSelected(2),
-                  ),
-                  if (canRequestMedia)
-                    _BottomNavItem(
-                      icon: Icons.add_circle_outline_rounded,
-                      selectedIcon: Icons.add_circle_rounded,
-                      label: 'Demandes',
-                      selected: selectedIndex == 3,
-                      onTap: () => onTabSelected(3),
-                    ),
-                  if (canDownload)
-                    _BottomNavItem(
-                      icon: Icons.download_for_offline_outlined,
-                      selectedIcon: Icons.download_for_offline_rounded,
-                      label: 'Hors ligne',
-                      selected: selectedIndex == 4,
-                      onTap: () => onTabSelected(4),
-                    ),
-                ],
-              ),
-            ),
-          ),
-        ),
-      ),
-    );
-  }
-}
-
-class _BottomNavItem extends StatelessWidget {
-  final IconData icon;
-
-  /// Plein quand l'onglet est actif, creux sinon : la sélection se lit à la
-  /// forme autant qu'à la couleur.
-  final IconData selectedIcon;
-  final String label;
-  final bool selected;
-  final VoidCallback onTap;
-
-  const _BottomNavItem({
-    required this.icon,
-    required this.selectedIcon,
-    required this.label,
-    required this.selected,
-    required this.onTap,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    return Expanded(
-      child: Material(
-        color: Colors.transparent,
-        child: InkWell(
-          onTap: onTap,
-          child: Column(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              // Blanc et non bleu : l'accent est réservé au focus et à la
-              // progression, et cinq onglets en bas d'écran ne sont ni l'un ni
-              // l'autre.
-              Icon(
-                selected ? selectedIcon : icon,
-                color: selected ? AppColors.textPrimary : AppColors.textMuted,
-                size: 24,
-              ),
-              const SizedBox(height: 4),
-              Text(
-                label,
-                style: TextStyle(
-                  color: selected ? AppColors.textPrimary : AppColors.textMuted,
-                  fontSize: 11,
-                  fontWeight: selected ? FontWeight.w600 : FontWeight.w400,
-                ),
-              ),
-            ],
-          ),
-        ),
-      ),
-    );
-  }
-}
-
 class _IndexerActions extends StatelessWidget {
   final HomeProvider homeProvider;
 
@@ -690,7 +556,7 @@ class _StatusBadge extends StatelessWidget {
               label,
               style: TextStyle(
                 color: AppColors.textMuted.withValues(alpha: 0.95),
-                fontSize: 11,
+                fontSize: AppType.caption,
                 fontWeight: FontWeight.w500,
               ),
             ),
@@ -743,7 +609,7 @@ class _OfflineShell extends StatelessWidget {
                         await reachability.check();
                         await authProvider.reconnect();
                       },
-                      icon: const Icon(Icons.refresh_rounded,
+                      icon: const Icon(AppIcons.refresh,
                           color: AppColors.textSecondary),
                     ),
                     AccountMenu(authProvider: authProvider),

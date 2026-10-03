@@ -3,6 +3,7 @@ import '../../../models/player_layout.dart';
 import '../hooks/use_studio_controller.dart';
 import '../../../widgets/global/app_slider.dart';
 import '../../../theme/app_colors.dart';
+import '../../../theme/app_type.dart';
 
 /// Compact floating menu shown on right-click over a canvas control.
 class ControlContextMenu extends StatelessWidget {
@@ -79,7 +80,7 @@ class ControlContextMenu extends StatelessWidget {
                             placed.type.label,
                             style: const TextStyle(
                               color: Colors.white,
-                              fontSize: 13,
+                              fontSize: AppType.subhead,
                               fontWeight: FontWeight.w600,
                             ),
                             overflow: TextOverflow.ellipsis,
@@ -132,7 +133,7 @@ class ControlContextMenu extends StatelessWidget {
                           'Boutons',
                           style: TextStyle(
                             color: Colors.white.withValues(alpha: 0.55),
-                            fontSize: 11,
+                            fontSize: AppType.caption,
                             fontWeight: FontWeight.w600,
                             letterSpacing: 0.4,
                           ),
@@ -211,7 +212,7 @@ class ControlContextMenu extends StatelessWidget {
                         'Supprimer',
                         style: TextStyle(
                           color: Colors.red.shade400,
-                          fontSize: 13,
+                          fontSize: AppType.subhead,
                           fontWeight: FontWeight.w500,
                         ),
                       ),
@@ -254,7 +255,7 @@ class _CompactSlider extends StatelessWidget {
               label,
               style: TextStyle(
                 color: Colors.white.withValues(alpha: 0.75),
-                fontSize: 12,
+                fontSize: AppType.footnote,
               ),
             ),
             const Spacer(),
@@ -262,7 +263,7 @@ class _CompactSlider extends StatelessWidget {
               '${(clamped * 100).round()}%',
               style: TextStyle(
                 color: Colors.white.withValues(alpha: 0.45),
-                fontSize: 11,
+                fontSize: AppType.caption,
                 fontFeatures: const [FontFeature.tabularFigures()],
               ),
             ),
@@ -312,7 +313,7 @@ class _CompactToggle extends StatelessWidget {
               label,
               style: TextStyle(
                 color: Colors.white.withValues(alpha: 0.8),
-                fontSize: 12,
+                fontSize: AppType.footnote,
               ),
             ),
           ),

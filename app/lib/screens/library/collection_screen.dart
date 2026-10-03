@@ -10,6 +10,7 @@ import '../../utils/responsive.dart';
 import '../../widgets/global/app_network_image.dart';
 import '../../widgets/global/media_detail_widgets.dart';
 import '../../widgets/global/overlay_back_button.dart';
+import '../../theme/app_type.dart';
 
 class CollectionScreen extends StatefulWidget {
   final int collectionId;
@@ -194,7 +195,7 @@ class _CollectionHeader extends StatelessWidget {
                   style: TextStyle(
                     color: AppColors.accent,
                     fontWeight: FontWeight.w700,
-                    fontSize: 12,
+                    fontSize: AppType.footnote,
                     letterSpacing: 1.6,
                   ),
                 ),
@@ -212,7 +213,7 @@ class _CollectionHeader extends StatelessWidget {
                     '$partsCount film${partsCount > 1 ? 's' : ''}'
                     '${ownedCount > 0 ? ' · $ownedCount dans ta bibliothèque' : ''}',
                     style: const TextStyle(
-                        color: AppColors.textSecondary, fontSize: 14),
+                        color: AppColors.textSecondary, fontSize: AppType.body),
                   ),
                 ],
                 if (overview != null && overview!.isNotEmpty) ...[
@@ -225,7 +226,7 @@ class _CollectionHeader extends StatelessWidget {
                       overflow: TextOverflow.ellipsis,
                       style: const TextStyle(
                         color: AppColors.textSecondary,
-                        fontSize: 14,
+                        fontSize: AppType.body,
                         height: 1.55,
                       ),
                     ),

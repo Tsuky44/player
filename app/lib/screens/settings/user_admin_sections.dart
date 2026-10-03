@@ -10,6 +10,7 @@ import '../../models/models.dart';
 import '../../providers/auth_provider.dart';
 import '../../services/api_client.dart';
 import '../../theme/app_colors.dart';
+import '../../theme/app_type.dart';
 
 /// Human labels for the administration rights, in the order they are shown.
 const permissionLabels = <(String, String)>[
@@ -532,16 +533,16 @@ class _InvitationsSectionState extends State<InvitationsSection> {
           children: [
             const Text('Lien (navigateur, même réseau que cette adresse) :'),
             const SizedBox(height: 4),
-            SelectableText(link, style: const TextStyle(fontSize: 12)),
+            SelectableText(link, style: const TextStyle(fontSize: AppType.footnote)),
             const SizedBox(height: 16),
             const Text('Code (à saisir dans l’app) :'),
             const SizedBox(height: 4),
             SelectableText(invitation.token,
-                style: const TextStyle(fontSize: 12)),
+                style: const TextStyle(fontSize: AppType.footnote)),
             const SizedBox(height: 16),
             const Text(
               'Valable 7 jours, utilisable une seule fois.',
-              style: TextStyle(color: AppColors.textSecondary, fontSize: 12),
+              style: TextStyle(color: AppColors.textSecondary, fontSize: AppType.footnote),
             ),
           ],
         ),
@@ -688,7 +689,7 @@ class _Chip extends StatelessWidget {
         borderRadius: BorderRadius.circular(999),
       ),
       child: Text(label,
-          style: const TextStyle(fontSize: 11, color: AppColors.textSecondary)),
+          style: const TextStyle(fontSize: AppType.caption, color: AppColors.textSecondary)),
     );
   }
 }
@@ -719,7 +720,7 @@ Future<String?> _promptPassword(BuildContext context,
           if (hint != null) ...[
             Text(hint,
                 style: const TextStyle(
-                    color: AppColors.textSecondary, fontSize: 12)),
+                    color: AppColors.textSecondary, fontSize: AppType.footnote)),
             const SizedBox(height: 12),
           ],
           TvDeferredKeyboard(

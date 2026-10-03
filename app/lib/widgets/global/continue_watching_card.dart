@@ -14,6 +14,8 @@ import 'poster_card.dart';
 import 'poster_launch_route.dart';
 import 'pressable.dart';
 import 'progress_pill.dart';
+import '../../theme/app_icons.dart';
+import '../../theme/app_type.dart';
 
 class ContinueWatchingCard extends StatefulWidget {
   /// TMDB posters are 2:3 — match that ratio so faces/titles aren't cropped.
@@ -248,7 +250,7 @@ class _ContinueWatchingCardState extends State<ContinueWatchingCard> {
                       style: const TextStyle(
                         color: AppColors.textPrimary,
                         fontWeight: FontWeight.w600,
-                        fontSize: 13,
+                        fontSize: AppType.subhead,
                         height: 1.2,
                       ),
                     ),
@@ -261,7 +263,7 @@ class _ContinueWatchingCardState extends State<ContinueWatchingCard> {
                     overflow: TextOverflow.ellipsis,
                     style: const TextStyle(
                       color: AppColors.textMuted,
-                      fontSize: 11,
+                      fontSize: AppType.caption,
                       height: 1.2,
                     ),
                   ),
@@ -313,13 +315,13 @@ class _NewEpisodeBadge extends StatelessWidget {
       child: const Row(
         mainAxisSize: MainAxisSize.min,
         children: [
-          Icon(Icons.fiber_new_rounded, size: 13, color: AppColors.onAccent),
+          Icon(AppIcons.isNew, size: 13, color: AppColors.onAccent),
           SizedBox(width: 4),
           Text(
             'Nouvel épisode',
             style: TextStyle(
               color: AppColors.onAccent,
-              fontSize: 10,
+              fontSize: AppType.micro,
               fontWeight: FontWeight.w700,
               letterSpacing: 0.2,
               height: 1.1,
@@ -357,7 +359,7 @@ class _MoreButton extends StatelessWidget {
             fixedSize: const Size(32, 32),
             padding: EdgeInsets.zero,
           ),
-          icon: const Icon(Icons.more_horiz_rounded, size: 20),
+          icon: const Icon(AppIcons.more, size: 20),
         ),
       ),
     );

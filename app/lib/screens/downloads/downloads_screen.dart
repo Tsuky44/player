@@ -16,6 +16,8 @@ import '../../widgets/global/media_download_button.dart';
 import '../../widgets/global/metered_download_dialog.dart';
 import '../player/player_screen.dart';
 import 'download_group_headers.dart';
+import '../../theme/app_icons.dart';
+import '../../theme/app_type.dart';
 
 /// Ce qui est sur l'appareil, et rien d'autre.
 ///
@@ -69,7 +71,7 @@ class DownloadsScreen extends StatelessWidget {
             const SliverFillRemaining(
               hasScrollBody: false,
               child: EmptyStateView(
-                icon: Icons.cloud_off_rounded,
+                icon: AppIcons.cloudOff,
                 title: 'Indisponible ici',
                 message:
                     'Le téléchargement hors ligne demande un espace de stockage '
@@ -81,7 +83,7 @@ class DownloadsScreen extends StatelessWidget {
             const SliverFillRemaining(
               hasScrollBody: false,
               child: EmptyStateView(
-                icon: Icons.download_for_offline_outlined,
+                icon: AppIcons.offline,
                 title: 'Aucun téléchargement',
                 message:
                     "Depuis la fiche d'un film ou d'une série, le bouton de "
@@ -246,7 +248,7 @@ class _Header extends StatelessWidget {
             if (watchedCount > 0)
               TextButton.icon(
                 onPressed: () => _deleteWatched(context, watchedCount),
-                icon: const Icon(Icons.delete_sweep_outlined, size: 18),
+                icon: const Icon(AppIcons.clearAll, size: 18),
                 label: Text(compact
                     ? 'Vus ($watchedCount)'
                     : 'Supprimer les vus ($watchedCount)'),
@@ -262,14 +264,14 @@ class _Header extends StatelessWidget {
             '$itemCount ${itemCount > 1 ? 'éléments' : 'élément'} · ${formatBytes(bytes)}',
             style: const TextStyle(
               color: AppColors.textMuted,
-              fontSize: 13,
+              fontSize: AppType.subhead,
             ),
           ),
         ],
         if (heldForNetwork) ...[
           const SizedBox(height: 16),
           _Banner(
-            icon: Icons.wifi_off_rounded,
+            icon: AppIcons.wifiOff,
             color: AppColors.warning,
             text: queuedCount > 1
                 ? '$queuedCount téléchargements attendent le Wi-Fi : le réseau '
@@ -285,7 +287,7 @@ class _Header extends StatelessWidget {
         if (offline) ...[
           const SizedBox(height: 16),
           _Banner(
-            icon: Icons.cloud_off_rounded,
+            icon: AppIcons.cloudOff,
             color: AppColors.warning,
             text: pendingSync > 0
                 ? 'Serveur injoignable. $pendingSync ${pendingSync > 1 ? 'lectures seront synchronisées' : 'lecture sera synchronisée'} au retour de la connexion.'
@@ -294,7 +296,7 @@ class _Header extends StatelessWidget {
         ] else if (pendingSync > 0) ...[
           const SizedBox(height: 16),
           _Banner(
-            icon: Icons.sync_rounded,
+            icon: AppIcons.sync,
             color: AppColors.accent,
             text:
                 'Synchronisation de $pendingSync ${pendingSync > 1 ? 'lectures' : 'lecture'} avec le serveur…',
@@ -371,7 +373,7 @@ class _Banner extends StatelessWidget {
               text,
               style: const TextStyle(
                 color: AppColors.textSecondary,
-                fontSize: 13,
+                fontSize: AppType.subhead,
                 height: 1.35,
               ),
             ),
@@ -444,7 +446,7 @@ class _DownloadRow extends StatelessWidget {
                         color: entry.status == DownloadStatus.failed
                             ? AppColors.error
                             : AppColors.textMuted,
-                        fontSize: 12,
+                        fontSize: AppType.footnote,
                       ),
                     ),
                     if (entry.isActive) ...[
@@ -549,7 +551,7 @@ class _Thumbnail extends StatelessWidget {
                     color: Colors.black.withValues(alpha: 0.65),
                     shape: BoxShape.circle,
                   ),
-                  child: const Icon(Icons.check_rounded,
+                  child: const Icon(AppIcons.check,
                       size: 13, color: AppColors.success),
                 ),
               ),
@@ -584,7 +586,7 @@ class _RowActions extends StatelessWidget {
   Widget build(BuildContext context) {
     final manager = context.read<DownloadManager>();
     return PopupMenuButton<String>(
-      icon: const Icon(Icons.more_vert_rounded,
+      icon: const Icon(AppIcons.moreVertical,
           color: AppColors.textSecondary, size: 20),
       color: AppColors.surfaceElevated,
       onSelected: (value) async {

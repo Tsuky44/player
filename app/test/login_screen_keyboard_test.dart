@@ -122,6 +122,28 @@ void main() {
     });
   }
 
+  // 1Password remplissait le mot de passe et laissait l'identifiant vide : aucun
+  // champ ne disait ce qu'il était, et l'adresse du serveur passait devant.
+  testWidgets('a password manager is told which field is the username',
+      (tester) async {
+    await pumpLogin(tester);
+
+    Iterable<String>? hints(int index) => tester
+        .widget<EditableText>(find.byType(EditableText).at(index))
+        .autofillHints;
+
+    expect(hints(0), isNull, reason: 'the server address is not a login');
+    expect(hints(1), [AutofillHints.username]);
+    expect(hints(2), [AutofillHints.password]);
+    expect(
+      find.ancestor(
+        of: find.byType(EditableText).at(1),
+        matching: find.byType(AutofillGroup),
+      ),
+      findsOneWidget,
+    );
+  });
+
   testWidgets('the eye reveals the password and hides it again',
       (tester) async {
     await pumpLogin(tester);

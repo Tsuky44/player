@@ -11,17 +11,50 @@ import 'package:shared_preferences/shared_preferences.dart';
 
 /// Un lien dont le serveur répond sans réseau.
 class _Api extends SharedLinkApiClient {
-  _Api(this._info, {this.refusal}) : super('AbCdEfGhIjKlMnOpQrStUv');
+  _Api(this._info, {this.refusal, this.unlocked})
+      : super('AbCdEfGhIjKlMnOpQrStUv');
 
   final SharedMediaInfo _info;
   final SharedLinkException? refusal;
+
+  /// Ce que le lien décrit une fois son mot de passe donné.
+  final SharedMediaInfo? unlocked;
+
+  /// Les épisodes dont l'ouverture a été demandée.
+  final List<int?> opened = [];
 
   @override
   Future<SharedMediaInfo> info() async {
     if (refusal != null) throw refusal!;
     return _info;
   }
+
+  @override
+  Future<SharedMediaInfo> contents(String password) async {
+    if (password != 'popcorn') {
+      throw const SharedLinkException(401, 'Mot de passe incorrect.');
+    }
+    return unlocked!;
+  }
+
+  // L'ouverture s'arrête ici : le lecteur lui-même n'est pas l'objet du test.
+  @override
+  Future<({SharedMediaInfo media, int mediaId})> open(String password,
+      {int? episodeId}) async {
+    opened.add(episodeId);
+    throw const SharedLinkException(0, 'Serveur injoignable.');
+  }
 }
+
+const _season = SharedMediaInfo(
+  mediaType: 'season',
+  title: 'Lioness',
+  subtitle: 'Saison 1',
+  episodes: [
+    SharedEpisode(id: 11, seasonNumber: 1, episodeNumber: 1, title: 'Pilote'),
+    SharedEpisode(id: 15, seasonNumber: 1, episodeNumber: 5, title: 'Fin'),
+  ],
+);
 
 Future<void> _pump(WidgetTester tester, _Api api) async {
   SharedPreferences.setMockInitialValues({});
@@ -68,6 +101,59 @@ void main() {
     await _pump(tester, _Api(const SharedMediaInfo(needsPassword: true)));
     expect(find.text('Contenu protégé'), findsOneWidget);
     expect(find.byType(TextField), findsOneWidget);
+  });
+
+  // Le lien d'une saison ou d'une série n'a pas de bouton « Regarder » : le
+  // visiteur choisit un épisode, et c'est celui-là que le serveur ouvre.
+  testWidgets('le lien d’une saison liste ses épisodes et ouvre celui choisi',
+      (tester) async {
+    final api = _Api(_season);
+    await _pump(tester, api);
+    expect(find.text('Saison 1'), findsOneWidget);
+    expect(find.text('2 épisodes'), findsOneWidget);
+    expect(find.text('1. Pilote'), findsOneWidget);
+    expect(find.text('Regarder'), findsNothing);
+
+    await tester.tap(find.text('5. Fin'));
+    await tester.pump(const Duration(milliseconds: 100));
+    expect(api.opened, [15]);
+    expect(find.text('Serveur injoignable.'), findsOneWidget);
+    expect(find.text('1. Pilote'), findsOneWidget,
+        reason: 'un échec laisse la liste : un autre épisode reste à choisir');
+  });
+
+  testWidgets(
+      'une série protégée ne montre ses épisodes qu’une fois le mot de passe donné',
+      (tester) async {
+    final api = _Api(const SharedMediaInfo(needsPassword: true),
+        unlocked: const SharedMediaInfo(
+          needsPassword: true,
+          mediaType: 'show',
+          title: 'Lioness',
+          subtitle: 'Série entière',
+          episodes: [
+            SharedEpisode(id: 11, seasonNumber: 1, episodeNumber: 1),
+            SharedEpisode(id: 21, seasonNumber: 2, episodeNumber: 1),
+          ],
+        ));
+    await _pump(tester, api);
+    expect(find.text('Contenu protégé'), findsOneWidget);
+
+    await tester.enterText(find.byType(TextField), 'nope');
+    await tester.tap(find.text('Ouvrir'));
+    await tester.pump(const Duration(milliseconds: 100));
+    expect(find.text('Mot de passe incorrect.'), findsOneWidget);
+
+    await tester.enterText(find.byType(TextField), 'popcorn');
+    await tester.tap(find.text('Ouvrir'));
+    await tester.pump(const Duration(milliseconds: 100));
+    expect(find.text('Lioness'), findsOneWidget);
+    expect(find.text('Saison 2'), findsOneWidget,
+        reason: 'plusieurs saisons : chacune est nommée');
+    expect(find.text('Épisode 1'), findsNWidgets(2));
+    expect(find.byType(TextField), findsNothing);
+    expect(api.opened, isEmpty,
+        reason: 'lister les épisodes ne délivre aucun ticket');
   });
 
   testWidgets('un lien vu dit qu’il n’est plus disponible', (tester) async {

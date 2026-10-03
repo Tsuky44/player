@@ -10,6 +10,7 @@ import '../../utils/search_match.dart';
 import '../../widgets/global/media_card.dart';
 import '../../widgets/global/skeleton.dart';
 import 'movie_detail_screen.dart';
+import '../../theme/app_icons.dart';
 
 enum _SortOption { title, recent, progress }
 
@@ -106,7 +107,7 @@ class _MoviesScreenState extends State<MoviesScreen> {
                 else if (lp.movies.isEmpty)
                   const SliverFillRemaining(
                     child: EmptyStateView(
-                      icon: Icons.movie_creation_outlined,
+                      icon: AppIcons.movie,
                       title: 'Aucun film',
                       message:
                           'Ajoutez des fichiers vidéo dans votre dossier Films puis synchronisez la bibliothèque.',

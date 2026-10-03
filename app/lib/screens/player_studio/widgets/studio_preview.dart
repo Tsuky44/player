@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import '../../../models/player_layout.dart';
 import '../../../widgets/global/control_chrome.dart';
+import '../../../theme/app_type.dart';
 
 /// Full-screen preview of the current layout without any editing chrome.
 ///
@@ -162,7 +163,7 @@ class _DummyVideoBackground extends StatelessWidget {
               'APERÇU PLEIN ÉCRAN',
               style: TextStyle(
                 color: Colors.white.withValues(alpha: 0.12),
-                fontSize: 16,
+                fontSize: AppType.headline,
                 letterSpacing: 6,
                 fontWeight: FontWeight.bold,
               ),

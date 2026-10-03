@@ -5,6 +5,7 @@ import '../../../utils/format.dart';
 import '../hooks/use_episode_navigation.dart';
 import '../hooks/use_player_controller.dart';
 import '../../../theme/app_colors.dart';
+import '../../../theme/app_type.dart';
 
 /// Debug panel listing MKV chapters and DB intro/outro markers for an episode.
 class ChaptersDebugPanel extends StatefulWidget {
@@ -100,7 +101,7 @@ class _ChaptersDebugPanelState extends State<ChaptersDebugPanel> {
                         : 'Aucun chapitre MKV détecté',
                     style: TextStyle(
                       color: Colors.white.withValues(alpha: 0.5),
-                      fontSize: 12,
+                      fontSize: AppType.footnote,
                       fontFamily: 'Manrope',
                     ),
                     textAlign: TextAlign.center,
@@ -131,7 +132,7 @@ class _ChaptersDebugPanelState extends State<ChaptersDebugPanel> {
             'Appuyez sur un chapitre pour seek à son début.',
             style: TextStyle(
               color: Colors.white.withValues(alpha: 0.35),
-              fontSize: 10,
+              fontSize: AppType.micro,
               fontFamily: 'Manrope',
             ),
           ),
@@ -185,7 +186,7 @@ class _SummaryCard extends StatelessWidget {
                 '${duration > 0 ? ' / ${formatPlaybackTime(duration)}' : ''}',
                 style: const TextStyle(
                   color: Colors.white,
-                  fontSize: 12,
+                  fontSize: AppType.footnote,
                   fontWeight: FontWeight.w600,
                   fontFamily: 'Manrope',
                 ),
@@ -270,7 +271,7 @@ class _InfoLine extends StatelessWidget {
               label,
               style: TextStyle(
                 color: Colors.white.withValues(alpha: 0.45),
-                fontSize: 11,
+                fontSize: AppType.caption,
                 fontFamily: 'Manrope',
               ),
             ),
@@ -280,7 +281,7 @@ class _InfoLine extends StatelessWidget {
               value,
               style: TextStyle(
                 color: Colors.white.withValues(alpha: 0.85),
-                fontSize: 11,
+                fontSize: AppType.caption,
                 fontFamily: 'Manrope',
               ),
             ),
@@ -290,7 +291,7 @@ class _InfoLine extends StatelessWidget {
               trailing!,
               style: TextStyle(
                 color: trailingColor ?? Colors.white54,
-                fontSize: 10,
+                fontSize: AppType.micro,
                 fontWeight: FontWeight.w600,
                 fontFamily: 'Manrope',
               ),
@@ -350,7 +351,7 @@ class _ChapterRow extends StatelessWidget {
                 '#$index',
                 style: TextStyle(
                   color: Colors.white.withValues(alpha: 0.35),
-                  fontSize: 10,
+                  fontSize: AppType.micro,
                   fontFamily: 'Geist',
                 ),
               ),
@@ -363,7 +364,7 @@ class _ChapterRow extends StatelessWidget {
                       title,
                       style: const TextStyle(
                         color: Colors.white,
-                        fontSize: 12,
+                        fontSize: AppType.footnote,
                         fontWeight: FontWeight.w500,
                         fontFamily: 'Manrope',
                       ),
@@ -373,7 +374,7 @@ class _ChapterRow extends StatelessWidget {
                       '${formatPlaybackTime(start)} → ${formatPlaybackTime(end)}',
                       style: TextStyle(
                         color: Colors.white.withValues(alpha: 0.5),
-                        fontSize: 10,
+                        fontSize: AppType.micro,
                         fontFamily: 'Geist',
                       ),
                     ),
@@ -411,7 +412,7 @@ class _Badge extends StatelessWidget {
         label,
         style: TextStyle(
           color: color,
-          fontSize: 8,
+          fontSize: AppType.micro,
           fontWeight: FontWeight.w700,
           fontFamily: 'Geist',
         ),

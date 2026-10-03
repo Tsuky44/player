@@ -8,6 +8,8 @@ import 'media_download_button.dart';
 import 'media_poster.dart';
 import 'share_media_button.dart';
 import 'watched_action_button.dart';
+import '../../theme/app_icons.dart';
+import '../../theme/app_type.dart';
 
 class EpisodeTile extends StatefulWidget {
   final HomeMediaItem episode;
@@ -137,17 +139,17 @@ class _EpisodeTileState extends State<EpisodeTile> {
                         children: [
                           const SizedBox(height: 40),
                           if (!_isAvailable)
-                            const Icon(Icons.event_available_outlined,
+                            const Icon(AppIcons.airDate,
                                 color: AppColors.textMuted, size: 22)
                           else if (isFinished)
                             // Discret : le bouton à droite dit déjà « vu », en
                             // clair. Trois coches vertes par ligne (ici, à
                             // droite, et un « Vu » sous le titre) faisaient de
                             // la liste un tableau de validation.
-                            const Icon(Icons.check_rounded,
+                            const Icon(AppIcons.check,
                                 color: AppColors.textMuted, size: 20)
                           else if (_active)
-                            const Icon(Icons.play_circle_fill_rounded,
+                            const Icon(AppIcons.playCircleFilled,
                                 color: AppColors.textPrimary, size: 28)
                           else
                             Text(
@@ -156,7 +158,7 @@ class _EpisodeTileState extends State<EpisodeTile> {
                                 color: isStarted
                                     ? AppColors.textPrimary
                                     : AppColors.textMuted,
-                                fontSize: 22,
+                                fontSize: AppType.title2,
                                 fontWeight: FontWeight.w600,
                               ),
                             ),
@@ -197,7 +199,7 @@ class _EpisodeTileState extends State<EpisodeTile> {
                               'Indispo',
                               style: TextStyle(
                                 color: AppColors.textSecondary,
-                                fontSize: 11,
+                                fontSize: AppType.caption,
                                 fontWeight: FontWeight.w600,
                               ),
                             ),
@@ -248,7 +250,7 @@ class _EpisodeTileState extends State<EpisodeTile> {
                                 formatDuration(duration),
                                 style: const TextStyle(
                                   color: AppColors.textMuted,
-                                  fontSize: 13,
+                                  fontSize: AppType.subhead,
                                 ),
                               ),
                             if (_isAvailable)
@@ -283,7 +285,7 @@ class _EpisodeTileState extends State<EpisodeTile> {
                             compactMeta,
                             style: const TextStyle(
                               color: AppColors.textMuted,
-                              fontSize: 12,
+                              fontSize: AppType.footnote,
                             ),
                           ),
                         ],
@@ -293,7 +295,7 @@ class _EpisodeTileState extends State<EpisodeTile> {
                             releaseDay,
                             style: const TextStyle(
                               color: AppColors.textMuted,
-                              fontSize: 13,
+                              fontSize: AppType.subhead,
                             ),
                           ),
                         ],
@@ -307,7 +309,7 @@ class _EpisodeTileState extends State<EpisodeTile> {
                             overflow: TextOverflow.ellipsis,
                             style: const TextStyle(
                               color: AppColors.textSecondary,
-                              fontSize: 13,
+                              fontSize: AppType.subhead,
                               height: 1.45,
                             ),
                           ),
@@ -318,7 +320,7 @@ class _EpisodeTileState extends State<EpisodeTile> {
                             airDateLabel ?? 'Pas sur le serveur',
                             style: const TextStyle(
                               color: AppColors.textMuted,
-                              fontSize: 12,
+                              fontSize: AppType.footnote,
                               fontWeight: FontWeight.w600,
                             ),
                           ),
@@ -331,7 +333,7 @@ class _EpisodeTileState extends State<EpisodeTile> {
                                   '',
                               style: const TextStyle(
                                 color: AppColors.textMuted,
-                                fontSize: 12,
+                                fontSize: AppType.footnote,
                               ),
                             ),
                           ),

@@ -4,6 +4,7 @@ import '../../../models/server_activity.dart';
 import '../../../theme/app_colors.dart';
 import 'media_thumb.dart';
 import 'settings_ui.dart';
+import '../../../theme/app_type.dart';
 
 /// Une lecture de l'historique : le titre, qui, où, quand et combien de temps.
 class HistoryTile extends StatelessWidget {
@@ -46,7 +47,7 @@ class HistoryTile extends StatelessWidget {
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
                   style: const TextStyle(
-                      fontWeight: FontWeight.w600, fontSize: 14),
+                      fontWeight: FontWeight.w600, fontSize: AppType.body),
                 ),
                 const SizedBox(height: 3),
                 Row(
@@ -65,7 +66,7 @@ class HistoryTile extends StatelessWidget {
                         maxLines: 1,
                         overflow: TextOverflow.ellipsis,
                         style: const TextStyle(
-                            color: AppColors.textSecondary, fontSize: 12),
+                            color: AppColors.textSecondary, fontSize: AppType.footnote),
                       ),
                     ),
                   ],
@@ -81,7 +82,7 @@ class HistoryTile extends StatelessWidget {
                 formatWatchTime(entry.watchedSeconds),
                 style: const TextStyle(
                   fontWeight: FontWeight.w700,
-                  fontSize: 13,
+                  fontSize: AppType.subhead,
                   fontFeatures: [FontFeature.tabularFigures()],
                 ),
               ),
@@ -105,7 +106,7 @@ class HistoryTile extends StatelessWidget {
                     Text(
                       '${(progress * 100).round()} %',
                       style: const TextStyle(
-                          color: AppColors.textMuted, fontSize: 11.5),
+                          color: AppColors.textMuted, fontSize: AppType.footnote),
                     ),
                   ],
                 ],

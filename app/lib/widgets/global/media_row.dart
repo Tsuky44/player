@@ -8,6 +8,7 @@ import 'continue_watching_card.dart';
 import 'media_card.dart';
 import 'poster_card.dart';
 import 'poster_launch_route.dart';
+import '../../theme/app_icons.dart';
 
 class MediaRow extends StatelessWidget {
   final String title;
@@ -85,7 +86,7 @@ class MediaRow extends StatelessWidget {
                         style: TextStyle(color: AppColors.textSecondary),
                       ),
                       SizedBox(width: 2),
-                      Icon(Icons.chevron_right_rounded,
+                      Icon(AppIcons.chevronRight,
                           size: 20, color: AppColors.textSecondary),
                     ],
                   ),

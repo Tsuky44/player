@@ -30,6 +30,9 @@ type sharedMediaRequest struct {
 	Password string `json:"password"`
 	Viewer   string `json:"viewer"`
 	Ticket   string `json:"ticket"`
+	// MediaID désigne l'épisode voulu dans le lien d'une saison ou d'une
+	// série ; absent pour un film ou un épisode, que le lien désigne seul.
+	MediaID int `json:"media_id"`
 	// PositionSeconds et DurationSeconds ne servent qu'à /progress.
 	PositionSeconds int `json:"position_seconds"`
 	DurationSeconds int `json:"duration_seconds"`
@@ -91,23 +94,58 @@ func SharedMediaInfo(w http.ResponseWriter, r *http.Request, _ httprouter.Params
 		ExpiresAt:     optionalTime(share.ExpiresAt),
 	}
 	if !share.HasPassword {
-		info = describeSharedMedia(share)
+		info = describeSharedMedia(share, share.MediaID)
 	}
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(info)
 }
 
-// OpenSharedMedia ouvre un lien (POST /api/shared/open) : vérifie le mot de
-// passe, réserve un lien à usage unique à ce navigateur, et délivre un ticket
-// de lecture au nom du lien.
-func OpenSharedMedia(w http.ResponseWriter, r *http.Request, _ httprouter.Params) {
+// sharePasswordExhausted répond 429 quand trop de mauvais mots de passe ont
+// été essayés sur ce lien.
+func sharePasswordExhausted(w http.ResponseWriter, code string) bool {
+	if !shareLinkLimiter.exhausted(code) {
+		return false
+	}
+	w.Header().Set("Retry-After", "30")
+	writeJSONError(w, http.StatusTooManyRequests, "Trop de tentatives sur ce lien, réessaie dans un moment.")
+	return true
+}
+
+// SharedMediaContents décrit un lien une fois son mot de passe donné
+// (POST /api/shared/contents) : pour une saison ou une série, la liste des
+// épisodes à choisir. Rien n'est réservé ni délivré : le ticket vient de
+// /open, épisode par épisode. Le mot de passe y est vérifié comme à
+// l'ouverture, avec les mêmes limites.
+func SharedMediaContents(w http.ResponseWriter, r *http.Request, _ httprouter.Params) {
 	req, ok := decodeSharedMediaRequest(w, r)
-	if !ok {
+	if !ok || sharePasswordExhausted(w, req.Code) {
 		return
 	}
-	if shareLinkLimiter.exhausted(req.Code) {
-		w.Header().Set("Retry-After", "30")
-		writeJSONError(w, http.StatusTooManyRequests, "Trop de tentatives sur ce lien, réessaie dans un moment.")
+	share, err := shareLinks().Unlock(req.Code, req.Password)
+	if err != nil {
+		if errors.Is(err, sharelinks.ErrPassword) {
+			shareLinkLimiter.allow(req.Code)
+		}
+		writeShareError(w, "SharedMediaContents", err)
+		return
+	}
+	if share.SingleUse && share.Claimed {
+		if _, err := shareLinks().Authorize(req.Code, req.Viewer); err != nil {
+			writeShareError(w, "SharedMediaContents", err)
+			return
+		}
+	}
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(describeSharedMedia(share, share.MediaID))
+}
+
+// OpenSharedMedia ouvre un lien (POST /api/shared/open) : vérifie le mot de
+// passe, réserve un lien à usage unique à ce navigateur, et délivre un ticket
+// de lecture au nom du lien. Le lien d'une saison ou d'une série dit quel
+// épisode il veut (media_id) ; le ticket n'ouvre que celui-là.
+func OpenSharedMedia(w http.ResponseWriter, r *http.Request, _ httprouter.Params) {
+	req, ok := decodeSharedMediaRequest(w, r)
+	if !ok || sharePasswordExhausted(w, req.Code) {
 		return
 	}
 	share, viewer, err := shareLinks().Open(req.Code, req.Password, req.Viewer)
@@ -118,8 +156,13 @@ func OpenSharedMedia(w http.ResponseWriter, r *http.Request, _ httprouter.Params
 		writeShareError(w, "OpenSharedMedia", err)
 		return
 	}
+	mediaID, ok := sharedPlayTarget(share, req.MediaID)
+	if !ok {
+		writeJSONError(w, http.StatusNotFound, "Ce média n'est pas, ou plus, disponible sur ce lien.")
+		return
+	}
 
-	token, ticket, err := PlaybackTickets.IssueShare(share.ID, share.MediaID)
+	token, ticket, err := PlaybackTickets.IssueShare(share.ID, mediaID)
 	if err != nil {
 		log.Printf("OpenSharedMedia: ticket for share %d: %v", share.ID, err)
 		w.Header().Set("Retry-After", "30")
@@ -128,8 +171,8 @@ func OpenSharedMedia(w http.ResponseWriter, r *http.Request, _ httprouter.Params
 	}
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(models.SharedMediaAccess{
-		Media:             describeSharedMedia(share),
-		MediaID:           share.MediaID,
+		Media:             describeSharedMedia(share, mediaID),
+		MediaID:           mediaID,
 		Ticket:            token,
 		ExpiresAt:         ticket.ExpiresAt,
 		RenewAfterSeconds: ticketRenewAfterSeconds,
@@ -177,14 +220,15 @@ func ReportSharedMediaProgress(w http.ResponseWriter, r *http.Request, _ httprou
 	}
 	// Seul le navigateur qui lit peut détruire le lien, pas quiconque en
 	// connaît le code.
-	if ticket, live := PlaybackTickets.Validate(req.Ticket, share.MediaID); !live || ticket.ShareID != share.ID {
+	mediaID, live := sharedTicketMedia(share, req)
+	if !live {
 		writeJSONError(w, http.StatusUnauthorized, "La lecture a expiré, recharge la page.")
 		return
 	}
 
 	consumed := !share.ConsumedAt.IsZero()
 	if share.SingleUse && !consumed &&
-		reachedWatchedThreshold(req.PositionSeconds, sharedMediaDuration(share.MediaID, req.DurationSeconds)) {
+		reachedWatchedThreshold(req.PositionSeconds, sharedMediaDuration(mediaID, req.DurationSeconds)) {
 		if _, err := store.Consume(share.ID); err != nil {
 			log.Printf("ReportSharedMediaProgress: %v", err)
 			writeJSONError(w, http.StatusInternalServerError, "Internal server error")
@@ -210,11 +254,25 @@ func SharedMediaTracks(w http.ResponseWriter, r *http.Request, _ httprouter.Para
 		writeShareError(w, "SharedMediaTracks", err)
 		return
 	}
-	if ticket, live := PlaybackTickets.Validate(req.Ticket, share.MediaID); !live || ticket.ShareID != share.ID {
+	mediaID, live := sharedTicketMedia(share, req)
+	if !live {
 		writeJSONError(w, http.StatusUnauthorized, "La lecture a expiré, recharge la page.")
 		return
 	}
-	GetMediaTracks(w, r, httprouter.Params{{Key: "id", Value: strconv.Itoa(share.MediaID)}}, 0)
+	GetMediaTracks(w, r, httprouter.Params{{Key: "id", Value: strconv.Itoa(mediaID)}}, 0)
+}
+
+// sharedTicketMedia renvoie le média que lit le ticket de la requête, s'il est
+// vivant et s'il est bien un ticket de ce lien. Pour une saison ou une série,
+// la page nomme l'épisode (media_id) ; le ticket, délivré par /open pour un
+// épisode du lien, est la preuve qu'il en fait partie.
+func sharedTicketMedia(share sharelinks.Share, req sharedMediaRequest) (int, bool) {
+	mediaID := share.MediaID
+	if req.MediaID > 0 {
+		mediaID = req.MediaID
+	}
+	ticket, live := PlaybackTickets.Validate(req.Ticket, mediaID)
+	return mediaID, live && ticket.ShareID == share.ID
 }
 
 // CloseSharedMedia révoque le ticket d'une page qui se ferme
@@ -230,22 +288,29 @@ func CloseSharedMedia(w http.ResponseWriter, r *http.Request, _ httprouter.Param
 	w.WriteHeader(http.StatusNoContent)
 }
 
-// describeSharedMedia nomme le média d'un lien pour son visiteur.
-func describeSharedMedia(share sharelinks.Share) models.SharedMedia {
+// describeSharedMedia nomme pour le visiteur le média mediaID d'un lien :
+// celui du lien lui-même — avec ses épisodes pour une saison ou une série —
+// ou l'épisode qu'il vient d'y ouvrir.
+func describeSharedMedia(share sharelinks.Share, mediaID int) models.SharedMedia {
 	info := models.SharedMedia{
 		NeedsPassword: share.HasPassword,
 		SingleUse:     share.SingleUse,
 		ExpiresAt:     optionalTime(share.ExpiresAt),
-		Duration:      sharedMediaDuration(share.MediaID, 0),
+		Duration:      sharedMediaDuration(mediaID, 0),
 	}
-	snap, err := loadMediaSnapshot(share.MediaID)
+	display, err := loadShareDisplay(mediaID)
 	if err != nil {
-		log.Printf("describeSharedMedia: media %d: %v", share.MediaID, err)
+		log.Printf("describeSharedMedia: media %d: %v", mediaID, err)
 		return info
 	}
-	info.MediaType = snap.mediaType
-	info.Title, info.Subtitle = shareDisplayTitle(snap)
-	info.PosterURL = snap.posterURL
+	info.MediaType = display.mediaType
+	info.Title, info.Subtitle = display.title, display.subtitle
+	info.PosterURL = display.posterURL
+	if isShareCollection(display.mediaType) {
+		if info.Episodes, err = loadSharedEpisodes(mediaID); err != nil {
+			log.Printf("describeSharedMedia: %v", err)
+		}
+	}
 	return info
 }
 

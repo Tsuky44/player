@@ -8,6 +8,7 @@ import '../../../services/client_log.dart';
 import '../../../theme/app_colors.dart';
 import '../settings_screen.dart';
 import '../widgets/settings_ui.dart';
+import '../../../theme/app_type.dart';
 
 /// Ce que l'app a écrit sur elle-même, lisible sans câble.
 ///
@@ -324,7 +325,7 @@ class _LogLine extends StatelessWidget {
               style: TextStyle(
                 fontFamily: 'monospace',
                 fontFamilyFallback: const ['Menlo', 'Consolas', 'Roboto Mono'],
-                fontSize: 12,
+                fontSize: AppType.footnote,
                 height: 1.4,
                 color: isError ? AppColors.error : AppColors.textSecondary,
               ),

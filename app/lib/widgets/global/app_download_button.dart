@@ -9,6 +9,7 @@ import '../../utils/app_platform.dart';
 import '../../utils/external_url.dart';
 import 'app_update_dialog.dart';
 import 'glass_chrome.dart';
+import '../../theme/app_icons.dart';
 
 /// Header shortcut pointing at the installer for the machine in front of us.
 ///
@@ -98,8 +99,8 @@ class _AppDownloadButtonState extends State<AppDownloadButton> {
           onTap: _open,
           child: Icon(
             _isUpdate
-                ? Icons.system_update_alt_rounded
-                : Icons.download_rounded,
+                ? AppIcons.update
+                : AppIcons.download,
             size: widget.size * 0.5,
             color: _isUpdate ? AppColors.accent : AppColors.textPrimary,
           ),

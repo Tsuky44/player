@@ -14,6 +14,8 @@ import '../../tv/tv_mode.dart';
 import '../../utils/poster_url.dart';
 import 'app_network_image.dart';
 import 'glass_chrome.dart';
+import '../../theme/app_icons.dart';
+import '../../theme/app_type.dart';
 
 /// Max number of results shown inline in the dropdown before offering "see all".
 const int _kInlineResultLimit = 8;
@@ -210,7 +212,7 @@ class _GlassCatalogSearchState extends State<GlassCatalogSearch> {
           });
         },
         child: Icon(
-          Icons.search_rounded,
+          AppIcons.search,
           size: 20,
           color: AppColors.textPrimary.withValues(alpha: 0.92),
         ),
@@ -288,7 +290,7 @@ class _SearchResultsPanel extends StatelessWidget {
             'Aucun résultat pour « $query »',
             style: TextStyle(
               color: AppColors.textMuted.withValues(alpha: 0.95),
-              fontSize: 13,
+              fontSize: AppType.subhead,
             ),
           ),
         ),
@@ -347,7 +349,7 @@ class _SearchResultsPanel extends StatelessWidget {
                               overflow: TextOverflow.ellipsis,
                               style: const TextStyle(
                                 color: AppColors.textPrimary,
-                                fontSize: 13,
+                                fontSize: AppType.subhead,
                                 fontWeight: FontWeight.w600,
                               ),
                             ),
@@ -356,7 +358,7 @@ class _SearchResultsPanel extends StatelessWidget {
                               typeLabel,
                               style: TextStyle(
                                 color: AppColors.textMuted.withValues(alpha: 0.9),
-                                fontSize: 11,
+                                fontSize: AppType.caption,
                               ),
                             ),
                           ],
@@ -388,12 +390,12 @@ class _SearchResultsPanel extends StatelessWidget {
                       : 'Voir tous les résultats',
                   style: const TextStyle(
                     color: AppColors.accent,
-                    fontSize: 12.5,
+                    fontSize: AppType.subhead,
                     fontWeight: FontWeight.w600,
                   ),
                 ),
                 const SizedBox(width: 4),
-                const Icon(Icons.arrow_forward_rounded,
+                const Icon(AppIcons.forward,
                     size: 15, color: AppColors.accent),
               ],
             ),
@@ -409,7 +411,7 @@ class _SearchResultsPanel extends StatelessWidget {
       height: 50,
       color: AppColors.surfaceElevated,
       child: Icon(
-        Icons.movie_outlined,
+        AppIcons.movie,
         size: 16,
         color: AppColors.textMuted.withValues(alpha: 0.6),
       ),

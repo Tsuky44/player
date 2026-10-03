@@ -79,7 +79,7 @@ void main() {
           ),
         ),
       );
-      return tester.widget<AnimatedContainer>(find.byType(AnimatedContainer));
+      return tester.widget<AnimatedContainer>(find.byType(AnimatedContainer).first);
     }
 
     testWidgets('animates over micro normally', (tester) async {

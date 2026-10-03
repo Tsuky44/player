@@ -13,9 +13,11 @@ import '../../theme/app_colors.dart';
 import '../../tv/tv_mode.dart';
 import '../../utils/app_platform.dart';
 import '../../widgets/global/onyx_mark.dart';
+import '../../widgets/global/onyx_wordmark.dart';
 import '../../widgets/global/otp_code_dialog.dart';
 import 'login_password_field.dart';
 import 'phone_sign_in_panel.dart';
+import '../../theme/app_type.dart';
 
 /// Les trois façons d'arriver sur un serveur.
 ///
@@ -433,7 +435,12 @@ class _LoginScreenState extends State<LoginScreen> {
                   context,
                   Form(
                   key: _formKey,
-                  child: Column(
+                  // Sans groupe ni indices, le gestionnaire de mots de passe
+                  // reconnaissait le mot de passe (champ masqué) mais devinait
+                  // l'identifiant, et tombait sur l'adresse du serveur ou sur
+                  // rien. Le groupe lie les deux champs, les indices les nomment.
+                  child: AutofillGroup(
+                    child: Column(
                     mainAxisSize: MainAxisSize.min,
                     crossAxisAlignment: CrossAxisAlignment.stretch,
                     children: [
@@ -442,13 +449,7 @@ class _LoginScreenState extends State<LoginScreen> {
                         children: [
                           const OnyxMark(size: 48, showBeam: true),
                           const SizedBox(width: 14),
-                          Text(
-                            'Onyx',
-                            style: textTheme.headlineMedium?.copyWith(
-                              fontWeight: FontWeight.w700,
-                              letterSpacing: -0.5,
-                            ),
-                          ),
+                          const OnyxWordmark(height: 22),
                         ],
                       ),
                       const SizedBox(height: 10),
@@ -475,6 +476,10 @@ class _LoginScreenState extends State<LoginScreen> {
                           controller: _serverController,
                           focusNode: _serverFocus,
                           keyboardType: TextInputType.url,
+                          // Hors remplissage automatique : c'est le premier
+                          // champ, donc celui qu'un gestionnaire prend pour
+                          // l'identifiant quand rien ne le lui interdit.
+                          autofillHints: null,
                           textInputAction: TextInputAction.next,
                           style: const TextStyle(color: AppColors.textPrimary),
                           decoration: const InputDecoration(
@@ -531,6 +536,7 @@ class _LoginScreenState extends State<LoginScreen> {
                             canRequestFocus: canRequestFocus,
                             controller: _inviteController,
                             focusNode: _inviteFocus,
+                            autofillHints: null,
                             textInputAction: TextInputAction.next,
                             onFieldSubmitted: (_) => _focusNext(_usernameKeyboard),
                             style:
@@ -555,6 +561,13 @@ class _LoginScreenState extends State<LoginScreen> {
                           canRequestFocus: canRequestFocus,
                           controller: _usernameController,
                           focusNode: _usernameFocus,
+                          autofillHints: [
+                            _mode == _LoginMode.signIn
+                                ? AutofillHints.username
+                                : AutofillHints.newUsername,
+                          ],
+                          autocorrect: false,
+                          enableSuggestions: false,
                           textInputAction: TextInputAction.next,
                           onFieldSubmitted: (_) => _focusNext(_passwordKeyboard),
                           style: const TextStyle(color: AppColors.textPrimary),
@@ -572,6 +585,7 @@ class _LoginScreenState extends State<LoginScreen> {
                         keyboardKey: _passwordKeyboard,
                         controller: _passwordController,
                         focusNode: _passwordFocus,
+                        creatingAccount: _mode != _LoginMode.signIn,
                         onSubmit: _submit,
                       ),
                       if (_mode == _LoginMode.request) ...[
@@ -582,6 +596,7 @@ class _LoginScreenState extends State<LoginScreen> {
                             focusNode: focusNode,
                             canRequestFocus: canRequestFocus,
                             controller: _messageController,
+                            autofillHints: null,
                             maxLength: 280,
                             style:
                                 const TextStyle(color: AppColors.textPrimary),
@@ -623,7 +638,7 @@ class _LoginScreenState extends State<LoginScreen> {
                                   'accepté.',
                                   style: const TextStyle(
                                       color: AppColors.textSecondary,
-                                      fontSize: 12),
+                                      fontSize: AppType.footnote),
                                 ),
                               ),
                               TextButton(
@@ -653,7 +668,7 @@ class _LoginScreenState extends State<LoginScreen> {
                           child: Text(
                             authProvider.errorMessage!,
                             style: const TextStyle(
-                                color: AppColors.error, fontSize: 13),
+                                color: AppColors.error, fontSize: AppType.subhead),
                           ),
                         ),
                       ],
@@ -711,6 +726,7 @@ class _LoginScreenState extends State<LoginScreen> {
                               'Pas d’invitation ? Demander l’accès'),
                         ),
                     ],
+                  ),
                   ),
                 ),
               ),

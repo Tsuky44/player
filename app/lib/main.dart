@@ -56,13 +56,17 @@ import 'theme/app_theme.dart';
 import 'desktop_window.dart';
 import 'widgets/global/middle_click_autoscroll.dart';
 
-/// La licence OFL de Manrope, lue depuis le paquet.
+/// Les licences des polices embarquées — Manrope (OFL) et les icônes Phosphor
+/// (MIT) —, lues depuis le paquet.
 ///
 /// Rendu paresseux : `LicenseRegistry` ne tire ce flux que si quelqu'un ouvre
-/// la page des licences, donc le fichier n'est pas lu au démarrage.
+/// la page des licences, donc les fichiers ne sont pas lus au démarrage.
 Stream<LicenseEntry> _bundledFontLicenses() async* {
-  final license = await rootBundle.loadString('assets/fonts/OFL.txt');
-  yield LicenseEntryWithLineBreaks(const ['Manrope'], license);
+  final manrope = await rootBundle.loadString('assets/fonts/OFL.txt');
+  yield LicenseEntryWithLineBreaks(const ['Manrope'], manrope);
+  final phosphor =
+      await rootBundle.loadString('assets/fonts/Phosphor-LICENSE.txt');
+  yield LicenseEntryWithLineBreaks(const ['Phosphor Icons'], phosphor);
 }
 
 /// Enables trackpad / mouse drag scrolling on desktop (required on macOS).

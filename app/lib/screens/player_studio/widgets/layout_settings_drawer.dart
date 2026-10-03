@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'studio_drawer_shell.dart';
 import '../../../theme/app_colors.dart';
+import '../../../theme/app_type.dart';
 
 /// Side drawer for grid density, snap-to-grid, and modular layout toggle.
 class LayoutSettingsDrawer extends StatelessWidget {
@@ -49,7 +50,7 @@ class LayoutSettingsDrawer extends StatelessWidget {
             'Grille',
             style: TextStyle(
               color: Colors.white,
-              fontSize: 13,
+              fontSize: AppType.subhead,
               fontWeight: FontWeight.w600,
             ),
           ),
@@ -81,11 +82,11 @@ class LayoutSettingsDrawer extends StatelessWidget {
             ),
             title: const Text(
               'Alignement automatique',
-              style: TextStyle(color: Colors.white, fontSize: 14),
+              style: TextStyle(color: Colors.white, fontSize: AppType.body),
             ),
             subtitle: const Text(
               'Les contrôles accrochent à la grille la plus proche',
-              style: TextStyle(color: Colors.grey, fontSize: 12),
+              style: TextStyle(color: Colors.grey, fontSize: AppType.footnote),
             ),
           ),
           const SizedBox(height: 8),
@@ -98,11 +99,11 @@ class LayoutSettingsDrawer extends StatelessWidget {
             activeThumbColor: AppColors.accent,
             title: const Text(
               'Utiliser cette disposition dans le lecteur',
-              style: TextStyle(color: Colors.white, fontSize: 14),
+              style: TextStyle(color: Colors.white, fontSize: AppType.body),
             ),
             subtitle: const Text(
               'Désactivé = interface standard du lecteur',
-              style: TextStyle(color: Colors.grey, fontSize: 12),
+              style: TextStyle(color: Colors.grey, fontSize: AppType.footnote),
             ),
           ),
           const SizedBox(height: 8),
@@ -117,13 +118,13 @@ class LayoutSettingsDrawer extends StatelessWidget {
             ),
             title: const Text(
               'Tap sur l’écran = lecture / pause',
-              style: TextStyle(color: Colors.white, fontSize: 14),
+              style: TextStyle(color: Colors.white, fontSize: AppType.body),
             ),
             subtitle: Text(
               useModularLayout
                   ? 'Permet de retirer le bouton play/pause tout en gardant la pause au clic'
                   : 'Disponible uniquement avec le lecteur modulaire',
-              style: const TextStyle(color: Colors.grey, fontSize: 12),
+              style: const TextStyle(color: Colors.grey, fontSize: AppType.footnote),
             ),
           ),
         ],

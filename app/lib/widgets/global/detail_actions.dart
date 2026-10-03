@@ -3,6 +3,8 @@ import 'package:flutter/material.dart';
 import '../../models/models.dart';
 import '../../theme/app_colors.dart';
 import '../../utils/responsive.dart';
+import '../../theme/app_icons.dart';
+import '../../theme/app_type.dart';
 
 /// Le libellé du bouton principal d'une fiche.
 ///
@@ -103,7 +105,7 @@ class DetailActions extends StatelessWidget {
         : ElevatedButton.icon(
             autofocus: autofocusPlay,
             onPressed: onPlay,
-            icon: const Icon(Icons.play_arrow_rounded),
+            icon: const Icon(AppIcons.play),
             label: Text(playLabel, overflow: TextOverflow.ellipsis),
           );
     final progressLine = progress == null
@@ -192,7 +194,7 @@ class _ProgressLine extends StatelessWidget {
           Text(
             label!,
             style:
-                const TextStyle(color: AppColors.textSecondary, fontSize: 13),
+                const TextStyle(color: AppColors.textSecondary, fontSize: AppType.subhead),
           ),
         ],
       ],

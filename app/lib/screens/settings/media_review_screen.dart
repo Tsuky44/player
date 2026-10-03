@@ -7,6 +7,7 @@ import '../../theme/app_colors.dart';
 import '../../utils/responsive.dart';
 import '../../widgets/global/media_poster.dart';
 import '../../widgets/global/metadata_fix_sheet.dart';
+import '../../theme/app_type.dart';
 
 enum _ReviewFilter { all, unidentified, incomplete }
 
@@ -291,7 +292,7 @@ class _ReviewCard extends StatelessWidget {
                   overflow: TextOverflow.ellipsis,
                   style: const TextStyle(
                     color: AppColors.textPrimary,
-                    fontSize: 16,
+                    fontSize: AppType.headline,
                     fontWeight: FontWeight.w700,
                   ),
                 ),
@@ -305,7 +306,7 @@ class _ReviewCard extends StatelessWidget {
                   overflow: TextOverflow.ellipsis,
                   style: const TextStyle(
                     color: AppColors.textMuted,
-                    fontSize: 12,
+                    fontSize: AppType.footnote,
                   ),
                 ),
                 const SizedBox(height: 10),
@@ -363,7 +364,7 @@ class _IssueChip extends StatelessWidget {
         label,
         style: const TextStyle(
           color: AppColors.warning,
-          fontSize: 11,
+          fontSize: AppType.caption,
           fontWeight: FontWeight.w600,
         ),
       ),
@@ -391,7 +392,7 @@ class _EmptyState extends StatelessWidget {
                   ? 'Aucun média dans ce filtre'
                   : 'Toutes les fiches sont complètes',
               textAlign: TextAlign.center,
-              style: const TextStyle(fontSize: 17, fontWeight: FontWeight.w700),
+              style: const TextStyle(fontSize: AppType.headline, fontWeight: FontWeight.w700),
             ),
           ],
         ),

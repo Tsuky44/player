@@ -12,6 +12,8 @@ import '../../utils/responsive.dart';
 import '../../widgets/global/app_network_image.dart';
 import '../../widgets/global/media_detail_widgets.dart';
 import '../../widgets/global/overlay_back_button.dart';
+import '../../theme/app_icons.dart';
+import '../../theme/app_type.dart';
 
 class PersonDetailScreen extends StatefulWidget {
   final int personTmdbId;
@@ -110,7 +112,7 @@ class _PersonDetailScreenState extends State<PersonDetailScreen> {
                         person.biography!,
                         style: const TextStyle(
                           color: AppColors.textSecondary,
-                          fontSize: 15,
+                          fontSize: AppType.callout,
                           height: 1.6,
                         ),
                       ),
@@ -242,7 +244,7 @@ class _PersonHeader extends StatelessWidget {
                         width: 160,
                         height: 240,
                         color: AppColors.surfaceElevated,
-                        child: const Icon(Icons.person_rounded,
+                        child: const Icon(AppIcons.person,
                             size: 64, color: AppColors.textMuted),
                       ),
                     ),
@@ -271,7 +273,7 @@ class _PersonHeader extends StatelessWidget {
                           _departmentLabel(person!.knownForDepartment!),
                           style: const TextStyle(
                             color: AppColors.accent,
-                            fontSize: 13,
+                            fontSize: AppType.subhead,
                             fontWeight: FontWeight.w600,
                           ),
                         ),
@@ -283,12 +285,12 @@ class _PersonHeader extends StatelessWidget {
                         children: [
                           if (_birthLine(person) != null)
                             _InfoBit(
-                                icon: Icons.cake_rounded,
+                                icon: AppIcons.birthday,
                                 text: _birthLine(person)!),
                           if (person?.placeOfBirth != null &&
                               person!.placeOfBirth!.isNotEmpty)
                             _InfoBit(
-                              icon: Icons.place_rounded,
+                              icon: AppIcons.place,
                               text: person!.placeOfBirth!,
                             ),
                         ],
@@ -325,7 +327,7 @@ class _InfoBit extends StatelessWidget {
         const SizedBox(width: 6),
         Text(
           text,
-          style: const TextStyle(color: AppColors.textSecondary, fontSize: 13),
+          style: const TextStyle(color: AppColors.textSecondary, fontSize: AppType.subhead),
         ),
       ],
     );

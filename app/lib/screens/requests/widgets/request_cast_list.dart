@@ -3,6 +3,7 @@ import '../../../models/media_request.dart';
 import '../../../theme/app_colors.dart';
 import '../../../utils/poster_url.dart';
 import '../../../widgets/global/app_network_image.dart';
+import '../../../theme/app_type.dart';
 
 class RequestCastList extends StatelessWidget {
   final List<RequestCastMember> cast;
@@ -39,7 +40,7 @@ class RequestCastList extends StatelessWidget {
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
                   style: const TextStyle(
-                    fontSize: 12,
+                    fontSize: AppType.footnote,
                     fontWeight: FontWeight.w600,
                     color: AppColors.textPrimary,
                   ),
@@ -50,7 +51,7 @@ class RequestCastList extends StatelessWidget {
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
                     style: const TextStyle(
-                      fontSize: 11,
+                      fontSize: AppType.caption,
                       color: AppColors.textMuted,
                     ),
                   ),

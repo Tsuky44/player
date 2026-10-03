@@ -8,6 +8,7 @@ import '../../../theme/app_colors.dart';
 import '../playback_logs_screen.dart';
 import '../widgets/history_tile.dart';
 import '../widgets/settings_ui.dart';
+import '../../../theme/app_type.dart';
 
 class ActivityPage extends StatefulWidget {
   const ActivityPage({super.key});
@@ -190,7 +191,7 @@ class _ActivityPageState extends State<ActivityPage> {
                     .fold<int>(0, (sum, e) => sum + e.watchedSeconds)),
                 style: const TextStyle(
                     color: AppColors.textMuted,
-                    fontSize: 12,
+                    fontSize: AppType.footnote,
                     fontWeight: FontWeight.w600),
               ),
               children: [

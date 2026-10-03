@@ -13,6 +13,7 @@ import '../../hooks/use_player_controller.dart';
 import '../direct_source_label.dart';
 import '../player_settings_ui.dart' show splitTrackLabel;
 import 'onyx_chrome_theme.dart';
+import '../../../../theme/app_type.dart';
 
 /// Which list the menu is showing. [root] is the index of sections.
 enum OnyxMenuSection { root, quality, audio, subtitles, speed, display, chapters }
@@ -693,7 +694,7 @@ class _OnyxMenuRow extends StatelessWidget {
               label,
               style: const TextStyle(
                 color: OnyxChromeTheme.title,
-                fontSize: 14,
+                fontSize: AppType.body,
                 fontWeight: FontWeight.w500,
               ),
             ),
@@ -706,7 +707,7 @@ class _OnyxMenuRow extends StatelessWidget {
                 textAlign: TextAlign.right,
                 style: const TextStyle(
                   color: OnyxChromeTheme.meta,
-                  fontSize: 13,
+                  fontSize: AppType.subhead,
                   fontWeight: FontWeight.w400,
                 ),
               ),
@@ -789,7 +790,7 @@ class _OnyxMenuOption extends StatelessWidget {
                           overflow: TextOverflow.ellipsis,
                           style: TextStyle(
                             color: OnyxChromeTheme.title,
-                            fontSize: 14,
+                            fontSize: AppType.body,
                             fontWeight:
                                 selected ? FontWeight.w600 : FontWeight.w400,
                           ),
@@ -810,7 +811,7 @@ class _OnyxMenuOption extends StatelessWidget {
                         overflow: TextOverflow.ellipsis,
                         style: const TextStyle(
                           color: OnyxChromeTheme.meta,
-                          fontSize: 12,
+                          fontSize: AppType.footnote,
                         ),
                       ),
                     ),
@@ -823,7 +824,7 @@ class _OnyxMenuOption extends StatelessWidget {
                 value!,
                 style: const TextStyle(
                   color: OnyxChromeTheme.meta,
-                  fontSize: 12,
+                  fontSize: AppType.footnote,
                   fontFeatures: [FontFeature.tabularFigures()],
                 ),
               ),
@@ -862,7 +863,7 @@ class _OnyxMenuBackHeader extends StatelessWidget {
               title,
               style: const TextStyle(
                 color: OnyxChromeTheme.title,
-                fontSize: 14,
+                fontSize: AppType.body,
                 fontWeight: FontWeight.w600,
               ),
             ),
@@ -888,7 +889,7 @@ class _OnyxMenuBadge extends StatelessWidget {
       ),
       child: Text(
         text,
-        style: const TextStyle(color: OnyxChromeTheme.meta, fontSize: 10),
+        style: const TextStyle(color: OnyxChromeTheme.meta, fontSize: AppType.micro),
       ),
     );
   }
@@ -903,7 +904,7 @@ class _OnyxMenuEmpty extends StatelessWidget {
       padding: EdgeInsets.symmetric(vertical: 22, horizontal: 16),
       child: Text(
         'Aucune piste disponible',
-        style: TextStyle(color: OnyxChromeTheme.meta, fontSize: 13),
+        style: TextStyle(color: OnyxChromeTheme.meta, fontSize: AppType.subhead),
       ),
     );
   }

@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import '../../theme/app_colors.dart';
+import '../../theme/app_icons.dart';
 
 class EmptyStateView extends StatelessWidget {
   final IconData icon;
@@ -53,7 +54,7 @@ class EmptyStateView extends StatelessWidget {
                 const SizedBox(height: 28),
                 ElevatedButton.icon(
                   onPressed: onAction,
-                  icon: const Icon(Icons.sync_rounded, size: 20),
+                  icon: const Icon(AppIcons.sync, size: 20),
                   label: Text(actionLabel!),
                 ),
               ],
@@ -62,7 +63,7 @@ class EmptyStateView extends StatelessWidget {
                 const SizedBox(height: 12),
                 OutlinedButton.icon(
                   onPressed: onSecondaryAction,
-                  icon: const Icon(Icons.subtitles_outlined, size: 20),
+                  icon: const Icon(AppIcons.subtitles, size: 20),
                   label: Text(secondaryActionLabel!),
                 ),
               ],
@@ -95,7 +96,7 @@ class ErrorStateView extends StatelessWidget {
             // Gris et non rouge : un serveur qui ne répond pas est un état
             // passager, pas une faute. Le rouge vif à 64 px en faisait une
             // alarme au milieu d'une page de films.
-            const Icon(Icons.cloud_off_rounded,
+            const Icon(AppIcons.cloudOff,
                 size: 44, color: AppColors.textMuted),
             const SizedBox(height: 16),
             Text(

@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 import '../../models/models.dart';
 import '../../theme/app_colors.dart';
+import '../../theme/app_icons.dart';
+import '../../theme/app_type.dart';
 
 /// Pastille d'avancement posée en haut à droite d'une affiche.
 ///
@@ -94,12 +96,12 @@ class WatchBadge extends StatelessWidget {
           ],
         ),
         child: label == null
-            ? Icon(Icons.check_rounded, size: 15, color: _watchedGlyph)
+            ? Icon(AppIcons.check, size: 15, color: _watchedGlyph)
             : Text(
                 label,
                 style: const TextStyle(
                   color: Colors.white,
-                  fontSize: 12,
+                  fontSize: AppType.footnote,
                   height: 1,
                   fontWeight: FontWeight.w700,
                   letterSpacing: 0.1,

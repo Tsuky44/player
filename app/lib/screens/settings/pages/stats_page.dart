@@ -9,6 +9,7 @@ import '../../../services/api_client.dart';
 import '../../../theme/app_colors.dart';
 import '../widgets/media_thumb.dart';
 import '../widgets/settings_ui.dart';
+import '../../../theme/app_type.dart';
 
 class StatsPage extends StatefulWidget {
   const StatsPage({super.key});
@@ -294,7 +295,7 @@ class _DailyChartState extends State<_DailyChart> {
               focus == null
                   ? formatWatchTime(total)
                   : formatWatchTime(focus.watchedSeconds),
-              style: const TextStyle(fontSize: 20, fontWeight: FontWeight.w700),
+              style: const TextStyle(fontSize: AppType.title3, fontWeight: FontWeight.w700),
             ),
             const SizedBox(width: 8),
             Text(
@@ -302,7 +303,7 @@ class _DailyChartState extends State<_DailyChart> {
                   ? 'sur la période'
                   : '${formatFrenchDay(focus.date)} · ${focus.plays} lecture${focus.plays > 1 ? 's' : ''}',
               style: const TextStyle(
-                  color: AppColors.textSecondary, fontSize: 12.5),
+                  color: AppColors.textSecondary, fontSize: AppType.subhead),
             ),
           ],
         ),
@@ -370,10 +371,10 @@ class _DailyChartState extends State<_DailyChart> {
           children: [
             Text(formatShortFrenchDate(daily.first.date),
                 style:
-                    const TextStyle(color: AppColors.textMuted, fontSize: 11)),
+                    const TextStyle(color: AppColors.textMuted, fontSize: AppType.caption)),
             Text(formatShortFrenchDate(daily.last.date),
                 style:
-                    const TextStyle(color: AppColors.textMuted, fontSize: 11)),
+                    const TextStyle(color: AppColors.textMuted, fontSize: AppType.caption)),
           ],
         ),
       ],
@@ -428,7 +429,7 @@ class _HourChart extends StatelessWidget {
             for (final label in const ['0h', '6h', '12h', '18h', '23h'])
               Text(label,
                   style: const TextStyle(
-                      color: AppColors.textMuted, fontSize: 11)),
+                      color: AppColors.textMuted, fontSize: AppType.caption)),
           ],
         ),
       ],
@@ -515,14 +516,14 @@ class _BarRow extends StatelessWidget {
                         maxLines: 1,
                         overflow: TextOverflow.ellipsis,
                         style: const TextStyle(
-                            fontWeight: FontWeight.w600, fontSize: 14),
+                            fontWeight: FontWeight.w600, fontSize: AppType.body),
                       ),
                     ),
                     Text(
                       formatWatchTime(value),
                       style: const TextStyle(
                         fontWeight: FontWeight.w700,
-                        fontSize: 13,
+                        fontSize: AppType.subhead,
                         fontFeatures: [FontFeature.tabularFigures()],
                       ),
                     ),
@@ -533,7 +534,7 @@ class _BarRow extends StatelessWidget {
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
                     style: const TextStyle(
-                        color: AppColors.textSecondary, fontSize: 12)),
+                        color: AppColors.textSecondary, fontSize: AppType.footnote)),
                 const SizedBox(height: 6),
                 ClipRRect(
                   borderRadius: BorderRadius.circular(3),
@@ -616,7 +617,7 @@ class _MethodsBreakdown extends StatelessWidget {
                     '$plays lecture${plays > 1 ? 's' : ''}',
                     textAlign: TextAlign.right,
                     style: const TextStyle(
-                        color: AppColors.textMuted, fontSize: 12),
+                        color: AppColors.textMuted, fontSize: AppType.footnote),
                   ),
                 ),
               ],

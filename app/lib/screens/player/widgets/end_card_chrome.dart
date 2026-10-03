@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 
 import '../../../theme/app_colors.dart';
 import '../../../widgets/global/app_network_image.dart';
+import '../../../theme/app_type.dart';
 
 /// Shared chrome of the pages that close an episode: the end-of-season request
 /// ([NextSeasonOverlay]) and the episode a season is still waiting for
@@ -159,7 +160,7 @@ class EndCardEyebrow extends StatelessWidget {
             label,
             style: const TextStyle(
               color: AppColors.textSecondary,
-              fontSize: 11,
+              fontSize: AppType.caption,
               fontWeight: FontWeight.w800,
               letterSpacing: 2.2,
             ),
@@ -249,7 +250,7 @@ class EndCardPill extends StatelessWidget {
             label,
             style: TextStyle(
               color: color,
-              fontSize: 12,
+              fontSize: AppType.footnote,
               fontWeight: FontWeight.w600,
             ),
           ),
@@ -322,7 +323,7 @@ class EndCardNextEpisodeButton extends StatelessWidget {
       vertical: primary ? 20 : 18,
     );
     const textStyle = TextStyle(
-      fontSize: 15,
+      fontSize: AppType.callout,
       fontWeight: FontWeight.w700,
       letterSpacing: -0.2,
     );

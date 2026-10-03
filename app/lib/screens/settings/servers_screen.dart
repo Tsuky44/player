@@ -13,6 +13,7 @@ import '../../theme/app_colors.dart';
 import '../../tv/tv_deferred_keyboard.dart';
 import '../../utils/on_screen.dart';
 import '../../widgets/global/otp_code_dialog.dart';
+import '../../theme/app_type.dart';
 
 /// Les serveurs de cet appareil : celui qui est actif, ceux sur lesquels on
 /// peut basculer, et les demandes d'accès encore sans réponse.
@@ -284,13 +285,13 @@ class _ServersScreenState extends State<ServersScreen> with OnScreenState {
           'Liez vos comptes, même avec des noms différents : les serveurs se transmettent votre '
           'progression, vos serveurs vous suivent sur tous vos appareils, et la lecture reprend '
           'sur un serveur disponible.',
-          style: TextStyle(color: AppColors.textSecondary, fontSize: 13),
+          style: TextStyle(color: AppColors.textSecondary, fontSize: AppType.subhead),
         ),
         const SizedBox(height: 10),
         const Text(
           'Désignez un serveur principal pour que l’app y revienne à chaque lancement. '
           'S’il ne répond pas, elle vous proposera les autres au lieu de basculer toute seule.',
-          style: TextStyle(color: AppColors.textSecondary, fontSize: 13),
+          style: TextStyle(color: AppColors.textSecondary, fontSize: AppType.subhead),
         ),
         const SizedBox(height: 20),
       ],
@@ -320,7 +321,7 @@ class _ServersScreenState extends State<ServersScreen> with OnScreenState {
         const Text(
           'Liés à votre compte, mais pas encore ouverts sur cet appareil. '
           'Entrez votre mot de passe une fois pour pouvoir y basculer.',
-          style: TextStyle(color: AppColors.textSecondary, fontSize: 12),
+          style: TextStyle(color: AppColors.textSecondary, fontSize: AppType.footnote),
         ),
         for (final link in elsewhere)
           ListTile(
@@ -347,7 +348,7 @@ class _ServersScreenState extends State<ServersScreen> with OnScreenState {
         const Text(
           'Un administrateur du serveur doit accepter. La réponse est '
           'récupérée toute seule, y compris après un redémarrage de l’app.',
-          style: TextStyle(color: AppColors.textSecondary, fontSize: 12),
+          style: TextStyle(color: AppColors.textSecondary, fontSize: AppType.footnote),
         ),
         for (final request in pending)
           ListTile(
@@ -761,7 +762,7 @@ class _AddServerScreenState extends State<AddServerScreen> {
                   : 'Entrez les identifiants de votre compte sur ce serveur. '
                       'Votre serveur actuel n’est pas touché.',
               style:
-                  const TextStyle(color: AppColors.textSecondary, fontSize: 13),
+                  const TextStyle(color: AppColors.textSecondary, fontSize: AppType.subhead),
             ),
             const SizedBox(height: 20),
             TvDeferredKeyboard(
@@ -856,7 +857,7 @@ class _AddServerScreenState extends State<AddServerScreen> {
                 ),
                 child: Text(
                   _error!,
-                  style: const TextStyle(color: AppColors.error, fontSize: 13),
+                  style: const TextStyle(color: AppColors.error, fontSize: AppType.subhead),
                 ),
               ),
             ],

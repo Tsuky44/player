@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import '../../theme/app_colors.dart';
+import '../../theme/app_icons.dart';
 
 class WatchedActionButton extends StatelessWidget {
   final bool isWatched;
@@ -19,8 +20,8 @@ class WatchedActionButton extends StatelessWidget {
   Widget build(BuildContext context) {
     final label = isWatched ? 'Marquer non vu' : 'Marquer vu';
     final icon = isWatched
-        ? Icons.check_circle_rounded
-        : Icons.check_circle_outline_rounded;
+        ? AppIcons.watchedFilled
+        : AppIcons.watched;
 
     if (compact) {
       return IconButton(

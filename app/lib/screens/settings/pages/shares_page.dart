@@ -129,7 +129,7 @@ class _SharesPageState extends State<SharesPage> {
       leading: MediaThumb(
         posterUrl: share.posterUrl ?? '',
         width: 36,
-        isShow: share.mediaType == 'episode',
+        isShow: share.mediaType != 'movie',
       ),
       title: title,
       subtitle: mediaShareSummary(share),

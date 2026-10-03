@@ -6,8 +6,11 @@ import '../../services/api_client.dart';
 import '../../theme/app_colors.dart';
 import '../../tv/tv_deferred_keyboard.dart';
 import '../../screens/settings/widgets/settings_ui.dart' show settingsErrorText;
+import '../../theme/app_icons.dart';
+import '../../theme/app_type.dart';
 
-/// Crée un lien public vers un film ou un épisode, puis montre ce lien.
+/// Crée un lien public vers un film, un épisode, une saison ou une série, puis
+/// montre ce lien.
 ///
 /// Le lien ne se montre qu'une fois : le serveur n'en garde que l'empreinte
 /// (ADR-0037). La page « Liens de partage » des réglages ne permet donc que de
@@ -17,10 +20,16 @@ Future<void> showShareMediaDialog(
   required ApiClient api,
   required int mediaId,
   required String title,
+  bool collection = false,
 }) {
   return showDialog<void>(
     context: context,
-    builder: (_) => ShareMediaDialog(api: api, mediaId: mediaId, title: title),
+    builder: (_) => ShareMediaDialog(
+      api: api,
+      mediaId: mediaId,
+      title: title,
+      collection: collection,
+    ),
   );
 }
 
@@ -30,11 +39,17 @@ class ShareMediaDialog extends StatefulWidget {
     required this.api,
     required this.mediaId,
     required this.title,
+    this.collection = false,
   });
 
   final ApiClient api;
   final int mediaId;
   final String title;
+
+  /// Le lien ouvre une saison ou une série. « Détruire après lecture » n'est
+  /// alors pas proposé : le serveur le refuse, une saison n'étant pas « vue »
+  /// au premier épisode fini.
+  final bool collection;
 
   @override
   State<ShareMediaDialog> createState() => _ShareMediaDialogState();
@@ -45,7 +60,7 @@ class _ShareMediaDialogState extends State<ShareMediaDialog> {
 
   // Détruire après lecture par défaut : un lien qui circule plus longtemps que
   // son usage est le cas à choisir, pas celui qu'on obtient sans y penser.
-  bool _singleUse = true;
+  late bool _singleUse = !widget.collection;
   ShareLifetime _lifetime = ShareLifetime.week;
   bool _creating = false;
   String? _error;
@@ -129,7 +144,7 @@ class _ShareMediaDialogState extends State<ShareMediaDialog> {
               FilledButton.icon(
                 autofocus: true,
                 onPressed: _copy,
-                icon: Icon(_copied ? Icons.check_rounded : Icons.copy_rounded,
+                icon: Icon(_copied ? AppIcons.check : AppIcons.copy,
                     size: 18),
                 label: Text(_copied ? 'Copié' : 'Copier le lien'),
               ),
@@ -143,26 +158,34 @@ class _ShareMediaDialogState extends State<ShareMediaDialog> {
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         Text(
-          'Toute personne qui a le lien peut regarder « ${widget.title} » '
-          'dans son navigateur, sans compte.',
+          widget.collection
+              ? 'Toute personne qui a le lien peut regarder les épisodes de '
+                  '« ${widget.title} » dans son navigateur, sans compte, '
+                  'jusqu’à l’expiration du lien.'
+              : 'Toute personne qui a le lien peut regarder '
+                  '« ${widget.title} » dans son navigateur, sans compte.',
           style: const TextStyle(color: AppColors.textSecondary),
         ),
         const SizedBox(height: 12),
-        SwitchListTile(
-          contentPadding: EdgeInsets.zero,
-          value: _singleUse,
-          onChanged: _creating ? null : (v) => setState(() => _singleUse = v),
-          title: const Text('Détruire après lecture'),
-          subtitle: Text(
-            _singleUse
-                ? 'Le lien ne s’ouvre que sur un appareil, et disparaît une '
-                    'fois le média vu.'
-                : 'Le lien reste utilisable, par plusieurs personnes, jusqu’à '
-                    'son expiration.',
-            style: const TextStyle(color: AppColors.textMuted, fontSize: 13),
+        if (!widget.collection) ...[
+          SwitchListTile(
+            contentPadding: EdgeInsets.zero,
+            value: _singleUse,
+            onChanged:
+                _creating ? null : (v) => setState(() => _singleUse = v),
+            title: const Text('Détruire après lecture'),
+            subtitle: Text(
+              _singleUse
+                  ? 'Le lien ne s’ouvre que sur un appareil, et disparaît une '
+                      'fois le média vu.'
+                  : 'Le lien reste utilisable, par plusieurs personnes, '
+                      'jusqu’à son expiration.',
+              style: const TextStyle(
+                  color: AppColors.textMuted, fontSize: AppType.subhead),
+            ),
           ),
-        ),
-        const SizedBox(height: 12),
+          const SizedBox(height: 12),
+        ],
         TvDeferredKeyboard(
           builder: (context, focusNode, canRequestFocus) => TextField(
             controller: _password,
@@ -232,19 +255,19 @@ class _ShareMediaDialogState extends State<ShareMediaDialog> {
           ),
           child: SelectableText(
             _link,
-            style: const TextStyle(fontSize: 13, color: AppColors.textPrimary),
+            style: const TextStyle(fontSize: AppType.subhead, color: AppColors.textPrimary),
           ),
         ),
         const SizedBox(height: 12),
         Text(
           details.join(' · '),
-          style: const TextStyle(color: AppColors.textSecondary, fontSize: 13),
+          style: const TextStyle(color: AppColors.textSecondary, fontSize: AppType.subhead),
         ),
         const SizedBox(height: 12),
         const Text(
           'Copiez-le maintenant : il ne sera plus affiché. Vous pourrez le '
           'suivre ou le supprimer dans Paramètres › Liens de partage.',
-          style: TextStyle(color: AppColors.textMuted, fontSize: 13),
+          style: TextStyle(color: AppColors.textMuted, fontSize: AppType.subhead),
         ),
         if (localOnly) ...[
           const SizedBox(height: 12),
@@ -252,7 +275,7 @@ class _ShareMediaDialogState extends State<ShareMediaDialog> {
             'Cette adresse n’est joignable que depuis votre réseau local. '
             'Pour un envoi à l’extérieur, connectez l’app au serveur par son '
             'adresse publique avant de créer le lien.',
-            style: TextStyle(color: AppColors.warning, fontSize: 13),
+            style: TextStyle(color: AppColors.warning, fontSize: AppType.subhead),
           ),
         ],
       ],

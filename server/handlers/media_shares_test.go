@@ -187,12 +187,170 @@ func TestUpdateUserPermissions_RevokingShareRightKillsLinks(t *testing.T) {
 	}
 }
 
+// Une série dont aucun épisode n'a de fichier n'a rien à faire lire.
 func TestCreateMediaShare_RefusesUnplayableMedia(t *testing.T) {
 	ownerID, _ := setupShareTest(t)
-	rec := httptest.NewRecorder()
-	CreateMediaShare(rec, httptest.NewRequest(http.MethodPost, "/api/shares", strings.NewReader(`{"media_id":1}`)), nil, ownerID)
-	if rec.Code != http.StatusNotFound {
-		t.Fatalf("sharing a show: %d, want 404", rec.Code)
+	res, err := database.DB.Exec(`INSERT INTO medias (type, title) VALUES ('show', 'Annoncée')`)
+	if err != nil {
+		t.Fatalf("insert show: %v", err)
+	}
+	emptyShowID, _ := res.LastInsertId()
+	seasonID := insertShareSeason(t, int(emptyShowID), 1)
+	insertShareEpisode(t, seasonID, 1, 1, "Pas encore là", "")
+
+	for _, mediaID := range []int{int(emptyShowID), seasonID, 9999} {
+		rec := httptest.NewRecorder()
+		CreateMediaShare(rec, httptest.NewRequest(http.MethodPost, "/api/shares",
+			strings.NewReader(fmt.Sprintf(`{"media_id":%d}`, mediaID))), nil, ownerID)
+		if rec.Code != http.StatusNotFound {
+			t.Fatalf("sharing media %d with nothing to play: %d, want 404", mediaID, rec.Code)
+		}
+	}
+}
+
+// shareShowID et shareSeasonID sont la série et la saison que setupShareTest
+// crée en premier, dans une base neuve.
+const (
+	shareShowID   = 1
+	shareSeasonID = 2
+)
+
+func insertShareSeason(t *testing.T, showID, number int) int {
+	t.Helper()
+	res, err := database.DB.Exec(`INSERT INTO medias (type, title, parent_id, season_number) VALUES ('season', ?, ?, ?)`,
+		fmt.Sprintf("Season %d", number), showID, number)
+	if err != nil {
+		t.Fatalf("insert season: %v", err)
+	}
+	id, _ := res.LastInsertId()
+	return int(id)
+}
+
+func insertShareEpisode(t *testing.T, seasonID, season, episode int, title, filePath string) int {
+	t.Helper()
+	res, err := database.DB.Exec(`
+		INSERT INTO medias (type, title, file_path, duration, parent_id, season_number, episode_number)
+		VALUES ('episode', ?, ?, 3000, ?, ?, ?)`, title, filePath, seasonID, season, episode)
+	if err != nil {
+		t.Fatalf("insert episode: %v", err)
+	}
+	id, _ := res.LastInsertId()
+	return int(id)
+}
+
+func sharedEpisodeIDs(media models.SharedMedia) []int {
+	ids := make([]int, 0, len(media.Episodes))
+	for _, episode := range media.Episodes {
+		ids = append(ids, episode.ID)
+	}
+	return ids
+}
+
+// Le lien d'une saison ouvre ses épisodes, un ticket par épisode, et rien
+// d'autre de la médiathèque : ni une autre saison, ni la saison elle-même.
+func TestShareLink_SeasonOpensOnlyItsOwnEpisodes(t *testing.T) {
+	ownerID, episodeID := setupShareTest(t)
+	firstID := insertShareEpisode(t, shareSeasonID, 1, 1, "Pilote", "/s01e01.mkv")
+	otherSeasonID := insertShareSeason(t, shareShowID, 2)
+	outsideID := insertShareEpisode(t, otherSeasonID, 2, 1, "Retour", "/s02e01.mkv")
+
+	share := createShare(t, ownerID, fmt.Sprintf(`{"media_id":%d}`, shareSeasonID))
+	if share.MediaType != "season" || share.Title != "Lioness" || share.Subtitle != "Saison 1" || share.PosterURL != "/show.jpg" {
+		t.Fatalf("created share = %+v", share)
+	}
+
+	var info models.SharedMedia
+	if status := callShared(t, SharedMediaInfo, map[string]string{"code": share.Code}, &info); status != http.StatusOK {
+		t.Fatalf("info: %d", status)
+	}
+	if got := sharedEpisodeIDs(info); len(got) != 2 || got[0] != firstID || got[1] != episodeID {
+		t.Fatalf("episodes = %v, want [%d %d]", got, firstID, episodeID)
+	}
+
+	var access models.SharedMediaAccess
+	if status := callShared(t, OpenSharedMedia, map[string]any{"code": share.Code, "media_id": episodeID}, &access); status != http.StatusOK {
+		t.Fatalf("open an episode of the season: %d", status)
+	}
+	if access.MediaID != episodeID || access.Media.Subtitle != "S01E05 · Cinq cent enfants" || len(access.Media.Episodes) != 0 {
+		t.Fatalf("access = %+v", access)
+	}
+	if _, ok := PlaybackTickets.Validate(access.Ticket, episodeID); !ok {
+		t.Fatal("the ticket does not open the chosen episode")
+	}
+	if _, ok := PlaybackTickets.Validate(access.Ticket, firstID); ok {
+		t.Fatal("the ticket of one episode opens another")
+	}
+
+	if status := callShared(t, OpenSharedMedia, map[string]any{"code": share.Code, "media_id": outsideID}, nil); status != http.StatusNotFound {
+		t.Fatalf("episode of another season: %d, want 404", status)
+	}
+	if status := callShared(t, OpenSharedMedia, map[string]any{"code": share.Code}, nil); status != http.StatusNotFound {
+		t.Fatalf("season opened without choosing an episode: %d, want 404", status)
+	}
+
+	// Les routes de la lecture suivent l'épisode du ticket, pas l'id du lien.
+	var progress models.SharedMediaProgress
+	if status := callShared(t, ReportSharedMediaProgress, map[string]any{
+		"code": share.Code, "viewer": access.Viewer, "ticket": access.Ticket, "media_id": episodeID, "position_seconds": 2990,
+	}, &progress); status != http.StatusOK || progress.Consumed {
+		t.Fatalf("progress on a season link: %d consumed=%v", status, progress.Consumed)
+	}
+	if status := callShared(t, ReportSharedMediaProgress, map[string]any{
+		"code": share.Code, "viewer": access.Viewer, "ticket": access.Ticket, "media_id": firstID, "position_seconds": 10,
+	}, nil); status != http.StatusUnauthorized {
+		t.Fatalf("progress for an episode the ticket does not play: %d, want 401", status)
+	}
+}
+
+// Le lien d'une série liste tous ses épisodes lisibles, dans l'ordre, et ne
+// les montre qu'une fois le mot de passe donné.
+func TestShareLink_ShowListsItsPlayableEpisodesBehindThePassword(t *testing.T) {
+	ownerID, episodeID := setupShareTest(t)
+	otherSeasonID := insertShareSeason(t, shareShowID, 2)
+	laterID := insertShareEpisode(t, otherSeasonID, 2, 1, "Retour", "/s02e01.mkv")
+	insertShareEpisode(t, otherSeasonID, 2, 2, "Pas encore là", "")
+	firstID := insertShareEpisode(t, shareSeasonID, 1, 1, "Pilote", "/s01e01.mkv")
+
+	share := createShare(t, ownerID, fmt.Sprintf(`{"media_id":%d,"password":"popcorn"}`, shareShowID))
+	if share.MediaType != "show" || share.Title != "Lioness" || share.Subtitle != "Série entière" {
+		t.Fatalf("created share = %+v", share)
+	}
+
+	var info models.SharedMedia
+	callShared(t, SharedMediaInfo, map[string]string{"code": share.Code}, &info)
+	if !info.NeedsPassword || info.Title != "" || len(info.Episodes) != 0 {
+		t.Fatalf("info leaks the show before the password: %+v", info)
+	}
+	if status := callShared(t, SharedMediaContents, map[string]string{"code": share.Code, "password": "nope"}, nil); status != http.StatusUnauthorized {
+		t.Fatalf("contents with a wrong password: %d, want 401", status)
+	}
+
+	var contents models.SharedMedia
+	if status := callShared(t, SharedMediaContents, map[string]string{"code": share.Code, "password": "popcorn"}, &contents); status != http.StatusOK {
+		t.Fatalf("contents: %d", status)
+	}
+	got := sharedEpisodeIDs(contents)
+	if len(got) != 3 || got[0] != firstID || got[1] != episodeID || got[2] != laterID {
+		t.Fatalf("episodes = %v, want [%d %d %d]", got, firstID, episodeID, laterID)
+	}
+	if contents.Title != "Lioness" || contents.Episodes[2].SeasonNumber != 2 || contents.Episodes[2].Title != "Retour" {
+		t.Fatalf("contents = %+v", contents)
+	}
+	if status := callShared(t, OpenSharedMedia, map[string]any{"code": share.Code, "password": "popcorn", "media_id": laterID}, nil); status != http.StatusOK {
+		t.Fatalf("open an episode of the show: %d", status)
+	}
+}
+
+// « Détruit après lecture » ne vaut que pour un seul média.
+func TestCreateMediaShare_SeasonOrShowCannotBeSingleUse(t *testing.T) {
+	ownerID, _ := setupShareTest(t)
+	for _, mediaID := range []int{shareShowID, shareSeasonID} {
+		rec := httptest.NewRecorder()
+		CreateMediaShare(rec, httptest.NewRequest(http.MethodPost, "/api/shares",
+			strings.NewReader(fmt.Sprintf(`{"media_id":%d,"single_use":true}`, mediaID))), nil, ownerID)
+		if rec.Code != http.StatusBadRequest {
+			t.Fatalf("single-use link on media %d: %d, want 400", mediaID, rec.Code)
+		}
 	}
 }
 

@@ -1,5 +1,11 @@
-/// Un lien de partage public vers un film ou un épisode (ADR-0037), tel que
-/// son créateur le voit. Miroir de `models.MediaShare` côté serveur.
+/// Dit si [mediaType] (`media_type` côté serveur) est une saison ou une série
+/// entière : un lien qui ouvre plusieurs épisodes, jamais à usage unique.
+bool isSharedCollectionType(String mediaType) =>
+    mediaType == 'season' || mediaType == 'show';
+
+/// Un lien de partage public vers un film, un épisode, une saison ou une série
+/// (ADR-0037), tel que son créateur le voit. Miroir de `models.MediaShare`
+/// côté serveur.
 class MediaShare {
   const MediaShare({
     required this.id,
@@ -21,10 +27,12 @@ class MediaShare {
 
   final int id;
   final int mediaId;
+
+  /// `movie`, `episode`, `season` ou `show`.
   final String mediaType;
 
-  /// Le film, ou la série pour un épisode ; [subtitle] porte alors
-  /// « S01E02 · Titre de l'épisode ».
+  /// Le film, ou la série ; [subtitle] porte alors « S01E02 · Titre de
+  /// l'épisode », « Saison 2 » ou « Série entière ».
   final String title;
   final String subtitle;
   final String? posterUrl;
@@ -102,6 +110,7 @@ class SharedMediaInfo {
     this.subtitle = '',
     this.posterUrl,
     this.duration = 0,
+    this.episodes = const [],
   });
 
   final bool needsPassword;
@@ -112,6 +121,13 @@ class SharedMediaInfo {
   final String subtitle;
   final String? posterUrl;
   final int duration;
+
+  /// Les épisodes que le lien d'une saison ou d'une série permet de lire,
+  /// dans l'ordre de diffusion. Vide pour un film ou un épisode.
+  final List<SharedEpisode> episodes;
+
+  /// Le lien ouvre une saison ou une série : le visiteur choisit un épisode.
+  bool get isCollection => isSharedCollectionType(mediaType);
 
   factory SharedMediaInfo.fromJson(Map<String, dynamic> json) {
     final expires = json['expires_at'];
@@ -126,8 +142,37 @@ class SharedMediaInfo {
       subtitle: json['subtitle'] as String? ?? '',
       posterUrl: poster == null || poster.isEmpty ? null : poster,
       duration: json['duration'] as int? ?? 0,
+      episodes: (json['episodes'] as List<dynamic>? ?? const [])
+          .map((e) => SharedEpisode.fromJson(e as Map<String, dynamic>))
+          .toList(),
     );
   }
+}
+
+/// Un épisode du lien d'une saison ou d'une série. Miroir de
+/// `models.SharedEpisode` côté serveur.
+class SharedEpisode {
+  const SharedEpisode({
+    required this.id,
+    this.seasonNumber = 0,
+    this.episodeNumber = 0,
+    this.title = '',
+    this.duration = 0,
+  });
+
+  final int id;
+  final int seasonNumber;
+  final int episodeNumber;
+  final String title;
+  final int duration;
+
+  factory SharedEpisode.fromJson(Map<String, dynamic> json) => SharedEpisode(
+        id: json['id'] as int? ?? 0,
+        seasonNumber: json['season_number'] as int? ?? 0,
+        episodeNumber: json['episode_number'] as int? ?? 0,
+        title: json['title'] as String? ?? '',
+        duration: json['duration'] as int? ?? 0,
+      );
 }
 
 /// Un refus du serveur sur un lien : [message] est la phrase à montrer telle

@@ -3,6 +3,7 @@ import 'dart:ui';
 import 'package:flutter/material.dart';
 
 import '../../../theme/app_colors.dart';
+import '../../../theme/app_type.dart';
 
 /// One tab entry in the player settings panel.
 class PlayerSettingsTab {
@@ -205,7 +206,7 @@ class _PanelHeader extends StatelessWidget {
                   title,
                   style: const TextStyle(
                     color: AppColors.textPrimary,
-                    fontSize: 16,
+                    fontSize: AppType.headline,
                     fontWeight: FontWeight.w700,
                     letterSpacing: -0.3,
                     height: 1.15,
@@ -216,7 +217,7 @@ class _PanelHeader extends StatelessWidget {
                   subtitle,
                   style: const TextStyle(
                     color: AppColors.textMuted,
-                    fontSize: 12,
+                    fontSize: AppType.footnote,
                     fontWeight: FontWeight.w500,
                     height: 1.2,
                   ),
@@ -366,7 +367,7 @@ class _SegmentTab extends StatelessWidget {
               overflow: TextOverflow.ellipsis,
               style: TextStyle(
                 color: selected ? AppColors.textPrimary : AppColors.textMuted,
-                fontSize: 11.5,
+                fontSize: AppType.footnote,
                 fontWeight: selected ? FontWeight.w600 : FontWeight.w500,
                 letterSpacing: -0.1,
               ),
@@ -441,7 +442,7 @@ class PlayerSettingsTrackRow extends StatelessWidget {
                           color: selected
                               ? AppColors.textPrimary
                               : AppColors.textSecondary,
-                          fontSize: 13,
+                          fontSize: AppType.subhead,
                           fontWeight:
                               selected ? FontWeight.w600 : FontWeight.w500,
                           height: 1.25,
@@ -456,7 +457,7 @@ class PlayerSettingsTrackRow extends StatelessWidget {
                           overflow: TextOverflow.ellipsis,
                           style: const TextStyle(
                             color: AppColors.textMuted,
-                            fontSize: 11,
+                            fontSize: AppType.caption,
                             height: 1.2,
                           ),
                         ),
@@ -478,7 +479,7 @@ class PlayerSettingsTrackRow extends StatelessWidget {
                       badge!,
                       style: const TextStyle(
                         color: AppColors.textMuted,
-                        fontSize: 10,
+                        fontSize: AppType.micro,
                         fontWeight: FontWeight.w600,
                       ),
                     ),
@@ -585,7 +586,7 @@ class PlayerSettingsChoiceCard extends StatelessWidget {
                         label,
                         style: TextStyle(
                           color: AppColors.textPrimary,
-                          fontSize: 14,
+                          fontSize: AppType.body,
                           fontWeight:
                               selected ? FontWeight.w700 : FontWeight.w600,
                           letterSpacing: -0.2,
@@ -596,7 +597,7 @@ class PlayerSettingsChoiceCard extends StatelessWidget {
                         subtitle,
                         style: const TextStyle(
                           color: AppColors.textMuted,
-                          fontSize: 11.5,
+                          fontSize: AppType.footnote,
                           height: 1.3,
                         ),
                       ),

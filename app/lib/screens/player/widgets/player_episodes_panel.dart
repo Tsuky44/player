@@ -9,6 +9,7 @@ import '../../../utils/format.dart';
 import '../../../widgets/global/media_download_button.dart';
 import '../../../widgets/global/media_poster.dart';
 import '../../../widgets/global/season_download_button.dart';
+import '../../../theme/app_type.dart';
 
 const Color _kAccent = AppColors.primary;
 const Color _kPanelBg = AppColors.surface;
@@ -166,7 +167,7 @@ class _PlayerEpisodesPanelState extends State<PlayerEpisodesPanel> {
                   overflow: TextOverflow.ellipsis,
                   style: const TextStyle(
                     color: AppColors.textPrimary,
-                    fontSize: 20,
+                    fontSize: AppType.title3,
                     fontWeight: FontWeight.w700,
                     letterSpacing: -0.4,
                   ),
@@ -176,7 +177,7 @@ class _PlayerEpisodesPanelState extends State<PlayerEpisodesPanel> {
                   'Épisodes',
                   style: TextStyle(
                     color: AppColors.textMuted,
-                    fontSize: 13,
+                    fontSize: AppType.subhead,
                     fontWeight: FontWeight.w500,
                   ),
                 ),
@@ -233,7 +234,7 @@ class _PlayerEpisodesPanelState extends State<PlayerEpisodesPanel> {
                     color: selected
                         ? AppColors.textPrimary
                         : AppColors.textSecondary,
-                    fontSize: 13,
+                    fontSize: AppType.subhead,
                     fontWeight: selected ? FontWeight.w600 : FontWeight.w500,
                   ),
                 ),
@@ -374,7 +375,7 @@ class _SectionLabel extends StatelessWidget {
           title,
           style: const TextStyle(
             color: Colors.white,
-            fontSize: 15,
+            fontSize: AppType.callout,
             fontWeight: FontWeight.w600,
           ),
         ),
@@ -383,7 +384,7 @@ class _SectionLabel extends StatelessWidget {
           subtitle,
           style: TextStyle(
             color: Colors.white.withValues(alpha: 0.45),
-            fontSize: 12,
+            fontSize: AppType.footnote,
           ),
         ),
       ],
@@ -498,7 +499,7 @@ class _EpisodeCard extends StatelessWidget {
                           'E$episodeNum',
                           style: const TextStyle(
                             color: Colors.white,
-                            fontSize: 11,
+                            fontSize: AppType.caption,
                             fontWeight: FontWeight.w700,
                           ),
                         ),
@@ -550,7 +551,7 @@ class _EpisodeCard extends StatelessWidget {
                 overflow: TextOverflow.ellipsis,
                 style: TextStyle(
                   color: isCurrent ? Colors.white : Colors.white.withValues(alpha: 0.85),
-                  fontSize: 13,
+                  fontSize: AppType.subhead,
                   fontWeight: isCurrent ? FontWeight.w600 : FontWeight.w500,
                   height: 1.25,
                 ),
@@ -561,7 +562,7 @@ class _EpisodeCard extends StatelessWidget {
                   formatDuration(duration),
                   style: TextStyle(
                     color: Colors.white.withValues(alpha: 0.4),
-                    fontSize: 11,
+                    fontSize: AppType.caption,
                   ),
                 ),
               ],
@@ -596,7 +597,7 @@ class _Badge extends StatelessWidget {
         label,
         style: TextStyle(
           color: textColor ?? Colors.white,
-          fontSize: 10,
+          fontSize: AppType.micro,
           fontWeight: FontWeight.w700,
           letterSpacing: 0.2,
         ),

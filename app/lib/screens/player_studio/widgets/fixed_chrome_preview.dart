@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import '../../../models/player_layout.dart';
 import '../../../utils/app_platform.dart';
 import '../../player/widgets/onyx/onyx_controls_layer.dart';
+import '../../../theme/app_type.dart';
 
 /// What Player Studio shows when the active playeur is a fixed chrome.
 ///
@@ -105,7 +106,7 @@ class FixedChromePreview extends StatelessWidget {
                   '« ${chrome.label} » n’est pas modifiable',
                   style: const TextStyle(
                     color: Colors.white,
-                    fontSize: 14,
+                    fontSize: AppType.body,
                     fontWeight: FontWeight.w600,
                   ),
                 ),
@@ -114,7 +115,7 @@ class FixedChromePreview extends StatelessWidget {
                   'Ce playeur est fixe : sa disposition et son thème sont figés.',
                   style: TextStyle(
                     color: Colors.white.withValues(alpha: 0.55),
-                    fontSize: 12,
+                    fontSize: AppType.footnote,
                   ),
                 ),
               ],

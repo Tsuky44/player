@@ -4,6 +4,7 @@ import '../../../models/models.dart';
 import '../../../theme/app_colors.dart';
 import '../../../utils/format.dart';
 import 'end_card_chrome.dart';
+import '../../../theme/app_type.dart';
 
 /// Page shown when the last episode the server holds is not the last of its
 /// season — a show still airing week by week, or a season imported in part.
@@ -78,7 +79,7 @@ class _Body extends StatelessWidget {
                 overflow: TextOverflow.ellipsis,
                 style: const TextStyle(
                   color: AppColors.textMuted,
-                  fontSize: 12,
+                  fontSize: AppType.footnote,
                   fontWeight: FontWeight.w700,
                   letterSpacing: 1.6,
                 ),
@@ -92,7 +93,7 @@ class _Body extends StatelessWidget {
                 overflow: TextOverflow.ellipsis,
                 style: const TextStyle(
                   color: AppColors.textPrimary,
-                  fontSize: 34,
+                  fontSize: AppType.largeTitle,
                   fontWeight: FontWeight.w800,
                   letterSpacing: -0.8,
                   height: 1.1,
@@ -107,7 +108,7 @@ class _Body extends StatelessWidget {
                 overflow: TextOverflow.ellipsis,
                 style: const TextStyle(
                   color: AppColors.textSecondary,
-                  fontSize: 14,
+                  fontSize: AppType.body,
                   height: 1.55,
                 ),
               ),

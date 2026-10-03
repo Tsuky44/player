@@ -10,6 +10,7 @@ import '../../../theme/app_colors.dart';
 import '../../../tv/tv_deferred_keyboard.dart';
 import '../../../utils/external_url.dart';
 import '../widgets/settings_ui.dart';
+import '../../../theme/app_type.dart';
 
 class AppsPage extends StatefulWidget {
   const AppsPage({super.key});
@@ -156,7 +157,7 @@ class _AppsPageState extends State<AppsPage> {
           children: [
             Text(filename,
                 style: const TextStyle(
-                    color: AppColors.textSecondary, fontSize: 12)),
+                    color: AppColors.textSecondary, fontSize: AppType.footnote)),
             const SizedBox(height: 14),
             TvDeferredKeyboard(
               builder: (context, focusNode, canRequestFocus) => TextField(
