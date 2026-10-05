@@ -92,8 +92,14 @@ dependencies:
     path: ../packages/onyx_background_downloads
   # Garde l'écran allumé pendant une lecture AetherEngine sur iPhone et Mac
   # (`ScreenAwake`). mpv l'avait sans rien demander : le widget `Video` de
-  # media_kit s'en sert (d'où la version, celle que media_kit tire déjà).
-  wakelock_plus: ^1.1.6
+  # media_kit s'en sert (d'où le plancher, celui que media_kit tire déjà).
+  # Plafonné sous 1.8.0 : cette version déclare la plateforme `tvos` avec un
+  # podspec rangé sous `ios/`. flutter-tvos l'inscrit alors dans
+  # GeneratedPluginRegistrant.m sans savoir le lier (il ne lit que `tvos/`), et
+  # le build Apple TV casse sur « Module 'wakelock_plus' not found ». L'hôte
+  # tvOS garde l'écran allumé lui-même (`ScreenAwake`). Gardé par
+  # test/tvos_plugins_linkable_test.dart.
+  wakelock_plus: '>=1.1.6 <1.8.0'
 
   # --- Apple TV (tvOS) ---------------------------------------------------
   # tvOS se construit avec flutter-tvos (voir l'ADR-0028), qui n'embarque que
