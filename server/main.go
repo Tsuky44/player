@@ -270,7 +270,7 @@ func main() {
 	router.GET("/api/episodes/:id/chapters", handlers.RequireAuth(handlers.GetEpisodeChapters))
 	router.GET("/api/episodes/:id/track-preferences", handlers.RequireAuth(handlers.GetShowTrackPreferences))
 	router.PUT("/api/episodes/:id/track-preferences", handlers.RequireAuth(handlers.UpdateShowTrackPreferences))
-	router.GET("/api/media/:id/tracks",handlers.RequireAuth(handlers.GetMediaTracks))
+	router.GET("/api/media/:id/tracks", handlers.RequireAuth(handlers.GetMediaTracks))
 	router.GET("/api/media/:id/details", handlers.RequireAuth(handlers.GetMediaDetails))
 	router.GET("/api/person/:id", handlers.RequireAuth(handlers.GetPersonDetails))
 	router.GET("/api/collection/:id", handlers.RequireAuth(handlers.GetCollectionDetails))
