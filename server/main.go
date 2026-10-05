@@ -169,6 +169,11 @@ func main() {
 	router.PUT("/api/me/player-layouts/:id", handlers.RequireAuth(handlers.UpdatePlayerLayout))
 	router.DELETE("/api/me/player-layouts/:id", handlers.RequireAuth(handlers.DeletePlayerLayout))
 
+	// Réglages de lecture du compte (saut d'intro, langue audio), partagés par
+	// tous ses appareils. Chacun ne lit et n'écrit que les siens. Voir ADR-0043.
+	router.GET("/api/me/playback-preferences", handlers.RequireAuth(handlers.GetPlaybackPreferences))
+	router.PUT("/api/me/playback-preferences", handlers.RequireAuth(handlers.UpdatePlaybackPreferences))
+
 	// 2. Dashboard & Progress Routes
 	router.GET("/api/home", handlers.RequireAuth(handlers.Home))
 	router.GET("/api/media-identities", handlers.RequireAuth(handlers.GetMediaIdentities))

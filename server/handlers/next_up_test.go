@@ -136,3 +136,26 @@ func TestDescribeUpcomingEpisodeIgnoresUnnumberedEpisodes(t *testing.T) {
 		t.Fatalf("expected no upcoming episode for an unnumbered one, got %+v", upcoming)
 	}
 }
+
+// L'épisode « suivant » porte l'id de sa série : le lecteur s'en sert pour
+// retrouver le logo, que ni l'épisode ni sa saison ne possèdent.
+func TestFindEpisodeInSeasonCarriesTheShowID(t *testing.T) {
+	showID, seasonIDs := setupSeasonsTestDB(t, 1)
+	for number := 1; number <= 2; number++ {
+		if _, err := database.DB.Exec(
+			"INSERT INTO medias (type, title, parent_id, episode_number) VALUES (?, ?, ?, ?)",
+			models.TypeEpisode, "Episode "+strconv.Itoa(number), seasonIDs[1], number,
+		); err != nil {
+			t.Fatalf("insert episode %d: %v", number, err)
+		}
+	}
+
+	item, ok := findEpisodeInSeason(1, seasonIDs[1], 1)
+
+	if !ok {
+		t.Fatal("expected episode 2 to follow episode 1")
+	}
+	if item.ShowID != showID {
+		t.Fatalf("expected show id %d on the next episode, got %d", showID, item.ShowID)
+	}
+}

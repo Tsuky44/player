@@ -1,11 +1,15 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
 import '../../models/server_account.dart';
 import '../../providers/auth_provider.dart';
 import '../../services/api_client.dart';
+import '../../services/server_reachability.dart';
 import '../../theme/app_colors.dart';
 import '../../theme/app_type.dart';
+import '../../utils/on_screen.dart';
 
 /// Ce que l'app affiche quand le serveur principal ne répond pas au lancement.
 ///
@@ -21,16 +25,52 @@ class ServerChoiceScreen extends StatefulWidget {
   State<ServerChoiceScreen> createState() => _ServerChoiceScreenState();
 }
 
-class _ServerChoiceScreenState extends State<ServerChoiceScreen> {
+class _ServerChoiceScreenState extends State<ServerChoiceScreen>
+    with OnScreenState<ServerChoiceScreen> {
   /// Y a-t-il un profil en cache pour le principal ? Sans lui, « continuer
   /// hors ligne » ne mènerait qu'à l'écran de connexion : autant ne pas le
   /// proposer.
   bool _canGoOffline = false;
 
+  /// Guette le retour du principal tant que la question est à l'écran.
+  ///
+  /// [ServerReachability] ne prévient que sur une *transition* hors ligne →
+  /// en ligne. Quand seule la requête de profil du lancement a échoué et que
+  /// le ping, lui, est passé, il n'y a jamais eu de transition : sans ce
+  /// guet, l'écran restait affiché devant un serveur qui répond.
+  Timer? _watch;
+
   @override
   void initState() {
     super.initState();
     _lookForCachedProfile();
+  }
+
+  @override
+  void didChangeOnScreen(bool onScreen) {
+    _watch?.cancel();
+    _watch = onScreen
+        ? Timer.periodic(
+            const Duration(seconds: 3),
+            (_) => _retryIfPrimaryIsBack(),
+          )
+        : null;
+  }
+
+  @override
+  void dispose() {
+    _watch?.cancel();
+    super.dispose();
+  }
+
+  /// Le ping d'abord : il est court et ne touche à rien, alors que la vraie
+  /// tentative grise les boutons le temps d'un délai de connexion.
+  Future<void> _retryIfPrimaryIsBack() async {
+    final auth = context.read<AuthProvider>();
+    final reachability = context.read<ServerReachability>();
+    if (auth.isLoading) return;
+    if (!await reachability.check() || auth.isLoading) return;
+    await auth.retryPrimaryServer();
   }
 
   Future<void> _lookForCachedProfile() async {

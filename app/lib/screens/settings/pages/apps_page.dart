@@ -61,13 +61,11 @@ class _AppsPageState extends State<AppsPage> {
         ? [_extensionOf(replacing.file)]
         : const ['exe', 'zip', 'dmg', 'apk', 'ipa'];
 
-    FilePickerResult? picked;
+    PlatformFile? picked;
     try {
-      picked = await FilePicker.platform.pickFiles(
+      picked = await FilePicker.pickFile(
         type: FileType.custom,
         allowedExtensions: extensions,
-        // Only the web has no file path to stream from.
-        withData: kIsWeb,
       );
     } catch (_) {
       if (mounted) {
@@ -76,8 +74,8 @@ class _AppsPageState extends State<AppsPage> {
       }
       return;
     }
-    if (picked == null || picked.files.isEmpty || !mounted) return;
-    final file = picked.files.single;
+    if (picked == null || !mounted) return;
+    final file = picked;
 
     final version = await _askVersion(file.name, replacing?.version ?? '');
     if (version == null || !mounted) return;
@@ -90,7 +88,7 @@ class _AppsPageState extends State<AppsPage> {
       final downloads = await context.read<ApiClient>().uploadAppDownload(
             filename: file.name,
             path: kIsWeb ? null : file.path,
-            bytes: kIsWeb ? file.bytes : null,
+            bytes: kIsWeb ? await file.readAsBytes() : null,
             version: version,
             onProgress: (sent, total) {
               if (!mounted || total <= 0) return;

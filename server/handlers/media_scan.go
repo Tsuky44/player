@@ -50,7 +50,7 @@ const episodeItemColumns = `m.id, m.type, m.title, COALESCE(m.file_path, ''), CO
 	COALESCE(p.current_position_seconds, 0), COALESCE(p.is_finished, 0),
 	COALESCE(NULLIF(m.season_number, 0), season.season_number, 0),
 	COALESCE(m.episode_number, 0),
-	COALESCE(season.title, ''), COALESCE(show_m.title, '')`
+	COALESCE(season.title, ''), COALESCE(show_m.title, ''), COALESCE(show_m.id, 0)`
 
 // The scanners below take a rowScanner (declared in permissions.go, alongside
 // the userColumns/scanUser pair this file generalises), so a single-row lookup
@@ -143,9 +143,10 @@ func scanLibraryItem(row rowScanner, extra ...interface{}) (models.HomeMediaItem
 func scanEpisodeItem(row rowScanner, extra ...interface{}) (models.HomeMediaItem, error) {
 	var storedSeason, storedEpisode int
 	var seasonTitle, showTitle string
+	var showID int
 
 	tail := append([]interface{}{
-		&storedSeason, &storedEpisode, &seasonTitle, &showTitle,
+		&storedSeason, &storedEpisode, &seasonTitle, &showTitle, &showID,
 	}, extra...)
 
 	item, err := scanLibraryItem(row, tail...)
@@ -158,6 +159,10 @@ func scanEpisodeItem(row rowScanner, extra ...interface{}) (models.HomeMediaItem
 	if showTitle != "" {
 		item.ShowTitle = showTitle
 	}
+	// Le logo du lecteur appartient à la série : sans son id, un épisode ouvert
+	// par « suivant » ou depuis la liste d'une saison n'avait que parent_id, qui
+	// désigne la saison, et retombait sur le titre en texte.
+	item.ShowID = showID
 	return item, nil
 }
 

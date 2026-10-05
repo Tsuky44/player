@@ -242,6 +242,24 @@ void main() async {
   final authProvider = AuthProvider(apiClient);
   final reachability = ServerReachability(apiClient);
 
+  // Les réglages de lecture suivent le compte (ADR-0043) : dès qu'on sait qui
+  // est connecté, et sur quel serveur, l'appareil s'aligne sur lui. La clé ne
+  // change qu'avec le compte, donc les autres notifications ne coûtent rien.
+  String? playbackPreferencesAccount;
+  authProvider.addListener(() {
+    final user = authProvider.currentUser;
+    final account = authProvider.isAuthenticated && user != null
+        ? '${apiClient.baseUrl}|${user.id}'
+        : null;
+    if (account == playbackPreferencesAccount) return;
+    playbackPreferencesAccount = account;
+    if (account == null) {
+      PlaybackPreferencesStorage.unbindAccount();
+    } else {
+      unawaited(PlaybackPreferencesStorage.bindAccount(apiClient, account));
+    }
+  });
+
   // Le lecteur résout le nom du serveur au moment d'ouvrir le flux : ce nom
   // doit déjà être dans le cache DNS du système. Voir [DnsWarmup].
   final servers = apiClient.servers;
@@ -316,6 +334,9 @@ void main() async {
     // Les liens de comptes vivent sur les serveurs (ADR-0017) : un lien fait
     // depuis un autre appareil apparaît ici au retour du réseau.
     unawaited(apiClient.refreshAccountLinks());
+    // Un réglage changé hors ligne part maintenant, et ceux changés depuis un
+    // autre appareil arrivent.
+    unawaited(PlaybackPreferencesStorage.syncWithAccount());
   });
   reachability.start();
   unawaited(apiClient.refreshAccountLinks());

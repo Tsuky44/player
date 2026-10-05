@@ -45,7 +45,26 @@ class AuthProvider extends ChangeNotifier {
   /// choisir à la place de l'utilisateur.
   ServerAccount? _unreachablePrimary;
 
-  AuthProvider(this.apiClient) {
+  /// Les pauses avant de redemander son profil à un serveur resté muet au
+  /// lancement. Une app qui démarre en même temps que la machine, ou qui sort
+  /// de veille, envoie sa première requête avant que le DNS ou l'interface
+  /// réseau soient prêts : cet échec-là est immédiat et ne dit rien du serveur.
+  final List<Duration> _startupRetryPauses;
+
+  static const _defaultStartupRetryPauses = [
+    Duration(milliseconds: 400),
+    Duration(milliseconds: 1200),
+  ];
+
+  /// Passé ce délai, l'échec n'a plus rien d'un raté de démarrage — c'est un
+  /// délai de connexion dépassé — et réessayer ne ferait qu'allonger l'écran
+  /// de lancement devant un serveur réellement éteint.
+  static const _startupRetryBudget = Duration(seconds: 4);
+
+  AuthProvider(
+    this.apiClient, {
+    List<Duration> startupRetryPauses = _defaultStartupRetryPauses,
+  }) : _startupRetryPauses = startupRetryPauses {
     // Le carnet de serveurs se modifie aussi sans passer par ici — un renommage
     // depuis l'écran des serveurs, par exemple. Le relayer évite que le menu de
     // compte affiche l'ancien nom jusqu'au prochain événement.
@@ -91,7 +110,7 @@ class AuthProvider extends ChangeNotifier {
     // Un 401 est un verdict : la session n'existe plus, on nettoie et on
     // renvoie vers l'écran de connexion. Une absence de réponse n'est un
     // verdict sur rien — c'est le cas hors ligne, et il se rattrape.
-    switch (await _probeSessionOnActive(announceExpiry: false)) {
+    switch (await _probeSessionAtStartup()) {
       case _SessionOutcome.opened:
         await apiClient.saveLastUsername(_currentUser!.username);
       case _SessionOutcome.unauthorized:
@@ -112,6 +131,24 @@ class AuthProvider extends ChangeNotifier {
 
     _isInitializing = false;
     notifyListeners();
+  }
+
+  /// Le sondage du lancement : un silence ne devient un verdict qu'après avoir
+  /// été confirmé. Sans ça, un seul raté passager suffisait à afficher
+  /// « serveur principal non disponible » devant un serveur allumé — et
+  /// « Réessayer » aboutissait aussitôt.
+  Future<_SessionOutcome> _probeSessionAtStartup() async {
+    final clock = Stopwatch()..start();
+    var outcome = await _probeSessionOnActive(announceExpiry: false);
+    for (final pause in _startupRetryPauses) {
+      if (outcome != _SessionOutcome.unreachable ||
+          clock.elapsed > _startupRetryBudget) {
+        break;
+      }
+      await Future<void>.delayed(pause);
+      outcome = await _probeSessionOnActive(announceExpiry: false);
+    }
+    return outcome;
   }
 
   /// Remet l'app sur le serveur principal, s'il y en a un de désigné.

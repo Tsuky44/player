@@ -279,6 +279,27 @@ n'affecte que les liens futurs.
   }
   ```
 
+#### 🎚 Réglages de lecture du compte
+Les préférences qui suivent la personne d'un appareil à l'autre (saut d'intro automatique, langue
+audio par défaut). Les réglages liés au matériel restent sur l'appareil. Voir
+`docs/adr/0043-reglages-de-lecture-lies-au-compte.md`.
+* **Route :** `GET /api/me/playback-preferences`
+* **Réponse (JSON) :** `updated_at` est vide tant que le compte n'a rien enregistré.
+  ```json
+  {
+    "auto_skip_intro": true,
+    "default_audio_lang": "fr",
+    "updated_at": "2026-10-05 18:22:10"
+  }
+  ```
+* **Route :** `PUT /api/me/playback-preferences`
+* **Corps (JSON) :** partiel — un champ absent garde sa valeur. `default_audio_lang` est un code de
+  deux ou trois lettres, ou `""` pour la piste par défaut du fichier (`400` sinon).
+  ```json
+  { "auto_skip_intro": true }
+  ```
+* **Réponse (JSON) :** l'état stocké, au même format que le `GET`.
+
 ---
 
 ### 📂 3. Navigation Bibliothèque

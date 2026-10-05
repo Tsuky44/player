@@ -589,6 +589,24 @@ var migrations = []migration{
 			`ALTER TABLE users ADD COLUMN totp_recovery TEXT NOT NULL DEFAULT '';`,
 		},
 	},
+	{
+		id:   16,
+		name: "account playback preferences",
+		// Voir ADR-0043. Une ligne par compte, créée à la première écriture :
+		// son absence veut dire « ce compte n'a encore rien choisi », et c'est
+		// ce qui laisse le premier appareil y déposer ses réglages locaux.
+		// Une colonne par réglage plutôt qu'un blob JSON : le serveur valide
+		// ce qu'il range.
+		stmts: []string{
+			`CREATE TABLE IF NOT EXISTS user_playback_preferences (
+				user_id INTEGER PRIMARY KEY,
+				auto_skip_intro BOOLEAN NOT NULL DEFAULT 0,
+				default_audio_lang TEXT NOT NULL DEFAULT '',
+				updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+				FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+			);`,
+		},
+	},
 }
 
 // applyMigrations brings the database up to the latest schema version.

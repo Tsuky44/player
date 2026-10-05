@@ -19,12 +19,16 @@ class _FakeApiClient extends ApiClient {
   /// resté à la maison.
   final Set<String> down = {};
 
+  /// Le nombre d'appels qui échouent avant que le serveur réponde — la
+  /// première requête partie avant que le réseau de la machine soit prêt.
+  int hiccups = 0;
+
   final List<String> meCalls = [];
 
   @override
   Future<User> getMe() async {
     meCalls.add(baseUrl);
-    if (down.contains(baseUrl)) {
+    if (down.contains(baseUrl) || meCalls.length <= hiccups) {
       throw DioException.connectionError(
         requestOptions: RequestOptions(path: '/api/auth/me'),
         reason: 'serveur injoignable',
@@ -132,7 +136,7 @@ void main() {
     expect(api.servers.active?.url, 'http://paul.local',
         reason: 'c’est bien l’autre serveur qu’on quittait');
 
-    final auth = AuthProvider(api);
+    final auth = AuthProvider(api, startupRetryPauses: const []);
     await _settle(auth);
 
     expect(auth.activeServer?.url, 'http://maison.local');
@@ -143,7 +147,7 @@ void main() {
   test('sans serveur principal, l’app reprend où elle en était', () async {
     final api = await deviceWithTwoServers();
 
-    final auth = AuthProvider(api);
+    final auth = AuthProvider(api, startupRetryPauses: const []);
     await _settle(auth);
 
     expect(auth.activeServer?.url, 'http://paul.local');
@@ -161,13 +165,46 @@ void main() {
     await api.cacheProfile(_user('mathis'));
     api.down.add('http://maison.local');
 
-    final auth = AuthProvider(api);
+    final auth = AuthProvider(api, startupRetryPauses: const []);
     await _settle(auth);
 
     expect(auth.needsServerChoice, isTrue);
     expect(auth.unreachablePrimary?.url, 'http://maison.local');
     expect(auth.isAuthenticated, isFalse);
     expect(auth.isOfflineSession, isFalse);
+  });
+
+  test('un raté passager au lancement ne pose pas la question', () async {
+    final api = await deviceWithTwoServers();
+    final maison = api.servers.accountForUrl('http://maison.local')!;
+    await api.servers.setPrimary(maison.id);
+    api.hiccups = 1;
+
+    final auth = AuthProvider(api, startupRetryPauses: const [Duration.zero]);
+    await _settle(auth);
+
+    expect(auth.needsServerChoice, isFalse,
+        reason: 'un seul échec ne prouve pas que le serveur est éteint');
+    expect(auth.isAuthenticated, isTrue);
+    expect(auth.isOfflineSession, isFalse);
+    expect(api.meCalls, hasLength(2));
+  });
+
+  test('un principal réellement muet le reste après les nouvelles tentatives',
+      () async {
+    final api = await deviceWithTwoServers();
+    final maison = api.servers.accountForUrl('http://maison.local')!;
+    await api.servers.setPrimary(maison.id);
+    api.down.add('http://maison.local');
+
+    final auth = AuthProvider(
+      api,
+      startupRetryPauses: const [Duration.zero, Duration.zero],
+    );
+    await _settle(auth);
+
+    expect(auth.needsServerChoice, isTrue);
+    expect(api.meCalls, hasLength(3));
   });
 
   test('un seul serveur : rien à proposer, la session hors ligne reprend',
@@ -185,7 +222,7 @@ void main() {
     await api.cacheProfile(_user('mathis'));
     api.down.add('http://maison.local');
 
-    final auth = AuthProvider(api);
+    final auth = AuthProvider(api, startupRetryPauses: const []);
     await _settle(auth);
 
     expect(auth.needsServerChoice, isFalse,
@@ -200,7 +237,7 @@ void main() {
     await api.servers.setPrimary(maison.id);
     api.down.add('http://maison.local');
 
-    final auth = AuthProvider(api);
+    final auth = AuthProvider(api, startupRetryPauses: const []);
     await _settle(auth);
     expect(auth.needsServerChoice, isTrue);
 
@@ -220,7 +257,7 @@ void main() {
     await api.servers.setPrimary(maison.id);
     api.down.add('http://maison.local');
 
-    final auth = AuthProvider(api);
+    final auth = AuthProvider(api, startupRetryPauses: const []);
     await _settle(auth);
     expect(auth.needsServerChoice, isTrue);
 
@@ -241,7 +278,7 @@ void main() {
     await api.cacheProfile(_user('mathis'));
     api.down.add('http://maison.local');
 
-    final auth = AuthProvider(api);
+    final auth = AuthProvider(api, startupRetryPauses: const []);
     await _settle(auth);
 
     final opened = await auth.continueOfflineOnPrimary();

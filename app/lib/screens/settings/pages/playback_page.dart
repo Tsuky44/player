@@ -26,6 +26,20 @@ class _PlaybackPageState extends State<PlaybackPage> {
   @override
   void initState() {
     super.initState();
+    _reload();
+    // Un réglage changé depuis un autre appareil peut arriver pendant que la
+    // page est ouverte : elle l'affiche, et demande au compte où il en est.
+    PlaybackPreferencesStorage.accountRevision.addListener(_reload);
+    PlaybackPreferencesStorage.syncWithAccount();
+  }
+
+  @override
+  void dispose() {
+    PlaybackPreferencesStorage.accountRevision.removeListener(_reload);
+    super.dispose();
+  }
+
+  void _reload() {
     _storage.loadDefaultAudioLang().then((lang) {
       if (mounted) {
         setState(() {
@@ -54,7 +68,7 @@ class _PlaybackPageState extends State<PlaybackPage> {
     return SettingsPage(
       title: 'Lecture',
       description:
-          'Comment les films et les séries se lisent sur cet appareil. Ces réglages ne changent rien sur vos autres appareils.',
+          'Comment les films et les séries se lisent. Vos préférences suivent votre compte sur tous vos appareils ; seuls les réglages vidéo restent propres à celui-ci.',
       children: [
         SettingsGroup(
           title: 'Audio',
@@ -102,6 +116,9 @@ class _PlaybackPageState extends State<PlaybackPage> {
         if (!AppPlatform.isApple)
           SettingsGroup(
             title: 'Vidéo',
+            // Ils corrigent le matériel de cet appareil : les envoyer sur un
+            // autre y casserait une lecture qui marchait (ADR-0004).
+            footer: 'Propres à cet appareil : ils dépendent de son matériel.',
             children: [
               SettingsChoiceTile<HardwareDecodingPreference>(
                 icon: Icons.memory_rounded,
