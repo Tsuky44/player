@@ -5,6 +5,7 @@ import '../../models/media_share.dart';
 import '../../models/models.dart';
 import '../../services/api_client.dart';
 import '../../theme/app_colors.dart';
+import '../../theme/app_icons.dart';
 import '../../tv/tv_deferred_keyboard.dart';
 import '../../utils/format.dart';
 import '../../utils/poster_url.dart';
@@ -16,9 +17,13 @@ import '../../theme/app_type.dart';
 /// La page d'un lien de partage : ce qu'il ouvre, son mot de passe s'il en a
 /// un, et le bouton qui lance le lecteur Onyx (ADR-0037).
 class SharedLinkScreen extends StatefulWidget {
-  const SharedLinkScreen({super.key, required this.api});
+  const SharedLinkScreen({super.key, required this.api, this.onClose});
 
   final SharedLinkApiClient api;
+
+  /// Ferme la page, dans l'app installée (ADR-0037 §9). Nul sur le web, où
+  /// la page est toute l'app : il n'y a rien derrière elle.
+  final VoidCallback? onClose;
 
   @override
   State<SharedLinkScreen> createState() => _SharedLinkScreenState();
@@ -177,6 +182,18 @@ class _SharedLinkScreenState extends State<SharedLinkScreen> {
         resolvePosterUrl(info?.posterUrl, serverBaseUrl: widget.api.baseUrl);
     return Scaffold(
       backgroundColor: AppColors.background,
+      appBar: widget.onClose == null
+          ? null
+          : AppBar(
+              backgroundColor: AppColors.background,
+              elevation: 0,
+              scrolledUnderElevation: 0,
+              leading: IconButton(
+                tooltip: 'Fermer',
+                onPressed: widget.onClose,
+                icon: const Icon(AppIcons.close),
+              ),
+            ),
       body: SafeArea(
         child: Center(
           child: SingleChildScrollView(

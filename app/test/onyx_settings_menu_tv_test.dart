@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:onyx/screens/player/playback/playback_session.dart';
+import 'package:onyx/screens/player/playback/sleep_timer.dart';
 import 'package:onyx/screens/player/widgets/onyx/onyx_settings_menu.dart';
 import 'package:onyx/tv/tv_focus.dart';
 import 'package:onyx/tv/tv_mode.dart';
@@ -75,6 +76,35 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(session.chosen?.title, 'Français');
+  });
+
+  testWidgets('la minuterie de veille se règle à la télécommande',
+      (tester) async {
+    await _pumpMenu(tester);
+
+    // Audio, Sous-titres, Vitesse de lecture, Affichage, Minuterie de veille.
+    for (var i = 0; i < 4; i++) {
+      await tester.sendKeyEvent(LogicalKeyboardKey.arrowDown);
+      await tester.pumpAndSettle();
+    }
+    expect(_highlighted(tester), 'Minuterie de veille');
+    await tester.sendKeyEvent(LogicalKeyboardKey.select);
+    await tester.pumpAndSettle();
+    expect(_highlighted(tester), 'Désactivée');
+
+    // Désactivée, 5, 10, 15, 30 minutes.
+    for (var i = 0; i < 4; i++) {
+      await tester.sendKeyEvent(LogicalKeyboardKey.arrowDown);
+      await tester.pumpAndSettle();
+    }
+    await tester.sendKeyEvent(LogicalKeyboardKey.select);
+    await tester.pumpAndSettle();
+
+    expect(SleepTimer.instance.chosen, const Duration(minutes: 30));
+
+    // Avant la fin du test : il refuse de se terminer sur une minuterie qui
+    // court encore.
+    SleepTimer.instance.resetForTest();
   });
 }
 

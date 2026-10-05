@@ -132,6 +132,31 @@ fichier n'y figure pas (`server/handlers/share_scope.go`).
 - La position de reprise est gardée dans le navigateur, une par épisode.
 - Le lecteur invité n'enchaîne pas sur l'épisode suivant : le visiteur revient à la liste.
 
+### 9. Dans l'app installée, toujours sans compte (ajout du 2026-10-05)
+
+Quelqu'un qui a installé l'app ouvre le même lien dedans, sans compte ni serveur enregistré :
+l'écran de connexion propose « Ouvrir un lien de partage », où il colle le lien
+(`app/lib/screens/shared_link/shared_link_guest.dart`). Hors du web, la page ne vient d'aucun
+serveur : c'est le lien collé qui dit où il mène (`SharedLinkAddress`), et le
+`SharedLinkApiClient` est construit sur cette adresse au lieu de celle de la page.
+
+- La page du lien et son lecteur vivent dans **un navigateur à part**, sous les fournisseurs du
+  lien (`SharedLinkGuestScope`). Le client de l'app, son serveur et ses comptes ne sont pas
+  touchés : fermer la page rend l'écran de connexion tel qu'il était.
+- Le lecteur invité **n'ouvre jamais un téléchargement de l'appareil** : l'identifiant du média
+  est celui d'un autre serveur et peut désigner ici un autre film. Pour la même raison, les
+  caches de fiches et de pistes sont vidés à l'entrée et à la sortie.
+- Pas sur un téléviseur, qui n'a pas de presse-papiers où recevoir le lien.
+
+Écarté pour l'instant : ouvrir l'app au toucher du lien (App Links, Universal Links). Ils se
+déclarent par nom de domaine dans l'app, et chaque serveur a le sien. Un schéma `onyx://`
+resterait possible, mais un lien `https` doit d'abord marcher partout, navigateur compris.
+
+**Une série en double** (ajout du 2026-10-05) : le lien d'une série est posé sur sa fiche
+canonique (`shareScopeID`), celle à laquelle pendent les saisons et que l'app affiche. Posé sur un
+doublon, il n'ouvrait que la saison restée dessous. Un lien déjà créé sur un doublon est relu de
+la même façon à l'ouverture.
+
 ## Conséquences
 
 - **Le lien d'une série ouvre beaucoup à la fois.** La borne de quatre lectures simultanées par

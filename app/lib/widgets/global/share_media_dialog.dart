@@ -160,10 +160,11 @@ class _ShareMediaDialogState extends State<ShareMediaDialog> {
         Text(
           widget.collection
               ? 'Toute personne qui a le lien peut regarder les épisodes de '
-                  '« ${widget.title} » dans son navigateur, sans compte, '
-                  'jusqu’à l’expiration du lien.'
+                  '« ${widget.title} » dans son navigateur ou dans l’app '
+                  'Onyx, sans compte, jusqu’à l’expiration du lien.'
               : 'Toute personne qui a le lien peut regarder '
-                  '« ${widget.title} » dans son navigateur, sans compte.',
+                  '« ${widget.title} » dans son navigateur ou dans l’app '
+                  'Onyx, sans compte.',
           style: const TextStyle(color: AppColors.textSecondary),
         ),
         const SizedBox(height: 12),
@@ -266,7 +267,9 @@ class _ShareMediaDialogState extends State<ShareMediaDialog> {
         const SizedBox(height: 12),
         const Text(
           'Copiez-le maintenant : il ne sera plus affiché. Vous pourrez le '
-          'suivre ou le supprimer dans Paramètres › Liens de partage.',
+          'suivre ou le supprimer dans Paramètres › Liens de partage. Dans '
+          'l’app Onyx, il se colle sur l’écran de connexion, sous « Ouvrir un '
+          'lien de partage ».',
           style: TextStyle(color: AppColors.textMuted, fontSize: AppType.subhead),
         ),
         if (localOnly) ...[

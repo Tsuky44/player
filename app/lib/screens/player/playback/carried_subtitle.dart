@@ -1,4 +1,5 @@
 import '../../../models/models.dart';
+import '../../../models/series_track_preferences.dart';
 
 /// Le sous-titre choisi dans un épisode, décrit de façon à le retrouver dans le
 /// suivant.
@@ -28,6 +29,23 @@ class CarriedSubtitle {
   /// pistes : on ne sait alors rien de plus que ce qu'elle laisse deviner.
   factory CarriedSubtitle.fromKey(String key) => CarriedSubtitle.of(
       MediaSubtitleTrack(lang: key, name: '', image: key.startsWith('img')));
+
+  /// Depuis le choix que le compte a retenu pour la série (ADR-0044).
+  factory CarriedSubtitle.fromSeries(SeriesSubtitleChoice choice) =>
+      CarriedSubtitle(
+        key: choice.key,
+        language: choice.language,
+        forced: choice.forced,
+        image: choice.image,
+      );
+
+  /// Le même choix, sous la forme que le compte retient pour la série.
+  SeriesSubtitleChoice get asSeriesChoice => SeriesSubtitleChoice(
+        language: language,
+        key: key,
+        forced: forced,
+        image: image,
+      );
 
   /// Clé canonique dans le média d'origine (`fr2`, `img3`).
   final String key;

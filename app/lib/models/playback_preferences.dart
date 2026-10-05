@@ -1,3 +1,5 @@
+import 'still_watching_settings.dart';
+
 /// Les réglages de lecture d'un compte, tels que le serveur les tient
 /// (ADR-0043).
 class AccountPlaybackPreferences {
@@ -6,6 +8,9 @@ class AccountPlaybackPreferences {
   /// Code ISO à deux lettres, ou null pour la piste par défaut du fichier.
   final String? defaultAudioLang;
 
+  /// Null quand le serveur est trop ancien pour connaître ce réglage.
+  final StillWatchingSettings? stillWatching;
+
   /// Faux tant que le compte n'a rien enregistré : ses valeurs ne sont alors
   /// que des défauts, et le premier appareil peut y déposer les siennes.
   final bool isSaved;
@@ -13,6 +18,7 @@ class AccountPlaybackPreferences {
   const AccountPlaybackPreferences({
     required this.autoSkipIntro,
     required this.defaultAudioLang,
+    this.stillWatching,
     required this.isSaved,
   });
 
@@ -22,6 +28,7 @@ class AccountPlaybackPreferences {
     return AccountPlaybackPreferences(
       autoSkipIntro: json['auto_skip_intro'] == true,
       defaultAudioLang: lang.isEmpty ? null : lang,
+      stillWatching: StillWatchingSettings.fromJson(json),
       isSaved: updatedAt.isNotEmpty,
     );
   }

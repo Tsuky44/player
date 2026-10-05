@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
 import '../../../models/models.dart';
+import '../../../models/series_track_preferences.dart';
 import '../../../models/server_activity.dart';
 import '../../../utils/app_platform.dart';
 import '../web/web_playback.dart';
@@ -12,6 +13,7 @@ import '../playback/live_subtitles.dart';
 import '../playback/playback_engine.dart';
 import '../playback/playback_session.dart';
 import '../playback/playback_stats.dart';
+import '../playback/series_track_memory.dart';
 import '../playback/startup_timeline.dart';
 import 'playback_reporter.dart';
 import '../playback/timeline_previews.dart';
@@ -336,7 +338,55 @@ class PlayerController {
   /// et le suivant doit reprendre la forcée, pas ce « rien ».
   CarriedSubtitle? _carriedSubtitle;
 
+  /// Ce que le compte retient pour la série de l'épisode en cours, ou null
+  /// hors d'une série. Voir [SeriesTrackMemory].
+  SeriesTrackMemory? _seriesMemory;
+
+  /// Le sous-titre qu'on vient de choisir à la main vaut désormais pour la
+  /// série. Une piste que le catalogue ne sait pas nommer n'est pas retenue :
+  /// rien ne permettrait de la retrouver dans un autre épisode.
+  void _rememberSubtitleChoice() {
+    final memory = _seriesMemory;
+    if (memory == null) return;
+    if (_subtitlesExplicitlyOff) {
+      memory.rememberSubtitle(const SeriesSubtitleChoice.off());
+      return;
+    }
+    final key = _selectedSubtitleLang;
+    if (key == null || key.isEmpty) return;
+    final track = _trackForLang(key);
+    final carried =
+        track != null ? CarriedSubtitle.of(track) : CarriedSubtitle.fromKey(key);
+    memory.rememberSubtitle(carried.asSeriesChoice);
+  }
+
+  Future<String?> _loadDefaultAudioLang() async {
+    try {
+      return await PlaybackPreferencesStorage().loadDefaultAudioLang();
+    } catch (_) {
+      return null;
+    }
+  }
+
+  /// La langue audio héritée, tant qu'on n'en a pas choisi une autre ici. Même
+  /// raison que [_carriedSubtitle] : un épisode qui n'a pas cette langue joue
+  /// autre chose, et le suivant doit reprendre la langue voulue, pas ce repli.
+  String? _carriedAudioLang;
+
   PlayerPlaybackPreferences exportPreferences() {
+    final exported = _exportCurrentSelection();
+    final audioLang = _carriedAudioLang;
+    if (audioLang == null || audioLang == exported.audioLang) return exported;
+    return PlayerPlaybackPreferences(
+      audioIndex: exported.audioIndex,
+      audioLang: audioLang,
+      subtitle: exported.subtitle,
+      internalSubId: exported.internalSubId,
+      subtitlesOff: exported.subtitlesOff,
+    );
+  }
+
+  PlayerPlaybackPreferences _exportCurrentSelection() {
     if (_carriedSubtitle != null) {
       return PlayerPlaybackPreferences(
         audioIndex: _selectedAudioIndex,
@@ -384,13 +434,15 @@ class PlayerController {
     );
   }
 
-  void _applyInheritedPreferences(PlayerPlaybackPreferences prefs) {
-    final audioCount = mediaTracks?.audio.length ?? 0;
-    if (audioCount > 0) {
-      _selectedAudioIndex = prefs.audioIndex.clamp(0, audioCount - 1);
-    } else {
-      _selectedAudioIndex = prefs.audioIndex;
-    }
+  void _applyInheritedPreferences(
+    PlayerPlaybackPreferences prefs, {
+    String? defaultAudioLang,
+  }) {
+    _selectedAudioIndex = prefs.audioIndexIn(
+      mediaTracks?.audio ?? const <MediaAudioTrack>[],
+      defaultLang: defaultAudioLang,
+    );
+    _carriedAudioLang = prefs.audioLang;
 
     _subtitlesExplicitlyOff = prefs.subtitlesOff;
     _carriedSubtitle = prefs.subtitlesOff ? null : prefs.subtitle;
@@ -604,7 +656,19 @@ class PlayerController {
     _onTracksChanged = onTracksChanged;
     _onFailure = onFailure;
 
-    _localFilePath = DownloadManager.instance.localVideoPath(media.id);
+    // Pas pour le visiteur d'un lien de partage : son média porte l'identifiant
+    // d'un autre serveur, qui peut être celui d'un téléchargement d'ici.
+    _localFilePath = apiClient.isGuest
+        ? null
+        : DownloadManager.instance.localVideoPath(media.id);
+
+    // Sans choix transmis par l'épisode qu'on quitte, c'est celui que le
+    // compte a retenu pour la série (ADR-0044). La demande part ici pour
+    // courir pendant celle du ticket, et se lit juste après.
+    _seriesMemory = SeriesTrackMemory.forMedia(apiClient, media);
+    final seriesChoice = inheritedPreferences == null
+        ? _seriesMemory?.load(cacheFirst: _localFilePath != null)
+        : null;
 
     // La séance s'ouvre ici, avant tout ce qui peut encore échouer : l'accès au
     // flux, l'ouverture du conteneur, le repli en transcodage.
@@ -639,6 +703,14 @@ class PlayerController {
     }
     final streamUrl = _directPlaySource(apiClient, media.id);
 
+    if (seriesChoice != null) {
+      final stored = await seriesChoice;
+      if (_disposed) return;
+      if (stored != null) {
+        inheritedPreferences = PlayerPlaybackPreferences.fromSeries(stored);
+      }
+    }
+
     if (inheritedPreferences != null) {
       _applyInheritedPreferences(inheritedPreferences);
     } else {
@@ -656,15 +728,8 @@ class PlayerController {
       // Which audio track to load with. The episode being carried over from
       // knows best; otherwise it is the user's standing preference, which lives
       // on this machine and costs nothing to read.
-      var preferredAudioLang = inheritedPreferences?.audioLang;
-      if (preferredAudioLang == null) {
-        try {
-          preferredAudioLang =
-              await PlaybackPreferencesStorage().loadDefaultAudioLang();
-        } catch (_) {
-          preferredAudioLang = null;
-        }
-      }
+      final preferredAudioLang =
+          inheritedPreferences?.audioLang ?? await _loadDefaultAudioLang();
       await _applyPreferredAudioLanguage(preferredAudioLang);
 
       _mark('prepared');
@@ -758,12 +823,12 @@ class PlayerController {
       // La piste d'abord : une session HLS s'ouvre avec la piste demandée
       // (`?audio=N`). Choisie après, le web partait sur la première piste du
       // fichier — l'anglais d'un film réglé en français.
+      final defaultLang = await _loadDefaultAudioLang();
+      if (_disposed) return;
       if (inheritedPreferences != null) {
-        _applyInheritedPreferences(inheritedPreferences);
+        _applyInheritedPreferences(inheritedPreferences,
+            defaultAudioLang: defaultLang);
       } else if (tracks.audio.isNotEmpty) {
-        final defaultLang =
-            await PlaybackPreferencesStorage().loadDefaultAudioLang();
-        if (_disposed) return;
         _selectedAudioIndex = PlaybackPreferencesStorage.pickAudioIndex(
           tracks.audio,
           defaultLang,
@@ -1640,6 +1705,9 @@ class PlayerController {
     if (index < 0 || index >= mediaTracks!.audio.length) return;
     if (index == _selectedAudioIndex) return;
     _selectedAudioIndex = index;
+    _carriedAudioLang = null;
+    final chosenLang = _selectedAudioLang;
+    if (chosenLang != null) _seriesMemory?.rememberAudio(chosenLang);
 
     // A browser offers no audio-track API over a media stream, and media_kit's
     // web setAudioTrack only accepts a URI — the rendition switch that is free
@@ -1786,6 +1854,7 @@ class PlayerController {
     _selectedSubtitleLang = lang;
     _selectedInternalSubId = null;
     _subtitlesExplicitlyOff = lang == null || lang.isEmpty;
+    _rememberSubtitleChoice();
 
     // While transcoding, a bitmap track lives in the picture itself, so turning
     // one on — or off, or swapping it for another — changes what has to be
@@ -1824,6 +1893,7 @@ class PlayerController {
     _selectedInternalSubId = isOff ? null : track.id;
     _selectedSubtitleLang = isOff ? null : _canonicalLangForEmbedded(track);
     _subtitlesExplicitlyOff = isOff;
+    _rememberSubtitleChoice();
     try {
       session.setSubtitles(SubtitleSelection.track(track));
     } catch (_) {}

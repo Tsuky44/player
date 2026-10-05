@@ -2,8 +2,10 @@ package handlers
 
 import (
 	"fmt"
+	"sort"
 
 	"project-player/server/database"
+	"project-player/server/indexer"
 	"project-player/server/models"
 	"project-player/server/sharelinks"
 )
@@ -27,22 +29,31 @@ func isShareCollection(mediaType string) bool {
 	return mediaType == string(models.TypeShow) || mediaType == string(models.TypeSeason)
 }
 
-// shareableMediaType dit si mediaID peut porter un lien, et de quel type il
-// est : un film ou un épisode qui a un fichier, une saison ou une série qui a
-// au moins un épisode lisible.
-func shareableMediaType(mediaID int) (string, bool) {
-	var mediaType string
+// shareScopeID renvoie la fiche dont un lien posé sur mediaID ouvre les
+// épisodes. Une série indexée en double a plusieurs fiches, et ses saisons
+// pendent à une seule, la canonique : c'est celle que /api/shows/:id/seasons
+// montre. Un lien posé sur l'autre fiche n'ouvrait que ce qui y traînait
+// encore — une saison, parfois aucune — au lieu de la série affichée.
+func shareScopeID(mediaID int) int {
+	return indexer.ResolveCanonicalShowID(mediaID)
+}
+
+// shareableMediaType dit si mediaID peut porter un lien, de quel type il est,
+// et sur quelle fiche le poser (voir shareScopeID) : un film ou un épisode qui
+// a un fichier, une saison ou une série qui a au moins un épisode lisible.
+func shareableMediaType(mediaID int) (scopeID int, mediaType string, shareable bool) {
 	if err := database.DB.QueryRow("SELECT type FROM medias WHERE id = ?", mediaID).Scan(&mediaType); err != nil {
-		return "", false
+		return mediaID, "", false
 	}
 	if !isShareCollection(mediaType) {
-		return mediaType, isPlayableMedia(mediaID)
+		return mediaID, mediaType, isPlayableMedia(mediaID)
 	}
+	scopeID = shareScopeID(mediaID)
 	var episodes int
-	if err := database.DB.QueryRow("SELECT COUNT(*)"+sharedEpisodesFrom, mediaID, mediaID).Scan(&episodes); err != nil {
-		return "", false
+	if err := database.DB.QueryRow("SELECT COUNT(*)"+sharedEpisodesFrom, scopeID, scopeID).Scan(&episodes); err != nil {
+		return scopeID, "", false
 	}
-	return mediaType, episodes > 0
+	return scopeID, mediaType, episodes > 0
 }
 
 // sharedPlayTarget renvoie le média qu'une ouverture du lien doit lire :
@@ -52,22 +63,27 @@ func sharedPlayTarget(share sharelinks.Share, requested int) (int, bool) {
 	if requested <= 0 || requested == share.MediaID {
 		return share.MediaID, isPlayableMedia(share.MediaID)
 	}
+	// Un lien créé avant shareScopeID peut encore désigner une fiche en double.
+	scopeID := shareScopeID(share.MediaID)
 	var id int
 	err := database.DB.QueryRow("SELECT e.id"+sharedEpisodesFrom+" AND e.id = ?",
-		share.MediaID, share.MediaID, requested).Scan(&id)
+		scopeID, scopeID, requested).Scan(&id)
 	return id, err == nil
 }
 
 // loadSharedEpisodes liste les épisodes lisibles de la saison ou de la série
 // scopeID, dans l'ordre de diffusion.
+//
+// Le numéro de saison vient de l'épisode, sinon de sa saison, sinon du titre
+// de celle-ci (« Saison 3 ») : une saison indexée depuis un dossier n'a souvent
+// pas de numéro, et ses épisodes se mêlaient alors à ceux des autres saisons
+// dans une seule liste sans titre.
 func loadSharedEpisodes(scopeID int) ([]models.SharedEpisode, error) {
+	scopeID = shareScopeID(scopeID)
 	rows, err := database.DB.Query(`
-		SELECT e.id,
-		       CASE WHEN COALESCE(e.season_number, 0) > 0 THEN e.season_number
-		            ELSE COALESCE(season.season_number, 0) END AS season_no,
-		       COALESCE(e.episode_number, 0) AS episode_no,
-		       e.title, COALESCE(e.duration, 0)`+sharedEpisodesFrom+`
-		ORDER BY season_no, episode_no, e.id`, scopeID, scopeID)
+		SELECT e.id, COALESCE(e.season_number, 0), COALESCE(season.season_number, 0),
+		       season.title, COALESCE(e.episode_number, 0), e.title, COALESCE(e.duration, 0)`+sharedEpisodesFrom,
+		scopeID, scopeID)
 	if err != nil {
 		return nil, fmt.Errorf("list shared episodes of %d: %w", scopeID, err)
 	}
@@ -75,12 +91,34 @@ func loadSharedEpisodes(scopeID int) ([]models.SharedEpisode, error) {
 	var out []models.SharedEpisode
 	for rows.Next() {
 		var episode models.SharedEpisode
-		if err := rows.Scan(&episode.ID, &episode.SeasonNumber, &episode.EpisodeNumber, &episode.Title, &episode.Duration); err != nil {
+		var seasonNumber int
+		var seasonTitle string
+		if err := rows.Scan(&episode.ID, &episode.SeasonNumber, &seasonNumber, &seasonTitle,
+			&episode.EpisodeNumber, &episode.Title, &episode.Duration); err != nil {
 			return nil, fmt.Errorf("scan shared episode: %w", err)
+		}
+		if episode.SeasonNumber <= 0 {
+			episode.SeasonNumber = seasonNumber
+		}
+		if episode.SeasonNumber <= 0 {
+			episode.SeasonNumber = seasonNumberFromTitle(seasonTitle)
 		}
 		out = append(out, episode)
 	}
-	return out, rows.Err()
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("list shared episodes of %d: %w", scopeID, err)
+	}
+	sort.SliceStable(out, func(i, j int) bool {
+		a, b := out[i], out[j]
+		if a.SeasonNumber != b.SeasonNumber {
+			return a.SeasonNumber < b.SeasonNumber
+		}
+		if a.EpisodeNumber != b.EpisodeNumber {
+			return a.EpisodeNumber < b.EpisodeNumber
+		}
+		return a.ID < b.ID
+	})
+	return out, nil
 }
 
 // shareDisplay nomme le média d'un lien pour quelqu'un qui ne voit que lui :

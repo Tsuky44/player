@@ -92,6 +92,11 @@ func TestPlaybackPreferencesRejectInvalidInput(t *testing.T) {
 		`{"default_audio_lang":"français"}`,
 		`{"default_audio_lang":"f"}`,
 		`{"default_audio_lang":"f1"}`,
+		`{"still_watching_episodes":0}`,
+		`{"still_watching_episodes":11}`,
+		`{"still_watching_from":1320}`,
+		`{"still_watching_from":1320,"still_watching_until":1440}`,
+		`{"still_watching_from":600,"still_watching_until":600}`,
 	} {
 		if rec := putPlaybackPreferences(user, body); rec.Code != http.StatusBadRequest {
 			t.Errorf("body %q: status %d, want 400", body, rec.Code)
@@ -99,5 +104,59 @@ func TestPlaybackPreferencesRejectInvalidInput(t *testing.T) {
 	}
 	if prefs := getPlaybackPreferences(t, user); prefs.UpdatedAt != "" {
 		t.Fatalf("a rejected update was stored: %+v", prefs)
+	}
+}
+
+// Un compte qui n'a rien choisi se voit poser la question après trois
+// épisodes, à toute heure : la protection vaut par défaut (ADR-0045).
+func TestStillWatchingDefaultsToThreeEpisodesAllDay(t *testing.T) {
+	setupAuthDB(t)
+	user := createTestUser(t, "alice", false, models.Permissions{})
+
+	prefs := getPlaybackPreferences(t, user)
+	if !prefs.StillWatchingEnabled || prefs.StillWatchingEpisodes != 3 ||
+		prefs.StillWatchingFrom != models.StillWatchingAllDay ||
+		prefs.StillWatchingUntil != models.StillWatchingAllDay {
+		t.Fatalf("unsaved account: got %+v", prefs)
+	}
+
+	// Enregistrer un autre réglage ne doit pas éteindre la question : la ligne
+	// créée porte les mêmes défauts.
+	if rec := putPlaybackPreferences(user, `{"auto_skip_intro":true}`); rec.Code != http.StatusOK {
+		t.Fatalf("put auto_skip_intro: status %d", rec.Code)
+	}
+	prefs = getPlaybackPreferences(t, user)
+	if !prefs.StillWatchingEnabled || prefs.StillWatchingEpisodes != 3 ||
+		prefs.StillWatchingFrom != models.StillWatchingAllDay {
+		t.Fatalf("after an unrelated update: got %+v", prefs)
+	}
+}
+
+// La plage horaire peut passer minuit, et se retire en remettant les deux
+// bornes à -1.
+func TestStillWatchingStoresAndClearsItsHours(t *testing.T) {
+	setupAuthDB(t)
+	user := createTestUser(t, "alice", false, models.Permissions{})
+
+	body := `{"still_watching_enabled":true,"still_watching_episodes":2,` +
+		`"still_watching_from":1320,"still_watching_until":360}`
+	if rec := putPlaybackPreferences(user, body); rec.Code != http.StatusOK {
+		t.Fatalf("put night hours: status %d", rec.Code)
+	}
+	prefs := getPlaybackPreferences(t, user)
+	if prefs.StillWatchingEpisodes != 2 || prefs.StillWatchingFrom != 1320 || prefs.StillWatchingUntil != 360 {
+		t.Fatalf("night hours: got %+v", prefs)
+	}
+
+	if rec := putPlaybackPreferences(user, `{"still_watching_enabled":false}`); rec.Code != http.StatusOK {
+		t.Fatalf("disable: status %d", rec.Code)
+	}
+	if rec := putPlaybackPreferences(user, `{"still_watching_from":-1,"still_watching_until":-1}`); rec.Code != http.StatusOK {
+		t.Fatalf("clear hours: status %d", rec.Code)
+	}
+	prefs = getPlaybackPreferences(t, user)
+	if prefs.StillWatchingEnabled || prefs.StillWatchingEpisodes != 2 ||
+		prefs.StillWatchingFrom != models.StillWatchingAllDay || prefs.StillWatchingUntil != models.StillWatchingAllDay {
+		t.Fatalf("after disabling and clearing: got %+v", prefs)
 	}
 }

@@ -12,7 +12,8 @@ mixin _PlaybackPreferencesEndpoints {
   }
 
   /// Mise à jour partielle : seuls les champs de [fields] sont envoyés, avec
-  /// les clés du serveur (`auto_skip_intro`, `default_audio_lang`).
+  /// les clés du serveur (`auto_skip_intro`, `default_audio_lang`,
+  /// `still_watching_*`).
   Future<AccountPlaybackPreferences> updatePlaybackPreferences(
     Map<String, Object> fields,
   ) async {

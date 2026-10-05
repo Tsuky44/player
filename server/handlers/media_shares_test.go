@@ -387,3 +387,70 @@ func TestSharedMediaTracks_NeedsTheLinksTicket(t *testing.T) {
 		t.Fatalf("tracks with the ticket: %d, want 404 from GetMediaTracks", status)
 	}
 }
+
+// Une série indexée en double a deux fiches, et ses saisons pendent à la
+// canonique. Le lien posé sur l'autre fiche ouvre la série qu'on voit à
+// l'écran, pas la seule saison restée sur le doublon.
+func TestShareLink_DuplicateShowRowSharesTheWholeShow(t *testing.T) {
+	ownerID, episodeID := setupShareTest(t)
+	firstID := insertShareEpisode(t, shareSeasonID, 1, 1, "Pilote", "/s01e01.mkv")
+	secondSeasonID := insertShareSeason(t, shareShowID, 2)
+	laterID := insertShareEpisode(t, secondSeasonID, 2, 1, "Retour", "/s02e01.mkv")
+	if _, err := database.DB.Exec(`UPDATE medias SET tmdb_id = 4242 WHERE id = ?`, shareShowID); err != nil {
+		t.Fatalf("match show: %v", err)
+	}
+	res, err := database.DB.Exec(`INSERT INTO medias (type, title, tmdb_id) VALUES ('show', 'Lioness (2023)', 4242)`)
+	if err != nil {
+		t.Fatalf("insert duplicate show: %v", err)
+	}
+	duplicateID, _ := res.LastInsertId()
+	strayID := insertShareEpisode(t, insertShareSeason(t, int(duplicateID), 3), 3, 1, "Égaré", "/s03e01.mkv")
+
+	share := createShare(t, ownerID, fmt.Sprintf(`{"media_id":%d}`, duplicateID))
+	if share.MediaID != shareShowID || share.Title != "Lioness" || share.Subtitle != "Série entière" {
+		t.Fatalf("created share = %+v, want it on the canonical show %d", share, shareShowID)
+	}
+	var info models.SharedMedia
+	if status := callShared(t, SharedMediaInfo, map[string]string{"code": share.Code}, &info); status != http.StatusOK {
+		t.Fatalf("info: %d", status)
+	}
+	if got := sharedEpisodeIDs(info); len(got) != 3 || got[0] != firstID || got[1] != episodeID || got[2] != laterID {
+		t.Fatalf("episodes = %v, want [%d %d %d] and not the stray %d", got, firstID, episodeID, laterID, strayID)
+	}
+
+	// Un lien d'avant ce correctif désigne encore le doublon : il s'ouvre
+	// pareil.
+	if _, err := database.DB.Exec(`UPDATE media_shares SET media_id = ? WHERE id = ?`, duplicateID, share.ID); err != nil {
+		t.Fatalf("point the link at the duplicate: %v", err)
+	}
+	info = models.SharedMedia{}
+	callShared(t, SharedMediaInfo, map[string]string{"code": share.Code}, &info)
+	if got := sharedEpisodeIDs(info); len(got) != 3 {
+		t.Fatalf("legacy link episodes = %v, want the 3 of the canonical show", got)
+	}
+	if status := callShared(t, OpenSharedMedia, map[string]any{"code": share.Code, "media_id": laterID}, nil); status != http.StatusOK {
+		t.Fatalf("open season 2 through a legacy link: %d", status)
+	}
+}
+
+// Une saison indexée depuis un dossier « Saison 2 » n'a pas de numéro : ses
+// épisodes gardent leur saison au lieu de se mêler à ceux de la première.
+func TestShareLink_ShowKeepsSeasonsApartWithoutSeasonNumbers(t *testing.T) {
+	ownerID, episodeID := setupShareTest(t)
+	res, err := database.DB.Exec(`INSERT INTO medias (type, title, parent_id) VALUES ('season', 'Saison 2', ?)`, shareShowID)
+	if err != nil {
+		t.Fatalf("insert season: %v", err)
+	}
+	unnumberedID, _ := res.LastInsertId()
+	laterID := insertShareEpisode(t, int(unnumberedID), 0, 1, "Retour", "/s02e01.mkv")
+
+	share := createShare(t, ownerID, fmt.Sprintf(`{"media_id":%d}`, shareShowID))
+	var info models.SharedMedia
+	callShared(t, SharedMediaInfo, map[string]string{"code": share.Code}, &info)
+	if got := sharedEpisodeIDs(info); len(got) != 2 || got[0] != episodeID || got[1] != laterID {
+		t.Fatalf("episodes = %v, want [%d %d]", got, episodeID, laterID)
+	}
+	if info.Episodes[1].SeasonNumber != 2 {
+		t.Fatalf("season of the unnumbered row = %d, want 2 from its title", info.Episodes[1].SeasonNumber)
+	}
+}

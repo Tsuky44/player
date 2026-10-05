@@ -92,6 +92,11 @@ class OnyxControlsLayer extends StatelessWidget {
   final VoidCallback onToggleFullscreen;
   final double playbackRate;
 
+  /// Verrouille l'écran contre les touchers — voir [PlayerScreenLock]. Null
+  /// hors d'un appareil tenu en main : une souris ou une télécommande ne
+  /// touchent rien par accident.
+  final VoidCallback? onLockScreen;
+
   // --- Conditional --------------------------------------------------------
 
   /// Series only — null on a movie or at the end of a season.
@@ -209,6 +214,7 @@ class OnyxControlsLayer extends StatelessWidget {
     this.watchPartyActive = false,
     required this.onToggleFullscreen,
     this.playbackRate = 1.0,
+    this.onLockScreen,
     this.timelineAnchorKey,
     this.onScrubbingChanged,
     this.onScrubStepBack,
@@ -561,6 +567,17 @@ class OnyxControlsLayer extends StatelessWidget {
                 // The mute button alone still leaves the volume reachable, and
                 // the settings sheet carries the fine control.
                 showSlider: width >= 560,
+              ),
+            // En haut à droite plutôt que dans la rangée d'utilitaires : sur
+            // un téléphone celle-ci est déjà pleine, et ce coin est libre
+            // puisque le volume n'y est pas.
+            if (!isTv && onLockScreen != null)
+              _OnyxIconButton(
+                key: const ValueKey('onyx-lock'),
+                icon: Icons.lock_open_rounded,
+                tooltip: 'Verrouiller l’écran',
+                metrics: m,
+                onPressed: onLockScreen!,
               ),
           ],
         ),

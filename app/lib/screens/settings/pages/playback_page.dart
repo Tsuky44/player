@@ -9,7 +9,9 @@ import '../../player/display_frame_rate.dart';
 import '../../player/hardware_decoding.dart';
 import '../../player_studio/player_studio_screen.dart';
 import '../../player_studio/widgets/player_layouts_sheet.dart';
+import '../widgets/settings_dropdown_label.dart';
 import '../widgets/settings_ui.dart';
+import 'playback_still_watching_group.dart';
 
 class PlaybackPage extends StatefulWidget {
   const PlaybackPage({super.key});
@@ -106,7 +108,7 @@ class _PlaybackPageState extends State<PlaybackPage> {
                             ),
                           ),
                       ],
-                      child: _DropdownLabel(current),
+                      child: SettingsDropdownLabel(current),
                     ),
             ),
           ],
@@ -173,6 +175,13 @@ class _PlaybackPageState extends State<PlaybackPage> {
             ),
           ],
         ),
+        StillWatchingSettingsGroup(
+          value: PlaybackPreferencesStorage.stillWatching,
+          onChanged: (value) async {
+            await PlaybackPreferencesStorage.setStillWatching(value);
+            if (mounted) setState(() {});
+          },
+        ),
         SettingsGroup(
           title: 'Interface du lecteur',
           footer:
@@ -195,31 +204,6 @@ class _PlaybackPageState extends State<PlaybackPage> {
           ],
         ),
       ],
-    );
-  }
-}
-
-class _DropdownLabel extends StatelessWidget {
-  const _DropdownLabel(this.label);
-  final String label;
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      padding: const EdgeInsets.fromLTRB(12, 7, 8, 7),
-      decoration: BoxDecoration(
-        color: Colors.white.withValues(alpha: 0.06),
-        borderRadius: BorderRadius.circular(10),
-      ),
-      child: Row(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Text(label, style: const TextStyle(fontWeight: FontWeight.w600)),
-          const SizedBox(width: 4),
-          const Icon(Icons.unfold_more_rounded,
-              size: 18, color: AppColors.textSecondary),
-        ],
-      ),
     );
   }
 }

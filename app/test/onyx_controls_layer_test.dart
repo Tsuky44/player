@@ -32,6 +32,7 @@ Future<void> pumpChrome(
   VoidCallback? onRewind,
   VoidCallback? onForward,
   VoidCallback? onPlayPause,
+  VoidCallback? onLockScreen,
 }) async {
   tester.view.devicePixelRatio = 1.0;
   tester.view.physicalSize = Size(width, height);
@@ -66,6 +67,7 @@ Future<void> pumpChrome(
           onCycleSpeed: () {},
           onOpenSettings: () {},
           onToggleFullscreen: () {},
+          onLockScreen: onLockScreen,
           onSkipNext: onSkipNext,
           onSkipPrevious: onSkipPrevious,
           onOpenEpisodes: onOpenEpisodes,
@@ -81,6 +83,32 @@ Future<void> pumpChrome(
 }
 
 void main() {
+  group('le verrou d’écran n’existe que là où un doigt touche l’image', () {
+    testWidgets('le bouton verrouille quand le lecteur le propose',
+        (tester) async {
+      var locked = 0;
+      await pumpChrome(
+        tester,
+        width: 400,
+        showVolume: false,
+        onLockScreen: () => locked++,
+      );
+
+      await tester.tap(find.byKey(const ValueKey('onyx-lock')));
+      expect(locked, 1);
+    });
+
+    testWidgets('sans rappel, aucun bouton', (tester) async {
+      await pumpChrome(tester, width: 1280);
+      expect(find.byKey(const ValueKey('onyx-lock')), findsNothing);
+    });
+
+    testWidgets('jamais sur une télévision', (tester) async {
+      await pumpChrome(tester, width: 960, isTv: true, onLockScreen: () {});
+      expect(find.byKey(const ValueKey('onyx-lock')), findsNothing);
+    });
+  });
+
   group('the chrome carries the agreed control set', () {
     testWidgets('every permanent control is present at desktop width',
         (tester) async {

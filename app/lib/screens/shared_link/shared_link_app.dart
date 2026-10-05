@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
+import 'package:provider/single_child_widget.dart';
 
 import '../../models/player_layout.dart';
 import '../../providers/auth_provider.dart';
@@ -24,8 +25,8 @@ import 'shared_link_screen.dart';
 String? sharedLinkCode(Uri base) =>
     AppPlatform.isWeb ? parseSharedLinkCode(base) : null;
 
-/// [sharedLinkCode] sans la condition du web, pour les tests.
-@visibleForTesting
+/// [sharedLinkCode] sans la condition du web : l'app installée lit le même
+/// code dans un lien collé (`SharedLinkAddress`).
 String? parseSharedLinkCode(Uri base) {
   final path = base.path.endsWith('/')
       ? base.path.substring(0, base.path.length - 1)
@@ -38,30 +39,30 @@ String? parseSharedLinkCode(Uri base) {
   return code;
 }
 
+/// Ce que le lecteur consulte, monté sur le [SharedLinkApiClient] du lien :
+/// ces fournisseurs ne voient aucun compte, même si cet appareil est connecté
+/// par ailleurs à ce serveur.
+List<SingleChildWidget> sharedLinkProviders(SharedLinkApiClient api) => [
+      Provider<ApiClient>.value(value: api),
+      ChangeNotifierProvider(create: (_) => AuthProvider(api)),
+      ChangeNotifierProvider<DownloadManager>.value(
+          value: DownloadManager.instance),
+      ChangeNotifierProvider(create: (_) => ServerReachability(api)),
+      ChangeNotifierProvider(create: (_) => HomeProvider(api)),
+      ChangeNotifierProvider(create: (_) => LibraryProvider(api)),
+      // Toujours le Chrome Onyx, le playeur maison : pas celui qu'un compte
+      // connecté sur cet appareil aurait choisi.
+      ChangeNotifierProvider(
+          create: (_) => PlayerLayoutProvider.fixed(FixedChromeId.onyx, api)),
+    ];
+
 /// Démarre l'app en invité, pour le seul lien [code] : pas de compte, pas de
 /// bibliothèque, seulement la page du lien et le lecteur Onyx.
-///
-/// Les fournisseurs sont ceux que le lecteur consulte, montés sur un
-/// [SharedLinkApiClient] : ils ne voient aucun compte, même si ce navigateur
-/// est connecté par ailleurs à ce serveur.
 void runSharedLinkApp(String code) {
   final api = SharedLinkApiClient(code);
-  final auth = AuthProvider(api);
   runApp(
     MultiProvider(
-      providers: [
-        Provider<ApiClient>.value(value: api),
-        ChangeNotifierProvider<AuthProvider>.value(value: auth),
-        ChangeNotifierProvider<DownloadManager>.value(
-            value: DownloadManager.instance),
-        ChangeNotifierProvider(create: (_) => ServerReachability(api)),
-        ChangeNotifierProvider(create: (_) => HomeProvider(api)),
-        ChangeNotifierProvider(create: (_) => LibraryProvider(api)),
-        // Toujours le Chrome Onyx, le playeur maison : pas celui qu'un compte
-        // connecté dans ce navigateur aurait choisi.
-        ChangeNotifierProvider(
-            create: (_) => PlayerLayoutProvider.fixed(FixedChromeId.onyx, api)),
-      ],
+      providers: sharedLinkProviders(api),
       child: SharedLinkApp(api: api),
     ),
   );

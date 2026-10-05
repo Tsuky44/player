@@ -48,12 +48,16 @@ import 'widgets/player_settings_anchor.dart';
 import 'widgets/player_subtitles_sheet.dart';
 import 'widgets/player_info_sheet.dart';
 import 'widgets/player_episodes_panel.dart';
+import 'widgets/player_screen_lock.dart';
 import 'widgets/player_status_panels.dart';
+import 'widgets/still_watching_prompt.dart';
 import 'widgets/watch_party_overlay.dart';
 import 'playback/away_from_screen.dart';
 import 'playback/live_subtitles.dart';
 import 'playback/relay_trigger.dart';
 import 'playback/remote_seek.dart';
+import 'playback/sleep_timer.dart';
+import 'playback/still_watching.dart';
 import 'pinch_zoom_fit.dart';
 import 'player_playback_preferences.dart';
 import 'player_shortcuts.dart';
@@ -195,6 +199,15 @@ class _PlayerScreenState extends State<PlayerScreen> {
   /// nothing to tap it with — so the player renders the picture and nothing
   /// else until it comes back.
   bool _inPip = false;
+
+  /// L'écran est verrouillé contre les touchers : plus de chrome, plus de
+  /// gestes, jusqu'à l'appui long sur le cadenas. Voir [PlayerScreenLock].
+  bool _screenLocked = false;
+
+  /// « Vous regardez encore ? » est à l'écran : la lecture est en pause et
+  /// n'en sort que par une réponse. Voir [StillWatching].
+  bool _stillWatchingAsked = false;
+  final GlobalKey<PlayerScreenLockState> _screenLockKey = GlobalKey();
 
   /// The shape last handed to the system, as a thousandth of the aspect ratio.
   /// Kept so the arming call is made when it changes and not four times a
@@ -540,6 +553,9 @@ class _PlayerScreenState extends State<PlayerScreen> {
     PictureInPicture.closed.addListener(_handlePictureInPictureClosed);
     _keyboardFocusNode.addListener(_handlePlayerFocusChanged);
     WatchPartySession.active.addListener(_handleWatchPartyChanged);
+    SleepTimer.instance.retain();
+    StillWatching.instance.retain();
+    SleepTimer.instance.addListener(_applySleepTimer);
     _playerController = PlayerController();
     _mediaKeys = PlayerMediaKeysBinding(
       onPlayPause: _togglePlayPause,
@@ -671,7 +687,7 @@ class _PlayerScreenState extends State<PlayerScreen> {
         episodeId: actualMedia.id,
         initialTimestamps: initialTimestamps,
         session: _playerController.session,
-        onAutoPlay: _goToNextEpisode,
+        onAutoPlay: _autoAdvanceToNextEpisode,
         onAutoSkipIntro: _autoSkipIntro,
       );
       _episodeNav!.addListener(_episodeNavListener!);
@@ -819,7 +835,7 @@ class _PlayerScreenState extends State<PlayerScreen> {
     // a hole in this one has to stay a deliberate act, never an auto-advance.
     if (_episodeNav?.revealUpcomingEpisodeCard() ?? false) return;
     if (_episodeNav?.nextEpisode != null && !_endCardVisible) {
-      _goToNextEpisode();
+      _autoAdvanceToNextEpisode();
       return;
     }
     if (_episodeNav?.revealNextSeasonCard() ?? false) return;
@@ -892,6 +908,8 @@ class _PlayerScreenState extends State<PlayerScreen> {
     if (!mounted || _isLeaving) return;
     if (widget.startPaused) await _playerController.session.pause();
     setState(() => _isInitialized = true);
+    // L'échéance a pu tomber pendant le passage à cet épisode.
+    _applySleepTimer();
     _startHandoffWatch();
     _armStartupWatchdog();
     _scheduleSubtitlePaddingSync();
@@ -1169,7 +1187,7 @@ class _PlayerScreenState extends State<PlayerScreen> {
     _episodeNav?.onUserActivity();
     // The end card owns the screen: waking the HUD on every mouse move would
     // stack a progress bar and a play button over it.
-    if (_endCardVisible) return;
+    if (_endCardVisible || _stillWatchingAsked) return;
     setState(() => _showControls = true);
     _refreshPositionUi(force: true);
     _scheduleSubtitlePaddingSync();
@@ -1182,7 +1200,27 @@ class _PlayerScreenState extends State<PlayerScreen> {
   /// Whether the player chrome — timeline, transport, top-right menus — may be
   /// on screen. Single decision point so nothing slips through while an end
   /// card is up; only the back button survives it.
-  bool get _controlsVisible => _showControls && !_endCardVisible;
+  bool get _controlsVisible =>
+      _showControls &&
+      !_endCardVisible &&
+      !_screenLocked &&
+      !_stillWatchingAsked;
+
+  void _lockScreen() {
+    _controlsTimer?.cancel();
+    _dismissTopPopup();
+    setState(() {
+      _screenLocked = true;
+      _showControls = false;
+    });
+  }
+
+  void _unlockScreen() {
+    if (!mounted || _isDisposing) return;
+    setState(() => _screenLocked = false);
+    // Celui qui vient de déverrouiller veut les commandes.
+    _showControlsTransient();
+  }
 
   /// Hide the cursor while controls are hidden during playback.
   /// Never on an end card, which has buttons to aim at.
@@ -1385,6 +1423,9 @@ class _PlayerScreenState extends State<PlayerScreen> {
 
   KeyEventResult _handlePlayerKeyEvent(FocusNode node, KeyEvent event) {
     if (!_isInitialized || _isDisposing) return KeyEventResult.ignored;
+    // La question a ses deux boutons, et rien d'autre ne répond : une touche
+    // qui relancerait la lecture y répondrait à la place de quelqu'un.
+    if (_stillWatchingAsked) return KeyEventResult.ignored;
     if (event is! KeyDownEvent && event is! KeyRepeatEvent) {
       return KeyEventResult.ignored;
     }
@@ -1512,6 +1553,47 @@ class _PlayerScreenState extends State<PlayerScreen> {
     }
 
     return KeyEventResult.ignored;
+  }
+
+  /// L'épisode suivant, lancé par le lecteur et non par quelqu'un : la fin du
+  /// compte à rebours du générique, ou la fin du fichier.
+  ///
+  /// C'est le seul endroit où [StillWatching] peut retenir l'enchaînement. Un
+  /// « épisode suivant » demandé à la main ne passe pas par ici.
+  void _autoAdvanceToNextEpisode() {
+    if (_stillWatchingAsked) return;
+    // En séance partagée, d'autres regardent : leur présence vaut la nôtre.
+    if (_party == null && !StillWatching.instance.allowAutoAdvance()) {
+      _askStillWatching();
+      return;
+    }
+    _goToNextEpisode();
+  }
+
+  void _askStillWatching() {
+    if (!mounted || _isLeaving || _isDisposing) return;
+    _dismissTopPopup();
+    _closeEpisodesPanel();
+    _controlsTimer?.cancel();
+    _wantsPlayback = false;
+    if (_playerController.isPlaying) _playerController.togglePlayPause();
+    setState(() {
+      _stillWatchingAsked = true;
+      _showControls = false;
+      // Un écran verrouillé avalerait le doigt qui vient répondre.
+      _screenLocked = false;
+    });
+  }
+
+  void _confirmStillWatching() {
+    StillWatching.instance.noteActivity();
+    setState(() => _stillWatchingAsked = false);
+    _keyboardFocusNode.requestFocus();
+    if (_episodeNav?.nextEpisode != null) {
+      _goToNextEpisode();
+      return;
+    }
+    _togglePlayPause();
   }
 
   void _goToNextEpisode() {
@@ -1738,6 +1820,9 @@ class _PlayerScreenState extends State<PlayerScreen> {
     unawaited(PictureInPicture.disarm());
     _keyboardFocusNode.removeListener(_handlePlayerFocusChanged);
     WatchPartySession.active.removeListener(_handleWatchPartyChanged);
+    SleepTimer.instance.removeListener(_applySleepTimer);
+    SleepTimer.instance.release();
+    StillWatching.instance.release();
     final party = _party;
     if (party != null) {
       party.removeListener(_handlePartyUpdated);
@@ -2493,6 +2578,14 @@ class _PlayerScreenState extends State<PlayerScreen> {
       unawaited(_resumeHere());
       return;
     }
+    // Une touche de casque ou la notification du système arrivent ici sans
+    // passer par le clavier ni par l'écran. Devant la question, « lecture »
+    // est la réponse « oui » — pas une reprise sous le panneau.
+    if (_stillWatchingAsked) {
+      _confirmStillWatching();
+      return;
+    }
+    StillWatching.instance.noteActivity();
     _wantsPlayback = !_playerController.isPlaying;
     _playerController.togglePlayPause();
     final party = _party;
@@ -2501,6 +2594,19 @@ class _PlayerScreenState extends State<PlayerScreen> {
           _playerController.isPlaying, _playerController.position));
     }
     _hideControlsWithDelay();
+  }
+
+  /// La minuterie de veille est arrivée à son terme : la lecture s'arrête ici.
+  ///
+  /// Un lecteur qui s'en va ou qui n'a pas encore démarré laisse l'échéance en
+  /// place : c'est l'épisode suivant qui la prendra. Voir [SleepTimer].
+  void _applySleepTimer() {
+    if (!mounted || _isLeaving || _isDisposing || !_isInitialized) return;
+    if (!SleepTimer.instance.takeDue()) return;
+    _wantsPlayback = false;
+    if (_playerController.isPlaying) _playerController.togglePlayPause();
+    _showPartyNotice('Minuterie de veille : lecture en pause');
+    _showControlsTransient();
   }
 
   /// Toute recherche voulue par la personne devant l'écran passe ici, pour que
@@ -2795,6 +2901,17 @@ class _PlayerScreenState extends State<PlayerScreen> {
         canPop: false,
         onPopInvokedWithResult: (didPop, _) async {
           if (didPop) return;
+          // Devant la question, Retour est une réponse : « non ».
+          if (_stillWatchingAsked) {
+            await _leavePlayer();
+            return;
+          }
+          // Écran verrouillé, le Retour du système ne quitte pas le film : il
+          // montre le cadenas, comme un appui sur l'image.
+          if (_screenLocked) {
+            _screenLockKey.currentState?.reveal();
+            return;
+          }
           // The remote's Back arrives here, not as a key event — and it has to
           // unwind the same stack the key path does, innermost first, or it
           // walks out of the film with a menu still open on top of it.
@@ -3076,6 +3193,7 @@ class _PlayerScreenState extends State<PlayerScreen> {
                     watchPartyActive: _party != null,
                     onToggleFullscreen: _toggleFullscreen,
                     playbackRate: _playbackRate,
+                    onLockScreen: _handheld ? _lockScreen : null,
                     onSkipNext: (_episodeNav?.nextEpisode != null)
                         ? _goToNextEpisode
                         : null,
@@ -3389,6 +3507,23 @@ class _PlayerScreenState extends State<PlayerScreen> {
                           strokeWidth: 3,
                         ),
                       ),
+                    ),
+                  ),
+                if (_stillWatchingAsked)
+                  Positioned.fill(
+                    child: StillWatchingPrompt(
+                      onContinue: _confirmStillWatching,
+                      onLeave: _leavePlayer,
+                    ),
+                  ),
+                // En dernier, donc au-dessus de tout : rien de ce qui précède
+                // ne doit pouvoir prendre un doigt tant que l'écran est
+                // verrouillé.
+                if (_screenLocked)
+                  Positioned.fill(
+                    child: PlayerScreenLock(
+                      key: _screenLockKey,
+                      onUnlock: _unlockScreen,
                     ),
                   ),
                 ],

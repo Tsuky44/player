@@ -289,14 +289,42 @@ audio par défaut). Les réglages liés au matériel restent sur l'appareil. Voi
   {
     "auto_skip_intro": true,
     "default_audio_lang": "fr",
+    "still_watching_enabled": true,
+    "still_watching_episodes": 3,
+    "still_watching_from": 1320,
+    "still_watching_until": 360,
     "updated_at": "2026-10-05 18:22:10"
   }
   ```
 * **Route :** `PUT /api/me/playback-preferences`
 * **Corps (JSON) :** partiel — un champ absent garde sa valeur. `default_audio_lang` est un code de
   deux ou trois lettres, ou `""` pour la piste par défaut du fichier (`400` sinon).
+  `still_watching_episodes` va de 1 à 10. `still_watching_from` et `still_watching_until` sont des
+  minutes depuis minuit (0–1439, différentes, la plage peut passer minuit), ou `-1` toutes les deux
+  pour toute la journée (`400` sinon). Voir `docs/adr/0045-vous-regardez-encore.md`.
   ```json
   { "auto_skip_intro": true }
+  ```
+* **Réponse (JSON) :** l'état stocké, au même format que le `GET`.
+
+#### 🗣 Pistes retenues par série
+La langue audio et le sous-titre choisis dans un épisode valent pour toute sa série, sur tous les
+appareils du compte. Voir `docs/adr/0044-pistes-retenues-par-serie.md`.
+* **Route :** `GET /api/episodes/:id/track-preferences` (`404` si le média n'est pas un épisode)
+* **Réponse (JSON) :** `updated_at` est vide tant que rien n'a été choisi pour la série ;
+  `subtitle.mode` vaut `""` (pas de choix), `"off"` ou `"on"`.
+  ```json
+  {
+    "show_id": 42,
+    "audio_lang": "en",
+    "subtitle": { "mode": "on", "lang": "fr", "key": "fr", "forced": false, "image": false },
+    "updated_at": "2026-10-05 21:04:11"
+  }
+  ```
+* **Route :** `PUT /api/episodes/:id/track-preferences`
+* **Corps (JSON) :** partiel — `audio_lang` et `subtitle` sont indépendants (`400` si invalide).
+  ```json
+  { "subtitle": { "mode": "off" } }
   ```
 * **Réponse (JSON) :** l'état stocké, au même format que le `GET`.
 

@@ -39,7 +39,7 @@ func CreateMediaShare(w http.ResponseWriter, r *http.Request, _ httprouter.Param
 		writeJSONError(w, http.StatusBadRequest, "Requête invalide")
 		return
 	}
-	mediaType, shareable := shareableMediaType(req.MediaID)
+	scopeID, mediaType, shareable := shareableMediaType(req.MediaID)
 	if !shareable {
 		writeJSONError(w, http.StatusNotFound, "Ce média ne peut pas être lu")
 		return
@@ -53,7 +53,7 @@ func CreateMediaShare(w http.ResponseWriter, r *http.Request, _ httprouter.Param
 
 	code, share, err := shareLinks().Create(sharelinks.CreateParams{
 		UserID:        userID,
-		MediaID:       req.MediaID,
+		MediaID:       scopeID,
 		Password:      req.Password,
 		SingleUse:     req.SingleUse,
 		LifetimeHours: req.ExpiresInHours,

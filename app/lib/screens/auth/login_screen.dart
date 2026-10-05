@@ -16,6 +16,7 @@ import '../../widgets/global/onyx_mark.dart';
 import '../../widgets/global/onyx_wordmark.dart';
 import '../../widgets/global/otp_code_dialog.dart';
 import 'login_password_field.dart';
+import '../shared_link/shared_link_guest.dart';
 import 'phone_sign_in_panel.dart';
 import '../../theme/app_type.dart';
 
@@ -724,6 +725,17 @@ class _LoginScreenState extends State<LoginScreen> {
                                   () => _mode = _LoginMode.request),
                           child: const Text(
                               'Pas d’invitation ? Demander l’accès'),
+                        ),
+                      // Un lien de partage se regarde sans compte ni serveur
+                      // enregistré (ADR-0037 §9). Pas sur un téléviseur, qui
+                      // n'a pas de presse-papiers où le recevoir, ni sur le
+                      // web, où le lien s'ouvre déjà dans le navigateur.
+                      if (!TvMode.isTv && !AppPlatform.isWeb)
+                        TextButton(
+                          onPressed: authProvider.isLoading
+                              ? null
+                              : () => showOpenSharedLinkDialog(context),
+                          child: const Text('Ouvrir un lien de partage'),
                         ),
                     ],
                   ),

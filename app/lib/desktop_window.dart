@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 
+import 'theme/app_colors.dart';
+import 'theme/app_motion.dart';
 import 'utils/app_platform.dart';
 import 'utils/window_controls.dart';
 
@@ -33,11 +35,16 @@ double embeddedShellContentTopInset(BuildContext context) {
 final ValueNotifier<bool> showDesktopCaption =
     ValueNotifier<bool>(AppPlatform.isWindows);
 
-/// Windows-style caption bar shown at the top of desktop windows when
-/// [showDesktopCaption] is true. Provides minimize, maximize/restore
-/// and close buttons, and the empty area can be dragged to move the window.
+/// Barre de titre maison de Windows, affichée tant que [showDesktopCaption]
+/// est vrai. La zone vide déplace la fenêtre (double-clic : agrandir) et les
+/// contrôles restent en haut à droite, dans l'ordre Windows, sous forme de
+/// pastilles [WindowControlPills].
 class WindowCaptionBar extends StatefulWidget {
   const WindowCaptionBar({super.key});
+
+  /// Hauteur de la barre : juste de quoi loger les pastilles et rester
+  /// saisissable à la souris pour déplacer la fenêtre.
+  static const double height = 28;
 
   @override
   State<WindowCaptionBar> createState() => _WindowCaptionBarState();
@@ -74,8 +81,8 @@ class _WindowCaptionBarState extends State<WindowCaptionBar> {
     }
 
     return Container(
-      height: 40,
-      color: const Color(0xFF1F1F1F),
+      height: WindowCaptionBar.height,
+      color: AppColors.surface,
       child: Row(
         children: [
           // Draggable / double-tap area (empty space only)
@@ -87,22 +94,11 @@ class _WindowCaptionBarState extends State<WindowCaptionBar> {
               child: const SizedBox.expand(),
             ),
           ),
-          _CaptionButton(
-            icon: Icons.remove,
-            tooltip: 'Réduire',
-            onPressed: () => WindowControls.minimize(),
-          ),
-          _CaptionButton(
-            icon: _isMaximized ? Icons.filter_none : Icons.crop_square,
-            tooltip: _isMaximized ? 'Restaurer' : 'Agrandir',
-            onPressed: _toggleMaximize,
-          ),
-          _CaptionButton(
-            icon: Icons.close,
-            tooltip: 'Fermer',
-            onPressed: () => WindowControls.close(),
-            hoverColor: Colors.redAccent,
-            iconColor: Colors.white,
+          WindowControlPills(
+            isMaximized: _isMaximized,
+            onMinimize: WindowControls.minimize,
+            onToggleMaximize: _toggleMaximize,
+            onClose: WindowControls.close,
           ),
         ],
       ),
@@ -110,26 +106,30 @@ class _WindowCaptionBarState extends State<WindowCaptionBar> {
   }
 }
 
-class _CaptionButton extends StatefulWidget {
-  final IconData icon;
-  final String tooltip;
-  final VoidCallback onPressed;
-  final Color? hoverColor;
-  final Color? iconColor;
+/// Les trois contrôles de fenêtre en pastilles façon macOS, gardés dans
+/// l'ordre Windows : réduire, agrandir/restaurer, fermer tout à droite.
+///
+/// Comme sur macOS, les symboles n'apparaissent qu'au survol du groupe : au
+/// repos, la barre ne montre que trois points de couleur.
+class WindowControlPills extends StatefulWidget {
+  final bool isMaximized;
+  final VoidCallback onMinimize;
+  final VoidCallback onToggleMaximize;
+  final VoidCallback onClose;
 
-  const _CaptionButton({
-    required this.icon,
-    required this.tooltip,
-    required this.onPressed,
-    this.hoverColor,
-    this.iconColor,
+  const WindowControlPills({
+    super.key,
+    required this.isMaximized,
+    required this.onMinimize,
+    required this.onToggleMaximize,
+    required this.onClose,
   });
 
   @override
-  State<_CaptionButton> createState() => _CaptionButtonState();
+  State<WindowControlPills> createState() => _WindowControlPillsState();
 }
 
-class _CaptionButtonState extends State<_CaptionButton> {
+class _WindowControlPillsState extends State<WindowControlPills> {
   bool _hovering = false;
 
   @override
@@ -137,19 +137,97 @@ class _CaptionButtonState extends State<_CaptionButton> {
     return MouseRegion(
       onEnter: (_) => setState(() => _hovering = true),
       onExit: (_) => setState(() => _hovering = false),
+      child: Padding(
+        padding: const EdgeInsets.only(left: 4, right: 8),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            _ControlPill(
+              color: AppColors.warning,
+              icon: Icons.remove_rounded,
+              label: 'Réduire',
+              showGlyph: _hovering,
+              onPressed: widget.onMinimize,
+            ),
+            _ControlPill(
+              color: AppColors.success,
+              icon: widget.isMaximized
+                  ? Icons.close_fullscreen_rounded
+                  : Icons.add_rounded,
+              label: widget.isMaximized ? 'Restaurer' : 'Agrandir',
+              showGlyph: _hovering,
+              onPressed: widget.onToggleMaximize,
+            ),
+            _ControlPill(
+              color: AppColors.error,
+              icon: Icons.close_rounded,
+              label: 'Fermer',
+              showGlyph: _hovering,
+              onPressed: widget.onClose,
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _ControlPill extends StatelessWidget {
+  /// Diamètre de la pastille, celui des contrôles de macOS.
+  static const double _diameter = 12;
+
+  /// Largeur cliquable : la pastille plus 4 px de chaque côté, sur toute la
+  /// hauteur de la barre, pour ne pas avoir à viser un disque de 12 px.
+  static const double _hitWidth = 20;
+
+  final Color color;
+  final IconData icon;
+  final String label;
+  final bool showGlyph;
+  final VoidCallback onPressed;
+
+  const _ControlPill({
+    required this.color,
+    required this.icon,
+    required this.label,
+    required this.showGlyph,
+    required this.onPressed,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    // Pas de `Tooltip` : la barre vit au-dessus du Navigator, donc sans
+    // Overlay, et un Tooltip y lève « No Overlay widget found ».
+    return Semantics(
+      button: true,
+      label: label,
+      excludeSemantics: true,
       child: GestureDetector(
-        onTap: widget.onPressed,
-        child: Container(
-          width: 46,
-          height: 40,
-          color: _hovering
-              ? (widget.hoverColor ?? Colors.white.withValues(alpha: 0.1))
-              : Colors.transparent,
-          alignment: Alignment.center,
-          child: Icon(
-            widget.icon,
-            color: widget.iconColor ?? Colors.white.withValues(alpha: 0.85),
-            size: 18,
+        behavior: HitTestBehavior.opaque,
+        onTap: onPressed,
+        child: SizedBox(
+          width: _hitWidth,
+          height: WindowCaptionBar.height,
+          child: Center(
+            child: Container(
+              width: _diameter,
+              height: _diameter,
+              decoration: BoxDecoration(
+                color: color,
+                shape: BoxShape.circle,
+              ),
+              alignment: Alignment.center,
+              child: AnimatedOpacity(
+                opacity: showGlyph ? 1 : 0,
+                duration: AppMotion.fade(context, AppMotion.micro),
+                curve: AppMotion.curve,
+                child: Icon(
+                  icon,
+                  size: 9,
+                  color: Colors.black.withValues(alpha: 0.6),
+                ),
+              ),
+            ),
           ),
         ),
       ),

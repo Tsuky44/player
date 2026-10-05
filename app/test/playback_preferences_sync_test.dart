@@ -1,5 +1,6 @@
 import 'package:flutter_test/flutter_test.dart';
 import 'package:onyx/models/playback_preferences.dart';
+import 'package:onyx/models/still_watching_settings.dart';
 import 'package:onyx/services/api_client.dart';
 import 'package:onyx/services/playback_preferences_storage.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -9,6 +10,9 @@ import 'package:shared_preferences/shared_preferences.dart';
 class _AccountServer extends ApiClient {
   bool autoSkipIntro = false;
   String lang = '';
+
+  /// Null : un serveur d'avant « Vous regardez encore ? », qui n'en dit rien.
+  StillWatchingSettings? stillWatching = StillWatchingSettings.defaults;
   bool saved = false;
   bool offline = false;
   final List<Map<String, Object>> writes = [];
@@ -16,6 +20,7 @@ class _AccountServer extends ApiClient {
   AccountPlaybackPreferences get _snapshot => AccountPlaybackPreferences(
         autoSkipIntro: autoSkipIntro,
         defaultAudioLang: lang.isEmpty ? null : lang,
+        stillWatching: stillWatching,
         isSaved: saved,
       );
 
@@ -33,6 +38,11 @@ class _AccountServer extends ApiClient {
     writes.add(fields);
     if (fields['auto_skip_intro'] case final bool value) autoSkipIntro = value;
     if (fields['default_audio_lang'] case final String value) lang = value;
+    if (stillWatching != null && fields['still_watching_enabled'] is bool) {
+      stillWatching = StillWatchingSettings.fromJson(
+        Map<String, dynamic>.from(fields),
+      );
+    }
     saved = true;
     return _snapshot;
   }
@@ -159,6 +169,63 @@ void main() {
 
     expect(server.writes, isEmpty);
     expect(PlaybackPreferencesStorage.autoSkipIntro, isTrue);
+  });
+
+  test('"still watching" follows the account like the other preferences',
+      () async {
+    const night = StillWatchingSettings(
+      episodes: 2,
+      fromMinute: 22 * 60,
+      untilMinute: 6 * 60,
+    );
+    final server = _AccountServer()
+      ..stillWatching = night
+      ..saved = true;
+
+    await PlaybackPreferencesStorage.bindAccount(server, 'a|1');
+    expect(PlaybackPreferencesStorage.stillWatching, night);
+
+    const off = StillWatchingSettings(enabled: false, episodes: 2);
+    await PlaybackPreferencesStorage.setStillWatching(off);
+    await pumpEventQueue();
+
+    expect(server.stillWatching, off);
+    // Les quatre champs partent ensemble : les bornes ne se valident qu'à deux.
+    expect(server.writes.single, {
+      'still_watching_enabled': false,
+      'still_watching_episodes': 2,
+      'still_watching_from': -1,
+      'still_watching_until': -1,
+    });
+  });
+
+  test('a server too old to know "still watching" leaves it to the device',
+      () async {
+    const mine = StillWatchingSettings(episodes: 5);
+    await PlaybackPreferencesStorage.setStillWatching(mine);
+    final server = _AccountServer()
+      ..stillWatching = null
+      ..autoSkipIntro = true
+      ..saved = true;
+
+    await PlaybackPreferencesStorage.bindAccount(server, 'a|1');
+
+    expect(PlaybackPreferencesStorage.autoSkipIntro, isTrue);
+    expect(PlaybackPreferencesStorage.stillWatching, mine);
+  });
+
+  test('"still watching" survives a restart of the app', () async {
+    const mine = StillWatchingSettings(
+      episodes: 4,
+      fromMinute: 23 * 60,
+      untilMinute: 5 * 60,
+    );
+    await PlaybackPreferencesStorage.setStillWatching(mine);
+
+    PlaybackPreferencesStorage.resetForTest();
+    await PlaybackPreferencesStorage.initialize();
+
+    expect(PlaybackPreferencesStorage.stillWatching, mine);
   });
 
   test('an unreachable server leaves the local preferences in place',

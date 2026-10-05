@@ -20,11 +20,43 @@ const playbackPreferencesBodyLimit = 4 << 10
 
 // playbackPreferencesUpdate est partiel : un champ absent garde sa valeur.
 type playbackPreferencesUpdate struct {
-	AutoSkipIntro    *bool   `json:"auto_skip_intro"`
-	DefaultAudioLang *string `json:"default_audio_lang"`
+	AutoSkipIntro         *bool   `json:"auto_skip_intro"`
+	DefaultAudioLang      *string `json:"default_audio_lang"`
+	StillWatchingEnabled  *bool   `json:"still_watching_enabled"`
+	StillWatchingEpisodes *int    `json:"still_watching_episodes"`
+	StillWatchingFrom     *int    `json:"still_watching_from"`
+	StillWatchingUntil    *int    `json:"still_watching_until"`
 }
 
-var errInvalidAudioLang = errors.New("invalid audio language")
+var (
+	errInvalidAudioLang     = errors.New("invalid audio language")
+	errInvalidStillWatching = errors.New("invalid still-watching settings")
+)
+
+// Au-delà de dix épisodes la question ne protège plus personne : c'est une
+// nuit entière de lecture.
+const maxStillWatchingEpisodes = 10
+
+const minutesPerDay = 24 * 60
+
+// validateStillWatching vérifie l'état fusionné, pas la mise à jour : les deux
+// bornes de la plage n'ont de sens qu'ensemble, et une requête qui n'en envoie
+// qu'une doit rester cohérente avec celle déjà rangée.
+func validateStillWatching(prefs models.PlaybackPreferences) error {
+	if prefs.StillWatchingEpisodes < 1 || prefs.StillWatchingEpisodes > maxStillWatchingEpisodes {
+		return errInvalidStillWatching
+	}
+	from, until := prefs.StillWatchingFrom, prefs.StillWatchingUntil
+	if from == models.StillWatchingAllDay && until == models.StillWatchingAllDay {
+		return nil
+	}
+	// Deux bornes égales décriraient une plage vide ou toute la journée, au
+	// choix du lecteur : « toute la journée » a déjà sa valeur.
+	if from < 0 || from >= minutesPerDay || until < 0 || until >= minutesPerDay || from == until {
+		return errInvalidStillWatching
+	}
+	return nil
+}
 
 // normalizeAudioLang accepte un code de deux ou trois lettres, ou vide pour
 // « la piste du fichier ». Le client envoie déjà un code normalisé ; le
@@ -51,12 +83,16 @@ func normalizeAudioLang(raw string) (string, error) {
 func loadPlaybackPreferences(userID int) (models.PlaybackPreferences, error) {
 	var prefs models.PlaybackPreferences
 	err := database.DB.QueryRow(`
-		SELECT auto_skip_intro, default_audio_lang, updated_at
+		SELECT auto_skip_intro, default_audio_lang,
+		       still_watching_enabled, still_watching_episodes,
+		       still_watching_from, still_watching_until, updated_at
 		FROM user_playback_preferences
 		WHERE user_id = ?
-	`, userID).Scan(&prefs.AutoSkipIntro, &prefs.DefaultAudioLang, &prefs.UpdatedAt)
+	`, userID).Scan(&prefs.AutoSkipIntro, &prefs.DefaultAudioLang,
+		&prefs.StillWatchingEnabled, &prefs.StillWatchingEpisodes,
+		&prefs.StillWatchingFrom, &prefs.StillWatchingUntil, &prefs.UpdatedAt)
 	if errors.Is(err, sql.ErrNoRows) {
-		return models.PlaybackPreferences{}, nil
+		return models.DefaultPlaybackPreferences(), nil
 	}
 	if err != nil {
 		return models.PlaybackPreferences{}, fmt.Errorf("load playback preferences: %w", err)
@@ -78,6 +114,21 @@ func applyPlaybackPreferencesUpdate(
 			return models.PlaybackPreferences{}, err
 		}
 		current.DefaultAudioLang = lang
+	}
+	if update.StillWatchingEnabled != nil {
+		current.StillWatchingEnabled = *update.StillWatchingEnabled
+	}
+	if update.StillWatchingEpisodes != nil {
+		current.StillWatchingEpisodes = *update.StillWatchingEpisodes
+	}
+	if update.StillWatchingFrom != nil {
+		current.StillWatchingFrom = *update.StillWatchingFrom
+	}
+	if update.StillWatchingUntil != nil {
+		current.StillWatchingUntil = *update.StillWatchingUntil
+	}
+	if err := validateStillWatching(current); err != nil {
+		return models.PlaybackPreferences{}, err
 	}
 	return current, nil
 }
@@ -113,18 +164,31 @@ func UpdatePlaybackPreferences(w http.ResponseWriter, r *http.Request, _ httprou
 	}
 	next, err := applyPlaybackPreferencesUpdate(current, req)
 	if err != nil {
-		writeJSONError(w, http.StatusBadRequest, "Invalid audio language")
+		message := "Invalid still-watching settings"
+		if errors.Is(err, errInvalidAudioLang) {
+			message = "Invalid audio language"
+		}
+		writeJSONError(w, http.StatusBadRequest, message)
 		return
 	}
 
 	if _, err := database.DB.Exec(`
-		INSERT INTO user_playback_preferences (user_id, auto_skip_intro, default_audio_lang, updated_at)
-		VALUES (?, ?, ?, CURRENT_TIMESTAMP)
+		INSERT INTO user_playback_preferences (
+			user_id, auto_skip_intro, default_audio_lang,
+			still_watching_enabled, still_watching_episodes,
+			still_watching_from, still_watching_until, updated_at)
+		VALUES (?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
 		ON CONFLICT(user_id) DO UPDATE SET
 			auto_skip_intro = excluded.auto_skip_intro,
 			default_audio_lang = excluded.default_audio_lang,
+			still_watching_enabled = excluded.still_watching_enabled,
+			still_watching_episodes = excluded.still_watching_episodes,
+			still_watching_from = excluded.still_watching_from,
+			still_watching_until = excluded.still_watching_until,
 			updated_at = CURRENT_TIMESTAMP
-	`, userID, next.AutoSkipIntro, next.DefaultAudioLang); err != nil {
+	`, userID, next.AutoSkipIntro, next.DefaultAudioLang,
+		next.StillWatchingEnabled, next.StillWatchingEpisodes,
+		next.StillWatchingFrom, next.StillWatchingUntil); err != nil {
 		log.Printf("UpdatePlaybackPreferences: save: %v", err)
 		writeJSONError(w, http.StatusInternalServerError, "Internal database error")
 		return

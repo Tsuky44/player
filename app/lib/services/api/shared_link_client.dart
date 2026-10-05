@@ -11,7 +11,17 @@ part of '../api_client.dart';
 /// Aucun compte n'est lu ni écrit : le registre est vide, même si ce
 /// navigateur est par ailleurs connecté à ce serveur.
 class SharedLinkApiClient extends ApiClient {
-  SharedLinkApiClient(this.code) : super(registry: _NoAccountRegistry());
+  /// [origin] est l'adresse du serveur du lien, que l'app installée lit dans
+  /// le lien collé. Sur le web elle est absente : la page vient de ce serveur.
+  SharedLinkApiClient(this.code, {String? origin})
+      : super(registry: _NoAccountRegistry()) {
+    if (origin == null) return;
+    // Comme un client épinglé : sans cela, la première requête chargerait la
+    // dernière adresse saisie sur cet appareil, celle d'un autre serveur.
+    _baseUrl = ServerAccount.normalizeUrl(origin);
+    _configLoaded = true;
+    _serverChosen = true;
+  }
 
   /// Le code du lien, lu dans le fragment de l'adresse.
   final String code;
@@ -36,6 +46,8 @@ class SharedLinkApiClient extends ApiClient {
   /// nul pour un film ou un épisode, que le lien désigne seul.
   int? _episodeId;
 
+  // Le code suffit comme clé : 128 bits d'aléa, il ne se répète pas d'un
+  // serveur à l'autre.
   String get _viewerKey => 'onyx-share-viewer:$code';
 
   /// Une position par épisode dans une saison ou une série partagée.

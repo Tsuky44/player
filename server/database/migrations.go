@@ -607,6 +607,43 @@ var migrations = []migration{
 			);`,
 		},
 	},
+	{
+		id:   17,
+		name: "show track preferences",
+		// Voir ADR-0044. Une ligne par compte et par série, créée au premier
+		// choix : son absence veut dire « rien de choisi pour cette série ».
+		// subtitle_mode vaut '' (pas de choix), 'off' ou 'on'.
+		stmts: []string{
+			`CREATE TABLE IF NOT EXISTS user_show_track_preferences (
+				user_id INTEGER NOT NULL,
+				show_id INTEGER NOT NULL,
+				audio_lang TEXT NOT NULL DEFAULT '',
+				subtitle_mode TEXT NOT NULL DEFAULT '',
+				subtitle_lang TEXT NOT NULL DEFAULT '',
+				subtitle_key TEXT NOT NULL DEFAULT '',
+				subtitle_forced BOOLEAN NOT NULL DEFAULT 0,
+				subtitle_image BOOLEAN NOT NULL DEFAULT 0,
+				updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+				PRIMARY KEY (user_id, show_id),
+				FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
+				FOREIGN KEY (show_id) REFERENCES medias(id) ON DELETE CASCADE
+			);`,
+		},
+	},
+	{
+		id:   18,
+		name: "still watching preferences",
+		// Voir ADR-0045. Les DEFAULT sont ceux de
+		// models.DefaultPlaybackPreferences : un compte déjà enregistré avant
+		// cette migration lit les mêmes valeurs qu'un compte neuf. Les bornes
+		// de la plage sont en minutes depuis minuit, -1 pour toute la journée.
+		stmts: []string{
+			`ALTER TABLE user_playback_preferences ADD COLUMN still_watching_enabled BOOLEAN NOT NULL DEFAULT 1;`,
+			`ALTER TABLE user_playback_preferences ADD COLUMN still_watching_episodes INTEGER NOT NULL DEFAULT 3;`,
+			`ALTER TABLE user_playback_preferences ADD COLUMN still_watching_from INTEGER NOT NULL DEFAULT -1;`,
+			`ALTER TABLE user_playback_preferences ADD COLUMN still_watching_until INTEGER NOT NULL DEFAULT -1;`,
+		},
+	},
 }
 
 // applyMigrations brings the database up to the latest schema version.

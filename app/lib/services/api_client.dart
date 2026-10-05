@@ -24,6 +24,7 @@ import '../models/request_catalog_filters.dart';
 import '../models/models.dart';
 import '../models/otp.dart';
 import '../models/playback_preferences.dart';
+import '../models/series_track_preferences.dart';
 import '../models/player_layout.dart';
 import '../models/player_layout_preset.dart';
 import 'conditional_get.dart';
@@ -41,6 +42,7 @@ part 'api/library_admin.dart';
 part 'api/activity.dart';
 part 'api/player_layouts.dart';
 part 'api/playback_preferences.dart';
+part 'api/series_track_preferences.dart';
 part 'api/media_shares.dart';
 part 'api/shared_link_client.dart';
 part 'api/otp.dart';
@@ -59,6 +61,7 @@ class ApiClient
         _ActivityEndpoints,
         _PlayerLayoutEndpoints,
         _PlaybackPreferencesEndpoints,
+        _SeriesTrackPreferencesEndpoints,
         _MediaShareEndpoints,
         _OtpEndpoints {
   static String get _defaultBaseUrl {

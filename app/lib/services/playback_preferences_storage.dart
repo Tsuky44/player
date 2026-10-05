@@ -5,10 +5,11 @@ import 'package:shared_preferences/shared_preferences.dart';
 
 import '../models/models.dart';
 import '../models/playback_preferences.dart';
+import '../models/still_watching_settings.dart';
 import 'api_client.dart';
 
 /// Les réglages de lecture qui tiennent au goût de la personne — langue audio
-/// par défaut, saut d'intro automatique.
+/// par défaut, saut d'intro automatique, « Vous regardez encore ? ».
 ///
 /// Ils appartiennent au **compte** et suivent la personne d'un appareil à
 /// l'autre (ADR-0043). L'appareil en garde une copie, lue sans attendre et
@@ -18,6 +19,12 @@ import 'api_client.dart';
 class PlaybackPreferencesStorage {
   static const String _defaultAudioLangKey = 'playback_default_audio_lang';
   static const String _autoSkipIntroKey = 'playback_auto_skip_intro';
+  static const String _stillWatchingEnabledKey =
+      'playback_still_watching_enabled';
+  static const String _stillWatchingEpisodesKey =
+      'playback_still_watching_episodes';
+  static const String _stillWatchingFromKey = 'playback_still_watching_from';
+  static const String _stillWatchingUntilKey = 'playback_still_watching_until';
 
   /// Ce qui a changé ici et n'a pas encore atteint le serveur : la clé du
   /// compte, puis les champs concernés. Voir [_pushPending].
@@ -26,6 +33,10 @@ class PlaybackPreferencesStorage {
   // Les noms des champs côté serveur.
   static const String _autoSkipIntroField = 'auto_skip_intro';
   static const String _defaultAudioLangField = 'default_audio_lang';
+
+  /// Un seul nom pour les quatre champs `still_watching_*` : ils partent
+  /// toujours ensemble, les bornes de la plage ne se validant qu'à deux.
+  static const String _stillWatchingField = 'still_watching';
 
   /// Whether an intro skips itself when the skip button has been up for a few
   /// seconds without anyone touching anything.
@@ -37,6 +48,11 @@ class PlaybackPreferencesStorage {
   static bool _autoSkipIntro = false;
 
   static bool get autoSkipIntro => _autoSkipIntro;
+
+  static StillWatchingSettings _stillWatching = StillWatchingSettings.defaults;
+
+  /// Quand le lecteur demande « Vous regardez encore ? ». Voir ADR-0045.
+  static StillWatchingSettings get stillWatching => _stillWatching;
 
   /// Avance chaque fois que le compte a apporté une valeur différente de
   /// celle de l'appareil : un écran de réglages ouvert s'y abonne pour ne pas
@@ -52,8 +68,10 @@ class PlaybackPreferencesStorage {
     try {
       final prefs = await SharedPreferences.getInstance();
       _autoSkipIntro = prefs.getBool(_autoSkipIntroKey) ?? false;
+      _stillWatching = _readStillWatching(prefs);
     } catch (_) {
       _autoSkipIntro = false;
+      _stillWatching = StillWatchingSettings.defaults;
     }
   }
 
@@ -93,7 +111,11 @@ class PlaybackPreferencesStorage {
 
       var fields = _pendingFieldsFor(prefs, key);
       if (!remote.isSaved) {
-        fields = {_autoSkipIntroField, _defaultAudioLangField};
+        fields = {
+          _autoSkipIntroField,
+          _defaultAudioLangField,
+          _stillWatchingField,
+        };
       }
       if (fields.isNotEmpty) {
         remote = await api.updatePlaybackPreferences(_payload(prefs, fields));
@@ -117,6 +139,35 @@ class PlaybackPreferencesStorage {
       // A preference that could not be stored still applies to this session.
     }
     unawaited(_pushPending(_autoSkipIntroField));
+  }
+
+  static Future<void> setStillWatching(StillWatchingSettings value) async {
+    _stillWatching = value.normalized();
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      await _writeStillWatching(prefs, _stillWatching);
+    } catch (_) {
+      // Comme le saut d'intro : faute de disque, le réglage vaut pour la séance.
+    }
+    unawaited(_pushPending(_stillWatchingField));
+  }
+
+  static StillWatchingSettings _readStillWatching(SharedPreferences prefs) {
+    const defaults = StillWatchingSettings.defaults;
+    return StillWatchingSettings(
+      enabled: prefs.getBool(_stillWatchingEnabledKey) ?? defaults.enabled,
+      episodes: prefs.getInt(_stillWatchingEpisodesKey) ?? defaults.episodes,
+      fromMinute: prefs.getInt(_stillWatchingFromKey) ?? defaults.fromMinute,
+      untilMinute: prefs.getInt(_stillWatchingUntilKey) ?? defaults.untilMinute,
+    ).normalized();
+  }
+
+  static Future<void> _writeStillWatching(
+      SharedPreferences prefs, StillWatchingSettings value) async {
+    await prefs.setBool(_stillWatchingEnabledKey, value.enabled);
+    await prefs.setInt(_stillWatchingEpisodesKey, value.episodes);
+    await prefs.setInt(_stillWatchingFromKey, value.fromMinute);
+    await prefs.setInt(_stillWatchingUntilKey, value.untilMinute);
   }
 
   /// Two-letter ISO code (e.g. "fr"), or null for file default track.
@@ -188,6 +239,7 @@ class PlaybackPreferencesStorage {
         _autoSkipIntroField: _autoSkipIntro,
       if (fields.contains(_defaultAudioLangField))
         _defaultAudioLangField: _readAudioLang(prefs) ?? '',
+      if (fields.contains(_stillWatchingField)) ..._stillWatching.toJson(),
     };
   }
 
@@ -196,12 +248,18 @@ class PlaybackPreferencesStorage {
     AccountPlaybackPreferences remote,
   ) async {
     final lang = normalizeLangCode(remote.defaultAudioLang);
-    final changed =
-        remote.autoSkipIntro != _autoSkipIntro || lang != _readAudioLang(prefs);
+    // Un serveur qui ne connaît pas « Vous regardez encore ? » n'a rien à en
+    // dire : le réglage de l'appareil reste.
+    final stillWatching = remote.stillWatching ?? _stillWatching;
+    final changed = remote.autoSkipIntro != _autoSkipIntro ||
+        lang != _readAudioLang(prefs) ||
+        stillWatching != _stillWatching;
     if (!changed) return;
     _autoSkipIntro = remote.autoSkipIntro;
+    _stillWatching = stillWatching;
     await prefs.setBool(_autoSkipIntroKey, remote.autoSkipIntro);
     await _writeAudioLang(prefs, lang);
+    await _writeStillWatching(prefs, stillWatching);
     accountRevision.value++;
   }
 
@@ -210,6 +268,7 @@ class PlaybackPreferencesStorage {
     _account = null;
     _accountKey = null;
     _autoSkipIntro = false;
+    _stillWatching = StillWatchingSettings.defaults;
     accountRevision.value = 0;
   }
 
