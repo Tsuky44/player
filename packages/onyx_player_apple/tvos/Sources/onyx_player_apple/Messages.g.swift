@@ -208,6 +208,17 @@ enum OnyxApplePlayerErrorKind: Int, CaseIterable {
   case unknown = 2
 }
 
+/// Comment l'image occupe la vue.
+///
+/// C'est la couche vidéo qui cadre (`videoGravity`), pas la taille de la vue :
+/// la vue garde celle de l'écran.
+enum OnyxAppleVideoFit: Int, CaseIterable {
+  /// L'image entière, avec des bandes s'il le faut.
+  case contain = 0
+  /// La vue remplie, l'image rognée sur ce qui dépasse.
+  case cover = 1
+}
+
 /// Une piste qu'AetherEngine a énumérée.
 ///
 /// Generated class from Pigeon that represents data sent in messages.
@@ -679,16 +690,22 @@ private class MessagesPigeonCodecReader: FlutterStandardReader {
       }
       return nil
     case 131:
-      return OnyxAppleTrack.fromList(self.readValue() as! [Any?])
+      let enumResultAsInt: Int? = nilOrValue(self.readValue() as! Int?)
+      if let enumResultAsInt = enumResultAsInt {
+        return OnyxAppleVideoFit(rawValue: enumResultAsInt)
+      }
+      return nil
     case 132:
-      return OnyxAppleVideoSize.fromList(self.readValue() as! [Any?])
+      return OnyxAppleTrack.fromList(self.readValue() as! [Any?])
     case 133:
-      return OnyxApplePlayerStatus.fromList(self.readValue() as! [Any?])
+      return OnyxAppleVideoSize.fromList(self.readValue() as! [Any?])
     case 134:
-      return OnyxAppleSubtitleBitmap.fromList(self.readValue() as! [Any?])
+      return OnyxApplePlayerStatus.fromList(self.readValue() as! [Any?])
     case 135:
-      return OnyxAppleSubtitleFrame.fromList(self.readValue() as! [Any?])
+      return OnyxAppleSubtitleBitmap.fromList(self.readValue() as! [Any?])
     case 136:
+      return OnyxAppleSubtitleFrame.fromList(self.readValue() as! [Any?])
+    case 137:
       return OnyxApplePlaybackStats.fromList(self.readValue() as! [Any?])
     default:
       return super.readValue(ofType: type)
@@ -704,23 +721,26 @@ private class MessagesPigeonCodecWriter: FlutterStandardWriter {
     } else if let value = value as? OnyxApplePlayerErrorKind {
       super.writeByte(130)
       super.writeValue(value.rawValue)
-    } else if let value = value as? OnyxAppleTrack {
+    } else if let value = value as? OnyxAppleVideoFit {
       super.writeByte(131)
-      super.writeValue(value.toList())
-    } else if let value = value as? OnyxAppleVideoSize {
+      super.writeValue(value.rawValue)
+    } else if let value = value as? OnyxAppleTrack {
       super.writeByte(132)
       super.writeValue(value.toList())
-    } else if let value = value as? OnyxApplePlayerStatus {
+    } else if let value = value as? OnyxAppleVideoSize {
       super.writeByte(133)
       super.writeValue(value.toList())
-    } else if let value = value as? OnyxAppleSubtitleBitmap {
+    } else if let value = value as? OnyxApplePlayerStatus {
       super.writeByte(134)
       super.writeValue(value.toList())
-    } else if let value = value as? OnyxAppleSubtitleFrame {
+    } else if let value = value as? OnyxAppleSubtitleBitmap {
       super.writeByte(135)
       super.writeValue(value.toList())
-    } else if let value = value as? OnyxApplePlaybackStats {
+    } else if let value = value as? OnyxAppleSubtitleFrame {
       super.writeByte(136)
+      super.writeValue(value.toList())
+    } else if let value = value as? OnyxApplePlaybackStats {
+      super.writeByte(137)
       super.writeValue(value.toList())
     } else {
       super.writeValue(value)
@@ -766,6 +786,8 @@ protocol OnyxApplePlayerApi {
   func stop(playerId: Int64) throws
   func setVolume(playerId: Int64, volume: Double) throws
   func setRate(playerId: Int64, rate: Double) throws
+  /// Le cadrage de l'image dans la vue. Tient d'une ouverture à l'autre.
+  func setVideoFit(playerId: Int64, fit: OnyxAppleVideoFit) throws
   /// Quelle langue audio charger d'emblée, la plus probable en premier. Posé
   /// avant l'ouverture : après, changer de piste reconstruit la session
   /// (une demi-seconde d'image noire).
@@ -935,6 +957,23 @@ class OnyxApplePlayerApiSetup {
       }
     } else {
       setRateChannel.setMessageHandler(nil)
+    }
+    /// Le cadrage de l'image dans la vue. Tient d'une ouverture à l'autre.
+    let setVideoFitChannel = FlutterBasicMessageChannel(name: "dev.flutter.pigeon.onyx_player_apple.OnyxApplePlayerApi.setVideoFit\(channelSuffix)", binaryMessenger: binaryMessenger, codec: codec)
+    if let api = api {
+      setVideoFitChannel.setMessageHandler { message, reply in
+        let args = message as! [Any?]
+        let playerIdArg = args[0] as! Int64
+        let fitArg = args[1] as! OnyxAppleVideoFit
+        do {
+          try api.setVideoFit(playerId: playerIdArg, fit: fitArg)
+          reply(wrapResult(nil))
+        } catch {
+          reply(wrapError(error))
+        }
+      }
+    } else {
+      setVideoFitChannel.setMessageHandler(nil)
     }
     /// Quelle langue audio charger d'emblée, la plus probable en premier. Posé
     /// avant l'ouverture : après, changer de piste reconstruit la session

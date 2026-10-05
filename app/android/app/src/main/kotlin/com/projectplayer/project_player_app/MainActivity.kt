@@ -72,6 +72,9 @@ class MainActivity : FlutterActivity() {
                         setPictureInPicture(width, height)
                         result.success(supportsPictureInPicture())
                     }
+                    // Notre propre APK : le serveur y a noté d'où il a été
+                    // téléchargé, et c'est le Dart qui le relit (ADR-0042).
+                    "apkPath" -> result.success(applicationInfo.sourceDir)
                     "canInstallPackages" -> result.success(canInstallPackages())
                     "openInstallPermissionSettings" -> {
                         openInstallPermissionSettings()

@@ -76,4 +76,38 @@ abstract final class TvFocusScroll {
       curve: curve ?? AppMotion.curve,
     );
   }
+
+  /// La part de la hauteur visible parcourue par [scrollPast] : assez pour
+  /// avancer, pas assez pour perdre la ligne qu'on lisait.
+  static const double _pastFraction = 0.5;
+
+  /// Fait défiler ce qui contient [node] quand haut ou bas n'a plus rien à
+  /// atteindre.
+  ///
+  /// Le focus ne s'arrête que sur ce qui s'actionne. Ce qui se lit seulement —
+  /// l'en-tête d'une page au-dessus du premier réglage, des statistiques ou un
+  /// journal sous le dernier bouton — restait hors de l'écran, sans aucun
+  /// moyen de l'y amener à la télécommande.
+  static void scrollPast(FocusNode node, TraversalDirection direction) {
+    if (direction != TraversalDirection.up &&
+        direction != TraversalDirection.down) {
+      return;
+    }
+    final context = node.context;
+    if (context == null) return;
+    final position =
+        Scrollable.maybeOf(context, axis: Axis.vertical)?.position;
+    if (position == null || !position.hasContentDimensions) return;
+    final step = position.viewportDimension * _pastFraction;
+    final target = (position.pixels +
+            (direction == TraversalDirection.down ? step : -step))
+        .clamp(position.minScrollExtent, position.maxScrollExtent);
+    if (target == position.pixels) return;
+    final duration = durationFor(context);
+    if (duration == Duration.zero) {
+      position.jumpTo(target);
+    } else {
+      position.animateTo(target, duration: duration, curve: AppMotion.curve);
+    }
+  }
 }

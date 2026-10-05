@@ -25,6 +25,9 @@ import (
 	"time"
 
 	"github.com/julienschmidt/httprouter"
+
+	"project-player/server/installorigin"
+	"project-player/server/streaming"
 )
 
 // DownloadArtifact is one installable file, as published to the web client.
@@ -286,11 +289,16 @@ func ServeDownload(w http.ResponseWriter, r *http.Request, ps httprouter.Params)
 		return
 	}
 
+	// L'APK et l'IPA partent avec l'adresse d'où on les télécharge, pour que
+	// l'app s'ouvre sur ce serveur (ADR-0042). C'est l'adresse vue par le
+	// navigateur : derrière un reverse proxy, celle du proxy.
+	content, _ := installorigin.Stamp(f, info.Size(), match.File, streaming.BaseURL(r)+r.URL.Path)
+
 	w.Header().Set("Content-Type", "application/octet-stream")
 	w.Header().Set("Content-Disposition", `attachment; filename="`+match.File+`"`)
 	// ServeContent handles Range and If-Modified-Since, so an interrupted
 	// download of a 100 MB APK resumes instead of restarting.
-	http.ServeContent(w, r, match.File, info.ModTime(), f)
+	http.ServeContent(w, r, match.File, info.ModTime(), content)
 }
 
 // ---------------------------------------------------------------------------

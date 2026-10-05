@@ -9,6 +9,7 @@ import '../models/device_pairing.dart';
 import '../models/server_account.dart';
 import 'client_identity.dart';
 import 'client_log.dart';
+import 'install_origin.dart';
 import 'playback_capabilities.dart';
 import 'playback_access.dart';
 
@@ -631,7 +632,13 @@ class ApiClient
       _token = await servers.tokenFor(active.id);
       return;
     }
-    _baseUrl = savedUrl ?? _defaultBaseUrl;
+    // Première ouverture : à défaut d'adresse déjà saisie, celle du serveur
+    // d'où l'installeur a été téléchargé (ADR-0042). Elle vaut un choix —
+    // contrairement au défaut par plateforme, elle désigne un vrai serveur.
+    final installOrigin =
+        savedUrl == null ? await InstallOrigin.serverUrl() : null;
+    if (installOrigin != null) _serverChosen = true;
+    _baseUrl = savedUrl ?? installOrigin ?? _defaultBaseUrl;
     _token = null;
   }
 

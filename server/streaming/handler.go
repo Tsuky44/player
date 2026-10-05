@@ -390,7 +390,7 @@ func (h *Handler) handleStart(w http.ResponseWriter, r *http.Request, mediaID in
 		videoMode = "copy"
 	}
 
-	baseURL := getBaseURL(r)
+	baseURL := BaseURL(r)
 	sessionURL := fmt.Sprintf("%s/api/v1/stream/%d/%s", baseURL, mediaID, sessionID)
 	ticketQuery := "?ticket=" + r.URL.Query().Get("ticket")
 	subtitles := make([]liveSubtitle, 0, len(subtitleTracks))
@@ -769,8 +769,8 @@ func atoiDefault(s string, def int) int {
 	return def
 }
 
-// getBaseURL derives scheme://host from the request, honoring a reverse proxy.
-func getBaseURL(r *http.Request) string {
+// BaseURL derives scheme://host from the request, honoring a reverse proxy.
+func BaseURL(r *http.Request) string {
 	scheme := "http"
 	if r.TLS != nil {
 		scheme = "https"

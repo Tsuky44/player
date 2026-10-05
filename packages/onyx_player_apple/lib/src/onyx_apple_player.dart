@@ -10,6 +10,7 @@ export 'messages.g.dart'
         OnyxAppleSubtitleBitmap,
         OnyxAppleSubtitleFrame,
         OnyxAppleTrack,
+        OnyxAppleVideoFit,
         OnyxAppleVideoSize;
 
 /// Les flux natifs, ouverts une seule fois pour tout le processus.
@@ -94,6 +95,10 @@ class OnyxApplePlayer {
   Future<void> setVolume(double volume) => _api.setVolume(_id, volume);
 
   Future<void> setRate(double rate) => _api.setRate(_id, rate);
+
+  /// Le cadrage de l'image dans la vue, appliqué par la couche vidéo.
+  Future<void> setVideoFit(OnyxAppleVideoFit fit) =>
+      _api.setVideoFit(_id, fit);
 
   /// Posé avant l'ouverture : changer d'audio après coup reconstruit la
   /// session.

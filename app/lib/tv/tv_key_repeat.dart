@@ -1,6 +1,7 @@
 import 'package:flutter/services.dart';
 import 'package:flutter/widgets.dart';
 
+import 'tv_focus_panes.dart';
 import 'tv_focus_scroll.dart';
 import 'tv_mode.dart';
 import 'tv_touchpad.dart';
@@ -60,7 +61,7 @@ abstract final class TvKeyRepeat {
 
 /// Le déplacement du focus aux flèches, sur un téléviseur.
 ///
-/// Remplace [DirectionalFocusAction] à la racine de l'app. Trois différences, et
+/// Remplace [DirectionalFocusAction] à la racine de l'app. Quatre différences, et
 /// hors téléviseur aucune :
 ///
 /// - la flèche maintenue est régulée, voir [TvKeyRepeat] ;
@@ -71,7 +72,10 @@ abstract final class TvKeyRepeat {
 ///   où sur l'écran : l'avatar du compte dans l'en-tête, une affiche d'une autre
 ///   rangée qui dépasse plus loin. Le focus sautait alors à l'autre bout de
 ///   l'écran, et l'on ne savait plus où l'on était. Ici, sans rien sur la même
-///   ligne, le focus reste où il est.
+///   ligne, le focus reste où il est — sauf entre les volets d'un
+///   [TvFocusPanes], où le passage est voulu ;
+/// - haut et bas, quand plus rien ne peut prendre le focus, font défiler la
+///   page : voir [TvFocusScroll.scrollPast].
 class TvDirectionalFocusAction extends DirectionalFocusAction {
   TvDirectionalFocusAction();
 
@@ -109,11 +113,15 @@ class TvDirectionalFocusAction extends DirectionalFocusAction {
       for (var i = 0; i < steps; i++) {
         final before = primaryFocus;
         super.invoke(intent);
-        if (steps == 1) return;
         // Le focus demandé ne se pose qu'à la microtâche suivante : le pas
         // d'après partirait encore de l'ancien élément.
         FocusManager.instance.applyFocusChangesIfNeeded();
-        if (identical(primaryFocus, before)) return;
+        if (identical(primaryFocus, before)) {
+          if (i == 0 && before != null) {
+            TvFocusScroll.scrollPast(before, direction);
+          }
+          return;
+        }
       }
       return;
     }
@@ -122,7 +130,11 @@ class TvDirectionalFocusAction extends DirectionalFocusAction {
     // d'arrivée défile à l'écran et s'inscrit dans la mémoire de la rangée.
     FocusNode? target;
     for (var i = 0; i < steps; i++) {
-      final next = nextOnLine(target ?? current, direction);
+      final from = target ?? current;
+      final onLine = nextOnLine(from, direction);
+      final panes = TvFocusPanes.maybeOf(from);
+      final next =
+          panes == null ? onLine : panes.next(from, direction, onLine: onLine);
       if (next == null) break;
       target = next;
     }
@@ -138,6 +150,10 @@ class TvDirectionalFocusAction extends DirectionalFocusAction {
   /// Le voisin le plus proche de [current] dans [direction], parmi ce qui
   /// partage sa ligne — ce qui chevauche verticalement sa hauteur. Nul quand il
   /// n'y en a pas.
+  ///
+  /// Sans voisin, la flèche entre dans [current] : une ligne de réglages
+  /// cliquable qui porte un bouton à son bord droit l'*englobe*, et ce bouton,
+  /// qui n'est « à droite » de rien, n'était atteignable d'aucun côté.
   @visibleForTesting
   static FocusNode? nextOnLine(
       FocusNode current, TraversalDirection direction) {
@@ -155,7 +171,7 @@ class TvDirectionalFocusAction extends DirectionalFocusAction {
           right ? rect.center.dx >= from.right : rect.center.dx <= from.left;
       return beyond && rect.top < from.bottom && rect.bottom > from.top;
     }).toList();
-    if (candidates.isEmpty) return null;
+    if (candidates.isEmpty) return _enclosedBy(current, direction);
 
     // Ce qui défile avec l'élément d'abord : dans une rangée, la carte
     // suivante, et pas un bouton posé à côté de la rangée.
@@ -184,5 +200,27 @@ class TvDirectionalFocusAction extends DirectionalFocusAction {
 
     candidates.sort((a, b) => distance(a).compareTo(distance(b)));
     return candidates.first;
+  }
+
+  /// Le premier élément focalisable contenu dans [current], du côté de
+  /// [direction] par rapport à son centre.
+  static FocusNode? _enclosedBy(
+      FocusNode current, TraversalDirection direction) {
+    final from = current.rect;
+    final right = direction == TraversalDirection.right;
+    FocusNode? best;
+    for (final node in current.traversalDescendants) {
+      if (node.context == null || node.rect.isEmpty) continue;
+      final rect = node.rect;
+      final beyond = right
+          ? rect.center.dx > from.center.dx
+          : rect.center.dx < from.center.dx;
+      if (!beyond) continue;
+      if (best == null ||
+          (right ? rect.left < best.rect.left : rect.right > best.rect.right)) {
+        best = node;
+      }
+    }
+    return best;
   }
 }

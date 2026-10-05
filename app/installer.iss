@@ -73,6 +73,8 @@ Filename: "{app}\onyx-updater.exe"; Parameters: "uninstall-service"; Flags: runh
 ; mise a jour (.update-old-*) aussi. Le dossier est a nous : l'emplacement
 ; choisi a l'installation finit toujours par \Onyx (voir DirLinkClick).
 Type: filesandordirs; Name: "{app}"
+; Le marqueur d'origine pose par SaveInstallOrigin.
+Type: filesandordirs; Name: "{commonappdata}\Onyx"
 
 [Code]
 const
@@ -241,6 +243,33 @@ begin
   Ratio := CurProgress / MaxProgress;
   BarFill.Width := Round(ScaleX(BarWidth) * Ratio);
   PercentText.Caption := Format('%d %%', [Round(Ratio * 100)]);
+end;
+
+{ Windows note sur tout fichier telecharge l'adresse d'ou il vient, dans le
+  flux "Zone.Identifier" (ligne HostUrl=). On le recopie tel quel : l'app en
+  tire l'adresse du serveur pour preremplir l'ecran de connexion (ADR-0042,
+  app/lib/services/install_origin.dart).
+
+  Dans ProgramData et non dans le dossier de l'app, qu'une mise a jour deplace
+  en entier (ADR-0030). Un installeur sans marqueur (cle USB, fichier "debloque",
+  mise a jour lancee par l'app) ne touche a rien : l'origine deja connue
+  reste. }
+procedure SaveInstallOrigin;
+var
+  Marker: AnsiString;
+  Dir: String;
+begin
+  if not LoadStringFromFile(ExpandConstant('{srcexe}') + ':Zone.Identifier', Marker) then
+    Exit;
+  Dir := ExpandConstant('{commonappdata}\Onyx');
+  if ForceDirectories(Dir) then
+    SaveStringToFile(Dir + '\install-origin.txt', Marker, False);
+end;
+
+procedure CurStepChanged(CurStep: TSetupStep);
+begin
+  if CurStep = ssPostInstall then
+    SaveInstallOrigin;
 end;
 
 procedure CurPageChanged(CurPageID: Integer);

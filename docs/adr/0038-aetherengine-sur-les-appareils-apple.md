@@ -37,7 +37,12 @@ plus qu'à la qualité réduite choisie à la main, qu'AetherEngine lit comme n'
   Pigeon, un lecteur désigné par un identifiant, une vue native qui s'y rattache, un flux d'état
   complet par instantané.
 - **Une vue native, jamais une texture** (`UiKitView`, `AppKitView`) : une texture Flutter est en
-  8 bits, donc sans HDR. Le cadrage se fait par la taille de la vue, comme dans l'ADR-0035.
+  8 bits, donc sans HDR. La vue garde la taille de l'écran et **c'est la couche vidéo qui cadre**
+  (`setVideoFit` → `AetherEngine.videoGravity`), comme ExoPlayer sur Android. Le cadrage par la
+  taille de la vue, repris de l'ADR-0035, ne rognait jamais : `applyBoxFit` rend la taille de
+  l'écran pour un cadrage qui rogne, et « Adaptatif » ne changeait rien (corrigé le 2026-10-05).
+  Seuls les sous-titres image suivent encore le cadre de l'image côté Flutter
+  (`NativeVideoFraming`).
 - **Les sous-titres arrivent en données**, texte ou bitmap PNG placé en fractions de l'image, et
   sont peints par Flutter : même habillage que sur les autres plateformes.
 - **Le journal d'AetherEngine remonte vers Dart**, pour le journal par lecture de l'ADR-0026. Le

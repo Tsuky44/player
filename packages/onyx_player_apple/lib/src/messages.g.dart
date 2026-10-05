@@ -121,6 +121,17 @@ enum OnyxApplePlayerErrorKind {
   unknown,
 }
 
+/// Comment l'image occupe la vue.
+///
+/// C'est la couche vidéo qui cadre (`videoGravity`), pas la taille de la vue :
+/// la vue garde celle de l'écran.
+enum OnyxAppleVideoFit {
+  /// L'image entière, avec des bandes s'il le faut.
+  contain,
+  /// La vue remplie, l'image rognée sur ce qui dépasse.
+  cover,
+}
+
 /// Une piste qu'AetherEngine a énumérée.
 class OnyxAppleTrack {
   OnyxAppleTrack({
@@ -645,23 +656,26 @@ class _PigeonCodec extends StandardMessageCodec {
     }    else if (value is OnyxApplePlayerErrorKind) {
       buffer.putUint8(130);
       writeValue(buffer, value.index);
-    }    else if (value is OnyxAppleTrack) {
+    }    else if (value is OnyxAppleVideoFit) {
       buffer.putUint8(131);
-      writeValue(buffer, value.encode());
-    }    else if (value is OnyxAppleVideoSize) {
+      writeValue(buffer, value.index);
+    }    else if (value is OnyxAppleTrack) {
       buffer.putUint8(132);
       writeValue(buffer, value.encode());
-    }    else if (value is OnyxApplePlayerStatus) {
+    }    else if (value is OnyxAppleVideoSize) {
       buffer.putUint8(133);
       writeValue(buffer, value.encode());
-    }    else if (value is OnyxAppleSubtitleBitmap) {
+    }    else if (value is OnyxApplePlayerStatus) {
       buffer.putUint8(134);
       writeValue(buffer, value.encode());
-    }    else if (value is OnyxAppleSubtitleFrame) {
+    }    else if (value is OnyxAppleSubtitleBitmap) {
       buffer.putUint8(135);
       writeValue(buffer, value.encode());
-    }    else if (value is OnyxApplePlaybackStats) {
+    }    else if (value is OnyxAppleSubtitleFrame) {
       buffer.putUint8(136);
+      writeValue(buffer, value.encode());
+    }    else if (value is OnyxApplePlaybackStats) {
+      buffer.putUint8(137);
       writeValue(buffer, value.encode());
     } else {
       super.writeValue(buffer, value);
@@ -678,16 +692,19 @@ class _PigeonCodec extends StandardMessageCodec {
         final value = readValue(buffer) as int?;
         return value == null ? null : OnyxApplePlayerErrorKind.values[value];
       case 131:
-        return OnyxAppleTrack.decode(readValue(buffer)!);
+        final value = readValue(buffer) as int?;
+        return value == null ? null : OnyxAppleVideoFit.values[value];
       case 132:
-        return OnyxAppleVideoSize.decode(readValue(buffer)!);
+        return OnyxAppleTrack.decode(readValue(buffer)!);
       case 133:
-        return OnyxApplePlayerStatus.decode(readValue(buffer)!);
+        return OnyxAppleVideoSize.decode(readValue(buffer)!);
       case 134:
-        return OnyxAppleSubtitleBitmap.decode(readValue(buffer)!);
+        return OnyxApplePlayerStatus.decode(readValue(buffer)!);
       case 135:
-        return OnyxAppleSubtitleFrame.decode(readValue(buffer)!);
+        return OnyxAppleSubtitleBitmap.decode(readValue(buffer)!);
       case 136:
+        return OnyxAppleSubtitleFrame.decode(readValue(buffer)!);
+      case 137:
         return OnyxApplePlaybackStats.decode(readValue(buffer)!);
       default:
         return super.readValueOfType(type, buffer);
@@ -874,6 +891,25 @@ class OnyxApplePlayerApi {
       binaryMessenger: pigeonVar_binaryMessenger,
     );
     final Future<Object?> pigeonVar_sendFuture = pigeonVar_channel.send(<Object?>[playerId, rate]);
+    final pigeonVar_replyList = await pigeonVar_sendFuture as List<Object?>?;
+
+    _extractReplyValueOrThrow(
+        pigeonVar_replyList,
+        pigeonVar_channelName,
+        isNullValid: true,
+    )
+    ;
+  }
+
+  /// Le cadrage de l'image dans la vue. Tient d'une ouverture à l'autre.
+  Future<void> setVideoFit(int playerId, OnyxAppleVideoFit fit) async {
+    final pigeonVar_channelName = 'dev.flutter.pigeon.onyx_player_apple.OnyxApplePlayerApi.setVideoFit$pigeonVar_messageChannelSuffix';
+    final pigeonVar_channel = BasicMessageChannel<Object?>(
+      pigeonVar_channelName,
+      pigeonChannelCodec,
+      binaryMessenger: pigeonVar_binaryMessenger,
+    );
+    final Future<Object?> pigeonVar_sendFuture = pigeonVar_channel.send(<Object?>[playerId, fit]);
     final pigeonVar_replyList = await pigeonVar_sendFuture as List<Object?>?;
 
     _extractReplyValueOrThrow(

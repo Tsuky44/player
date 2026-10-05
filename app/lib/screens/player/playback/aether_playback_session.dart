@@ -6,6 +6,7 @@ import 'package:onyx_player_apple/onyx_player_apple.dart';
 import '../../../services/client_log.dart';
 import '../playback_profile.dart';
 import 'aether_tracks.dart';
+import 'aether_video_fit.dart';
 import 'native_video_framing.dart';
 import 'playback_session.dart';
 import 'screen_awake.dart';
@@ -197,6 +198,16 @@ class AetherPlaybackSession implements PlaybackSession {
       session: this,
       fit: fit,
       aspectRatio: aspectRatio,
+    );
+  }
+
+  /// Porte le cadrage à la couche vidéo. Un échec laisse l'image entière, ce
+  /// qui se voit et ne casse rien : il part au journal.
+  void _pushFit(OnyxAppleVideoFit fit) {
+    unawaited(
+      _run((p) => p.setVideoFit(fit)).catchError((Object error) {
+        ClientLog.error('AetherEngine: cadrage refusé ($error)');
+      }),
     );
   }
 
@@ -418,6 +429,10 @@ class AetherPlaybackSession implements PlaybackSession {
 /// Un widget à état plutôt qu'un `FutureBuilder` posé à l'appel : la vue de
 /// plateforme est chère à construire, et l'écran se reconstruit à chaque
 /// seconde de lecture.
+///
+/// La vue garde la taille de l'écran et c'est la couche vidéo qui cadre
+/// (`videoGravity`), comme ExoPlayer sur Android : rien ne dépend alors de ce
+/// que Flutter sait faire d'une vue native plus grande que l'écran.
 class _AetherSurface extends StatefulWidget {
   const _AetherSurface({
     super.key,
@@ -439,12 +454,23 @@ class _AetherSurface extends StatefulWidget {
 class _AetherSurfaceState extends State<_AetherSurface> {
   int? _playerId;
 
+  /// Le dernier cadrage porté au natif : l'écran se reconstruit à chaque
+  /// seconde, le canal ne sert que quand il change.
+  OnyxAppleVideoFit? _pushedFit;
+
   @override
   void initState() {
     super.initState();
     widget.ready.then((player) {
       if (mounted) setState(() => _playerId = player.id);
     });
+  }
+
+  void _syncFit(double aspectRatio, Size box) {
+    final fit = AetherVideoFit.resolve(widget.fit, aspectRatio, box);
+    if (fit == _pushedFit) return;
+    _pushedFit = fit;
+    widget.session._pushFit(fit);
   }
 
   @override
@@ -460,17 +486,32 @@ class _AetherSurfaceState extends State<_AetherSurface> {
         if (id != null)
           ValueListenableBuilder<PlaybackVideoParams>(
             valueListenable: session._params,
-            builder: (context, params, _) => NativeVideoFraming(
-              fit: widget.fit,
-              aspectRatio: widget.aspectRatio ?? params.aspect ?? 16 / 9,
-              child: Stack(
-                fit: StackFit.expand,
-                children: [
-                  OnyxApplePlayerView(playerId: id),
-                  SubtitleBitmapOverlay(bitmaps: session.bitmaps),
-                ],
-              ),
-            ),
+            builder: (context, params, _) {
+              final aspectRatio =
+                  widget.aspectRatio ?? params.aspect ?? 16 / 9;
+              return LayoutBuilder(
+                builder: (context, constraints) {
+                  // Dépend de la place offerte autant que du réglage : le
+                  // même « original » remplit sur un téléphone et laisse des
+                  // bandes sur une tablette.
+                  _syncFit(aspectRatio, constraints.biggest);
+                  return Stack(
+                    fit: StackFit.expand,
+                    children: [
+                      OnyxApplePlayerView(playerId: id),
+                      // Les sous-titres image se placent en fractions de
+                      // l'image : eux gardent le cadre de l'image, rogné
+                      // comme elle.
+                      NativeVideoFraming(
+                        fit: widget.fit,
+                        aspectRatio: aspectRatio,
+                        child: SubtitleBitmapOverlay(bitmaps: session.bitmaps),
+                      ),
+                    ],
+                  );
+                },
+              );
+            },
           ),
         SubtitleOverlay(cues: session.cues, inset: session.subtitleInset),
       ],

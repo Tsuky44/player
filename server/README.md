@@ -383,7 +383,7 @@ aperçus). Un lien tient au plus quatre lectures simultanées.
 ### 📥 6. Téléchargement des applications clientes
 
 * **Routes :** `GET /api/downloads` · `GET /api/downloads/:fichier`
-* **Comportement :** Publie les applications installables (APK Android, DMG macOS, EXE Windows) embarquées dans l'image Docker sous `/app/downloads`. La liste est construite en scannant le dossier, il n'y a donc aucun manifeste à maintenir. Le fichier est servi en `attachment` avec support des Range Requests (une reprise après coupure ne repart pas de zéro).
+* **Comportement :** Publie les applications installables (APK Android, DMG macOS, EXE Windows) embarquées dans l'image Docker sous `/app/downloads`. La liste est construite en scannant le dossier, il n'y a donc aucun manifeste à maintenir. Le fichier est servi en `attachment` avec support des Range Requests (une reprise après coupure ne repart pas de zéro). L'APK et les IPA sont servis avec l'adresse de téléchargement glissée dedans (`server/installorigin`, ADR-0042) : l'app installée s'ouvre avec l'adresse du serveur préremplie. Le fichier servi fait donc quelques dizaines d'octets de plus que le `size` annoncé par la liste.
 * **Publiques (sans authentification) :** c'est par là qu'un nouvel utilisateur récupère l'app avant d'avoir un compte, et un téléchargement navigateur ne peut pas porter d'en-tête `Authorization`.
 * **Réponse (JSON) :** `{"artifacts": [{"platform": "macos", "label": "macOS", "file": "Onyx-1.0.0-macos.dmg", "url": "/api/downloads/Onyx-1.0.0-macos.dmg", "version": "1.0.0", "size": 43374616, "built_at": "2026-08-12T10:08:14Z"}]}`
 * **Côté client :** la section « Applications » de l'écran Paramètres liste ce que le serveur propose. Elle disparaît d'elle-même si aucun artefact n'est embarqué.

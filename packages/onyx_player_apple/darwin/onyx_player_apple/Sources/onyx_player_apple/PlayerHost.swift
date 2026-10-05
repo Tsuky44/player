@@ -1,3 +1,4 @@
+import AVFoundation
 import Foundation
 
 /// Les lecteurs vivants, et le contrat Pigeon qui les pilote.
@@ -77,6 +78,11 @@ final class PlayerHost: NSObject, OnyxApplePlayerApi {
 
   func setRate(playerId: Int64, rate: Double) throws {
     try onMain { try require(playerId).engine.setRate(Float(rate)) }
+  }
+
+  func setVideoFit(playerId: Int64, fit: OnyxAppleVideoFit) throws {
+    let gravity: AVLayerVideoGravity = fit == .cover ? .resizeAspectFill : .resizeAspect
+    try onMain { try require(playerId).engine.videoGravity = gravity }
   }
 
   func setPreferredAudioLanguages(playerId: Int64, priorities: [String]) throws {

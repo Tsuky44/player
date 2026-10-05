@@ -52,6 +52,18 @@ enum OnyxApplePlayerErrorKind {
   unknown,
 }
 
+/// Comment l'image occupe la vue.
+///
+/// C'est la couche vidéo qui cadre (`videoGravity`), pas la taille de la vue :
+/// la vue garde celle de l'écran.
+enum OnyxAppleVideoFit {
+  /// L'image entière, avec des bandes s'il le faut.
+  contain,
+
+  /// La vue remplie, l'image rognée sur ce qui dépasse.
+  cover,
+}
+
 /// Une piste qu'AetherEngine a énumérée.
 class OnyxAppleTrack {
   OnyxAppleTrack({
@@ -266,6 +278,9 @@ abstract class OnyxApplePlayerApi {
   void setVolume(int playerId, double volume);
 
   void setRate(int playerId, double rate);
+
+  /// Le cadrage de l'image dans la vue. Tient d'une ouverture à l'autre.
+  void setVideoFit(int playerId, OnyxAppleVideoFit fit);
 
   /// Quelle langue audio charger d'emblée, la plus probable en premier. Posé
   /// avant l'ouverture : après, changer de piste reconstruit la session

@@ -5,6 +5,8 @@ import '../../models/models.dart';
 import '../../providers/auth_provider.dart';
 import '../../services/client_identity.dart';
 import '../../theme/app_colors.dart';
+import '../../theme/app_motion.dart';
+import '../../tv/tv_focus_panes.dart';
 import '../../tv/tv_mode.dart';
 import '../../utils/app_platform.dart';
 import 'pages/account_page.dart';
@@ -312,44 +314,71 @@ class _WideSettings extends StatelessWidget {
     return Scaffold(
       backgroundColor: AppColors.background,
       body: SafeArea(
-        child: Row(
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [
-            _Sidebar(
-              categories: categories,
-              selected: selected,
-              onSelect: onSelect,
-            ),
-            Expanded(
-              child: DecoratedBox(
-                decoration: const BoxDecoration(color: AppColors.background),
-                child: SettingsLayout(
-                  isWide: true,
-                  openSection: onSelect,
-                  child: AnimatedSwitcher(
-                    duration: MediaQuery.disableAnimationsOf(context)
-                        ? Duration.zero
-                        : const Duration(milliseconds: 180),
-                    switchInCurve: Curves.easeOutCubic,
-                    transitionBuilder: (child, animation) => FadeTransition(
-                      opacity: animation,
-                      child: SlideTransition(
-                        position: Tween(
-                          begin: const Offset(0, 0.012),
-                          end: Offset.zero,
-                        ).animate(animation),
-                        child: child,
+        // À la télécommande, droite entre dans la page et gauche revient à la
+        // liste, quelle que soit la hauteur des réglages. Voir [TvFocusPanes].
+        child: TvFocusPanes(
+          child: Row(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              TvFocusPane(
+                child: _Sidebar(
+                  categories: categories,
+                  selected: selected,
+                  onSelect: onSelect,
+                ),
+              ),
+              Expanded(
+                child: TvFocusPane(
+                  child: DecoratedBox(
+                    decoration:
+                        const BoxDecoration(color: AppColors.background),
+                    child: SettingsLayout(
+                      isWide: true,
+                      openSection: onSelect,
+                      child: AnimatedSwitcher(
+                        duration: AppMotion.move(context, AppMotion.micro),
+                        switchInCurve: AppMotion.curve,
+                        // La page qui s'efface n'est plus une cible : entrer
+                        // dedans poserait le focus sur un réglage détruit
+                        // l'instant d'après. Les deux enfants gardent le même
+                        // emballage pour que la page ne soit pas reconstruite
+                        // en changeant de rôle.
+                        layoutBuilder: (currentChild, previousChildren) =>
+                            Stack(
+                          alignment: Alignment.center,
+                          children: [
+                            for (final child in previousChildren)
+                              ExcludeFocus(key: child.key, child: child),
+                            if (currentChild != null)
+                              ExcludeFocus(
+                                key: currentChild.key,
+                                excluding: false,
+                                child: currentChild,
+                              ),
+                          ],
+                        ),
+                        transitionBuilder: (child, animation) =>
+                            FadeTransition(
+                          opacity: animation,
+                          child: SlideTransition(
+                            position: Tween(
+                              begin: const Offset(0, 0.012),
+                              end: Offset.zero,
+                            ).animate(animation),
+                            child: child,
+                          ),
+                        ),
+                        child: KeyedSubtree(
+                          key: ValueKey(category.id),
+                          child: category.builder(context),
+                        ),
                       ),
-                    ),
-                    child: KeyedSubtree(
-                      key: ValueKey(category.id),
-                      child: category.builder(context),
                     ),
                   ),
                 ),
               ),
-            ),
-          ],
+            ],
+          ),
         ),
       ),
     );
