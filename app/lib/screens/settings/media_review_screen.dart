@@ -8,6 +8,7 @@ import '../../utils/responsive.dart';
 import '../../widgets/global/media_poster.dart';
 import '../../widgets/global/metadata_fix_sheet.dart';
 import '../../theme/app_type.dart';
+import '../../l10n/tr.dart';
 
 enum _ReviewFilter { all, unidentified, incomplete }
 
@@ -45,7 +46,7 @@ class _MediaReviewScreenState extends State<MediaReviewScreen> {
       setState(() => _items = items);
     } catch (_) {
       if (!mounted) return;
-      setState(() => _error = 'Impossible de charger les médias à vérifier.');
+      setState(() => _error = tr('Impossible de charger les médias à vérifier.'));
     } finally {
       if (mounted) setState(() => _loading = false);
     }
@@ -71,8 +72,8 @@ class _MediaReviewScreenState extends State<MediaReviewScreen> {
     await _runUpdate(
       item,
       () => context.read<ApiClient>().redetectMediaMetadata(item.id),
-      success: 'Détection terminée',
-      failure: 'Aucune correspondance sûre — choisissez une fiche TMDB.',
+      success: tr('Détection terminée'),
+      failure: tr('Aucune correspondance sûre — choisissez une fiche TMDB.'),
     );
   }
 
@@ -90,8 +91,8 @@ class _MediaReviewScreenState extends State<MediaReviewScreen> {
     await _runUpdate(
       item,
       () => api.rematchMediaMetadata(item.id, tmdbId: choice.tmdbId),
-      success: 'Fiche mise à jour',
-      failure: 'Impossible de mettre à jour la fiche.',
+      success: tr('Fiche mise à jour'),
+      failure: tr('Impossible de mettre à jour la fiche.'),
     );
   }
 
@@ -143,10 +144,10 @@ class _MediaReviewScreenState extends State<MediaReviewScreen> {
     return Scaffold(
       backgroundColor: AppColors.background,
       appBar: AppBar(
-        title: const Text('Médias à vérifier'),
+        title: Text(tr('Médias à vérifier')),
         actions: [
           IconButton(
-            tooltip: 'Actualiser',
+            tooltip: tr('Actualiser'),
             onPressed: _loading ? null : _load,
             icon: const Icon(Icons.refresh_rounded),
           ),
@@ -203,16 +204,17 @@ class _MediaReviewScreenState extends State<MediaReviewScreen> {
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         Text(
-          '${_items.length} fiche${_items.length == 1 ? '' : 's'} à vérifier',
+          tr('{0} fiche{1} à vérifier', [_items.length, _items.length == 1 ? '' : 's']),
           style: Theme.of(context).textTheme.headlineSmall?.copyWith(
                 fontWeight: FontWeight.w700,
                 letterSpacing: -0.4,
               ),
         ),
         const SizedBox(height: 6),
-        const Text(
-          'Tous les films et séries sans correspondance TMDB, affiche, synopsis ou date. '
-          'La liste reste disponible après les scans et redémarrages.',
+        Text(
+          tr('Tous les films et séries sans correspondance TMDB, affiche, '
+              'synopsis ou date. La liste reste disponible après les scans '
+              'et redémarrages.'),
           style: TextStyle(color: AppColors.textSecondary, height: 1.4),
         ),
         const SizedBox(height: 16),
@@ -220,15 +222,15 @@ class _MediaReviewScreenState extends State<MediaReviewScreen> {
           spacing: 8,
           runSpacing: 8,
           children: [
-            _filterChip(_ReviewFilter.all, 'Tous', _items.length),
+            _filterChip(_ReviewFilter.all, tr('Tous'), _items.length),
             _filterChip(
               _ReviewFilter.unidentified,
-              'Non identifiés',
+              tr('Non identifiés'),
               _items.where(_unidentified).length,
             ),
             _filterChip(
               _ReviewFilter.incomplete,
-              'Métadonnées manquantes',
+              tr('Métadonnées manquantes'),
               _items.where(_incomplete).length,
             ),
           ],
@@ -263,10 +265,10 @@ class _ReviewCard extends StatelessWidget {
   Widget build(BuildContext context) {
     final compact = AppLayout.isCompact(context);
     final issues = <String>[
-      if ((item.tmdbId ?? 0) <= 0) 'Non identifié',
-      if (item.posterUrl?.trim().isEmpty ?? true) 'Affiche manquante',
-      if (item.overview?.trim().isEmpty ?? true) 'Synopsis manquant',
-      if (item.releaseDate?.trim().isEmpty ?? true) 'Date manquante',
+      if ((item.tmdbId ?? 0) <= 0) tr('Non identifié'),
+      if (item.posterUrl?.trim().isEmpty ?? true) tr('Affiche manquante'),
+      if (item.overview?.trim().isEmpty ?? true) tr('Synopsis manquant'),
+      if (item.releaseDate?.trim().isEmpty ?? true) tr('Date manquante'),
     ];
     final filename = item.filePath?.split(RegExp(r'[\\/]+')).last;
 
@@ -299,7 +301,7 @@ class _ReviewCard extends StatelessWidget {
                 const SizedBox(height: 3),
                 Text(
                   [
-                    item.type == MediaType.show ? 'Série' : 'Film',
+                    item.type == MediaType.show ? tr('Série') : tr('Film'),
                     if (filename != null && filename.isNotEmpty) filename,
                   ].join(' · '),
                   maxLines: 1,
@@ -329,12 +331,12 @@ class _ReviewCard extends StatelessWidget {
                             )
                           : const Icon(Icons.auto_fix_high_rounded, size: 17),
                       label:
-                          Text(compact ? 'Auto' : 'Détecter automatiquement'),
+                          Text(compact ? tr('Auto') : tr('Détecter automatiquement')),
                     ),
                     FilledButton.tonalIcon(
                       onPressed: busy ? null : onChoose,
                       icon: const Icon(Icons.search_rounded, size: 17),
-                      label: const Text('Choisir la fiche'),
+                      label: Text(tr('Choisir la fiche')),
                     ),
                   ],
                 ),
@@ -389,8 +391,8 @@ class _EmptyState extends StatelessWidget {
             const SizedBox(height: 14),
             Text(
               filtered
-                  ? 'Aucun média dans ce filtre'
-                  : 'Toutes les fiches sont complètes',
+                  ? tr('Aucun média dans ce filtre')
+                  : tr('Toutes les fiches sont complètes'),
               textAlign: TextAlign.center,
               style: const TextStyle(fontSize: AppType.headline, fontWeight: FontWeight.w700),
             ),
@@ -414,7 +416,7 @@ class _ErrorState extends StatelessWidget {
         children: [
           Text(message, style: const TextStyle(color: AppColors.textSecondary)),
           const SizedBox(height: 12),
-          OutlinedButton(onPressed: onRetry, child: const Text('Réessayer')),
+          OutlinedButton(onPressed: onRetry, child: Text(tr('Réessayer'))),
         ],
       ),
     );

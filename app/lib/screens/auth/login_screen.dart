@@ -19,6 +19,7 @@ import 'login_password_field.dart';
 import '../shared_link/shared_link_guest.dart';
 import 'phone_sign_in_panel.dart';
 import '../../theme/app_type.dart';
+import '../../l10n/tr.dart';
 
 /// Les trois façons d'arriver sur un serveur.
 ///
@@ -134,8 +135,8 @@ class _LoginScreenState extends State<LoginScreen> {
 
     if (found == null) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('Aucun serveur Onyx trouvé sur ce réseau.'),
+        SnackBar(
+          content: Text(tr('Aucun serveur Onyx trouvé sur ce réseau.')),
         ),
       );
       return;
@@ -335,8 +336,8 @@ class _LoginScreenState extends State<LoginScreen> {
         );
         if (success && mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(
-                content: Text('Inscription réussie ! Connectez-vous.')),
+            SnackBar(
+                content: Text(tr('Inscription réussie ! Connectez-vous.'))),
           );
           setState(() {
             _mode = _LoginMode.signIn;
@@ -357,9 +358,10 @@ class _LoginScreenState extends State<LoginScreen> {
           setState(() => _mode = _LoginMode.signIn);
           _startPollingIfPending();
           ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(
+            SnackBar(
               content: Text(
-                  'Demande envoyée. Vous serez connecté dès qu’elle sera acceptée.'),
+                  tr('Demande envoyée. Vous serez connecté dès qu’elle sera '
+                      'acceptée.')),
             ),
           );
         } catch (e) {
@@ -400,7 +402,7 @@ class _LoginScreenState extends State<LoginScreen> {
     final response = error is DioException ? error.response : null;
     final data = response?.data;
     if (data is Map && data['error'] != null) return data['error'].toString();
-    return 'Demande impossible : vérifiez l’adresse du serveur.';
+    return tr('Demande impossible : vérifiez l’adresse du serveur.');
   }
 
   @override
@@ -457,12 +459,12 @@ class _LoginScreenState extends State<LoginScreen> {
                       Text(
                         switch (_mode) {
                           _LoginMode.register => _setupRequired
-                              ? 'Créer le compte propriétaire'
-                              : 'Créer un compte avec une invitation',
+                              ? tr('Créer le compte propriétaire')
+                              : tr('Créer un compte avec une invitation'),
                           _LoginMode.request =>
-                            'Demander l’accès à ce serveur',
+                            tr('Demander l’accès à ce serveur'),
                           _LoginMode.signIn =>
-                            'Connectez-vous à votre serveur',
+                            tr('Connectez-vous à votre serveur'),
                         },
                         textAlign: TextAlign.center,
                         style: textTheme.bodyMedium?.copyWith(
@@ -483,14 +485,14 @@ class _LoginScreenState extends State<LoginScreen> {
                           autofillHints: null,
                           textInputAction: TextInputAction.next,
                           style: const TextStyle(color: AppColors.textPrimary),
-                          decoration: const InputDecoration(
-                            labelText: 'Adresse du serveur',
+                          decoration: InputDecoration(
+                            labelText: tr('Adresse du serveur'),
                             hintText: 'http://192.168.1.50:8080',
                             prefixIcon: Icon(Icons.dns_rounded,
                                 color: AppColors.textMuted),
                           ),
                           validator: (v) =>
-                              v == null || v.trim().isEmpty ? 'Requis' : null,
+                              v == null || v.trim().isEmpty ? tr('Requis') : null,
                           // This used to be an `onEditingComplete`, which is the
                           // callback that *replaces* Flutter's own handling of the
                           // keyboard's action key. So "next" ran the probe and did
@@ -524,8 +526,8 @@ class _LoginScreenState extends State<LoginScreen> {
                                 : const Icon(Icons.travel_explore_rounded,
                                     size: 18),
                             label: Text(_discovering
-                                ? 'Recherche…'
-                                : 'Détecter le serveur sur le réseau'),
+                                ? tr('Recherche…')
+                                : tr('Détecter le serveur sur le réseau')),
                           ),
                         ),
                       if (_invitingShown) ...[
@@ -542,14 +544,14 @@ class _LoginScreenState extends State<LoginScreen> {
                             onFieldSubmitted: (_) => _focusNext(_usernameKeyboard),
                             style:
                                 const TextStyle(color: AppColors.textPrimary),
-                            decoration: const InputDecoration(
-                              labelText: 'Code d\'invitation',
-                              hintText: 'Collez le lien reçu ou son code',
+                            decoration: InputDecoration(
+                              labelText: tr('Code d\'invitation'),
+                              hintText: tr('Collez le lien reçu ou son code'),
                               prefixIcon: Icon(Icons.mail_outline_rounded,
                                   color: AppColors.textMuted),
                             ),
                             validator: (v) => v == null || v.trim().isEmpty
-                                ? 'Une invitation est requise'
+                                ? tr('Une invitation est requise')
                                 : null,
                                                   ),
                         ),
@@ -572,13 +574,13 @@ class _LoginScreenState extends State<LoginScreen> {
                           textInputAction: TextInputAction.next,
                           onFieldSubmitted: (_) => _focusNext(_passwordKeyboard),
                           style: const TextStyle(color: AppColors.textPrimary),
-                          decoration: const InputDecoration(
-                            labelText: 'Nom d\'utilisateur',
+                          decoration: InputDecoration(
+                            labelText: tr('Nom d\'utilisateur'),
                             prefixIcon: Icon(Icons.person_outline_rounded,
                                 color: AppColors.textMuted),
                           ),
                           validator: (v) =>
-                              v == null || v.trim().isEmpty ? 'Requis' : null,
+                              v == null || v.trim().isEmpty ? tr('Requis') : null,
                                               ),
                       ),
                       const SizedBox(height: 16),
@@ -601,9 +603,9 @@ class _LoginScreenState extends State<LoginScreen> {
                             maxLength: 280,
                             style:
                                 const TextStyle(color: AppColors.textPrimary),
-                            decoration: const InputDecoration(
-                              labelText: 'Message (facultatif)',
-                              hintText: 'Dites qui vous êtes',
+                            decoration: InputDecoration(
+                              labelText: tr('Message (facultatif)'),
+                              hintText: tr('Dites qui vous êtes'),
                               prefixIcon: Icon(
                                   Icons.chat_bubble_outline_rounded,
                                   color: AppColors.textMuted),
@@ -633,10 +635,9 @@ class _LoginScreenState extends State<LoginScreen> {
                               const SizedBox(width: 12),
                               Expanded(
                                 child: Text(
-                                  'Demande envoyée à ${pending.prettyHost} pour '
-                                  '« ${pending.username} ». La connexion se fera '
-                                  'toute seule dès qu’un administrateur aura '
-                                  'accepté.',
+                                  tr('Demande envoyée à {0} pour « {1} ». '
+                                      'La connexion se fera toute seule dès '
+                                      'qu’un administrateur aura accepté.', [pending.prettyHost, pending.username]),
                                   style: const TextStyle(
                                       color: AppColors.textSecondary,
                                       fontSize: AppType.footnote),
@@ -649,7 +650,7 @@ class _LoginScreenState extends State<LoginScreen> {
                                       .abandonAccessRequest(pending);
                                   if (mounted) _startPollingIfPending();
                                 },
-                                child: const Text('Annuler'),
+                                child: Text(tr('Annuler')),
                               ),
                             ],
                           ),
@@ -689,9 +690,9 @@ class _LoginScreenState extends State<LoginScreen> {
                                 ),
                               )
                             : Text(switch (_mode) {
-                                _LoginMode.register => 'S\'inscrire',
-                                _LoginMode.request => 'Envoyer la demande',
-                                _LoginMode.signIn => 'Se connecter',
+                                _LoginMode.register => tr('S\'inscrire'),
+                                _LoginMode.request => tr('Envoyer la demande'),
+                                _LoginMode.signIn => tr('Se connecter'),
                               }),
                       ),
                       const SizedBox(height: 12),
@@ -708,9 +709,10 @@ class _LoginScreenState extends State<LoginScreen> {
                               ? (_setupRequired
                                   // Nobody exists yet: this account takes the
                                   // server over.
-                                  ? 'Premier lancement : créer le compte propriétaire'
-                                  : 'J\'ai un code d\'invitation')
-                              : 'Déjà un compte ? Connectez-vous',
+                                  ? tr('Premier lancement : créer le compte '
+                                      'propriétaire')
+                                  : tr('J\'ai un code d\'invitation'))
+                              : tr('Déjà un compte ? Connectez-vous'),
                         ),
                       ),
                       // Sans invitation et sans compte, il reste la sonnette :
@@ -723,8 +725,8 @@ class _LoginScreenState extends State<LoginScreen> {
                               ? null
                               : () => setState(
                                   () => _mode = _LoginMode.request),
-                          child: const Text(
-                              'Pas d’invitation ? Demander l’accès'),
+                          child: Text(
+                              tr('Pas d’invitation ? Demander l’accès')),
                         ),
                       // Un lien de partage se regarde sans compte ni serveur
                       // enregistré (ADR-0037 §9). Pas sur un téléviseur, qui
@@ -735,7 +737,7 @@ class _LoginScreenState extends State<LoginScreen> {
                           onPressed: authProvider.isLoading
                               ? null
                               : () => showOpenSharedLinkDialog(context),
-                          child: const Text('Ouvrir un lien de partage'),
+                          child: Text(tr('Ouvrir un lien de partage')),
                         ),
                     ],
                   ),

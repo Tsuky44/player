@@ -7,11 +7,12 @@ import '../../../tv/tv_focus.dart';
 import '../../../tv/tv_focus_memory.dart';
 import '../../../theme/app_icons.dart';
 import '../../../theme/app_type.dart';
+import '../../../l10n/tr.dart';
 
 /// « Saison 1 », « Saison 2 »… tel que la fiche l'écrit partout.
 String seasonLabel(Media season) {
   final number = season.effectiveSeasonNumber;
-  return number != null && number > 0 ? 'Saison $number' : season.title;
+  return number != null && number > 0 ? tr('Saison {0}', [number]) : season.title;
 }
 
 /// Les saisons d'une série, en onglets.
@@ -74,7 +75,7 @@ class _SeasonTab extends StatelessWidget {
     final text = !missing
         ? label
         : season.isRequested
-            ? '$label · demandée'
+            ? tr('{0} · demandée', [label])
             : '$label · manquante';
     final radius = BorderRadius.circular(20);
 

@@ -454,3 +454,46 @@ func TestShareLink_ShowKeepsSeasonsApartWithoutSeasonNumbers(t *testing.T) {
 		t.Fatalf("season of the unnumbered row = %d, want 2 from its title", info.Episodes[1].SeasonNumber)
 	}
 }
+
+// La page du lien d'une saison ressemble à la fiche d'un compte : elle reçoit
+// la fiche de la série et de quoi habiller chaque épisode — mais seulement une
+// fois le mot de passe donné, et rien de ce qui touche au disque.
+func TestShareLink_SeasonCarriesTheShowDetailsBehindThePassword(t *testing.T) {
+	ownerID, episodeID := setupShareTest(t)
+	if _, err := database.DB.Exec(`UPDATE medias SET overview = 'Une agente infiltrée.', release_date = '2023-07-23' WHERE id = ?`, shareShowID); err != nil {
+		t.Fatalf("describe show: %v", err)
+	}
+	if _, err := database.DB.Exec(`
+		UPDATE medias SET overview = 'Le dernier.', poster_url = '/still.jpg', intro_start = 30, intro_end = 90
+		WHERE id = ?`, episodeID); err != nil {
+		t.Fatalf("describe episode: %v", err)
+	}
+	share := createShare(t, ownerID, fmt.Sprintf(`{"media_id":%d,"password":"popcorn"}`, shareSeasonID))
+
+	var info models.SharedMedia
+	callShared(t, SharedMediaInfo, map[string]string{"code": share.Code}, &info)
+	if info.Details != nil {
+		t.Fatalf("info leaks the show details before the password: %+v", info.Details)
+	}
+
+	var contents models.SharedMedia
+	if status := callShared(t, SharedMediaContents, map[string]string{"code": share.Code, "password": "popcorn"}, &contents); status != http.StatusOK {
+		t.Fatalf("contents: %d", status)
+	}
+	details := contents.Details
+	if details == nil || details.ID != shareShowID || details.Title != "Lioness" ||
+		details.Overview != "Une agente infiltrée." || details.PosterURL != "/show.jpg" || details.ReleaseDate != "2023-07-23" {
+		t.Fatalf("details = %+v, want the show of the season", details)
+	}
+	if details.FileName != "" || details.LocalFolder != "" || details.LocalEpisodeFile != "" || len(details.SimilarTitles) != 0 {
+		t.Fatalf("details expose the library beyond the link: %+v", details)
+	}
+	if len(contents.Episodes) != 1 {
+		t.Fatalf("episodes = %+v", contents.Episodes)
+	}
+	episode := contents.Episodes[0]
+	if episode.SeasonID != shareSeasonID || episode.Overview != "Le dernier." || episode.StillURL != "/still.jpg" ||
+		episode.IntroStart != 30 || episode.IntroEnd != 90 {
+		t.Fatalf("episode = %+v", episode)
+	}
+}

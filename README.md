@@ -10,7 +10,7 @@ Onyx est un serveur multimédia auto-hébergé et son application, pensés pour 
 ![Flutter](https://img.shields.io/badge/App-Flutter-02569B?logo=flutter&logoColor=white)
 ![SQLite](https://img.shields.io/badge/DB-SQLite-003B57?logo=sqlite&logoColor=white)
 ![Docker](https://img.shields.io/badge/Deploy-Docker-2496ED?logo=docker&logoColor=white)
-![License](https://img.shields.io/badge/Licence-Tous%20droits%20r%C3%A9serv%C3%A9s-red)
+![License](https://img.shields.io/badge/Licence-PolyForm%20Noncommercial-blue)
 
 </div>
 
@@ -22,9 +22,9 @@ Onyx est un serveur multimédia auto-hébergé et son application, pensés pour 
 |:---:|:---:|
 | ![Accueil](docs/screenshots/home.png) | ![Fiche](docs/screenshots/detail.png) |
 
-| Lecteur | Player Studio |
-|:---:|:---:|
-| ![Lecteur](docs/screenshots/player.png) | ![Player Studio](docs/screenshots/studio.png) |
+| Lecteur |
+|:---:|
+| ![Lecteur](docs/screenshots/player.png) |
 
 | Regarder ensemble | Mobile |
 |:---:|:---:|
@@ -41,10 +41,6 @@ Onyx est un serveur multimédia auto-hébergé et son application, pensés pour 
 - Pistes audio et sous-titres, downmix stéréo avec dialogues mis en avant.
 - Aperçus sur la barre de lecture, saut d'intro, épisode suivant automatique.
 - Image dans l'image, touches média du clavier.
-
-### 🎨 Player Studio
-- Un éditeur de disposition pour les contrôles du lecteur : tu places, déplaces et ajustes chaque bouton en glisser-déposer.
-- Des thèmes de lecteur prêts à l'emploi.
 
 ### 👥 Regarder ensemble
 - Des watch parties synchronisées : pause, lecture et seek sont partagés en temps réel entre tous les participants.
@@ -76,6 +72,18 @@ Onyx est un serveur multimédia auto-hébergé et son application, pensés pour 
 | 📱 iOS | ✅ |
 | 📺 Apple TV (tvOS) | ✅ |
 | 🌐 Web | ✅ |
+
+---
+
+## 💎 Gratuit, Premium et offre fondateur
+
+Onyx est en **beta** : aujourd'hui, tout est gratuit.
+
+- **Gratuit, pour toujours** : le serveur, ta médiathèque, et la lecture en Direct Play sur toutes les plateformes. Aucun compte cloud, aucune limite de durée.
+- **Onyx Premium, à la sortie de la beta** : une offre payante financera le développement et les frais de publication sur les stores. Elle portera sur des fonctions avancées, jamais sur la lecture de tes propres fichiers. La liste exacte et les prix seront publiés avant la fin de la beta, avec un achat à vie en plus de l'abonnement.
+- **Offre fondateur** : si tu installes un serveur pendant la beta, tu gardes Onyx Premium à vie, gratuitement. C'est notre façon de remercier celles et ceux qui testent et remontent des bugs.
+
+Une règle que l'on s'impose : ce qui est gratuit dans la version stable le reste.
 
 ---
 
@@ -140,8 +148,18 @@ flutter run
 
 ---
 
+## 🤝 Contribuer
+
+Les rapports de bugs, les idées et les pull requests sont les bienvenus. Lis [CONTRIBUTING.md](CONTRIBUTING.md) avant d'ouvrir une PR : elle suppose d'accepter l'[accord de contribution](CLA.md).
+
+---
+
 ## 📄 Licence
 
-**© 2026 Tsuky. Tous droits réservés.**
+**© 2026 Tsuky.** Onyx est en **source disponible**, sous licence [PolyForm Noncommercial 1.0.0](LICENSE).
 
-Ce code est public pour être consulté, pas pour être réutilisé. Sans autorisation écrite de l'auteur, il est interdit de le copier, modifier, redistribuer ou l'utiliser commercialement. Voir [LICENSE](LICENSE).
+- ✅ Tu peux lire le code, installer Onyx, le modifier et le partager pour un usage **non commercial** : chez toi, pour ta famille et tes amis.
+- ❌ Tout usage commercial (revente, offre d'hébergement payante, intégration dans un produit vendu) demande une licence écrite de l'auteur.
+- Le nom « Onyx » et le logo ne sont pas couverts par la licence : une version modifiée doit être distribuée sous un autre nom.
+
+Onyx n'est pas un logiciel open source au sens de l'OSI : le code est ouvert à la lecture et à la contribution, pas à la réutilisation commerciale.

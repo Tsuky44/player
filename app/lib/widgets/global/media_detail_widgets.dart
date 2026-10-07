@@ -18,6 +18,7 @@ import 'poster_card.dart';
 import 'overlay_back_button.dart';
 import '../../theme/app_icons.dart';
 import '../../theme/app_type.dart';
+import '../../l10n/tr.dart';
 
 /// Hero header for movie/show detail pages: a wide backdrop with
 /// gradients, an overlaid poster, title, tagline, metadata chips and actions.
@@ -29,7 +30,10 @@ class DetailBackdropHeader extends StatelessWidget {
   final MediaDetails? details;
   final List<Widget> metadata;
   final Widget? actions;
-  final VoidCallback onBack;
+
+  /// Nul quand il n'y a rien derrière la page — celle d'un lien de partage
+  /// ouvert dans le navigateur : le bouton retour n'est alors pas dessiné.
+  final VoidCallback? onBack;
 
   /// Badges techniques du fichier (« 4K », « Dolby Atmos »), après la ligne
   /// de métadonnées. Voir [techBadgesFor].
@@ -332,11 +336,12 @@ class DetailBackdropHeader extends StatelessWidget {
                   ),
           ),
 
-          Positioned(
-            top: 4,
-            left: 8,
-            child: OverlayBackButton(onPressed: onBack),
-          ),
+          if (onBack != null)
+            Positioned(
+              top: 4,
+              left: 8,
+              child: OverlayBackButton(onPressed: onBack),
+            ),
         ],
       ),
     );
@@ -424,7 +429,7 @@ class CastSection extends StatelessWidget {
         Padding(
           padding: EdgeInsets.fromLTRB(pad, 8, pad, 16),
           child: Text(
-            "Têtes d'affiche",
+            tr('Têtes d\'affiche'),
             style: detailSectionTitleStyle(context),
           ),
         ),
@@ -588,8 +593,8 @@ class CollectionSection extends StatelessWidget {
                           crossAxisAlignment: CrossAxisAlignment.start,
                           mainAxisSize: MainAxisSize.min,
                           children: [
-                            const Text(
-                              'FAIT PARTIE DE LA SAGA',
+                            Text(
+                              tr('FAIT PARTIE DE LA SAGA'),
                               style: TextStyle(
                                 color: AppColors.textMuted,
                                 fontSize: AppType.caption,
@@ -622,8 +627,8 @@ class CollectionSection extends StatelessWidget {
                             borderRadius: BorderRadius.circular(20),
                             border: Border.all(color: AppColors.border),
                           ),
-                          child: const Text(
-                            'Voir la saga',
+                          child: Text(
+                            tr('Voir la saga'),
                             style: TextStyle(
                               color: AppColors.textPrimary,
                               fontSize: AppType.subhead,
@@ -704,7 +709,7 @@ class _UnavailableBadge extends StatelessWidget {
         border: Border.all(color: Colors.white.withValues(alpha: 0.12)),
       ),
       child: Text(
-        'Indispo',
+        tr('Indispo'),
         style: TextStyle(
           fontSize: AppType.micro,
           fontWeight: FontWeight.w600,
@@ -744,7 +749,7 @@ class SimilarTitlesSection extends StatelessWidget {
           padding:
               EdgeInsets.fromLTRB(pad, 8, pad, 16 - PosterCard.liftHeadroom),
           child: Text(
-            'Titres similaires',
+            tr('Titres similaires'),
             style: detailSectionTitleStyle(context),
           ),
         ),

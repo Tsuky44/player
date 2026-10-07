@@ -3,6 +3,7 @@ import 'package:flutter/foundation.dart';
 import '../models/media_request.dart';
 import '../models/request_catalog_filters.dart';
 import '../services/api_client.dart';
+import '../l10n/tr.dart';
 
 class MediaRequestsProvider extends ChangeNotifier {
   final ApiClient apiClient;
@@ -157,9 +158,9 @@ class MediaRequestsProvider extends ChangeNotifier {
         return data['error'] as String;
       }
       if (error.response?.statusCode == 503) {
-        return 'TMDB n''est pas configuré. Vérifiez TMDB_API_KEY.';
+        return tr('TMDB nest pas configuré. Vérifiez TMDB_API_KEY.');
       }
     }
-    return 'Impossible de charger les médias.';
+    return tr('Impossible de charger les médias.');
   }
 }

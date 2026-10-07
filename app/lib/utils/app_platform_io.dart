@@ -1,4 +1,5 @@
 import 'dart:io' as io;
+import '../l10n/tr.dart';
 
 /// Native implementation of the platform predicates — see `app_platform.dart`.
 abstract final class AppPlatform {
@@ -38,13 +39,13 @@ abstract final class AppPlatform {
   /// de la machine serait plus parlant, mais le lire coûte une permission sur
   /// Android et une dépendance partout ailleurs, pour un libellé décoratif.
   static String get label {
-    if (isMacOS) return 'Mac';
-    if (isWindows) return 'PC Windows';
-    if (isLinux) return 'PC Linux';
-    if (isAndroid) return 'Appareil Android';
+    if (isMacOS) return tr('Mac');
+    if (isWindows) return tr('PC Windows');
+    if (isLinux) return tr('PC Linux');
+    if (isAndroid) return tr('Appareil Android');
     if (isIOS) return 'iPhone / iPad';
-    if (isTvOS) return 'Apple TV';
-    return 'Appareil';
+    if (isTvOS) return tr('Apple TV');
+    return tr('Appareil');
   }
 
   /// Le nom de la machine (« MacBook-Pro-de-Lea »), sans le suffixe réseau.

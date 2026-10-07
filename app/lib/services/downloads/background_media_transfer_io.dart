@@ -8,6 +8,7 @@ import 'package:path/path.dart' as p;
 
 import 'chunk_plan.dart';
 import 'media_transfer_io.dart';
+import '../../l10n/tr.dart';
 
 /// Le transfert de l'iPhone : les octets passent par une session URLSession
 /// d'arrière-plan, qui continue écran verrouillé pendant que l'app est
@@ -116,7 +117,7 @@ class BackgroundMediaTransfer implements MediaTransfer {
           await _session.cancel(prefix);
           return TransferFailed(
               snapshot.failures['$prefix${range.start}'] ??
-                  'Transfert interrompu');
+                  tr('Transfert interrompu'));
         }
         attempts[range.start] = attempt;
         await _session.enqueue(

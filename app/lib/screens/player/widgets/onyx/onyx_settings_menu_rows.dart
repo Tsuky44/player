@@ -320,10 +320,10 @@ class _OnyxMenuEmpty extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return const Padding(
+    return Padding(
       padding: EdgeInsets.symmetric(vertical: 22, horizontal: 16),
       child: Text(
-        'Aucune piste disponible',
+        tr('Aucune piste disponible'),
         style: TextStyle(color: OnyxChromeTheme.meta, fontSize: AppType.subhead),
       ),
     );

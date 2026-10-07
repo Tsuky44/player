@@ -3,6 +3,8 @@
 `.github/workflows/release.yml` produit, en un seul run :
 
 - `Onyx-<version>-android.apk`
+- un App Bundle pour Google Play (artefact `store-android` du run, build `STORE_BUILD` — voir
+  l'ADR-0046 ; il ne va ni dans la Release ni sur `/api/downloads`)
 - `Onyx-<version>-macos.dmg`
 - `Onyx-<version>-windows.exe` + `-windows-portable.zip`
 - `Onyx-<version>-ios.ipa` (non signé, pour sideloading)

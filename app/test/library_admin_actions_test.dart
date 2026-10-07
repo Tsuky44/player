@@ -9,8 +9,6 @@ import 'package:onyx/models/models.dart';
 import 'package:onyx/providers/auth_provider.dart';
 import 'package:onyx/screens/library/movie_detail_screen.dart';
 import 'package:onyx/screens/library/widgets/show_metadata_menu.dart';
-import 'package:onyx/screens/player/hooks/use_player_controller.dart';
-import 'package:onyx/screens/player/widgets/extract_subtitles_button.dart';
 import 'package:onyx/services/api_client.dart';
 import 'package:onyx/services/download_manager.dart';
 import 'package:onyx/services/media_details_cache.dart';
@@ -34,7 +32,7 @@ const Map<String, String> _gatedElsewhere = {
   'lib/screens/settings/media_review_screen.dart':
       'atteint seulement depuis la page Bibliothèque, sous perms.manageLibrary',
   'lib/screens/player/hooks/use_player_controller.dart':
-      'appelé par ExtractSubtitlesButton ; l’extraction de fond échoue en silence',
+      'extraction de fond lancée par le lecteur ; elle échoue en silence',
 };
 
 class _Api extends ApiClient {
@@ -62,14 +60,6 @@ class _FakeAuth extends AuthProvider {
 
   @override
   Permissions get permissions => _permissions;
-}
-
-class _IdleController implements PlayerController {
-  @override
-  bool get isExtractingSubtitles => false;
-
-  @override
-  dynamic noSuchMethod(Invocation invocation) => super.noSuchMethod(invocation);
 }
 
 const _member = Permissions(requestMedia: true);
@@ -150,16 +140,6 @@ void main() {
 
       await pump(tester, _librarian, menu());
       expect(find.byTooltip('Métadonnées série'), findsOneWidget);
-    });
-
-    testWidgets('lecteur : « Extraire les sous-titres »', (tester) async {
-      Widget button() => ExtractSubtitlesButton(controller: _IdleController());
-
-      await pump(tester, _member, button());
-      expect(find.text('Extraire les sous-titres'), findsNothing);
-
-      await pump(tester, _librarian, button());
-      expect(find.text('Extraire les sous-titres'), findsOneWidget);
     });
   });
 

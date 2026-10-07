@@ -8,6 +8,7 @@ import '../../providers/auth_provider.dart';
 import '../../services/api_client.dart';
 import '../../theme/app_colors.dart';
 import 'user_admin_sections.dart';
+import '../../l10n/tr.dart';
 
 /// Les gens qui ont sonné à la porte de ce serveur.
 ///
@@ -60,7 +61,7 @@ class _AccessRequestsSectionState extends State<AccessRequestsSection> {
           .read<ApiClient>()
           .approveAccessRequest(request.id, permissions: grants);
       if (!mounted) return;
-      _toast('${user.username} a maintenant un compte sur ce serveur.');
+      _toast(tr('{0} a maintenant un compte sur ce serveur.', [user.username]));
       setState(() => _busyId = null);
       _load();
     } catch (e) {
@@ -89,20 +90,20 @@ class _AccessRequestsSectionState extends State<AccessRequestsSection> {
       context: context,
       builder: (ctx) => AlertDialog(
         backgroundColor: AppColors.surface,
-        title: Text('Refuser ${request.username} ?'),
-        content: const Text(
-          'La personne en sera informée à sa prochaine tentative. Aucun compte '
-          'n’est créé.',
+        title: Text(tr('Refuser {0} ?', [request.username])),
+        content: Text(
+          tr('La personne en sera informée à sa prochaine tentative. Aucun '
+              'compte n’est créé.'),
         ),
         actions: [
           TextButton(
             onPressed: () => Navigator.of(ctx).pop(false),
-            child: const Text('Annuler'),
+            child: Text(tr('Annuler')),
           ),
           FilledButton(
             style: FilledButton.styleFrom(backgroundColor: AppColors.error),
             onPressed: () => Navigator.of(ctx).pop(true),
-            child: const Text('Refuser'),
+            child: Text(tr('Refuser')),
           ),
         ],
       ),
@@ -132,12 +133,12 @@ class _AccessRequestsSectionState extends State<AccessRequestsSection> {
 
   String _waitingFor(AccessRequest request) {
     final since = request.createdAt;
-    if (since == null) return 'En attente';
+    if (since == null) return tr('En attente');
     final elapsed = DateTime.now().difference(since);
-    if (elapsed.inMinutes < 1) return 'À l’instant';
-    if (elapsed.inHours < 1) return 'Il y a ${elapsed.inMinutes} min';
-    if (elapsed.inDays < 1) return 'Il y a ${elapsed.inHours} h';
-    return 'Il y a ${elapsed.inDays} j';
+    if (elapsed.inMinutes < 1) return tr('À l’instant');
+    if (elapsed.inHours < 1) return tr('Il y a {0} min', [elapsed.inMinutes]);
+    if (elapsed.inDays < 1) return tr('Il y a {0} h', [elapsed.inHours]);
+    return tr('Il y a {0} j', [elapsed.inDays]);
   }
 
   @override
@@ -160,10 +161,10 @@ class _AccessRequestsSectionState extends State<AccessRequestsSection> {
           const SizedBox(height: 12),
         ],
         if (_requests.isEmpty)
-          const Padding(
+          Padding(
             padding: EdgeInsets.only(bottom: 4),
             child: Text(
-              'Aucune demande en attente.',
+              tr('Aucune demande en attente.'),
               style: TextStyle(color: AppColors.textSecondary),
             ),
           ),
@@ -196,18 +197,18 @@ class _AccessRequestsSectionState extends State<AccessRequestsSection> {
                     mainAxisSize: MainAxisSize.min,
                     children: [
                       IconButton(
-                        tooltip: 'Refuser',
+                        tooltip: tr('Refuser'),
                         icon: const Icon(Icons.close_rounded),
                         onPressed: () => _deny(request),
                       ),
                       IconButton(
-                        tooltip: 'Accepter',
+                        tooltip: tr('Accepter'),
                         icon: const Icon(Icons.check_rounded),
                         onPressed: () => _approve(request),
                       ),
                       if (canChooseGrants)
                         IconButton(
-                          tooltip: 'Accepter avec des droits précis',
+                          tooltip: tr('Accepter avec des droits précis'),
                           icon: const Icon(Icons.tune_rounded),
                           onPressed: () => _approveWithGrants(request),
                         ),
@@ -220,7 +221,7 @@ class _AccessRequestsSectionState extends State<AccessRequestsSection> {
           child: TextButton.icon(
             onPressed: _load,
             icon: const Icon(Icons.refresh_rounded, size: 18),
-            label: const Text('Actualiser'),
+            label: Text(tr('Actualiser')),
           ),
         ),
       ],
@@ -257,7 +258,7 @@ class _GrantsSheetState extends State<_GrantsSheet> {
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
             Text(
-              'Droits de ${widget.username}',
+              tr('Droits de {0}', [widget.username]),
               style: Theme.of(context).textTheme.titleMedium,
             ),
             const SizedBox(height: 12),
@@ -274,7 +275,7 @@ class _GrantsSheetState extends State<_GrantsSheet> {
             const SizedBox(height: 12),
             FilledButton(
               onPressed: () => Navigator.of(context).pop(_grants),
-              child: const Text('Accepter'),
+              child: Text(tr('Accepter')),
             ),
           ],
         ),
@@ -288,5 +289,5 @@ String _errorText(Object error) {
     final data = error.response?.data;
     if (data is Map && data['error'] != null) return data['error'].toString();
   }
-  return 'Une erreur est survenue : $error';
+  return tr('Une erreur est survenue : {0}', [error]);
 }

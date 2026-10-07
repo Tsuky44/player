@@ -1,0 +1,10 @@
+<manifest xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:tools="http://schemas.android.com/tools">
+    <!-- Build store (ADR-0046) : Google Play met l'app à jour lui-même, et
+         refuse cette permission à tout ce qui n'est pas un gestionnaire de
+         paquets. La mise à jour maison est coupée côté Dart par le même
+         drapeau (lib/utils/store_build.dart). -->
+    <uses-permission
+        android:name="android.permission.REQUEST_INSTALL_PACKAGES"
+        tools:node="remove"/>
+</manifest>

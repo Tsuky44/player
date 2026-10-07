@@ -1,3 +1,5 @@
+import '../l10n/tr.dart';
+
 /// An installable client app published by the server on /api/downloads.
 ///
 /// The artifacts are baked into the server image at release time, so the set
@@ -47,7 +49,7 @@ class AppDownload {
   String get formattedSize {
     if (size <= 0) return '';
     final mb = size / (1024 * 1024);
-    if (mb >= 1024) return '${(mb / 1024).toStringAsFixed(1)} Go';
-    return '${mb.toStringAsFixed(0)} Mo';
+    if (mb >= 1024) return tr('{0} Go', [(mb / 1024).toStringAsFixed(1)]);
+    return tr('{0} Mo', [mb.toStringAsFixed(0)]);
   }
 }

@@ -12,8 +12,8 @@ import 'package:flutter/widgets.dart';
 ///
 /// Les écrans de navigation ne lisent que cette classe, ce que
 /// `test/app_icons_guard_test.dart` vérifie. Le lecteur et les réglages gardent
-/// Material pour l'instant : le lecteur a ses propres skins
-/// (`models/player_layout.dart`), et les réglages sont un chantier à part.
+/// Material pour l'instant : le lecteur a son propre chrome, et les réglages
+/// sont un chantier à part.
 abstract final class AppIcons {
   // Les deux polices embarquées (`pubspec.yaml`). Les glyphes portent le même
   // point de code dans l'une et l'autre ; le nom Phosphor suit chaque entrée,

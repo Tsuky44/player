@@ -8,6 +8,7 @@ import 'package:provider/provider.dart';
 import '../../services/api_client.dart';
 import '../../theme/app_colors.dart';
 import 'tv_pairing_screen.dart';
+import '../../l10n/tr.dart';
 
 /// The phone's half of every QR sign-in: point the camera at the other screen.
 ///
@@ -116,8 +117,8 @@ class _TvLinkScannerScreenState extends State<TvLinkScannerScreen> {
       if (response.statusCode != 200) {
         setState(() {
           _phase = _LinkPhase.failed;
-          _error = "Le téléviseur a refusé la connexion. Affichez un nouveau "
-              "code sur l'écran et réessayez.";
+          _error = tr('Le téléviseur a refusé la connexion. Affichez un nouveau code '
+              'sur l\'écran et réessayez.');
         });
         return;
       }
@@ -129,17 +130,17 @@ class _TvLinkScannerScreenState extends State<TvLinkScannerScreen> {
       setState(() {
         _phase = _LinkPhase.failed;
         _error = timedOut
-            ? "Le téléviseur n'a pas répondu. Vérifiez que le téléphone et le "
-                'téléviseur sont sur le même réseau Wi-Fi.'
-            : 'Connexion impossible. Vérifiez que le téléphone et le '
-                'téléviseur sont sur le même réseau Wi-Fi.';
+            ? tr('Le téléviseur n\'a pas répondu. Vérifiez que le téléphone '
+                'et le téléviseur sont sur le même réseau Wi-Fi.')
+            : tr('Connexion impossible. Vérifiez que le téléphone et le '
+                'téléviseur sont sur le même réseau Wi-Fi.');
       });
     } catch (_) {
       if (!mounted) return;
       setState(() {
         _phase = _LinkPhase.failed;
-        _error = 'Connexion impossible. Vérifiez que le téléphone et le '
-            'téléviseur sont sur le même réseau Wi-Fi.';
+        _error = tr('Connexion impossible. Vérifiez que le téléphone et le '
+            'téléviseur sont sur le même réseau Wi-Fi.');
       });
     }
   }
@@ -157,7 +158,7 @@ class _TvLinkScannerScreenState extends State<TvLinkScannerScreen> {
     return Scaffold(
       backgroundColor: AppColors.background,
       appBar: AppBar(
-        title: const Text('Connecter un appareil'),
+        title: Text(tr('Connecter un appareil')),
         backgroundColor: Colors.transparent,
       ),
       body: switch (_phase) {
@@ -172,11 +173,11 @@ class _TvLinkScannerScreenState extends State<TvLinkScannerScreen> {
   Widget _buildScanner() {
     return Column(
       children: [
-        const Padding(
+        Padding(
           padding: EdgeInsets.fromLTRB(24, 8, 24, 20),
           child: Text(
-            'Ouvrez Onyx sur le téléviseur, l’ordinateur ou le navigateur à '
-            'connecter, et cadrez le code QR affiché.',
+            tr('Ouvrez Onyx sur le téléviseur, l’ordinateur ou le '
+                'navigateur à connecter, et cadrez le code QR affiché.'),
             textAlign: TextAlign.center,
             style: TextStyle(color: AppColors.textSecondary, height: 1.4),
           ),
@@ -195,7 +196,7 @@ class _TvLinkScannerScreenState extends State<TvLinkScannerScreen> {
           onPressed: () => Navigator.of(context).pushReplacement(
             MaterialPageRoute(builder: (_) => const TvPairingScreen()),
           ),
-          child: const Text('Saisir le code à la main'),
+          child: Text(tr('Saisir le code à la main')),
         ),
         const SizedBox(height: 12),
       ],
@@ -207,21 +208,21 @@ class _TvLinkScannerScreenState extends State<TvLinkScannerScreen> {
         error.errorCode == MobileScannerErrorCode.permissionDenied;
     return _Message(
       icon: Icons.no_photography_outlined,
-      title: denied ? 'Accès à la caméra refusé' : 'Caméra indisponible',
+      title: denied ? tr('Accès à la caméra refusé') : tr('Caméra indisponible'),
       body: denied
-          ? "Autorisez l'appareil photo pour Onyx dans les réglages du "
-              'téléphone, puis revenez sur cet écran.'
-          : "L'appareil photo n'a pas pu démarrer sur ce téléphone.",
+          ? tr('Autorisez l\'appareil photo pour Onyx dans les réglages du '
+              'téléphone, puis revenez sur cet écran.')
+          : tr('L\'appareil photo n\'a pas pu démarrer sur ce téléphone.'),
     );
   }
 
   Widget _buildBusy() {
     return _Message(
       icon: Icons.cast_connected_rounded,
-      title: 'Connexion du téléviseur…',
+      title: tr('Connexion du téléviseur…'),
       body: _deviceName == null
-          ? 'Envoi de la session au téléviseur.'
-          : 'Envoi de la session à $_deviceName.',
+          ? tr('Envoi de la session au téléviseur.')
+          : tr('Envoi de la session à {0}.', [_deviceName]),
       busy: true,
     );
   }
@@ -229,13 +230,13 @@ class _TvLinkScannerScreenState extends State<TvLinkScannerScreen> {
   Widget _buildDone() {
     return _Message(
       icon: Icons.check_circle_outline_rounded,
-      title: 'Téléviseur connecté',
+      title: tr('Téléviseur connecté'),
       body: _deviceName == null
-          ? 'Le téléviseur est connecté à votre compte.'
-          : '$_deviceName est connecté à votre compte.',
+          ? tr('Le téléviseur est connecté à votre compte.')
+          : tr('{0} est connecté à votre compte.', [_deviceName]),
       action: FilledButton(
         onPressed: () => Navigator.of(context).pop(true),
-        child: const Text('Terminé'),
+        child: Text(tr('Terminé')),
       ),
     );
   }
@@ -243,11 +244,11 @@ class _TvLinkScannerScreenState extends State<TvLinkScannerScreen> {
   Widget _buildFailed() {
     return _Message(
       icon: Icons.error_outline_rounded,
-      title: 'Connexion impossible',
-      body: _error ?? 'La connexion au téléviseur a échoué.',
+      title: tr('Connexion impossible'),
+      body: _error ?? tr('La connexion au téléviseur a échoué.'),
       action: FilledButton(
         onPressed: _retry,
-        child: const Text('Réessayer'),
+        child: Text(tr('Réessayer')),
       ),
     );
   }

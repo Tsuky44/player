@@ -82,7 +82,10 @@ func loadSharedEpisodes(scopeID int) ([]models.SharedEpisode, error) {
 	scopeID = shareScopeID(scopeID)
 	rows, err := database.DB.Query(`
 		SELECT e.id, COALESCE(e.season_number, 0), COALESCE(season.season_number, 0),
-		       season.title, COALESCE(e.episode_number, 0), e.title, COALESCE(e.duration, 0)`+sharedEpisodesFrom,
+		       season.title, COALESCE(e.episode_number, 0), e.title, COALESCE(e.duration, 0),
+		       season.id, COALESCE(e.overview, ''), COALESCE(e.poster_url, ''), COALESCE(e.release_date, ''),
+		       COALESCE(e.intro_start, 0), COALESCE(e.intro_end, 0),
+		       COALESCE(e.outro_start, 0), COALESCE(e.outro_end, 0)`+sharedEpisodesFrom,
 		scopeID, scopeID)
 	if err != nil {
 		return nil, fmt.Errorf("list shared episodes of %d: %w", scopeID, err)
@@ -94,7 +97,9 @@ func loadSharedEpisodes(scopeID int) ([]models.SharedEpisode, error) {
 		var seasonNumber int
 		var seasonTitle string
 		if err := rows.Scan(&episode.ID, &episode.SeasonNumber, &seasonNumber, &seasonTitle,
-			&episode.EpisodeNumber, &episode.Title, &episode.Duration); err != nil {
+			&episode.EpisodeNumber, &episode.Title, &episode.Duration,
+			&episode.SeasonID, &episode.Overview, &episode.StillURL, &episode.ReleaseDate,
+			&episode.IntroStart, &episode.IntroEnd, &episode.OutroStart, &episode.OutroEnd); err != nil {
 			return nil, fmt.Errorf("scan shared episode: %w", err)
 		}
 		if episode.SeasonNumber <= 0 {
@@ -119,6 +124,35 @@ func loadSharedEpisodes(scopeID int) ([]models.SharedEpisode, error) {
 		return a.ID < b.ID
 	})
 	return out, nil
+}
+
+// loadSharedShowDetails rend la fiche de la série dont scopeID est la série ou
+// une saison : ce que la base en sait, complété par le catalogue TMDB (fond,
+// logo, genres, distribution) quand il répond — il est gardé en cache, un
+// visiteur ne déclenche pas un appel par ouverture.
+//
+// Rien de ce qui touche au disque (dossier, nom de fichier) ni au reste de la
+// médiathèque (titres similaires et leurs identifiants locaux) n'y figure : le
+// visiteur ne voit que ce que le lien ouvre.
+func loadSharedShowDetails(scopeID int) (*models.MediaDetails, error) {
+	scopeID = shareScopeID(scopeID)
+	details := models.MediaDetails{Type: models.TypeShow}
+	var tmdbID int
+	err := database.DB.QueryRow(`
+		SELECT show.id, show.title, COALESCE(show.overview, ''), COALESCE(show.poster_url, ''),
+		       COALESCE(show.release_date, ''), COALESCE(show.tmdb_id, 0)
+		FROM medias m
+		JOIN medias show ON show.type = 'show'
+		     AND show.id = CASE WHEN m.type = 'season' THEN m.parent_id ELSE m.id END
+		WHERE m.id = ?`, scopeID).Scan(&details.ID, &details.Title, &details.Overview,
+		&details.PosterURL, &details.ReleaseDate, &tmdbID)
+	if err != nil {
+		return nil, fmt.Errorf("load show of shared media %d: %w", scopeID, err)
+	}
+	if catalog := indexer.FetchMediaCatalogDetails(tmdbID, models.TypeShow); catalog != nil {
+		mergeCatalogDetails(&details, catalog)
+	}
+	return &details, nil
 }
 
 // shareDisplay nomme le média d'un lien pour quelqu'un qui ne voit que lui :

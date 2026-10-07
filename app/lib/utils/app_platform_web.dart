@@ -1,3 +1,4 @@
+
 /// Web implementation of the platform predicates — see `app_platform.dart`.
 ///
 /// Every OS predicate is false: the browser is its own platform, and the

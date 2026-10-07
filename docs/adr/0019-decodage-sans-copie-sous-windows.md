@@ -76,6 +76,19 @@ Android. La vérification qu'Android faisait après la première image couvre do
 image de 1440 lignes ou plus décodée en logiciel alors que la préférence est « auto » fait passer la
 lecture, et le reste de la session, sur `d3d11va-copy`.
 
+### 4. Le sans-copie seulement là où il se paie (2026-10-07)
+
+Une bande verte d'une quarantaine de lignes a été vue en bas d'un épisode 1080p, sous Windows
+seulement. Sans copie, mpv dessine depuis la surface du décodeur, que FFmpeg alloue plus grande que
+l'image ; le rognage de 8 lignes (`zeroCopyEdgeCrop`) ne couvre qu'un débordement du scaler, pas une
+bande de cette taille. La cause exacte n'a pas été reproduite.
+
+Le gain mesuré plus haut est celui du 4K HDR. Sous 1440 lignes la recopie ne se mesure pas : une
+image décodée par `d3d11va` sous ce seuil repasse, pour cette lecture, sur `d3d11va-copy`, qui ne
+sort que l'image utile (`HardwareDecoding.windowsZeroCopyUnwanted`). La bascule se fait après la
+première image, quand mpv a dit ses dimensions et son décodeur : les toutes premières images
+restent décodées sans copie.
+
 ## À vérifier
 
 - Sur une vraie lecture 4K HDR : `hwdec-current` vaut `d3d11va`, la charge processeur baisse

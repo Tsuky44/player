@@ -10,6 +10,7 @@ import '../../services/app_updater.dart';
 import '../../theme/app_colors.dart';
 import '../../utils/app_platform.dart';
 import '../../theme/app_type.dart';
+import '../../l10n/tr.dart';
 
 /// Walks the user through an in-place update: download, unpack, restart.
 ///
@@ -128,11 +129,11 @@ class _AppUpdateDialogState extends State<_AppUpdateDialog> {
       if (widget.autoStart) _startAutoRestartCountdown();
     } on DioException catch (e) {
       if (CancelToken.isCancel(e)) return;
-      _fail('Téléchargement interrompu. Vérifiez la connexion au serveur.');
+      _fail(tr('Téléchargement interrompu. Vérifiez la connexion au serveur.'));
     } on UpdateException catch (e) {
       _fail(e.message);
     } catch (_) {
-      _fail('La mise à jour a échoué.');
+      _fail(tr('La mise à jour a échoué.'));
     }
   }
 
@@ -160,7 +161,7 @@ class _AppUpdateDialogState extends State<_AppUpdateDialog> {
       // The helper never started (Windows updater missing or blocked): the
       // app is still running, so say so instead of hanging on this dialog.
       _prepared = null;
-      _fail('Impossible de lancer la mise à jour.');
+      _fail(tr('Impossible de lancer la mise à jour.'));
       return;
     }
     // Desktop never reaches here — the helper it just launched is waiting on
@@ -238,15 +239,15 @@ class _AppUpdateDialogState extends State<_AppUpdateDialog> {
   String _title() {
     switch (_step) {
       case _Step.downloading:
-        return 'Téléchargement…';
+        return tr('Téléchargement…');
       case _Step.installing:
-        return 'Installation…';
+        return tr('Installation…');
       case _Step.ready:
-        return 'Mise à jour prête';
+        return tr('Mise à jour prête');
       case _Step.failed:
-        return 'Mise à jour impossible';
+        return tr('Mise à jour impossible');
       case _Step.idle:
-        return 'Mise à jour disponible';
+        return tr('Mise à jour disponible');
     }
   }
 
@@ -257,28 +258,26 @@ class _AppUpdateDialogState extends State<_AppUpdateDialog> {
         final percent = _progress == null
             ? ''
             : ' — ${(_progress! * 100).toStringAsFixed(0)} %';
-        return 'Récupération de la version $version$percent';
+        return tr('Récupération de la version {0}{1}', [version, percent]);
       case _Step.installing:
-        return 'Préparation des fichiers. Onyx reste utilisable.';
+        return tr('Préparation des fichiers. Onyx reste utilisable.');
       case _Step.ready:
         final countdown = _autoRestartIn;
         final base = AppPlatform.isAndroid
-            ? 'Prêt à installer la version $version. Android va demander '
-                'une confirmation.'
-            : 'Onyx va se fermer, s’installer en version $version, '
-                'puis se rouvrir.';
+            ? tr('Prêt à installer la version {0}. Android va demander une '
+                'confirmation.', [version])
+            : tr('Onyx va se fermer, s’installer en version {0}, puis se rouvrir.', [version]);
         if (countdown == null) return base;
-        return '$base Ouverture automatique dans ${countdown}s…';
+        return tr('{0} Ouverture automatique dans {1}s…', [base, countdown]);
       case _Step.failed:
-        return _error ?? 'La mise à jour a échoué.';
+        return _error ?? tr('La mise à jour a échoué.');
       case _Step.idle:
         final size = widget.download.formattedSize;
         final action = AppPlatform.isAndroid
-            ? 'Onyx la télécharge, puis Android demandera de confirmer '
-                'l’installation.'
-            : 'Onyx la télécharge, l’installe et redémarre tout seul.';
-        return 'La version $version est disponible'
-            '${size.isEmpty ? '' : ' ($size)'}. $action';
+            ? tr('Onyx la télécharge, puis Android demandera de confirmer '
+                'l’installation.')
+            : tr('Onyx la télécharge, l’installe et redémarre tout seul.');
+        return tr('La version {0} est disponible{1}. {2}', [version, size.isEmpty ? '' : ' ($size)', action]);
     }
   }
 
@@ -286,31 +285,31 @@ class _AppUpdateDialogState extends State<_AppUpdateDialog> {
     switch (_step) {
       case _Step.idle:
         return [
-          TextButton(onPressed: _close, child: const Text('Plus tard')),
-          FilledButton(onPressed: _start, child: const Text('Mettre à jour')),
+          TextButton(onPressed: _close, child: Text(tr('Plus tard'))),
+          FilledButton(onPressed: _start, child: Text(tr('Mettre à jour'))),
         ];
       case _Step.downloading:
       case _Step.installing:
         return [
-          TextButton(onPressed: _close, child: const Text('Annuler')),
+          TextButton(onPressed: _close, child: Text(tr('Annuler'))),
         ];
       case _Step.ready:
         return [
           TextButton(
             onPressed: _autoRestartIn != null ? _cancelAutoRestart : _close,
-            child: Text(_autoRestartIn != null ? 'Annuler' : 'Plus tard'),
+            child: Text(_autoRestartIn != null ? tr('Annuler') : tr('Plus tard')),
           ),
           FilledButton(
             onPressed: _restart,
             child: Text(AppPlatform.isAndroid
-                ? 'Installer maintenant'
-                : 'Redémarrer maintenant'),
+                ? tr('Installer maintenant')
+                : tr('Redémarrer maintenant')),
           ),
         ];
       case _Step.failed:
         return [
-          TextButton(onPressed: _close, child: const Text('Fermer')),
-          FilledButton(onPressed: _start, child: const Text('Réessayer')),
+          TextButton(onPressed: _close, child: Text(tr('Fermer'))),
+          FilledButton(onPressed: _start, child: Text(tr('Réessayer'))),
         ];
     }
   }

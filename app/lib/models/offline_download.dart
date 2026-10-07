@@ -66,9 +66,8 @@ class OfflineDownload {
 
   /// Serveur d'où le média a été rapatrié, normalisé.
   ///
-  /// C'est ce qui rattache l'entrée à son compte : le playeur à appliquer hors
-  /// ligne ([OfflineChrome]) est celui de ce serveur-là, même si l'app a été
-  /// pointée ailleurs depuis.
+  /// C'est ce qui rattache l'entrée à son compte, même si l'app a été pointée
+  /// ailleurs depuis.
   final String serverUrl;
 
   /// URL distante de l'affiche, telle que l'API l'a donnée. Conservée pour le

@@ -17,11 +17,7 @@ const List<String> _browsingDirs = [
 ];
 
 /// Fichiers de ces dossiers autorisés à garder Material, et pourquoi.
-const Map<String, String> _allowed = {
-  // Le chrome du lecteur : ses icônes appartiennent aux skins
-  // (`models/player_layout.dart`), pas à la navigation.
-  'lib/widgets/global/control_chrome.dart': 'chrome du lecteur, skins à part',
-};
+const Map<String, String> _allowed = {};
 
 void main() {
   test('la navigation ne mélange pas Material et le jeu d’icônes de l’app', () {

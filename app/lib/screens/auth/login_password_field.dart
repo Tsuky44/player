@@ -4,6 +4,7 @@ import 'package:flutter/services.dart';
 import '../../theme/app_colors.dart';
 import '../../tv/tv_deferred_keyboard.dart';
 import '../../tv/tv_mode.dart';
+import '../../l10n/tr.dart';
 
 /// Le mot de passe du formulaire de connexion : un œil pour le lire, et Entrée
 /// pour valider.
@@ -43,7 +44,7 @@ class _LoginPasswordFieldState extends State<LoginPasswordField> {
   @override
   Widget build(BuildContext context) {
     final label =
-        _visible ? 'Masquer le mot de passe' : 'Afficher le mot de passe';
+        _visible ? tr('Masquer le mot de passe') : tr('Afficher le mot de passe');
     return TvDeferredKeyboard(
       key: widget.keyboardKey,
       fieldFocusNode: widget.focusNode,
@@ -69,7 +70,7 @@ class _LoginPasswordFieldState extends State<LoginPasswordField> {
           onFieldSubmitted: (_) => widget.onSubmit(),
           style: const TextStyle(color: AppColors.textPrimary),
           decoration: InputDecoration(
-            labelText: 'Mot de passe',
+            labelText: tr('Mot de passe'),
             prefixIcon: const Icon(Icons.lock_outline_rounded,
                 color: AppColors.textMuted),
             // Hors téléviseur, l'œil ne prend pas le focus : un clic dessus
@@ -90,8 +91,8 @@ class _LoginPasswordFieldState extends State<LoginPasswordField> {
             ),
           ),
           validator: (v) {
-            if (v == null || v.isEmpty) return 'Requis';
-            if (v.length < 4) return 'Minimum 4 caractères';
+            if (v == null || v.isEmpty) return tr('Requis');
+            if (v.length < 4) return tr('Minimum 4 caractères');
             return null;
           },
         ),

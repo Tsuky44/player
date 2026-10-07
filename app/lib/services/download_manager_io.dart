@@ -8,8 +8,8 @@ import 'package:path/path.dart' as p;
 import 'package:path_provider/path_provider.dart';
 
 import '../models/models.dart';
-import '../models/offline_chrome.dart';
 import '../models/offline_download.dart';
+import '../models/server_account.dart';
 import '../utils/app_platform.dart';
 import '../utils/poster_url.dart';
 import 'api_client.dart';
@@ -31,7 +31,6 @@ import 'downloads/media_transfer_io.dart';
 /// ```
 /// <support applicatif>/onyx_offline/
 ///   manifest.json          ← la liste, seule source de vérité
-///   chromes.json           ← le playeur du compte, par serveur d'origine
 ///   shows/<showId>/
 ///     details.json         ← la fiche de la série, partagée par ses épisodes
 ///     poster.jpg
@@ -106,9 +105,6 @@ class DownloadManager extends ChangeNotifier {
   /// téléchargements les lit pendant qu'il construit ses lignes, et une
   /// lecture disque par ligne se verrait.
   final Map<int, MediaDetails> _shows = {};
-
-  /// Le playeur de chaque compte, par serveur d'origine.
-  final Map<String, OfflineChrome> _chromes = {};
 
   int? _activeMediaId;
   bool _pumping = false;
@@ -205,7 +201,7 @@ class DownloadManager extends ChangeNotifier {
 
   Future<void> initialize(ApiClient api) async {
     _api = api;
-    _scope = OfflineChrome.normalizeServerUrl(api.baseUrl);
+    _scope = ServerAccount.normalizeUrl(api.baseUrl);
     if (_ready) return;
     try {
       final support = await getApplicationSupportDirectory();
@@ -216,7 +212,6 @@ class DownloadManager extends ChangeNotifier {
       _root = root;
       await _loadManifest();
       await _loadShows();
-      await _loadChromes();
     } catch (e) {
       debugPrint(
           'Downloads: initialisation impossible: ${redactPlaybackDiagnostic(e)}');
@@ -282,34 +277,10 @@ class DownloadManager extends ChangeNotifier {
     }
   }
 
-  Future<void> _loadChromes() async {
-    final file = _chromesFile;
-    if (file == null || !await file.exists()) return;
-    try {
-      final raw = jsonDecode(await file.readAsString());
-      if (raw is! Map) return;
-      for (final entry in raw.entries) {
-        final value = entry.value;
-        if (value is! Map) continue;
-        _chromes[entry.key as String] =
-            OfflineChrome.fromJson(Map<String, dynamic>.from(value));
-      }
-    } catch (e) {
-      debugPrint(
-          'Downloads: playeurs hors ligne illisibles: ${redactPlaybackDiagnostic(e)}');
-    }
-  }
-
   File? get _manifestFile {
     final root = _root;
     if (root == null) return null;
     return File(p.join(root.path, 'manifest.json'));
-  }
-
-  File? get _chromesFile {
-    final root = _root;
-    if (root == null) return null;
-    return File(p.join(root.path, 'chromes.json'));
   }
 
   Directory? get _showsDir {
@@ -387,7 +358,7 @@ class DownloadManager extends ChangeNotifier {
   /// continuer à télécharger depuis une adresse qu'on n'utilise plus n'aurait
   /// pas de sens.
   Future<void> onServerChanged() async {
-    final next = OfflineChrome.normalizeServerUrl(_api?.baseUrl ?? '');
+    final next = ServerAccount.normalizeUrl(_api?.baseUrl ?? '');
     if (next == _scope) return;
 
     // Le transfert en cours est coupé net : il tire sur une adresse dont on
@@ -509,49 +480,6 @@ class DownloadManager extends ChangeNotifier {
     return File(path).existsSync() ? path : null;
   }
 
-  /// Le playeur à appliquer pour ce média : celui du compte du serveur d'où il
-  /// a été téléchargé.
-  OfflineChrome? chromeFor(int mediaId) {
-    final entry = _entries[mediaId];
-    if (entry == null || entry.serverUrl.isEmpty) return null;
-    return _chromes[entry.serverUrl];
-  }
-
-  /// Fige le playeur actif d'un compte.
-  ///
-  /// Appelé à chaque fois que l'app sait de source sûre quel playeur le compte
-  /// utilise — donc à chaque synchronisation réussie, pas seulement au
-  /// téléchargement : changer de playeur en ligne doit se voir hors ligne le
-  /// soir même, sans avoir à retélécharger quoi que ce soit.
-  Future<void> rememberChrome(OfflineChrome chrome) async {
-    if (chrome.serverUrl.isEmpty || _root == null) return;
-    final existing = _chromes[chrome.serverUrl];
-    if (existing != null &&
-        existing.presetId == chrome.presetId &&
-        existing.useModular == chrome.useModular &&
-        existing.config.encode() == chrome.config.encode()) {
-      return; // rien de neuf : pas d'écriture disque
-    }
-    _chromes[chrome.serverUrl] = chrome;
-    await _saveChromes();
-  }
-
-  Future<void> _saveChromes() async {
-    final file = _chromesFile;
-    if (file == null) return;
-    try {
-      final payload = jsonEncode(
-        _chromes.map((key, value) => MapEntry(key, value.toJson())),
-      );
-      final tmp = File('${file.path}.tmp');
-      await tmp.writeAsString(payload, flush: true);
-      await tmp.rename(file.path);
-    } catch (e) {
-      debugPrint(
-          'Downloads: écriture des playeurs impossible: ${redactPlaybackDiagnostic(e)}');
-    }
-  }
-
   /// Contenu WebVTT d'une piste rapatriée, ou null.
   Future<String?> offlineSubtitle(int mediaId, String lang) async {
     final entry = _entries[mediaId];
@@ -668,7 +596,7 @@ class DownloadManager extends ChangeNotifier {
       episodeNumber: media.effectiveEpisodeNumber,
       overview: media.overview,
       releaseDate: media.releaseDate,
-      serverUrl: OfflineChrome.normalizeServerUrl(_api?.baseUrl ?? ''),
+      serverUrl: ServerAccount.normalizeUrl(_api?.baseUrl ?? ''),
       posterUrl: media.posterUrl,
       showPosterUrl: showPosterUrl ?? item.showPosterUrl,
       durationSeconds: item.effectiveDuration,

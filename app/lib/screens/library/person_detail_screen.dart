@@ -14,6 +14,7 @@ import '../../widgets/global/media_detail_widgets.dart';
 import '../../widgets/global/overlay_back_button.dart';
 import '../../theme/app_icons.dart';
 import '../../theme/app_type.dart';
+import '../../l10n/tr.dart';
 
 class PersonDetailScreen extends StatefulWidget {
   final int personTmdbId;
@@ -82,12 +83,12 @@ class _PersonDetailScreenState extends State<PersonDetailScreen> {
               ),
             )
           else if (_failed || person == null)
-            const SliverToBoxAdapter(
+            SliverToBoxAdapter(
               child: Padding(
                 padding: EdgeInsets.all(64),
                 child: Center(
                   child: Text(
-                    'Impossible de charger cette fiche.',
+                    tr('Impossible de charger cette fiche.'),
                     style: TextStyle(color: AppColors.textMuted),
                   ),
                 ),
@@ -102,7 +103,7 @@ class _PersonDetailScreenState extends State<PersonDetailScreen> {
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
                       Text(
-                        'Biographie',
+                        tr('Biographie'),
                         style: Theme.of(context).textTheme.titleLarge?.copyWith(
                               fontWeight: FontWeight.w700,
                             ),
@@ -125,7 +126,7 @@ class _PersonDetailScreenState extends State<PersonDetailScreen> {
                 child: Padding(
                   padding: AppLayout.pageInsets(context, top: 32, bottom: 16),
                   child: Text(
-                    'Filmographie',
+                    tr('Filmographie'),
                     style: Theme.of(context).textTheme.titleLarge?.copyWith(
                           fontWeight: FontWeight.w700,
                         ),
@@ -337,19 +338,19 @@ class _InfoBit extends StatelessWidget {
 String _departmentLabel(String department) {
   switch (department) {
     case 'Acting':
-      return 'Interprétation';
+      return tr('Interprétation');
     case 'Directing':
-      return 'Réalisation';
+      return tr('Réalisation');
     case 'Writing':
-      return 'Scénario';
+      return tr('Scénario');
     case 'Production':
-      return 'Production';
+      return tr('Production');
     case 'Sound':
-      return 'Son';
+      return tr('Son');
     case 'Camera':
-      return 'Image';
+      return tr('Image');
     case 'Editing':
-      return 'Montage';
+      return tr('Montage');
     default:
       return department;
   }

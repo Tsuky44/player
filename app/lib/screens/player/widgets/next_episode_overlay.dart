@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
 import '../../../models/models.dart';
 import '../../../theme/app_colors.dart';
 import '../../../theme/app_type.dart';
+import '../../../l10n/tr.dart';
 
 class NextEpisodeOverlay extends StatefulWidget {
   final HomeMediaItem? nextEpisode;
@@ -146,8 +147,8 @@ class _NextEpisodeOverlayState extends State<NextEpisodeOverlay>
                           const SizedBox(width: 10),
                           Text(
                             widget.frozen
-                                ? 'Lecture auto.'
-                                : 'Épisode suivant',
+                                ? tr('Lecture auto.')
+                                : tr('Épisode suivant'),
                             style: const TextStyle(
                               color: AppColors.textPrimary,
                               fontSize: AppType.body,

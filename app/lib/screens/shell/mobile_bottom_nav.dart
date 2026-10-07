@@ -4,6 +4,7 @@ import '../../theme/app_colors.dart';
 import '../../theme/app_icons.dart';
 import '../../widgets/global/glass_chrome.dart';
 import '../../theme/app_type.dart';
+import '../../l10n/tr.dart';
 
 /// La barre d'onglets du téléphone.
 ///
@@ -38,21 +39,21 @@ class MobileBottomNav extends StatelessWidget {
               _BottomNavItem(
                 icon: AppIcons.home,
                 selectedIcon: AppIcons.homeSelected,
-                label: 'Accueil',
+                label: tr('Accueil'),
                 selected: selectedIndex == 0,
                 onTap: () => onTabSelected(0),
               ),
               _BottomNavItem(
                 icon: AppIcons.movie,
                 selectedIcon: AppIcons.movieSelected,
-                label: 'Films',
+                label: tr('Films'),
                 selected: selectedIndex == 1,
                 onTap: () => onTabSelected(1),
               ),
               _BottomNavItem(
                 icon: AppIcons.series,
                 selectedIcon: AppIcons.seriesSelected,
-                label: 'Séries',
+                label: tr('Séries'),
                 selected: selectedIndex == 2,
                 onTap: () => onTabSelected(2),
               ),
@@ -60,7 +61,7 @@ class MobileBottomNav extends StatelessWidget {
                 _BottomNavItem(
                   icon: AppIcons.request,
                   selectedIcon: AppIcons.requestSelected,
-                  label: 'Demandes',
+                  label: tr('Demandes'),
                   selected: selectedIndex == 3,
                   onTap: () => onTabSelected(3),
                 ),
@@ -68,7 +69,7 @@ class MobileBottomNav extends StatelessWidget {
                 _BottomNavItem(
                   icon: AppIcons.offline,
                   selectedIcon: AppIcons.offlineSelected,
-                  label: 'Hors ligne',
+                  label: tr('Hors ligne'),
                   selected: selectedIndex == 4,
                   onTap: () => onTabSelected(4),
                 ),

@@ -1,0 +1,362 @@
+package com.tsuky.onyx
+
+import android.app.ActivityManager
+import android.app.PictureInPictureParams
+import android.app.UiModeManager
+import android.content.Context
+import android.content.Intent
+import android.content.pm.PackageManager
+import android.content.res.Configuration
+import android.net.ConnectivityManager
+import android.net.Uri
+import android.os.Build
+import android.os.Bundle
+import android.provider.Settings
+import android.util.Rational
+import android.view.Display
+import java.io.File
+import kotlin.math.abs
+import kotlin.math.roundToInt
+import androidx.core.content.FileProvider
+import androidx.core.view.WindowCompat
+import androidx.lifecycle.Lifecycle
+import io.flutter.embedding.android.FlutterActivity
+import io.flutter.embedding.engine.FlutterEngine
+import io.flutter.plugin.common.MethodChannel
+
+class MainActivity : FlutterActivity() {
+    /// The channel, kept so the activity can talk back — picture-in-picture is
+    /// entered and left by the system, not by Dart, and the interface has to
+    /// hear about it.
+    private var device: MethodChannel? = null
+
+    /// The shape of the film, when Dart has asked for picture-in-picture.
+    ///
+    /// Null means "do not". Holding it here rather than asking Dart at the last
+    /// moment is what makes the feature work at all: `onUserLeaveHint` is the
+    /// one instant where the window may be created, and a round trip to Dart
+    /// would land after it.
+    private var pictureInPicture: Rational? = null
+
+    override fun onCreate(savedInstanceState: Bundle?) {
+        WindowCompat.setDecorFitsSystemWindows(window, false)
+        super.onCreate(savedInstanceState)
+    }
+
+    override fun configureFlutterEngine(flutterEngine: FlutterEngine) {
+        super.configureFlutterEngine(flutterEngine)
+
+        device = MethodChannel(
+            flutterEngine.dartExecutor.binaryMessenger,
+            DEVICE_CHANNEL,
+        ).also { channel ->
+            channel.setMethodCallHandler { call, result ->
+                when (call.method) {
+                    "isTelevision" -> result.success(isTelevision())
+                    "deviceName" -> result.success(deviceName())
+                    "memoryProfile" -> result.success(memoryProfile())
+                    "matchRefreshRate" -> {
+                        val fps = call.argument<Double>("fps") ?: 0.0
+                        result.success(matchRefreshRate(fps))
+                    }
+                    "releaseRefreshRate" -> {
+                        releaseRefreshRate()
+                        result.success(null)
+                    }
+                    "isNetworkMetered" -> result.success(isNetworkMetered())
+                    "supportsPictureInPicture" ->
+                        result.success(supportsPictureInPicture())
+                    "setPictureInPicture" -> {
+                        val width = call.argument<Int>("width") ?: 0
+                        val height = call.argument<Int>("height") ?: 0
+                        setPictureInPicture(width, height)
+                        result.success(supportsPictureInPicture())
+                    }
+                    // Notre propre APK : le serveur y a noté d'où il a été
+                    // téléchargé, et c'est le Dart qui le relit (ADR-0042).
+                    "apkPath" -> result.success(applicationInfo.sourceDir)
+                    "canInstallPackages" -> result.success(canInstallPackages())
+                    "openInstallPermissionSettings" -> {
+                        openInstallPermissionSettings()
+                        result.success(null)
+                    }
+                    "installApk" -> {
+                        val path = call.argument<String>("path")
+                        if (path == null) {
+                            result.error("bad_args", "path manquant", null)
+                        } else {
+                            result.success(installApk(path))
+                        }
+                    }
+                    else -> result.notImplemented()
+                }
+            }
+        }
+    }
+
+    /// Whether the network the device is actually using is a paid one.
+    ///
+    /// Not the same question as "is this Wi-Fi or mobile data", and that is the
+    /// whole point: a phone tethered to another phone's hotspot sees Wi-Fi and
+    /// nothing else, while the bytes still come out of somebody's plan. Android
+    /// is the only one of the two who knows — it carries the NOT_METERED
+    /// capability of the active network, hotspots included, plus whatever the
+    /// user flagged by hand as limited.
+    ///
+    /// Downloads are the only caller: a several-gigabyte episode is exactly the
+    /// kind of thing that must not start on such a network without being asked
+    /// for.
+    private fun isNetworkMetered(): Boolean {
+        val manager =
+            getSystemService(Context.CONNECTIVITY_SERVICE) as? ConnectivityManager
+                ?: return false
+        return runCatching { manager.isActiveNetworkMetered }.getOrDefault(false)
+    }
+
+    // --- Picture-in-picture -------------------------------------------------
+
+    /// Whether this device can put a film in a corner of the home screen.
+    ///
+    /// A television cannot — Android TV has its own idea of it, and the chrome
+    /// here is not built for it — and neither can a device that simply does not
+    /// carry the feature.
+    private fun supportsPictureInPicture(): Boolean =
+        Build.VERSION.SDK_INT >= Build.VERSION_CODES.O &&
+            !isTelevision() &&
+            packageManager.hasSystemFeature(PackageManager.FEATURE_PICTURE_IN_PICTURE)
+
+    /// Arms or disarms the little window, and says what shape it should be.
+    ///
+    /// A width or height of zero disarms it: leaving the player, or a film that
+    /// has not said how big it is yet.
+    private fun setPictureInPicture(width: Int, height: Int) {
+        if (!supportsPictureInPicture()) return
+        pictureInPicture =
+            if (width > 0 && height > 0) Rational(width, height) else null
+        // From Android 12 the system enters on its own, on the same gesture
+        // that goes home — which is what makes the picture fly into the corner
+        // instead of blinking into it. Below that, `onUserLeaveHint` is the
+        // only hook there is.
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+            runCatching { setPictureInPictureParams(pictureInPictureParams()) }
+        }
+    }
+
+    private fun pictureInPictureParams(): PictureInPictureParams {
+        val builder = PictureInPictureParams.Builder()
+        pictureInPicture?.let { builder.setAspectRatio(it) }
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+            builder.setAutoEnterEnabled(pictureInPicture != null)
+        }
+        return builder.build()
+    }
+
+    /// The user is leaving — home button, or the gesture that does the same.
+    ///
+    /// This is the only moment Android allows the window to be created, and it
+    /// is why the shape is held in [pictureInPicture] rather than asked for
+    /// now. On Android 12 and up the system has already done it.
+    override fun onUserLeaveHint() {
+        super.onUserLeaveHint()
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) return
+        if (pictureInPicture == null || !supportsPictureInPicture()) return
+        if (isInPictureInPictureMode) return
+        runCatching { enterPictureInPictureMode(pictureInPictureParams()) }
+    }
+
+    override fun onPictureInPictureModeChanged(
+        isInPictureInPictureMode: Boolean,
+        newConfig: Configuration,
+    ) {
+        super.onPictureInPictureModeChanged(isInPictureInPictureMode, newConfig)
+        device?.invokeMethod(
+            "pictureInPictureChanged",
+            mapOf(
+                "inPictureInPicture" to isInPictureInPictureMode,
+                // Leaving the window while the activity is *not* coming back to
+                // the front means it was closed, not restored. The two need
+                // telling apart: one puts the interface back, the other has to
+                // stop a film that no longer has anywhere to play.
+                "closed" to (
+                    !isInPictureInPictureMode &&
+                        !lifecycle.currentState.isAtLeast(Lifecycle.State.STARTED)
+                    ),
+            ),
+        )
+    }
+
+    /// Whether this build is running on a television.
+    ///
+    /// Three signals, because no single one covers the field. UI_MODE_TYPE_TELEVISION
+    /// is the official answer and the one Google TV gives. FEATURE_LEANBACK catches
+    /// boxes that report a normal UI mode but ship the TV launcher. The touchscreen
+    /// check is the backstop for the cheap sticks and for Fire TV, which historically
+    /// answered the first two inconsistently — and "no touchscreen on Android" is, in
+    /// practice, a device driven by a remote.
+    private fun isTelevision(): Boolean {
+        val uiModeManager = getSystemService(Context.UI_MODE_SERVICE) as? UiModeManager
+        if (uiModeManager?.currentModeType == Configuration.UI_MODE_TYPE_TELEVISION) {
+            return true
+        }
+
+        val pm = packageManager
+        if (pm.hasSystemFeature(PackageManager.FEATURE_LEANBACK)) return true
+        if (pm.hasSystemFeature("android.software.leanback_only")) return true
+        if (pm.hasSystemFeature("android.hardware.type.television")) return true
+
+        return !pm.hasSystemFeature(PackageManager.FEATURE_TOUCHSCREEN)
+    }
+
+    /// Human-readable device label, shown on the phone that approves a pairing so
+    /// the user can tell which screen is asking.
+    private fun deviceName(): String {
+        val model = Build.MODEL ?: ""
+        val brand = (Build.BRAND ?: "").replaceFirstChar { it.uppercase() }
+        return when {
+            model.isEmpty() -> brand.ifEmpty { "Android TV" }
+            model.startsWith(brand, ignoreCase = true) -> model
+            brand.isEmpty() -> model
+            else -> "$brand $model"
+        }
+    }
+
+    /// What the player is allowed to spend on buffering.
+    ///
+    /// A streaming stick has between 1 and 2 GB of RAM for the whole system, an
+    /// order of magnitude less than the desktops the playback buffers were sized
+    /// against. Asking for a desktop's buffer there is not a slow player, it is
+    /// a process the low-memory killer starts pressuring mid-film.
+    ///
+    /// `totalMemoryMb` is the device's physical RAM, not the app's heap limit:
+    /// libmpv's demuxer cache is a native allocation and never touches the Dart
+    /// heap, so the Java heap limit says nothing about it.
+    private fun memoryProfile(): Map<String, Any> {
+        val activityManager =
+            getSystemService(Context.ACTIVITY_SERVICE) as? ActivityManager
+        val info = ActivityManager.MemoryInfo()
+        activityManager?.getMemoryInfo(info)
+        return mapOf(
+            "totalMemoryMb" to (info.totalMem / (1024L * 1024L)).toInt(),
+            "isLowRamDevice" to (activityManager?.isLowRamDevice ?: false),
+        )
+    }
+
+    /// Asks the display for a refresh rate the content divides into evenly.
+    ///
+    /// A television is 60 Hz and a film is 23.976 fps. Sixty does not divide by
+    /// twenty-four, so every second frame is held one vsync longer than its
+    /// neighbour — the 3:2 cadence. Nothing is dropped and nothing is late; the
+    /// picture simply moves in an uneven rhythm, which is what a pan across a
+    /// landscape makes impossible to miss. No amount of decoder or buffer work
+    /// removes it, because it is not a shortage of anything.
+    ///
+    /// The fix is the one every television player uses: ask the panel to run at
+    /// a rate the content divides into — 24, 48 or 120 Hz for a 24 fps film —
+    /// and let each frame be held for the same number of vsyncs as the last.
+    ///
+    /// Same resolution only. Picking the mode is ours; changing what the screen
+    /// is showing at is not.
+    ///
+    /// Returns the refresh rate that was requested, or 0 when nothing matched —
+    /// including on every device that is not a television, where taking over the
+    /// display mode is not this app's business.
+    private fun matchRefreshRate(fps: Double): Double {
+        if (fps <= 0.0 || !isTelevision()) return 0.0
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.M) return 0.0
+
+        val display: Display = window?.decorView?.display ?: return 0.0
+        val current = display.mode ?: return 0.0
+
+        var best: Display.Mode? = null
+        var bestMultiple = Int.MAX_VALUE
+        for (mode in display.supportedModes) {
+            if (mode.physicalWidth != current.physicalWidth) continue
+            if (mode.physicalHeight != current.physicalHeight) continue
+
+            val ratio = mode.refreshRate / fps
+            val multiple = ratio.roundToInt()
+            if (multiple < 1) continue
+            // Within 0.5%: 59.94/23.976 is exactly 2.5 and must not match, while
+            // 24.0 Hz against 23.976 fps content must.
+            if (abs(ratio - multiple) > 0.005) continue
+
+            // The lowest whole multiple is the calmest: at 24 Hz each frame is
+            // one vsync, at 120 Hz it is five, and both are even — but the lower
+            // one asks less of a panel that has to composite it.
+            if (multiple < bestMultiple) {
+                bestMultiple = multiple
+                best = mode
+            }
+        }
+
+        val chosen = best ?: return 0.0
+        if (chosen.modeId == current.modeId) return chosen.refreshRate.toDouble()
+
+        runOnUiThread {
+            window.attributes = window.attributes.apply {
+                preferredDisplayModeId = chosen.modeId
+            }
+        }
+        return chosen.refreshRate.toDouble()
+    }
+
+    /// Hands the display back to the system's own choice. Called when the player
+    /// closes: the menus are not 24 fps, and leaving the panel at a film's rate
+    /// makes every scroll in the app judder instead.
+    private fun releaseRefreshRate() {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.M) return
+        runOnUiThread {
+            window.attributes = window.attributes.apply {
+                preferredDisplayModeId = 0
+            }
+        }
+    }
+
+    // --- In-place update ----------------------------------------------------
+
+    /// Whether the system will let this app hand a file straight to the
+    /// installer. Below Android 8 there is no such gate — any source could
+    /// always trigger the install prompt — so this reports true there.
+    private fun canInstallPackages(): Boolean {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.O) return true
+        return packageManager.canRequestPackageInstalls()
+    }
+
+    /// Sends the user to the one settings screen that toggles "allow from this
+    /// source" for Onyx specifically — not the general security settings list,
+    /// which would leave them hunting for the app in it.
+    private fun openInstallPermissionSettings() {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.O) return
+        val intent = Intent(Settings.ACTION_MANAGE_UNKNOWN_APP_SOURCES).apply {
+            data = Uri.parse("package:$packageName")
+        }
+        runCatching { startActivity(intent) }
+    }
+
+    /// Hands [path] to the system package installer. The confirmation screen
+    /// that follows is the OS's own — nothing here can skip or silence it, and
+    /// nothing here waits for its result: [result] only reports whether the
+    /// installer could be *launched*, not whether the user went through with
+    /// it, because Android gives no callback for that short of registering a
+    /// broadcast receiver for a system-scoped session this simple path does
+    /// not open.
+    private fun installApk(path: String): Boolean {
+        val file = File(path)
+        if (!file.exists()) return false
+
+        val uri = runCatching {
+            FileProvider.getUriForFile(this, "$packageName.fileprovider", file)
+        }.getOrNull() ?: return false
+
+        val intent = Intent(Intent.ACTION_VIEW).apply {
+            setDataAndType(uri, "application/vnd.android.package-archive")
+            addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+            addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+        }
+        return runCatching { startActivity(intent) }.isSuccess
+    }
+
+    private companion object {
+        const val DEVICE_CHANNEL = "onyx/device"
+    }
+}

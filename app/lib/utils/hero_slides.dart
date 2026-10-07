@@ -2,6 +2,7 @@ import 'dart:math';
 
 import '../models/models.dart';
 import 'poster_url.dart';
+import '../l10n/tr.dart';
 
 /// One slide in the home hero carousel (rotating header).
 class HeroSlide {
@@ -123,7 +124,7 @@ List<HeroSlide> buildHeroSlides(
       title: cw.displayTitle,
       subtitle: _heroSubtitle(cw),
       backgroundUrl: heroBackgroundUrl(cw, serverBaseUrl: serverBaseUrl),
-      playLabel: inProgress ? 'Reprendre' : 'Lecture',
+      playLabel: inProgress ? tr('Reprendre') : tr('Lecture'),
     ));
   }
 

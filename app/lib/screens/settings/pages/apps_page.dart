@@ -11,6 +11,7 @@ import '../../../tv/tv_deferred_keyboard.dart';
 import '../../../utils/external_url.dart';
 import '../widgets/settings_ui.dart';
 import '../../../theme/app_type.dart';
+import '../../../l10n/tr.dart';
 
 class AppsPage extends StatefulWidget {
   const AppsPage({super.key});
@@ -48,7 +49,7 @@ class _AppsPageState extends State<AppsPage> {
     final opened = await openExternalUrl(url);
     if (!mounted || opened) return;
     // Mobile has no way to hand a URL off, so show it for the user to copy.
-    showSettingsSnack(context, 'Téléchargement disponible ici : $url');
+    showSettingsSnack(context, tr('Téléchargement disponible ici : {0}', [url]));
   }
 
   /// Picks an installer and publishes it, replacing whatever the server had for
@@ -69,7 +70,7 @@ class _AppsPageState extends State<AppsPage> {
       );
     } catch (_) {
       if (mounted) {
-        showSettingsSnack(context, 'Sélecteur de fichiers indisponible.',
+        showSettingsSnack(context, tr('Sélecteur de fichiers indisponible.'),
             error: true);
       }
       return;
@@ -101,7 +102,7 @@ class _AppsPageState extends State<AppsPage> {
         _uploadingLabel = null;
         _uploadProgress = null;
       });
-      showSettingsSnack(context, 'Installeur publié : ${file.name}');
+      showSettingsSnack(context, tr('Installeur publié : {0}', [file.name]));
     } catch (e) {
       if (!mounted) return;
       setState(() {
@@ -109,7 +110,7 @@ class _AppsPageState extends State<AppsPage> {
         _uploadProgress = null;
       });
       showSettingsSnack(
-          context, settingsErrorText(e, 'Échec de l’envoi de l’installeur.'),
+          context, settingsErrorText(e, tr('Échec de l’envoi de l’installeur.')),
           error: true);
     }
   }
@@ -117,9 +118,9 @@ class _AppsPageState extends State<AppsPage> {
   Future<void> _delete(AppDownload download) async {
     final confirmed = await confirmSettingsAction(
       context,
-      title: 'Supprimer l’installeur ?',
-      message: '${download.file} ne sera plus proposé au téléchargement.',
-      confirmLabel: 'Supprimer',
+      title: tr('Supprimer l’installeur ?'),
+      message: tr('{0} ne sera plus proposé au téléchargement.', [download.file]),
+      confirmLabel: tr('Supprimer'),
     );
     if (!confirmed || !mounted) return;
     try {
@@ -127,11 +128,11 @@ class _AppsPageState extends State<AppsPage> {
           await context.read<ApiClient>().deleteAppDownload(download);
       if (!mounted) return;
       setState(() => _downloads = downloads);
-      showSettingsSnack(context, 'Installeur supprimé.');
+      showSettingsSnack(context, tr('Installeur supprimé.'));
     } catch (e) {
       if (mounted) {
         showSettingsSnack(
-            context, settingsErrorText(e, 'Échec de la suppression.'),
+            context, settingsErrorText(e, tr('Échec de la suppression.')),
             error: true);
       }
     }
@@ -148,7 +149,7 @@ class _AppsPageState extends State<AppsPage> {
       context: context,
       builder: (dialogContext) => AlertDialog(
         backgroundColor: AppColors.surface,
-        title: const Text('Publier l’installeur'),
+        title: Text(tr('Publier l’installeur')),
         content: Column(
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.start,
@@ -163,8 +164,8 @@ class _AppsPageState extends State<AppsPage> {
                 canRequestFocus: canRequestFocus,
                 controller: controller,
                 autofocus: true,
-                decoration: const InputDecoration(
-                  labelText: 'Version',
+                decoration: InputDecoration(
+                  labelText: tr('Version'),
                   hintText: '1.0.0',
                 ),
               ),
@@ -174,12 +175,12 @@ class _AppsPageState extends State<AppsPage> {
         actions: [
           TextButton(
             onPressed: () => Navigator.of(dialogContext).pop(),
-            child: const Text('Annuler'),
+            child: Text(tr('Annuler')),
           ),
           TextButton(
             onPressed: () =>
                 Navigator.of(dialogContext).pop(controller.text.trim()),
-            child: const Text('Publier'),
+            child: Text(tr('Publier')),
           ),
         ],
       ),
@@ -208,18 +209,19 @@ class _AppsPageState extends State<AppsPage> {
     final downloads = _downloads;
 
     return SettingsPage(
-      title: 'Applications',
+      title: tr('Applications'),
       description:
-          'Installer Onyx sur un autre appareil. Les fichiers sont servis directement par votre serveur.',
+          tr('Installer Onyx sur un autre appareil. Les fichiers sont '
+              'servis directement par votre serveur.'),
       children: [
         SettingsGroup(
-          title: 'Disponibles au téléchargement',
+          title: tr('Disponibles au téléchargement'),
           children: [
             if (downloads == null)
               const SettingsLoading()
             else if (downloads.isEmpty)
-              const SettingsEmptyNote(
-                  'Aucun installeur publié sur ce serveur pour l’instant.')
+              SettingsEmptyNote(
+                  tr('Aucun installeur publié sur ce serveur pour l’instant.'))
             else
               for (final download in downloads)
                 SettingsTile(
@@ -228,7 +230,7 @@ class _AppsPageState extends State<AppsPage> {
                   title: download.label,
                   subtitle: [
                     if (download.version.isNotEmpty)
-                      'Version ${download.version}',
+                      tr('Version {0}', [download.version]),
                     if (download.formattedSize.isNotEmpty)
                       download.formattedSize,
                   ].join(' · '),
@@ -246,20 +248,21 @@ class _AppsPageState extends State<AppsPage> {
         ),
         if (canManage)
           SettingsGroup(
-            title: 'Publication',
+            title: tr('Publication'),
             footer:
-                'Un installeur par plateforme : en publier un nouveau remplace le précédent.',
+                tr('Un installeur par plateforme : en publier un nouveau '
+                    'remplace le précédent.'),
             children: [
               SettingsTile(
                 icon: Icons.upload_file_rounded,
                 title: _uploadingLabel == null
-                    ? 'Ajouter ou remplacer un installeur'
-                    : 'Envoi de $_uploadingLabel…',
+                    ? tr('Ajouter ou remplacer un installeur')
+                    : tr('Envoi de {0}…', [_uploadingLabel]),
                 subtitle: _uploadingLabel == null
-                    ? 'Fichier .exe, .zip, .dmg, .apk ou .ipa'
+                    ? tr('Fichier .exe, .zip, .dmg, .apk ou .ipa')
                     : _uploadProgress == null
-                        ? 'Envoi en cours…'
-                        : 'Envoi ${(_uploadProgress! * 100).clamp(0, 100).toStringAsFixed(0)} %',
+                        ? tr('Envoi en cours…')
+                        : tr('Envoi {0} %', [(_uploadProgress! * 100).clamp(0, 100).toStringAsFixed(0)]),
                 onTap: _uploadingLabel == null ? () => _upload() : null,
               ),
               if (_uploadProgress != null)
@@ -294,18 +297,18 @@ class _InstallerMenu extends StatelessWidget {
   Widget build(BuildContext context) {
     return PopupMenuButton<String>(
       enabled: enabled,
-      tooltip: 'Gérer cet installeur',
+      tooltip: tr('Gérer cet installeur'),
       color: AppColors.surfaceElevated,
       icon: const Icon(Icons.more_horiz_rounded, color: AppColors.textMuted),
       onSelected: (value) => value == 'replace' ? onReplace() : onDelete(),
-      itemBuilder: (_) => const [
+      itemBuilder: (_) => [
         PopupMenuItem(
           value: 'replace',
           child: ListTile(
             dense: true,
             contentPadding: EdgeInsets.zero,
             leading: Icon(Icons.upload_file_rounded, size: 18),
-            title: Text('Remplacer'),
+            title: Text(tr('Remplacer')),
           ),
         ),
         PopupMenuItem(
@@ -315,7 +318,7 @@ class _InstallerMenu extends StatelessWidget {
             contentPadding: EdgeInsets.zero,
             leading: Icon(Icons.delete_outline_rounded,
                 size: 18, color: AppColors.error),
-            title: Text('Supprimer', style: TextStyle(color: AppColors.error)),
+            title: Text(tr('Supprimer'), style: TextStyle(color: AppColors.error)),
           ),
         ),
       ],

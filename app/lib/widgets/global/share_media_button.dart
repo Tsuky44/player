@@ -7,6 +7,7 @@ import '../../theme/app_colors.dart';
 import '../../tv/tv_mode.dart';
 import 'share_media_dialog.dart';
 import '../../theme/app_icons.dart';
+import '../../l10n/tr.dart';
 
 /// Le bouton « Partager par lien » d'un film ou d'un épisode (ADR-0037).
 ///
@@ -42,7 +43,7 @@ class ShareMediaButton extends StatelessWidget {
       return const SizedBox.shrink();
     }
     return IconButton(
-      tooltip: 'Partager par lien',
+      tooltip: tr('Partager par lien'),
       onPressed: () => showShareMediaDialog(
         context,
         api: auth.apiClient,

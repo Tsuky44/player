@@ -2,6 +2,7 @@ import 'dart:async';
 import 'dart:io';
 
 import 'package:dio/dio.dart';
+import '../../l10n/tr.dart';
 
 /// Comment les octets d'un média arrivent sur le disque.
 ///
@@ -73,11 +74,11 @@ String describeTransferError(DioException e) {
   switch (e.type) {
     case DioExceptionType.connectionTimeout:
     case DioExceptionType.connectionError:
-      return 'Serveur injoignable';
+      return tr('Serveur injoignable');
     case DioExceptionType.receiveTimeout:
-      return 'Transfert interrompu';
+      return tr('Transfert interrompu');
     default:
-      return e.message ?? 'Téléchargement impossible';
+      return e.message ?? tr('Téléchargement impossible');
   }
 }
 

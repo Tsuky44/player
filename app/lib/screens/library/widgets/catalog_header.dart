@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import '../../../theme/app_colors.dart';
 import '../../../theme/app_icons.dart';
 import '../../../theme/app_type.dart';
+import '../../../l10n/tr.dart';
 
 /// L'en-tête d'un catalogue : le titre, le nombre de titres et le tri, sur une
 /// seule ligne.
@@ -58,7 +59,7 @@ class CatalogHeader<T> extends StatelessWidget {
         ],
         const Spacer(),
         PopupMenuButton<T>(
-          tooltip: 'Trier',
+          tooltip: tr('Trier'),
           initialValue: sort,
           position: PopupMenuPosition.under,
           onSelected: onSortChanged,
@@ -67,7 +68,7 @@ class CatalogHeader<T> extends StatelessWidget {
               CheckedPopupMenuItem<T>(
                 value: entry.key,
                 checked: entry.key == sort,
-                child: Text(entry.value),
+                child: Text(tr(entry.value)),
               ),
           ],
           child: Padding(
@@ -76,7 +77,7 @@ class CatalogHeader<T> extends StatelessWidget {
               mainAxisSize: MainAxisSize.min,
               children: [
                 Text(
-                  sortOptions[sort] ?? '',
+                  tr(sortOptions[sort] ?? ''),
                   style: const TextStyle(
                     color: AppColors.textSecondary,
                     fontSize: AppType.body,

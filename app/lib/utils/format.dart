@@ -1,10 +1,11 @@
 import '../models/models.dart';
+import '../l10n/tr.dart';
 
 String formatDuration(int seconds) {
   if (seconds <= 0) return '';
   final h = seconds ~/ 3600;
   final m = (seconds % 3600) ~/ 60;
-  if (h > 0) return '${h}h ${m}min';
+  if (h > 0) return tr('{0}h {1}min', [h, m]);
   return '${m}min';
 }
 
@@ -72,7 +73,7 @@ String? formatReleaseDay(String? raw) {
   if (raw == null || raw.trim().isEmpty) return null;
   final parsed = DateTime.tryParse(raw.trim());
   if (parsed == null) return raw.trim();
-  return '${parsed.day} ${_shortMonths[parsed.month - 1]} ${parsed.year}';
+  return '${parsed.day} ${tr(_shortMonths[parsed.month - 1])} ${parsed.year}';
 }
 
 /// Formats a TMDB air/release date (YYYY-MM-DD) for unavailable episode tiles.
@@ -89,24 +90,24 @@ String? formatAirDate(String? raw, {DateTime? now}) {
   final label = formatReleaseDay(raw)!;
 
   if (day.isAfter(today)) {
-    return 'Sortie prévue le $label';
+    return tr('Sortie prévue le {0}', [label]);
   }
   if (day.isAtSameMomentAs(today)) {
-    return 'Sortie aujourd’hui';
+    return tr('Sortie aujourd’hui');
   }
-  return 'Sorti le $label';
+  return tr('Sorti le {0}', [label]);
 }
 
 String mediaTypeLabel(MediaType type) {
   switch (type) {
     case MediaType.movie:
-      return 'Film';
+      return tr('Film');
     case MediaType.show:
-      return 'Série';
+      return tr('Série');
     case MediaType.season:
-      return 'Saison';
+      return tr('Saison');
     case MediaType.episode:
-      return 'Épisode';
+      return tr('Épisode');
   }
 }
 
@@ -116,7 +117,7 @@ String mediaTypeLabel(MediaType type) {
 /// une décimale seulement à partir du gigaoctet — sous cette échelle elle ne
 /// renseigne sur rien.
 String formatBytes(int bytes) {
-  if (bytes <= 0) return '0 Mo';
+  if (bytes <= 0) return '0 ${tr('Mo')}';
   const units = ['o', 'Ko', 'Mo', 'Go', 'To'];
   var value = bytes.toDouble();
   var unit = 0;
@@ -125,5 +126,5 @@ String formatBytes(int bytes) {
     unit++;
   }
   final decimals = unit >= 3 && value < 100 ? 1 : 0;
-  return '${value.toStringAsFixed(decimals).replaceAll('.', ',')} ${units[unit]}';
+  return '${value.toStringAsFixed(decimals).replaceAll('.', ',')} ${tr(units[unit])}';
 }

@@ -5,6 +5,7 @@ import '../../theme/app_colors.dart';
 import '../../utils/responsive.dart';
 import '../../theme/app_icons.dart';
 import '../../theme/app_type.dart';
+import '../../l10n/tr.dart';
 
 /// Le libellé du bouton principal d'une fiche.
 ///
@@ -21,7 +22,7 @@ String detailPlayLabel({
   Media? episode,
   int? seasonOverride,
 }) {
-  final verb = resuming ? 'Reprendre' : 'Lecture';
+  final verb = resuming ? tr('Reprendre') : tr('Lecture');
   if (episode == null) return verb;
   final number = episode.effectiveEpisodeNumber;
   if (number == null || number <= 0) return verb;

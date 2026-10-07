@@ -9,6 +9,7 @@ import '../user_admin_sections.dart' show promptPassword;
 import '../widgets/device_tile.dart';
 import '../widgets/otp_security_group.dart';
 import '../widgets/settings_ui.dart';
+import '../../../l10n/tr.dart';
 
 class AccountPage extends StatefulWidget {
   const AccountPage({super.key});
@@ -45,7 +46,7 @@ class _AccountPageState extends State<AccountPage> {
       }).catchError((Object e) {
         if (mounted) {
           setState(() => _devicesError =
-              settingsErrorText(e, 'Impossible de charger vos appareils.'));
+              settingsErrorText(e, tr('Impossible de charger vos appareils.')));
         }
       }),
     ]);
@@ -54,46 +55,80 @@ class _AccountPageState extends State<AccountPage> {
   Future<void> _changePassword() async {
     final current = await promptPassword(
       context,
-      title: 'Mot de passe actuel',
-      label: 'Mot de passe actuel',
+      title: tr('Mot de passe actuel'),
+      label: tr('Mot de passe actuel'),
     );
     if (current == null || !mounted) return;
     final next = await promptPassword(
       context,
-      title: 'Nouveau mot de passe',
-      hint: 'Minimum 4 caractères.',
+      title: tr('Nouveau mot de passe'),
+      hint: tr('Minimum 4 caractères.'),
     );
     if (next == null || !mounted) return;
     try {
       await context.read<ApiClient>().changeOwnPassword(current, next);
-      if (mounted) showSettingsSnack(context, 'Mot de passe mis à jour.');
+      if (mounted) showSettingsSnack(context, tr('Mot de passe mis à jour.'));
     } catch (_) {
       if (mounted) {
-        showSettingsSnack(context, 'Mot de passe actuel incorrect.',
+        showSettingsSnack(context, tr('Mot de passe actuel incorrect.'),
             error: true);
       }
     }
   }
 
+  Future<void> _deleteAccount() async {
+    final confirmed = await confirmSettingsAction(
+      context,
+      title: tr('Supprimer votre compte ?'),
+      message:
+          tr('Votre compte, votre progression, vos réglages et vos sessions '
+              'sont effacés de ce serveur, définitivement. Les fichiers de '
+              'la médiathèque ne sont pas touchés.'),
+      confirmLabel: tr('Continuer'),
+    );
+    if (!confirmed || !mounted) return;
+    final password = await promptPassword(
+      context,
+      title: tr('Confirmez avec votre mot de passe'),
+      label: tr('Mot de passe'),
+    );
+    if (password == null || !mounted) return;
+    final auth = context.read<AuthProvider>();
+    final navigator = Navigator.of(context);
+    try {
+      await context.read<ApiClient>().deleteOwnAccount(password);
+    } catch (e) {
+      if (mounted) {
+        showSettingsSnack(
+            context, settingsErrorText(e, tr('Impossible de supprimer le compte.')),
+            error: true);
+      }
+      return;
+    }
+    navigator.popUntil((route) => route.isFirst);
+    await auth.logout();
+  }
+
   Future<void> _revoke(ConnectedDevice device) async {
     final confirmed = await confirmSettingsAction(
       context,
-      title: 'Déconnecter ${device.displayName} ?',
+      title: tr('Déconnecter {0} ?', [device.displayName]),
       message:
-          'Cet appareil devra se reconnecter pour accéder au serveur. Une lecture en cours s’arrêtera.',
-      confirmLabel: 'Déconnecter',
+          tr('Cet appareil devra se reconnecter pour accéder au serveur. '
+              'Une lecture en cours s’arrêtera.'),
+      confirmLabel: tr('Déconnecter'),
     );
     if (!confirmed || !mounted) return;
     setState(() => _busyDevice = device.id);
     try {
       await context.read<ApiClient>().revokeMyDevice(device.id);
       if (mounted) {
-        showSettingsSnack(context, '${device.displayName} déconnecté.');
+        showSettingsSnack(context, tr('{0} déconnecté.', [device.displayName]));
       }
     } catch (e) {
       if (mounted) {
         showSettingsSnack(
-            context, settingsErrorText(e, 'Échec de la déconnexion.'),
+            context, settingsErrorText(e, tr('Échec de la déconnexion.')),
             error: true);
       }
     }
@@ -107,10 +142,10 @@ class _AccountPageState extends State<AccountPage> {
     if (others.isEmpty) return;
     final confirmed = await confirmSettingsAction(
       context,
-      title: 'Déconnecter les autres appareils ?',
+      title: tr('Déconnecter les autres appareils ?'),
       message:
-          '${others.length} appareil${others.length > 1 ? 's' : ''} devront se reconnecter. Celui-ci reste connecté.',
-      confirmLabel: 'Tout déconnecter',
+          tr('{0} appareil{1} devront se reconnecter. Celui-ci reste connecté.', [others.length, others.length > 1 ? 's' : '']),
+      confirmLabel: tr('Tout déconnecter'),
     );
     if (!confirmed || !mounted) return;
     final api = context.read<ApiClient>();
@@ -120,7 +155,7 @@ class _AccountPageState extends State<AccountPage> {
       } catch (_) {}
     }
     if (!mounted) return;
-    showSettingsSnack(context, 'Les autres appareils ont été déconnectés.');
+    showSettingsSnack(context, tr('Les autres appareils ont été déconnectés.'));
     _load();
   }
 
@@ -132,41 +167,42 @@ class _AccountPageState extends State<AccountPage> {
     final others = devices?.where((d) => !d.isCurrent).length ?? 0;
 
     return SettingsPage(
-      title: 'Mon compte',
+      title: tr('Mon compte'),
       description:
-          'Votre profil sur ${auth.activeServer?.displayName ?? 'ce serveur'}, votre activité et les appareils où vous êtes connecté.',
+          tr('Votre profil sur {0}, votre activité et les appareils où vous '
+              'êtes connecté.', [auth.activeServer?.displayName ?? tr('ce serveur')]),
       onRefresh: _load,
       children: [
         if (stats != null) ...[
           StatGrid(children: [
             StatTile(
               icon: Icons.schedule_rounded,
-              label: 'Temps de visionnage',
+              label: tr('Temps de visionnage'),
               value: formatWatchTime(stats.watchedSeconds),
-              hint: '30 derniers jours',
+              hint: tr('30 derniers jours'),
             ),
             StatTile(
               icon: Icons.play_arrow_rounded,
-              label: 'Lectures',
+              label: tr('Lectures'),
               value: '${stats.plays}',
-              hint: '30 derniers jours',
+              hint: tr('30 derniers jours'),
             ),
             StatTile(
               icon: Icons.movie_outlined,
-              label: 'Films',
+              label: tr('Films'),
               value: '${stats.movies}',
               color: AppColors.warning,
             ),
             StatTile(
               icon: Icons.tv_rounded,
-              label: 'Épisodes',
+              label: tr('Épisodes'),
               value: '${stats.episodes}',
               color: AppColors.success,
             ),
           ]),
           if (stats.topMedia.isNotEmpty)
             SettingsGroup(
-              title: 'Vos titres du mois',
+              title: tr('Vos titres du mois'),
               children: [
                 for (final media in stats.topMedia.take(3))
                   SettingsTile(
@@ -190,19 +226,19 @@ class _AccountPageState extends State<AccountPage> {
             ),
         ],
         SettingsGroup(
-          title: 'Sécurité',
+          title: tr('Sécurité'),
           children: [
             SettingsTile(
               icon: Icons.password_rounded,
-              title: 'Changer mon mot de passe',
-              subtitle: 'Vos autres appareils restent connectés.',
+              title: tr('Changer mon mot de passe'),
+              subtitle: tr('Vos autres appareils restent connectés.'),
               onTap: _changePassword,
             ),
           ],
         ),
         const OtpSecurityGroup(),
         SettingsGroup(
-          title: 'Mes appareils connectés',
+          title: tr('Mes appareils connectés'),
           trailing: others > 0
               ? TextButton(
                   onPressed: _revokeOthers,
@@ -210,18 +246,19 @@ class _AccountPageState extends State<AccountPage> {
                     foregroundColor: AppColors.error,
                     visualDensity: VisualDensity.compact,
                   ),
-                  child: const Text('Déconnecter les autres'),
+                  child: Text(tr('Déconnecter les autres')),
                 )
               : null,
           footer:
-              'Une session inutilisée pendant 90 jours est fermée automatiquement.',
+              tr('Une session inutilisée pendant 90 jours est fermée '
+                  'automatiquement.'),
           children: [
             if (_devicesError != null)
               SettingsEmptyNote(_devicesError!, icon: Icons.error_outline)
             else if (devices == null)
               const SettingsLoading()
             else if (devices.isEmpty)
-              const SettingsEmptyNote('Aucun appareil.')
+              SettingsEmptyNote(tr('Aucun appareil.'))
             else
               for (final device in devices)
                 DeviceTile(
@@ -235,14 +272,22 @@ class _AccountPageState extends State<AccountPage> {
           children: [
             SettingsTile(
               icon: Icons.logout_rounded,
-              title: 'Se déconnecter',
-              subtitle: 'Fermer la session de cet appareil',
+              title: tr('Se déconnecter'),
+              subtitle: tr('Fermer la session de cet appareil'),
               destructive: true,
               showChevron: false,
               onTap: () {
                 Navigator.of(context).popUntil((route) => route.isFirst);
                 auth.logout();
               },
+            ),
+            SettingsTile(
+              icon: Icons.person_remove_outlined,
+              title: tr('Supprimer mon compte'),
+              subtitle: tr('Effacer ce compte et ses données de ce serveur'),
+              destructive: true,
+              showChevron: false,
+              onTap: _deleteAccount,
             ),
           ],
         ),

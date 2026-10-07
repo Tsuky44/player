@@ -16,6 +16,7 @@ import 'widgets/request_status_badge.dart';
 import 'widgets/season_selector_dialog.dart';
 import '../../theme/app_icons.dart';
 import '../../theme/app_type.dart';
+import '../../l10n/tr.dart';
 
 class RequestDetailScreen extends StatefulWidget {
   final RequestMediaItem item;
@@ -62,12 +63,12 @@ class _RequestDetailScreenState extends State<RequestDetailScreen> {
           );
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Demande envoyée à MediaHub.')));
+          SnackBar(content: Text(tr('Demande envoyée à MediaHub.'))));
       Navigator.of(context).pop();
     } catch (_) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(content: Text('Impossible d’envoyer la demande.')));
+            SnackBar(content: Text(tr('Impossible d’envoyer la demande.'))));
         setState(() => _submitting = false);
       }
     }
@@ -78,7 +79,7 @@ class _RequestDetailScreenState extends State<RequestDetailScreen> {
     if (await openExternalUrl(url)) return;
     if (mounted) {
       ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Ouvrez la bande-annonce : $url')));
+          SnackBar(content: Text(tr('Ouvrez la bande-annonce : {0}', [url]))));
     }
   }
 
@@ -100,7 +101,7 @@ class _RequestDetailScreenState extends State<RequestDetailScreen> {
           }
           if (snapshot.hasError || !snapshot.hasData) {
             return ErrorStateView(
-                message: 'Impossible de charger ce média.', onRetry: _retry);
+                message: tr('Impossible de charger ce média.'), onRetry: _retry);
           }
           return _content(snapshot.data!);
         },
@@ -172,7 +173,7 @@ class _RequestDetailScreenState extends State<RequestDetailScreen> {
               ],
               if (details.cast.isNotEmpty) ...[
                 const SizedBox(height: 40),
-                const Text('Casting',
+                Text(tr('Casting'),
                     style: TextStyle(
                         fontSize: AppType.title2,
                         fontWeight: FontWeight.w700,
@@ -183,7 +184,7 @@ class _RequestDetailScreenState extends State<RequestDetailScreen> {
               if (details.recommendations.isNotEmpty) ...[
                 const SizedBox(height: 44),
                 RequestRelatedSlider(
-                  title: 'Recommandations',
+                  title: tr('Recommandations'),
                   items: details.recommendations,
                   onTap: _openRelated,
                 ),
@@ -191,7 +192,7 @@ class _RequestDetailScreenState extends State<RequestDetailScreen> {
               if (details.similar.isNotEmpty) ...[
                 const SizedBox(height: 36),
                 RequestRelatedSlider(
-                  title: 'Titres similaires',
+                  title: tr('Titres similaires'),
                   items: details.similar,
                   onTap: _openRelated,
                 ),
@@ -341,7 +342,7 @@ class _RequestDetailScreenState extends State<RequestDetailScreen> {
               ..._requestActions(details, canRequest, hasUnrequestedSeasons),
               if (details.trailerKey != null && details.trailerKey!.isNotEmpty)
                 _primaryButton(
-                  label: 'Bande-annonce',
+                  label: tr('Bande-annonce'),
                   icon: AppIcons.playCircle,
                   filled: false,
                   enabled: true,
@@ -366,14 +367,14 @@ class _RequestDetailScreenState extends State<RequestDetailScreen> {
     if (status == RequestMediaStatus.partial) {
       return [
         _statusActionButton(
-          label: 'Partiellement disponible',
+          label: tr('Partiellement disponible'),
           icon: AppIcons.check,
           foreground: AppColors.warning,
           background: AppColors.warning,
         ),
         if (canRequest && isTv && hasUnrequestedSeasons)
           _primaryButton(
-            label: 'Compléter',
+            label: tr('Compléter'),
             icon: AppIcons.add,
             filled: true,
             enabled: !_submitting,
@@ -386,14 +387,14 @@ class _RequestDetailScreenState extends State<RequestDetailScreen> {
     if (status == RequestMediaStatus.available) {
       return [
         _statusActionButton(
-          label: 'Disponible',
+          label: tr('Disponible'),
           icon: AppIcons.check,
           foreground: AppColors.success,
           background: AppColors.success,
         ),
         if (canRequest && hasUnrequestedSeasons && isTv)
           _primaryButton(
-            label: 'Demander plus',
+            label: tr('Demander plus'),
             icon: AppIcons.add,
             filled: true,
             enabled: !_submitting,
@@ -407,14 +408,14 @@ class _RequestDetailScreenState extends State<RequestDetailScreen> {
         status == RequestMediaStatus.processing) {
       return [
         _statusActionButton(
-          label: 'En cours de traitement...',
+          label: tr('En cours de traitement...'),
           icon: AppIcons.pending,
           foreground: AppColors.accentMuted,
           background: AppColors.primary,
         ),
         if (canRequest && hasUnrequestedSeasons && isTv)
           _primaryButton(
-            label: 'Demander plus',
+            label: tr('Demander plus'),
             icon: AppIcons.add,
             filled: true,
             enabled: !_submitting,
@@ -428,7 +429,7 @@ class _RequestDetailScreenState extends State<RequestDetailScreen> {
 
     return [
       _primaryButton(
-        label: 'Demander',
+        label: tr('Demander'),
         icon: AppIcons.download,
         filled: true,
         enabled: !_submitting,
@@ -600,7 +601,7 @@ class _RequestDetailScreenState extends State<RequestDetailScreen> {
         const SizedBox(height: 28),
         Divider(color: Colors.white.withValues(alpha: 0.06)),
         const SizedBox(height: 18),
-        const Text('Résumé',
+        Text(tr('Résumé'),
             style: TextStyle(
                 fontSize: AppType.title2,
                 fontWeight: FontWeight.w700,
@@ -608,7 +609,7 @@ class _RequestDetailScreenState extends State<RequestDetailScreen> {
         const SizedBox(height: 12),
         Text(
           details.overview.isEmpty
-              ? 'Aucun synopsis disponible.'
+              ? tr('Aucun synopsis disponible.')
               : details.overview,
           style: TextStyle(
             height: 1.6,
@@ -623,9 +624,9 @@ class _RequestDetailScreenState extends State<RequestDetailScreen> {
   Widget _crewGrid(RequestMediaDetails details) {
     final entries = <MapEntry<String, String>>[
       if (details.director != null && details.director!.isNotEmpty)
-        MapEntry('Réalisateur', details.director!),
-      ...details.writers.map((w) => MapEntry('Scénario', w)),
-      ...details.editors.map((e) => MapEntry('Montage', e)),
+        MapEntry(tr('Réalisateur'), details.director!),
+      ...details.writers.map((w) => MapEntry(tr('Scénario'), w)),
+      ...details.editors.map((e) => MapEntry(tr('Montage'), e)),
     ];
     if (entries.isEmpty) return const SizedBox.shrink();
 

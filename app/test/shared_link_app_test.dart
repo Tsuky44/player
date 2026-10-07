@@ -1,8 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:onyx/models/media_share.dart';
-import 'package:onyx/models/player_layout.dart';
-import 'package:onyx/providers/player_layout_provider.dart';
 import 'package:onyx/providers/auth_provider.dart';
 import 'package:onyx/screens/shared_link/shared_link_app.dart';
 import 'package:onyx/services/api_client.dart';
@@ -51,13 +49,30 @@ const _season = SharedMediaInfo(
   title: 'Lioness',
   subtitle: 'Saison 1',
   episodes: [
-    SharedEpisode(id: 11, seasonNumber: 1, episodeNumber: 1, title: 'Pilote'),
-    SharedEpisode(id: 15, seasonNumber: 1, episodeNumber: 5, title: 'Fin'),
+    SharedEpisode(
+        id: 11,
+        seasonId: 2,
+        seasonNumber: 1,
+        episodeNumber: 1,
+        title: 'Pilote',
+        duration: 3000),
+    SharedEpisode(
+        id: 15,
+        seasonId: 2,
+        seasonNumber: 1,
+        episodeNumber: 5,
+        title: 'Fin',
+        duration: 3000),
   ],
 );
 
-Future<void> _pump(WidgetTester tester, _Api api) async {
-  SharedPreferences.setMockInitialValues({});
+Future<void> _pump(WidgetTester tester, _Api api,
+    {Map<String, Object> stored = const {}}) async {
+  SharedPreferences.setMockInitialValues(stored);
+  // Assez haut pour que la liste des épisodes, sous l'en-tête de la fiche,
+  // soit construite.
+  await tester.binding.setSurfaceSize(const Size(1280, 1600));
+  addTearDown(() => tester.binding.setSurfaceSize(null));
   final auth = AuthProvider(api);
   addTearDown(auth.dispose);
   await tester.pumpWidget(MultiProvider(
@@ -103,23 +118,44 @@ void main() {
     expect(find.byType(TextField), findsOneWidget);
   });
 
-  // Le lien d'une saison ou d'une série n'a pas de bouton « Regarder » : le
-  // visiteur choisit un épisode, et c'est celui-là que le serveur ouvre.
-  testWidgets('le lien d’une saison liste ses épisodes et ouvre celui choisi',
+  // Le lien d'une saison ou d'une série a la fiche d'un compte : un bouton
+  // qui lance le premier épisode, et la liste d'où choisir les autres. C'est
+  // l'épisode choisi que le serveur ouvre.
+  testWidgets('le lien d’une saison montre sa fiche et ouvre l’épisode choisi',
       (tester) async {
     final api = _Api(_season);
     await _pump(tester, api);
-    expect(find.text('Saison 1'), findsOneWidget);
-    expect(find.text('2 épisodes'), findsOneWidget);
-    expect(find.text('1. Pilote'), findsOneWidget);
+    expect(find.text('Lioness'), findsOneWidget);
+    expect(find.text('Lecture S1 E1'), findsOneWidget);
+    expect(find.text('Pilote'), findsOneWidget);
+    expect(find.text('2 disponibles'), findsOneWidget);
     expect(find.text('Regarder'), findsNothing);
+    expect(find.byTooltip('Télécharger'), findsNothing,
+        reason: 'un visiteur regarde, il n’emporte rien');
 
-    await tester.tap(find.text('5. Fin'));
+    await tester.tap(find.text('Fin'));
     await tester.pump(const Duration(milliseconds: 100));
     expect(api.opened, [15]);
     expect(find.text('Serveur injoignable.'), findsOneWidget);
-    expect(find.text('1. Pilote'), findsOneWidget,
+    expect(find.text('Pilote'), findsOneWidget,
         reason: 'un échec laisse la liste : un autre épisode reste à choisir');
+  });
+
+  // Ce que l'appareil a retenu du lien : le visiteur retrouve « Reprendre »
+  // sur l'épisode entamé, comme avec un compte.
+  testWidgets('un visiteur revenu sur le lien reprend son épisode',
+      (tester) async {
+    final api = _Api(_season);
+    await _pump(tester, api, stored: {
+      'onyx-share-last:AbCdEfGhIjKlMnOpQrStUv': 15,
+      'onyx-share-position:AbCdEfGhIjKlMnOpQrStUv:15': 600,
+      'onyx-share-finished:AbCdEfGhIjKlMnOpQrStUv': <String>['11'],
+    });
+    expect(find.text('Reprendre S1 E5'), findsOneWidget);
+
+    await tester.tap(find.text('Reprendre S1 E5'));
+    await tester.pump(const Duration(milliseconds: 100));
+    expect(api.opened, [15]);
   });
 
   testWidgets(
@@ -132,8 +168,10 @@ void main() {
           title: 'Lioness',
           subtitle: 'Série entière',
           episodes: [
-            SharedEpisode(id: 11, seasonNumber: 1, episodeNumber: 1),
-            SharedEpisode(id: 21, seasonNumber: 2, episodeNumber: 1),
+            SharedEpisode(
+                id: 11, seasonId: 2, seasonNumber: 1, episodeNumber: 1),
+            SharedEpisode(
+                id: 21, seasonId: 5, seasonNumber: 2, episodeNumber: 1),
           ],
         ));
     await _pump(tester, api);
@@ -148,9 +186,11 @@ void main() {
     await tester.tap(find.text('Ouvrir'));
     await tester.pump(const Duration(milliseconds: 100));
     expect(find.text('Lioness'), findsOneWidget);
+    expect(find.text('Saison 1'), findsOneWidget);
     expect(find.text('Saison 2'), findsOneWidget,
-        reason: 'plusieurs saisons : chacune est nommée');
-    expect(find.text('Épisode 1'), findsNWidgets(2));
+        reason: 'plusieurs saisons : chacune a son onglet');
+    expect(find.text('Épisode 1'), findsOneWidget,
+        reason: 'seule la saison choisie est listée');
     expect(find.byType(TextField), findsNothing);
     expect(api.opened, isEmpty,
         reason: 'lister les épisodes ne délivre aucun ticket');
@@ -166,14 +206,5 @@ void main() {
     expect(
         find.text('Ce lien a expiré ou a déjà été utilisé.'), findsOneWidget);
     expect(find.text('Regarder'), findsNothing);
-  });
-
-  // Le visiteur voit le playeur maison, pas celui qu'un compte connecté dans
-  // ce navigateur aurait choisi.
-  test('le lecteur du visiteur est figé sur le Chrome Onyx', () {
-    final layout = PlayerLayoutProvider.fixed(
-        FixedChromeId.onyx, _Api(const SharedMediaInfo()));
-    expect(layout.isLoaded, isTrue);
-    expect(layout.fixedChrome, FixedChromeId.onyx);
   });
 }

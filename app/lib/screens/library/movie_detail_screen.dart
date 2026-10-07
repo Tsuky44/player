@@ -10,9 +10,11 @@ import '../../services/media_tracks_cache.dart';
 import '../../theme/app_colors.dart';
 import '../../tv/tv_mode.dart';
 import '../../utils/format.dart';
+import '../../utils/on_screen.dart';
 import '../../widgets/global/detail_actions.dart';
 import '../../widgets/global/detail_facts_section.dart';
 import '../../widgets/global/detail_metadata.dart';
+import '../../widgets/global/live_progress_state.dart';
 import '../../widgets/global/media_detail_widgets.dart';
 import '../../widgets/global/media_download_button.dart';
 import '../../widgets/global/media_technical_section.dart';
@@ -22,6 +24,7 @@ import '../../widgets/global/watched_action_button.dart';
 import '../../navigation/search_route_observer.dart';
 import '../player/player_screen.dart';
 import '../../theme/app_icons.dart';
+import '../../l10n/tr.dart';
 
 class MovieDetailScreen extends StatefulWidget {
   final HomeMediaItem? movieItem;
@@ -37,7 +40,8 @@ class MovieDetailScreen extends StatefulWidget {
   State<MovieDetailScreen> createState() => _MovieDetailScreenState();
 }
 
-class _MovieDetailScreenState extends State<MovieDetailScreen> {
+class _MovieDetailScreenState extends State<MovieDetailScreen>
+    with OnScreenState, LiveProgressState {
   late Media _media;
   MediaDetails? _details;
   bool _loadingDetails = false;
@@ -200,6 +204,15 @@ class _MovieDetailScreenState extends State<MovieDetailScreen> {
     }
   }
 
+  /// Le film a avancé sur un autre appareil : « Reprendre » et la barre de
+  /// progression suivent. Pas pendant que « vu » est en train d'être basculé
+  /// ici, dont la réponse fait déjà foi.
+  @override
+  void onProgressChanged() {
+    if (_loadingWatched) return;
+    _loadProgress(silent: true);
+  }
+
   Future<void> _toggleWatched() async {
     setState(() => _loadingWatched = true);
     try {
@@ -218,8 +231,8 @@ class _MovieDetailScreenState extends State<MovieDetailScreen> {
     } catch (_) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-              content: Text('Impossible de mettre à jour le statut')),
+          SnackBar(
+              content: Text(tr('Impossible de mettre à jour le statut'))),
         );
       }
     } finally {
@@ -270,12 +283,12 @@ class _MovieDetailScreenState extends State<MovieDetailScreen> {
       await _loadDetails(forceRefresh: true);
       await home.loadHome(silent: true);
       messenger.showSnackBar(
-        const SnackBar(content: Text('Fiche mise à jour')),
+        SnackBar(content: Text(tr('Fiche mise à jour'))),
       );
     } catch (_) {
       if (!mounted) return;
       messenger.showSnackBar(
-        const SnackBar(content: Text('Impossible de mettre à jour la fiche')),
+        SnackBar(content: Text(tr('Impossible de mettre à jour la fiche'))),
       );
     }
   }
@@ -351,8 +364,8 @@ class _MovieDetailScreenState extends State<MovieDetailScreen> {
               onBack: () => Navigator.of(context).pop(),
               loading: _loadingDetails,
               emptyOverviewLabel: _loadingDetails
-                  ? 'Chargement des informations…'
-                  : 'Synopsis indisponible pour ce film.',
+                  ? tr('Chargement des informations…')
+                  : tr('Synopsis indisponible pour ce film.'),
               badges: techBadgesFor(_tracks),
               actions: DetailActions(
                 playLabel: detailPlayLabel(resuming: _hasProgress),
@@ -375,7 +388,7 @@ class _MovieDetailScreenState extends State<MovieDetailScreen> {
                   if (canFixMetadata)
                     IconButton(
                       onPressed: _rematch,
-                      tooltip: 'Corriger la fiche',
+                      tooltip: tr('Corriger la fiche'),
                       icon: const Icon(AppIcons.edit),
                       color: AppColors.textSecondary,
                     ),
@@ -392,10 +405,10 @@ class _MovieDetailScreenState extends State<MovieDetailScreen> {
                   key: ValueKey(_selectedVersion?.item.media.id),
                   initialValue: _selectedVersion?.item.media.id,
                   isExpanded: true,
-                  decoration: const InputDecoration(
-                    labelText: 'Version',
+                  decoration: InputDecoration(
+                    labelText: tr('Version'),
                     helperText:
-                        'La meilleure qualité est sélectionnée par défaut.',
+                        tr('La meilleure qualité est sélectionnée par défaut.'),
                   ),
                   items: _versions
                       .map((version) => DropdownMenuItem(

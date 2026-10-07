@@ -31,8 +31,10 @@ const StillWatchingAllDay = -1
 // DefaultPlaybackPreferences sont les réglages d'un compte qui n'a rien
 // choisi. Les mêmes valeurs que les DEFAULT des colonnes.
 func DefaultPlaybackPreferences() PlaybackPreferences {
+	// La question est éteinte tant qu'on ne l'a pas demandée : le nombre
+	// d'épisodes et la plage ne sont que ce qu'elle proposera une fois allumée.
 	return PlaybackPreferences{
-		StillWatchingEnabled:  true,
+		StillWatchingEnabled:  false,
 		StillWatchingEpisodes: 3,
 		StillWatchingFrom:     StillWatchingAllDay,
 		StillWatchingUntil:    StillWatchingAllDay,

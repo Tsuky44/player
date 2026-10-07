@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../../../theme/app_type.dart';
+import '../../../l10n/tr.dart';
 
 /// « Vous regardez encore ? » : ce qui prend l'écran quand plusieurs épisodes
 /// se sont enchaînés sans que personne ne touche au lecteur (ADR-0045).
@@ -56,8 +57,8 @@ class _StillWatchingPromptState extends State<StillWatchingPrompt> {
               const Icon(Icons.bedtime_outlined,
                   size: 54, color: Colors.white70),
               const SizedBox(height: 22),
-              const Text(
-                'Vous regardez encore ?',
+              Text(
+                tr('Vous regardez encore ?'),
                 textAlign: TextAlign.center,
                 style: TextStyle(
                   color: Colors.white,
@@ -66,9 +67,9 @@ class _StillWatchingPromptState extends State<StillWatchingPrompt> {
                 ),
               ),
               const SizedBox(height: 12),
-              const Text(
-                'Plusieurs épisodes se sont enchaînés sans que personne ne '
-                'touche au lecteur. La lecture est en pause.',
+              Text(
+                tr('Plusieurs épisodes se sont enchaînés sans que personne '
+                    'ne touche au lecteur. La lecture est en pause.'),
                 textAlign: TextAlign.center,
                 style: TextStyle(
                   color: Colors.white70,
@@ -87,11 +88,11 @@ class _StillWatchingPromptState extends State<StillWatchingPrompt> {
                     focusNode: _continueFocus,
                     onPressed: widget.onContinue,
                     icon: const Icon(Icons.play_arrow_rounded),
-                    label: const Text('Continuer la lecture'),
+                    label: Text(tr('Continuer la lecture')),
                   ),
                   TextButton(
                     onPressed: widget.onLeave,
-                    child: const Text('Quitter'),
+                    child: Text(tr('Quitter')),
                   ),
                 ],
               ),

@@ -203,6 +203,26 @@ jobs:
           retention-days: 7
           if-no-files-found: error
 
+      # Google Play ne prend qu'un App Bundle, et refuse une app qui se met a
+      # jour hors de chez lui : STORE_BUILD coupe la mise a jour maison et
+      # retire REQUEST_INSTALL_PACKAGES du manifeste (ADR-0046). L'artefact ne
+      # s'appelle pas installer-* : il n'a rien a faire sur /api/downloads ni
+      # dans la Release, il se depose a la main dans la Play Console.
+      - name: Build App Bundle (Google Play)
+        working-directory: app
+        run: |
+          flutter build appbundle --release \
+            --dart-define=STORE_BUILD=true \
+            --build-name="${{ needs.prepare.outputs.version }}" \
+            --build-number="${{ github.run_number }}"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: store-android
+          path: app/build/app/outputs/bundle/release/app-release.aab
+          retention-days: 30
+          if-no-files-found: error
+
   # ---------------------------------------------------------------------------
   # macOS — DMG
   # ---------------------------------------------------------------------------
@@ -343,6 +363,8 @@ jobs:
           retention-days: 7
           if-no-files-found: error
 
+      # Build store (ADR-0046) : l'archive qui part chez Apple ne propose pas
+      # d'installeurs. L'IPA de sideloading, plus haut, reste complet.
       # TestFlight veut une archive Xcode, pas un .app. Elle reste non signee :
       # la signature se fait a l'export. run_number ne fait que croitre, ce
       # qu'exige TestFlight pour les builds d'une meme version.
@@ -355,6 +377,7 @@ jobs:
           LANG: en_US.UTF-8
         run: |
           flutter build ipa --release --no-codesign \
+            --dart-define=STORE_BUILD=true \
             --build-name="${{ needs.prepare.outputs.version }}" \
             --build-number="${{ github.run_number }}"
 

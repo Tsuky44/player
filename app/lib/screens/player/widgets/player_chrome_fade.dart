@@ -3,11 +3,7 @@ import 'package:flutter/material.dart';
 import '../../../theme/app_motion.dart';
 
 /// Comment le chrome du lecteur apparaît et disparaît : un seul fondu,
-/// [AppMotion.standard], le même dans les deux sens et pour les trois chromes.
-///
-/// Le chrome Onyx fondait en 200 ms ; le HUD par défaut glissait en 340 ms à
-/// l'entrée et disparaissait d'un coup ; le modulaire clignotait dans les deux
-/// sens. Trois physiques pour un même geste, selon une préférence. Un
+/// [AppMotion.standard], le même dans les deux sens. Un
 /// `AnimatedOpacity` repart de la valeur affichée : toucher l'écran pendant le
 /// fondu le reprend en cours de route au lieu de le rejouer.
 ///

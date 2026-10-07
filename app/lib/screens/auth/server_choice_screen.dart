@@ -10,6 +10,7 @@ import '../../services/server_reachability.dart';
 import '../../theme/app_colors.dart';
 import '../../theme/app_type.dart';
 import '../../utils/on_screen.dart';
+import '../../l10n/tr.dart';
 
 /// Ce que l'app affiche quand le serveur principal ne répond pas au lancement.
 ///
@@ -92,7 +93,7 @@ class _ServerChoiceScreenState extends State<ServerChoiceScreen>
     final primary = auth.unreachablePrimary;
     if (await auth.retryPrimaryServer() || !mounted) return;
     _toast(
-      '${primary?.displayName ?? 'Le serveur principal'} ne répond toujours pas.',
+      tr('{0} ne répond toujours pas.', [primary?.displayName ?? tr('Le serveur principal')]),
       error: true,
     );
   }
@@ -100,13 +101,13 @@ class _ServerChoiceScreenState extends State<ServerChoiceScreen>
   Future<void> _switchTo(ServerAccount account) async {
     final auth = context.read<AuthProvider>();
     if (await auth.switchServer(account.id) || !mounted) return;
-    _toast(auth.errorMessage ?? 'Bascule impossible.', error: true);
+    _toast(auth.errorMessage ?? tr('Bascule impossible.'), error: true);
   }
 
   Future<void> _stayOffline() async {
     final auth = context.read<AuthProvider>();
     if (await auth.continueOfflineOnPrimary() || !mounted) return;
-    _toast('Rien n’a été gardé de ce serveur : reconnectez-vous.', error: true);
+    _toast(tr('Rien n’a été gardé de ce serveur : reconnectez-vous.'), error: true);
   }
 
   @override
@@ -135,7 +136,7 @@ class _ServerChoiceScreenState extends State<ServerChoiceScreen>
                 ),
                 const SizedBox(height: 20),
                 Text(
-                  'Serveur principal non disponible',
+                  tr('Serveur principal non disponible'),
                   textAlign: TextAlign.center,
                   style: Theme.of(context).textTheme.titleLarge?.copyWith(
                         fontWeight: FontWeight.w700,
@@ -143,8 +144,8 @@ class _ServerChoiceScreenState extends State<ServerChoiceScreen>
                 ),
                 const SizedBox(height: 10),
                 Text(
-                  '${primary?.displayName ?? 'Votre serveur'} ne répond pas. '
-                  'Voulez-vous basculer sur un autre de vos serveurs ?',
+                  tr('{0} ne répond pas. Voulez-vous basculer sur un autre '
+                      'de vos serveurs ?', [primary?.displayName ?? tr('Votre serveur')]),
                   textAlign: TextAlign.center,
                   style: const TextStyle(
                     color: AppColors.textSecondary,
@@ -160,10 +161,10 @@ class _ServerChoiceScreenState extends State<ServerChoiceScreen>
                     onSelect: () => _switchTo(account),
                   ),
                 if (others.isEmpty)
-                  const Padding(
+                  Padding(
                     padding: EdgeInsets.only(bottom: 16),
                     child: Text(
-                      'Aucun autre serveur n’est ouvert sur cet appareil.',
+                      tr('Aucun autre serveur n’est ouvert sur cet appareil.'),
                       textAlign: TextAlign.center,
                       style: TextStyle(
                         color: AppColors.textMuted,
@@ -175,13 +176,13 @@ class _ServerChoiceScreenState extends State<ServerChoiceScreen>
                 FilledButton.tonalIcon(
                   onPressed: auth.isLoading ? null : _retry,
                   icon: const Icon(Icons.refresh_rounded),
-                  label: Text(auth.isLoading ? 'Connexion…' : 'Réessayer'),
+                  label: Text(auth.isLoading ? tr('Connexion…') : tr('Réessayer')),
                 ),
                 if (_canGoOffline) ...[
                   const SizedBox(height: 6),
                   TextButton(
                     onPressed: auth.isLoading ? null : _stayOffline,
-                    child: const Text('Continuer hors ligne'),
+                    child: Text(tr('Continuer hors ligne')),
                   ),
                 ],
               ],

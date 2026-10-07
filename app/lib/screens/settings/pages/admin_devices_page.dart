@@ -7,6 +7,7 @@ import '../../../theme/app_colors.dart';
 import '../widgets/device_tile.dart';
 import '../widgets/settings_ui.dart';
 import '../../../theme/app_type.dart';
+import '../../../l10n/tr.dart';
 
 /// Toutes les sessions ouvertes sur le serveur, rangées par compte.
 class AdminDevicesPage extends StatefulWidget {
@@ -38,29 +39,30 @@ class _AdminDevicesPageState extends State<AdminDevicesPage> {
     } catch (e) {
       if (!mounted) return;
       setState(() => _error =
-          settingsErrorText(e, 'Impossible de charger les appareils.'));
+          settingsErrorText(e, tr('Impossible de charger les appareils.')));
     }
   }
 
   Future<void> _revoke(ConnectedDevice device) async {
     final confirmed = await confirmSettingsAction(
       context,
-      title: 'Déconnecter ${device.displayName} ?',
+      title: tr('Déconnecter {0} ?', [device.displayName]),
       message:
-          '${device.username} devra se reconnecter sur cet appareil. Une lecture en cours s’arrêtera.',
-      confirmLabel: 'Déconnecter',
+          tr('{0} devra se reconnecter sur cet appareil. Une lecture en '
+              'cours s’arrêtera.', [device.username]),
+      confirmLabel: tr('Déconnecter'),
     );
     if (!confirmed || !mounted) return;
     setState(() => _busy = device.id);
     try {
       await context.read<ApiClient>().revokeAnyDevice(device.id);
       if (mounted) {
-        showSettingsSnack(context, '${device.displayName} déconnecté.');
+        showSettingsSnack(context, tr('{0} déconnecté.', [device.displayName]));
       }
     } catch (e) {
       if (mounted) {
         showSettingsSnack(
-            context, settingsErrorText(e, 'Échec de la déconnexion.'),
+            context, settingsErrorText(e, tr('Échec de la déconnexion.')),
             error: true);
       }
     }
@@ -84,13 +86,14 @@ class _AdminDevicesPageState extends State<AdminDevicesPage> {
         .length;
 
     return SettingsPage(
-      title: 'Appareils',
+      title: tr('Appareils'),
       description:
-          'Chaque appareil connecté au serveur, pour chaque compte. Déconnectez celui que vous ne reconnaissez pas.',
+          tr('Chaque appareil connecté au serveur, pour chaque compte. '
+              'Déconnectez celui que vous ne reconnaissez pas.'),
       onRefresh: _load,
       actions: [
         IconButton(
-          tooltip: 'Actualiser',
+          tooltip: tr('Actualiser'),
           onPressed: _load,
           icon: const Icon(Icons.refresh_rounded),
         ),
@@ -103,32 +106,32 @@ class _AdminDevicesPageState extends State<AdminDevicesPage> {
           StatGrid(children: [
             StatTile(
               icon: Icons.devices_rounded,
-              label: 'Sessions ouvertes',
+              label: tr('Sessions ouvertes'),
               value: '${devices.length}',
             ),
             StatTile(
               icon: Icons.circle,
-              label: 'Actifs maintenant',
+              label: tr('Actifs maintenant'),
               value: '$activeNow',
               color: AppColors.success,
             ),
             StatTile(
               icon: Icons.group_rounded,
-              label: 'Comptes',
+              label: tr('Comptes'),
               value: '${byUser.length}',
               color: AppColors.accentMuted,
             ),
             StatTile(
               icon: Icons.public_rounded,
-              label: 'Hors du réseau local',
+              label: tr('Hors du réseau local'),
               value: '$remote',
               color: remote > 0 ? AppColors.warning : AppColors.textMuted,
-              hint: 'depuis le démarrage',
+              hint: tr('depuis le démarrage'),
             ),
           ]),
           if (devices.isEmpty)
-            const SettingsGroup(
-                children: [SettingsEmptyNote('Aucun appareil connecté.')]),
+            SettingsGroup(
+                children: [SettingsEmptyNote(tr('Aucun appareil connecté.'))]),
           for (final entry in byUser.entries)
             SettingsGroup(
               title: entry.key,

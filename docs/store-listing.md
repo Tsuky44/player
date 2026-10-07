@@ -65,11 +65,27 @@ Contact: <EMAIL_CONTACT>
 
 ## Checklist avant soumission
 
+Fait dans le code (ADR-0046) :
+
+- [x] Identifiant unique `com.tsuky.onyx` sur Android, iOS, tvOS et macOS
+- [x] Flag `STORE_BUILD` : pas de mise à jour maison, pas de page Applications, pas de
+      `REQUEST_INSTALL_PACKAGES`
+- [x] App Bundle Android produit par la CI (artefact `store-android`)
+- [x] Suppression de son compte depuis Paramètres > Mon compte
+- [x] Politique de confidentialité, conditions, licences, responsabilité et attribution TMDB
+      dans Paramètres > Cet appareil > À propos
+- [x] Icône adaptative Android
+
+Reste à faire :
+
+- [ ] Politique de confidentialité en ligne (URL obligatoire) : publier
+      `app/assets/legal/confidentialite.txt`, relu par un juriste
+- [ ] Interface en anglais : traduite (ADR-0047), à relire écran par écran ; restent les messages
+      du serveur, les textes légaux et les descriptions d'autorisations iOS
+- [ ] Logo TMDB à côté de l'attribution, et accord commercial TMDB avant de vendre
+      (sales@themoviedb.org)
 - [ ] Serveur de démo public avec uniquement du contenu libre
 - [ ] Compte de démo qui reste valide pendant toute la review
 - [ ] Captures d'écran avec du contenu libre (pas d'affiches de films commerciaux)
-- [ ] Mention de responsabilité et attribution TMDB dans Paramètres > À propos
-- [ ] Politique de confidentialité en ligne (URL obligatoire)
 - [ ] Onglet Demandes masqué tant qu'aucun service n'est connecté (à vérifier dans l'app)
-- [ ] Plan B : flag `STORE_BUILD` qui masque Demandes et intégrations
 - [ ] Google Play : test fermé (12 testeurs, 14 jours) pour un compte individuel neuf

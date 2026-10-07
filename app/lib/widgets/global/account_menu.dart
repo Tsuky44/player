@@ -10,6 +10,7 @@ import 'glass_chrome.dart';
 import 'join_watch_party_dialog.dart';
 import '../../theme/app_icons.dart';
 import '../../theme/app_type.dart';
+import '../../l10n/tr.dart';
 
 /// Single owner of the account menu — consumed by the desktop header, the
 /// compact tab bar and the Home overlay bar so all three stay identical.
@@ -33,7 +34,7 @@ class AccountMenu extends StatelessWidget {
     final canSwitch = servers.length > 1;
 
     return PopupMenuButton<String>(
-      tooltip: 'Menu',
+      tooltip: tr('Menu'),
       offset: const Offset(0, 44),
       padding: EdgeInsets.zero,
       itemBuilder: (_) => [
@@ -74,7 +75,7 @@ class AccountMenu extends StatelessWidget {
                     const SizedBox(width: 8),
                     Flexible(
                       child: Text(
-                        'Passer sur ${account.displayName}',
+                        tr('Passer sur {0}', [account.displayName]),
                         overflow: TextOverflow.ellipsis,
                       ),
                     ),
@@ -83,36 +84,35 @@ class AccountMenu extends StatelessWidget {
               ),
           const PopupMenuDivider(),
         ],
-        const PopupMenuItem(
+        PopupMenuItem(
           value: 'watch-party',
           child: Row(
             children: [
               Icon(AppIcons.watchParty, size: 16),
               SizedBox(width: 8),
-              Text('Rejoindre une séance'),
+              Text(tr('Rejoindre une séance')),
             ],
           ),
         ),
         const PopupMenuDivider(),
-        // « Serveurs » et « Player Studio » ont quitté ce menu : le premier
-        // ouvrait les mêmes Paramètres sur une autre section, le second est
-        // dans Paramètres › Lecture, avec le reste de l'interface du lecteur.
-        const PopupMenuItem(
+        // « Serveurs » a quitté ce menu : il ouvrait les mêmes Paramètres sur
+        // une autre section.
+        PopupMenuItem(
           value: 'settings',
-          child: _MenuRow(icon: AppIcons.settings, label: 'Paramètres'),
+          child: _MenuRow(icon: AppIcons.settings, label: tr('Paramètres')),
         ),
         if (canLinkTv)
-          const PopupMenuItem(
+          PopupMenuItem(
             value: 'tv',
             child: _MenuRow(
               icon: AppIcons.scan,
-              label: 'Connecter un appareil',
+              label: tr('Connecter un appareil'),
             ),
           ),
         const PopupMenuDivider(),
-        const PopupMenuItem(
+        PopupMenuItem(
           value: 'logout',
-          child: _MenuRow(icon: AppIcons.signOut, label: 'Se déconnecter'),
+          child: _MenuRow(icon: AppIcons.signOut, label: tr('Se déconnecter')),
         ),
       ],
       onSelected: (value) async {

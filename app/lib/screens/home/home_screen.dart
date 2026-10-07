@@ -7,12 +7,14 @@ import '../../providers/library_provider.dart';
 import '../../theme/app_colors.dart';
 import '../../tv/tv_mode.dart';
 import '../../utils/hero_slides.dart';
+import '../../utils/on_screen.dart';
 import '../../navigation/search_route_observer.dart';
 import '../../widgets/global/account_menu.dart';
 import '../../widgets/global/app_download_button.dart';
 import '../../widgets/global/empty_state.dart';
 import '../../widgets/global/glass_chrome.dart';
 import '../../widgets/global/hero_carousel.dart';
+import '../../widgets/global/live_progress_state.dart';
 import '../../widgets/global/media_row.dart';
 import '../../widgets/global/poster_launch_route.dart';
 import '../../widgets/global/remote_playback_banner.dart';
@@ -23,6 +25,7 @@ import '../library/movie_detail_screen.dart';
 import '../library/show_detail_screen.dart';
 import '../player/player_screen.dart';
 import '../../theme/app_icons.dart';
+import '../../l10n/tr.dart';
 
 class HomeScreen extends StatefulWidget {
   final bool embedded;
@@ -40,10 +43,30 @@ class HomeScreen extends StatefulWidget {
   State<HomeScreen> createState() => _HomeScreenState();
 }
 
-class _HomeScreenState extends State<HomeScreen> {
+class _HomeScreenState extends State<HomeScreen>
+    with OnScreenState, LiveProgressState {
   HomeProvider? _homeProvider;
   final _scrollController = ScrollController();
   double _scrollOffset = 0;
+
+  /// L'accueil n'était chargé qu'à l'ouverture de l'app : un téléphone sorti
+  /// de veille gardait la rangée « Reprendre la lecture » d'avant, pendant que
+  /// la série avançait sur un autre appareil. Chaque retour à l'écran la relit.
+  /// Le tout premier passage est celui d'`initState`, qui charge déjà.
+  @override
+  void didChangeOnScreen(bool onScreen) {
+    super.didChangeOnScreen(onScreen);
+    if (!onScreen || _homeProvider == null) return;
+    _homeProvider!.loadHome(silent: true);
+  }
+
+  @override
+  bool get reloadsOnReturn => true;
+
+  /// Et pendant qu'il reste affiché : la série qui avance ailleurs déplace la
+  /// rangée « Reprendre la lecture » sans qu'on ait à quitter l'accueil.
+  @override
+  void onProgressChanged() => _homeProvider?.loadHome(silent: true);
 
   @override
   void initState() {
@@ -221,7 +244,7 @@ class _HomeScreenState extends State<HomeScreen> {
                                 height: widget.embedded ? 120 : 200,
                                 child: Center(
                                   child: Text(
-                                    'Bienvenue sur Onyx',
+                                    tr('Bienvenue sur Onyx'),
                                     style: Theme.of(context)
                                         .textTheme
                                         .headlineSmall,
@@ -247,7 +270,7 @@ class _HomeScreenState extends State<HomeScreen> {
                                 data.continueWatching.isNotEmpty)
                               SliverToBoxAdapter(
                                 child: MediaRow(
-                                  title: 'Reprendre la lecture',
+                                  title: tr('Reprendre la lecture'),
                                   items: data.continueWatching,
                                   isContinueWatching: true,
                                   // Never on a television, where taking the
@@ -281,7 +304,7 @@ class _HomeScreenState extends State<HomeScreen> {
                                   child: SizedBox(height: 32)),
                               SliverToBoxAdapter(
                                 child: MediaRow(
-                                  title: 'Films récents',
+                                  title: tr('Films récents'),
                                   items: data.recentMovies,
                                   autofocusFirstItem:
                                       !isTv && data.continueWatching.isEmpty,
@@ -297,7 +320,7 @@ class _HomeScreenState extends State<HomeScreen> {
                                   child: SizedBox(height: 32)),
                               SliverToBoxAdapter(
                                 child: MediaRow(
-                                  title: 'Séries récentes',
+                                  title: tr('Séries récentes'),
                                   items: data.recentShows,
                                   autofocusFirstItem: !isTv &&
                                       data.continueWatching.isEmpty &&
@@ -318,7 +341,7 @@ class _HomeScreenState extends State<HomeScreen> {
                               // ne changeait qu'à l'ajout d'un fichier.
                               SliverToBoxAdapter(
                                 child: MediaRow(
-                                  title: 'À découvrir',
+                                  title: tr('À découvrir'),
                                   items: discovery,
                                   onItemTap: (item) =>
                                       _openMedia(context, item as Media),
@@ -375,21 +398,21 @@ class _EmptyLibraryView extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     if (!canManageLibrary) {
-      return const EmptyStateView(
+      return EmptyStateView(
         icon: AppIcons.movie,
-        title: 'Bibliothèque vide',
-        message: 'Aucun film ni aucune série sur ce serveur pour l’instant. '
-            'Son administrateur peut en ajouter.',
+        title: tr('Bibliothèque vide'),
+        message: tr('Aucun film ni aucune série sur ce serveur pour l’instant. Son '
+            'administrateur peut en ajouter.'),
       );
     }
     return EmptyStateView(
       icon: AppIcons.movie,
-      title: 'Bibliothèque vide',
-      message: 'Ajoutez des fichiers dans vos dossiers Films et Séries, '
-          'puis lancez une synchronisation.',
-      actionLabel: 'Synchroniser',
+      title: tr('Bibliothèque vide'),
+      message: tr('Ajoutez des fichiers dans vos dossiers Films et Séries, puis '
+          'lancez une synchronisation.'),
+      actionLabel: tr('Synchroniser'),
       onAction: homeProvider.triggerLibraryScan,
-      secondaryActionLabel: 'Extraire les sous-titres',
+      secondaryActionLabel: tr('Extraire les sous-titres'),
       onSecondaryAction: homeProvider.triggerSubtitleExtract,
     );
   }

@@ -4,6 +4,7 @@ import '../../models/models.dart';
 import '../../theme/app_colors.dart';
 import '../../utils/responsive.dart';
 import 'detail_metadata.dart';
+import '../../l10n/tr.dart';
 
 /// Describes the original file, independently of the playback device.
 class MediaTechnicalSection extends StatelessWidget {
@@ -43,19 +44,19 @@ class MediaTechnicalSection extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text('Informations techniques',
+          Text(tr('Informations techniques'),
               style: detailSectionTitleStyle(context)),
           const SizedBox(height: 12),
           if (loading)
-            const Text('Chargement des formats…',
+            Text(tr('Chargement des formats…'),
                 style: TextStyle(color: AppColors.textSecondary))
           else if (failed) ...[
-            const Text('Impossible de charger les formats du fichier.',
+            Text(tr('Impossible de charger les formats du fichier.'),
                 style: TextStyle(color: AppColors.textSecondary)),
-            TextButton(onPressed: onRetry, child: const Text('Réessayer')),
+            TextButton(onPressed: onRetry, child: Text(tr('Réessayer'))),
           ] else ...[
             if (videoLabels.isNotEmpty) ...[
-              const Text('Vidéo',
+              Text(tr('Vidéo'),
                   style: TextStyle(color: AppColors.textSecondary)),
               const SizedBox(height: 8),
               Wrap(
@@ -73,7 +74,7 @@ class MediaTechnicalSection extends StatelessWidget {
             ],
             if (audio.isNotEmpty) ...[
               const SizedBox(height: 16),
-              const Text('Audio',
+              Text(tr('Audio'),
                   style: TextStyle(color: AppColors.textSecondary)),
               const SizedBox(height: 8),
               for (final track in audio)
@@ -85,7 +86,7 @@ class MediaTechnicalSection extends StatelessWidget {
                 ),
             ],
             if (videoLabels.isEmpty && audio.isEmpty)
-              const Text('Formats indisponibles pour ce fichier.',
+              Text(tr('Formats indisponibles pour ce fichier.'),
                   style: TextStyle(color: AppColors.textSecondary)),
           ],
         ],

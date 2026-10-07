@@ -10,6 +10,7 @@ import '../../theme/app_colors.dart';
 import '../../tv/tv_deferred_keyboard.dart';
 import 'shared_link_app.dart';
 import 'shared_link_screen.dart';
+import '../../l10n/tr.dart';
 
 /// Un lien de partage tel que l'app installée le lit : le serveur qui l'a
 /// créé, et son code (ADR-0037 §9).
@@ -101,8 +102,7 @@ class _OpenSharedLinkDialogState extends State<_OpenSharedLinkDialog> {
   void _open() {
     final address = SharedLinkAddress.tryParse(_link.text);
     if (address == null) {
-      setState(() => _error = 'Collez le lien entier, tel que vous l’avez '
-          'reçu : https://…/share#…');
+      setState(() => _error = tr('Collez le lien entier, tel que vous l’avez reçu : https://…/share#…'));
       return;
     }
     Navigator.of(context).pop(address);
@@ -112,16 +112,16 @@ class _OpenSharedLinkDialogState extends State<_OpenSharedLinkDialog> {
   Widget build(BuildContext context) {
     return AlertDialog(
       backgroundColor: AppColors.surfaceElevated,
-      title: const Text('Ouvrir un lien de partage'),
+      title: Text(tr('Ouvrir un lien de partage')),
       content: ConstrainedBox(
         constraints: const BoxConstraints(maxWidth: 420),
         child: Column(
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            const Text(
-              'Collez le lien qu’on vous a envoyé. Il se regarde ici, sans '
-              'compte.',
+            Text(
+              tr('Collez le lien qu’on vous a envoyé. Il se regarde ici, '
+                  'sans compte.'),
               style: TextStyle(color: AppColors.textSecondary),
             ),
             const SizedBox(height: 16),
@@ -135,7 +135,7 @@ class _OpenSharedLinkDialogState extends State<_OpenSharedLinkDialog> {
                 enableSuggestions: false,
                 keyboardType: TextInputType.url,
                 decoration: InputDecoration(
-                  labelText: 'Lien',
+                  labelText: tr('Lien'),
                   hintText: 'https://…/share#…',
                   errorText: _error,
                   errorMaxLines: 3,
@@ -149,9 +149,9 @@ class _OpenSharedLinkDialogState extends State<_OpenSharedLinkDialog> {
       actions: [
         TextButton(
           onPressed: () => Navigator.of(context).pop(),
-          child: const Text('Annuler'),
+          child: Text(tr('Annuler')),
         ),
-        FilledButton(onPressed: _open, child: const Text('Ouvrir')),
+        FilledButton(onPressed: _open, child: Text(tr('Ouvrir'))),
       ],
     );
   }

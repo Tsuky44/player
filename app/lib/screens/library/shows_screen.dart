@@ -12,6 +12,7 @@ import '../../widgets/global/media_card.dart';
 import '../../widgets/global/skeleton.dart';
 import 'show_detail_screen.dart';
 import '../../theme/app_icons.dart';
+import '../../l10n/tr.dart';
 
 enum _SortOption { title, recent }
 
@@ -81,10 +82,10 @@ class _ShowsScreenState extends State<ShowsScreen> {
                       0,
                     ),
                     child: CatalogHeader<_SortOption>(
-                      title: 'Séries',
+                      title: tr('Séries'),
                       countLabel: lp.isLoadingShows
                           ? null
-                          : '${filtered.length} série${filtered.length > 1 ? 's' : ''}',
+                          : tr('{0} série{1}', [filtered.length, filtered.length > 1 ? 's' : '']),
                       sortOptions: _sortLabels,
                       sort: _sort,
                       onSortChanged: (v) => setState(() => _sort = v),
@@ -99,19 +100,21 @@ class _ShowsScreenState extends State<ShowsScreen> {
                     sliver: const PosterGridSkeleton(),
                   )
                 else if (lp.shows.isEmpty)
-                  const SliverFillRemaining(
+                  SliverFillRemaining(
                     child: EmptyStateView(
                       icon: AppIcons.series,
-                      title: 'Aucune série',
+                      title: tr('Aucune série'),
                       message:
-                          'Ajoutez des dossiers de séries avec des épisodes SxxExx puis synchronisez la bibliothèque.',
+                          tr('Ajoutez des dossiers de séries avec des '
+                              'épisodes SxxExx puis synchronisez la '
+                              'bibliothèque.'),
                     ),
                   )
                 else if (filtered.isEmpty)
-                  const SliverFillRemaining(
+                  SliverFillRemaining(
                     child: Center(
                       child: Text(
-                        'Aucune série trouvée',
+                        tr('Aucune série trouvée'),
                         style: TextStyle(color: AppColors.textMuted),
                       ),
                     ),

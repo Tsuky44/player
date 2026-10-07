@@ -1,0 +1,13 @@
+Onyx embarque, selon la plateforme, les composants suivants. Chacun reste soumis à sa propre licence.
+
+mpv / libmpv — LGPL-2.1 ou ultérieure — https://mpv.io — sources : https://github.com/mpv-player/mpv
+FFmpeg — LGPL-2.1 ou ultérieure — https://ffmpeg.org — sources : https://github.com/FFmpeg/FFmpeg
+Binaires mpv et FFmpeg d'iOS et de macOS : https://github.com/media-kit/libmpv-darwin-build
+libass — ISC — https://github.com/libass/libass
+AetherEngine (iPhone, Mac, Apple TV) — LGPL-3.0 avec exception pour les magasins d'applications — https://github.com/superuser404notfound/AetherEngine
+AndroidX Media3 / ExoPlayer (Android) — Apache-2.0 — https://github.com/androidx/media
+
+Le texte de la LGPL : https://www.gnu.org/licenses/lgpl-2.1.html et https://www.gnu.org/licenses/lgpl-3.0.html
+Le texte de la licence Apache 2.0 : https://www.apache.org/licenses/LICENSE-2.0
+
+Ces bibliothèques sont utilisées sans modification de leur code. Les métadonnées et les affiches proviennent de TMDB ; ce produit utilise l'API TMDB mais n'est ni approuvé ni certifié par TMDB.

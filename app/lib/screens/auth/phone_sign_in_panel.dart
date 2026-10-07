@@ -10,6 +10,7 @@ import '../../services/api_client.dart';
 import '../../theme/app_colors.dart';
 import '../../utils/app_platform.dart';
 import '../../theme/app_type.dart';
+import '../../l10n/tr.dart';
 
 /// Sign in by scanning a QR with the phone — the password form's neighbour on
 /// the web and desktop sign-in screen (ADR-0020).
@@ -36,7 +37,7 @@ class PhoneSignInPanel extends StatefulWidget {
 
   /// How this device is named on the phone that approves it.
   static String get deviceName {
-    if (AppPlatform.isWeb) return 'Navigateur web';
+    if (AppPlatform.isWeb) return tr('Navigateur web');
     final host = AppPlatform.hostName;
     return host.isEmpty ? AppPlatform.label : '${AppPlatform.label} · $host';
   }
@@ -172,14 +173,14 @@ class _PhoneSignInPanelState extends State<PhoneSignInPanel> {
       mainAxisSize: MainAxisSize.min,
       children: [
         Text(
-          'Connexion avec un QR code',
+          tr('Connexion avec un QR code'),
           textAlign: TextAlign.center,
           style: textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w700),
         ),
         const SizedBox(height: 8),
-        const Text(
-          'Scannez-le avec l’application Onyx sur un téléphone déjà connecté : '
-          'Compte, puis « Connecter un appareil ».',
+        Text(
+          tr('Scannez-le avec l’application Onyx sur un téléphone déjà '
+              'connecté : Compte, puis « Connecter un appareil ».'),
           textAlign: TextAlign.center,
           style: TextStyle(color: AppColors.textSecondary, height: 1.4),
         ),
@@ -203,16 +204,16 @@ class _PhoneSignInPanelState extends State<PhoneSignInPanel> {
             const Icon(Icons.cloud_off_rounded,
                 size: 36, color: AppColors.textMuted),
             const SizedBox(height: 10),
-            const Padding(
+            Padding(
               padding: EdgeInsets.symmetric(horizontal: 16),
               child: Text(
-                'Code indisponible sur ce serveur.',
+                tr('Code indisponible sur ce serveur.'),
                 textAlign: TextAlign.center,
                 style: TextStyle(color: AppColors.textSecondary, fontSize: AppType.subhead),
               ),
             ),
             const SizedBox(height: 8),
-            TextButton(onPressed: _open, child: const Text('Réessayer')),
+            TextButton(onPressed: _open, child: Text(tr('Réessayer'))),
           ],
         ),
       );
@@ -232,11 +233,11 @@ class _PhoneSignInPanelState extends State<PhoneSignInPanel> {
     if (widget.serverUrl == null && !widget.probing) {
       return _frame(
         light: false,
-        child: const Center(
+        child: Center(
           child: Padding(
             padding: EdgeInsets.all(20),
             child: Text(
-              'Renseignez l’adresse du serveur pour afficher le code.',
+              tr('Renseignez l’adresse du serveur pour afficher le code.'),
               textAlign: TextAlign.center,
               style: TextStyle(color: AppColors.textSecondary, fontSize: AppType.subhead),
             ),
@@ -279,7 +280,7 @@ class _PhoneSignInPanelState extends State<PhoneSignInPanel> {
     final pairing = _pairing;
     if (_phase == _Phase.signingIn) {
       return Text(
-        'Connexion…',
+        tr('Connexion…'),
         style: textTheme.bodySmall?.copyWith(color: AppColors.textMuted),
       );
     }
@@ -289,7 +290,7 @@ class _PhoneSignInPanelState extends State<PhoneSignInPanel> {
     // The code in clear too: a phone whose camera will not focus can still type
     // it, and it is what the phone's confirmation screen shows back.
     return Text(
-      'Code : ${pairing.formattedUserCode}',
+      tr('Code : {0}', [pairing.formattedUserCode]),
       style: textTheme.bodySmall?.copyWith(
         color: AppColors.textMuted,
         letterSpacing: 1.2,

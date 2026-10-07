@@ -10,6 +10,7 @@ import '../../../theme/app_colors.dart';
 import '../widgets/media_thumb.dart';
 import '../widgets/settings_ui.dart';
 import '../../../theme/app_type.dart';
+import '../../../l10n/tr.dart';
 
 class StatsPage extends StatefulWidget {
   const StatsPage({super.key});
@@ -59,7 +60,7 @@ class _StatsPageState extends State<StatsPage> {
       setState(() {
         _loading = false;
         _error =
-            settingsErrorText(e, 'Impossible de calculer les statistiques.');
+            settingsErrorText(e, tr('Impossible de calculer les statistiques.'));
       });
     }
   }
@@ -72,9 +73,10 @@ class _StatsPageState extends State<StatsPage> {
         : stats.watchedSeconds ~/ stats.days;
 
     return SettingsPage(
-      title: 'Statistiques',
+      title: tr('Statistiques'),
       description:
-          'Ce qui se regarde sur le serveur : temps de visionnage, titres préférés, habitudes et applications utilisées.',
+          tr('Ce qui se regarde sur le serveur : temps de visionnage, '
+              'titres préférés, habitudes et applications utilisées.'),
       onRefresh: _load,
       children: [
         Padding(
@@ -100,15 +102,15 @@ class _StatsPageState extends State<StatsPage> {
                 ),
               if (_users.length > 1)
                 PopupMenuButton<int?>(
-                  tooltip: 'Filtrer par utilisateur',
+                  tooltip: tr('Filtrer par utilisateur'),
                   color: AppColors.surfaceElevated,
                   onSelected: (id) {
                     setState(() => _userId = id == -1 ? null : id);
                     _load();
                   },
                   itemBuilder: (_) => [
-                    const PopupMenuItem(
-                        value: -1, child: Text('Tout le monde')),
+                    PopupMenuItem(
+                        value: -1, child: Text(tr('Tout le monde'))),
                     for (final user in _users)
                       PopupMenuItem(
                         value: user.id,
@@ -132,7 +134,7 @@ class _StatsPageState extends State<StatsPage> {
                           size: 16, color: AppColors.textSecondary),
                       const SizedBox(width: 6),
                       Text(_userId == null
-                          ? 'Tout le monde'
+                          ? tr('Tout le monde')
                           : _users
                                   .where((u) => u.id == _userId)
                                   .map((u) => u.username)
@@ -159,47 +161,47 @@ class _StatsPageState extends State<StatsPage> {
           StatGrid(children: [
             StatTile(
               icon: Icons.schedule_rounded,
-              label: 'Temps de visionnage',
+              label: tr('Temps de visionnage'),
               value: formatWatchTime(stats.watchedSeconds),
-              hint: '≈ ${formatWatchTime(perDay)} par jour',
+              hint: tr('≈ {0} par jour', [formatWatchTime(perDay)]),
             ),
             StatTile(
               icon: Icons.play_arrow_rounded,
-              label: 'Lectures',
+              label: tr('Lectures'),
               value: '${stats.plays}',
               hint:
-                  '${stats.activeUsers} utilisateur${stats.activeUsers > 1 ? 's' : ''} actif${stats.activeUsers > 1 ? 's' : ''}',
+                  tr('{0} utilisateur{1} actif{2}', [stats.activeUsers, stats.activeUsers > 1 ? 's' : '', stats.activeUsers > 1 ? 's' : '']),
               color: AppColors.success,
             ),
             StatTile(
               icon: Icons.movie_outlined,
-              label: 'Films différents',
+              label: tr('Films différents'),
               value: '${stats.movies}',
               color: AppColors.warning,
             ),
             StatTile(
               icon: Icons.tv_rounded,
-              label: 'Épisodes différents',
+              label: tr('Épisodes différents'),
               value: '${stats.episodes}',
               color: AppColors.accentMuted,
             ),
           ]),
           SettingsGroup(
-            title: 'Temps de visionnage par jour',
+            title: tr('Temps de visionnage par jour'),
             padded: true,
             children: [_DailyChart(stats.daily)],
           ),
           SettingsGroup(
-            title: 'Heures de visionnage',
-            footer: 'Réparti selon l’heure de début de chaque lecture.',
+            title: tr('Heures de visionnage'),
+            footer: tr('Réparti selon l’heure de début de chaque lecture.'),
             padded: true,
             children: [_HourChart(stats.hourOfDay)],
           ),
           SettingsGroup(
-            title: 'Titres les plus regardés',
+            title: tr('Titres les plus regardés'),
             children: [
               if (stats.topMedia.isEmpty)
-                const SettingsEmptyNote('Aucune lecture sur cette période.')
+                SettingsEmptyNote(tr('Aucune lecture sur cette période.'))
               else
                 for (final (i, media) in stats.topMedia.indexed)
                   _RankedMedia(
@@ -211,7 +213,7 @@ class _StatsPageState extends State<StatsPage> {
           ),
           if (_userId == null && stats.topUsers.isNotEmpty)
             SettingsGroup(
-              title: 'Utilisateurs les plus actifs',
+              title: tr('Utilisateurs les plus actifs'),
               children: [
                 for (final user in stats.topUsers)
                   _BarRow(
@@ -225,7 +227,7 @@ class _StatsPageState extends State<StatsPage> {
             ),
           LayoutBuilder(builder: (context, constraints) {
             final apps = SettingsGroup(
-              title: 'Applications',
+              title: tr('Applications'),
               children: [
                 if (stats.clients.isEmpty)
                   const SettingsEmptyNote('—')
@@ -243,9 +245,10 @@ class _StatsPageState extends State<StatsPage> {
               ],
             );
             final methods = SettingsGroup(
-              title: 'Méthodes de lecture',
+              title: tr('Méthodes de lecture'),
               footer:
-                  'Direct Play et Direct Stream ne coûtent presque rien au serveur ; le transcodage sollicite le processeur.',
+                  tr('Direct Play et Direct Stream ne coûtent presque rien '
+                      'au serveur ; le transcodage sollicite le processeur.'),
               padded: true,
               children: [_MethodsBreakdown(stats.playMethods)],
             );
@@ -300,7 +303,7 @@ class _DailyChartState extends State<_DailyChart> {
             const SizedBox(width: 8),
             Text(
               focus == null
-                  ? 'sur la période'
+                  ? tr('sur la période')
                   : '${formatFrenchDay(focus.date)} · ${focus.plays} lecture${focus.plays > 1 ? 's' : ''}',
               style: const TextStyle(
                   color: AppColors.textSecondary, fontSize: AppType.subhead),
@@ -567,7 +570,7 @@ class _MethodsBreakdown extends StatelessWidget {
   Widget build(BuildContext context) {
     final total = methods.fold<int>(0, (s, m) => s + m.plays);
     if (total == 0) {
-      return const SettingsEmptyNote('Aucune lecture sur cette période.');
+      return SettingsEmptyNote(tr('Aucune lecture sur cette période.'));
     }
     final parsed = [
       for (final m in methods) (PlayMethod.parse(m.key), m.plays),

@@ -44,6 +44,10 @@ type SharedMedia struct {
 	// Episodes : ce que le lien d'une saison ou d'une série permet de lire,
 	// dans l'ordre de diffusion. Vide pour un film ou un épisode.
 	Episodes []SharedEpisode `json:"episodes,omitempty"`
+	// Details : la fiche de la série d'une saison ou d'une série partagée
+	// (synopsis, fond, logo, genres, distribution), pour que la page du lien
+	// ressemble à celle d'un compte. Absent pour un film ou un épisode.
+	Details *MediaDetails `json:"details,omitempty"`
 }
 
 // SharedEpisode est un épisode du lien d'une saison ou d'une série. Son ID se
@@ -54,6 +58,17 @@ type SharedEpisode struct {
 	EpisodeNumber int    `json:"episode_number"`
 	Title         string `json:"title"`
 	Duration      int    `json:"duration,omitempty"`
+	// SeasonID range l'épisode sous sa saison, dans une série entière.
+	SeasonID    int    `json:"season_id"`
+	Overview    string `json:"overview,omitempty"`
+	StillURL    string `json:"still_url,omitempty"`
+	ReleaseDate string `json:"release_date,omitempty"`
+	// Les bornes du générique, pour « Passer l'intro » et l'enchaînement sur
+	// l'épisode suivant ; 0 quand elles ne sont pas connues.
+	IntroStart int `json:"intro_start,omitempty"`
+	IntroEnd   int `json:"intro_end,omitempty"`
+	OutroStart int `json:"outro_start,omitempty"`
+	OutroEnd   int `json:"outro_end,omitempty"`
 }
 
 // SharedMediaAccess est la réponse à l'ouverture d'un lien

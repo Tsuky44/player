@@ -148,6 +148,31 @@ abstract final class HardwareDecoding {
     }
   }
 
+  /// La hauteur d'image à partir de laquelle le décodage sans copie se paie.
+  ///
+  /// La recopie pèse ~24 Mo par image en 4K HDR (ADR-0019) et ~3 Mo en 1080p
+  /// SDR : en dessous de ce seuil elle ne se mesure pas, et un décodage logiciel
+  /// y tient la cadence — c'est aussi le seuil du rattrapage logiciel → copie.
+  static const int zeroCopyMinHeight = 1440;
+
+  /// Vrai quand une image décodée par `d3d11va` sans copie doit repasser sur
+  /// `d3d11va-copy`.
+  ///
+  /// Sans copie, mpv dessine depuis la surface du décodeur, plus grande que
+  /// l'image, et une bande verte de plusieurs dizaines de lignes a été vue en
+  /// bas d'un épisode 1080p — bien au-delà de ce que [zeroCopyEdgeCrop] rogne.
+  /// La copie ne sort que l'image utile : sous le seuil elle ne coûte rien et
+  /// ferme toute cette famille de défauts.
+  static bool windowsZeroCopyUnwanted({
+    required HardwareDecodingPreference preference,
+    required String decoder,
+    required int height,
+  }) =>
+      preference == HardwareDecodingPreference.auto &&
+      decoder == 'd3d11va' &&
+      height > 0 &&
+      height < zeroCopyMinHeight;
+
   /// Le `video-crop` qui cache la bande verte du décodage sans copie sous
   /// Windows, ou `null` quand l'image n'en a pas besoin.
   ///

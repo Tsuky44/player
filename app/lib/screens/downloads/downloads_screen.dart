@@ -18,6 +18,7 @@ import '../player/player_screen.dart';
 import 'download_group_headers.dart';
 import '../../theme/app_icons.dart';
 import '../../theme/app_type.dart';
+import '../../l10n/tr.dart';
 
 /// Ce qui est sur l'appareil, et rien d'autre.
 ///
@@ -68,27 +69,27 @@ class DownloadsScreen extends StatelessWidget {
             ),
           ),
           if (!manager.isSupported)
-            const SliverFillRemaining(
+            SliverFillRemaining(
               hasScrollBody: false,
               child: EmptyStateView(
                 icon: AppIcons.cloudOff,
-                title: 'Indisponible ici',
+                title: tr('Indisponible ici'),
                 message:
-                    'Le téléchargement hors ligne demande un espace de stockage '
-                    "propre à l'application. Utilisez l'app installée sur votre "
-                    'appareil.',
+                    tr('Le téléchargement hors ligne demande un espace de '
+                        'stockage propre à l\'application. Utilisez l\'app '
+                        'installée sur votre appareil.'),
               ),
             )
           else if (items.isEmpty)
-            const SliverFillRemaining(
+            SliverFillRemaining(
               hasScrollBody: false,
               child: EmptyStateView(
                 icon: AppIcons.offline,
-                title: 'Aucun téléchargement',
+                title: tr('Aucun téléchargement'),
                 message:
-                    "Depuis la fiche d'un film ou d'une série, le bouton de "
-                    'téléchargement garde le média sur cet appareil. Il reste '
-                    'lisible même sans serveur.',
+                    tr('Depuis la fiche d\'un film ou d\'une série, le '
+                        'bouton de téléchargement garde le média sur cet '
+                        'appareil. Il reste lisible même sans serveur.'),
               ),
             )
           else
@@ -164,7 +165,7 @@ class DownloadsScreen extends StatelessWidget {
       movies.sort((a, b) => a.title.compareTo(b.title));
       // Pas de fiche commune : chaque film est la sienne, et l'en-tête « Films »
       // ne décrit rien d'autre qu'un regroupement.
-      groups.add(_Group('Films', movies));
+      groups.add(_Group(tr('Films'), movies));
     }
     return groups;
   }
@@ -237,7 +238,7 @@ class _Header extends StatelessWidget {
           children: [
             Expanded(
               child: Text(
-                'Téléchargements',
+                tr('Téléchargements'),
                 style: Theme.of(context).textTheme.displaySmall?.copyWith(
                       fontWeight: FontWeight.w800,
                       fontSize: compact ? 26 : 32,
@@ -250,8 +251,8 @@ class _Header extends StatelessWidget {
                 onPressed: () => _deleteWatched(context, watchedCount),
                 icon: const Icon(AppIcons.clearAll, size: 18),
                 label: Text(compact
-                    ? 'Vus ($watchedCount)'
-                    : 'Supprimer les vus ($watchedCount)'),
+                    ? tr('Vus ({0})', [watchedCount])
+                    : tr('Supprimer les vus ({0})', [watchedCount])),
                 style: TextButton.styleFrom(
                   foregroundColor: AppColors.textSecondary,
                 ),
@@ -274,13 +275,13 @@ class _Header extends StatelessWidget {
             icon: AppIcons.wifiOff,
             color: AppColors.warning,
             text: queuedCount > 1
-                ? '$queuedCount téléchargements attendent le Wi-Fi : le réseau '
-                    'actuel se paie à l’octet.'
-                : 'Un téléchargement attend le Wi-Fi : le réseau actuel se paie '
-                    'à l’octet.',
+                ? tr('{0} téléchargements attendent le Wi-Fi : le réseau '
+                    'actuel se paie à l’octet.', [queuedCount])
+                : tr('Un téléchargement attend le Wi-Fi : le réseau actuel se '
+                    'paie à l’octet.'),
             action: TextButton(
               onPressed: () => allowMeteredDownloadsNow(context),
-              child: const Text('Quand même'),
+              child: Text(tr('Quand même')),
             ),
           ),
         ],
@@ -290,8 +291,9 @@ class _Header extends StatelessWidget {
             icon: AppIcons.cloudOff,
             color: AppColors.warning,
             text: pendingSync > 0
-                ? 'Serveur injoignable. $pendingSync ${pendingSync > 1 ? 'lectures seront synchronisées' : 'lecture sera synchronisée'} au retour de la connexion.'
-                : 'Serveur injoignable. Vous pouvez regarder ce qui est sur cet appareil.',
+                ? tr('Serveur injoignable. {0} {1} au retour de la connexion.', [pendingSync, pendingSync > 1 ? tr('lectures seront synchronisées') : tr('lecture sera synchronisée')])
+                : tr('Serveur injoignable. Vous pouvez regarder ce qui est '
+                    'sur cet appareil.'),
           ),
         ] else if (pendingSync > 0) ...[
           const SizedBox(height: 16),
@@ -299,7 +301,7 @@ class _Header extends StatelessWidget {
             icon: AppIcons.sync,
             color: AppColors.accent,
             text:
-                'Synchronisation de $pendingSync ${pendingSync > 1 ? 'lectures' : 'lecture'} avec le serveur…',
+                tr('Synchronisation de {0} {1} avec le serveur…', [pendingSync, pendingSync > 1 ? tr('lectures') : tr('lecture')]),
           ),
         ],
       ],
@@ -313,20 +315,19 @@ class _Header extends StatelessWidget {
       context: context,
       builder: (context) => AlertDialog(
         backgroundColor: AppColors.surface,
-        title: const Text('Supprimer les médias vus ?'),
+        title: Text(tr('Supprimer les médias vus ?')),
         content: Text(
-          '$count ${count > 1 ? 'éléments seront effacés' : 'élément sera effacé'} '
-          'de cet appareil. Ils restent disponibles sur le serveur.',
+          tr('{0} {1} de cet appareil. Ils restent disponibles sur le serveur.', [count, count > 1 ? tr('éléments seront effacés') : tr('élément sera effacé')]),
         ),
         actions: [
           TextButton(
             onPressed: () => Navigator.of(context).pop(false),
-            child: const Text('Annuler'),
+            child: Text(tr('Annuler')),
           ),
           TextButton(
             onPressed: () => Navigator.of(context).pop(true),
             style: TextButton.styleFrom(foregroundColor: AppColors.error),
-            child: const Text('Supprimer'),
+            child: Text(tr('Supprimer')),
           ),
         ],
       ),
@@ -477,22 +478,22 @@ class _DownloadRow extends StatelessWidget {
     switch (entry.status) {
       case DownloadStatus.completed:
         final size = formatBytes(entry.bytesTotal);
-        if (entry.isFinished) return 'Vu · $size';
+        if (entry.isFinished) return tr('Vu · {0}', [size]);
         if (entry.positionSeconds > 0) {
-          return '${(entry.watchedFraction * 100).round()}% visionné · $size';
+          return tr('{0}% visionné · {1}', [(entry.watchedFraction * 100).round(), size]);
         }
         return size;
       case DownloadStatus.downloading:
         final total = entry.bytesTotal > 0
             ? ' sur ${formatBytes(entry.bytesTotal)}'
             : '';
-        return '${formatBytes(entry.bytesReceived)}$total téléchargés';
+        return tr('{0}{1} téléchargés', [formatBytes(entry.bytesReceived), total]);
       case DownloadStatus.queued:
-        return 'En attente';
+        return tr('En attente');
       case DownloadStatus.paused:
-        return 'En pause · ${formatBytes(entry.bytesReceived)} téléchargés';
+        return tr('En pause · {0} téléchargés', [formatBytes(entry.bytesReceived)]);
       case DownloadStatus.failed:
-        return entry.error ?? 'Échec du téléchargement';
+        return entry.error ?? tr('Échec du téléchargement');
     }
   }
 
@@ -604,12 +605,12 @@ class _RowActions extends StatelessWidget {
       },
       itemBuilder: (context) => [
         if (entry.isActive)
-          const PopupMenuItem(value: 'pause', child: Text('Mettre en pause')),
+          PopupMenuItem(value: 'pause', child: Text(tr('Mettre en pause'))),
         if (entry.status == DownloadStatus.paused)
-          const PopupMenuItem(value: 'resume', child: Text('Reprendre')),
+          PopupMenuItem(value: 'resume', child: Text(tr('Reprendre'))),
         if (entry.status == DownloadStatus.failed)
-          const PopupMenuItem(value: 'retry', child: Text('Réessayer')),
-        const PopupMenuItem(value: 'delete', child: Text('Supprimer')),
+          PopupMenuItem(value: 'retry', child: Text(tr('Réessayer'))),
+        PopupMenuItem(value: 'delete', child: Text(tr('Supprimer'))),
       ],
     );
   }

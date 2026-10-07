@@ -29,7 +29,7 @@ projet Xcode, `../scripts/build-ios-ipa.sh --signed` produit un `.ipa` signé.
 
 ## Repères
 
-- `lib/screens/` — login, shell (accueil, films, séries, demandes), fiches détail, lecteur, Player Studio, réglages.
+- `lib/screens/` — login, shell (accueil, films, séries, demandes), fiches détail, lecteur, réglages.
 - `lib/providers/` — état applicatif (Provider).
 - `lib/theme/` — `AppColors` et `AppTheme`, la direction « Quiet Premium ».
 - `lib/widgets/global/onyx_mark.dart` — la marque Onyx, dessinée en `CustomPainter`.
@@ -42,7 +42,3 @@ icônes par plateforme). Les icônes d'app se régénèrent avec :
 ```bash
 ../brand/generate-icons.sh
 ```
-
-Attention : « playeur » reste le mot du domaine pour un preset de layout du
-Player Studio (« Mes playeurs »). Ce n'est pas un reste de l'ancien nom produit
-et il ne faut pas le renommer.

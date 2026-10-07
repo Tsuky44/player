@@ -36,6 +36,7 @@ import 'shell_page_open_listener.dart';
 import 'shell_tab_stack.dart';
 import '../../theme/app_icons.dart';
 import '../../theme/app_type.dart';
+import '../../l10n/tr.dart';
 
 class MainShell extends StatefulWidget {
   const MainShell({super.key});
@@ -241,8 +242,8 @@ class _MainShellState extends State<MainShell> {
     _exitArmedAt = now;
     ScaffoldMessenger.of(context)
       ..hideCurrentSnackBar()
-      ..showSnackBar(const SnackBar(
-        content: Text('Appuyez de nouveau sur Retour pour quitter'),
+      ..showSnackBar(SnackBar(
+        content: Text(tr('Appuyez de nouveau sur Retour pour quitter')),
         duration: _exitWindow,
       ));
   }
@@ -429,19 +430,19 @@ class _DesktopGlassHeader extends StatelessWidget {
             GlassBrand(onTap: () => onTabSelected(0)),
             const SizedBox(width: 20),
             GlassNavTab(
-              label: 'Accueil',
+              label: tr('Accueil'),
               selected: selectedIndex == 0,
               focusNode: tabNodes[0],
               onTap: () => onTabSelected(0),
             ),
             GlassNavTab(
-              label: 'Films',
+              label: tr('Films'),
               selected: selectedIndex == 1,
               focusNode: tabNodes[1],
               onTap: () => onTabSelected(1),
             ),
             GlassNavTab(
-              label: 'Séries',
+              label: tr('Séries'),
               selected: selectedIndex == 2,
               focusNode: tabNodes[2],
               onTap: () => onTabSelected(2),
@@ -450,14 +451,14 @@ class _DesktopGlassHeader extends StatelessWidget {
             // so an account without it gets no entry point either.
             if (authProvider.permissions.requestMedia)
               GlassNavTab(
-                label: 'Demandes',
+                label: tr('Demandes'),
                 selected: selectedIndex == 3,
                 focusNode: tabNodes[3],
                 onTap: () => onTabSelected(3),
               ),
             if (canDownload)
               GlassNavTab(
-                label: 'Téléchargements',
+                label: tr('Téléchargements'),
                 selected: selectedIndex == 4,
                 focusNode: tabNodes[4],
                 onTap: () => onTabSelected(4),
@@ -501,23 +502,23 @@ class _IndexerActions extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     if (homeProvider.isScanning) {
-      return const _StatusBadge(label: 'Scan…');
+      return _StatusBadge(label: tr('Scan…'));
     }
     if (homeProvider.isBackfillingMetadata) {
-      return const _StatusBadge(label: 'Affiches…');
+      return _StatusBadge(label: tr('Affiches…'));
     }
     if (homeProvider.isRedetectingAll) {
       final stats = homeProvider.redetectAllProgress;
       final label = stats.total > 0
-          ? 'Match ${stats.processed}/${stats.total}'
-          : 'Match…';
+          ? tr('Match {0}/{1}', [stats.processed, stats.total])
+          : tr('Match…');
       return _StatusBadge(label: label);
     }
     if (homeProvider.isExtractingSubtitles) {
       final stats = homeProvider.subtitleStats;
       final label = stats.total > 0
-          ? 'Sous-titres ${stats.processed}/${stats.total}'
-          : 'Sous-titres…';
+          ? tr('Sous-titres {0}/{1}', [stats.processed, stats.total])
+          : tr('Sous-titres…');
       return _StatusBadge(label: label);
     }
     return const SizedBox.shrink();
@@ -600,7 +601,7 @@ class _OfflineShell extends StatelessWidget {
                   children: [
                     const Spacer(),
                     IconButton(
-                      tooltip: 'Réessayer de joindre le serveur',
+                      tooltip: tr('Réessayer de joindre le serveur'),
                       // Les deux, et pas seulement le sondage : si le serveur
                       // répondait déjà — l'authentification du démarrage a pu
                       // échouer sur un simple délai — il n'y aurait aucune

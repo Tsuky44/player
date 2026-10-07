@@ -45,6 +45,14 @@ mixin _ActivityEndpoints {
         .toList();
   }
 
+  /// Jeton qui change dès que la progression du compte change, sur n'importe
+  /// quel appareil. Opaque : il se compare au précédent, rien d'autre. Voir
+  /// `server/handlers/progress_revision.go`.
+  Future<String> getProgressRevision() async {
+    final response = await _dio.get('/api/progress/revision');
+    return (response.data as Map<String, dynamic>)['revision'] as String;
+  }
+
   /// Non nul quand la lecture de ce lecteur a été reprise sur un autre
   /// appareil. Voir `server/handlers/playback_handoff.go`.
   Future<PlaybackHandoff?> getPlaybackHandoff() async {

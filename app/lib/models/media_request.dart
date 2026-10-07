@@ -1,3 +1,5 @@
+import '../l10n/tr.dart';
+
 enum RequestMediaType { movie, tv }
 
 enum RequestMediaStatus { unknown, available, partial, pending, processing }
@@ -50,7 +52,7 @@ class RequestMediaItem {
       mediaType: json['mediaType'] == 'tv'
           ? RequestMediaType.tv
           : RequestMediaType.movie,
-      title: json['title'] as String? ?? 'Sans titre',
+      title: json['title'] as String? ?? tr('Sans titre'),
       overview: json['overview'] as String? ?? '',
       posterPath: json['posterPath'] as String?,
       backdropPath: json['backdropPath'] as String?,

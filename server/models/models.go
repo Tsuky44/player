@@ -324,6 +324,12 @@ type Progression struct {
 	UpdatedAt              time.Time `json:"updated_at"`
 }
 
+// ProgressRevision est la réponse de GET /api/progress/revision : un jeton
+// opaque, à comparer au précédent et à rien d'autre.
+type ProgressRevision struct {
+	Revision string `json:"revision"`
+}
+
 // HomeResponse represents the payload returned by the GET /api/home endpoint
 type HomeResponse struct {
 	ContinueWatching []HomeMediaItem `json:"continue_watching"`

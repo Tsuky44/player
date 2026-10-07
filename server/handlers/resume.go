@@ -173,45 +173,45 @@ func loadShowEpisodesWithProgress(showID, userID int) ([]episodeProgressRow, err
 	return byShow[showID], nil
 }
 
+// findResumeEpisodeRow choisit l'épisode sur lequel une série reprend.
+//
+// Le point de départ est le dernier épisode regardé, pas le premier épisode
+// entamé dans l'ordre de la série : un S1E1 abandonné à mi-chemin des mois plus
+// tôt l'emportait sinon sur l'épisode 18 en cours de lecture sur un autre
+// appareil, et l'accueil proposait de reprendre au début pendant que le bandeau
+// « Lecture en cours sur… » annonçait l'épisode 18.
+//
+// Entamé, ce dernier épisode est la reprise. Terminé, c'est le premier épisode
+// non vu qui le suit ; s'il n'y en a pas, la série est à jour et ne reprend pas.
 func findResumeEpisodeRow(episodes []episodeProgressRow) (*episodeProgressRow, bool) {
 	if len(episodes) == 0 {
 		return nil, false
 	}
 
+	latest := -1
 	for i := range episodes {
 		ep := &episodes[i]
-		if ep.currentPosition > 0 && !ep.isFinished {
-			return ep, true
+		if ep.currentPosition <= 0 && !ep.isFinished {
+			continue
+		}
+		// À horodatage égal (une saison cochée d'un geste, les anciennes lignes
+		// à la seconde près), l'épisode le plus loin dans la série l'emporte.
+		if latest < 0 || !ep.lastUpdated.Before(episodes[latest].lastUpdated) {
+			latest = i
 		}
 	}
-
-	lastFinishedIdx := -1
-	for i := range episodes {
-		if episodes[i].isFinished {
-			lastFinishedIdx = i
+	if latest < 0 {
+		return &episodes[0], true
+	}
+	if !episodes[latest].isFinished {
+		return &episodes[latest], true
+	}
+	for i := latest + 1; i < len(episodes); i++ {
+		if !episodes[i].isFinished {
+			return &episodes[i], true
 		}
 	}
-	if lastFinishedIdx >= 0 && lastFinishedIdx+1 < len(episodes) {
-		next := &episodes[lastFinishedIdx+1]
-		next.item.CurrentPositionSeconds = 0
-		next.item.IsFinished = false
-		return next, true
-	}
-	if lastFinishedIdx >= 0 && lastFinishedIdx == len(episodes)-1 {
-		return nil, false
-	}
-
-	for i := range episodes {
-		ep := &episodes[i]
-		if !ep.isFinished && ep.currentPosition == 0 {
-			return ep, true
-		}
-	}
-
-	first := &episodes[0]
-	first.item.CurrentPositionSeconds = 0
-	first.item.IsFinished = false
-	return first, true
+	return nil, false
 }
 
 // GetShowResumeEpisode returns the episode to resume for a TV show (GET /api/shows/:id/resume).

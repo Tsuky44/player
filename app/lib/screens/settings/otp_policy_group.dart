@@ -4,6 +4,7 @@ import 'package:provider/provider.dart';
 import '../../models/otp.dart';
 import '../../services/api_client.dart';
 import 'widgets/settings_ui.dart';
+import '../../l10n/tr.dart';
 
 /// La politique de validation en deux étapes du serveur (ADR-0041), réglée
 /// par un titulaire de `manage_settings`.
@@ -36,7 +37,7 @@ class _OtpPolicyGroupState extends State<OtpPolicyGroup> {
     } catch (e) {
       if (!mounted) return;
       setState(() => _error =
-          settingsErrorText(e, 'Impossible de lire la politique du serveur.'));
+          settingsErrorText(e, tr('Impossible de lire la politique du serveur.')));
     }
   }
 
@@ -46,10 +47,12 @@ class _OtpPolicyGroupState extends State<OtpPolicyGroup> {
     if (next == OtpPolicy.disabled) {
       final confirmed = await confirmSettingsAction(
         context,
-        title: 'Désactiver la validation en deux étapes ?',
+        title: tr('Désactiver la validation en deux étapes ?'),
         message:
-            'Plus aucun code ne sera demandé, même aux comptes qui en ont configuré un : le mot de passe suffira. Les codes configurés reviendront si vous la réactivez.',
-        confirmLabel: 'Désactiver',
+            tr('Plus aucun code ne sera demandé, même aux comptes qui en '
+                'ont configuré un : le mot de passe suffira. Les codes '
+                'configurés reviendront si vous la réactivez.'),
+        confirmLabel: tr('Désactiver'),
       );
       if (!confirmed || !mounted) return;
     }
@@ -72,7 +75,7 @@ class _OtpPolicyGroupState extends State<OtpPolicyGroup> {
         _policy = previous;
         _saving = false;
       });
-      showSettingsSnack(context, settingsErrorText(e, 'Enregistrement impossible.'),
+      showSettingsSnack(context, settingsErrorText(e, tr('Enregistrement impossible.')),
           error: true);
     }
   }
@@ -81,9 +84,13 @@ class _OtpPolicyGroupState extends State<OtpPolicyGroup> {
   Widget build(BuildContext context) {
     final policy = _policy;
     return SettingsGroup(
-      title: 'Validation en deux étapes',
+      title: tr('Validation en deux étapes'),
       footer:
-          'Une obligation s’applique à la connexion suivante de chaque compte concerné : il configure alors son code avant d’entrer. Les appareils déjà connectés le restent. Les administrateurs sont les comptes qui gèrent les paramètres, la bibliothèque ou les utilisateurs.',
+          tr('Une obligation s’applique à la connexion suivante de chaque '
+              'compte concerné : il configure alors son code avant d’entrer. '
+              'Les appareils déjà connectés le restent. Les administrateurs '
+              'sont les comptes qui gèrent les paramètres, la bibliothèque '
+              'ou les utilisateurs.'),
       children: [
         if (_error != null)
           SettingsEmptyNote(_error!, icon: Icons.error_outline)
@@ -92,7 +99,7 @@ class _OtpPolicyGroupState extends State<OtpPolicyGroup> {
         else
           SettingsChoiceTile<OtpPolicy>(
             icon: Icons.phonelink_lock_rounded,
-            title: 'Exiger un code',
+            title: tr('Exiger un code'),
             subtitle: _describe(policy),
             value: policy,
             options: [for (final p in OtpPolicy.values) (p, p.label)],
@@ -104,10 +111,10 @@ class _OtpPolicyGroupState extends State<OtpPolicyGroup> {
 
   String _describe(OtpPolicy policy) => switch (policy) {
         OtpPolicy.disabled =>
-          'Personne ne peut l’activer, et le mot de passe suffit toujours.',
-        OtpPolicy.optional => 'Chaque compte l’active s’il le souhaite.',
+          tr('Personne ne peut l’activer, et le mot de passe suffit toujours.'),
+        OtpPolicy.optional => tr('Chaque compte l’active s’il le souhaite.'),
         OtpPolicy.admins =>
-          'Imposée aux administrateurs, facultative pour les autres comptes.',
-        OtpPolicy.everyone => 'Imposée à tous les comptes.',
+          tr('Imposée aux administrateurs, facultative pour les autres comptes.'),
+        OtpPolicy.everyone => tr('Imposée à tous les comptes.'),
       };
 }

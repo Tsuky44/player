@@ -8,6 +8,7 @@ import '../../../theme/app_motion.dart';
 import '../../../theme/app_type.dart';
 import 'onyx/onyx_chrome_theme.dart';
 import 'player_chrome_fade.dart';
+import '../../../l10n/tr.dart';
 
 /// L'écran verrouillé du lecteur, sur un appareil tenu en main.
 ///
@@ -126,8 +127,8 @@ class PlayerScreenLockState extends State<PlayerScreenLock>
                   children: [
                     Semantics(
                       button: true,
-                      label: 'Écran verrouillé. Maintenir deux secondes pour '
-                          'déverrouiller.',
+                      label: tr('Écran verrouillé. Maintenir deux secondes pour '
+                          'déverrouiller.'),
                       // Un lecteur d'écran n'a pas d'appui chronométré : son
                       // appui long suffit.
                       onLongPress: widget.onUnlock,
@@ -140,9 +141,9 @@ class PlayerScreenLockState extends State<PlayerScreenLock>
                       ),
                     ),
                     const SizedBox(height: 10),
-                    const ExcludeSemantics(
+                    ExcludeSemantics(
                       child: Text(
-                        'Maintenez pour déverrouiller',
+                        tr('Maintenez pour déverrouiller'),
                         style: TextStyle(
                           color: OnyxChromeTheme.icon,
                           fontSize: AppType.subhead,

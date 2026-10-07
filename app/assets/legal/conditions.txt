@@ -1,0 +1,24 @@
+Conditions d'utilisation d'Onyx
+
+Dernière mise à jour : 6 octobre 2026
+
+Ce qu'est Onyx
+Onyx est un lecteur pour une médiathèque personnelle hébergée sur un serveur Onyx auto-hébergé. L'app ne fournit, n'héberge, ne référence et ne vend aucun contenu. Elle n'a ni catalogue intégré, ni serveur par défaut.
+
+Vos contenus, votre responsabilité
+Vous êtes seul responsable du serveur auquel vous vous connectez, des fichiers qui s'y trouvent et des droits qui s'y rattachent. N'utilisez Onyx qu'avec des œuvres que vous avez le droit de détenir et de lire, et ne partagez un accès ou un lien qu'avec des personnes à qui vous avez le droit de les montrer. L'éditeur ne peut ni voir ni contrôler ce que contient un serveur.
+
+Services tiers
+Les affiches et les fiches viennent de TMDB. Ce produit utilise l'API TMDB mais n'est ni approuvé ni certifié par TMDB. Les intégrations facultatives (demandes, synchronisation) ne fonctionnent qu'avec les services que l'administrateur du serveur a lui-même configurés, sous sa responsabilité.
+
+Compte
+Un compte Onyx n'existe que sur le serveur où il a été créé. Gardez votre mot de passe pour vous. Vous pouvez supprimer votre compte à tout moment depuis Paramètres > Mon compte.
+
+Licence
+L'app vous est concédée pour un usage personnel. Vous ne pouvez pas la revendre, la redistribuer ni en retirer les mentions de droits. Les composants libres qu'elle embarque restent soumis à leurs propres licences, consultables dans Paramètres > Cet appareil > Licences open source.
+
+Garantie et responsabilité
+Onyx est fourni « en l'état ». Dans les limites permises par la loi, l'éditeur ne garantit pas un fonctionnement sans interruption ni erreur, et n'est pas responsable des pertes de données, des contenus présents sur un serveur ou de l'usage qui en est fait. Rien ici ne limite les droits que la loi vous accorde en tant que consommateur.
+
+Droit applicable
+Ces conditions sont régies par le droit français.

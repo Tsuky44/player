@@ -5,6 +5,7 @@ import 'package:onyx/screens/player/hardware_decoding.dart';
 void main() {
   _zeroCopyFallback();
   _zeroCopyEdgeCrop();
+  _zeroCopyOnlyWherePaid();
   tearDown(
       () => HardwareDecoding.overrideWith(HardwareDecodingPreference.auto));
 
@@ -168,6 +169,41 @@ void _zeroCopyFallback() {
         'auto-safe',
       );
     });
+  });
+}
+
+void _zeroCopyOnlyWherePaid() {
+  bool unwanted(int height,
+          {String decoder = 'd3d11va',
+          HardwareDecodingPreference preference =
+              HardwareDecodingPreference.auto}) =>
+      HardwareDecoding.windowsZeroCopyUnwanted(
+          preference: preference, decoder: decoder, height: height);
+
+  // Une bande verte de ~40 lignes a été vue en bas d'un épisode 1080p décodé
+  // sans copie : la surface du décodeur y est plus grande que l'image.
+  test('a 1080p picture decoded without a copy goes back to the copy', () {
+    expect(unwanted(1080), isTrue);
+    expect(unwanted(960), isTrue);
+  });
+
+  // ADR-0019 : c'est en 4K que la recopie coûte un tiers de cœur.
+  test('4K keeps the zero-copy decoder', () {
+    expect(unwanted(2160), isFalse);
+    expect(unwanted(1600), isFalse);
+  });
+
+  test('a decoder that already copies, or software, is left alone', () {
+    expect(unwanted(1080, decoder: 'd3d11va-copy'), isFalse);
+    expect(unwanted(1080, decoder: 'no'), isFalse);
+  });
+
+  test('a pinned preference is never second-guessed', () {
+    expect(unwanted(1080, preference: HardwareDecodingPreference.copy), isFalse);
+  });
+
+  test('unknown dimensions change nothing', () {
+    expect(unwanted(0), isFalse);
   });
 }
 

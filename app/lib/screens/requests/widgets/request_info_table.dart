@@ -3,6 +3,7 @@ import 'package:intl/intl.dart';
 import '../../../models/media_request.dart';
 import '../../../theme/app_colors.dart';
 import '../../../theme/app_type.dart';
+import '../../../l10n/tr.dart';
 
 class RequestInfoTable extends StatelessWidget {
   final RequestMediaDetails details;
@@ -15,26 +16,26 @@ class RequestInfoTable extends StatelessWidget {
       if (details.originalTitle != null &&
           details.originalTitle!.isNotEmpty &&
           details.originalTitle != details.title)
-        _InfoRow('Titre original', details.originalTitle!),
+        _InfoRow(tr('Titre original'), details.originalTitle!),
       if (details.tmdbStatus != null &&
           details.tmdbStatus!.isNotEmpty &&
           details.tmdbStatus != 'unknown')
-        _InfoRow('Statut', _translateStatus(details.tmdbStatus!)),
+        _InfoRow(tr('Statut'), _translateStatus(details.tmdbStatus!)),
       if (details.releaseDate != null && details.releaseDate!.isNotEmpty)
-        _InfoRow('Date de sortie', _formatDate(details.releaseDate!)),
+        _InfoRow(tr('Date de sortie'), _formatDate(details.releaseDate!)),
       if (details.budget != null && details.budget! > 0)
-        _InfoRow('Budget', _formatMoney(details.budget!)),
+        _InfoRow(tr('Budget'), _formatMoney(details.budget!)),
       if (details.revenue != null && details.revenue! > 0)
-        _InfoRow('Revenu', _formatMoney(details.revenue!)),
+        _InfoRow(tr('Revenu'), _formatMoney(details.revenue!)),
       if (details.originalLanguage != null &&
           details.originalLanguage!.isNotEmpty)
-        _InfoRow('Langue originale', details.originalLanguage!.toUpperCase()),
+        _InfoRow(tr('Langue originale'), details.originalLanguage!.toUpperCase()),
       if (details.countries.isNotEmpty)
-        _InfoRow('Pays de production', details.countries.first),
+        _InfoRow(tr('Pays de production'), details.countries.first),
       if (details.numberOfSeasons != null && details.numberOfSeasons! > 0)
-        _InfoRow('Saisons', '${details.numberOfSeasons}'),
+        _InfoRow(tr('Saisons'), '${details.numberOfSeasons}'),
       if (details.numberOfEpisodes != null && details.numberOfEpisodes! > 0)
-        _InfoRow('Épisodes', '${details.numberOfEpisodes}'),
+        _InfoRow(tr('Épisodes'), '${details.numberOfEpisodes}'),
     ];
 
     return Container(
@@ -93,7 +94,7 @@ class RequestInfoTable extends StatelessWidget {
                   Align(
                     alignment: Alignment.centerLeft,
                     child: Text(
-                      'Studios',
+                      tr('Studios'),
                       style: TextStyle(
                         fontSize: AppType.caption,
                         fontWeight: FontWeight.w700,
@@ -135,14 +136,14 @@ class RequestInfoTable extends StatelessWidget {
         mainAxisAlignment: MainAxisAlignment.center,
         children: [
           _ratingBadge(
-            label: 'IMDb',
+            label: tr('IMDb'),
             value: rating.toStringAsFixed(1),
             color: const Color(0xFFF5C518),
             textColor: Colors.black,
           ),
           const SizedBox(width: 28),
           _ratingBadge(
-            label: 'TMDB',
+            label: tr('TMDB'),
             value: '${(rating * 10).round()}%',
             color: const Color(0xFF01D277),
             textColor: Colors.black,
@@ -200,7 +201,8 @@ class RequestInfoTable extends StatelessWidget {
       'Returning Series': 'En cours',
       'Pilot': 'Pilote',
     };
-    return map[status] ?? status;
+    final label = map[status];
+    return label == null ? status : tr(label);
   }
 
   String _formatDate(String date) {
@@ -220,7 +222,7 @@ class RequestInfoTable extends StatelessWidget {
         'novembre',
         'décembre'
       ];
-      return '${d.day} ${months[d.month - 1]} ${d.year}';
+      return '${d.day} ${tr(months[d.month - 1])} ${d.year}';
     } catch (_) {
       return date;
     }

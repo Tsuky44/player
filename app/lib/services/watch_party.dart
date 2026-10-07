@@ -6,6 +6,7 @@ import 'package:flutter/foundation.dart';
 import '../models/models.dart';
 import '../models/watch_party.dart';
 import 'api_client.dart';
+import '../l10n/tr.dart';
 
 /// Ce que la séance attend du lecteur ouvert sur cet appareil.
 ///
@@ -119,7 +120,7 @@ class WatchPartySession extends ChangeNotifier {
   String? get waitingMessage {
     final names = _snapshot.waitingFor;
     if (names.isEmpty) return null;
-    return 'En attente de ${names.join(', ')}…';
+    return tr('En attente de {0}…', [names.join(', ')]);
   }
 
   WatchPartyPlayer? _player;
@@ -272,7 +273,7 @@ class WatchPartySession extends ChangeNotifier {
       );
     } on DioException catch (e) {
       if (_isGone(e)) {
-        _end('La séance est terminée.');
+        _end(tr('La séance est terminée.'));
       } else {
         debugPrint('WatchParty: $action non transmis: ${e.type.name}');
       }
@@ -326,7 +327,7 @@ class WatchPartySession extends ChangeNotifier {
       );
       _acceptTimed(json, sent);
     } on DioException catch (e) {
-      if (_isGone(e)) _end('La séance est terminée.');
+      if (_isGone(e)) _end(tr('La séance est terminée.'));
     } catch (e) {
       debugPrint('WatchParty: réponse illisible: $e');
     } finally {
@@ -353,7 +354,7 @@ class WatchPartySession extends ChangeNotifier {
       } on DioException catch (e) {
         if (_closed || CancelToken.isCancel(e)) return;
         if (_isGone(e)) {
-          _end('La séance est terminée.');
+          _end(tr('La séance est terminée.'));
           return;
         }
         // Réseau coupé, serveur qui redémarre : on réessaie sans fin, en
@@ -432,14 +433,14 @@ class WatchPartySession extends ChangeNotifier {
     if (action == null || action.version <= _announcedVersion) return;
     _announcedVersion = action.version;
     if (action.byYou) return;
-    final who = action.username.isEmpty ? 'Quelqu’un' : action.username;
+    final who = action.username.isEmpty ? tr('Quelqu’un') : action.username;
     final text = switch (action.kind) {
-      'play' => '$who a relancé la lecture',
-      'pause' => '$who a mis en pause',
-      'seek' => '$who a déplacé la lecture',
-      'media' => '$who a lancé un autre épisode',
-      'join' => '$who a rejoint la séance',
-      'leave' => '$who a quitté la séance',
+      'play' => tr('{0} a relancé la lecture', [who]),
+      'pause' => tr('{0} a mis en pause', [who]),
+      'seek' => tr('{0} a déplacé la lecture', [who]),
+      'media' => tr('{0} a lancé un autre épisode', [who]),
+      'join' => tr('{0} a rejoint la séance', [who]),
+      'leave' => tr('{0} a quitté la séance', [who]),
       _ => null,
     };
     if (text != null) _notices.add(text);

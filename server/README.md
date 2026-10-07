@@ -135,6 +135,12 @@ Toutes les routes API (sauf l'inscription/connexion et le stream) requièrent l'
 * **Route :** `POST /api/auth/password`
 * **Corps (JSON) :** `{ "current_password": "…", "new_password": "…" }`
 
+#### ➡️ Supprimer son compte
+* **Route :** `POST /api/auth/account/delete`
+* **Corps (JSON) :** `{ "password": "…" }`
+* Suppression dure, en cascade (progression, sessions, dispositions du lecteur). `401` si le mot
+  de passe est faux, `403` pour le propriétaire, qui doit d'abord transférer la propriété.
+
 ---
 
 ### 📺 1 ter. Appairage d'un téléviseur (QR code)
@@ -252,6 +258,17 @@ n'affecte que les liens futurs.
   }
   ```
 
+#### ➡️ Suivre la progression en direct
+* **Route :** `GET /api/progress/revision`
+* **Note de fonctionnement :** rend un jeton opaque qui change dès que ce que le compte a regardé
+  change (position envoyée par un autre appareil, média coché vu, entrée retirée de « Reprendre la
+  lecture »). L'accueil et les fiches le sondent tant qu'ils sont à l'écran et ne relisent leurs
+  données que s'il a bougé. Le jeton se compare au précédent, rien d'autre.
+* **Réponse (JSON) :**
+  ```json
+  { "revision": "1284.37.2.2026-10-07 18:02:11" }
+  ```
+
 #### ➡️ Enregistrer la progression (Heartbeat du lecteur)
 * **Route :** `POST /api/progress`
 * **Note de fonctionnement :** Cet endpoint met à jour la position de lecture. Si le pourcentage de lecture atteint ou dépasse **90%**, le média est automatiquement marqué comme `is_finished = true` (vu) et retiré de "Reprendre la lecture". De plus, le serveur met à jour dynamiquement la durée totale du média reçue de l'application cliente pour éviter de l'analyser sur le serveur.
@@ -299,6 +316,7 @@ audio par défaut). Les réglages liés au matériel restent sur l'appareil. Voi
 * **Route :** `PUT /api/me/playback-preferences`
 * **Corps (JSON) :** partiel — un champ absent garde sa valeur. `default_audio_lang` est un code de
   deux ou trois lettres, ou `""` pour la piste par défaut du fichier (`400` sinon).
+  `still_watching_enabled` vaut `false` tant qu'on ne l'a pas allumé.
   `still_watching_episodes` va de 1 à 10. `still_watching_from` et `still_watching_until` sont des
   minutes depuis minuit (0–1439, différentes, la plage peut passer minuit), ou `-1` toutes les deux
   pour toute la journée (`400` sinon). Voir `docs/adr/0045-vous-regardez-encore.md`.
@@ -406,7 +424,10 @@ Côté visiteur, sans compte — le code voyage dans le corps JSON :
 * `POST /api/shared/info` `{"code", "viewer"}` — faut-il un mot de passe ; le média n'est décrit
   qu'une fois le mot de passe donné. `404` inconnu, `410` expiré ou vu, `409` réservé ailleurs.
   Pour une saison ou une série, `episodes` liste ce qui peut être lu :
-  `[{"id", "season_number", "episode_number", "title", "duration"}]`.
+  `[{"id", "season_id", "season_number", "episode_number", "title", "duration", "overview",
+  "still_url", "release_date", "intro_start", "intro_end", "outro_start", "outro_end"}]`, et
+  `details` porte la fiche de la série (comme `GET /api/media/:id/details`, sans rien du disque ni
+  des titres similaires).
 * `POST /api/shared/contents` `{"code", "password", "viewer"}` — la même description, une fois le
   mot de passe donné, sans rien délivrer : la liste des épisodes d'un lien protégé. Limité comme
   l'ouverture.

@@ -7,6 +7,7 @@ import '../../services/download_manager.dart';
 import '../../theme/app_colors.dart';
 import 'metered_download_dialog.dart';
 import '../../theme/app_icons.dart';
+import '../../l10n/tr.dart';
 
 /// Le bouton « garder sur l'appareil », partout où un média se télécharge.
 ///
@@ -106,17 +107,17 @@ class MediaDownloadButton extends StatelessWidget {
   String _tooltip(OfflineDownload? entry) {
     switch (entry?.status) {
       case null:
-        return 'Télécharger';
+        return tr('Télécharger');
       case DownloadStatus.completed:
-        return 'Téléchargé';
+        return tr('Téléchargé');
       case DownloadStatus.failed:
-        return entry!.error ?? 'Échec du téléchargement';
+        return entry!.error ?? tr('Échec du téléchargement');
       case DownloadStatus.paused:
-        return 'Reprendre le téléchargement';
+        return tr('Reprendre le téléchargement');
       case DownloadStatus.queued:
-        return 'En attente';
+        return tr('En attente');
       case DownloadStatus.downloading:
-        return 'Téléchargement en cours';
+        return tr('Téléchargement en cours');
     }
   }
 
@@ -132,7 +133,7 @@ class MediaDownloadButton extends StatelessWidget {
         // posée avant la mise en file, jamais après.
         final proceed = await confirmDownloadOnThisNetwork(
           context,
-          what: item.media.type == MediaType.movie ? 'ce film' : 'cet épisode',
+          what: item.media.type == MediaType.movie ? tr('ce film') : tr('cet épisode'),
         );
         if (!proceed) return;
         await manager.download(
@@ -169,23 +170,23 @@ Future<bool> confirmDeleteDownload(
     context: context,
     builder: (context) => AlertDialog(
       backgroundColor: AppColors.surface,
-      title: const Text('Supprimer le téléchargement ?'),
+      title: Text(tr('Supprimer le téléchargement ?')),
       content: Text(
         unsynced
-            ? '« ${entry.title} » libérera de la place sur cet appareil. '
-                'Son avancement sera envoyé au serveur dès que possible.'
-            : '« ${entry.title} » libérera de la place sur cet appareil. '
-                'Le média reste disponible sur le serveur.',
+            ? tr('« {0} » libérera de la place sur cet appareil. Son '
+                'avancement sera envoyé au serveur dès que possible.', [entry.title])
+            : tr('« {0} » libérera de la place sur cet appareil. Le média '
+                'reste disponible sur le serveur.', [entry.title]),
       ),
       actions: [
         TextButton(
           onPressed: () => Navigator.of(context).pop(false),
-          child: const Text('Annuler'),
+          child: Text(tr('Annuler')),
         ),
         TextButton(
           onPressed: () => Navigator.of(context).pop(true),
           style: TextButton.styleFrom(foregroundColor: AppColors.error),
-          child: const Text('Supprimer'),
+          child: Text(tr('Supprimer')),
         ),
       ],
     ),

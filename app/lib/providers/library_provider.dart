@@ -5,6 +5,7 @@ import '../models/models.dart';
 import '../services/api_client.dart';
 import '../services/download_manager.dart';
 import '../utils/search_match.dart';
+import '../l10n/tr.dart';
 
 class LibraryProvider extends ChangeNotifier {
   final ApiClient apiClient;
@@ -160,7 +161,7 @@ class LibraryProvider extends ChangeNotifier {
       _movies = result;
     } catch (e) {
       if (request != _moviesRequest) return;
-      _errorMessage = "Erreur lors du chargement des films : ${e.toString()}";
+      _errorMessage = tr('Erreur lors du chargement des films : {0}', [e.toString()]);
     } finally {
       if (request == _moviesRequest) {
         _isLoadingMovies = false;
@@ -184,7 +185,7 @@ class LibraryProvider extends ChangeNotifier {
       _shows = result;
     } catch (e) {
       if (request != _showsRequest) return;
-      _errorMessage = "Erreur lors du chargement des séries : ${e.toString()}";
+      _errorMessage = tr('Erreur lors du chargement des séries : {0}', [e.toString()]);
     } finally {
       if (request == _showsRequest) {
         _isLoadingShows = false;
@@ -269,7 +270,7 @@ class LibraryProvider extends ChangeNotifier {
       _seasonsByShow[showId] = result;
     } catch (e) {
       if (request != _seasonsRequest) return;
-      _errorMessage = "Erreur lors du chargement des saisons : ${e.toString()}";
+      _errorMessage = tr('Erreur lors du chargement des saisons : {0}', [e.toString()]);
     } finally {
       if (request == _seasonsRequest) {
         _isLoadingSeasons = false;
@@ -307,7 +308,7 @@ class LibraryProvider extends ChangeNotifier {
     } catch (e) {
       if (request != _episodesRequest) return;
       _errorMessage =
-          "Erreur lors du chargement des épisodes : ${e.toString()}";
+          tr('Erreur lors du chargement des épisodes : {0}', [e.toString()]);
     } finally {
       if (request == _episodesRequest) {
         _isLoadingEpisodes = false;

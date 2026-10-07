@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../../theme/app_colors.dart';
+import '../../l10n/tr.dart';
 
 /// Le wordmark Onyx, tracé et non écrit.
 ///
@@ -29,7 +30,7 @@ class OnyxWordmark extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Semantics(
-      label: 'Onyx',
+      label: tr('Onyx'),
       child: SizedBox(
         width: height * _WordmarkPainter.aspect,
         height: height,

@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import '../../../models/server_activity.dart';
 import '../../../theme/app_colors.dart';
 import 'settings_ui.dart';
+import '../../../l10n/tr.dart';
 
 /// Une session ouverte : l'appareil, son application, sa dernière activité, et
 /// de quoi la fermer.
@@ -26,7 +27,7 @@ class DeviceTile extends StatelessWidget {
     final details = <String>[
       if (showUser) device.username,
       if (device.client.isNotEmpty) device.client,
-      active ? 'actif maintenant' : relativeTime(device.lastSeenAt),
+      active ? tr('actif maintenant') : relativeTime(device.lastSeenAt),
     ];
 
     return SettingsTile(
@@ -41,12 +42,12 @@ class DeviceTile extends StatelessWidget {
         mainAxisSize: MainAxisSize.min,
         children: [
           if (device.isCurrent)
-            const SettingsPill('Cet appareil', color: AppColors.primary)
+            SettingsPill(tr('Cet appareil'), color: AppColors.primary)
           else if (device.address.isNotEmpty)
             Tooltip(
               message: device.address,
               child: SettingsPill(
-                device.isLocal ? 'Local' : 'Distant',
+                device.isLocal ? tr('Local') : tr('Distant'),
                 color: device.isLocal
                     ? AppColors.textSecondary
                     : AppColors.warning,
@@ -66,7 +67,7 @@ class DeviceTile extends StatelessWidget {
                     ),
                   )
                 : IconButton(
-                    tooltip: 'Déconnecter cet appareil',
+                    tooltip: tr('Déconnecter cet appareil'),
                     onPressed: onRevoke,
                     icon: const Icon(Icons.logout_rounded,
                         size: 20, color: AppColors.textMuted),

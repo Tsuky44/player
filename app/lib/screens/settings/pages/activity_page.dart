@@ -9,6 +9,7 @@ import '../playback_logs_screen.dart';
 import '../widgets/history_tile.dart';
 import '../widgets/settings_ui.dart';
 import '../../../theme/app_type.dart';
+import '../../../l10n/tr.dart';
 
 class ActivityPage extends StatefulWidget {
   const ActivityPage({super.key});
@@ -58,7 +59,7 @@ class _ActivityPageState extends State<ActivityPage> {
       if (!mounted) return;
       setState(() {
         _loading = false;
-        _error = settingsErrorText(e, 'Impossible de charger l’historique.');
+        _error = settingsErrorText(e, tr('Impossible de charger l’historique.'));
       });
     }
   }
@@ -84,18 +85,20 @@ class _ActivityPageState extends State<ActivityPage> {
   Future<void> _clear() async {
     final confirmed = await confirmSettingsAction(
       context,
-      title: 'Vider l’historique ?',
+      title: tr('Vider l’historique ?'),
       message:
-          'Toutes les lectures enregistrées et les statistiques qui en découlent seront effacées, pour tous les utilisateurs. La progression de lecture n’est pas touchée.',
-      confirmLabel: 'Vider',
+          tr('Toutes les lectures enregistrées et les statistiques qui en '
+              'découlent seront effacées, pour tous les utilisateurs. La '
+              'progression de lecture n’est pas touchée.'),
+      confirmLabel: tr('Vider'),
     );
     if (!confirmed || !mounted) return;
     try {
       await context.read<ApiClient>().clearPlaybackHistory();
-      if (mounted) showSettingsSnack(context, 'Historique vidé.');
+      if (mounted) showSettingsSnack(context, tr('Historique vidé.'));
     } catch (e) {
       if (mounted) {
-        showSettingsSnack(context, settingsErrorText(e, 'Échec.'), error: true);
+        showSettingsSnack(context, settingsErrorText(e, tr('Échec.')), error: true);
       }
     }
     _reload();
@@ -105,8 +108,8 @@ class _ActivityPageState extends State<ActivityPage> {
     final now = DateTime.now();
     final today = DateTime(now.year, now.month, now.day);
     final diff = today.difference(day).inDays;
-    if (diff == 0) return 'Aujourd’hui';
-    if (diff == 1) return 'Hier';
+    if (diff == 0) return tr('Aujourd’hui');
+    if (diff == 1) return tr('Hier');
     return formatFrenchDay(day, capitalize: true);
   }
 
@@ -121,22 +124,23 @@ class _ActivityPageState extends State<ActivityPage> {
     }
 
     return SettingsPage(
-      title: 'Historique',
+      title: tr('Historique'),
       description:
-          'Chaque lecture de plus de 30 secondes : le titre, le compte, l’appareil et le temps réellement regardé, '
-          'pauses exclues. Touchez une ligne pour lire le journal du lecteur — celles qui ont échoué y figurent aussi, '
-          'quelle qu’ait été leur durée.',
+          tr('Chaque lecture de plus de 30 secondes : le titre, le compte, '
+              'l’appareil et le temps réellement regardé, pauses exclues. '
+              'Touchez une ligne pour lire le journal du lecteur — celles '
+              'qui ont échoué y figurent aussi, quelle qu’ait été leur durée.'),
       onRefresh: _reload,
       actions: [
         PopupMenuButton<String>(
-          tooltip: 'Plus',
+          tooltip: tr('Plus'),
           color: AppColors.surfaceElevated,
           icon: const Icon(Icons.more_horiz_rounded),
           onSelected: (_) => _clear(),
-          itemBuilder: (_) => const [
+          itemBuilder: (_) => [
             PopupMenuItem(
               value: 'clear',
-              child: Text('Vider l’historique',
+              child: Text(tr('Vider l’historique'),
                   style: TextStyle(color: AppColors.error)),
             ),
           ],
@@ -151,7 +155,7 @@ class _ActivityPageState extends State<ActivityPage> {
               child: Row(
                 children: [
                   _FilterChip(
-                    label: 'Tout le monde',
+                    label: tr('Tout le monde'),
                     selected: _userFilter == null,
                     onTap: () {
                       setState(() => _userFilter = null);
@@ -176,9 +180,10 @@ class _ActivityPageState extends State<ActivityPage> {
         if (_loading)
           const SettingsLoading()
         else if (_entries.isEmpty && _error == null)
-          const SettingsGroup(children: [
+          SettingsGroup(children: [
             SettingsEmptyNote(
-              'Aucune lecture enregistrée. L’historique se remplit dès qu’un appareil à jour lit un média.',
+              tr('Aucune lecture enregistrée. L’historique se remplit dès '
+                  'qu’un appareil à jour lit un média.'),
               icon: Icons.history_toggle_off_rounded,
             ),
           ])
@@ -214,7 +219,7 @@ class _ActivityPageState extends State<ActivityPage> {
                   : OutlinedButton.icon(
                       onPressed: _loadMore,
                       icon: const Icon(Icons.expand_more_rounded),
-                      label: const Text('Charger plus'),
+                      label: Text(tr('Charger plus')),
                     ),
             ),
         ],

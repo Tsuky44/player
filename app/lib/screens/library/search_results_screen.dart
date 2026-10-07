@@ -10,6 +10,7 @@ import 'movie_detail_screen.dart';
 import 'show_detail_screen.dart';
 import '../../theme/app_icons.dart';
 import '../../theme/app_type.dart';
+import '../../l10n/tr.dart';
 
 /// Full-page grid of every catalog result for a query, opened when the user
 /// presses Enter in the global search bar.
@@ -50,15 +51,15 @@ class SearchResultsScreen extends StatelessWidget {
         backgroundColor: AppColors.background,
         elevation: 0,
         title: Text(
-          'Résultats pour « $query »',
+          tr('Résultats pour « {0} »', [query]),
           style: const TextStyle(fontSize: AppType.headline, fontWeight: FontWeight.w700),
         ),
       ),
       body: results.isEmpty
           ? EmptyStateView(
               icon: AppIcons.search,
-              title: 'Aucun résultat',
-              message: 'Aucun film ou série ne correspond à « $query ».',
+              title: tr('Aucun résultat'),
+              message: tr('Aucun film ou série ne correspond à « {0} ».', [query]),
             )
           : CustomScrollView(
               slivers: [
@@ -67,7 +68,7 @@ class SearchResultsScreen extends StatelessWidget {
                     padding: EdgeInsets.fromLTRB(
                         horizontalPadding, 8, horizontalPadding, 0),
                     child: Text(
-                      '${results.length} résultat${results.length > 1 ? 's' : ''}',
+                      tr('{0} résultat{1}', [results.length, results.length > 1 ? 's' : '']),
                       style: const TextStyle(
                           color: AppColors.textMuted, fontSize: AppType.subhead),
                     ),

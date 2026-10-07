@@ -6,6 +6,7 @@ import '../access_requests_section.dart';
 import '../otp_policy_group.dart';
 import '../user_admin_sections.dart';
 import '../widgets/settings_ui.dart';
+import '../../../l10n/tr.dart';
 
 class UsersPage extends StatelessWidget {
   const UsersPage({super.key});
@@ -15,16 +16,19 @@ class UsersPage extends StatelessWidget {
     final perms = context.watch<AuthProvider>().permissions;
 
     return SettingsPage(
-      title: 'Utilisateurs',
+      title: tr('Utilisateurs'),
       description: perms.manageUsers
-          ? 'Les comptes du serveur et leurs droits, les personnes qui demandent un accès et les liens d’invitation.'
-          : 'Les personnes qui demandent un accès et vos liens d’invitation.',
+          ? tr('Les comptes du serveur et leurs droits, les personnes qui '
+              'demandent un accès et les liens d’invitation.')
+          : tr('Les personnes qui demandent un accès et vos liens d’invitation.'),
       children: [
         if (perms.manageUsers)
-          const SettingsGroup(
-            title: 'Comptes',
+          SettingsGroup(
+            title: tr('Comptes'),
             footer:
-                'Le propriétaire ne peut pas être rétrogradé. Réinitialiser un mot de passe déconnecte tous les appareils du compte.',
+                tr('Le propriétaire ne peut pas être rétrogradé. '
+                    'Réinitialiser un mot de passe déconnecte tous les '
+                    'appareils du compte.'),
             padded: true,
             children: [UsersSection()],
           ),
@@ -32,17 +36,19 @@ class UsersPage extends StatelessWidget {
         if (perms.manageSettings) const OtpPolicyGroup(),
         // Un inviteur sans manage_users voit aussi cette section — et seulement
         // ses propres liens.
-        const SettingsGroup(
-          title: 'Demandes d’accès',
+        SettingsGroup(
+          title: tr('Demandes d’accès'),
           footer:
-              'Accepter crée le compte et connecte aussitôt l’appareil qui a fait la demande.',
+              tr('Accepter crée le compte et connecte aussitôt l’appareil '
+                  'qui a fait la demande.'),
           padded: true,
           children: [AccessRequestsSection()],
         ),
-        const SettingsGroup(
-          title: 'Invitations',
+        SettingsGroup(
+          title: tr('Invitations'),
           footer:
-              'Liens à usage unique, valables 7 jours. Les droits accordés sont fixés par un administrateur.',
+              tr('Liens à usage unique, valables 7 jours. Les droits '
+                  'accordés sont fixés par un administrateur.'),
           padded: true,
           children: [InvitationsSection()],
         ),

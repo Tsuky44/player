@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import '../../models/models.dart';
 import '../../theme/app_colors.dart';
 import '../../theme/app_icons.dart';
+import '../../l10n/tr.dart';
 
 /// « J'ai fini cette saison », en un geste.
 ///
@@ -57,7 +58,7 @@ class SeasonWatchedButton extends StatelessWidget {
                   : AppIcons.watched,
               size: 18,
             ),
-      label: Text(allWatched ? 'Saison vue' : 'Marquer la saison vue'),
+      label: Text(allWatched ? tr('Saison vue') : tr('Marquer la saison vue')),
       style: TextButton.styleFrom(
         foregroundColor:
             allWatched ? AppColors.success : AppColors.textSecondary,

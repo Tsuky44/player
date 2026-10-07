@@ -1,0 +1,33 @@
+Politique de confidentialité d'Onyx
+
+Dernière mise à jour : 6 octobre 2026
+
+En bref
+Onyx est le lecteur d'une médiathèque hébergée sur un serveur que vous installez et administrez vous-même, ou que quelqu'un de votre entourage administre. L'éditeur d'Onyx n'exploite aucun serveur central : il ne reçoit, ne stocke et ne vend aucune donnée vous concernant. L'app ne contient ni publicité, ni outil de mesure d'audience, ni traceur.
+
+Ce que l'app échange, et avec qui
+Avec le serveur Onyx auquel vous vous connectez, et seulement lui : votre nom d'utilisateur, votre mot de passe au moment de la connexion, le nom et le type de votre appareil, votre progression de lecture, vos réglages de lecture, vos demandes de médias, et le journal technique d'une lecture quand elle échoue. Ces données restent sur ce serveur. Son administrateur en est le responsable : c'est à lui qu'il faut s'adresser pour y accéder, les corriger ou les faire effacer.
+
+Avec TMDB (The Movie Database) : quand vous parcourez le catalogue des demandes, les affiches sont chargées directement depuis les serveurs d'images de TMDB, qui voient alors l'adresse IP de votre appareil, comme n'importe quel site web. Aucun identifiant de compte ne leur est transmis.
+
+Avec les services que l'administrateur a lui-même reliés au serveur (par exemple une synchronisation Emby) : ces échanges partent du serveur, pas de l'app, et dépendent de sa configuration.
+
+Ce qui reste sur votre appareil
+Le jeton de session (dans le stockage sécurisé du système), l'adresse de vos serveurs, vos réglages, le cache des affiches, les fichiers que vous avez téléchargés pour les regarder hors ligne et un journal technique local. Désinstaller l'app efface le tout.
+
+Autorisations demandées
+Caméra : uniquement pour scanner le QR code affiché par un téléviseur à appairer. Aucune image n'est enregistrée ni envoyée.
+Réseau local : pour trouver votre serveur sur le réseau de votre maison et lire vos fichiers depuis celui-ci.
+Sélecteur de fichiers : uniquement quand un administrateur choisit un fichier à envoyer à son propre serveur.
+
+Supprimer votre compte
+Paramètres > Mon compte > Supprimer mon compte. Le compte, votre progression, vos réglages et vos sessions sont effacés du serveur immédiatement et définitivement. Le propriétaire d'un serveur transfère d'abord la propriété, ou supprime simplement son serveur.
+
+Enfants
+Onyx ne s'adresse pas spécifiquement aux enfants et ne collecte aucune donnée auprès d'eux.
+
+Modifications
+Une nouvelle version de cette politique est publiée avec l'app ; la date en tête de page change alors.
+
+Contact
+L'éditeur d'Onyx se contacte à l'adresse indiquée sur la fiche de l'application dans le magasin où vous l'avez obtenue.

@@ -14,9 +14,11 @@ import 'playback_capabilities.dart';
 import 'playback_access.dart';
 
 import 'server_registry.dart';
+import 'shared_link_progress_store.dart';
 import 'media_failover.dart';
 import '../models/media_request.dart';
 import '../models/media_share.dart';
+import '../models/shared_show.dart';
 import '../models/server_activity.dart';
 import '../models/remote_playback.dart';
 import '../utils/app_platform.dart';
@@ -25,11 +27,10 @@ import '../models/models.dart';
 import '../models/otp.dart';
 import '../models/playback_preferences.dart';
 import '../models/series_track_preferences.dart';
-import '../models/player_layout.dart';
-import '../models/player_layout_preset.dart';
 import 'conditional_get.dart';
 import 'api_types.dart';
 import 'hls_session.dart';
+import '../l10n/tr.dart';
 
 // Le descripteur de session a quitté ce fichier ; ses appelants l'importaient
 // d'ici et continuent de le faire.
@@ -40,7 +41,6 @@ part 'api/account_admin.dart';
 part 'api/watch_party.dart';
 part 'api/library_admin.dart';
 part 'api/activity.dart';
-part 'api/player_layouts.dart';
 part 'api/playback_preferences.dart';
 part 'api/series_track_preferences.dart';
 part 'api/media_shares.dart';
@@ -59,7 +59,6 @@ class ApiClient
         _WatchPartyEndpoints,
         _LibraryAdminEndpoints,
         _ActivityEndpoints,
-        _PlayerLayoutEndpoints,
         _PlaybackPreferencesEndpoints,
         _SeriesTrackPreferencesEndpoints,
         _MediaShareEndpoints,

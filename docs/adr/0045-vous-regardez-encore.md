@@ -36,8 +36,9 @@ le suivant.**
   demander : celui qui s'endort à 21 h devant une plage qui commence à 22 h est arrêté au premier
   générique qui tombe dedans. L'heure est celle de l'appareil qui lit — « la nuit » est celle de la
   personne, pas celle du serveur.
-- **Activé par défaut**, trois épisodes, toute la journée : la protection vaut pour qui n'a jamais
-  ouvert les réglages, et c'est lui qui en a besoin.
+- **Désactivé par défaut.** La question ne se pose que si on l'a allumée dans Paramètres →
+  Lecture : interrompre une soirée est un choix, pas un comportement qu'une mise à jour impose.
+  Une fois allumée, elle propose trois épisodes, toute la journée.
 - **En séance « Regarder ensemble » la question n'est pas posée** : d'autres regardent.
 
 ### Le réglage appartient au compte
@@ -51,8 +52,8 @@ de le voir remis aux valeurs par défaut à chaque synchronisation.
 
 ## Conséquences
 
-- Le comportement par défaut change : une soirée passée sans toucher au lecteur est interrompue
-  après le troisième épisode. Le réglage se désactive dans Paramètres → Lecture.
+- Rien ne change pour qui n'y touche pas : l'enchaînement reste sans limite tant que le réglage
+  n'est pas allumé.
 - Le compte ne voit pas la présence, seulement les gestes : quelqu'un d'éveillé et d'immobile est
   interrogé comme quelqu'un qui dort. C'est le prix d'une règle sans capteur.
 - Le lecteur web des liens de partage n'enchaîne pas par ce chemin et n'est pas concerné.

@@ -1,6 +1,8 @@
 /// Web stub for the in-place updater — see `app_updater.dart`.
 library;
 
+import '../l10n/tr.dart';
+
 ///
 /// A browser always loads whatever the server currently serves, so there is no
 /// installed copy to replace: [AppUpdater.supports] is false everywhere and the
@@ -40,7 +42,7 @@ abstract final class AppUpdater {
 
   static Future<Never> _unsupported() {
     throw UpdateException(
-      'La mise à jour automatique n’existe pas dans le navigateur.',
+      tr('La mise à jour automatique n’existe pas dans le navigateur.'),
     );
   }
 }

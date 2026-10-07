@@ -14,6 +14,7 @@ import '../../widgets/global/onyx_mark.dart';
 import '../../widgets/global/onyx_wordmark.dart';
 import 'login_screen.dart';
 import '../../theme/app_type.dart';
+import '../../l10n/tr.dart';
 
 /// Sign-in for a screen with no keyboard.
 ///
@@ -92,8 +93,8 @@ class _TvLoginScreenState extends State<TvLoginScreen> {
     if (offer == null) {
       setState(() {
         _phase = _LinkPhase.failed;
-        _error = 'Ce téléviseur n’est pas connecté au réseau. Vérifiez le '
-            'Wi-Fi ou le câble Ethernet, puis réessayez.';
+        _error = tr('Ce téléviseur n’est pas connecté au réseau. Vérifiez le Wi-Fi '
+            'ou le câble Ethernet, puis réessayez.');
       });
       return;
     }
@@ -114,7 +115,7 @@ class _TvLoginScreenState extends State<TvLoginScreen> {
       if (!mounted || generation != _generation) return;
       setState(() {
         _phase = _LinkPhase.failed;
-        _error = 'La connexion depuis le téléphone a échoué.';
+        _error = tr('La connexion depuis le téléphone a échoué.');
       });
       return;
     }
@@ -224,7 +225,7 @@ class _TvLoginScreenState extends State<TvLoginScreen> {
         ),
         const SizedBox(height: 28),
         Text(
-          'Connectez votre téléviseur',
+          tr('Connectez votre téléviseur'),
           style: textTheme.headlineSmall?.copyWith(
             fontWeight: FontWeight.w700,
           ),
@@ -233,10 +234,10 @@ class _TvLoginScreenState extends State<TvLoginScreen> {
         // The app, not the camera: the phone has to be signed in for this to
         // work, and its camera app cannot reach the account. Saying so in step
         // one is what stops the scan that opens a browser page instead.
-        _step(1, 'Ouvrez l’application Onyx sur votre téléphone.'),
-        _step(2, 'Allez dans Compte, puis « Connecter un téléviseur ».'),
-        _step(3, 'Scannez le code affiché ici. C’est tout : ni adresse de '
-            'serveur, ni mot de passe à saisir.'),
+        _step(1, tr('Ouvrez l’application Onyx sur votre téléphone.')),
+        _step(2, tr('Allez dans Compte, puis « Connecter un téléviseur ».')),
+        _step(3, tr('Scannez le code affiché ici. C’est tout : ni adresse de '
+            'serveur, ni mot de passe à saisir.')),
         const SizedBox(height: 28),
         _addressLine(textTheme),
         const SizedBox(height: 20),
@@ -254,7 +255,7 @@ class _TvLoginScreenState extends State<TvLoginScreen> {
           children: [
             TextButton(
               onPressed: _openPasswordForm,
-              child: const Text('Utiliser un mot de passe'),
+              child: Text(tr('Utiliser un mot de passe')),
             ),
           ],
         ),
@@ -322,7 +323,7 @@ class _TvLoginScreenState extends State<TvLoginScreen> {
           Flexible(
             child: Text(
               offer == null
-                  ? 'Ouverture du code…'
+                  ? tr('Ouverture du code…')
                   : '${TvMode.deviceName} · ${offer.host}',
               maxLines: 1,
               overflow: TextOverflow.ellipsis,
@@ -372,7 +373,7 @@ class _TvLoginScreenState extends State<TvLoginScreen> {
                   size: 46, color: AppColors.error),
               const SizedBox(height: 16),
               Text(
-                _error ?? 'Connexion impossible.',
+                _error ?? tr('Connexion impossible.'),
                 textAlign: TextAlign.center,
                 style: const TextStyle(color: AppColors.textSecondary),
               ),
@@ -380,7 +381,7 @@ class _TvLoginScreenState extends State<TvLoginScreen> {
               ElevatedButton(
                 autofocus: true,
                 onPressed: _startLink,
-                child: const Text('Réessayer'),
+                child: Text(tr('Réessayer')),
               ),
             ],
           ),
@@ -391,7 +392,7 @@ class _TvLoginScreenState extends State<TvLoginScreen> {
     if (_phase == _LinkPhase.linked) {
       return _qrFrame(
         light: false,
-        child: const Center(
+        child: Center(
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
@@ -399,7 +400,7 @@ class _TvLoginScreenState extends State<TvLoginScreen> {
                   size: 64, color: AppColors.success),
               SizedBox(height: 16),
               Text(
-                'Compte connecté',
+                tr('Compte connecté'),
                 style: TextStyle(color: AppColors.textPrimary, fontSize: AppType.headline),
               ),
             ],
@@ -474,7 +475,7 @@ class _TvLoginScreenState extends State<TvLoginScreen> {
         ),
         const SizedBox(width: 10),
         Text(
-          'En attente de votre téléphone…',
+          tr('En attente de votre téléphone…'),
           style: textTheme.bodySmall?.copyWith(color: AppColors.textMuted),
         ),
       ],

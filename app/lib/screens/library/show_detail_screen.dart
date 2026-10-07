@@ -10,12 +10,14 @@ import '../../services/api_client.dart';
 import '../../services/media_details_cache.dart';
 import '../../theme/app_colors.dart';
 import '../../tv/tv_mode.dart';
+import '../../utils/on_screen.dart';
 import '../../utils/responsive.dart';
 import '../../utils/format.dart';
 import '../../widgets/global/detail_actions.dart';
 import '../../widgets/global/detail_facts_section.dart';
 import '../../widgets/global/detail_metadata.dart';
 import '../../widgets/global/episode_tile.dart';
+import '../../widgets/global/live_progress_state.dart';
 import '../../widgets/global/media_detail_widgets.dart';
 import '../../widgets/global/metadata_fix_sheet.dart';
 import '../../widgets/global/season_download_button.dart';
@@ -27,6 +29,7 @@ import '../../navigation/search_route_observer.dart';
 import 'widgets/missing_season_banner.dart';
 import 'widgets/season_tabs.dart';
 import 'widgets/show_metadata_menu.dart';
+import '../../l10n/tr.dart';
 
 class ShowDetailScreen extends StatefulWidget {
   final Media show;
@@ -37,7 +40,8 @@ class ShowDetailScreen extends StatefulWidget {
   State<ShowDetailScreen> createState() => _ShowDetailScreenState();
 }
 
-class _ShowDetailScreenState extends State<ShowDetailScreen> {
+class _ShowDetailScreenState extends State<ShowDetailScreen>
+    with OnScreenState, LiveProgressState {
   late Media _show;
   MediaDetails? _details;
   bool _loadingDetails = false;
@@ -189,6 +193,16 @@ class _ShowDetailScreenState extends State<ShowDetailScreen> {
     }
   }
 
+  /// La série a avancé sur un autre appareil : l'épisode à reprendre, les
+  /// pastilles « vu » et les barres de progression se relisent sous la page.
+  /// Pas pendant qu'une saison entière est en train d'être cochée ici : ce
+  /// geste relit déjà tout à sa fin.
+  @override
+  void onProgressChanged() {
+    if (_updatingSeasonWatched) return;
+    _loadShowData();
+  }
+
   /// Seasons the server does not hold and MediaHub has not been asked for yet.
   List<Media> _requestableSeasons(List<Media> seasons) =>
       seasons.where((s) => s.canRequest).toList();
@@ -202,12 +216,12 @@ class _ShowDetailScreenState extends State<ShowDetailScreen> {
       await library.requestSeasons(show: _show, seasonNumbers: seasonNumbers);
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Demande envoyée à MediaHub.')),
+        SnackBar(content: Text(tr('Demande envoyée à MediaHub.'))),
       );
     } catch (_) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Impossible d’envoyer la demande.')),
+        SnackBar(content: Text(tr('Impossible d’envoyer la demande.'))),
       );
     } finally {
       if (mounted) setState(() => _requesting = false);
@@ -278,13 +292,13 @@ class _ShowDetailScreenState extends State<ShowDetailScreen> {
         context: context,
         builder: (context) => StatefulBuilder(
             builder: (context, update) => AlertDialog(
-                  title: const Text('Choisir une version'),
+                  title: Text(tr('Choisir une version')),
                   content: SizedBox(
                     width: 480,
                     child: DropdownButtonFormField<int>(
                       initialValue: selected.item.media.id,
                       isExpanded: true,
-                      decoration: const InputDecoration(labelText: 'Version'),
+                      decoration: InputDecoration(labelText: tr('Version')),
                       items: versions
                           .map((v) => DropdownMenuItem(
                                 value: v.item.media.id,
@@ -301,10 +315,10 @@ class _ShowDetailScreenState extends State<ShowDetailScreen> {
                   actions: [
                     TextButton(
                         onPressed: () => Navigator.pop(context),
-                        child: const Text('Annuler')),
+                        child: Text(tr('Annuler'))),
                     FilledButton(
                         onPressed: () => Navigator.pop(context, selected),
-                        child: const Text('Lecture')),
+                        child: Text(tr('Lecture'))),
                   ],
                 )),
       );
@@ -351,8 +365,8 @@ class _ShowDetailScreenState extends State<ShowDetailScreen> {
     } catch (_) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-              content: Text('Impossible de mettre à jour le statut')),
+          SnackBar(
+              content: Text(tr('Impossible de mettre à jour le statut'))),
         );
       }
     }
@@ -385,15 +399,14 @@ class _ShowDetailScreenState extends State<ShowDetailScreen> {
       if (!mounted) return;
       messenger.showSnackBar(SnackBar(
         content: Text(watched
-            ? '$changed épisode${changed > 1 ? 's' : ''} '
-                'marqué${changed > 1 ? 's' : ''} vu${changed > 1 ? 's' : ''}'
-            : 'Saison marquée non vue'),
+            ? tr('{0} épisode{1} marqué{2} vu{3}', [changed, changed > 1 ? 's' : '', changed > 1 ? 's' : '', changed > 1 ? 's' : ''])
+            : tr('Saison marquée non vue')),
       ));
     } catch (_) {
       if (mounted) {
         messenger.showSnackBar(
-          const SnackBar(
-              content: Text('Impossible de mettre à jour la saison')),
+          SnackBar(
+              content: Text(tr('Impossible de mettre à jour la saison'))),
         );
       }
     } finally {
@@ -487,25 +500,25 @@ class _ShowDetailScreenState extends State<ShowDetailScreen> {
     if (!mounted) return;
 
     final folderLine =
-        local.folder?.isNotEmpty == true ? local.folder! : 'dossier inconnu';
+        local.folder?.isNotEmpty == true ? local.folder! : tr('dossier inconnu');
 
     final confirmed = await showDialog<bool>(
       context: context,
       builder: (ctx) => AlertDialog(
-        title: const Text('Relancer la détection'),
+        title: Text(tr('Relancer la détection')),
         content: Text(
-          'TMDB sera recherché à partir du dossier local :\n\n'
-          '$folderLine\n\n'
-          'L’affiche et les métadonnées de cette série seront remplacées.',
+          tr('TMDB sera recherché à partir du dossier local '
+              ':\n\n{0}\n\nL’affiche et les métadonnées de cette série '
+              'seront remplacées.', [folderLine]),
         ),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(ctx, false),
-            child: const Text('Annuler'),
+            child: Text(tr('Annuler')),
           ),
           FilledButton(
             onPressed: () => Navigator.pop(ctx, true),
-            child: const Text('Relancer'),
+            child: Text(tr('Relancer')),
           ),
         ],
       ),
@@ -522,13 +535,13 @@ class _ShowDetailScreenState extends State<ShowDetailScreen> {
       });
       await _reloadShowAfterMetadataChange();
       messenger.showSnackBar(
-        const SnackBar(content: Text('Détection automatique terminée')),
+        SnackBar(content: Text(tr('Détection automatique terminée'))),
       );
     } catch (_) {
       if (!mounted) return;
       messenger.showSnackBar(
-        const SnackBar(
-          content: Text('Détection impossible — essayez le choix manuel TMDB'),
+        SnackBar(
+          content: Text(tr('Détection impossible — essayez le choix manuel TMDB')),
         ),
       );
     }
@@ -564,13 +577,13 @@ class _ShowDetailScreenState extends State<ShowDetailScreen> {
       });
       await _reloadShowAfterMetadataChange();
       messenger.showSnackBar(
-        const SnackBar(content: Text('Fiche série mise à jour')),
+        SnackBar(content: Text(tr('Fiche série mise à jour'))),
       );
     } catch (_) {
       if (!mounted) return;
       messenger.showSnackBar(
-        const SnackBar(
-          content: Text('Impossible de mettre à jour la fiche'),
+        SnackBar(
+          content: Text(tr('Impossible de mettre à jour la fiche')),
         ),
       );
     }
@@ -636,8 +649,8 @@ class _ShowDetailScreenState extends State<ShowDetailScreen> {
               onBack: () => Navigator.of(context).pop(),
               loading: _loadingDetails,
               emptyOverviewLabel: _loadingDetails
-                  ? 'Chargement des informations…'
-                  : 'Synopsis indisponible pour cette série.',
+                  ? tr('Chargement des informations…')
+                  : tr('Synopsis indisponible pour cette série.'),
               actions: DetailActions(
                 playLabel: resumeEp != null
                     ? detailPlayLabel(
@@ -662,7 +675,7 @@ class _ShowDetailScreenState extends State<ShowDetailScreen> {
                   ShareCollectionButton(
                     mediaId: _show.id,
                     title: _show.title,
-                    tooltip: 'Partager la série par lien',
+                    tooltip: tr('Partager la série par lien'),
                     hasPlayableEpisode: lp.seasons.any((s) => s.isAvailable),
                   ),
                   ShowMetadataMenu(
@@ -727,7 +740,7 @@ class _ShowDetailScreenState extends State<ShowDetailScreen> {
               child: Row(
                 children: [
                   Text(
-                    'Épisodes',
+                    tr('Épisodes'),
                     style: detailSectionTitleStyle(context),
                   ),
                   if (totalCount > 0) ...[
@@ -750,8 +763,8 @@ class _ShowDetailScreenState extends State<ShowDetailScreen> {
                     mediaId: selectedSeason?.id ?? 0,
                     title: _playerSeasonNumber == null
                         ? _show.title
-                        : '${_show.title} · Saison $_playerSeasonNumber',
-                    tooltip: 'Partager la saison par lien',
+                        : tr('{0} · Saison {1}', [_show.title, _playerSeasonNumber]),
+                    tooltip: tr('Partager la saison par lien'),
                     hasPlayableEpisode: availableCount > 0,
                     compact: true,
                   ),
@@ -783,7 +796,7 @@ class _ShowDetailScreenState extends State<ShowDetailScreen> {
               child: Padding(
                 padding: EdgeInsets.all(AppLayout.pagePadding(context)),
                 child: Text(
-                  'Aucun épisode pour cette saison.',
+                  tr('Aucun épisode pour cette saison.'),
                   style: Theme.of(context).textTheme.bodyMedium?.copyWith(
                         color: AppColors.textMuted,
                       ),

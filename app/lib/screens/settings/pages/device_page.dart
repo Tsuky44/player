@@ -1,14 +1,16 @@
 import 'package:flutter/material.dart';
 
 import '../../../services/app_image_cache.dart';
-import '../../../services/client_identity.dart';
 import '../../../services/download_manager.dart';
 import '../../../theme/app_colors.dart';
 import '../../../tv/tv_mode.dart';
 import '../../../utils/app_platform.dart';
 import '../../../utils/format.dart';
 import '../tv_link_scanner_screen.dart';
+import '../widgets/about_group.dart';
 import '../widgets/settings_ui.dart';
+import '../../../l10n/app_language.dart';
+import '../../../l10n/tr.dart';
 
 class DevicePage extends StatefulWidget {
   const DevicePage({super.key});
@@ -27,10 +29,10 @@ class _DevicePageState extends State<DevicePage> {
       PaintingBinding.instance.imageCache
         ..clear()
         ..clearLiveImages();
-      if (mounted) showSettingsSnack(context, 'Cache des images vidé.');
+      if (mounted) showSettingsSnack(context, tr('Cache des images vidé.'));
     } catch (_) {
       if (mounted) {
-        showSettingsSnack(context, 'Impossible de vider le cache.',
+        showSettingsSnack(context, tr('Impossible de vider le cache.'),
             error: true);
       }
     }
@@ -40,10 +42,11 @@ class _DevicePageState extends State<DevicePage> {
   Future<void> _deleteWatchedDownloads() async {
     final confirmed = await confirmSettingsAction(
       context,
-      title: 'Supprimer les téléchargements vus ?',
+      title: tr('Supprimer les téléchargements vus ?'),
       message:
-          'Les films et épisodes déjà regardés jusqu’au bout sont retirés de cet appareil.',
-      confirmLabel: 'Supprimer',
+          tr('Les films et épisodes déjà regardés jusqu’au bout sont '
+              'retirés de cet appareil.'),
+      confirmLabel: tr('Supprimer'),
     );
     if (!confirmed || !mounted) return;
     final removed = await DownloadManager.instance.deleteWatched();
@@ -52,8 +55,8 @@ class _DevicePageState extends State<DevicePage> {
     showSettingsSnack(
       context,
       removed == 0
-          ? 'Aucun téléchargement vu à supprimer.'
-          : '$removed téléchargement${removed > 1 ? 's' : ''} supprimé${removed > 1 ? 's' : ''}.',
+          ? tr('Aucun téléchargement vu à supprimer.')
+          : tr('{0} téléchargement{1} supprimé{2}.', [removed, removed > 1 ? 's' : '', removed > 1 ? 's' : '']),
     );
   }
 
@@ -61,29 +64,31 @@ class _DevicePageState extends State<DevicePage> {
   Widget build(BuildContext context) {
     final isTv = TvScope.of(context);
     final downloads = DownloadManager.instance;
-    final detected = TvMode.detected ? 'un téléviseur' : 'un appareil tactile';
+    final detected = TvMode.detected ? tr('un téléviseur') : tr('un appareil tactile');
 
     return SettingsPage(
-      title: 'Cet appareil',
+      title: tr('Cet appareil'),
       description:
-          'Ce qui ne concerne que cet appareil : son mode d’affichage, le téléviseur à connecter, et ce qu’il garde en mémoire.',
+          tr('Ce qui ne concerne que cet appareil : son mode d’affichage, '
+              'le téléviseur à connecter, et ce qu’il garde en mémoire.'),
       children: [
         // Sur une Apple TV le mode télécommande est le seul possible : rien à
         // régler (voir [TvMode]).
         if (!AppPlatform.isTvOS)
           SettingsGroup(
-            title: 'Affichage',
+            title: tr('Affichage'),
             children: [
               SettingsChoiceTile<TvModePreference>(
                 icon: Icons.settings_remote_rounded,
-                title: 'Mode télécommande',
+                title: tr('Mode télécommande'),
                 subtitle:
-                    'Interface pensée pour un téléviseur et une télécommande. Cet appareil est détecté comme $detected.',
+                    tr('Interface pensée pour un téléviseur et une '
+                        'télécommande. Cet appareil est détecté comme {0}.', [detected]),
                 value: TvMode.preference,
-                options: const [
-                  (TvModePreference.auto, 'Auto'),
-                  (TvModePreference.on, 'Activé'),
-                  (TvModePreference.off, 'Désactivé'),
+                options: [
+                  (TvModePreference.auto, tr('Auto')),
+                  (TvModePreference.on, tr('Activé')),
+                  (TvModePreference.off, tr('Désactivé')),
                 ],
                 onChanged: (value) async {
                   await TvMode.setPreference(value);
@@ -92,19 +97,38 @@ class _DevicePageState extends State<DevicePage> {
               ),
             ],
           ),
+        SettingsGroup(
+          title: tr('Langue'),
+          children: [
+            SettingsChoiceTile<AppLanguage?>(
+              icon: Icons.translate_rounded,
+              title: tr('Langue de l’interface'),
+              subtitle: tr('« Auto » suit la langue de cet appareil.'),
+              value: AppLanguage.chosen,
+              options: [
+                (null, tr('Auto')),
+                for (final language in AppLanguage.values)
+                  (language, language.nativeName),
+              ],
+              onChanged: AppLanguage.choose,
+            ),
+          ],
+        ),
         // Le lien se fait en scannant le code affiché par l'autre écran
         // (téléviseur, navigateur, ordinateur) : il faut une caméra, donc un
         // téléphone.
         if (AppPlatform.isMobile && !isTv)
           SettingsGroup(
-            title: 'Autres appareils',
+            title: tr('Autres appareils'),
             children: [
               SettingsTile(
                 icon: Icons.qr_code_scanner_rounded,
                 iconColor: AppColors.primary,
-                title: 'Connecter un appareil',
+                title: tr('Connecter un appareil'),
                 subtitle:
-                    'Scannez le code QR affiché par Onyx sur un téléviseur, un ordinateur ou un navigateur : il se connecte à votre compte, sans mot de passe.',
+                    tr('Scannez le code QR affiché par Onyx sur un '
+                        'téléviseur, un ordinateur ou un navigateur : il se '
+                        'connecte à votre compte, sans mot de passe.'),
                 onTap: () => Navigator.of(context).push(
                   MaterialPageRoute(
                       builder: (_) => const TvLinkScannerScreen()),
@@ -114,26 +138,27 @@ class _DevicePageState extends State<DevicePage> {
           ),
         if (!AppPlatform.isWeb && downloads.isSupported)
           SettingsGroup(
-            title: 'Stockage',
+            title: tr('Stockage'),
             children: [
               SettingsTile(
                 icon: Icons.download_done_rounded,
-                title: 'Téléchargements hors ligne',
+                title: tr('Téléchargements hors ligne'),
                 subtitle:
-                    '${downloads.downloads.length} média${downloads.downloads.length > 1 ? 's' : ''} · ${formatBytes(downloads.totalBytesOnDisk)}',
+                    tr('{0} média{1} · {2}', [downloads.downloads.length, downloads.downloads.length > 1 ? 's' : '', formatBytes(downloads.totalBytesOnDisk)]),
                 showChevron: false,
                 trailing: downloads.downloads.isEmpty
                     ? null
                     : TextButton(
                         onPressed: _deleteWatchedDownloads,
-                        child: const Text('Retirer les vus'),
+                        child: Text(tr('Retirer les vus')),
                       ),
               ),
               SettingsTile(
                 icon: Icons.image_outlined,
-                title: 'Cache des images',
+                title: tr('Cache des images'),
                 subtitle:
-                    'Affiches et fonds gardés sur l’appareil pour s’afficher sans attendre. Ils seront retéléchargés.',
+                    tr('Affiches et fonds gardés sur l’appareil pour '
+                        's’afficher sans attendre. Ils seront retéléchargés.'),
                 showChevron: false,
                 trailing: _clearingCache
                     ? const SizedBox(
@@ -143,29 +168,12 @@ class _DevicePageState extends State<DevicePage> {
                       )
                     : TextButton(
                         onPressed: _clearImageCache,
-                        child: const Text('Vider'),
+                        child: Text(tr('Vider')),
                       ),
               ),
             ],
           ),
-        SettingsGroup(
-          title: 'À propos',
-          children: [
-            SettingsTile(
-              icon: Icons.info_outline_rounded,
-              title: 'Onyx ${ClientIdentity.version}',
-              subtitle: ClientIdentity.platform,
-              showChevron: false,
-            ),
-            SettingsTile(
-              icon: Icons.badge_outlined,
-              title: ClientIdentity.deviceName,
-              subtitle:
-                  'Le nom sous lequel cet appareil apparaît dans la liste des appareils connectés.',
-              showChevron: false,
-            ),
-          ],
-        ),
+        const AboutGroup(),
       ],
     );
   }

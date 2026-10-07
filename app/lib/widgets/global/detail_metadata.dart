@@ -5,6 +5,7 @@ import '../../theme/app_colors.dart';
 import '../../utils/format.dart';
 import '../../theme/app_icons.dart';
 import '../../theme/app_type.dart';
+import '../../l10n/tr.dart';
 
 /// Combien de genres la ligne de métadonnées écrit au plus.
 const int maxMetadataGenres = 3;
@@ -148,7 +149,7 @@ List<String> techBadgesFor(MediaTracks? tracks) {
   final spatial = audio
       .map((a) => a.spatialFormat)
       .firstWhere((f) => f.isNotEmpty, orElse: () => '');
-  if (spatial == 'atmos') badges.add('Dolby Atmos');
+  if (spatial == 'atmos') badges.add(tr('Dolby Atmos'));
   if (spatial == 'dtsx') badges.add('DTS:X');
 
   final maxChannels =

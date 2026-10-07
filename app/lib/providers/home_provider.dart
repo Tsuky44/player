@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import '../models/models.dart';
 import '../services/api_client.dart';
 import '../services/download_manager.dart';
+import '../l10n/tr.dart';
 
 class HomeProvider extends ChangeNotifier {
   static const double _minContinueWatchingPercent = 10.0;
@@ -91,7 +92,7 @@ class HomeProvider extends ChangeNotifier {
     } catch (e) {
       if (request != _homeRequest) return;
       _errorMessage =
-          "Impossible de charger la page d'accueil : ${e.toString()}";
+          tr('Impossible de charger la page d\'accueil : {0}', [e.toString()]);
     } finally {
       if (request == _homeRequest) {
         _isLoading = false;
@@ -272,7 +273,7 @@ class HomeProvider extends ChangeNotifier {
       notifyListeners();
       _startStatusPolling();
     } catch (e) {
-      _errorMessage = "Erreur lors du lancement du scan : ${e.toString()}";
+      _errorMessage = tr('Erreur lors du lancement du scan : {0}', [e.toString()]);
       notifyListeners();
     }
   }
@@ -287,7 +288,7 @@ class HomeProvider extends ChangeNotifier {
       _startStatusPolling();
     } catch (e) {
       _errorMessage =
-          "Erreur lors de l'extraction des sous-titres : ${e.toString()}";
+          tr('Erreur lors de l\'extraction des sous-titres : {0}', [e.toString()]);
       notifyListeners();
       rethrow;
     }
@@ -303,7 +304,7 @@ class HomeProvider extends ChangeNotifier {
       _startStatusPolling();
     } catch (e) {
       _errorMessage =
-          "Erreur lors de la mise à jour des affiches : ${e.toString()}";
+          tr('Erreur lors de la mise à jour des affiches : {0}', [e.toString()]);
       notifyListeners();
     }
   }
@@ -318,7 +319,7 @@ class HomeProvider extends ChangeNotifier {
       _startStatusPolling();
     } catch (e) {
       _errorMessage =
-          "Erreur lors de la re-détection des matchs : ${e.toString()}";
+          tr('Erreur lors de la re-détection des matchs : {0}', [e.toString()]);
       notifyListeners();
       rethrow;
     }
@@ -358,13 +359,14 @@ class HomeProvider extends ChangeNotifier {
         if (extractJustFinished) {
           final s = status.subtitleExtraction;
           _completionMessage =
-              "Sous-titres extraits : ${s.succeeded}/${s.total} médias (${s.tracks} pistes)";
+              tr('Sous-titres extraits : {0}/{1} médias ({2} pistes)', [s.succeeded, s.total, s.tracks]);
         } else if (backfillJustFinished) {
-          _completionMessage = "Affiches mises à jour depuis TMDB";
+          _completionMessage = tr('Affiches mises à jour depuis TMDB');
         } else if (redetectJustFinished) {
           final r = status.redetectAll;
           _completionMessage =
-              "Re-détection terminée : ${r.updated} mis à jour, ${r.skipped} sans changement (${r.total} titres)";
+              tr('Re-détection terminée : {0} mis à jour, {1} sans '
+                  'changement ({2} titres)', [r.updated, r.skipped, r.total]);
         }
 
         notifyListeners();

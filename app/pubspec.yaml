@@ -169,6 +169,9 @@ flutter:
   assets:
     - assets/fonts/OFL.txt
     - assets/fonts/Phosphor-LICENSE.txt
+    # Les textes légaux qu'un magasin d'applications exige dans l'app, lisibles
+    # hors ligne et sur un téléviseur sans navigateur (ADR-0046).
+    - assets/legal/
 
   fonts:
     - family: Manrope

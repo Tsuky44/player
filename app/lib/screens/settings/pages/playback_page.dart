@@ -1,17 +1,14 @@
 import 'package:flutter/material.dart';
-import 'package:provider/provider.dart';
 
-import '../../../providers/player_layout_provider.dart';
 import '../../../services/playback_preferences_storage.dart';
 import '../../../theme/app_colors.dart';
 import '../../../utils/app_platform.dart';
 import '../../player/display_frame_rate.dart';
 import '../../player/hardware_decoding.dart';
-import '../../player_studio/player_studio_screen.dart';
-import '../../player_studio/widgets/player_layouts_sheet.dart';
 import '../widgets/settings_dropdown_label.dart';
 import '../widgets/settings_ui.dart';
 import 'playback_still_watching_group.dart';
+import '../../../l10n/tr.dart';
 
 class PlaybackPage extends StatefulWidget {
   const PlaybackPage({super.key});
@@ -59,33 +56,35 @@ class _PlaybackPageState extends State<PlaybackPage> {
 
   @override
   Widget build(BuildContext context) {
-    final layouts = context.watch<PlayerLayoutProvider>();
     final options = PlaybackPreferencesStorage.audioLanguageOptions;
     final current = options
             .where((o) => o.code == _audioLang)
-            .map((o) => o.label)
+            .map((o) => tr(o.label))
             .firstOrNull ??
-        options.first.label;
+        tr(options.first.label);
 
     return SettingsPage(
-      title: 'Lecture',
+      title: tr('Lecture'),
       description:
-          'Comment les films et les séries se lisent. Vos préférences suivent votre compte sur tous vos appareils ; seuls les réglages vidéo restent propres à celui-ci.',
+          tr('Comment les films et les séries se lisent. Vos préférences '
+              'suivent votre compte sur tous vos appareils ; seuls les '
+              'réglages vidéo restent propres à celui-ci.'),
       children: [
         SettingsGroup(
-          title: 'Audio',
+          title: tr('Audio'),
           children: [
             SettingsTile(
               icon: Icons.translate_rounded,
               iconColor: AppColors.primary,
-              title: 'Langue audio par défaut',
+              title: tr('Langue audio par défaut'),
               subtitle:
-                  'Choisie à l’ouverture d’un média quand une piste correspondante existe.',
+                  tr('Choisie à l’ouverture d’un média quand une piste '
+                      'correspondante existe.'),
               showChevron: false,
               trailing: !_loaded
                   ? null
                   : PopupMenuButton<String?>(
-                      tooltip: 'Langue audio par défaut',
+                      tooltip: tr('Langue audio par défaut'),
                       color: AppColors.surfaceElevated,
                       initialValue: _audioLang,
                       onSelected: _setAudioLang,
@@ -103,7 +102,7 @@ class _PlaybackPageState extends State<PlaybackPage> {
                                       : null,
                                 ),
                                 const SizedBox(width: 6),
-                                Text(option.label),
+                                Text(tr(option.label)),
                               ],
                             ),
                           ),
@@ -117,22 +116,23 @@ class _PlaybackPageState extends State<PlaybackPage> {
         // matériel et FFmpeg : le groupe n'aurait rien à y proposer.
         if (!AppPlatform.isApple)
           SettingsGroup(
-            title: 'Vidéo',
+            title: tr('Vidéo'),
             // Ils corrigent le matériel de cet appareil : les envoyer sur un
             // autre y casserait une lecture qui marchait (ADR-0004).
-            footer: 'Propres à cet appareil : ils dépendent de son matériel.',
+            footer: tr('Propres à cet appareil : ils dépendent de son matériel.'),
             children: [
               SettingsChoiceTile<HardwareDecodingPreference>(
                 icon: Icons.memory_rounded,
-                title: 'Décodage matériel',
+                title: tr('Décodage matériel'),
                 subtitle:
-                    'Passez sur « Compatible » si l’image est noire ou verte alors que le son fonctionne.',
-                footnote: 'Prend effet à la prochaine lecture.',
+                    tr('Passez sur « Compatible » si l’image est noire ou '
+                        'verte alors que le son fonctionne.'),
+                footnote: tr('Prend effet à la prochaine lecture.'),
                 value: HardwareDecoding.preference,
-                options: const [
-                  (HardwareDecodingPreference.auto, 'Rapide'),
-                  (HardwareDecodingPreference.copy, 'Compatible'),
-                  (HardwareDecodingPreference.off, 'Logiciel'),
+                options: [
+                  (HardwareDecodingPreference.auto, tr('Rapide')),
+                  (HardwareDecodingPreference.copy, tr('Compatible')),
+                  (HardwareDecodingPreference.off, tr('Logiciel')),
                 ],
                 onChanged: (value) async {
                   await HardwareDecoding.setPreference(value);
@@ -143,9 +143,11 @@ class _PlaybackPageState extends State<PlaybackPage> {
               if (AppPlatform.isAndroid)
                 SettingsSwitchTile(
                   icon: Icons.slow_motion_video_rounded,
-                  title: 'Adapter l’écran au film',
+                  title: tr('Adapter l’écran au film'),
                   subtitle:
-                      'Cale la fréquence du téléviseur sur celle du film pour supprimer les saccades. Désactivez-le si la lecture se fige au démarrage.',
+                      tr('Cale la fréquence du téléviseur sur celle du film '
+                          'pour supprimer les saccades. Désactivez-le si la '
+                          'lecture se fige au démarrage.'),
                   value: DisplayFrameRate.enabled,
                   onChanged: (value) async {
                     await DisplayFrameRate.setEnabled(value);
@@ -155,18 +157,19 @@ class _PlaybackPageState extends State<PlaybackPage> {
             ],
           ),
         SettingsGroup(
-          title: 'Séries',
+          title: tr('Séries'),
           footer:
-              'Un épisode enchaîne déjà sur le suivant au bout de 5 secondes. '
-              'L’intro peut faire pareil.',
+              tr('Un épisode enchaîne déjà sur le suivant au bout de 5 '
+                  'secondes. L’intro peut faire pareil.'),
           children: [
             SettingsSwitchTile(
               icon: Icons.fast_forward_rounded,
-              title: 'Passer l’intro automatiquement',
+              title: tr('Passer l’intro automatiquement'),
               subtitle:
-                  'Quand le bouton « Passer l’intro » apparaît, l’intro est '
-                  'sautée au bout de 5 secondes. Le moindre mouvement de '
-                  'souris ou appui sur une touche annule le saut.',
+                  tr('Quand le bouton « Passer l’intro » apparaît, l’intro '
+                      'est sautée au bout de 5 secondes. Le moindre '
+                      'mouvement de souris ou appui sur une touche annule le '
+                      'saut.'),
               value: PlaybackPreferencesStorage.autoSkipIntro,
               onChanged: (value) async {
                 await PlaybackPreferencesStorage.setAutoSkipIntro(value);
@@ -181,27 +184,6 @@ class _PlaybackPageState extends State<PlaybackPage> {
             await PlaybackPreferencesStorage.setStillWatching(value);
             if (mounted) setState(() {});
           },
-        ),
-        SettingsGroup(
-          title: 'Interface du lecteur',
-          footer:
-              'Vos playeurs sont liés à votre compte et vous suivent sur tous vos appareils.',
-          children: [
-            SettingsTile(
-              icon: Icons.widgets_outlined,
-              title: 'Mes playeurs',
-              subtitle: 'Actif : ${layouts.activePresetName}',
-              onTap: () => showPlayerLayoutsSheet(context),
-            ),
-            SettingsTile(
-              icon: Icons.dashboard_customize_outlined,
-              title: 'Player Studio',
-              subtitle: 'Composer et placer les contrôles du lecteur',
-              onTap: () => Navigator.of(context).push(
-                MaterialPageRoute(builder: (_) => const PlayerStudioScreen()),
-              ),
-            ),
-          ],
         ),
       ],
     );

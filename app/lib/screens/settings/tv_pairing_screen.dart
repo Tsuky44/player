@@ -9,6 +9,7 @@ import '../../providers/auth_provider.dart';
 import '../../services/api_client.dart';
 import '../../theme/app_colors.dart';
 import '../../theme/app_type.dart';
+import '../../l10n/tr.dart';
 
 /// The phone's half of a server pairing — a browser, a desktop app or a
 /// television asking to be signed in.
@@ -82,7 +83,7 @@ class _TvPairingScreenState extends State<TvPairingScreen> {
   Future<void> _lookup() async {
     final code = _normalize(_codeController.text);
     if (code.length != 8) {
-      setState(() => _error = 'Le code fait 8 caractères.');
+      setState(() => _error = tr('Le code fait 8 caractères.'));
       return;
     }
 
@@ -103,7 +104,8 @@ class _TvPairingScreenState extends State<TvPairingScreen> {
       setState(() {
         _phase = _ApprovalPhase.entering;
         _error = _otherServerHint() ??
-            'Code inconnu ou expiré. Vérifiez ce qui est affiché sur l’appareil.';
+            tr('Code inconnu ou expiré. Vérifiez ce qui est affiché sur '
+                'l’appareil.');
       });
     }
   }
@@ -119,9 +121,9 @@ class _TvPairingScreenState extends State<TvPairingScreen> {
         ServerAccount.normalizeUrl(context.read<ApiClient>().baseUrl));
     if (linked == null || current == null) return null;
     if (linked.host == current.host && linked.port == current.port) return null;
-    return 'Code introuvable. Il vient de ${linked.host}, alors que ce '
-        'téléphone est connecté à ${current.host} : vérifiez que les deux '
-        'appareils utilisent le même serveur.';
+    return tr('Code introuvable. Il vient de {0}, alors que ce téléphone est '
+        'connecté à {1} : vérifiez que les deux appareils utilisent le même '
+        'serveur.', [linked.host, current.host]);
   }
 
   Future<void> _approve() async {
@@ -141,7 +143,7 @@ class _TvPairingScreenState extends State<TvPairingScreen> {
       if (!mounted) return;
       setState(() {
         _phase = _ApprovalPhase.confirming;
-        _error = 'La confirmation a échoué. Le code a peut-être expiré.';
+        _error = tr('La confirmation a échoué. Le code a peut-être expiré.');
       });
     }
   }
@@ -162,7 +164,7 @@ class _TvPairingScreenState extends State<TvPairingScreen> {
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: AppColors.background,
-      appBar: AppBar(title: const Text('Connecter un appareil')),
+      appBar: AppBar(title: Text(tr('Connecter un appareil'))),
       body: SafeArea(
         child: Center(
           child: SingleChildScrollView(
@@ -189,16 +191,16 @@ class _TvPairingScreenState extends State<TvPairingScreen> {
         return _outcome(
           icon: Icons.check_circle_rounded,
           color: AppColors.success,
-          title: 'Appareil connecté',
+          title: tr('Appareil connecté'),
           detail:
-              'Votre compte est maintenant actif sur ${_request?.deviceName ?? 'l’appareil'}.',
+              tr('Votre compte est maintenant actif sur {0}.', [_request?.deviceName ?? tr('l’appareil')]),
         );
       case _ApprovalPhase.denied:
         return _outcome(
           icon: Icons.cancel_rounded,
           color: AppColors.textMuted,
-          title: 'Demande refusée',
-          detail: 'Le code a été annulé. Rien n\'a été connecté.',
+          title: tr('Demande refusée'),
+          detail: tr('Le code a été annulé. Rien n\'a été connecté.'),
         );
     }
   }
@@ -213,7 +215,7 @@ class _TvPairingScreenState extends State<TvPairingScreen> {
             size: 52, color: AppColors.textSecondary),
         const SizedBox(height: 18),
         Text(
-          'Saisissez le code affiché sur l’appareil à connecter',
+          tr('Saisissez le code affiché sur l’appareil à connecter'),
           textAlign: TextAlign.center,
           style: Theme.of(context).textTheme.titleMedium,
         ),
@@ -244,8 +246,8 @@ class _TvPairingScreenState extends State<TvPairingScreen> {
                 );
               }),
             ],
-            decoration: const InputDecoration(
-              hintText: 'ABCD-EFGH',
+            decoration: InputDecoration(
+              hintText: tr('ABCD-EFGH'),
               counterText: '',
             ),
             onSubmitted: (_) => _lookup(),
@@ -274,7 +276,7 @@ class _TvPairingScreenState extends State<TvPairingScreen> {
                     color: AppColors.background,
                   ),
                 )
-              : const Text('Continuer'),
+              : Text(tr('Continuer')),
         ),
       ],
     );
@@ -301,7 +303,7 @@ class _TvPairingScreenState extends State<TvPairingScreen> {
         ),
         const SizedBox(height: 8),
         Text(
-          'demande à se connecter avec votre compte « $username ».',
+          tr('demande à se connecter avec votre compte « {0} ».', [username]),
           textAlign: TextAlign.center,
           style: const TextStyle(color: AppColors.textSecondary, height: 1.4),
         ),
@@ -314,10 +316,10 @@ class _TvPairingScreenState extends State<TvPairingScreen> {
             border:
                 Border.all(color: AppColors.warning.withValues(alpha: 0.3)),
           ),
-          child: const Text(
-            'N\'acceptez que si ce code est affiché en ce moment sur un '
-            'appareil devant vous. Quelqu\'un qui vous envoie un code QR '
-            'cherche à entrer dans votre compte.',
+          child: Text(
+            tr('N\'acceptez que si ce code est affiché en ce moment sur un '
+                'appareil devant vous. Quelqu\'un qui vous envoie un code QR '
+                'cherche à entrer dans votre compte.'),
             style: TextStyle(color: AppColors.textSecondary, fontSize: AppType.subhead),
           ),
         ),
@@ -344,12 +346,12 @@ class _TvPairingScreenState extends State<TvPairingScreen> {
                     color: AppColors.background,
                   ),
                 )
-              : const Text('Autoriser cet appareil'),
+              : Text(tr('Autoriser cet appareil')),
         ),
         const SizedBox(height: 8),
         TextButton(
           onPressed: busy ? null : _deny,
-          child: const Text('Refuser'),
+          child: Text(tr('Refuser')),
         ),
       ],
     );
@@ -386,7 +388,7 @@ class _TvPairingScreenState extends State<TvPairingScreen> {
           style: ElevatedButton.styleFrom(
             padding: const EdgeInsets.symmetric(vertical: 16),
           ),
-          child: const Text('Terminé'),
+          child: Text(tr('Terminé')),
         ),
       ],
     );

@@ -1,4 +1,5 @@
 import 'models.dart';
+import '../l10n/tr.dart';
 
 /// Validation en deux étapes (ADR-0041) : ce que le serveur exige, ce que le
 /// compte a configuré, et la connexion arrêtée entre le mot de passe et le code.
@@ -17,10 +18,12 @@ enum OtpPolicy {
   /// Imposée à tous les comptes.
   everyone('everyone', 'Obligatoire pour tous');
 
-  const OtpPolicy(this.wire, this.label);
+  const OtpPolicy(this.wire, this._label);
 
   final String wire;
-  final String label;
+  final String _label;
+
+  String get label => tr(_label);
 
   /// Une valeur inconnue, ou un serveur trop ancien pour en envoyer une, se lit
   /// comme la politique par défaut du serveur.

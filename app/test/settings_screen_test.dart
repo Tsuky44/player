@@ -9,6 +9,7 @@ import 'package:onyx/models/server_activity.dart';
 import 'package:onyx/providers/auth_provider.dart';
 import 'package:onyx/screens/settings/settings_screen.dart';
 import 'package:onyx/services/api_client.dart';
+import 'package:onyx/utils/store_build.dart';
 
 class _FakeApi extends ApiClient {
   int statsCalls = 0;
@@ -179,6 +180,55 @@ void main() {
     expect(find.text('Titres les plus regardés'), findsOneWidget);
     expect(find.text('Severance'), findsOneWidget);
     expect(find.text('Transcodage'), findsOneWidget);
+    expect(tester.takeException(), isNull);
+  });
+
+  // Recevoir un lien ne demande aucun droit : un membre l'ouvre depuis les
+  // réglages, sans que la page lui liste des liens qu'il ne peut pas créer
+  // (ADR-0037 §11).
+  testWidgets('un membre sans droit de partage peut ouvrir un lien reçu',
+      (tester) async {
+    await pump(tester, width: 1100, permissions: const Permissions());
+
+    await tester.tap(find.text('Liens de partage'));
+    await tester.pumpAndSettle();
+    expect(find.text('Actifs'), findsNothing);
+    expect(find.byTooltip('Actualiser'), findsNothing);
+
+    await tester.tap(find.text('Ouvrir un lien de partage'));
+    await tester.pumpAndSettle();
+    expect(find.text('Collez le lien qu’on vous a envoyé. Il se regarde ici, '
+        'sans compte.'), findsOneWidget);
+    expect(tester.takeException(), isNull);
+  });
+
+  // Un magasin interdit à une app de proposer ses propres installeurs
+  // (ADR-0046).
+  testWidgets('un build store ne propose pas la page Applications',
+      (tester) async {
+    await pump(tester, width: 1100, permissions: const Permissions());
+    expect(find.text('Applications'), findsOneWidget);
+
+    StoreBuild.overrideForTest(true);
+    addTearDown(() => StoreBuild.overrideForTest(null));
+    await pump(tester, width: 1100, permissions: const Permissions());
+    expect(find.text('Applications'), findsNothing);
+    expect(tester.takeException(), isNull);
+  });
+
+  // Exigé par les magasins de toute app où l'on peut créer un compte.
+  testWidgets('chacun peut supprimer son compte depuis Mon compte',
+      (tester) async {
+    await pump(tester, width: 1100, permissions: const Permissions());
+
+    await tester.ensureVisible(find.text('Supprimer mon compte'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Supprimer mon compte'));
+    await tester.pumpAndSettle();
+    expect(find.text('Supprimer votre compte ?'), findsOneWidget);
+    await tester.tap(find.text('Continuer'));
+    await tester.pumpAndSettle();
+    expect(find.text('Confirmez avec votre mot de passe'), findsOneWidget);
     expect(tester.takeException(), isNull);
   });
 

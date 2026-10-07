@@ -7,7 +7,7 @@ La direction s'appelle **Quiet Premium** : une scène charbon OLED, un accent bl
 - `PROJECT_DESIGN.md` est le contrat visuel en vigueur : palette, typographie, composants, mouvement (§10), à faire et à éviter (§11). Lis la section du composant que tu touches.
 - `PRODUCT.md` porte les principes produit et l'accessibilité.
 - `design.md` est l'ancien brief « Cinematic Glass ». Il sert de référence, et `PROJECT_DESIGN.md` l'emporte en cas de désaccord.
-- `docs/specs/player-ui-skins.md` couvre les skins du lecteur et le studio.
+- Le lecteur n'a qu'un chrome, le Chrome Onyx (`screens/player/widgets/onyx/`, ADR-0048).
 - Pour le savoir-faire UI approfondi (critique, polish, audit, animation, accessibilité), lis `.agents/skills/impeccable/SKILL.md` et `.agents/skills/tasteful-ui/SKILL.md` par leur chemin. Les liens de `.claude/skills/` vers ces dossiers sont cassés sous Windows.
 
 ## Tokens
@@ -28,7 +28,7 @@ La direction s'appelle **Quiet Premium** : une scène charbon OLED, un accent bl
 | Chargement, vide, erreur | `LoadingView`, `EmptyStateView`, `ErrorStateView` | Un seul langage pour les trois états. |
 | Page de réglages | `SettingsPage`, `SettingsGroup`, `SettingsTile`… (`settings/widgets/settings_ui.dart`) | Une mise en page et une densité cohérentes. |
 | Mise en page, grilles | `Responsive` (`utils/responsive.dart`) | Points de rupture, marges, colonnes d'affiches et taille tactile minimale. |
-| Verre, chrome | `glass_chrome.dart`, `control_chrome.dart` | Un seul rendu de verre. |
+| Verre, chrome | `glass_chrome.dart` | Un seul rendu de verre. |
 
 Avant de créer un composant, cherche dans `widgets/global/` et dans les `widgets/` de l'écran voisin. Un composant utilisé par un deuxième écran monte dans `widgets/global/`.
 

@@ -12,6 +12,7 @@ import 'app_network_image.dart';
 import 'media_logo_display.dart';
 import '../../theme/app_icons.dart';
 import '../../theme/app_type.dart';
+import '../../l10n/tr.dart';
 
 class HeroBanner extends StatefulWidget {
   final Media media;
@@ -269,7 +270,7 @@ class _HeroBannerState extends State<HeroBanner> {
                       runSpacing: 12,
                       children: [
                         _PlayButton(
-                          label: widget.playLabel,
+                          label: tr(widget.playLabel),
                           onPressed: widget.onPlay,
                           autofocus: widget.autofocusPlay,
                         ),
@@ -328,7 +329,7 @@ class _InfoButton extends StatelessWidget {
     return OutlinedButton.icon(
       onPressed: onPressed,
       icon: const Icon(AppIcons.info, size: 22),
-      label: Text(compact ? 'Infos' : 'Plus d’infos'),
+      label: Text(compact ? tr('Infos') : tr('Plus d’infos')),
       style: OutlinedButton.styleFrom(
         backgroundColor: Colors.white.withValues(alpha: 0.15),
         side: BorderSide.none,

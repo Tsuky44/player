@@ -4,6 +4,7 @@ import '../playback/playback_session.dart';
 import '../../../models/models.dart';
 import '../../../services/api_client.dart';
 import '../../../services/playback_preferences_storage.dart';
+import '../../../l10n/tr.dart';
 
 class EpisodeNavigationController extends ChangeNotifier {
   final ApiClient _apiClient;
@@ -88,10 +89,10 @@ class EpisodeNavigationController extends ChangeNotifier {
   /// Which intro-detection path is active for the skip button.
   String get activeSkipSource {
     if (timestamps != null && timestamps!.isPlausibleIntro()) {
-      return 'Base de données';
+      return tr('Base de données');
     }
-    if (_bestIntroFromChapters() != null) return 'Chapitres MKV';
-    return 'Aucune';
+    if (_bestIntroFromChapters() != null) return tr('Chapitres MKV');
+    return tr('Aucune');
   }
 
   bool isIntroChapter(VideoChapter chapter) => _isIntroTitle(chapter.title);

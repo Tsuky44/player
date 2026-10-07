@@ -4,6 +4,7 @@ import '../../../theme/app_colors.dart';
 import '../../../utils/format.dart';
 import '../../../theme/app_icons.dart';
 import '../../../theme/app_type.dart';
+import '../../../l10n/tr.dart';
 
 /// Panel shown under the season picker when the selected season is not on the
 /// server. It offers the request when MediaHub allows it, states that the
@@ -58,8 +59,8 @@ class MissingSeasonBanner extends StatelessWidget {
               Expanded(
                 child: Text(
                   season.isRequested
-                      ? 'Saison déjà demandée, pas encore disponible'
-                      : 'Saison manquante sur le serveur',
+                      ? tr('Saison déjà demandée, pas encore disponible')
+                      : tr('Saison manquante sur le serveur'),
                   style: const TextStyle(
                     color: AppColors.textPrimary,
                     fontWeight: FontWeight.w600,
@@ -69,7 +70,7 @@ class MissingSeasonBanner extends StatelessWidget {
               ),
               if (season.episodeCount != null && season.episodeCount! > 0)
                 Text(
-                  '${season.episodeCount} épisodes',
+                  tr('{0} épisodes', [season.episodeCount]),
                   style: const TextStyle(
                     color: AppColors.textMuted,
                     fontSize: AppType.footnote,
@@ -115,15 +116,15 @@ class MissingSeasonBanner extends StatelessWidget {
                       : const Icon(AppIcons.download, size: 18),
                   label: Text(
                     seasonNumber > 0
-                        ? 'Demander la saison $seasonNumber'
-                        : 'Demander cette saison',
+                        ? tr('Demander la saison {0}', [seasonNumber])
+                        : tr('Demander cette saison'),
                   ),
                 ),
                 if (requestableCount > 1) ...[
                   const SizedBox(width: 8),
                   TextButton(
                     onPressed: submitting ? null : onRequestMore,
-                    child: const Text('Demander plusieurs saisons…'),
+                    child: Text(tr('Demander plusieurs saisons…')),
                   ),
                 ],
               ],

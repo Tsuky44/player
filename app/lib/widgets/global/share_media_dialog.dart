@@ -8,6 +8,7 @@ import '../../tv/tv_deferred_keyboard.dart';
 import '../../screens/settings/widgets/settings_ui.dart' show settingsErrorText;
 import '../../theme/app_icons.dart';
 import '../../theme/app_type.dart';
+import '../../l10n/tr.dart';
 
 /// Crée un lien public vers un film, un épisode, une saison ou une série, puis
 /// montre ce lien.
@@ -95,7 +96,7 @@ class _ShareMediaDialogState extends State<ShareMediaDialog> {
       setState(() {
         _creating = false;
         _error =
-            settingsErrorText(e, 'Impossible de créer le lien. Réessayez.');
+            settingsErrorText(e, tr('Impossible de créer le lien. Réessayez.'));
       });
     }
   }
@@ -112,7 +113,7 @@ class _ShareMediaDialogState extends State<ShareMediaDialog> {
     final created = _created;
     return AlertDialog(
       backgroundColor: AppColors.surfaceElevated,
-      title: Text(created == null ? 'Partager par lien' : 'Lien créé'),
+      title: Text(created == null ? tr('Partager par lien') : tr('Lien créé')),
       content: ConstrainedBox(
         constraints: const BoxConstraints(maxWidth: 420),
         child: SingleChildScrollView(
@@ -123,7 +124,7 @@ class _ShareMediaDialogState extends State<ShareMediaDialog> {
           ? [
               TextButton(
                 onPressed: _creating ? null : () => Navigator.of(context).pop(),
-                child: const Text('Annuler'),
+                child: Text(tr('Annuler')),
               ),
               FilledButton(
                 onPressed: _creating ? null : _create,
@@ -133,20 +134,20 @@ class _ShareMediaDialogState extends State<ShareMediaDialog> {
                         height: 18,
                         child: CircularProgressIndicator(strokeWidth: 2),
                       )
-                    : const Text('Créer le lien'),
+                    : Text(tr('Créer le lien')),
               ),
             ]
           : [
               TextButton(
                 onPressed: () => Navigator.of(context).pop(),
-                child: const Text('Terminé'),
+                child: Text(tr('Terminé')),
               ),
               FilledButton.icon(
                 autofocus: true,
                 onPressed: _copy,
                 icon: Icon(_copied ? AppIcons.check : AppIcons.copy,
                     size: 18),
-                label: Text(_copied ? 'Copié' : 'Copier le lien'),
+                label: Text(_copied ? tr('Copié') : tr('Copier le lien')),
               ),
             ],
     );
@@ -159,12 +160,11 @@ class _ShareMediaDialogState extends State<ShareMediaDialog> {
       children: [
         Text(
           widget.collection
-              ? 'Toute personne qui a le lien peut regarder les épisodes de '
-                  '« ${widget.title} » dans son navigateur ou dans l’app '
-                  'Onyx, sans compte, jusqu’à l’expiration du lien.'
-              : 'Toute personne qui a le lien peut regarder '
-                  '« ${widget.title} » dans son navigateur ou dans l’app '
-                  'Onyx, sans compte.',
+              ? tr('Toute personne qui a le lien peut regarder les épisodes '
+                  'de « {0} » dans son navigateur ou dans l’app Onyx, sans '
+                  'compte, jusqu’à l’expiration du lien.', [widget.title])
+              : tr('Toute personne qui a le lien peut regarder « {0} » dans '
+                  'son navigateur ou dans l’app Onyx, sans compte.', [widget.title]),
           style: const TextStyle(color: AppColors.textSecondary),
         ),
         const SizedBox(height: 12),
@@ -174,13 +174,13 @@ class _ShareMediaDialogState extends State<ShareMediaDialog> {
             value: _singleUse,
             onChanged:
                 _creating ? null : (v) => setState(() => _singleUse = v),
-            title: const Text('Détruire après lecture'),
+            title: Text(tr('Détruire après lecture')),
             subtitle: Text(
               _singleUse
-                  ? 'Le lien ne s’ouvre que sur un appareil, et disparaît une '
-                      'fois le média vu.'
-                  : 'Le lien reste utilisable, par plusieurs personnes, '
-                      'jusqu’à son expiration.',
+                  ? tr('Le lien ne s’ouvre que sur un appareil, et disparaît '
+                      'une fois le média vu.')
+                  : tr('Le lien reste utilisable, par plusieurs personnes, '
+                      'jusqu’à son expiration.'),
               style: const TextStyle(
                   color: AppColors.textMuted, fontSize: AppType.subhead),
             ),
@@ -195,16 +195,16 @@ class _ShareMediaDialogState extends State<ShareMediaDialog> {
             enabled: !_creating,
             obscureText: true,
             maxLength: 72,
-            decoration: const InputDecoration(
-              labelText: 'Mot de passe (facultatif)',
-              helperText: 'À transmettre à part, pas avec le lien.',
+            decoration: InputDecoration(
+              labelText: tr('Mot de passe (facultatif)'),
+              helperText: tr('À transmettre à part, pas avec le lien.'),
               counterText: '',
             ),
           ),
         ),
         const SizedBox(height: 16),
-        const Text(
-          'Valable',
+        Text(
+          tr('Valable'),
           style: TextStyle(
             color: AppColors.textSecondary,
             fontWeight: FontWeight.w600,
@@ -235,11 +235,11 @@ class _ShareMediaDialogState extends State<ShareMediaDialog> {
 
   Widget _buildResult(MediaShare share) {
     final details = [
-      share.singleUse ? 'Détruit après lecture' : 'Réutilisable',
-      if (share.hasPassword) 'Protégé par mot de passe',
+      share.singleUse ? tr('Détruit après lecture') : tr('Réutilisable'),
+      if (share.hasPassword) tr('Protégé par mot de passe'),
       share.expiresAt == null
-          ? 'Sans limite de durée'
-          : 'Valable ${_lifetime.label}',
+          ? tr('Sans limite de durée')
+          : tr('Valable {0}', [_lifetime.label]),
     ];
     final localOnly = isLocalOnlyAddress(Uri.tryParse(_link));
     return Column(
@@ -265,19 +265,19 @@ class _ShareMediaDialogState extends State<ShareMediaDialog> {
           style: const TextStyle(color: AppColors.textSecondary, fontSize: AppType.subhead),
         ),
         const SizedBox(height: 12),
-        const Text(
-          'Copiez-le maintenant : il ne sera plus affiché. Vous pourrez le '
-          'suivre ou le supprimer dans Paramètres › Liens de partage. Dans '
-          'l’app Onyx, il se colle sur l’écran de connexion, sous « Ouvrir un '
-          'lien de partage ».',
+        Text(
+          tr('Copiez-le maintenant : il ne sera plus affiché. Vous pourrez '
+              'le suivre ou le supprimer dans Paramètres › Liens de partage. '
+              'Dans l’app Onyx, il se colle sur l’écran de connexion, sous « '
+              'Ouvrir un lien de partage ».'),
           style: TextStyle(color: AppColors.textMuted, fontSize: AppType.subhead),
         ),
         if (localOnly) ...[
           const SizedBox(height: 12),
-          const Text(
-            'Cette adresse n’est joignable que depuis votre réseau local. '
-            'Pour un envoi à l’extérieur, connectez l’app au serveur par son '
-            'adresse publique avant de créer le lien.',
+          Text(
+            tr('Cette adresse n’est joignable que depuis votre réseau '
+                'local. Pour un envoi à l’extérieur, connectez l’app au '
+                'serveur par son adresse publique avant de créer le lien.'),
             style: TextStyle(color: AppColors.warning, fontSize: AppType.subhead),
           ),
         ],

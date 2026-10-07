@@ -132,19 +132,6 @@ var migrations = []migration{
 				updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 			);`,
 
-			// Named Player Studio layouts owned by a user (synced across devices).
-			`CREATE TABLE IF NOT EXISTS user_player_layouts (
-				id TEXT PRIMARY KEY,
-				user_id INTEGER NOT NULL,
-				name TEXT NOT NULL,
-				config_json TEXT NOT NULL,
-				use_modular BOOLEAN NOT NULL DEFAULT 0,
-				updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-				FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
-			);`,
-			`CREATE INDEX IF NOT EXISTS idx_user_player_layouts_user_id
-				ON user_player_layouts(user_id);`,
-
 			// --- Administration rights (lot A) ---
 			// The permission set is fixed by design (6 flags), so they live as columns
 			// on users rather than in a join table: no join on the auth hot path.
@@ -638,10 +625,22 @@ var migrations = []migration{
 		// cette migration lit les mêmes valeurs qu'un compte neuf. Les bornes
 		// de la plage sont en minutes depuis minuit, -1 pour toute la journée.
 		stmts: []string{
-			`ALTER TABLE user_playback_preferences ADD COLUMN still_watching_enabled BOOLEAN NOT NULL DEFAULT 1;`,
+			`ALTER TABLE user_playback_preferences ADD COLUMN still_watching_enabled BOOLEAN NOT NULL DEFAULT 0;`,
 			`ALTER TABLE user_playback_preferences ADD COLUMN still_watching_episodes INTEGER NOT NULL DEFAULT 3;`,
 			`ALTER TABLE user_playback_preferences ADD COLUMN still_watching_from INTEGER NOT NULL DEFAULT -1;`,
 			`ALTER TABLE user_playback_preferences ADD COLUMN still_watching_until INTEGER NOT NULL DEFAULT -1;`,
+		},
+	},
+	{
+		id:   19,
+		name: "drop per-account player layouts",
+		// Le lecteur n'a plus qu'un seul chrome, le même pour tous les comptes :
+		// les dispositions enregistrées par compte ne sont plus lues par
+		// personne. Une base neuve ne crée plus la table ; celle-ci la retire
+		// des bases qui l'ont déjà.
+		stmts: []string{
+			`DROP INDEX IF EXISTS idx_user_player_layouts_user_id;`,
+			`DROP TABLE IF EXISTS user_player_layouts;`,
 		},
 	},
 }

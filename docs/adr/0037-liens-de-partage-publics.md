@@ -8,7 +8,9 @@
   `server/playbackauth/share.go`, migration 14) et l'app
   (`app/lib/widgets/global/share_media_dialog.dart`, `share_media_button.dart`,
   `app/lib/screens/settings/pages/shares_page.dart`, `app/lib/screens/shared_link/`,
-  `app/lib/services/api/shared_link_client.dart`, le droit `share_media`)
+  `app/lib/services/api/shared_link_client.dart`,
+  `app/lib/services/shared_link_progress_store.dart`, `app/lib/models/shared_show.dart`, le droit
+  `share_media`)
 
 ## Contexte
 
@@ -93,8 +95,8 @@ Le lecteur tourne sur un `SharedLinkApiClient` (`services/api/shared_link_client
 - le ticket de lecture vient de `/api/shared/open` et se renouvelle par `/api/shared/renew` ;
 - les pistes viennent de `/api/shared/tracks`, qui exige un ticket vivant du lien ;
 - la position est gardée sur l'appareil et envoyée à `/api/shared/progress` ;
-- ce qui suppose un compte (historique, épisode suivant, séance « Regarder ensemble », journal)
-  est vide ou masqué (`ApiClient.isGuest`).
+- ce qui suppose un compte (historique, séance « Regarder ensemble », journal) est vide ou masqué
+  (`ApiClient.isGuest`). L'épisode suivant l'était aussi : voir §10.
 
 Le reste — HLS, Direct Play, sous-titres, aperçus — passait déjà par le ticket seul.
 
@@ -130,7 +132,8 @@ fichier n'y figure pas (`server/handlers/share_scope.go`).
   suppression du lien. Écarté : détruire le lien quand tous les épisodes ont été vus — il aurait
   fallu garder côté serveur la progression d'un visiteur sans compte, épisode par épisode.
 - La position de reprise est gardée dans le navigateur, une par épisode.
-- Le lecteur invité n'enchaîne pas sur l'épisode suivant : le visiteur revient à la liste.
+- ~~Le lecteur invité n'enchaîne pas sur l'épisode suivant : le visiteur revient à la liste.~~
+  Remplacé par le §10.
 
 ### 9. Dans l'app installée, toujours sans compte (ajout du 2026-10-05)
 
@@ -157,7 +160,61 @@ canonique (`shareScopeID`), celle à laquelle pendent les saisons et que l'app a
 doublon, il n'ouvrait que la saison restée dessous. Un lien déjà créé sur un doublon est relu de
 la même façon à l'ouverture.
 
+### 10. Une série partagée a la fiche et le lecteur d'un compte (ajout du 2026-10-05)
+
+La liste d'épisodes du §8 obligeait à revenir à la page entre deux épisodes, et ne disait rien de
+la série. Le lien d'une saison ou d'une série montre désormais **la fiche qu'un compte voit**
+(`app/lib/screens/shared_link/shared_link_show.dart`, montée avec les composants de
+`ShowDetailScreen`) : synopsis, fond, logo, genres, distribution, saisons en onglets, épisodes
+avec leur image et leur avancement, et le bouton « Reprendre S1 E3 ».
+
+- **Le serveur décrit, il ne retient toujours rien.** `/api/shared/info` et `/contents` ajoutent
+  `details` (la fiche de la série, base locale complétée par le cache TMDB) et, par épisode, sa
+  saison, son résumé, son image et les bornes de son générique
+  (`loadSharedShowDetails`, `loadSharedEpisodes`). Rien du disque ni du reste de la médiathèque
+  n'y figure : pas de nom de fichier, pas de titres similaires. Le mot de passe protège ces
+  champs comme les autres.
+- **L'avancement reste sur l'appareil** (`services/shared_link_progress_store.dart`) : une
+  position par épisode, les épisodes vus, le dernier regardé. La reprise s'en déduit comme pour
+  un compte — l'épisode entamé, sinon le suivant, sinon le premier (`models/shared_show.dart`).
+- **Le lecteur enchaîne.** Le `SharedLinkApiClient` répond aux questions que le lecteur pose à
+  un compte — épisode suivant, saisons, épisodes, générique — depuis ce que le lien a décrit,
+  sans route nouvelle. Pour l'épisode suivant il rouvre le lien (`/api/shared/open` avec son
+  `media_id`) : c'est toujours le serveur qui vérifie que l'épisode en fait partie, et chaque
+  ticket n'ouvre toujours qu'un épisode. Le client garde un ticket par épisode : en passant au
+  suivant, l'ancien lecteur envoie encore sa dernière position.
+- Ce qui suppose un compte reste absent de la fiche : marquer vu, télécharger, partager, demander
+  une saison, ouvrir la fiche d'un acteur.
+
+Écarté : réutiliser `ShowDetailScreen` tel quel en invité. Il aurait fallu y semer des `isGuest`
+pour chaque action de compte ; une page à part, faite des mêmes composants passifs, ne peut pas
+en laisser passer une.
+
+Écarté : les chapitres du fichier (`getEpisodeChapters`) pour le visiteur. Ils demandent un
+ffprobe, donc du CPU pour un inconnu ; les bornes de générique déjà en base suffisent à proposer
+« Passer l'intro » et l'enchaînement.
+
+### 11. Ouvrir un lien reçu en étant connecté (ajout du 2026-10-05)
+
+Le §9 ne proposait « Ouvrir un lien de partage » que sur l'écran de connexion. Un compte connecté
+reçoit aussi des liens, souvent d'un autre serveur : Réglages → « Liens de partage » porte
+désormais la même action pour tout le monde, hors téléviseur
+(`app/lib/screens/settings/pages/shares_page.dart`). La liste de ses propres liens reste réservée
+au droit `share_media`.
+
+Le lien s'ouvre **en invité**, dans le navigateur à part du §9, même quand il mène au serveur du
+compte : rien ne s'ajoute à l'historique du compte, et le serveur du lien ne voit pas qui regarde.
+Écarté : reconnaître son propre serveur et ouvrir la fiche du compte — le lien peut désigner un
+média que les droits du compte n'ouvrent pas, et deux comportements pour un même geste se
+devinent mal.
+
 ## Conséquences
+
+- **La page d'un lien de série appelle TMDB** par le serveur, pour la fiche. Le catalogue est en
+  cache et la route limitée (§7), mais un serveur sans clé TMDB ne montre que ce que sa base
+  sait : titre, affiche, synopsis.
+- **L'avancement d'un visiteur ne le suit pas** d'un appareil à l'autre, ni après un effacement
+  des données du navigateur : « Reprendre » redevient « Lecture ».
 
 - **Le lien d'une série ouvre beaucoup à la fois.** La borne de quatre lectures simultanées par
   lien (§5) tient toujours, mais rien ne limite le nombre d'épisodes vus d'ici l'échéance.

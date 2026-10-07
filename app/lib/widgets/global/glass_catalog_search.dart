@@ -16,6 +16,7 @@ import 'app_network_image.dart';
 import 'glass_chrome.dart';
 import '../../theme/app_icons.dart';
 import '../../theme/app_type.dart';
+import '../../l10n/tr.dart';
 
 /// Max number of results shown inline in the dropdown before offering "see all".
 const int _kInlineResultLimit = 8;
@@ -237,7 +238,7 @@ class _GlassCatalogSearchState extends State<GlassCatalogSearch> {
               onChanged: _onQueryChanged,
               onSubmitted: (_) => _showAllResults(),
               onClear: _clear,
-              hint: expanded ? 'Titre, film, série…' : 'Rechercher',
+              hint: expanded ? tr('Titre, film, série…') : tr('Rechercher'),
               focused: _focusNode.hasFocus,
               hasText: _controller.text.isNotEmpty,
             ),
@@ -287,7 +288,7 @@ class _SearchResultsPanel extends StatelessWidget {
         child: Padding(
           padding: const EdgeInsets.all(14),
           child: Text(
-            'Aucun résultat pour « $query »',
+            tr('Aucun résultat pour « {0} »', [query]),
             style: TextStyle(
               color: AppColors.textMuted.withValues(alpha: 0.95),
               fontSize: AppType.subhead,
@@ -319,7 +320,7 @@ class _SearchResultsPanel extends StatelessWidget {
               final media = results[index];
               final poster =
                   resolvePosterUrl(media.posterUrl, serverBaseUrl: baseUrl);
-              final typeLabel = media.type == MediaType.movie ? 'Film' : 'Série';
+              final typeLabel = media.type == MediaType.movie ? tr('Film') : tr('Série');
 
               return InkWell(
                 onTap: () => onTap(media),
@@ -386,8 +387,8 @@ class _SearchResultsPanel extends StatelessWidget {
               children: [
                 Text(
                   hasMore
-                      ? 'Voir les ${results.length} résultats'
-                      : 'Voir tous les résultats',
+                      ? tr('Voir les {0} résultats', [results.length])
+                      : tr('Voir tous les résultats'),
                   style: const TextStyle(
                     color: AppColors.accent,
                     fontSize: AppType.subhead,

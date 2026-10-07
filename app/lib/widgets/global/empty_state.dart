@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import '../../theme/app_colors.dart';
 import '../../theme/app_icons.dart';
+import '../../l10n/tr.dart';
 
 class EmptyStateView extends StatelessWidget {
   final IconData icon;
@@ -109,7 +110,7 @@ class ErrorStateView extends StatelessWidget {
             const SizedBox(height: 24),
             ElevatedButton(
               onPressed: onRetry,
-              child: const Text('Réessayer'),
+              child: Text(tr('Réessayer')),
             ),
           ],
         ),

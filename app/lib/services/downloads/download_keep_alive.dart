@@ -6,6 +6,7 @@ import 'package:onyx_background_downloads/onyx_background_downloads.dart';
 import '../../models/offline_download.dart';
 import '../../utils/format.dart';
 import '../download_manager.dart';
+import '../../l10n/tr.dart';
 
 /// Ce que dit la notification du service de téléchargement Android.
 @immutable
@@ -61,9 +62,9 @@ DownloadNotice? downloadNoticeFor(
     }
   }
   if (active == null && waiting == 0) return null;
-  final queued = waiting > 0 ? '$waiting en attente' : null;
+  final queued = waiting > 0 ? tr('{0} en attente', [waiting]) : null;
   if (active == null) {
-    return DownloadNotice(title: 'Téléchargements', text: queued!, percent: -1);
+    return DownloadNotice(title: tr('Téléchargements'), text: queued!, percent: -1);
   }
 
   final total = active.bytesTotal;
@@ -79,7 +80,7 @@ DownloadNotice? downloadNoticeFor(
       if (total > 0)
         '${formatBytes(active.bytesReceived)} sur ${formatBytes(total)}'
       else
-        'Téléchargement…',
+        tr('Téléchargement…'),
       if (queued != null) queued,
     ].join(' · '),
     percent: percent,

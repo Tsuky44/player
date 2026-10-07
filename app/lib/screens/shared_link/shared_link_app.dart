@@ -2,11 +2,9 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:provider/single_child_widget.dart';
 
-import '../../models/player_layout.dart';
 import '../../providers/auth_provider.dart';
 import '../../providers/home_provider.dart';
 import '../../providers/library_provider.dart';
-import '../../providers/player_layout_provider.dart';
 import '../../services/api_client.dart';
 import '../../services/download_manager.dart';
 import '../../services/server_reachability.dart';
@@ -15,6 +13,7 @@ import '../../theme/app_theme.dart';
 import '../../tv/tv_mode.dart';
 import '../../utils/app_platform.dart';
 import 'shared_link_screen.dart';
+import '../../l10n/tr.dart';
 
 /// Le code du lien de partage que cette page ouvre, ou nul si elle n'en ouvre
 /// aucun (ADR-0037).
@@ -50,10 +49,6 @@ List<SingleChildWidget> sharedLinkProviders(SharedLinkApiClient api) => [
       ChangeNotifierProvider(create: (_) => ServerReachability(api)),
       ChangeNotifierProvider(create: (_) => HomeProvider(api)),
       ChangeNotifierProvider(create: (_) => LibraryProvider(api)),
-      // Toujours le Chrome Onyx, le playeur maison : pas celui qu'un compte
-      // connecté sur cet appareil aurait choisi.
-      ChangeNotifierProvider(
-          create: (_) => PlayerLayoutProvider.fixed(FixedChromeId.onyx, api)),
     ];
 
 /// Démarre l'app en invité, pour le seul lien [code] : pas de compte, pas de
@@ -83,7 +78,7 @@ class SharedLinkApp extends StatelessWidget {
     return TvScope(
       isTv: false,
       child: MaterialApp(
-        title: 'Onyx',
+        title: tr('Onyx'),
         debugShowCheckedModeBanner: false,
         theme: AppTheme.dark,
         color: AppColors.background,

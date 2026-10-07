@@ -4,6 +4,7 @@ import '../../../theme/app_colors.dart';
 import 'request_status_badge.dart';
 import '../../../theme/app_icons.dart';
 import '../../../theme/app_type.dart';
+import '../../../l10n/tr.dart';
 
 /// Modal to pick which seasons to request for a TV show.
 /// Returns the selected season numbers, or null if cancelled.
@@ -93,9 +94,9 @@ class _SeasonSelectorDialogState extends State<SeasonSelectorDialog> {
               padding: const EdgeInsets.fromLTRB(20, 16, 8, 12),
               child: Row(
                 children: [
-                  const Expanded(
+                  Expanded(
                     child: Text(
-                      'Sélectionner les saisons',
+                      tr('Sélectionner les saisons'),
                       style: TextStyle(
                         color: Colors.white,
                         fontSize: AppType.headline,
@@ -117,7 +118,7 @@ class _SeasonSelectorDialogState extends State<SeasonSelectorDialog> {
                 padding:
                     const EdgeInsets.symmetric(vertical: 48, horizontal: 24),
                 child: Text(
-                  'Aucune saison trouvée.',
+                  tr('Aucune saison trouvée.'),
                   textAlign: TextAlign.center,
                   style: TextStyle(
                     color: Colors.white.withValues(alpha: 0.5),
@@ -152,8 +153,8 @@ class _SeasonSelectorDialogState extends State<SeasonSelectorDialog> {
                         ),
                         child: Text(
                           _allSelected
-                              ? 'Tout désélectionner'
-                              : 'Tout sélectionner',
+                              ? tr('Tout désélectionner')
+                              : tr('Tout sélectionner'),
                           style: const TextStyle(fontSize: AppType.subhead),
                         ),
                       ),
@@ -165,7 +166,7 @@ class _SeasonSelectorDialogState extends State<SeasonSelectorDialog> {
                   padding:
                       const EdgeInsets.fromLTRB(20, 4, 20, 8),
                   child: Text(
-                    'Toutes les saisons sont déjà disponibles ou demandées.',
+                    tr('Toutes les saisons sont déjà disponibles ou demandées.'),
                     style: TextStyle(
                       color: Colors.white.withValues(alpha: 0.45),
                       fontSize: AppType.subhead,
@@ -244,7 +245,7 @@ class _SeasonSelectorDialogState extends State<SeasonSelectorDialog> {
                                       Text(
                                         season.name.isNotEmpty
                                             ? season.name
-                                            : 'Saison ${season.number}',
+                                            : tr('Saison {0}', [season.number]),
                                         style: const TextStyle(
                                           color: Colors.white,
                                           fontWeight: FontWeight.w600,
@@ -259,7 +260,7 @@ class _SeasonSelectorDialogState extends State<SeasonSelectorDialog> {
                                             WrapCrossAlignment.center,
                                         children: [
                                           Text(
-                                            '${season.episodeCount} épisodes',
+                                            tr('{0} épisodes', [season.episodeCount]),
                                             style: TextStyle(
                                               color: Colors.white
                                                   .withValues(alpha: 0.4),
@@ -294,7 +295,7 @@ class _SeasonSelectorDialogState extends State<SeasonSelectorDialog> {
                     style: TextButton.styleFrom(
                       foregroundColor: Colors.white.withValues(alpha: 0.7),
                     ),
-                    child: const Text('Annuler'),
+                    child: Text(tr('Annuler')),
                   ),
                   const SizedBox(width: 8),
                   FilledButton(
@@ -316,8 +317,8 @@ class _SeasonSelectorDialogState extends State<SeasonSelectorDialog> {
                     ),
                     child: Text(
                       _selected.isEmpty
-                          ? 'Demander'
-                          : 'Demander (${_selected.length})',
+                          ? tr('Demander')
+                          : tr('Demander ({0})', [_selected.length]),
                     ),
                   ),
                 ],

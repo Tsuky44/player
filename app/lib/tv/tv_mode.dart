@@ -3,6 +3,7 @@ import 'package:flutter/widgets.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import '../utils/app_platform.dart';
+import '../l10n/tr.dart';
 
 /// What the user asked for, which is not always what the hardware says.
 ///
@@ -26,7 +27,7 @@ abstract final class TvMode {
 
   static bool _detected = false;
   static TvModePreference _preference = TvModePreference.auto;
-  static String _deviceName = 'Téléviseur';
+  static String _deviceName = tr('Téléviseur');
 
   /// What the hardware itself reported, independent of the override.
   static bool get detected => _detected;

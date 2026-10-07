@@ -3,11 +3,7 @@ library;
 
 import 'dart:io';
 
-import 'package:flutter/material.dart';
-import 'package:flutter/rendering.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:onyx/models/player_layout.dart';
-import 'package:onyx/widgets/global/control_chrome.dart';
 
 /// Les fichiers dont le verre est posé sur le film ou sur la page, et qui
 /// doivent donc partager le fond du [BackdropGroup] de leur écran.
@@ -17,11 +13,7 @@ import 'package:onyx/widgets/global/control_chrome.dart';
 /// `BackdropFilter` ordinaire : il doit flouter ce qu'il recouvre, y compris
 /// le verre d'en dessous. Voir l'ADR-0025.
 const List<String> _groupedGlass = [
-  'lib/widgets/global/control_chrome.dart',
   'lib/screens/shell/main_shell.dart',
-  'lib/screens/player/widgets/top_right_controls.dart',
-  'lib/screens/player/widgets/skip_intro_button.dart',
-  'lib/screens/player/widgets/player_hud_overlay.dart',
 ];
 
 /// `glass_chrome.dart` tient les deux cas à lui seul, et c'est la frontière
@@ -33,9 +25,7 @@ const String _mixedGlass = 'lib/widgets/global/glass_chrome.dart';
 
 /// Les écrans qui doivent ouvrir le groupe au-dessus de ce verre-là.
 const List<String> _groupHosts = [
-  'lib/screens/player/player_screen.dart',
   'lib/screens/shell/main_shell.dart',
-  'lib/screens/player_studio/widgets/studio_canvas.dart',
 ];
 
 void main() {
@@ -55,8 +45,7 @@ void main() {
       offenders,
       isEmpty,
       reason: 'Chaque BackdropFilter non groupé redemande sa propre copie de '
-          'l’image derrière lui, à chaque image du film. Une disposition '
-          'modulaire en pose autant qu’elle a de contrôles. Voir '
+          'l’image derrière lui, à chaque image. Voir '
           'docs/adr/0025-poids-de-l-interface-sous-windows.md.',
     );
   });
@@ -89,64 +78,5 @@ void main() {
             'chaque flou retomberait silencieusement sur sa propre lecture.',
       );
     }
-  });
-
-  testWidgets('les contrôles d’une disposition lisent le même fond',
-      (tester) async {
-    await tester.pumpWidget(
-      MaterialApp(
-        home: BackdropGroup(
-          child: Stack(
-            children: [
-              for (final type in [
-                PlayerControlType.playPause,
-                PlayerControlType.rewind,
-                PlayerControlType.forward,
-              ])
-                ControlChrome(
-                  type: type,
-                  sizePercentage: 0.06,
-                  canvasSize: const Size(1280, 720),
-                  variant: ControlChromeVariant.live,
-                ),
-            ],
-          ),
-        ),
-      ),
-    );
-
-    final keys = tester
-        .renderObjectList<RenderBackdropFilter>(find.byType(BackdropFilter))
-        .map((render) => render.backdropKey)
-        .toList();
-
-    expect(keys, isNotEmpty);
-    expect(keys.every((key) => key != null), isTrue,
-        reason: 'Un contrôle qui n’a pas trouvé le groupe relit le fond pour '
-            'lui seul.');
-    expect(keys.toSet(), hasLength(1),
-        reason: 'Les contrôles d’une même disposition doivent partager une '
-            'seule lecture du film.');
-  });
-
-  testWidgets('sans groupe, le même contrôle reste un flou ordinaire',
-      (tester) async {
-    await tester.pumpWidget(
-      MaterialApp(
-        home: ControlChrome(
-          type: PlayerControlType.playPause,
-          sizePercentage: 0.06,
-          canvasSize: const Size(1280, 720),
-          variant: ControlChromeVariant.live,
-        ),
-      ),
-    );
-
-    final keys = tester
-        .renderObjectList<RenderBackdropFilter>(find.byType(BackdropFilter))
-        .map((render) => render.backdropKey);
-    expect(keys.every((key) => key == null), isTrue,
-        reason: 'Le studio et le lecteur fournissent le groupe ; hors d’eux le '
-            'widget doit continuer de fonctionner seul.');
   });
 }

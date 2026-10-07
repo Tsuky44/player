@@ -8,6 +8,7 @@ import '../../../tv/tv_deferred_keyboard.dart';
 import '../servers_screen.dart';
 import '../widgets/settings_ui.dart';
 import '../../../theme/app_type.dart';
+import '../../../l10n/tr.dart';
 
 class ServersPage extends StatefulWidget {
   const ServersPage({super.key});
@@ -50,11 +51,11 @@ class _ServersPageState extends State<ServersPage> {
         _editing = false;
         _urlController.text = api.baseUrl;
       });
-      showSettingsSnack(context, 'Adresse du serveur enregistrée.');
+      showSettingsSnack(context, tr('Adresse du serveur enregistrée.'));
     } catch (_) {
       if (!mounted) return;
       setState(() => _saving = false);
-      showSettingsSnack(context, 'Échec de l’enregistrement de l’adresse.',
+      showSettingsSnack(context, tr('Échec de l’enregistrement de l’adresse.'),
           error: true);
     }
   }
@@ -65,24 +66,26 @@ class _ServersPageState extends State<ServersPage> {
     final active = auth.activeServer;
 
     return SettingsPage(
-      title: 'Serveurs',
+      title: tr('Serveurs'),
       description:
-          'Les serveurs Onyx de cet appareil. Liez vos comptes, même sous des noms différents : la progression vous suit d’un serveur à l’autre.',
+          tr('Les serveurs Onyx de cet appareil. Liez vos comptes, même '
+              'sous des noms différents : la progression vous suit d’un '
+              'serveur à l’autre.'),
       children: [
         SettingsGroup(
-          title: 'Serveur actif',
+          title: tr('Serveur actif'),
           children: [
             SettingsTile(
               icon: Icons.dns_rounded,
               iconColor: AppColors.success,
-              title: active?.displayName ?? 'Aucun serveur',
+              title: active?.displayName ?? tr('Aucun serveur'),
               subtitle: active == null
                   ? null
                   : '${active.username} · ${context.read<ApiClient>().baseUrl}',
               showChevron: false,
               trailing: TextButton(
                 onPressed: () => setState(() => _editing = !_editing),
-                child: Text(_editing ? 'Annuler' : 'Modifier l’adresse'),
+                child: Text(_editing ? tr('Annuler') : tr('Modifier l’adresse')),
               ),
             ),
             if (_editing)
@@ -91,8 +94,10 @@ class _ServersPageState extends State<ServersPage> {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.stretch,
                   children: [
-                    const Text(
-                      'Utile quand le serveur change d’adresse (IP locale, nom de domaine) : votre session est conservée.',
+                    Text(
+                      tr('Utile quand le serveur change d’adresse (IP '
+                          'locale, nom de domaine) : votre session est '
+                          'conservée.'),
                       style: TextStyle(
                           color: AppColors.textSecondary, fontSize: AppType.subhead),
                     ),
@@ -106,8 +111,8 @@ class _ServersPageState extends State<ServersPage> {
                         keyboardType: TextInputType.url,
                         textInputAction: TextInputAction.done,
                         onSubmitted: (_) => _saveUrl(),
-                        decoration: const InputDecoration(
-                          labelText: 'Adresse du serveur',
+                        decoration: InputDecoration(
+                          labelText: tr('Adresse du serveur'),
                           hintText: 'http://192.168.1.10:8080',
                           prefixIcon: Icon(Icons.link_rounded),
                         ),
@@ -119,7 +124,7 @@ class _ServersPageState extends State<ServersPage> {
                       child: FilledButton(
                         onPressed: _saving ? null : _saveUrl,
                         child:
-                            Text(_saving ? 'Enregistrement…' : 'Enregistrer'),
+                            Text(_saving ? tr('Enregistrement…') : tr('Enregistrer')),
                       ),
                     ),
                   ],
@@ -127,8 +132,8 @@ class _ServersPageState extends State<ServersPage> {
               ),
           ],
         ),
-        const SettingsGroup(
-          title: 'Mes serveurs',
+        SettingsGroup(
+          title: tr('Mes serveurs'),
           padded: true,
           children: [ServersScreen(embedded: true)],
         ),

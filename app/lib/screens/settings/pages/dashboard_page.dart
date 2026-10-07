@@ -14,6 +14,7 @@ import '../widgets/history_tile.dart';
 import '../widgets/media_thumb.dart';
 import '../widgets/settings_ui.dart';
 import '../../../theme/app_type.dart';
+import '../../../l10n/tr.dart';
 
 /// Ce qui se passe sur le serveur, maintenant.
 class DashboardPage extends StatefulWidget {
@@ -83,7 +84,7 @@ class _DashboardPageState extends State<DashboardPage> with OnScreenState {
     } catch (e) {
       if (!mounted) return;
       setState(() => _error = settingsErrorText(
-          e, 'Impossible de joindre le tableau de bord du serveur.'));
+          e, tr('Impossible de joindre le tableau de bord du serveur.')));
     }
   }
 
@@ -92,7 +93,7 @@ class _DashboardPageState extends State<DashboardPage> with OnScreenState {
     final hours = (seconds % 86400) ~/ 3600;
     final minutes = (seconds % 3600) ~/ 60;
     if (days > 0) return '$days j $hours h';
-    if (hours > 0) return '$hours h $minutes min';
+    if (hours > 0) return tr('{0} h {1} min', [hours, minutes]);
     return '$minutes min';
   }
 
@@ -105,13 +106,14 @@ class _DashboardPageState extends State<DashboardPage> with OnScreenState {
     final layout = SettingsLayout.maybeOf(context);
 
     return SettingsPage(
-      title: 'Tableau de bord',
+      title: tr('Tableau de bord'),
       description:
-          'L’état du serveur en direct : qui regarde quoi en ce moment, et comment se porte la machine.',
+          tr('L’état du serveur en direct : qui regarde quoi en ce moment, '
+              'et comment se porte la machine.'),
       onRefresh: _load,
       actions: [
         IconButton(
-          tooltip: 'Actualiser',
+          tooltip: tr('Actualiser'),
           onPressed: _load,
           icon: const Icon(Icons.refresh_rounded),
         ),
@@ -124,33 +126,33 @@ class _DashboardPageState extends State<DashboardPage> with OnScreenState {
           StatGrid(children: [
             StatTile(
               icon: Icons.play_circle_rounded,
-              label: 'En lecture',
+              label: tr('En lecture'),
               value: '${server.nowPlaying}',
               color: server.nowPlaying > 0
                   ? AppColors.success
                   : AppColors.textMuted,
               hint: server.nowPlaying == 0
-                  ? 'Personne en ce moment'
+                  ? tr('Personne en ce moment')
                   : 'maintenant',
             ),
             StatTile(
               icon: Icons.bolt_rounded,
-              label: 'Transcodages',
+              label: tr('Transcodages'),
               value: '${server.transcodes}',
               color: server.transcodes > 0
                   ? AppColors.warning
                   : AppColors.textMuted,
-              hint: 'sessions HLS actives',
+              hint: tr('sessions HLS actives'),
             ),
             StatTile(
               icon: Icons.devices_rounded,
-              label: 'Appareils actifs',
+              label: tr('Appareils actifs'),
               value: '${server.activeDevices}',
-              hint: 'dernières 24 h',
+              hint: tr('dernières 24 h'),
             ),
             StatTile(
               icon: Icons.group_rounded,
-              label: 'Utilisateurs',
+              label: tr('Utilisateurs'),
               value: '${server.users}',
               color: AppColors.accentMuted,
             ),
@@ -158,13 +160,13 @@ class _DashboardPageState extends State<DashboardPage> with OnScreenState {
         ],
         if (perms.manageUsers)
           SettingsGroup(
-            title: 'En cours de lecture',
+            title: tr('En cours de lecture'),
             trailing: const _LiveDot(),
             children: [
               if (playing == null)
                 const SettingsLoading()
               else if (playing.isEmpty)
-                const SettingsEmptyNote('Aucune lecture en cours.',
+                SettingsEmptyNote(tr('Aucune lecture en cours.'),
                     icon: Icons.nights_stay_outlined)
               else
                 for (final session in playing) _NowPlayingCard(session),
@@ -172,42 +174,42 @@ class _DashboardPageState extends State<DashboardPage> with OnScreenState {
           ),
         if (server != null) ...[
           SettingsGroup(
-            title: 'Bibliothèque',
+            title: tr('Bibliothèque'),
             children: [
               SettingsTile(
                 icon: Icons.movie_outlined,
                 title:
-                    '${server.movies} films · ${server.shows} séries · ${server.episodes} épisodes',
+                    tr('{0} films · {1} séries · {2} épisodes', [server.movies, server.shows, server.episodes]),
                 subtitle:
-                    '${formatBytes(server.libraryBytes)} sur disque · ${formatWatchTime(server.libraryDurationSeconds)} de contenu',
+                    tr('{0} sur disque · {1} de contenu', [formatBytes(server.libraryBytes), formatWatchTime(server.libraryDurationSeconds)]),
                 showChevron: false,
                 trailing: server.scanning
-                    ? const SettingsPill('Analyse en cours',
+                    ? SettingsPill(tr('Analyse en cours'),
                         color: AppColors.primary, icon: Icons.sync_rounded)
                     : null,
               ),
             ],
           ),
           SettingsGroup(
-            title: 'Serveur',
+            title: tr('Serveur'),
             children: [
               SettingsTile(
                 icon: Icons.timer_outlined,
-                title: 'En ligne depuis ${_uptime(server.uptimeSeconds)}',
-                subtitle: 'Démarré ${relativeTime(server.startedAt)}',
+                title: tr('En ligne depuis {0}', [_uptime(server.uptimeSeconds)]),
+                subtitle: tr('Démarré {0}', [relativeTime(server.startedAt)]),
                 showChevron: false,
               ),
               SettingsTile(
                 icon: Icons.developer_board_rounded,
-                title: '${server.os} · ${server.arch} · ${server.cpus} cœurs',
-                subtitle: 'Go ${server.goVersion.replaceFirst('go', '')}',
+                title: tr('{0} · {1} · {2} cœurs', [server.os, server.arch, server.cpus]),
+                subtitle: tr('Go {0}', [server.goVersion.replaceFirst('go', '')]),
                 showChevron: false,
               ),
               SettingsTile(
                 icon: Icons.storage_rounded,
-                title: 'Mémoire ${formatBytes(server.memoryBytes)}',
+                title: tr('Mémoire {0}', [formatBytes(server.memoryBytes)]),
                 subtitle:
-                    'Base de données ${formatBytes(server.databaseBytes)}',
+                    tr('Base de données {0}', [formatBytes(server.databaseBytes)]),
                 showChevron: false,
               ),
             ],
@@ -215,21 +217,22 @@ class _DashboardPageState extends State<DashboardPage> with OnScreenState {
         ],
         if (perms.manageUsers)
           SettingsGroup(
-            title: 'Activité récente',
+            title: tr('Activité récente'),
             trailing: layout == null
                 ? null
                 : TextButton(
                     onPressed: () => layout.openSection('activity'),
                     style: TextButton.styleFrom(
                         visualDensity: VisualDensity.compact),
-                    child: const Text('Tout l’historique'),
+                    child: Text(tr('Tout l’historique')),
                   ),
             children: [
               if (_recent == null)
                 const SettingsLoading()
               else if (_recent!.isEmpty)
-                const SettingsEmptyNote(
-                    'Rien pour l’instant : l’historique se remplit à chaque lecture.')
+                SettingsEmptyNote(
+                    tr('Rien pour l’instant : l’historique se remplit à '
+                        'chaque lecture.'))
               else
                 // Cliquables ici comme dans l'Historique, et pour la même
                 // raison : ces lignes sont celles qu'on regarde en premier
@@ -292,8 +295,8 @@ class _LiveDotState extends State<_LiveDot>
           ),
         ),
         const SizedBox(width: 6),
-        const Text(
-          'EN DIRECT',
+        Text(
+          tr('EN DIRECT'),
           style: TextStyle(
             color: AppColors.success,
             fontSize: AppType.caption,

@@ -5,6 +5,7 @@ import '../../models/offline_download.dart';
 import '../../services/download_manager.dart';
 import '../../theme/app_colors.dart';
 import '../../utils/format.dart';
+import '../../l10n/tr.dart';
 
 /// Efface une saison ou une série entière de l'appareil, après confirmation.
 ///
@@ -24,13 +25,13 @@ Future<void> confirmDeleteDownloads(
   final count = entries.length;
   final bytes = entries.fold<int>(0, (sum, e) => sum + e.bytesReceived);
   final unsynced = entries.any((e) => e.needsSync);
-  final items = '$count élément${count > 1 ? 's' : ''}';
+  final items = tr('{0} élément{1}', [count, count > 1 ? 's' : '']);
 
   final confirmed = await showDialog<bool>(
     context: context,
     builder: (context) => AlertDialog(
       backgroundColor: AppColors.surface,
-      title: Text('Supprimer $what ?'),
+      title: Text(tr('Supprimer {0} ?', [what])),
       content: Text(
         '$items (${formatBytes(bytes)}) ${count > 1 ? 'seront effacés' : 'sera effacé'} '
         'de cet appareil. '
@@ -39,12 +40,12 @@ Future<void> confirmDeleteDownloads(
       actions: [
         TextButton(
           onPressed: () => Navigator.of(context).pop(false),
-          child: const Text('Annuler'),
+          child: Text(tr('Annuler')),
         ),
         TextButton(
           onPressed: () => Navigator.of(context).pop(true),
           style: TextButton.styleFrom(foregroundColor: AppColors.error),
-          child: const Text('Supprimer'),
+          child: Text(tr('Supprimer')),
         ),
       ],
     ),
@@ -55,7 +56,7 @@ Future<void> confirmDeleteDownloads(
   if (deleted == 0) return;
   messenger.showSnackBar(SnackBar(
     content: Text(
-      '$deleted élément${deleted > 1 ? 's supprimés' : ' supprimé'}',
+      tr('{0} élément{1}', [deleted, deleted > 1 ? tr('s supprimés') : tr(' supprimé')]),
     ),
   ));
 }

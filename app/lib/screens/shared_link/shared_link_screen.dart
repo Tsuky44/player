@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import '../../navigation/search_route_observer.dart';
 import '../../models/media_share.dart';
 import '../../models/models.dart';
+import '../../models/shared_show.dart';
 import '../../services/api_client.dart';
 import '../../theme/app_colors.dart';
 import '../../theme/app_icons.dart';
@@ -11,8 +12,9 @@ import '../../utils/format.dart';
 import '../../utils/poster_url.dart';
 import '../../widgets/global/app_network_image.dart';
 import '../player/player_screen.dart';
-import 'shared_link_episodes.dart';
+import 'shared_link_show.dart';
 import '../../theme/app_type.dart';
+import '../../l10n/tr.dart';
 
 /// La page d'un lien de partage : ce qu'il ouvre, son mot de passe s'il en a
 /// un, et le bouton qui lance le lecteur Onyx (ADR-0037).
@@ -33,6 +35,10 @@ class _SharedLinkScreenState extends State<SharedLinkScreen> {
   final TextEditingController _password = TextEditingController();
 
   SharedMediaInfo? _info;
+
+  /// La saison ou la série du lien, avec l'avancement gardé sur l'appareil ;
+  /// nulle pour un film ou un épisode.
+  SharedShow? _show;
   bool _loading = true;
   bool _opening = false;
 
@@ -67,8 +73,8 @@ class _SharedLinkScreenState extends State<SharedLinkScreen> {
     if (widget.api.code.isEmpty) {
       setState(() {
         _loading = false;
-        _fatal = 'Il manque la fin de l’adresse. Demandez à la personne qui '
-            'vous l’a envoyée de la copier à nouveau.';
+        _fatal = tr('Il manque la fin de l’adresse. Demandez à la personne qui vous '
+            'l’a envoyée de la copier à nouveau.');
       });
       return;
     }
@@ -77,15 +83,19 @@ class _SharedLinkScreenState extends State<SharedLinkScreen> {
       _error = null;
     });
     try {
-      final info = await widget.api.info();
+      final fresh = await widget.api.info();
+      // Une fois le mot de passe donné, garder ce que l'ouverture a appris :
+      // la description anonyme ne nomme plus le média.
+      final info = fresh.title.isEmpty && (_info?.title.isNotEmpty ?? false)
+          ? _info!
+          : fresh;
+      // Relu à chaque retour du lecteur : c'est là que la reprise avance.
+      final show = info.isCollection ? await widget.api.describe(info) : null;
       final resumeAt = await widget.api.savedPosition();
       if (!mounted) return;
       setState(() {
-        // Une fois le mot de passe donné, garder ce que l'ouverture a appris :
-        // la description anonyme ne nomme plus le média.
-        _info = info.title.isEmpty && (_info?.title.isNotEmpty ?? false)
-            ? _info
-            : info;
+        _info = info;
+        _show = show;
         _resumeAt = resumeAt;
         _fatal = null;
         _loading = false;
@@ -105,12 +115,12 @@ class _SharedLinkScreenState extends State<SharedLinkScreen> {
 
   /// Ouvre le lecteur sur le média du lien, ou sur [episode] quand le lien est
   /// celui d'une saison ou d'une série.
-  Future<void> _watch({SharedEpisode? episode}) async {
+  Future<void> _watch({HomeMediaItem? episode}) async {
     final info = _info;
     if (info == null || _opening) return;
     setState(() {
       _opening = true;
-      _openingEpisode = episode?.id;
+      _openingEpisode = episode?.media.id;
       _error = null;
     });
     try {
@@ -121,18 +131,18 @@ class _SharedLinkScreenState extends State<SharedLinkScreen> {
         final contents = await widget.api.contents(_password.text);
         if (!mounted) return;
         if (contents.isCollection) {
+          final show = await widget.api.describe(contents);
+          if (!mounted) return;
           setState(() {
             _info = contents;
+            _show = show;
             _opening = false;
           });
           return;
         }
       }
-      final resumeAt = episode == null
-          ? _resumeAt
-          : await widget.api.savedPosition(episodeId: episode.id);
       final opened =
-          await widget.api.open(_password.text, episodeId: episode?.id);
+          await widget.api.open(_password.text, episodeId: episode?.media.id);
       if (!mounted) return;
       setState(() {
         // La liste des épisodes reste : c'est d'elle qu'on choisit le suivant.
@@ -140,25 +150,33 @@ class _SharedLinkScreenState extends State<SharedLinkScreen> {
         _opening = false;
         _openingEpisode = null;
       });
-      final media = Media(
-        id: opened.mediaId,
-        type: opened.media.mediaType == 'episode'
-            ? MediaType.episode
-            : MediaType.movie,
-        title: opened.media.subtitle.isEmpty
-            ? opened.media.title
-            : '${opened.media.title} · ${opened.media.subtitle}',
-        duration: opened.media.duration,
-        posterUrl: opened.media.posterUrl,
-        createdAt: DateTime.now(),
-      );
       await Navigator.of(context).push(MaterialPageRoute<void>(
         settings:
             const RouteSettings(name: SearchRouteObserver.playerRouteName),
-        builder: (_) => PlayerScreen(
-          media: media,
-          resumeAtSeconds: resumeAt,
-        ),
+        builder: (_) => episode != null
+            // L'épisode d'une série part avec sa saison et sa série, comme
+            // depuis la fiche d'un compte : le lecteur sait alors enchaîner
+            // sur le suivant et lister les autres.
+            ? PlayerScreen(
+                media: episode,
+                seasonNumber: episode.media.seasonNumber,
+                resumeAtSeconds: episode.currentPositionSeconds,
+              )
+            : PlayerScreen(
+                media: Media(
+                  id: opened.mediaId,
+                  type: opened.media.mediaType == 'episode'
+                      ? MediaType.episode
+                      : MediaType.movie,
+                  title: opened.media.subtitle.isEmpty
+                      ? opened.media.title
+                      : '${opened.media.title} · ${opened.media.subtitle}',
+                  duration: opened.media.duration,
+                  posterUrl: opened.media.posterUrl,
+                  createdAt: DateTime.now(),
+                ),
+                resumeAtSeconds: _resumeAt,
+              ),
       ));
       if (mounted) await _load();
     } on SharedLinkException catch (e) {
@@ -178,6 +196,18 @@ class _SharedLinkScreenState extends State<SharedLinkScreen> {
   @override
   Widget build(BuildContext context) {
     final info = _info;
+    final show = _show;
+    // Une saison ou une série a sa propre page, celle d'un compte ; un lien
+    // qui vient de se fermer (expiré, supprimé) revient à la carte, qui le dit.
+    if (show != null && _fatal == null) {
+      return SharedLinkShowView(
+        show: show,
+        openingId: _openingEpisode,
+        error: _error,
+        onPlay: _opening ? null : (episode) => _watch(episode: episode),
+        onClose: widget.onClose,
+      );
+    }
     final poster =
         resolvePosterUrl(info?.posterUrl, serverBaseUrl: widget.api.baseUrl);
     return Scaffold(
@@ -189,7 +219,7 @@ class _SharedLinkScreenState extends State<SharedLinkScreen> {
               elevation: 0,
               scrolledUnderElevation: 0,
               leading: IconButton(
-                tooltip: 'Fermer',
+                tooltip: tr('Fermer'),
                 onPressed: widget.onClose,
                 icon: const Icon(AppIcons.close),
               ),
@@ -219,11 +249,6 @@ class _SharedLinkScreenState extends State<SharedLinkScreen> {
                             details,
                           ])
                         : Row(
-                            // Devant une longue liste d'épisodes, l'affiche
-                            // reste en haut au lieu de flotter à mi-hauteur.
-                            crossAxisAlignment: info?.isCollection ?? false
-                                ? CrossAxisAlignment.start
-                                : CrossAxisAlignment.center,
                             children: [
                               cover,
                               const SizedBox(width: 28),
@@ -245,30 +270,24 @@ class _SharedLinkScreenState extends State<SharedLinkScreen> {
         centered ? CrossAxisAlignment.center : CrossAxisAlignment.start;
     final textAlign = centered ? TextAlign.center : TextAlign.start;
     final title = _fatal != null
-        ? 'Lien indisponible'
+        ? tr('Lien indisponible')
         : info == null
-            ? (_loading ? 'Chargement…' : 'Lien indisponible')
+            ? (_loading ? tr('Chargement…') : tr('Lien indisponible'))
             : info.title.isNotEmpty
                 ? info.title
-                : 'Contenu protégé';
-    final isCollection = info?.isCollection ?? false;
-    final episodes = info?.episodes ?? const <SharedEpisode>[];
+                : tr('Contenu protégé');
     final badges = [
       if (info != null && info.duration > 0) formatDuration(info.duration),
-      if (episodes.isNotEmpty)
-        '${episodes.length} épisode${episodes.length > 1 ? 's' : ''}',
-      if (info != null && info.singleUse) 'Lien à usage unique',
+      if (info != null && info.singleUse) tr('Lien à usage unique'),
     ];
-    // Une saison ou une série n'est connue qu'une fois le mot de passe donné :
-    // il n'est plus à redemander.
-    final needsPassword = (info?.needsPassword ?? false) && !isCollection;
+    final needsPassword = info?.needsPassword ?? false;
 
     return Column(
       crossAxisAlignment: align,
       mainAxisSize: MainAxisSize.min,
       children: [
-        const Text(
-          'Onyx · Partagé avec vous',
+        Text(
+          tr('Onyx · Partagé avec vous'),
           style: TextStyle(
             color: AppColors.textMuted,
             fontSize: AppType.subhead,
@@ -304,19 +323,6 @@ class _SharedLinkScreenState extends State<SharedLinkScreen> {
           Text(_fatal!,
               textAlign: textAlign,
               style: const TextStyle(color: AppColors.textSecondary))
-        else if (info != null && isCollection)
-          episodes.isEmpty
-              ? Text(
-                  'Aucun épisode n’est disponible pour le moment.',
-                  textAlign: textAlign,
-                  style: const TextStyle(color: AppColors.textSecondary),
-                )
-              : SharedLinkEpisodes(
-                  episodes: episodes,
-                  openingId: _openingEpisode,
-                  onPlay:
-                      _opening ? null : (episode) => _watch(episode: episode),
-                )
         else if (info != null) ...[
           if (needsPassword) ...[
             TvDeferredKeyboard(
@@ -328,9 +334,9 @@ class _SharedLinkScreenState extends State<SharedLinkScreen> {
                 obscureText: true,
                 enabled: !_opening,
                 maxLength: 72,
-                decoration: const InputDecoration(
-                  labelText: 'Mot de passe',
-                  helperText: 'Ce lien est protégé par un mot de passe.',
+                decoration: InputDecoration(
+                  labelText: tr('Mot de passe'),
+                  helperText: tr('Ce lien est protégé par un mot de passe.'),
                   counterText: '',
                 ),
                 onSubmitted: (_) => _watch(),
@@ -354,10 +360,10 @@ class _SharedLinkScreenState extends State<SharedLinkScreen> {
               // Verrouillé, le lien peut encore être une série : « Ouvrir »
               // ne promet pas une lecture.
               label: Text(_locked(info)
-                  ? 'Ouvrir'
+                  ? tr('Ouvrir')
                   : _resumeAt > 30
-                      ? 'Reprendre à ${formatPlaybackTime(_resumeAt)}'
-                      : 'Regarder'),
+                      ? tr('Reprendre à {0}', [formatPlaybackTime(_resumeAt)])
+                      : tr('Regarder')),
             ),
           ),
         ] else if (_loading)
@@ -373,7 +379,7 @@ class _SharedLinkScreenState extends State<SharedLinkScreen> {
               style: const TextStyle(color: AppColors.error)),
           if (info == null) ...[
             const SizedBox(height: 8),
-            TextButton(onPressed: _load, child: const Text('Réessayer')),
+            TextButton(onPressed: _load, child: Text(tr('Réessayer'))),
           ],
         ],
       ],

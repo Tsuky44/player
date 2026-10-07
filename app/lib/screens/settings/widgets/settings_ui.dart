@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import '../../../models/server_activity.dart';
 import '../../../theme/app_colors.dart';
 import '../../../theme/app_type.dart';
+import '../../../l10n/tr.dart';
 
 /// Les briques des paramètres : une page, des groupes en carte, des lignes.
 ///
@@ -746,7 +747,7 @@ String settingsErrorText(Object error, String fallback) {
     final data = error.response?.data;
     if (data is Map && data['error'] != null) return data['error'].toString();
     if (error.response?.statusCode == 404) {
-      return 'Ce serveur est trop ancien pour cette fonction. Mettez-le à jour.';
+      return tr('Ce serveur est trop ancien pour cette fonction. Mettez-le à jour.');
     }
   }
   return fallback;
@@ -768,7 +769,7 @@ Future<bool> confirmSettingsAction(
       actions: [
         TextButton(
           onPressed: () => Navigator.of(dialogContext).pop(false),
-          child: const Text('Annuler'),
+          child: Text(tr('Annuler')),
         ),
         TextButton(
           onPressed: () => Navigator.of(dialogContext).pop(true),
@@ -789,14 +790,14 @@ String relativeTime(DateTime moment, {DateTime? now}) {
   final elapsed = reference.difference(moment);
   String clock(DateTime t) =>
       '${t.hour.toString().padLeft(2, '0')}:${t.minute.toString().padLeft(2, '0')}';
-  if (elapsed.inSeconds < 60) return 'à l’instant';
-  if (elapsed.inMinutes < 60) return 'il y a ${elapsed.inMinutes} min';
+  if (elapsed.inSeconds < 60) return tr('à l’instant');
+  if (elapsed.inMinutes < 60) return tr('il y a {0} min', [elapsed.inMinutes]);
   final today = DateTime(reference.year, reference.month, reference.day);
   final day = DateTime(moment.year, moment.month, moment.day);
-  if (day == today) return 'aujourd’hui à ${clock(moment)}';
-  if (today.difference(day).inDays == 1) return 'hier à ${clock(moment)}';
+  if (day == today) return tr('aujourd’hui à {0}', [clock(moment)]);
+  if (today.difference(day).inDays == 1) return tr('hier à {0}', [clock(moment)]);
   if (today.difference(day).inDays < 7) {
-    return 'il y a ${today.difference(day).inDays} jours';
+    return tr('il y a {0} jours', [today.difference(day).inDays]);
   }
   return '${moment.day.toString().padLeft(2, '0')}/${moment.month.toString().padLeft(2, '0')}/${moment.year}';
 }
@@ -829,7 +830,7 @@ const _months = [
 /// libellé de jour ne justifie pas de le faire.
 String formatFrenchDay(DateTime day, {bool capitalize = false}) {
   final label =
-      '${_weekdays[day.weekday - 1]} ${day.day} ${_months[day.month - 1]}';
+      '${tr(_weekdays[day.weekday - 1])} ${day.day} ${tr(_months[day.month - 1])}';
   return capitalize ? label[0].toUpperCase() + label.substring(1) : label;
 }
 

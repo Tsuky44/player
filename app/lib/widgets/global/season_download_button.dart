@@ -9,6 +9,7 @@ import 'bulk_download_delete.dart';
 import 'metered_download_dialog.dart';
 import 'season_download_plan.dart';
 import '../../theme/app_icons.dart';
+import '../../l10n/tr.dart';
 
 /// « Garder toute la saison sur l'appareil », en un geste.
 ///
@@ -57,8 +58,8 @@ class SeasonDownloadButton extends StatelessWidget {
         icon: const Icon(AppIcons.downloaded, size: 18),
         label: Text(
           compact
-              ? 'Téléchargée'
-              : 'Saison téléchargée · ${_labelFor(plan.done)}',
+              ? tr('Téléchargée')
+              : tr('Saison téléchargée · {0}', [_labelFor(plan.done)]),
         ),
         style: TextButton.styleFrom(foregroundColor: AppColors.success),
       );
@@ -86,7 +87,7 @@ class SeasonDownloadButton extends StatelessWidget {
           // geste.
           IconButton(
             onPressed: () => _cancelShow(context, manager),
-            tooltip: 'Annuler les téléchargements de la série',
+            tooltip: tr('Annuler les téléchargements de la série'),
             icon: const Icon(AppIcons.close, size: 18),
             visualDensity: VisualDensity.compact,
             color: AppColors.textSecondary,
@@ -98,14 +99,14 @@ class SeasonDownloadButton extends StatelessWidget {
     final String label;
     if (plan.nextBatchIsUnwatched) {
       label = compact
-          ? 'Non vus (${plan.unwatchedMissing})'
-          : 'Télécharger les non vus · ${_labelFor(plan.unwatchedMissing)}';
+          ? tr('Non vus ({0})', [plan.unwatchedMissing])
+          : tr('Télécharger les non vus · {0}', [_labelFor(plan.unwatchedMissing)]);
     } else if (plan.done > 0) {
       label = compact
-          ? 'Compléter (${plan.missing})'
-          : 'Compléter · ${_labelFor(plan.missing)}';
+          ? tr('Compléter ({0})', [plan.missing])
+          : tr('Compléter · {0}', [_labelFor(plan.missing)]);
     } else {
-      label = compact ? 'La saison' : 'Télécharger la saison';
+      label = compact ? tr('La saison') : tr('Télécharger la saison');
     }
     return TextButton.icon(
       onPressed: addNext,
@@ -116,7 +117,7 @@ class SeasonDownloadButton extends StatelessWidget {
   }
 
   static String _labelFor(int count) =>
-      '$count épisode${count > 1 ? 's' : ''}';
+      tr('{0} épisode{1}', [count, count > 1 ? 's' : '']);
 
   Future<void> _downloadSeason(
     BuildContext context,
@@ -133,8 +134,8 @@ class SeasonDownloadButton extends StatelessWidget {
     final proceed = await confirmDownloadOnThisNetwork(
       context,
       what: unwatchedOnly
-          ? 'les ${_labelFor(pending.length)} non vus de cette saison'
-          : 'les ${_labelFor(pending.length)} de cette saison',
+          ? tr('les {0} non vus de cette saison', [_labelFor(pending.length)])
+          : tr('les {0} de cette saison', [_labelFor(pending.length)]),
     );
     if (!proceed) return;
 
@@ -156,20 +157,20 @@ class SeasonDownloadButton extends StatelessWidget {
       context: context,
       builder: (context) => AlertDialog(
         backgroundColor: AppColors.surface,
-        title: const Text('Annuler les téléchargements ?'),
+        title: Text(tr('Annuler les téléchargements ?')),
         content: Text(
-          'Les épisodes de $showTitle pas encore sur l’appareil sont retirés '
-          'de la file. Ceux déjà téléchargés restent.',
+          tr('Les épisodes de {0} pas encore sur l’appareil sont retirés de '
+              'la file. Ceux déjà téléchargés restent.', [showTitle]),
         ),
         actions: [
           TextButton(
             onPressed: () => Navigator.of(context).pop(false),
-            child: const Text('Continuer'),
+            child: Text(tr('Continuer')),
           ),
           TextButton(
             onPressed: () => Navigator.of(context).pop(true),
             style: TextButton.styleFrom(foregroundColor: AppColors.error),
-            child: const Text('Tout annuler'),
+            child: Text(tr('Tout annuler')),
           ),
         ],
       ),
@@ -181,8 +182,7 @@ class SeasonDownloadButton extends StatelessWidget {
     messenger.showSnackBar(
       SnackBar(
         content: Text(
-          '$cancelled téléchargement${cancelled > 1 ? 's' : ''} '
-          'annulé${cancelled > 1 ? 's' : ''}',
+          tr('{0} téléchargement{1} annulé{2}', [cancelled, cancelled > 1 ? 's' : '', cancelled > 1 ? 's' : '']),
         ),
       ),
     );
@@ -195,7 +195,7 @@ class SeasonDownloadButton extends StatelessWidget {
   ) =>
       confirmDeleteDownloads(
         context,
-        what: seasonNumber == null ? 'la saison' : 'la saison $seasonNumber',
+        what: seasonNumber == null ? tr('la saison') : tr('la saison {0}', [seasonNumber]),
         entries: [
           for (final episode in downloadable)
             if (manager.entryFor(episode.media.id) case final entry?) entry,

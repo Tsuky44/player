@@ -10,6 +10,7 @@ import '../../../widgets/global/media_download_button.dart';
 import '../../../widgets/global/media_poster.dart';
 import '../../../widgets/global/season_download_button.dart';
 import '../../../theme/app_type.dart';
+import '../../../l10n/tr.dart';
 
 const Color _kAccent = AppColors.primary;
 const Color _kPanelBg = AppColors.surface;
@@ -173,8 +174,8 @@ class _PlayerEpisodesPanelState extends State<PlayerEpisodesPanel> {
                   ),
                 ),
                 const SizedBox(height: 4),
-                const Text(
-                  'Épisodes',
+                Text(
+                  tr('Épisodes'),
                   style: TextStyle(
                     color: AppColors.textMuted,
                     fontSize: AppType.subhead,
@@ -206,7 +207,7 @@ class _PlayerEpisodesPanelState extends State<PlayerEpisodesPanel> {
           final selected = season.id == widget.selectedSeasonId;
           final label = season.effectiveSeasonNumber != null &&
                   season.effectiveSeasonNumber! > 0
-              ? 'Saison ${season.effectiveSeasonNumber}'
+              ? tr('Saison {0}', [season.effectiveSeasonNumber])
               : season.title;
 
           return Material(
@@ -256,7 +257,7 @@ class _PlayerEpisodesPanelState extends State<PlayerEpisodesPanel> {
     if (widget.episodes.isEmpty) {
       return Center(
         child: Text(
-          'Aucun épisode disponible',
+          tr('Aucun épisode disponible'),
           style: TextStyle(color: Colors.white.withValues(alpha: 0.5)),
         ),
       );
@@ -273,9 +274,9 @@ class _PlayerEpisodesPanelState extends State<PlayerEpisodesPanel> {
       padding: const EdgeInsets.fromLTRB(24, 12, 24, 24),
       children: [
         if (currentIdx != null && currentIdx + 1 < widget.episodes.length) ...[
-          const _SectionLabel(
-            title: 'À suivre',
-            subtitle: 'Prochains épisodes de la saison',
+          _SectionLabel(
+            title: tr('À suivre'),
+            subtitle: tr('Prochains épisodes de la saison'),
           ),
           const SizedBox(height: 12),
           SizedBox(
@@ -302,8 +303,8 @@ class _PlayerEpisodesPanelState extends State<PlayerEpisodesPanel> {
           const SizedBox(height: 24),
         ],
         _SectionLabel(
-          title: 'Saison en cours',
-          subtitle: 'Tous les épisodes',
+          title: tr('Saison en cours'),
+          subtitle: tr('Tous les épisodes'),
           // Emporter la suite sans quitter le lecteur : sur une saison
           // entamée, le bouton ne propose que les épisodes non vus.
           trailing: showId == null || showId <= 0
@@ -527,17 +528,17 @@ class _EpisodeCard extends StatelessWidget {
                       ),
                     ),
                   if (isCurrent)
-                    const Positioned(
+                    Positioned(
                       bottom: 8,
                       left: 8,
-                      child: _Badge(label: 'En cours', color: _kAccent),
+                      child: _Badge(label: tr('En cours'), color: _kAccent),
                     )
                   else if (isNext)
                     Positioned(
                       bottom: 8,
                       left: 8,
                       child: _Badge(
-                        label: 'Suivant',
+                        label: tr('Suivant'),
                         color: Colors.white.withValues(alpha: 0.85),
                         textColor: Colors.black87,
                       ),

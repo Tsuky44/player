@@ -8,6 +8,7 @@ import '../../theme/app_colors.dart';
 import '../../tv/tv_deferred_keyboard.dart';
 import '../../theme/app_icons.dart';
 import '../../theme/app_type.dart';
+import '../../l10n/tr.dart';
 
 /// Validation en deux étapes (ADR-0041) : le dialogue qui demande un code,
 /// précédé du QR code quand il s'agit d'en configurer un, et suivi des codes
@@ -44,7 +45,7 @@ Future<void> showRecoveryCodesDialog(BuildContext context, List<String> codes) {
     barrierDismissible: false,
     builder: (dialogContext) => AlertDialog(
       backgroundColor: AppColors.surfaceElevated,
-      title: const Text('Codes de secours'),
+      title: Text(tr('Codes de secours')),
       content: ConstrainedBox(
         constraints: const BoxConstraints(maxWidth: 380),
         child: RecoveryCodesView(codes: codes),
@@ -53,7 +54,7 @@ Future<void> showRecoveryCodesDialog(BuildContext context, List<String> codes) {
         FilledButton(
           autofocus: true,
           onPressed: () => Navigator.of(dialogContext).pop(),
-          child: const Text('J’ai noté mes codes'),
+          child: Text(tr('J’ai noté mes codes')),
         ),
       ],
     ),
@@ -69,8 +70,8 @@ Future<OtpLoginResult?> showOtpLoginDialog(
   return showOtpCodeDialog<OtpLoginResult>(
     context,
     title: challenge.setup
-        ? 'Configurer la validation en deux étapes'
-        : 'Code de vérification',
+        ? tr('Configurer la validation en deux étapes')
+        : tr('Code de vérification'),
     setup: challenge.setup
         ? OtpSetup(secret: challenge.secret, uri: challenge.uri)
         : null,
@@ -87,9 +88,9 @@ String otpErrorText(Object error) {
   if (error is DioException) {
     final data = error.response?.data;
     if (data is Map && data['error'] != null) return data['error'].toString();
-    if (error.response == null) return 'Serveur injoignable. Réessayez.';
+    if (error.response == null) return tr('Serveur injoignable. Réessayez.');
   }
-  return 'Vérification impossible. Réessayez.';
+  return tr('Vérification impossible. Réessayez.');
 }
 
 class _OtpCodeDialog<T> extends StatefulWidget {
@@ -132,7 +133,7 @@ class _OtpCodeDialogState<T> extends State<_OtpCodeDialog<T>> {
   Future<void> _submit() async {
     final code = _code.text.trim();
     if (code.isEmpty) {
-      setState(() => _error = 'Entrez le code affiché par votre application.');
+      setState(() => _error = tr('Entrez le code affiché par votre application.'));
       return;
     }
     setState(() {
@@ -168,7 +169,7 @@ class _OtpCodeDialogState<T> extends State<_OtpCodeDialog<T>> {
     final showingCodes = _recoveryCodes.isNotEmpty;
     return AlertDialog(
       backgroundColor: AppColors.surfaceElevated,
-      title: Text(showingCodes ? 'Codes de secours' : widget.title),
+      title: Text(showingCodes ? tr('Codes de secours') : widget.title),
       content: ConstrainedBox(
         constraints: const BoxConstraints(maxWidth: 380),
         child: SingleChildScrollView(
@@ -182,13 +183,13 @@ class _OtpCodeDialogState<T> extends State<_OtpCodeDialog<T>> {
               FilledButton(
                 autofocus: true,
                 onPressed: () => Navigator.of(context).pop(_result),
-                child: const Text('J’ai noté mes codes'),
+                child: Text(tr('J’ai noté mes codes')),
               ),
             ]
           : [
               TextButton(
                 onPressed: _busy ? null : () => Navigator.of(context).pop(),
-                child: Text(_expired ? 'Fermer' : 'Annuler'),
+                child: Text(_expired ? tr('Fermer') : tr('Annuler')),
               ),
               if (!_expired)
                 FilledButton(
@@ -199,7 +200,7 @@ class _OtpCodeDialogState<T> extends State<_OtpCodeDialog<T>> {
                           height: 16,
                           child: CircularProgressIndicator(strokeWidth: 2),
                         )
-                      : const Text('Valider'),
+                      : Text(tr('Valider')),
                 ),
             ],
     );
@@ -212,10 +213,10 @@ class _OtpCodeDialogState<T> extends State<_OtpCodeDialog<T>> {
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
         if (setup != null) ...[
-          const Text(
-            'Scannez ce QR code avec une application d’authentification '
-            '(Google Authenticator, Aegis, 1Password…), puis entrez le code '
-            'qu’elle affiche.',
+          Text(
+            tr('Scannez ce QR code avec une application d’authentification '
+                '(Google Authenticator, Aegis, 1Password…), puis entrez le '
+                'code qu’elle affiche.'),
             style: TextStyle(color: AppColors.textSecondary),
           ),
           const SizedBox(height: 16),
@@ -228,10 +229,10 @@ class _OtpCodeDialogState<T> extends State<_OtpCodeDialog<T>> {
             padding: const EdgeInsets.only(bottom: 16),
             child: Text(
               widget.acceptsRecoveryCode
-                  ? 'Entrez le code à six chiffres de votre application '
-                      'd’authentification, ou l’un de vos codes de secours.'
-                  : 'Entrez le code à six chiffres de votre application '
-                      'd’authentification.',
+                  ? tr('Entrez le code à six chiffres de votre application '
+                      'd’authentification, ou l’un de vos codes de secours.')
+                  : tr('Entrez le code à six chiffres de votre application '
+                      'd’authentification.'),
               style: const TextStyle(color: AppColors.textSecondary),
             ),
           ),
@@ -328,7 +329,7 @@ class _SecretText extends StatelessWidget {
           ),
         ),
         IconButton(
-          tooltip: 'Copier la clé',
+          tooltip: tr('Copier la clé'),
           icon: const Icon(AppIcons.copy, size: 18),
           onPressed: () => Clipboard.setData(ClipboardData(text: secret)),
         ),
@@ -349,10 +350,10 @@ class RecoveryCodesView extends StatelessWidget {
       mainAxisSize: MainAxisSize.min,
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        const Text(
-          'Chacun de ces codes remplace une fois le code de votre application, '
-          'si vous perdez votre téléphone. Gardez-les en lieu sûr : ils ne '
-          'seront plus affichés.',
+        Text(
+          tr('Chacun de ces codes remplace une fois le code de votre '
+              'application, si vous perdez votre téléphone. Gardez-les en '
+              'lieu sûr : ils ne seront plus affichés.'),
           style: TextStyle(color: AppColors.textSecondary),
         ),
         const SizedBox(height: 16),
@@ -387,7 +388,7 @@ class RecoveryCodesView extends StatelessWidget {
             onPressed: () =>
                 Clipboard.setData(ClipboardData(text: codes.join('\n'))),
             icon: const Icon(AppIcons.copy, size: 18),
-            label: const Text('Copier'),
+            label: Text(tr('Copier')),
           ),
         ),
       ],

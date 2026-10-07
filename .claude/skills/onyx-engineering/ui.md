@@ -7,7 +7,7 @@ La direction s'appelle **Quiet Premium** : une scène charbon OLED, un accent bl
 - `PROJECT_DESIGN.md` est le contrat visuel en vigueur : palette, typographie, composants, mouvement (§10), à faire et à éviter (§11). Lis la section du composant que tu touches.
 - `PRODUCT.md` porte les principes produit et l'accessibilité.
 - `design.md` est l'ancien brief « Cinematic Glass ». Il sert de référence, et `PROJECT_DESIGN.md` l'emporte en cas de désaccord.
-- `docs/specs/player-ui-skins.md` couvre les skins du lecteur et le studio.
+- Le lecteur n'a qu'un chrome, le Chrome Onyx (`screens/player/widgets/onyx/`, ADR-0048).
 - Pour le savoir-faire UI approfondi (critique, polish, audit, animation, accessibilité), lis `.agents/skills/impeccable/SKILL.md` et `.agents/skills/tasteful-ui/SKILL.md` par leur chemin. Les liens de `.claude/skills/` vers ces dossiers sont cassés sous Windows.
 
 ## Tokens
@@ -28,7 +28,7 @@ La direction s'appelle **Quiet Premium** : une scène charbon OLED, un accent bl
 | Chargement, vide, erreur | `LoadingView`, `EmptyStateView`, `ErrorStateView` | Un seul langage pour les trois états. |
 | Page de réglages | `SettingsPage`, `SettingsGroup`, `SettingsTile`… (`settings/widgets/settings_ui.dart`) | Une mise en page et une densité cohérentes. |
 | Mise en page, grilles | `Responsive` (`utils/responsive.dart`) | Points de rupture, marges, colonnes d'affiches et taille tactile minimale. |
-| Verre, chrome | `glass_chrome.dart`, `control_chrome.dart` | Un seul rendu de verre. |
+| Verre, chrome | `glass_chrome.dart` | Un seul rendu de verre. |
 
 Avant de créer un composant, cherche dans `widgets/global/` et dans les `widgets/` de l'écran voisin. Un composant utilisé par un deuxième écran monte dans `widgets/global/`.
 
@@ -48,5 +48,5 @@ Chaque écran atteignable sur TV se pilote entièrement au D-pad.
 - **Trois états** pour toute donnée asynchrone : chargement, vide et erreur avec une action pour réessayer. Les données en cache s'affichent pendant la revalidation.
 - **Poids de l'arbre** (ADR-0025) : garde de la légèreté sous Windows. Utilise des constructeurs `.builder` pour les listes longues, un `const` partout où c'est possible, et découpe en petits widgets pour que chaque `setState` ou `notifyListeners` ne reconstruise que ce qui change.
 - **Accessibilité** : un bouton-icône porte un `tooltip` ou un label `Semantics`, et les cibles tactiles respectent `Responsive.minTouchTarget`. Le texte suit la hiérarchie de `PROJECT_DESIGN.md` §7.
-- **Textes** : français, en phrases, courts. Un message d'erreur dit ce qui s'est passé et quoi faire.
+- **Textes** : français, en phrases, courts. Un message d'erreur dit ce qui s'est passé et quoi faire. Tout texte affiché passe par `tr('…')` (`l10n/tr.dart`) et gagne son entrée anglaise dans `l10n/en.dart` ; une valeur variable passe en argument (`tr('Saison {0}', [n])`), jamais en interpolation (ADR-0047, gardé par `l10n_coverage_test.dart`).
 - **Vérification** : lance l'app, puis regarde l'écran en largeur téléphone et en largeur desktop, avec le focus TV si l'écran est concerné, et sous « réduire les animations » si tu as ajouté du mouvement. Pour une passe de finition, applique `.agents/skills/impeccable/reference/polish.md`.

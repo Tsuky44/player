@@ -1899,24 +1899,6 @@ class PlayerController {
     } catch (_) {}
   }
 
-  /// Force subtitle extraction for the current media. Refreshes the track list
-  /// and attaches the active language immediately when the .vtt is ready.
-  Future<List<MediaSubtitleTrack>> forceExtractSubtitles() async {
-    if (_media == null || _apiClient == null) {
-      throw StateError('Player not initialized');
-    }
-    _autoExtractStarted = true;
-    _isExtractingSubtitles = true;
-    _startSubtitleWatch();
-    try {
-      final subs = await _apiClient!.forceMediaSubtitleExtract(_media!.id);
-      await _onSubtitlesUpdated();
-      return subs;
-    } finally {
-      _isExtractingSubtitles = false;
-    }
-  }
-
   List<PlaybackTrack> _realAudioTracks() =>
       session.audioTracks.where((t) => t.id != 'auto' && t.id != 'no').toList();
 

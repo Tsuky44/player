@@ -5,6 +5,7 @@ import '../../../models/watch_party.dart';
 import '../../../services/watch_party.dart';
 import '../../../theme/app_colors.dart';
 import '../../../theme/app_type.dart';
+import '../../../l10n/tr.dart';
 
 /// Le bouton « Regarder ensemble » des barres du lecteur : une icône parmi
 /// les autres, qui ne se distingue que pendant une séance.
@@ -23,7 +24,7 @@ class WatchPartyBarButton extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Tooltip(
-      message: active ? 'Séance en cours' : 'Regarder ensemble',
+      message: active ? tr('Séance en cours') : tr('Regarder ensemble'),
       waitDuration: const Duration(milliseconds: 500),
       child: Material(
         color: Colors.transparent,
@@ -140,7 +141,7 @@ class _WatchPartyPanelState extends State<WatchPartyPanel> {
       if (!mounted) return;
       setState(() {
         _starting = false;
-        _error = 'Impossible de démarrer la séance. Réessayez.';
+        _error = tr('Impossible de démarrer la séance. Réessayez.');
       });
     }
   }
@@ -173,9 +174,9 @@ class _WatchPartyPanelState extends State<WatchPartyPanel> {
             children: [
               const Icon(Icons.groups_rounded, color: AppColors.accentMuted),
               const SizedBox(width: 10),
-              const Expanded(
+              Expanded(
                 child: Text(
-                  'Regarder ensemble',
+                  tr('Regarder ensemble'),
                   style: TextStyle(
                     color: AppColors.textPrimary,
                     fontSize: AppType.headline,
@@ -184,7 +185,7 @@ class _WatchPartyPanelState extends State<WatchPartyPanel> {
                 ),
               ),
               IconButton(
-                tooltip: 'Fermer',
+                tooltip: tr('Fermer'),
                 onPressed: widget.onClose,
                 icon: const Icon(Icons.close, color: AppColors.textSecondary),
               ),
@@ -204,10 +205,10 @@ class _WatchPartyPanelState extends State<WatchPartyPanel> {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        const Text(
-          'Lancez une séance et partagez son code. Chacun la rejoint depuis '
-          'son appareil, avec son propre compte : lecture, pauses et '
-          'déplacements sont partagés entre tous.',
+        Text(
+          tr('Lancez une séance et partagez son code. Chacun la rejoint '
+              'depuis son appareil, avec son propre compte : lecture, pauses '
+              'et déplacements sont partagés entre tous.'),
           style: TextStyle(color: AppColors.textSecondary, height: 1.4),
         ),
         const SizedBox(height: 16),
@@ -224,7 +225,7 @@ class _WatchPartyPanelState extends State<WatchPartyPanel> {
                   child: CircularProgressIndicator(strokeWidth: 2),
                 )
               : const Icon(Icons.play_circle_outline),
-          label: const Text('Démarrer une séance'),
+          label: Text(tr('Démarrer une séance')),
         ),
       ],
     );
@@ -236,8 +237,8 @@ class _WatchPartyPanelState extends State<WatchPartyPanel> {
       builder: (context, _) => Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          const Text(
-            'Code de la séance',
+          Text(
+            tr('Code de la séance'),
             style: TextStyle(color: AppColors.textSecondary, fontSize: AppType.footnote),
           ),
           const SizedBox(height: 6),
@@ -258,20 +259,20 @@ class _WatchPartyPanelState extends State<WatchPartyPanel> {
               TextButton.icon(
                 onPressed: () => _copy(party.code),
                 icon: Icon(_copied ? Icons.check : Icons.copy_rounded, size: 18),
-                label: Text(_copied ? 'Copié' : 'Copier'),
+                label: Text(_copied ? tr('Copié') : tr('Copier')),
               ),
             ],
           ),
           const SizedBox(height: 4),
-          const Text(
-            'Pour rejoindre : menu du compte › Rejoindre une séance.',
+          Text(
+            tr('Pour rejoindre : menu du compte › Rejoindre une séance.'),
             style: TextStyle(color: AppColors.textMuted, fontSize: AppType.footnote),
           ),
           const SizedBox(height: 16),
           Text(
             party.members.length > 1
                 ? '${party.members.length} participants'
-                : 'En attente des autres participants…',
+                : tr('En attente des autres participants…'),
             style: const TextStyle(
               color: AppColors.textSecondary,
               fontSize: AppType.footnote,
@@ -288,7 +289,7 @@ class _WatchPartyPanelState extends State<WatchPartyPanel> {
               side: BorderSide(color: AppColors.error.withValues(alpha: 0.5)),
             ),
             icon: const Icon(Icons.logout_rounded, size: 18),
-            label: const Text('Quitter la séance'),
+            label: Text(tr('Quitter la séance')),
           ),
         ],
       ),
@@ -303,7 +304,7 @@ class _MemberRow extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final name = member.username.isEmpty ? 'Invité' : member.username;
+    final name = member.username.isEmpty ? tr('Invité') : member.username;
     return Padding(
       padding: const EdgeInsets.symmetric(vertical: 4),
       child: Row(
@@ -340,8 +341,8 @@ class _MemberRow extends StatelessWidget {
             ),
           ),
           if (member.isHost)
-            const Text(
-              'Hôte',
+            Text(
+              tr('Hôte'),
               style: TextStyle(color: AppColors.accentMuted, fontSize: AppType.footnote),
             ),
         ],

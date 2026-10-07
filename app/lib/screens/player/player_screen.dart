@@ -6,11 +6,9 @@ import 'package:provider/provider.dart';
 import '../../utils/app_platform.dart';
 import '../../utils/window_controls.dart';
 import '../../models/models.dart';
-import '../../models/player_layout.dart';
 import '../../providers/auth_provider.dart';
 import '../../providers/home_provider.dart';
 import '../../providers/library_provider.dart';
-import '../../providers/player_layout_provider.dart';
 import '../../navigation/search_route_observer.dart';
 import '../../services/api_client.dart';
 import '../../models/remote_playback.dart';
@@ -32,21 +30,14 @@ import '../../utils/poster_url.dart';
 import 'hooks/use_player_controller.dart';
 import 'hooks/use_episode_navigation.dart';
 import 'hooks/use_player_media_keys.dart';
-import 'widgets/skip_intro_button.dart';
 import 'widgets/seek_feedback_overlay.dart';
 import 'widgets/video_zoom_hint.dart';
 import 'widgets/next_episode_overlay.dart';
 import 'widgets/next_season_overlay.dart';
 import 'widgets/upcoming_episode_overlay.dart';
-import 'widgets/player_hud_overlay.dart';
-import 'widgets/modular_controls_layer.dart';
 import 'widgets/onyx/onyx_controls_layer.dart';
 import 'widgets/onyx/onyx_settings_menu.dart';
-import 'widgets/top_right_controls.dart';
-import 'widgets/player_settings_sheet.dart';
 import 'widgets/player_settings_anchor.dart';
-import 'widgets/player_subtitles_sheet.dart';
-import 'widgets/player_info_sheet.dart';
 import 'widgets/player_episodes_panel.dart';
 import 'widgets/player_screen_lock.dart';
 import 'widgets/player_status_panels.dart';
@@ -59,11 +50,13 @@ import 'playback/remote_seek.dart';
 import 'playback/sleep_timer.dart';
 import 'playback/still_watching.dart';
 import 'pinch_zoom_fit.dart';
+import 'subtitle_padding.dart';
 import 'player_playback_preferences.dart';
 import 'player_shortcuts.dart';
 import '../../desktop_window.dart';
 import '../../utils/release_tag.dart';
 import '../../utils/format.dart';
+import '../../l10n/tr.dart';
 
 class PlayerScreen extends StatefulWidget {
   final dynamic media; // Can be Media or HomeMediaItem
@@ -240,7 +233,7 @@ class _PlayerScreenState extends State<PlayerScreen> {
   DateTime? _lastSideSeekAt;
   static const _sideSeekBurstWindow = Duration(milliseconds: 1000);
 
-  /// Pack Cinéma — playback rate cycle for studio control.
+  /// Playback rate cycle for the speed control.
   double _playbackRate = 1.0;
   static const _playbackRates = [0.75, 1.0, 1.25, 1.5, 2.0];
 
@@ -249,9 +242,6 @@ class _PlayerScreenState extends State<PlayerScreen> {
 
   /// Key attached to the subtitles button so we can anchor the popup above it.
   final GlobalKey _subtitlesButtonKey = GlobalKey();
-
-  /// Key attached to the media-info button so we can anchor the info card above it.
-  final GlobalKey _mediaInfoButtonKey = GlobalKey();
 
 
   /// Anchors subtitle lift to the real progress/timeline bar position.
@@ -403,31 +393,6 @@ class _PlayerScreenState extends State<PlayerScreen> {
   int get _currentEpisodeId => _actualMedia.id;
 
   int? get _currentSeasonId => _actualMedia.parentId;
-
-  /// Quel playeur habille cette lecture.
-  ///
-  /// Le compte fait foi dès que le serveur a confirmé lequel il utilise. Sinon
-  /// — hors ligne, ou avant la première synchronisation de la session — un
-  /// média téléchargé en sait plus que l'app : l'instantané rangé avec lui
-  /// porte le playeur du compte **du serveur d'où il vient**, là où le provider
-  /// ne tient qu'une trace locale, qui peut appartenir à un autre compte ou
-  /// n'avoir jamais été renseignée. Sans ça un épisode téléchargé s'ouvrait
-  /// sur le HUD par défaut, que personne n'avait choisi.
-  _ResolvedChrome _resolveChrome(PlayerLayoutProvider provider) {
-    if (!provider.isSyncedWithAccount) {
-      final snapshot = DownloadManager.instance.chromeFor(_actualMedia.id);
-      if (snapshot != null) {
-        return _ResolvedChrome(
-          config: snapshot.config,
-          useModular: snapshot.useModular,
-        );
-      }
-    }
-    return _ResolvedChrome(
-      config: provider.config,
-      useModular: provider.useModularLayout,
-    );
-  }
 
   int? get _currentShowId {
     if (widget.media is HomeMediaItem) {
@@ -985,7 +950,7 @@ class _PlayerScreenState extends State<PlayerScreen> {
       if (!mounted) return;
       _isEpisodeTransition = true;
       ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-        content: Text('Lecture reprise sur ${relay.account.displayName}.'),
+        content: Text(tr('Lecture reprise sur {0}.', [relay.account.displayName])),
       ));
       Navigator.of(context).pushReplacement(MaterialPageRoute(
         settings: const RouteSettings(name: SearchRouteObserver.playerRouteName),
@@ -1070,10 +1035,7 @@ class _PlayerScreenState extends State<PlayerScreen> {
       return;
     }
 
-    final chrome = _resolveChrome(
-        Provider.of<PlayerLayoutProvider>(context, listen: false));
-    if (togglePlayback ||
-        (chrome.useModular && chrome.config.tapToTogglePlayback)) {
+    if (togglePlayback) {
       _togglePlayPause();
       _showControlsTransient();
       return;
@@ -1257,7 +1219,9 @@ class _PlayerScreenState extends State<PlayerScreen> {
       case PlayerShortcut.seekForward:
         _seekRelative(10);
       case PlayerShortcut.toggleFullscreen:
-        if (AppPlatform.isDesktop) unawaited(_toggleFullscreen());
+        if (AppPlatform.isDesktop || AppPlatform.isWeb) {
+          unawaited(_toggleFullscreen());
+        }
       case PlayerShortcut.toggleMute:
         togglePlayerMute(_playerController.session);
         _showControlsTransient();
@@ -1642,7 +1606,7 @@ class _PlayerScreenState extends State<PlayerScreen> {
     } catch (_) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Impossible d’envoyer la demande.')),
+          SnackBar(content: Text(tr('Impossible d’envoyer la demande.'))),
         );
       }
     } finally {
@@ -1800,6 +1764,9 @@ class _PlayerScreenState extends State<PlayerScreen> {
     // Quitter le lecteur, c'est quitter la séance : les autres continuent.
     final party = _party;
     if (party != null && !_partyHandOver) unawaited(party.leave());
+    // Dans un navigateur, le plein écran appartient au film : hors du lecteur,
+    // plus aucun bouton ne permettrait d'en sortir.
+    if (AppPlatform.isWeb) unawaited(_exitFullscreenIfActive());
     return _syncProgressOnExit(popAfter: true);
   }
 
@@ -1883,23 +1850,6 @@ class _PlayerScreenState extends State<PlayerScreen> {
 
   double get _chromeScale => AppPlatform.isIOS ? _iosChromeScale : 1;
 
-  /// Keeps a chrome layer clear of the screen's cutouts — the camera bubble,
-  /// a notch.
-  ///
-  /// Only the chrome. The picture stays full-bleed: it is what the user came
-  /// for, and a black band down the side of the film would cost far more than
-  /// a button sitting a few pixels in.
-  ///
-  /// This is the blunt version, and it is only for the layers that place their
-  /// controls freely — a Studio layout puts a button at any fraction of the
-  /// screen, so there is no row to test and nothing finer to do than pad the
-  /// edge. Chrome Onyx takes the cutouts themselves and moves one row at a
-  /// time; see its `cutouts`.
-  Widget _clearOfCutout(Widget chrome) => Padding(
-        padding: DisplayCutouts.of(context),
-        child: chrome,
-      );
-
   void _updateVideoFit(BoxFit fit) {
     // La surface est reconstruite avec le nouveau cadrage ; chaque moteur
     // l'applique à sa façon — Flutter met une texture à l'échelle, la vue
@@ -1910,14 +1860,10 @@ class _PlayerScreenState extends State<PlayerScreen> {
   void _syncSubtitlePadding(BuildContext context) {
     if (!mounted || !_isInitialized) return;
 
-    final chrome = _resolveChrome(
-        Provider.of<PlayerLayoutProvider>(context, listen: false));
     final screenSize = MediaQuery.sizeOf(context);
     final measuredTop = _measureTimelineTop(context);
     final padding = SubtitlePaddingCalculator.resolve(
       controlsVisible: _showControls,
-      useModularLayout: chrome.useModular,
-      modularConfig: chrome.config,
       screenSize: screenSize,
       measuredTimelineTopDy: measuredTop,
     );
@@ -2033,83 +1979,6 @@ class _PlayerScreenState extends State<PlayerScreen> {
     if (popup == null) return false;
     popup.dismiss();
     return true;
-  }
-
-  void _showTrackSettings({int initialTabIndex = 0}) {
-    final renderBox =
-        _settingsButtonKey.currentContext?.findRenderObject() as RenderBox?;
-    // Fallback: center the panel when the settings button isn't on-canvas.
-    final screenSize = MediaQuery.sizeOf(context);
-    final hasChaptersTab = _episodeNav != null;
-    final menuWidth =
-        PlayerSettingsAnchor.sheetWidth(hasChaptersTab: hasChaptersTab);
-    final menuMaxHeight =
-        PlayerSettingsAnchor.sheetMaxHeight(hasChaptersTab: hasChaptersTab);
-
-    late final double left;
-    late final double? bottom;
-    late final double? top;
-    late final double maxHeight;
-    if (renderBox != null) {
-      final buttonRect = renderBox.localToGlobal(Offset.zero) & renderBox.size;
-      left = PlayerSettingsAnchor.horizontalLeft(
-        buttonRect: buttonRect,
-        screenSize: screenSize,
-        popupWidth: menuWidth,
-      );
-      final vertical = PlayerSettingsAnchor.verticalPlacement(
-        buttonRect: buttonRect,
-        screenSize: screenSize,
-        popupMaxHeight: menuMaxHeight,
-      );
-      bottom = vertical.bottom;
-      top = vertical.top;
-      maxHeight = vertical.maxHeight;
-    } else {
-      left = (screenSize.width - menuWidth) / 2;
-      top = (screenSize.height - menuMaxHeight) / 2;
-      bottom = null;
-      maxHeight = menuMaxHeight;
-    }
-
-    final maxTab = hasChaptersTab ? 4 : 3;
-    final tab = initialTabIndex.clamp(0, maxTab);
-
-    _insertPlayerPopup(
-      (dismiss) => GestureDetector(
-        onTap: dismiss,
-        behavior: HitTestBehavior.translucent,
-        child: Material(
-          type: MaterialType.transparency,
-          child: SizedBox(
-            width: screenSize.width,
-            height: screenSize.height,
-            child: Stack(
-              children: [
-                Positioned(
-                  left: left,
-                  bottom: bottom,
-                  top: top,
-                  child: ConstrainedBox(
-                    constraints: BoxConstraints(maxHeight: maxHeight),
-                    child: PlayerSettingsSheet(
-                      session: _playerController.session,
-                      currentFit: _videoFit,
-                      onFitChanged: _updateVideoFit,
-                      onClose: dismiss,
-                      playerController: _playerController,
-                      episodeNav: _episodeNav,
-                      onSeekToAbsolute: _seekTo,
-                      initialTabIndex: tab,
-                    ),
-                  ),
-                ),
-              ],
-            ),
-          ),
-        ),
-      ),
-    );
   }
 
   /// Chrome Onyx settings menu, anchored to the button that opened it.
@@ -2339,13 +2208,6 @@ class _PlayerScreenState extends State<PlayerScreen> {
     });
   }
 
-  void _toggleAspectFitControl() {
-    final next =
-        _videoFit == BoxFit.contain ? BoxFit.cover : BoxFit.contain;
-    _updateVideoFit(next);
-    _showControlsTransient();
-  }
-
   /// The intro skipping itself: the countdown ran out with nobody touching
   /// anything. The controller has already put the button away, so all that is
   /// left is the seek — done quietly, without waking the chrome, since there is
@@ -2365,58 +2227,6 @@ class _PlayerScreenState extends State<PlayerScreen> {
     _showControlsTransient();
   }
 
-  void _showSubtitlesMenu() {
-    final renderBox =
-        _subtitlesButtonKey.currentContext?.findRenderObject() as RenderBox?;
-    if (renderBox == null) return;
-
-    final buttonRect = renderBox.localToGlobal(Offset.zero) & renderBox.size;
-    final screenSize = MediaQuery.sizeOf(context);
-    const menuWidth = PlayerSettingsAnchor.subtitlesSheetWidth;
-    const menuMaxHeight = PlayerSettingsAnchor.subtitlesSheetMaxHeight;
-    final left = PlayerSettingsAnchor.horizontalLeft(
-      buttonRect: buttonRect,
-      screenSize: screenSize,
-      popupWidth: menuWidth,
-    );
-    final vertical = PlayerSettingsAnchor.verticalPlacement(
-      buttonRect: buttonRect,
-      screenSize: screenSize,
-      popupMaxHeight: menuMaxHeight,
-    );
-
-    _insertPlayerPopup(
-      (dismiss) => GestureDetector(
-        onTap: dismiss,
-        behavior: HitTestBehavior.translucent,
-        child: Material(
-          type: MaterialType.transparency,
-          child: SizedBox(
-            width: screenSize.width,
-            height: screenSize.height,
-            child: Stack(
-              children: [
-                Positioned(
-                  left: left,
-                  bottom: vertical.bottom,
-                  top: vertical.top,
-                  child: ConstrainedBox(
-                    constraints: BoxConstraints(maxHeight: vertical.maxHeight),
-                    child: PlayerSubtitlesSheet(
-                      session: _playerController.session,
-                      playerController: _playerController,
-                      onClose: dismiss,
-                    ),
-                  ),
-                ),
-              ],
-            ),
-          ),
-        ),
-      ),
-    );
-  }
-
   /// The episode's own title (TV) or the media title (movies) — as opposed
   /// to [_episodesShowTitle], which is the show name. `_playerTitle` combines
   /// show name + code and must not be used here or the code/title repeat.
@@ -2427,14 +2237,6 @@ class _PlayerScreenState extends State<PlayerScreen> {
     }
     return _episodesShowTitle;
   }
-
-  /// Composes the small muted line shown by [PlayerControlType.episodeTitleBlock]
-  /// and reused as the header line of the info panel.
-  String get _episodeInfoLine => composeEpisodeInfoLine(
-        seasonEpisodeCode: _actualMedia.seasonEpisodeCode,
-        title: _episodeOrMovieTitle,
-        filePath: _actualMedia.filePath,
-      );
 
   /// Same line without the release tag parsed from the filename. The chrome
   /// over the video names the episode; the quality/source belongs to the info
@@ -2473,79 +2275,6 @@ class _PlayerScreenState extends State<PlayerScreen> {
       for (final chapter in chapters)
         (chapter.startTime / total).clamp(0.0, 1.0),
     ];
-  }
-
-  void _showInfoPanel() {
-    final renderBox =
-        _mediaInfoButtonKey.currentContext?.findRenderObject() as RenderBox?;
-
-    final screenSize = MediaQuery.sizeOf(context);
-    const cardWidth = 560.0;
-    const cardMaxHeight = 220.0;
-
-    late final double left;
-    late final double? bottom;
-    late final double? top;
-    late final double maxHeight;
-    if (renderBox != null) {
-      final buttonRect = renderBox.localToGlobal(Offset.zero) & renderBox.size;
-      left = PlayerSettingsAnchor.horizontalLeft(
-        buttonRect: buttonRect,
-        screenSize: screenSize,
-        popupWidth: cardWidth,
-      );
-      final vertical = PlayerSettingsAnchor.verticalPlacement(
-        buttonRect: buttonRect,
-        screenSize: screenSize,
-        popupMaxHeight: cardMaxHeight,
-      );
-      bottom = vertical.bottom;
-      top = vertical.top;
-      maxHeight = vertical.maxHeight;
-    } else {
-      left = (screenSize.width - cardWidth) / 2;
-      top = (screenSize.height - cardMaxHeight) / 2;
-      bottom = null;
-      maxHeight = cardMaxHeight;
-    }
-
-    _insertPlayerPopup(
-      (dismiss) => GestureDetector(
-        onTap: dismiss,
-        behavior: HitTestBehavior.translucent,
-        child: Material(
-          type: MaterialType.transparency,
-          child: SizedBox(
-            width: screenSize.width,
-            height: screenSize.height,
-            child: Stack(
-              children: [
-                Positioned(
-                  left: left,
-                  bottom: bottom,
-                  top: top,
-                  child: ConstrainedBox(
-                    constraints: BoxConstraints(maxHeight: maxHeight),
-                    child: PlayerInfoSheet(
-                      media: _actualMedia,
-                      showTitle: _episodesShowTitle,
-                      episodeInfoLine: _episodeInfoLine,
-                      tracks: _playerController.mediaTracks,
-                      duration: _playerController.duration,
-                      onRestart: () {
-                        dismiss();
-                        _seekTo(0);
-                      },
-                      onClose: dismiss,
-                    ),
-                  ),
-                ),
-              ],
-            ),
-          ),
-        ),
-      ),
-    );
   }
 
   Future<void> _toggleFullscreen() async {
@@ -2605,7 +2334,7 @@ class _PlayerScreenState extends State<PlayerScreen> {
     if (!SleepTimer.instance.takeDue()) return;
     _wantsPlayback = false;
     if (_playerController.isPlaying) _playerController.togglePlayPause();
-    _showPartyNotice('Minuterie de veille : lecture en pause');
+    _showPartyNotice(tr('Minuterie de veille : lecture en pause'));
     _showControlsTransient();
   }
 
@@ -2802,7 +2531,7 @@ class _PlayerScreenState extends State<PlayerScreen> {
     final party = _party;
     if (party == null) return;
     unawaited(party.leave());
-    _showPartyNotice('Vous avez quitté la séance');
+    _showPartyNotice(tr('Vous avez quitté la séance'));
   }
 
   void _showWatchPartyPanel() {
@@ -2840,8 +2569,7 @@ class _PlayerScreenState extends State<PlayerScreen> {
     );
   }
 
-  /// Seek from a progress-bar fraction — the modular (Player Studio) layout's
-  /// only seek path.
+  /// Seek from a progress-bar fraction.
   ///
   /// It used to call player.seek() directly with `fraction * duration`, which is
   /// an ABSOLUTE position, while mpv expects a position on the HLS stream
@@ -2860,38 +2588,7 @@ class _PlayerScreenState extends State<PlayerScreen> {
 
   @override
   Widget build(BuildContext context) {
-    // Un seul fond partagé pour tout le verre posé sur le film — voir
-    // l'ADR-0025.
-    //
-    // Chaque `BackdropFilter.grouped` en dessous lit la même image du film au
-    // lieu d'en demander une copie pour lui seul : une disposition modulaire
-    // de huit contrôles passe de huit relectures par image à une. Ce que le
-    // groupe couvre est le chrome, dont les pièces ne se recouvrent pas ; les
-    // panneaux qui viennent par-dessus (réglages, fiche, épisodes) gardent un
-    // `BackdropFilter` ordinaire, pour continuer de flouter le chrome qu'ils
-    // couvrent et non le film derrière lui.
-    return BackdropGroup(child: _buildPlayer(context));
-  }
-
-  Widget _buildPlayer(BuildContext context) {
-    final layoutProvider = Provider.of<PlayerLayoutProvider>(context);
-    final chrome = _resolveChrome(layoutProvider);
     final isTv = TvScope.of(context);
-    // A fixed chrome is its own thing: it is neither the default HUD nor the
-    // modular layer, and it ignores the layout config entirely.
-    //
-    // A television always gets one, whatever playeur the account selected. The
-    // modular layouts place their controls in percentages of the screen, for a
-    // pointer that can reach any of them directly; a D-pad walks between them,
-    // and no arrangement a user can draw guarantees a path that reaches every
-    // control. The fixed chrome is laid out for that walk.
-    final fixedChrome = isTv ? FixedChromeId.onyx : chrome.fixedChrome;
-    final useModular = fixedChrome == null && chrome.useModular;
-    final useDefaultHud = fixedChrome == null && !useModular;
-    final totalSeconds = _playerController.duration.inSeconds;
-    final progressFraction = totalSeconds > 0
-        ? _playerController.position.inSeconds / totalSeconds
-        : 0.0;
 
     return Focus(
       focusNode: _keyboardFocusNode,
@@ -3123,223 +2820,100 @@ class _PlayerScreenState extends State<PlayerScreen> {
                       visible: _zoomHintVisible,
                     ),
                   ),
-                // Switched on rather than compared, so adding a chrome to
-                // [FixedChromeId] fails to compile here instead of silently
-                // rendering a player with no controls at all.
-                if (fixedChrome != null)
-                  switch (fixedChrome) {
-                    FixedChromeId.onyx => OnyxControlsLayer(
-                    visible: _controlsVisible,
-                    timelineAnchorKey: _timelineAnchorKey,
-                    isPlaying: _playerController.isPlaying,
-                    position: _displayedPosition,
-                    duration: _playerController.duration,
-                    buffered: _bufferedFraction,
-                    onPlayPause: _togglePlayPause,
-                    onRewind: () => _seekRelative(-10),
-                    onForward: () => _seekRelative(10),
-                    // The scrubber under the remote chains its steps instead
-                    // of seeking on each one — see [_remoteSeekStep].
-                    onScrubStepBack: () => _remoteSeekStep(-1),
-                    onScrubStepForward: () => _remoteSeekStep(1),
-                    // Walking the chrome is using it: the countdown that
-                    // hides it starts over.
-                    onRemoteNavigate: _hideControlsWithDelay,
-                    onSeekFraction: _seekToFraction,
-                    onScrubbingChanged: (scrubbing) {
-                      // Hold the chrome open for the whole drag, then start
-                      // the hide countdown again on release.
-                      if (scrubbing) {
-                        _controlsTimer?.cancel();
-                        _safeSetState(() => _showControls = true);
-                      } else {
-                        _hideControlsWithDelay();
-                      }
-                    },
-                    title: _onyxTitleLine,
-                    overline: _onyxOverline,
-                    logoUrl: _mediaLogoUrl,
-                    volume: _playerController.session.volume,
-                    onVolumeChanged: (v) =>
-                        _playerController.session.setVolume(v),
-                    brightness: _screenBrightness,
-                    onBrightnessChanged: _setScreenBrightness,
-                    onBrightnessDraggingChanged: (dragging) {
-                      // Same deal as the scrubber: the chrome cannot fade out
-                      // from under a finger that is still on it.
-                      if (dragging) {
-                        _controlsTimer?.cancel();
-                        _safeSetState(() => _showControls = true);
-                      } else {
-                        _hideControlsWithDelay();
-                      }
-                    },
-                    onBack: _leavePlayer,
-                    // This chrome gets its own list menu, not the tabbed
-                    // panel the modular and default layouts use.
-                    onToggleSubtitles: () => _showOnyxSettingsMenu(
-                      section: OnyxMenuSection.subtitles,
-                      anchorKey: _subtitlesButtonKey,
-                    ),
-                    onOpenAudio: () => _showOnyxSettingsMenu(
-                      section: OnyxMenuSection.audio,
-                      anchorKey: _subtitlesButtonKey,
-                    ),
-                    onCycleSpeed: _cyclePlaybackRate,
-                    onOpenSettings: () => _showOnyxSettingsMenu(
-                      anchorKey: _settingsButtonKey,
-                    ),
-                    onOpenWatchParty: _watchPartyAction,
-                    watchPartyActive: _party != null,
-                    onToggleFullscreen: _toggleFullscreen,
-                    playbackRate: _playbackRate,
-                    onLockScreen: _handheld ? _lockScreen : null,
-                    onSkipNext: (_episodeNav?.nextEpisode != null)
-                        ? _goToNextEpisode
-                        : null,
-                    onSkipPrevious:
-                        _previousEpisode != null ? _goToPreviousEpisode : null,
-                    onOpenEpisodes: _isEpisode ? _openEpisodesPanel : null,
-                    onSkipIntro: (_episodeNav?.showSkipIntro ?? false)
-                        ? _skipIntroFromControl
-                        : null,
-                    chapterMarks: _chapterMarks,
-                    settingsButtonKey: _settingsButtonKey,
-                    subtitlesButtonKey: _subtitlesButtonKey,
-                    isTv: isTv,
-                    playPauseFocusNode: _playPauseFocusNode,
-                    progressFocusNode: _progressFocusNode,
-                    // Row by row, and only the rows the camera is actually
-                    // on. Padding the layer would have stepped the whole
-                    // interface aside for something in the way of one control.
-                    cutouts: DisplayCutouts.rects(context),
-                    // Only non-null once the first frame is on screen.
-                    previews: _playerController.timelinePreviews,
-                    remoteSeekPending: _remoteSeek.target != null,
-                    // The phone has volume keys; the desktop has nothing but
-                    // this.
-                    showVolume: !AppPlatform.isMobile,
-                    scale: _chromeScale,
-                  ),
-                  }
-                else if (useModular) ...[
-                  _clearOfCutout(ModularControlsLayer(
-                    config: chrome.config,
-                    visible: _controlsVisible,
-                    timelineAnchorKey: _timelineAnchorKey,
-                    isPlaying: _playerController.isPlaying,
-                    progress: progressFraction,
-                    duration: _playerController.duration,
-                    currentSeconds: _playerController.position.inSeconds,
-                    onPlayPause: _togglePlayPause,
-                    onRewind: () => _seekRelative(-10),
-                    onForward: () => _seekRelative(10),
-                    onRewind30: () => _seekRelative(-30),
-                    onForward30: () => _seekRelative(30),
-                    onSkipNext: (_episodeNav?.nextEpisode != null)
-                        ? _goToNextEpisode
-                        : null,
-                    onSeekFraction: _seekToFraction,
-                    onToggleFullscreen: _toggleFullscreen,
-                    mediaTitle: _playerTitle,
-                    mediaLogoUrl: _mediaLogoUrl,
-                    volume: _playerController.session.volume,
-                    onVolumeChanged: (v) =>
-                        _playerController.session.setVolume(v),
-                    onBack: _leavePlayer,
-                    onOpenSettings: () => _showTrackSettings(),
-                    onToggleSubtitles: _showSubtitlesMenu,
-                    onOpenUpNext: _isEpisode ? _openEpisodesPanel : null,
-                    onSkipIntro: (_episodeNav?.showSkipIntro ?? false)
-                        ? _skipIntroFromControl
-                        : null,
-                    onCycleSpeed: _cyclePlaybackRate,
-                    onToggleAspectFit: _toggleAspectFitControl,
-                    onOpenAudio: () => _showTrackSettings(initialTabIndex: 0),
-                    onOpenChapters: _episodeNav != null
-                        ? () => _showTrackSettings(initialTabIndex: 4)
-                        : null,
-                    onOpenInfo: _showInfoPanel,
-                    onOpenWatchParty: _watchPartyAction,
-                    watchPartyActive: _party != null,
-                    episodeInfoLine: _episodeOverline,
-                    episodeShowTitle: _episodesShowTitle,
-                    playbackRate: _playbackRate,
-                    videoFit: _videoFit,
-                    settingsButtonKey: _settingsButtonKey,
-                    subtitlesButtonKey: _subtitlesButtonKey,
-                    mediaInfoButtonKey: _mediaInfoButtonKey,
-                  )),
-                ] else
-                  _clearOfCutout(PlayerHUDOverlay(
-                    visible: _controlsVisible,
-                    timelineAnchorKey: _timelineAnchorKey,
-                    session: _playerController.session,
-                    media: widget.media,
-                    mediaTitle: _playerTitle,
-                    isPlaying: _playerController.isPlaying,
-                    onPlayPause: _togglePlayPause,
-                    position: _playerController.position,
-                    duration: _playerController.duration,
-                    isDraggingSlider: _playerController.isDraggingSlider,
-                    dragValue: _playerController.dragValue,
-                    onToggleControls: _toggleControls,
-                    onHideControlsWithDelay: _hideControlsWithDelay,
-                    onSeekRelative: _seekRelative,
-                    onBack: _leavePlayer,
-                    onShowTrackSettings: _showTrackSettings,
-                    onSliderChangeStart: (value) async {
-                      _playerController.isDraggingSlider = true;
-                      _playerController.dragValue = value;
-                      _safeSetState(() {});
-                      await _playerController.session.setExactSeek(false);
-                    },
-                    onSliderChanged: (value) {
-                      _playerController.dragValue = value;
-                      // Scrub live only where the session can already serve the
-                      // frame; dragging past that would stall mpv on segments
-                      // that do not exist yet. The final position is committed
-                      // in onSliderChangeEnd.
-                      if (_playerController.canSeekWithinSession(value.toInt())) {
-                        _playerController.session.seek(Duration(
-                            seconds: value.toInt() -
-                                _playerController.hlsStartOffset));
-                      }
-                      _safeSetState(() {});
-                    },
-                    onSliderChangeEnd: (value) async {
-                      _playerController.isDraggingSlider = false;
-                      // Exactness back BEFORE the final seek: mpv reads
-                      // `hr-seek` when it executes a seek, and restoring it
-                      // afterwards left the one seek that matters landing on
-                      // the previous keyframe instead of the frame asked for.
-                      if (_playerController.currentQuality == null) {
-                        await _playerController.session.setExactSeek(true);
-                      }
-                      // One decision point: this rebuilds the HLS session only
-                      // if the target is outside what it can serve. Rewinding
-                      // stays a plain seek.
-                      await _seekTo(value.toInt());
+                OnyxControlsLayer(
+                  visible: _controlsVisible,
+                  timelineAnchorKey: _timelineAnchorKey,
+                  isPlaying: _playerController.isPlaying,
+                  position: _displayedPosition,
+                  duration: _playerController.duration,
+                  buffered: _bufferedFraction,
+                  onPlayPause: _togglePlayPause,
+                  onRewind: () => _seekRelative(-10),
+                  onForward: () => _seekRelative(10),
+                  // The scrubber under the remote chains its steps instead
+                  // of seeking on each one — see [_remoteSeekStep].
+                  onScrubStepBack: () => _remoteSeekStep(-1),
+                  onScrubStepForward: () => _remoteSeekStep(1),
+                  // Walking the chrome is using it: the countdown that
+                  // hides it starts over.
+                  onRemoteNavigate: _hideControlsWithDelay,
+                  onSeekFraction: _seekToFraction,
+                  onScrubbingChanged: (scrubbing) {
+                    // Hold the chrome open for the whole drag, then start
+                    // the hide countdown again on release.
+                    if (scrubbing) {
+                      _controlsTimer?.cancel();
+                      _safeSetState(() => _showControls = true);
+                    } else {
                       _hideControlsWithDelay();
-                    },
-                    onNextEpisode: (_episodeNav?.nextEpisode != null)
-                        ? _goToNextEpisode
-                        : null,
-                    onOpenWatchParty: _watchPartyAction,
-                    watchPartyActive: _party != null,
-                  )),
-                if (_controlsVisible && useDefaultHud)
-                  _clearOfCutout(TopRightControls(
-                    session: _playerController.session,
-                    currentFit: _videoFit,
-                    onFitChanged: _updateVideoFit,
-                    playerController: _playerController,
-                    episodeNav: _episodeNav,
-                    onSeekToAbsolute: _seekTo,
-                  )),
+                    }
+                  },
+                  title: _onyxTitleLine,
+                  overline: _onyxOverline,
+                  logoUrl: _mediaLogoUrl,
+                  volume: _playerController.session.volume,
+                  onVolumeChanged: (v) =>
+                      _playerController.session.setVolume(v),
+                  brightness: _screenBrightness,
+                  onBrightnessChanged: _setScreenBrightness,
+                  onBrightnessDraggingChanged: (dragging) {
+                    // Same deal as the scrubber: the chrome cannot fade out
+                    // from under a finger that is still on it.
+                    if (dragging) {
+                      _controlsTimer?.cancel();
+                      _safeSetState(() => _showControls = true);
+                    } else {
+                      _hideControlsWithDelay();
+                    }
+                  },
+                  onBack: _leavePlayer,
+                  onToggleSubtitles: () => _showOnyxSettingsMenu(
+                    section: OnyxMenuSection.subtitles,
+                    anchorKey: _subtitlesButtonKey,
+                  ),
+                  onOpenAudio: () => _showOnyxSettingsMenu(
+                    section: OnyxMenuSection.audio,
+                    anchorKey: _subtitlesButtonKey,
+                  ),
+                  onCycleSpeed: _cyclePlaybackRate,
+                  onOpenSettings: () => _showOnyxSettingsMenu(
+                    anchorKey: _settingsButtonKey,
+                  ),
+                  onOpenWatchParty: _watchPartyAction,
+                  watchPartyActive: _party != null,
+                  onToggleFullscreen: _toggleFullscreen,
+                  playbackRate: _playbackRate,
+                  onLockScreen: _handheld ? _lockScreen : null,
+                  onSkipNext: (_episodeNav?.nextEpisode != null)
+                      ? _goToNextEpisode
+                      : null,
+                  onSkipPrevious:
+                      _previousEpisode != null ? _goToPreviousEpisode : null,
+                  onOpenEpisodes: _isEpisode ? _openEpisodesPanel : null,
+                  onSkipIntro: (_episodeNav?.showSkipIntro ?? false)
+                      ? _skipIntroFromControl
+                      : null,
+                  chapterMarks: _chapterMarks,
+                  settingsButtonKey: _settingsButtonKey,
+                  subtitlesButtonKey: _subtitlesButtonKey,
+                  isTv: isTv,
+                  playPauseFocusNode: _playPauseFocusNode,
+                  progressFocusNode: _progressFocusNode,
+                  // Row by row, and only the rows the camera is actually
+                  // on. Padding the layer would have stepped the whole
+                  // interface aside for something in the way of one control.
+                  cutouts: DisplayCutouts.rects(context),
+                  // Only non-null once the first frame is on screen.
+                  previews: _playerController.timelinePreviews,
+                  remoteSeekPending: _remoteSeek.target != null,
+                  // The phone has volume keys; the desktop has nothing but
+                  // this.
+                  showVolume: !AppPlatform.isMobile,
+                  scale: _chromeScale,
+                ),
                 // Regarder ensemble : les annonces (« alex a mis en pause ») et
                 // l'attente d'un participant qui charge, en haut au centre. Le
-                // bouton, lui, est dans la barre de chaque habillage.
+                // bouton, lui, est dans la barre du chrome.
                 if (_party != null || _partyNoticeVisible)
                   Positioned(
                     top: macOSWindowControlsTopInset + 20,
@@ -3356,24 +2930,7 @@ class _PlayerScreenState extends State<PlayerScreen> {
                       ),
                     ),
                   ),
-                // Overlays must be AFTER HUD in Stack to render on top.
-                // If the Studio layout already places a skip-intro control —
-                // or the fixed chrome draws its own — hide the built-in
-                // overlay to avoid a duplicate CTA.
-                if ((_episodeNav?.showSkipIntro ?? false) &&
-                    fixedChrome == null &&
-                    !(useModular &&
-                        chrome.config.hasControl(PlayerControlType.skipIntro)))
-                  SkipIntroButton(
-                    autoSkipActive: _episodeNav!.introAutoSkipActive,
-                    frozen: _episodeNav!.introAutoSkipFrozen,
-                    countdownSeconds: _episodeNav!.introCountdownSeconds,
-                    onSkip: () async {
-                      final end = _episodeNav!.introSkipTarget;
-                      await _seekTo(end);
-                      _episodeNav!.skipIntro();
-                    },
-                  ),
+                // Overlays must be AFTER the chrome in Stack to render on top.
                 // Requires an actual next episode: at the end of a season the
                 // pill would otherwise sit there doing nothing when tapped.
                 if ((_episodeNav?.showNextEpisodeOutro ?? false) &&
@@ -3536,20 +3093,6 @@ class _PlayerScreenState extends State<PlayerScreen> {
   }
 }
 
-
-/// Le playeur retenu pour une lecture : sa configuration, et laquelle des trois
-/// couches de chrome elle décrit.
-///
-/// [fixedChrome] n'est pas un troisième champ mais une lecture de la
-/// configuration : un chrome figé *est* une configuration qui en nomme un.
-class _ResolvedChrome {
-  final PlayerLayoutConfig config;
-  final bool useModular;
-
-  const _ResolvedChrome({required this.config, required this.useModular});
-
-  FixedChromeId? get fixedChrome => config.fixedChrome;
-}
 
 /// Where the remote lands when the player's HUD comes up.
 enum _RemoteEntry { playPause, scrubber }

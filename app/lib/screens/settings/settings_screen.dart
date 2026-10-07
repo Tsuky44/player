@@ -9,6 +9,7 @@ import '../../theme/app_motion.dart';
 import '../../tv/tv_focus_panes.dart';
 import '../../tv/tv_mode.dart';
 import '../../utils/app_platform.dart';
+import '../../utils/store_build.dart';
 import 'pages/account_page.dart';
 import 'pages/activity_page.dart';
 import 'pages/admin_devices_page.dart';
@@ -28,6 +29,7 @@ import 'pages/stats_page.dart';
 import 'pages/users_page.dart';
 import 'widgets/settings_ui.dart';
 import '../../theme/app_type.dart';
+import '../../l10n/tr.dart';
 
 /// Les catégories des paramètres, dans l'ordre de la navigation.
 abstract final class SettingsSections {
@@ -78,17 +80,17 @@ List<_Category> _categoriesFor(Permissions p) {
   return [
     _Category(
       id: SettingsSections.account,
-      label: 'Mon compte',
+      label: tr('Mon compte'),
       icon: Icons.person_rounded,
-      hint: 'Profil, mot de passe, appareils connectés',
+      hint: tr('Profil, mot de passe, appareils connectés'),
       admin: false,
       builder: (_) => const AccountPage(),
     ),
     _Category(
       id: SettingsSections.playback,
-      label: 'Lecture',
+      label: tr('Lecture'),
       icon: Icons.play_circle_outline_rounded,
-      hint: 'Langue audio, décodage, interface du lecteur',
+      hint: tr('Langue audio, décodage, interface du lecteur'),
       admin: false,
       builder: (_) => const PlaybackPage(),
     ),
@@ -98,133 +100,139 @@ List<_Category> _categoriesFor(Permissions p) {
     if (!AppPlatform.isWeb && !AppPlatform.isTvOS)
       _Category(
         id: SettingsSections.downloads,
-        label: 'Téléchargements',
+        label: tr('Téléchargements'),
         icon: Icons.download_rounded,
-        hint: 'Épisodes d’avance, réseau autorisé, place occupée',
+        hint: tr('Épisodes d’avance, réseau autorisé, place occupée'),
         admin: false,
         builder: (_) => const DownloadsPage(),
       ),
     _Category(
       id: SettingsSections.servers,
-      label: 'Serveurs',
+      label: tr('Serveurs'),
       icon: Icons.dns_rounded,
-      hint: 'Serveur actif, comptes et comptes liés',
+      hint: tr('Serveur actif, comptes et comptes liés'),
       admin: false,
       builder: (_) => const ServersPage(),
     ),
-    if (p.shareMedia)
+    // Ouvrir un lien reçu ne demande aucun droit (ADR-0037 §11) ; seul un
+    // téléviseur, sans presse-papiers où le recevoir, n'a rien à y faire tant
+    // que le compte n'a pas de liens à lui.
+    if (p.shareMedia || !TvMode.isTv)
       _Category(
         id: SettingsSections.shares,
-        label: 'Liens de partage',
+        label: tr('Liens de partage'),
         icon: Icons.link_rounded,
-        hint: 'Les médias partagés par lien, et de quoi les couper',
+        hint: p.shareMedia
+            ? tr('Ouvrir un lien reçu, suivre et couper les vôtres')
+            : tr('Ouvrir un lien qu’on vous a envoyé'),
         admin: false,
         builder: (_) => const SharesPage(),
       ),
     _Category(
       id: SettingsSections.emby,
-      label: 'Synchro Emby',
+      label: tr('Synchro Emby'),
       icon: Icons.sync_rounded,
-      hint: 'Reprendre là où vous en êtes sur Emby',
+      hint: tr('Reprendre là où vous en êtes sur Emby'),
       admin: false,
       builder: (_) => const EmbySyncPage(),
     ),
     _Category(
       id: SettingsSections.device,
-      label: 'Cet appareil',
+      label: tr('Cet appareil'),
       icon: Icons.devices_rounded,
-      hint: 'Mode télécommande, téléviseur, stockage',
+      hint: tr('Mode télécommande, téléviseur, stockage'),
       admin: false,
       builder: (_) => const DevicePage(),
     ),
     // Une Apple TV n'ouvre pas de lien et ne choisit pas de fichier : ni
-    // installer ailleurs, ni publier un installeur n'y a de sens.
-    if (!AppPlatform.isTvOS)
+    // installer ailleurs, ni publier un installeur n'y a de sens. Un build
+    // store ne propose pas d'installeurs non plus (ADR-0046).
+    if (!AppPlatform.isTvOS && !StoreBuild.enabled)
       _Category(
         id: SettingsSections.apps,
-        label: 'Applications',
+        label: tr('Applications'),
         icon: Icons.download_for_offline_rounded,
-        hint: 'Installer Onyx sur un autre appareil',
+        hint: tr('Installer Onyx sur un autre appareil'),
         admin: false,
         builder: (_) => const AppsPage(),
       ),
     _Category(
       id: SettingsSections.logs,
-      label: 'Journal',
+      label: tr('Journal'),
       icon: Icons.receipt_long_rounded,
-      hint: 'Journaux de l’app et des lectures, pour comprendre une erreur',
+      hint: tr('Journaux de l’app et des lectures, pour comprendre une erreur'),
       admin: false,
       builder: (_) => const LogsPage(),
     ),
     if (anyAdmin)
       _Category(
         id: SettingsSections.dashboard,
-        label: 'Tableau de bord',
+        label: tr('Tableau de bord'),
         icon: Icons.space_dashboard_rounded,
-        hint: 'Lectures en cours, état du serveur',
+        hint: tr('Lectures en cours, état du serveur'),
         admin: true,
         builder: (_) => const DashboardPage(),
       ),
     if (p.manageUsers)
       _Category(
         id: SettingsSections.activity,
-        label: 'Historique',
+        label: tr('Historique'),
         icon: Icons.history_rounded,
-        hint: 'Qui a regardé quoi, et où',
+        hint: tr('Qui a regardé quoi, et où'),
         admin: true,
         builder: (_) => const ActivityPage(),
       ),
     if (p.manageUsers)
       _Category(
         id: SettingsSections.stats,
-        label: 'Statistiques',
+        label: tr('Statistiques'),
         icon: Icons.insights_rounded,
-        hint: 'Temps de visionnage, tops, applications',
+        hint: tr('Temps de visionnage, tops, applications'),
         admin: true,
         builder: (_) => const StatsPage(),
       ),
     if (p.manageUsers || p.inviteUsers)
       _Category(
         id: SettingsSections.users,
-        label: 'Utilisateurs',
+        label: tr('Utilisateurs'),
         icon: Icons.group_rounded,
-        hint: 'Comptes, droits, invitations, demandes',
+        hint: tr('Comptes, droits, invitations, demandes'),
         admin: true,
         builder: (_) => const UsersPage(),
       ),
     if (p.manageUsers)
       _Category(
         id: SettingsSections.devices,
-        label: 'Appareils',
+        label: tr('Appareils'),
         icon: Icons.important_devices_rounded,
-        hint: 'Toutes les sessions ouvertes sur le serveur',
+        hint: tr('Toutes les sessions ouvertes sur le serveur'),
         admin: true,
         builder: (_) => const AdminDevicesPage(),
       ),
     if (p.manageSettings || p.manageLibrary)
       _Category(
         id: SettingsSections.library,
-        label: 'Bibliothèque',
+        label: tr('Bibliothèque'),
         icon: Icons.video_library_rounded,
-        hint: 'Dossiers, analyse, maintenance',
+        hint: tr('Dossiers, analyse, maintenance'),
         admin: true,
         builder: (_) => const LibraryPage(),
       ),
     if (p.manageSettings)
       _Category(
         id: SettingsSections.integrations,
-        label: 'Métadonnées',
+        label: tr('Métadonnées'),
         icon: Icons.extension_rounded,
-        hint: 'TMDB et MediaHub',
+        hint: tr('TMDB et MediaHub'),
         admin: true,
         builder: (_) => const IntegrationsPage(),
       ),
     if (p.manageSettings)
       _Category(
         id: SettingsSections.linkedServers,
-        label: 'Serveurs liés',
+        label: tr('Serveurs liés'),
         icon: Icons.hub_rounded,
-        hint: 'Progression partagée entre serveurs',
+        hint: tr('Progression partagée entre serveurs'),
         admin: true,
         builder: (_) => const LinkedServersPage(),
       ),
@@ -419,13 +427,13 @@ class _Sidebar extends StatelessWidget {
               children: [
                 if (Navigator.of(context).canPop())
                   IconButton(
-                    tooltip: 'Retour',
+                    tooltip: tr('Retour'),
                     onPressed: () => Navigator.of(context).maybePop(),
                     icon: const Icon(Icons.arrow_back_rounded),
                   ),
                 const SizedBox(width: 4),
-                const Text(
-                  'Paramètres',
+                Text(
+                  tr('Paramètres'),
                   style: TextStyle(
                     fontSize: AppType.title3,
                     fontWeight: FontWeight.w700,
@@ -443,7 +451,7 @@ class _Sidebar extends StatelessWidget {
             child: ListView(
               padding: const EdgeInsets.fromLTRB(10, 4, 10, 16),
               children: [
-                const _NavHeader('Mon espace'),
+                _NavHeader(tr('Mon espace')),
                 for (final c in user)
                   _NavItem(
                     category: c,
@@ -453,7 +461,7 @@ class _Sidebar extends StatelessWidget {
                   ),
                 if (admin.isNotEmpty) ...[
                   const SizedBox(height: 14),
-                  const _NavHeader('Administration'),
+                  _NavHeader(tr('Administration')),
                   for (final c in admin)
                     _NavItem(
                       category: c,
@@ -468,7 +476,7 @@ class _Sidebar extends StatelessWidget {
           Padding(
             padding: const EdgeInsets.fromLTRB(22, 8, 22, 16),
             child: Text(
-              'Onyx ${ClientIdentity.version} · ${ClientIdentity.platform}',
+              tr('Onyx {0} · {1}', [ClientIdentity.version, ClientIdentity.platform]),
               style:
                   const TextStyle(color: AppColors.textMuted, fontSize: AppType.footnote),
             ),
@@ -604,10 +612,10 @@ class _AccountCard extends StatelessWidget {
     final user = auth.currentUser;
     final name = user?.username ?? '';
     final role = auth.isOwner
-        ? 'Propriétaire'
+        ? tr('Propriétaire')
         : auth.permissions.isAdmin
-            ? 'Administrateur'
-            : 'Membre';
+            ? tr('Administrateur')
+            : tr('Membre');
     final server = auth.activeServer?.displayName ?? '';
 
     return Container(
@@ -672,24 +680,24 @@ class _CompactSettings extends StatelessWidget {
 
     return Scaffold(
       backgroundColor: AppColors.background,
-      appBar: AppBar(title: const Text('Paramètres')),
+      appBar: AppBar(title: Text(tr('Paramètres'))),
       body: ListView(
         padding: const EdgeInsets.fromLTRB(20, 16, 20, 40),
         children: [
           const _AccountCard(),
           const SizedBox(height: 24),
           SettingsGroup(
-            title: 'Mon espace',
+            title: tr('Mon espace'),
             children: [for (final c in user) tile(c)],
           ),
           if (admin.isNotEmpty)
             SettingsGroup(
-              title: 'Administration',
+              title: tr('Administration'),
               children: [for (final c in admin) tile(c)],
             ),
           Center(
             child: Text(
-              'Onyx ${ClientIdentity.version} · ${ClientIdentity.platform}',
+              tr('Onyx {0} · {1}', [ClientIdentity.version, ClientIdentity.platform]),
               style: const TextStyle(color: AppColors.textMuted, fontSize: AppType.footnote),
             ),
           ),

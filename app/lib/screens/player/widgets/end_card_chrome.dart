@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
 import '../../../theme/app_colors.dart';
 import '../../../widgets/global/app_network_image.dart';
 import '../../../theme/app_type.dart';
+import '../../../l10n/tr.dart';
 
 /// Shared chrome of the pages that close an episode: the end-of-season request
 /// ([NextSeasonOverlay]) and the episode a season is still waiting for
@@ -316,7 +317,7 @@ class EndCardNextEpisodeButton extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    const label = Text('Épisode suivant');
+    final label = Text(tr('Épisode suivant'));
     const icon = Icon(Icons.skip_next_rounded, size: 19);
     final padding = EdgeInsets.symmetric(
       horizontal: primary ? 28 : 22,

@@ -7,6 +7,7 @@ import '../../services/api_client.dart';
 import '../../theme/app_colors.dart';
 import 'widgets/settings_ui.dart';
 import '../../theme/app_type.dart';
+import '../../l10n/tr.dart';
 
 /// Le journal qu'une lecture passée a laissé derrière elle.
 ///
@@ -47,7 +48,7 @@ class _PlaybackLogsScreenState extends State<PlaybackLogsScreen> {
     } catch (e) {
       if (!mounted) return;
       setState(() =>
-          _error = settingsErrorText(e, 'Impossible de charger ce journal.'));
+          _error = settingsErrorText(e, tr('Impossible de charger ce journal.')));
     } finally {
       if (mounted) setState(() => _loading = false);
     }
@@ -74,7 +75,7 @@ class _PlaybackLogsScreenState extends State<PlaybackLogsScreen> {
     ].join('\n');
     await Clipboard.setData(ClipboardData(text: text));
     if (!mounted) return;
-    showSettingsSnack(context, 'Journal copié.');
+    showSettingsSnack(context, tr('Journal copié.'));
   }
 
   @override
@@ -83,15 +84,15 @@ class _PlaybackLogsScreenState extends State<PlaybackLogsScreen> {
     return Scaffold(
       backgroundColor: AppColors.background,
       appBar: AppBar(
-        title: const Text('Journal de lecture'),
+        title: Text(tr('Journal de lecture')),
         actions: [
           IconButton(
-            tooltip: 'Copier',
+            tooltip: tr('Copier'),
             onPressed: _logs.isEmpty ? null : _copy,
             icon: const Icon(Icons.copy_rounded),
           ),
           IconButton(
-            tooltip: 'Actualiser',
+            tooltip: tr('Actualiser'),
             onPressed: _loading ? null : _load,
             icon: const Icon(Icons.refresh_rounded),
           ),
@@ -108,10 +109,11 @@ class _PlaybackLogsScreenState extends State<PlaybackLogsScreen> {
             else if (_error != null)
               SettingsBanner(_error!, tone: BannerTone.error)
             else if (_logs.isEmpty)
-              const SettingsEmptyNote(
-                'Cette lecture n’a laissé ni journal ni mesures. Les lectures '
-                'faites avant cette version n’en envoyaient pas, et une app '
-                'fermée brutalement n’a pas le temps de le faire.',
+              SettingsEmptyNote(
+                tr('Cette lecture n’a laissé ni journal ni mesures. Les '
+                    'lectures faites avant cette version n’en envoyaient '
+                    'pas, et une app fermée brutalement n’a pas le temps de '
+                    'le faire.'),
                 icon: Icons.receipt_long_rounded,
               )
             else ...[
@@ -122,9 +124,9 @@ class _PlaybackLogsScreenState extends State<PlaybackLogsScreen> {
               if (_logs.hasLines)
                 for (final line in _logs.lines) _LogLine(line: line)
               else
-                const SettingsEmptyNote(
-                  'Mesures sans journal : cette lecture s’est déroulée sans '
-                  'rien avoir à signaler.',
+                SettingsEmptyNote(
+                  tr('Mesures sans journal : cette lecture s’est déroulée '
+                      'sans rien avoir à signaler.'),
                   icon: Icons.check_circle_outline_rounded,
                 ),
             ],
@@ -166,7 +168,7 @@ class _Header extends StatelessWidget {
             SettingsPill(relativeTime(entry.startedAt),
                 icon: Icons.schedule_rounded),
             if (hasError)
-              const SettingsPill('Erreur',
+              SettingsPill(tr('Erreur'),
                   color: AppColors.error, icon: Icons.error_outline_rounded),
           ],
         ),
@@ -203,7 +205,7 @@ class _LogLine extends StatelessWidget {
               line.format(),
               style: TextStyle(
                 fontFamily: 'monospace',
-                fontFamilyFallback: const ['Menlo', 'Consolas', 'Roboto Mono'],
+                fontFamilyFallback: ['Menlo', 'Consolas', tr('Roboto Mono')],
                 fontSize: AppType.footnote,
                 height: 1.4,
                 color: line.isError ? AppColors.error : AppColors.textSecondary,
@@ -241,7 +243,7 @@ List<PlaybackMetric> describePlaybackStats(PlaybackSessionStats stats) {
       value < 10 ? '${value.toStringAsFixed(1)} s' : '${value.round()} s';
 
   String bitrate(double bps) {
-    if (bps >= 1000000) return '${(bps / 1000000).toStringAsFixed(1)} Mb/s';
+    if (bps >= 1000000) return tr('{0} Mb/s', [(bps / 1000000).toStringAsFixed(1)]);
     if (bps >= 1000) return '${(bps / 1000).round()} kb/s';
     return '${bps.round()} b/s';
   }
@@ -262,7 +264,7 @@ List<PlaybackMetric> describePlaybackStats(PlaybackSessionStats stats) {
                 ? MetricTone.warn
                 : MetricTone.bad;
     metrics.add(PlaybackMetric(
-      'Images par seconde',
+      tr('Images par seconde'),
       expected > 0
           ? '${fps.toStringAsFixed(1)} / ${container!.toStringAsFixed(3)}'
           : fps.toStringAsFixed(1),
@@ -270,13 +272,13 @@ List<PlaybackMetric> describePlaybackStats(PlaybackSessionStats stats) {
     ));
   } else if (container != null) {
     metrics
-        .add(PlaybackMetric('Cadence du fichier', container.toStringAsFixed(3)));
+        .add(PlaybackMetric(tr('Cadence du fichier'), container.toStringAsFixed(3)));
   }
 
   final ratio = stats.dropRatio;
   if (ratio != null) {
     metrics.add(PlaybackMetric(
-      'Images perdues',
+      tr('Images perdues'),
       '${stats.droppedFrames} (${(ratio * 100).toStringAsFixed(ratio < 0.01 ? 2 : 1)} %)',
       tone: ratio < 0.001
           ? MetricTone.good
@@ -285,43 +287,43 @@ List<PlaybackMetric> describePlaybackStats(PlaybackSessionStats stats) {
               : MetricTone.bad,
     ));
   } else if (stats.droppedFrames != null) {
-    metrics.add(PlaybackMetric('Images perdues', '${stats.droppedFrames}'));
+    metrics.add(PlaybackMetric(tr('Images perdues'), '${stats.droppedFrames}'));
   }
 
   final average = stats.averageBitrateBps;
   if (average != null) {
-    metrics.add(PlaybackMetric('Débit moyen', bitrate(average)));
+    metrics.add(PlaybackMetric(tr('Débit moyen'), bitrate(average)));
   }
   final video = stats.videoBitrateBps;
   if (video != null) {
-    metrics.add(PlaybackMetric('Débit vidéo', bitrate(video)));
+    metrics.add(PlaybackMetric(tr('Débit vidéo'), bitrate(video)));
   }
   final audio = stats.audioBitrateBps;
   if (audio != null) {
-    metrics.add(PlaybackMetric('Débit audio', bitrate(audio)));
+    metrics.add(PlaybackMetric(tr('Débit audio'), bitrate(audio)));
   }
 
   final decoder = stats.decoder;
   if (decoder != null && decoder.isNotEmpty) {
     metrics.add(PlaybackMetric(
-      'Décodage',
+      tr('Décodage'),
       stats.looksSoftwareDecoded ? '$decoder (logiciel)' : decoder,
       tone: stats.looksSoftwareDecoded ? MetricTone.warn : MetricTone.good,
     ));
   }
   final videoCodec = stats.videoCodec;
   if (videoCodec != null && videoCodec.isNotEmpty) {
-    metrics.add(PlaybackMetric('Codec vidéo', videoCodec));
+    metrics.add(PlaybackMetric(tr('Codec vidéo'), videoCodec));
   }
   final audioCodec = stats.audioCodec;
   if (audioCodec != null && audioCodec.isNotEmpty) {
-    metrics.add(PlaybackMetric('Codec audio', audioCodec));
+    metrics.add(PlaybackMetric(tr('Codec audio'), audioCodec));
   }
 
   final startup = stats.startupMillis;
   if (startup != null) {
     metrics.add(PlaybackMetric(
-      'Démarrage',
+      tr('Démarrage'),
       startup >= 1000
           ? '${(startup / 1000).toStringAsFixed(1)} s'
           : '$startup ms',
@@ -335,16 +337,16 @@ List<PlaybackMetric> describePlaybackStats(PlaybackSessionStats stats) {
 
   if (stats.bufferingEvents > 0) {
     metrics.add(PlaybackMetric(
-      'Mises en tampon',
+      tr('Mises en tampon'),
       '${stats.bufferingEvents} · ${seconds(stats.bufferingSeconds)}',
       tone: stats.bufferingEvents <= 2 ? MetricTone.warn : MetricTone.bad,
     ));
   } else if (stats.sampleCount > 0) {
     metrics.add(
-        const PlaybackMetric('Mises en tampon', 'aucune', tone: MetricTone.good));
+        PlaybackMetric(tr('Mises en tampon'), 'aucune', tone: MetricTone.good));
   }
 
-  metrics.add(PlaybackMetric('Mesuré sur', seconds(stats.sampledSeconds)));
+  metrics.add(PlaybackMetric(tr('Mesuré sur'), seconds(stats.sampledSeconds)));
   return metrics;
 }
 
@@ -377,8 +379,8 @@ class _StatsCard extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          const Text(
-            'Mesures de la lecture',
+          Text(
+            tr('Mesures de la lecture'),
             style: TextStyle(fontSize: AppType.subhead, fontWeight: FontWeight.w700),
           ),
           const SizedBox(height: 12),

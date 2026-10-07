@@ -10,6 +10,7 @@ import '../screens/library/person_detail_screen.dart';
 import '../screens/library/show_detail_screen.dart';
 import '../screens/requests/request_detail_screen.dart';
 import '../utils/poster_url.dart';
+import '../l10n/tr.dart';
 
 /// Opens the actor/crew profile page for a TMDB person id.
 void openPerson(BuildContext context, int? personTmdbId, {String? name}) {
@@ -62,7 +63,7 @@ void _openRequestFor(BuildContext context, CatalogItem item) {
   if (!canRequest || item.tmdbId <= 0) {
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
-        content: Text('« ${item.title} » n’est pas dans ta bibliothèque'),
+        content: Text(tr('« {0} » n’est pas dans ta bibliothèque', [item.title])),
         duration: const Duration(seconds: 2),
       ),
     );

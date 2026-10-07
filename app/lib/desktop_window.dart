@@ -4,6 +4,7 @@ import 'theme/app_colors.dart';
 import 'theme/app_motion.dart';
 import 'utils/app_platform.dart';
 import 'utils/window_controls.dart';
+import 'l10n/tr.dart';
 
 /// Custom caption bar is Windows-only; macOS keeps native traffic lights.
 bool get useDesktopCaptionBar => AppPlatform.isWindows;
@@ -145,7 +146,7 @@ class _WindowControlPillsState extends State<WindowControlPills> {
             _ControlPill(
               color: AppColors.warning,
               icon: Icons.remove_rounded,
-              label: 'Réduire',
+              label: tr('Réduire'),
               showGlyph: _hovering,
               onPressed: widget.onMinimize,
             ),
@@ -154,14 +155,14 @@ class _WindowControlPillsState extends State<WindowControlPills> {
               icon: widget.isMaximized
                   ? Icons.close_fullscreen_rounded
                   : Icons.add_rounded,
-              label: widget.isMaximized ? 'Restaurer' : 'Agrandir',
+              label: widget.isMaximized ? tr('Restaurer') : tr('Agrandir'),
               showGlyph: _hovering,
               onPressed: widget.onToggleMaximize,
             ),
             _ControlPill(
               color: AppColors.error,
               icon: Icons.close_rounded,
-              label: 'Fermer',
+              label: tr('Fermer'),
               showGlyph: _hovering,
               onPressed: widget.onClose,
             ),

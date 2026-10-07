@@ -16,7 +16,7 @@ Les dépendances vont dans un seul sens : **widget → provider → service → 
 | `tv/`, `theme/`, `utils/`, `navigation/` | Infrastructure transverse. |
 
 - Un widget n'appelle jamais `Dio` directement : il passe par un provider ou un service.
-- Un contrôleur d'écran (`use_player_controller.dart`, `use_studio_controller.dart`) orchestre, et les widgets qu'il pilote restent passifs : ils prennent des valeurs et des callbacks.
+- Un contrôleur d'écran (`use_player_controller.dart`) orchestre, et les widgets qu'il pilote restent passifs : ils prennent des valeurs et des callbacks.
 - Un nouvel appel au serveur devient une méthode typée de `ApiClient` qui renvoie un modèle. `api_client.dart` est un fichier-dieu : regroupe les nouveaux appels d'un même domaine dans un fichier dédié plutôt que de le faire grossir.
 
 ## Providers

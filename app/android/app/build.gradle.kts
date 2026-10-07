@@ -1,3 +1,4 @@
+import java.util.Base64
 import java.util.Properties
 
 plugins {
@@ -22,8 +23,24 @@ val keystoreProperties = Properties().apply {
     }
 }
 
+// Les `--dart-define` de la commande Flutter, que son plugin Gradle transmet
+// encodés en base64 dans la propriété `dart-defines`. Lus ici pour que le
+// manifeste suive le même drapeau `STORE_BUILD` que le Dart
+// (lib/utils/store_build.dart) : un seul interrupteur, pas deux à tenir
+// d'accord. Voir l'ADR-0046.
+val dartDefines: Map<String, String> =
+    (project.findProperty("dart-defines") as String?)
+        ?.split(",")
+        ?.filter { it.isNotEmpty() }
+        ?.associate {
+            val pair = String(Base64.getDecoder().decode(it)).split("=", limit = 2)
+            pair[0] to pair.getOrElse(1) { "" }
+        }
+        ?: emptyMap()
+val storeBuild = dartDefines["STORE_BUILD"] == "true"
+
 android {
-    namespace = "com.projectplayer.project_player_app"
+    namespace = "com.tsuky.onyx"
     compileSdk = flutter.compileSdkVersion
     ndkVersion = flutter.ndkVersion
 
@@ -32,9 +49,17 @@ android {
         targetCompatibility = JavaVersion.VERSION_17
     }
 
+    // Google Play refuse `REQUEST_INSTALL_PACKAGES` à une app qui n'est pas
+    // un gestionnaire de paquets. Le manifeste de `src/store/` le retire, et
+    // ne se superpose qu'au build release d'un build store.
+    if (storeBuild) {
+        sourceSets.getByName("release").manifest.srcFile("src/store/AndroidManifest.xml")
+    }
+
     defaultConfig {
-        // TODO: Specify your own unique Application ID (https://developer.android.com/studio/build/application-id.html).
-        applicationId = "com.projectplayer.project_player_app"
+        // Le même identifiant que sur iOS, tvOS et macOS. Définitif une fois
+        // l'app publiée sur Google Play.
+        applicationId = "com.tsuky.onyx"
         // You can update the following values to match your application needs.
         // For more information, see: https://flutter.dev/to/review-gradle-config.
         // 23 is the barcode scanner's floor (mobile_scanner / ML Kit), and the

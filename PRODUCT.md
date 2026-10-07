@@ -12,26 +12,25 @@ Utilisateur principal : propriétaire / foyer d’un serveur multimédia privé 
 
 ## Product Purpose
 
-Onyx est le client Flutter d’un serveur média léger (Go, Direct Play 100 %). Il couvre la lecture et la découverte d’une bibliothèque personnelle : authentification, accueil (reprendre / récents), catalogues films & séries, fiches détail, demandes de médias, préférences de lecture, lecteur vidéo (media_kit/mpv) et studio de layout des contrôles.
+Onyx est le client Flutter d’un serveur média léger (Go, Direct Play 100 %). Il couvre la lecture et la découverte d’une bibliothèque personnelle : authentification, accueil (reprendre / récents), catalogues films & séries, fiches détail, demandes de médias, préférences de lecture, et lecteur vidéo (media_kit/mpv).
 
 Succès = trouver rapidement un titre, le lire sans friction (seek, audio, sous-titres, reprise), et que l’UI reste claire sur desktop large et mobile étroit — sans casser aucune fonctionnalité existante.
 
 ## Positioning
 
-Client Direct Play pur branché sur un backend Go ultra-léger : zéro transcodage côté serveur, décodage client via mpv/media_kit, progression heartbeat, et chrome lecteur personnalisable (Player Studio). Ses différences clés : contrôle total, empreinte serveur minimale, expérience cinéma privée.
+Client Direct Play pur branché sur un backend Go ultra-léger : zéro transcodage côté serveur, décodage client via mpv/media_kit, progression heartbeat, et un chrome de lecteur unique (Chrome Onyx). Ses différences clés : contrôle total, empreinte serveur minimale, expérience cinéma privée.
 
 ## Operating Context
 
 - Shell principal : Accueil · Films · Séries · Demandes (nav desktop glass header / bottom nav mobile).
 - Flux lecture : fiche → PlayerScreen (HUD, scrubber, audio/subs, épisodes, skip intro, next episode, settings).
-- Player Studio : édition de layout des contrôles.
 - Auth : login / session token sécurisé.
 - Backend API locale ou self-hosted (Bearer token ; stream Range public pour compat players).
 
 ## Capabilities and Constraints
 
 **Confirmé utilisable et à préserver :**
-- Auth, home (continue watching, recent movies/shows, hero), catalogues films/séries, détail film/série/personne/collection, recherche catalogue, demandes de médias, préférences de lecture, lecteur (play/pause, seek, volume, fit, audio, sous-titres, épisodes, skip intro, next episode, media keys desktop), Player Studio (layout drag/edit), états vides / erreurs / progression.
+- Auth, home (continue watching, recent movies/shows, hero), catalogues films/séries, détail film/série/personne/collection, recherche catalogue, demandes de médias, préférences de lecture, lecteur (play/pause, seek, volume, fit, audio, sous-titres, épisodes, skip intro, next episode, media keys desktop), états vides / erreurs / progression.
 
 **Contraintes techniques :**
 - Flutter + Provider + Material 3 ; thème sombre actuel.
@@ -53,7 +52,7 @@ Client Direct Play pur branché sur un backend Go ultra-léger : zéro transcoda
 
 - Spec produit : `project.md`, `README.md`.
 - Intention visuelle : `design.md` (Cinematic Glass).
-- Implémentation UI : `app/lib/` (theme, shell, home, library, player, player_studio, requests, auth, widgets glass).
+- Implémentation UI : `app/lib/` (theme, shell, home, library, player, requests, auth, widgets glass).
 - Pas de testimonials / marketing externes à inventer.
 
 ## Product Principles

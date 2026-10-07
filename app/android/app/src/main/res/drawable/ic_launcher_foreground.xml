@@ -1,0 +1,40 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- La marque Onyx de brand/onyx-icon-maskable.svg, mêmes tracés, ramenée
+     dans la zone sûre d'une icône adaptative : un disque de 66dp au centre
+     d'un cadre de 108dp. La lentille y tient entière ; seule la queue du
+     faisceau, qui s'éteint de toute façon, peut être rognée par le masque. -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:aapt="http://schemas.android.com/aapt"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+    <group
+        android:scaleX="0.144"
+        android:scaleY="0.144"
+        android:translateX="17.35"
+        android:translateY="17.14">
+        <path
+            android:fillAlpha="0.35"
+            android:pathData="M202,141L477,226L477,286L202,371Z">
+            <aapt:attr name="android:fillColor">
+                <gradient
+                    android:endColor="#00E8E6E4"
+                    android:endX="477"
+                    android:endY="256"
+                    android:startColor="#E6E8E6E4"
+                    android:startX="202"
+                    android:startY="256"
+                    android:type="linear"/>
+            </aapt:attr>
+        </path>
+        <path
+            android:fillColor="#0E1010"
+            android:pathData="M32,256a130,130 0 1,0 260,0a130,130 0 1,0 -260,0Z"
+            android:strokeColor="#E8E6E4"
+            android:strokeWidth="10"/>
+        <path
+            android:fillColor="#E8E6E4"
+            android:pathData="M122,191L122,321L227,256Z"/>
+    </group>
+</vector>

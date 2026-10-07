@@ -14,6 +14,7 @@ import 'widgets/request_filters_sheet.dart';
 import 'widgets/request_media_card.dart';
 import '../../theme/app_icons.dart';
 import '../../theme/app_type.dart';
+import '../../l10n/tr.dart';
 
 class RequestsScreen extends StatefulWidget {
   final bool embedded;
@@ -135,7 +136,7 @@ class _RequestsScreenState extends State<RequestsScreen> {
       floatingActionButton: FloatingActionButton(
         onPressed: _openAdvancedFilters,
         backgroundColor: AppColors.primary,
-        tooltip: 'Filtres avancés',
+        tooltip: tr('Filtres avancés'),
         child: const Icon(AppIcons.filters),
       ),
       body: CustomScrollView(
@@ -152,13 +153,13 @@ class _RequestsScreenState extends State<RequestsScreen> {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Text('Demander',
+                  Text(tr('Demander'),
                       style: Theme.of(context).textTheme.displaySmall?.copyWith(
                           fontWeight: FontWeight.w800,
                           fontSize: compact ? 26 : 32)),
                   const SizedBox(height: 6),
-                  const Text(
-                      'Recherchez et demandez de nouveaux films et séries',
+                  Text(
+                      tr('Recherchez et demandez de nouveaux films et séries'),
                       style: TextStyle(color: AppColors.textSecondary)),
                   const SizedBox(height: 22),
                   TvDeferredKeyboard(
@@ -176,7 +177,7 @@ class _RequestsScreenState extends State<RequestsScreen> {
                       },
                       textInputAction: TextInputAction.search,
                       decoration: InputDecoration(
-                        hintText: 'Rechercher un film ou une série…',
+                        hintText: tr('Rechercher un film ou une série…'),
                         prefixIcon: const Icon(AppIcons.search),
                         suffixIcon: _searchController.text.isEmpty
                             ? null
@@ -198,7 +199,7 @@ class _RequestsScreenState extends State<RequestsScreen> {
                       spacing: 8,
                       children: [
                         Chip(
-                          label: const Text('Filtres avancés actifs'),
+                          label: Text(tr('Filtres avancés actifs')),
                           deleteIcon: const Icon(AppIcons.close, size: 16),
                           onDeleted: () {
                             setState(() {
@@ -230,11 +231,11 @@ class _RequestsScreenState extends State<RequestsScreen> {
                   message: provider.errorMessage!, onRetry: _reloadCatalog),
             )
           else if (provider.items.isEmpty)
-            const SliverFillRemaining(
+            SliverFillRemaining(
               child: EmptyStateView(
                 icon: AppIcons.search,
-                title: 'Aucun média trouvé',
-                message: 'Essayez une autre recherche ou un autre filtre.',
+                title: tr('Aucun média trouvé'),
+                message: tr('Essayez une autre recherche ou un autre filtre.'),
               ),
             )
           else
@@ -304,7 +305,7 @@ class _TypeFilterPills extends StatelessWidget {
         children: [
           for (final tab in _tabs)
             _Pill(
-              label: tab.label,
+              label: tr(tab.label),
               selected: selected == tab.value,
               onTap: () {
                 if (selected != tab.value) onChanged(tab.value);

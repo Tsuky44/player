@@ -3,6 +3,7 @@ import 'dart:io';
 import 'package:path_provider/path_provider.dart';
 
 import 'android_apk_installer.dart';
+import '../l10n/tr.dart';
 
 /// Native in-place updater — see `app_updater.dart`.
 ///
@@ -142,7 +143,7 @@ abstract final class AppUpdater {
     if (Platform.isMacOS) return _prepareMacOS(archivePath, workDir);
     if (Platform.isWindows) return _prepareWindows(archivePath, workDir);
     throw UpdateException(
-      'La mise à jour automatique n’est pas disponible sur cette plateforme.',
+      tr('La mise à jour automatique n’est pas disponible sur cette plateforme.'),
     );
   }
 
@@ -157,8 +158,8 @@ abstract final class AppUpdater {
     if (update._isAndroidApk) {
       if (!await AndroidApkInstaller.install(update._launcherPath)) {
         throw UpdateException(
-          'L’installeur Android n’a pas pu s’ouvrir. Réessayez, ou installez '
-          'l’APK depuis la page de téléchargement.',
+          tr('L’installeur Android n’a pas pu s’ouvrir. Réessayez, ou '
+              'installez l’APK depuis la page de téléchargement.'),
         );
       }
       return;
@@ -200,8 +201,8 @@ Future<PreparedUpdate> _prepareAndroid(String apkPath, String workDir) async {
   if (!await AndroidApkInstaller.canInstallPackages()) {
     await AndroidApkInstaller.openInstallPermissionSettings();
     throw UpdateException(
-      'Autorisez Onyx à installer des applications dans l’écran qui vient '
-      'de s’ouvrir, puis réessayez.',
+      tr('Autorisez Onyx à installer des applications dans l’écran qui '
+          'vient de s’ouvrir, puis réessayez.'),
     );
   }
   return PreparedUpdate._androidApk(apkPath, workDir);
@@ -230,19 +231,19 @@ Future<PreparedUpdate> _prepareMacOS(String dmgPath, String workDir) async {
     '-quiet',
   ]);
   if (attach.exitCode != 0) {
-    throw UpdateException('Image disque illisible (${attach.stderr}).');
+    throw UpdateException(tr('Image disque illisible ({0}).', [attach.stderr]));
   }
 
   final staged = '$workDir/staged/Onyx.app';
   try {
     final source = await _findAppBundle(Directory(mountPoint));
     if (source == null) {
-      throw UpdateException('Aucune application trouvée dans l’image disque.');
+      throw UpdateException(tr('Aucune application trouvée dans l’image disque.'));
     }
     await Directory('$workDir/staged').create(recursive: true);
     final copy = await Process.run('ditto', [source, staged]);
     if (copy.exitCode != 0) {
-      throw UpdateException('Copie de la mise à jour impossible.');
+      throw UpdateException(tr('Copie de la mise à jour impossible.'));
     }
   } finally {
     // -force: the copy may have left the volume busy for a moment.
@@ -265,8 +266,8 @@ String _currentMacOSBundle() {
   final bundle = File(Platform.resolvedExecutable).parent.parent.parent.path;
   if (!bundle.endsWith('.app')) {
     throw UpdateException(
-      'Onyx ne tourne pas depuis une application installée — '
-      'mise à jour automatique impossible.',
+      tr('Onyx ne tourne pas depuis une application installée — mise à jour '
+          'automatique impossible.'),
     );
   }
   return bundle;
@@ -289,9 +290,8 @@ Future<void> _assertSwappable(Directory parent) async {
     await probe.delete();
   } catch (_) {
     throw UpdateException(
-      'Onyx n’a pas les droits d’écriture sur ${parent.path}. '
-      'Déplacez l’app dans votre dossier Applications ou mettez à jour '
-      'manuellement.',
+      tr('Onyx n’a pas les droits d’écriture sur {0}. Déplacez l’app dans '
+          'votre dossier Applications ou mettez à jour manuellement.', [parent.path]),
     );
   }
 }
@@ -356,8 +356,8 @@ String _windowsUpdaterPath() =>
 Future<PreparedUpdate> _prepareWindows(String zipPath, String workDir) async {
   if (!File(_windowsUpdaterPath()).existsSync()) {
     throw UpdateException(
-      'Programme de mise à jour introuvable. Réinstallez Onyx une fois '
-      'depuis la page de téléchargement.',
+      tr('Programme de mise à jour introuvable. Réinstallez Onyx une fois '
+          'depuis la page de téléchargement.'),
     );
   }
   return PreparedUpdate._(zipPath, workDir);
@@ -372,7 +372,7 @@ Future<PreparedUpdate> _prepareWindows(String zipPath, String workDir) async {
 /// contain one; refusing is the safe answer if it ever happens.
 String _shellQuote(String path) {
   if (path.contains("'") || path.contains('\n')) {
-    throw UpdateException('Chemin non supporté pour la mise à jour : $path');
+    throw UpdateException(tr('Chemin non supporté pour la mise à jour : {0}', [path]));
   }
   return "'$path'";
 }

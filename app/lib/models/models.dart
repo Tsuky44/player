@@ -1,4 +1,5 @@
 import 'media_subtitle_track.dart';
+import '../l10n/tr.dart';
 
 export 'media_subtitle_track.dart';
 
@@ -641,7 +642,7 @@ class HomeMediaItem {
   }
 }
 
-/// Resolves the title shown in player overlays (HUD + Player Studio).
+/// Resolves the title shown in player overlays (HUD).
 String playerMediaTitle(Object? media, {int? seasonNumber}) {
   if (media is HomeMediaItem) {
     return media.playerTitle(seasonNumber: seasonNumber);
@@ -882,7 +883,7 @@ class MediaVersion {
           final json = entry as Map<String, dynamic>;
           return MediaVersion(
             item: HomeMediaItem.fromJson(json),
-            label: json['label'] as String? ?? 'Version',
+            label: json['label'] as String? ?? tr('Version'),
           );
         }).toList()
       : const [];
@@ -1312,9 +1313,9 @@ class HomeResponse {
 /// Maps an ISO 639 language code (2 or 3 letters) to a readable French name.
 /// Falls back to the upper-cased code, or "Indéterminé" when unknown/empty.
 String languageName(String? code) {
-  if (code == null) return 'Indéterminé';
+  if (code == null) return tr('Indéterminé');
   final c = code.trim().toLowerCase();
-  if (c.isEmpty || c == 'und') return 'Indéterminé';
+  if (c.isEmpty || c == 'und') return tr('Indéterminé');
   const map = {
     'fre': 'Français', 'fra': 'Français', 'fr': 'Français',
     'eng': 'Anglais', 'en': 'Anglais',
@@ -1341,7 +1342,8 @@ String languageName(String? code) {
     'tha': 'Thaï', 'th': 'Thaï',
     'vie': 'Vietnamien', 'vi': 'Vietnamien',
   };
-  return map[c] ?? code.toUpperCase();
+  final name = map[c];
+  return name == null ? code.toUpperCase() : tr(name);
 }
 
 String? _channelsLabel(int channels) {
@@ -1349,7 +1351,7 @@ String? _channelsLabel(int channels) {
     case 1:
       return 'Mono';
     case 2:
-      return 'Stéréo';
+      return tr('Stéréo');
     case 6:
       return '5.1';
     case 8:
@@ -1419,17 +1421,17 @@ class MediaAudioTrack {
   String get formatLabel {
     switch (spatialFormat) {
       case 'atmos':
-        return 'Dolby Atmos';
+        return tr('Dolby Atmos');
       case 'dtsx':
         return 'DTS:X';
     }
     switch (codec.toLowerCase()) {
       case 'eac3':
-        return 'Dolby Digital+';
+        return tr('Dolby Digital+');
       case 'ac3':
-        return 'Dolby Digital';
+        return tr('Dolby Digital');
       case 'truehd':
-        return 'Dolby TrueHD';
+        return tr('Dolby TrueHD');
       case 'dts':
         return lossless ? 'DTS-HD MA' : 'DTS';
       case 'aac':
@@ -1518,7 +1520,7 @@ class MediaVideoTrack {
         return 'H.264';
       case 'hevc':
       case 'h265':
-        return 'HEVC (H.265)';
+        return tr('HEVC (H.265)');
       default:
         return codec.toUpperCase();
     }
@@ -1531,7 +1533,7 @@ class MediaVideoTrack {
   String get hdrLabel {
     switch (hdrFormat) {
       case 'dolbyvision':
-        return 'Dolby Vision';
+        return tr('Dolby Vision');
       case 'hdr10plus':
         return 'HDR10+';
       case 'hdr10':

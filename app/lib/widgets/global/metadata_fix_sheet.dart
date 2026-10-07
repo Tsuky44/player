@@ -6,6 +6,7 @@ import '../../theme/app_colors.dart';
 import 'app_network_image.dart';
 import '../../theme/app_icons.dart';
 import '../../theme/app_type.dart';
+import '../../l10n/tr.dart';
 
 /// Bottom sheet that lets the user re-identify a movie/show by picking the
 /// correct entry from a live TMDB search. The original filename is shown at the
@@ -100,7 +101,7 @@ class _MetadataFixSheetState extends State<MetadataFixSheet> {
       });
     } catch (_) {
       if (!mounted) return;
-      setState(() => _error = 'Recherche TMDB impossible');
+      setState(() => _error = tr('Recherche TMDB impossible'));
     } finally {
       if (mounted) setState(() => _loading = false);
     }
@@ -138,8 +139,8 @@ class _MetadataFixSheetState extends State<MetadataFixSheet> {
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      const Text(
-                        'Corriger la fiche',
+                      Text(
+                        tr('Corriger la fiche'),
                         style: TextStyle(
                           color: AppColors.textPrimary,
                           fontSize: AppType.title3,
@@ -157,7 +158,7 @@ class _MetadataFixSheetState extends State<MetadataFixSheet> {
                         const SizedBox(height: 8),
                         _FileNameChip(
                           fileName: widget.fileName!,
-                          label: widget.fileHintLabel ?? 'Fichier local',
+                          label: widget.fileHintLabel ?? tr('Fichier local'),
                         ),
                       ],
                       const SizedBox(height: 14),
@@ -170,7 +171,7 @@ class _MetadataFixSheetState extends State<MetadataFixSheet> {
                           textInputAction: TextInputAction.search,
                           onSubmitted: (_) => _search(),
                           decoration: InputDecoration(
-                            hintText: 'Rechercher un titre…',
+                            hintText: tr('Rechercher un titre…'),
                             filled: true,
                             fillColor: AppColors.surface,
                             prefixIcon: const Icon(AppIcons.search),
@@ -212,7 +213,7 @@ class _MetadataFixSheetState extends State<MetadataFixSheet> {
     if (_results.isEmpty) {
       return Center(
         child: Text(
-          _searched ? 'Aucun résultat' : 'Lance une recherche',
+          _searched ? tr('Aucun résultat') : tr('Lance une recherche'),
           style: const TextStyle(color: AppColors.textSecondary),
         ),
       );
@@ -258,8 +259,8 @@ class _LocalShowContextCard extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          const Text(
-            'Sur le serveur',
+          Text(
+            tr('Sur le serveur'),
             style: TextStyle(
               color: AppColors.textSecondary,
               fontSize: AppType.caption,
@@ -270,15 +271,15 @@ class _LocalShowContextCard extends StatelessWidget {
           const SizedBox(height: 8),
           _LocalRow(
             icon: AppIcons.folder,
-            label: 'Dossier série',
-            value: hasFolder ? folder! : '— aucun chemin indexé —',
+            label: tr('Dossier série'),
+            value: hasFolder ? folder! : tr('— aucun chemin indexé —'),
             muted: !hasFolder,
           ),
           if (hasEpisode) ...[
             const SizedBox(height: 8),
             _LocalRow(
               icon: AppIcons.movie,
-              label: 'Fichier épisode',
+              label: tr('Fichier épisode'),
               value: episodeFile!,
             ),
           ],

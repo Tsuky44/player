@@ -5,6 +5,7 @@ import '../../../theme/app_colors.dart';
 import '../../../utils/format.dart';
 import 'end_card_chrome.dart';
 import '../../../theme/app_type.dart';
+import '../../../l10n/tr.dart';
 
 /// Page shown when the last episode the server holds is not the last of its
 /// season — a show still airing week by week, or a season imported in part.
@@ -42,7 +43,7 @@ class UpcomingEpisodeOverlay extends StatelessWidget {
       backdropUrl: episode.stillUrl,
       videoInset: videoInset,
       eyebrow: EndCardEyebrow(
-        label: 'ÉPISODE ${episode.number} PAS ENCORE DISPONIBLE',
+        label: tr('ÉPISODE {0} PAS ENCORE DISPONIBLE', [episode.number]),
         onDismiss: onDismiss,
       ),
       body: _Body(episode: episode),
@@ -88,7 +89,7 @@ class _Body extends StatelessWidget {
               Text(
                 episode.name.isNotEmpty
                     ? episode.name
-                    : 'Épisode ${episode.number}',
+                    : tr('Épisode {0}', [episode.number]),
                 maxLines: 2,
                 overflow: TextOverflow.ellipsis,
                 style: const TextStyle(
@@ -120,7 +121,7 @@ class _Body extends StatelessWidget {
   }
 
   static String _header(UpcomingEpisode episode) {
-    final position = 'S${episode.seasonNumber} · Épisode ${episode.number}';
+    final position = tr('S{0} · Épisode {1}', [episode.seasonNumber, episode.number]);
     if (episode.showTitle.isEmpty) return position;
     return '${episode.showTitle.toUpperCase()}  —  $position';
   }
@@ -131,11 +132,11 @@ class _Body extends StatelessWidget {
   static String _description(UpcomingEpisode episode) {
     if (episode.overview?.isNotEmpty == true) return episode.overview!;
     if (episode.isUnaired) {
-      return 'Cet épisode n’est pas encore sorti. Il rejoindra le serveur peu '
-          'après sa diffusion.';
+      return tr('Cet épisode n’est pas encore sorti. Il rejoindra le serveur peu '
+          'après sa diffusion.');
     }
-    return 'Cet épisode est sorti mais n’est pas encore sur le serveur. Il '
-        'arrivera dès qu’il aura été récupéré.';
+    return tr('Cet épisode est sorti mais n’est pas encore sur le serveur. Il '
+        'arrivera dès qu’il aura été récupéré.');
   }
 }
 
@@ -155,7 +156,7 @@ class _MetaRow extends StatelessWidget {
       children: [
         if (episode.seasonEpisodes > 0)
           EndCardPill(
-            label: 'Épisode ${episode.number} sur ${episode.seasonEpisodes}',
+            label: tr('Épisode {0} sur {1}', [episode.number, episode.seasonEpisodes]),
             icon: Icons.playlist_play_rounded,
           ),
         if (airDate != null)
@@ -165,12 +166,12 @@ class _MetaRow extends StatelessWidget {
             accent: episode.isUnaired,
           )
         else
-          const EndCardPill(
-            label: 'Date inconnue',
+          EndCardPill(
+            label: tr('Date inconnue'),
             icon: Icons.event_busy_outlined,
           ),
-        const EndCardPill(
-          label: 'Absent du serveur',
+        EndCardPill(
+          label: tr('Absent du serveur'),
           icon: Icons.cloud_off_outlined,
         ),
       ],
@@ -198,7 +199,7 @@ class _Actions extends StatelessWidget {
             foregroundColor: AppColors.textSecondary,
             padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
           ),
-          child: const Text('Fermer'),
+          child: Text(tr('Fermer')),
         ),
       ],
     );

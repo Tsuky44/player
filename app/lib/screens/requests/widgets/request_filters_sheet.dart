@@ -8,6 +8,7 @@ import '../../../theme/app_colors.dart';
 import '../../../widgets/global/app_network_image.dart';
 import '../../../theme/app_icons.dart';
 import '../../../theme/app_type.dart';
+import '../../../l10n/tr.dart';
 
 /// MediaHub-style advanced filters modal (FilterModal + MediaFilters).
 class RequestFiltersSheet extends StatefulWidget {
@@ -171,9 +172,9 @@ class _RequestFiltersSheetState extends State<RequestFiltersSheet> {
                     children: [
                       const Icon(AppIcons.filters, color: AppColors.primary),
                       const SizedBox(width: 10),
-                      const Expanded(
+                      Expanded(
                         child: Text(
-                          'Filtres avancés',
+                          tr('Filtres avancés'),
                           style: TextStyle(
                             fontSize: AppType.title3,
                             fontWeight: FontWeight.w700,
@@ -183,7 +184,7 @@ class _RequestFiltersSheetState extends State<RequestFiltersSheet> {
                       TextButton.icon(
                         onPressed: _reset,
                         icon: const Icon(AppIcons.reset, size: 18),
-                        label: const Text('Réinitialiser tout'),
+                        label: Text(tr('Réinitialiser tout')),
                       ),
                       IconButton(
                         onPressed: () => Navigator.of(context).pop(),
@@ -211,7 +212,7 @@ class _RequestFiltersSheetState extends State<RequestFiltersSheet> {
                       style: FilledButton.styleFrom(
                         padding: const EdgeInsets.symmetric(vertical: 14),
                       ),
-                      child: const Text('Voir les résultats'),
+                      child: Text(tr('Voir les résultats')),
                     ),
                   ),
                 ),
@@ -254,22 +255,22 @@ class _RequestFiltersSheetState extends State<RequestFiltersSheet> {
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
         _sectionCard(
-          title: 'Trier par',
+          title: tr('Trier par'),
           icon: AppIcons.sortOrder,
           child: Column(
             children: [
               for (final opt in requestCatalogSortOptions)
-                _sortOption(opt.value, opt.label),
+                _sortOption(opt.value, tr(opt.label)),
             ],
           ),
         ),
         const SizedBox(height: 16),
         _sectionCard(
-          title: 'Période',
+          title: tr('Période'),
           icon: AppIcons.calendar,
           child: Column(
             children: [
-              _dateField('De', _startDateController, (v) {
+              _dateField(tr('De'), _startDateController, (v) {
                 setState(() => _draft = _draft.copyWith(startDate: v));
               }),
               const SizedBox(height: 12),
@@ -281,7 +282,7 @@ class _RequestFiltersSheetState extends State<RequestFiltersSheet> {
         ),
         const SizedBox(height: 16),
         _sectionCard(
-          title: 'Langue',
+          title: tr('Langue'),
           icon: AppIcons.language,
           child: DropdownButtonFormField<String>(
             initialValue: requestCatalogLanguageOptions
@@ -291,7 +292,7 @@ class _RequestFiltersSheetState extends State<RequestFiltersSheet> {
             decoration: const InputDecoration(border: OutlineInputBorder()),
             items: [
               for (final opt in requestCatalogLanguageOptions)
-                DropdownMenuItem(value: opt.code, child: Text(opt.label)),
+                DropdownMenuItem(value: opt.code, child: Text(tr(opt.label))),
             ],
             onChanged: (v) {
               if (v == null) return;
@@ -301,7 +302,7 @@ class _RequestFiltersSheetState extends State<RequestFiltersSheet> {
         ),
         const SizedBox(height: 16),
         _sectionCard(
-          title: 'Durée (minutes)',
+          title: tr('Durée (minutes)'),
           icon: AppIcons.duration,
           child: Row(
             children: [
@@ -312,8 +313,8 @@ class _RequestFiltersSheetState extends State<RequestFiltersSheet> {
                     canRequestFocus: canRequestFocus,
                     controller: _minDurationController,
                     keyboardType: TextInputType.number,
-                    decoration: const InputDecoration(
-                      labelText: 'Min',
+                    decoration: InputDecoration(
+                      labelText: tr('Min'),
                       border: OutlineInputBorder(),
                     ),
                     onChanged: (v) => setState(
@@ -330,8 +331,8 @@ class _RequestFiltersSheetState extends State<RequestFiltersSheet> {
                     canRequestFocus: canRequestFocus,
                     controller: _maxDurationController,
                     keyboardType: TextInputType.number,
-                    decoration: const InputDecoration(
-                      labelText: 'Max',
+                    decoration: InputDecoration(
+                      labelText: tr('Max'),
                       border: OutlineInputBorder(),
                     ),
                     onChanged: (v) => setState(
@@ -349,10 +350,10 @@ class _RequestFiltersSheetState extends State<RequestFiltersSheet> {
 
   Widget _genresSection() {
     return _sectionCard(
-      title: 'Genres',
+      title: tr('Genres'),
       icon: AppIcons.filter,
       trailing: Text(
-        '${_draft.genres.length} sélectionné${_draft.genres.length > 1 ? 's' : ''}',
+        tr('{0} sélectionné{1}', [_draft.genres.length, _draft.genres.length > 1 ? 's' : '']),
         style: const TextStyle(
           color: AppColors.primary,
           fontSize: AppType.footnote,
@@ -395,7 +396,7 @@ class _RequestFiltersSheetState extends State<RequestFiltersSheet> {
         : _providers.take(requestProviderPreviewLimit).toList();
 
     return _sectionCard(
-      title: 'Streaming',
+      title: tr('Streaming'),
       icon: AppIcons.series,
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -405,13 +406,13 @@ class _RequestFiltersSheetState extends State<RequestFiltersSheet> {
                     .any((r) => r.value == _draft.watchRegion)
                 ? _draft.watchRegion
                 : 'FR',
-            decoration: const InputDecoration(
-              labelText: 'Région',
+            decoration: InputDecoration(
+              labelText: tr('Région'),
               border: OutlineInputBorder(),
             ),
             items: [
               for (final r in requestCatalogRegions)
-                DropdownMenuItem(value: r.value, child: Text(r.label)),
+                DropdownMenuItem(value: r.value, child: Text(tr(r.label))),
             ],
             onChanged: (v) {
               if (v == null) return;
@@ -429,7 +430,7 @@ class _RequestFiltersSheetState extends State<RequestFiltersSheet> {
             Padding(
               padding: const EdgeInsets.all(16),
               child: Text(
-                'Aucun service pour cette région.',
+                tr('Aucun service pour cette région.'),
                 textAlign: TextAlign.center,
                 style: TextStyle(color: AppColors.textMuted.withValues(alpha: 0.9)),
               ),
@@ -494,7 +495,7 @@ class _RequestFiltersSheetState extends State<RequestFiltersSheet> {
                     setState(() => _showAllProviders = !_showAllProviders),
                 child: Text(
                   _showAllProviders
-                      ? 'Voir moins'
+                      ? tr('Voir moins')
                       : '+ ${_providers.length - requestProviderPreviewLimit} autres services',
                 ),
               ),
@@ -590,7 +591,7 @@ class _RequestFiltersSheetState extends State<RequestFiltersSheet> {
         controller: controller,
         decoration: InputDecoration(
           labelText: label,
-          hintText: 'YYYY-MM-DD',
+          hintText: tr('YYYY-MM-DD'),
           border: const OutlineInputBorder(),
           suffixIcon: IconButton(
             icon: const Icon(AppIcons.calendar, size: 18),

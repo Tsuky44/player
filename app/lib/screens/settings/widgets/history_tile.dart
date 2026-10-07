@@ -5,6 +5,7 @@ import '../../../theme/app_colors.dart';
 import 'media_thumb.dart';
 import 'settings_ui.dart';
 import '../../../theme/app_type.dart';
+import '../../../l10n/tr.dart';
 
 /// Une lecture de l'historique : le titre, qui, où, quand et combien de temps.
 class HistoryTile extends StatelessWidget {
@@ -91,7 +92,7 @@ class HistoryTile extends StatelessWidget {
                 mainAxisSize: MainAxisSize.min,
                 children: [
                   Tooltip(
-                    message: '${entry.playMethod.label} · début $clock',
+                    message: tr('{0} · début {1}', [entry.playMethod.label, clock]),
                     child: Container(
                       width: 7,
                       height: 7,

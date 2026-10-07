@@ -6,6 +6,7 @@ import '../../models/server_account.dart';
 import '../../services/api_client.dart';
 import '../../theme/app_colors.dart';
 import '../../tv/tv_deferred_keyboard.dart';
+import '../../l10n/tr.dart';
 
 /// Les serveurs liés à celui-ci (ADR-0017).
 ///
@@ -74,22 +75,22 @@ class _LinkedServersSectionState extends State<LinkedServersSection> {
       builder: (ctx) => AlertDialog(
         backgroundColor: AppColors.surface,
         title: Text(peer.isActive || peer.localApproved
-            ? 'Retirer ${_name(peer)} ?'
-            : 'Refuser ${_name(peer)} ?'),
-        content: const Text(
-          'Les deux serveurs cessent de se transmettre la progression et les '
-          'comptes liés entre eux sont dissociés. L’historique déjà partagé '
-          'reste sur chaque serveur.',
+            ? tr('Retirer {0} ?', [_name(peer)])
+            : tr('Refuser {0} ?', [_name(peer)])),
+        content: Text(
+          tr('Les deux serveurs cessent de se transmettre la progression et '
+              'les comptes liés entre eux sont dissociés. L’historique déjà '
+              'partagé reste sur chaque serveur.'),
         ),
         actions: [
           TextButton(
             onPressed: () => Navigator.of(ctx).pop(false),
-            child: const Text('Annuler'),
+            child: Text(tr('Annuler')),
           ),
           FilledButton(
             style: FilledButton.styleFrom(backgroundColor: AppColors.error),
             onPressed: () => Navigator.of(ctx).pop(true),
-            child: const Text('Confirmer'),
+            child: Text(tr('Confirmer')),
           ),
         ],
       ),
@@ -104,7 +105,7 @@ class _LinkedServersSectionState extends State<LinkedServersSection> {
       context: context,
       builder: (ctx) => AlertDialog(
         backgroundColor: AppColors.surface,
-        title: const Text('Adresse du serveur lié'),
+        title: Text(tr('Adresse du serveur lié')),
         content: TvDeferredKeyboard(
           builder: (context, focusNode, canRequestFocus) => TextField(
             focusNode: focusNode,
@@ -112,19 +113,19 @@ class _LinkedServersSectionState extends State<LinkedServersSection> {
             controller: controller,
             autofocus: true,
             keyboardType: TextInputType.url,
-            decoration: const InputDecoration(
-              labelText: 'Adresse joignable depuis ce serveur',
+            decoration: InputDecoration(
+              labelText: tr('Adresse joignable depuis ce serveur'),
             ),
           ),
         ),
         actions: [
           TextButton(
             onPressed: () => Navigator.of(ctx).pop(),
-            child: const Text('Annuler'),
+            child: Text(tr('Annuler')),
           ),
           FilledButton(
             onPressed: () => Navigator.of(ctx).pop(controller.text),
-            child: const Text('Enregistrer'),
+            child: Text(tr('Enregistrer')),
           ),
         ],
       ),
@@ -139,10 +140,10 @@ class _LinkedServersSectionState extends State<LinkedServersSection> {
 
   String _status(PeerServer peer) {
     final accounts =
-        '${peer.accounts} compte${peer.accounts > 1 ? 's' : ''} lié${peer.accounts > 1 ? 's' : ''}';
-    if (peer.isActive) return 'Lié · $accounts';
-    if (!peer.localApproved) return 'Demande de lien · $accounts';
-    return 'En attente de l’administrateur de l’autre serveur · $accounts';
+        tr('{0} compte{1} lié{2}', [peer.accounts, peer.accounts > 1 ? 's' : '', peer.accounts > 1 ? 's' : '']);
+    if (peer.isActive) return tr('Lié · {0}', [accounts]);
+    if (!peer.localApproved) return tr('Demande de lien · {0}', [accounts]);
+    return tr('En attente de l’administrateur de l’autre serveur · {0}', [accounts]);
   }
 
   @override
@@ -161,11 +162,11 @@ class _LinkedServersSectionState extends State<LinkedServersSection> {
           const SizedBox(height: 12),
         ],
         if (_peers.isEmpty)
-          const Padding(
+          Padding(
             padding: EdgeInsets.only(bottom: 4),
             child: Text(
-              'Aucun serveur lié. Une demande apparaît ici quand un utilisateur '
-              'lie son compte à un compte d’un autre serveur.',
+              tr('Aucun serveur lié. Une demande apparaît ici quand un '
+                  'utilisateur lie son compte à un compte d’un autre serveur.'),
               style: TextStyle(color: AppColors.textSecondary),
             ),
           ),
@@ -197,12 +198,12 @@ class _LinkedServersSectionState extends State<LinkedServersSection> {
                     children: [
                       if (!peer.localApproved) ...[
                         IconButton(
-                          tooltip: 'Refuser le lien',
+                          tooltip: tr('Refuser le lien'),
                           icon: const Icon(Icons.close_rounded),
                           onPressed: () => _remove(peer),
                         ),
                         IconButton(
-                          tooltip: 'Autoriser le lien',
+                          tooltip: tr('Autoriser le lien'),
                           icon: const Icon(Icons.check_rounded),
                           onPressed: () => _run(
                               peer,
@@ -212,16 +213,16 @@ class _LinkedServersSectionState extends State<LinkedServersSection> {
                         ),
                       ],
                       PopupMenuButton<String>(
-                        tooltip: 'Options de ${_name(peer)}',
+                        tooltip: tr('Options de {0}', [_name(peer)]),
                         onSelected: (value) {
                           if (value == 'url') _editUrl(peer);
                           if (value == 'remove') _remove(peer);
                         },
-                        itemBuilder: (_) => const [
+                        itemBuilder: (_) => [
                           PopupMenuItem(
-                              value: 'url', child: Text('Modifier l’adresse')),
+                              value: 'url', child: Text(tr('Modifier l’adresse'))),
                           PopupMenuItem(
-                              value: 'remove', child: Text('Retirer le lien')),
+                              value: 'remove', child: Text(tr('Retirer le lien'))),
                         ],
                       ),
                     ],
@@ -233,7 +234,7 @@ class _LinkedServersSectionState extends State<LinkedServersSection> {
           child: TextButton.icon(
             onPressed: _load,
             icon: const Icon(Icons.refresh_rounded, size: 18),
-            label: const Text('Actualiser'),
+            label: Text(tr('Actualiser')),
           ),
         ),
       ],
@@ -246,5 +247,5 @@ String _errorText(Object error) {
     final data = error.response?.data;
     if (data is Map && data['error'] != null) return data['error'].toString();
   }
-  return 'Une erreur est survenue : $error';
+  return tr('Une erreur est survenue : {0}', [error]);
 }

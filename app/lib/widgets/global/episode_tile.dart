@@ -10,6 +10,7 @@ import 'share_media_button.dart';
 import 'watched_action_button.dart';
 import '../../theme/app_icons.dart';
 import '../../theme/app_type.dart';
+import '../../l10n/tr.dart';
 
 class EpisodeTile extends StatefulWidget {
   final HomeMediaItem episode;
@@ -27,6 +28,10 @@ class EpisodeTile extends StatefulWidget {
   final String? showPosterUrl;
   final int? seasonNumber;
 
+  /// Faux sur la page d'un lien de partage : son visiteur regarde, il
+  /// n'emporte rien (ADR-0037 §9).
+  final bool allowDownload;
+
   const EpisodeTile({
     super.key,
     required this.episode,
@@ -37,6 +42,7 @@ class EpisodeTile extends StatefulWidget {
     this.showId,
     this.showPosterUrl,
     this.seasonNumber,
+    this.allowDownload = true,
   });
 
   @override
@@ -195,8 +201,8 @@ class _EpisodeTileState extends State<EpisodeTile> {
                               color: Colors.black.withValues(alpha: 0.72),
                               borderRadius: BorderRadius.circular(4),
                             ),
-                            child: const Text(
-                              'Indispo',
+                            child: Text(
+                              tr('Indispo'),
                               style: TextStyle(
                                 color: AppColors.textSecondary,
                                 fontSize: AppType.caption,
@@ -253,7 +259,7 @@ class _EpisodeTileState extends State<EpisodeTile> {
                                   fontSize: AppType.subhead,
                                 ),
                               ),
-                            if (_isAvailable)
+                            if (_isAvailable && widget.allowDownload)
                               MediaDownloadButton(
                                 item: widget.episode,
                                 compact: true,
@@ -317,7 +323,7 @@ class _EpisodeTileState extends State<EpisodeTile> {
                         if (!_isAvailable) ...[
                           const SizedBox(height: 6),
                           Text(
-                            airDateLabel ?? 'Pas sur le serveur',
+                            airDateLabel ?? tr('Pas sur le serveur'),
                             style: const TextStyle(
                               color: AppColors.textMuted,
                               fontSize: AppType.footnote,

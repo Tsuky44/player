@@ -1,3 +1,4 @@
+
 /// TMDB discover filters — same fields as MediaHub MediaFiltersValue.
 class RequestCatalogFilters {
   final String sortBy;

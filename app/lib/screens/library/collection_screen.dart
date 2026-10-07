@@ -11,6 +11,7 @@ import '../../widgets/global/app_network_image.dart';
 import '../../widgets/global/media_detail_widgets.dart';
 import '../../widgets/global/overlay_back_button.dart';
 import '../../theme/app_type.dart';
+import '../../l10n/tr.dart';
 
 class CollectionScreen extends StatefulWidget {
   final int collectionId;
@@ -85,12 +86,12 @@ class _CollectionScreenState extends State<CollectionScreen> {
               ),
             )
           else if (_failed || collection == null)
-            const SliverToBoxAdapter(
+            SliverToBoxAdapter(
               child: Padding(
                 padding: EdgeInsets.all(64),
                 child: Center(
                   child: Text(
-                    'Impossible de charger cette saga.',
+                    tr('Impossible de charger cette saga.'),
                     style: TextStyle(color: AppColors.textMuted),
                   ),
                 ),

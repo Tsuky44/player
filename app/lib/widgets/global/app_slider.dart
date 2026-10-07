@@ -5,7 +5,7 @@ import 'package:flutter/services.dart';
 /// son `OverlayPortal`.
 ///
 /// `Slider` enveloppe toujours son résultat dans un `OverlayPortal`, même sans
-/// indicateur de valeur. Dans une route poussée — le lecteur, le studio, une
+/// indicateur de valeur. Dans une route poussée — le lecteur, une
 /// fiche de demande — ce portail sème un nœud sémantique que personne ne
 /// réclame comme enfant, et l'embarqueur Windows refuse alors la mise à jour
 /// entière de l'arbre : `Failed to update ui::AXTree`. Le refus est définitif :

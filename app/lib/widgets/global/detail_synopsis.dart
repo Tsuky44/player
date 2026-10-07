@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import '../../theme/app_colors.dart';
 import '../../theme/app_type.dart';
 import '../../tv/tv_focus.dart';
+import '../../l10n/tr.dart';
 
 /// Le synopsis de l'en-tête d'une fiche, coupé à [maxLines].
 ///
@@ -56,7 +57,7 @@ class DetailSynopsis extends StatelessWidget {
               onTap: open,
               child: Semantics(
                 button: true,
-                hint: 'Lire le synopsis complet',
+                hint: tr('Lire le synopsis complet'),
                 child: text,
               ),
             ),
@@ -111,7 +112,7 @@ Future<void> showSynopsisDialog(
           // La télécommande arrive sur le seul geste possible.
           autofocus: true,
           onPressed: () => Navigator.pop(context),
-          child: const Text('Fermer'),
+          child: Text(tr('Fermer')),
         ),
       ],
     ),

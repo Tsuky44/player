@@ -5,6 +5,7 @@ import '../../../providers/auth_provider.dart';
 import '../../../theme/app_colors.dart';
 import '../../../theme/app_icons.dart';
 import '../../../theme/app_type.dart';
+import '../../../l10n/tr.dart';
 
 /// Le menu « Métadonnées série » de la fiche d'une série.
 ///
@@ -31,7 +32,7 @@ class ShowMetadataMenu extends StatelessWidget {
     if (!canFixMetadata) return const SizedBox.shrink();
 
     return PopupMenuButton<VoidCallback>(
-      tooltip: 'Métadonnées série',
+      tooltip: tr('Métadonnées série'),
       onSelected: (action) => action(),
       icon: const Icon(
         AppIcons.edit,
@@ -40,24 +41,24 @@ class ShowMetadataMenu extends StatelessWidget {
       itemBuilder: (context) => [
         PopupMenuItem(
           value: onRedetect,
-          child: const ListTile(
+          child: ListTile(
             contentPadding: EdgeInsets.zero,
             leading: Icon(AppIcons.identify),
-            title: Text('Relancer la détection auto'),
+            title: Text(tr('Relancer la détection auto')),
             subtitle: Text(
-              'À partir du dossier / fichiers locaux',
+              tr('À partir du dossier / fichiers locaux'),
               style: TextStyle(fontSize: AppType.footnote),
             ),
           ),
         ),
         PopupMenuItem(
           value: onPickOnTmdb,
-          child: const ListTile(
+          child: ListTile(
             contentPadding: EdgeInsets.zero,
             leading: Icon(AppIcons.search),
-            title: Text('Choisir sur TMDB'),
+            title: Text(tr('Choisir sur TMDB')),
             subtitle: Text(
-              'Correction manuelle de l’affiche',
+              tr('Correction manuelle de l’affiche'),
               style: TextStyle(fontSize: AppType.footnote),
             ),
           ),

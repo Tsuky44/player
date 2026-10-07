@@ -6,6 +6,7 @@ import 'package:flutter/services.dart';
 import '../../../services/client_log.dart';
 import '../playback/playback_session.dart';
 import '../../../theme/app_type.dart';
+import '../../../l10n/tr.dart';
 
 /// Standalone back control, shown while the end-of-season page hides the rest
 /// of the player chrome. Kept independent of the HUD so it cannot be swept away
@@ -81,8 +82,8 @@ class PlayingElsewhere extends StatelessWidget {
               const Icon(Icons.devices_rounded,
                   size: 54, color: Colors.white70),
               const SizedBox(height: 22),
-              const Text(
-                'Lecture en cours sur un autre appareil',
+              Text(
+                tr('Lecture en cours sur un autre appareil'),
                 textAlign: TextAlign.center,
                 style: TextStyle(
                   color: Colors.white,
@@ -92,8 +93,8 @@ class PlayingElsewhere extends StatelessWidget {
               ),
               const SizedBox(height: 12),
               Text(
-                'La lecture continue sur « $deviceName ». Reprenez-la ici, '
-                'là où il en est.',
+                tr('La lecture continue sur « {0} ». Reprenez-la ici, là où '
+                    'il en est.', [deviceName]),
                 textAlign: TextAlign.center,
                 style: const TextStyle(
                   color: Colors.white70,
@@ -109,12 +110,12 @@ class PlayingElsewhere extends StatelessWidget {
                     autofocus: true,
                     onPressed: busy ? null : onResume,
                     icon: const Icon(Icons.play_arrow_rounded),
-                    label: const Text('Reprendre la lecture ici'),
+                    label: Text(tr('Reprendre la lecture ici')),
                   ),
                   const SizedBox(width: 12),
                   TextButton(
                     onPressed: onBack,
-                    child: const Text('Quitter'),
+                    child: Text(tr('Quitter')),
                   ),
                 ],
               ),
@@ -153,18 +154,19 @@ class StalledStartup extends StatelessWidget {
   /// La phrase qui explique, choisie sur ce que le moteur a rapporté.
   String get _explanation => switch (failure?.kind) {
         PlaybackFailureKind.unsupported =>
-          'Cet appareil ne sait pas décoder ce fichier, et le transcodage '
-              'n’a pas pris le relais. Réessayer relance les deux.',
+          tr('Cet appareil ne sait pas décoder ce fichier, et le '
+              'transcodage n’a pas pris le relais. Réessayer relance les '
+              'deux.'),
         PlaybackFailureKind.source =>
-          'Le serveur n’a pas pu livrer la vidéo. C’est presque toujours le '
-              'réseau entre cet appareil et lui — réessayer suffit le plus '
-              'souvent.',
+          tr('Le serveur n’a pas pu livrer la vidéo. C’est presque toujours '
+              'le réseau entre cet appareil et lui — réessayer suffit le '
+              'plus souvent.'),
         PlaybackFailureKind.unknown =>
-          'Le lecteur a renoncé sans que la cause soit claire. Réessayer '
-              'suffit le plus souvent.',
-        null => 'Le serveur met trop longtemps à envoyer la vidéo. '
-            'C’est presque toujours le réseau entre cet appareil et lui — '
-            'réessayer suffit le plus souvent.',
+          tr('Le lecteur a renoncé sans que la cause soit claire. Réessayer '
+              'suffit le plus souvent.'),
+        null => tr('Le serveur met trop longtemps à envoyer la vidéo. C’est presque '
+            'toujours le réseau entre cet appareil et lui — réessayer suffit '
+            'le plus souvent.'),
       };
 
   @override
@@ -183,8 +185,8 @@ class StalledStartup extends StatelessWidget {
                 color: Colors.white70,
               ),
               const SizedBox(height: 22),
-              const Text(
-                'La lecture ne démarre pas',
+              Text(
+                tr('La lecture ne démarre pas'),
                 textAlign: TextAlign.center,
                 style: TextStyle(
                   color: Colors.white,
@@ -229,12 +231,12 @@ class StalledStartup extends StatelessWidget {
                     autofocus: true,
                     onPressed: onRetry,
                     icon: const Icon(Icons.refresh_rounded),
-                    label: const Text('Réessayer'),
+                    label: Text(tr('Réessayer')),
                   ),
                   const SizedBox(width: 12),
                   TextButton(
                     onPressed: onBack,
-                    child: const Text('Retour'),
+                    child: Text(tr('Retour')),
                   ),
                 ],
               ),
@@ -279,7 +281,7 @@ class _CopyLogButtonState extends State<_CopyLogButton> {
         color: Colors.white54,
       ),
       label: Text(
-        _copied ? 'Journal copié' : 'Copier le journal',
+        _copied ? tr('Journal copié') : tr('Copier le journal'),
         style: const TextStyle(color: Colors.white54, fontSize: AppType.subhead),
       ),
     );

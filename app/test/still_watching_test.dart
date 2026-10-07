@@ -27,13 +27,17 @@ void main() {
 
   group('la plage horaire', () {
     test('toute la journée, la question se pose à toute heure', () {
-      const settings = StillWatchingSettings();
+      const settings = StillWatchingSettings(enabled: true);
       expect(settings.appliesAt(evening), isTrue);
       expect(settings.appliesAt(afternoon), isTrue);
     });
 
     test('une plage qui passe minuit couvre la nuit, pas l’après-midi', () {
-      const night = StillWatchingSettings(fromMinute: 22 * 60, untilMinute: 6 * 60);
+      const night = StillWatchingSettings(
+        enabled: true,
+        fromMinute: 22 * 60,
+        untilMinute: 6 * 60,
+      );
       expect(night.appliesAt(DateTime(2026, 10, 5, 22, 0)), isTrue);
       expect(night.appliesAt(evening), isTrue);
       expect(night.appliesAt(DateTime(2026, 10, 6, 5, 59)), isTrue);
@@ -42,7 +46,11 @@ void main() {
     });
 
     test('une plage dans la journée s’arrête à sa borne de fin', () {
-      const lunch = StillWatchingSettings(fromMinute: 12 * 60, untilMinute: 14 * 60);
+      const lunch = StillWatchingSettings(
+        enabled: true,
+        fromMinute: 12 * 60,
+        untilMinute: 14 * 60,
+      );
       expect(lunch.appliesAt(DateTime(2026, 10, 5, 13, 0)), isTrue);
       expect(lunch.appliesAt(DateTime(2026, 10, 5, 14, 0)), isFalse);
       expect(lunch.appliesAt(evening), isFalse);
@@ -56,6 +64,7 @@ void main() {
     test('une valeur incohérente retombe sur ce que le lecteur sait appliquer',
         () {
       final odd = const StillWatchingSettings(
+        enabled: true,
         episodes: 40,
         fromMinute: 600,
         untilMinute: 600,
@@ -66,6 +75,22 @@ void main() {
   });
 
   group('le compte des épisodes sans intervention', () {
+    setUp(() => PlaybackPreferencesStorage.setStillWatching(
+          const StillWatchingSettings(enabled: true),
+        ));
+
+    test('tant que personne ne l’a allumée, la lecture enchaîne sans fin',
+        () async {
+      await PlaybackPreferencesStorage.setStillWatching(
+        StillWatchingSettings.defaults,
+      );
+      guard.retain();
+
+      for (var i = 0; i < 12; i++) {
+        expect(guard.allowAutoAdvance(now: evening), isTrue);
+      }
+    });
+
     test('trois épisodes enchaînés sans geste : le quatrième attend', () {
       guard.retain();
 
@@ -99,7 +124,8 @@ void main() {
       expect(guard.unattendedEpisodes, 0);
     });
 
-    testWidgets('le compte suit d’un épisode au suivant et s’arrête avec le lecteur',
+    testWidgets(
+        'le compte suit d’un épisode au suivant et s’arrête avec le lecteur',
         (tester) async {
       await tester.pumpWidget(const SizedBox.expand());
       guard.retain();
@@ -116,6 +142,7 @@ void main() {
     test('hors de la plage, le compte monte sans rien demander', () async {
       await PlaybackPreferencesStorage.setStillWatching(
         const StillWatchingSettings(
+          enabled: true,
           episodes: 2,
           fromMinute: 22 * 60,
           untilMinute: 6 * 60,
@@ -145,7 +172,7 @@ void main() {
     test('réglée sur un épisode, la question suit chaque épisode non touché',
         () async {
       await PlaybackPreferencesStorage.setStillWatching(
-        const StillWatchingSettings(episodes: 1),
+        const StillWatchingSettings(enabled: true, episodes: 1),
       );
       guard.retain();
 
@@ -188,7 +215,8 @@ void main() {
       expect(answers.left(), 0);
     });
 
-    testWidgets('la question tient sur un téléphone en paysage', (tester) async {
+    testWidgets('la question tient sur un téléphone en paysage',
+        (tester) async {
       tester.view.physicalSize = const Size(640, 360);
       tester.view.devicePixelRatio = 1;
       addTearDown(tester.view.reset);
@@ -236,7 +264,8 @@ void main() {
     });
 
     testWidgets('choisir une plage horaire propose la nuit', (tester) async {
-      final changes = await pumpGroup(tester, const StillWatchingSettings());
+      final changes =
+          await pumpGroup(tester, const StillWatchingSettings(enabled: true));
       expect(find.text('Plage horaire'), findsNothing);
 
       await tester.tap(find.text('Sur une plage horaire'));
@@ -248,7 +277,8 @@ void main() {
     testWidgets('la plage affiche ses deux heures', (tester) async {
       await pumpGroup(
         tester,
-        const StillWatchingSettings(fromMinute: 22 * 60, untilMinute: 6 * 60),
+        const StillWatchingSettings(
+            enabled: true, fromMinute: 22 * 60, untilMinute: 6 * 60),
       );
 
       expect(find.text('22:00'), findsOneWidget);
@@ -263,14 +293,16 @@ void main() {
       // Un débordement lèverait une exception de mise en page ici.
       await pumpGroup(
         tester,
-        const StillWatchingSettings(fromMinute: 22 * 60, untilMinute: 6 * 60),
+        const StillWatchingSettings(
+            enabled: true, fromMinute: 22 * 60, untilMinute: 6 * 60),
       );
 
       expect(find.text('Plage horaire'), findsOneWidget);
     });
 
     testWidgets('le nombre d’épisodes se choisit d’un appui', (tester) async {
-      final changes = await pumpGroup(tester, const StillWatchingSettings());
+      final changes =
+          await pumpGroup(tester, const StillWatchingSettings(enabled: true));
 
       await tester.tap(find.widgetWithText(ChoiceChip, '5'));
 

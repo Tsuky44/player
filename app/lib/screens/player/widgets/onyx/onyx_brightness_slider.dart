@@ -67,7 +67,7 @@ class _OnyxBrightnessSliderState extends State<OnyxBrightnessSlider> {
   static const double _iconGap = 8;
 
   /// The shortest track worth drawing. Below it the band gets no bar at all —
-  /// a short window, the Studio's preview box — rather than a stub nobody
+  /// a short window — rather than a stub nobody
   /// could aim a level with.
   static const double _minTrack = 56;
 

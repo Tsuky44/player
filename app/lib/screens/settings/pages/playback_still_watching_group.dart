@@ -4,6 +4,7 @@ import '../../../models/still_watching_settings.dart';
 import '../../../theme/app_colors.dart';
 import '../widgets/settings_dropdown_label.dart';
 import '../widgets/settings_ui.dart';
+import '../../../l10n/tr.dart';
 
 /// Le groupe « Vous regardez encore ? » de la page Lecture (ADR-0045).
 ///
@@ -30,27 +31,27 @@ class StillWatchingSettingsGroup extends StatelessWidget {
       ..sort();
 
     return SettingsGroup(
-      title: 'Vous regardez encore ?',
+      title: tr('Vous regardez encore ?'),
       footer: value.enabled
-          ? 'Le moindre geste — souris, touche, télécommande, doigt sur '
-              'l’écran — remet le compte à zéro.'
+          ? tr('Le moindre geste — souris, touche, télécommande, doigt sur '
+              'l’écran — remet le compte à zéro.')
           : null,
       children: [
         SettingsSwitchTile(
           icon: Icons.bedtime_outlined,
-          title: 'Demander si vous regardez encore',
+          title: tr('Demander si vous regardez encore'),
           subtitle:
-              'Quand plusieurs épisodes s’enchaînent sans que vous touchiez '
-              'au lecteur, la lecture se met en pause et attend votre '
-              'réponse au lieu de lancer le suivant.',
+              tr('Quand plusieurs épisodes s’enchaînent sans que vous '
+                  'touchiez au lecteur, la lecture se met en pause et attend '
+                  'votre réponse au lieu de lancer le suivant.'),
           value: value.enabled,
           onChanged: (enabled) => onChanged(value.copyWith(enabled: enabled)),
         ),
         if (value.enabled) ...[
           SettingsChoiceTile<int>(
             icon: Icons.playlist_play_rounded,
-            title: 'Épisodes sans intervention',
-            subtitle: 'La question est posée à la fin du dernier.',
+            title: tr('Épisodes sans intervention'),
+            subtitle: tr('La question est posée à la fin du dernier.'),
             value: value.episodes,
             options: [
               for (final count in episodeChoices) (count, '$count'),
@@ -60,11 +61,11 @@ class StillWatchingSettingsGroup extends StatelessWidget {
           ),
           SettingsChoiceTile<bool>(
             icon: Icons.schedule_rounded,
-            title: 'Quand la poser',
+            title: tr('Quand la poser'),
             value: value.allDay,
-            options: const [
-              (true, 'Toute la journée'),
-              (false, 'Sur une plage horaire'),
+            options: [
+              (true, tr('Toute la journée')),
+              (false, tr('Sur une plage horaire')),
             ],
             onChanged: (allDay) => onChanged(value.copyWith(
               fromMinute: allDay
@@ -78,15 +79,15 @@ class StillWatchingSettingsGroup extends StatelessWidget {
           if (!value.allDay)
             SettingsTile(
               icon: Icons.nightlight_outlined,
-              title: 'Plage horaire',
-              subtitle: 'À l’heure de l’appareil qui lit. En dehors, les '
-                  'épisodes s’enchaînent sans question.',
+              title: tr('Plage horaire'),
+              subtitle: tr('À l’heure de l’appareil qui lit. En dehors, les épisodes '
+                  's’enchaînent sans question.'),
               showChevron: false,
               trailing: Row(
                 mainAxisSize: MainAxisSize.min,
                 children: [
                   _HourMenu(
-                    tooltip: 'Début de la plage',
+                    tooltip: tr('Début de la plage'),
                     minute: value.fromMinute,
                     excluded: value.untilMinute,
                     onSelected: (minute) =>
@@ -98,7 +99,7 @@ class StillWatchingSettingsGroup extends StatelessWidget {
                         style: TextStyle(color: AppColors.textSecondary)),
                   ),
                   _HourMenu(
-                    tooltip: 'Fin de la plage',
+                    tooltip: tr('Fin de la plage'),
                     minute: value.untilMinute,
                     excluded: value.fromMinute,
                     onSelected: (minute) =>

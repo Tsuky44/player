@@ -4,11 +4,11 @@
 
 - Product: Onyx — client Flutter Direct Play self-hosted
 - Target user: foyer / propriétaire de bibliothèque privée
-- Target surface: app Flutter entière (`app/lib`) — login, shell, home, catalogues, fiches, demandes, settings, lecteur, player studio
+- Target surface: app Flutter entière (`app/lib`) — login, shell, home, catalogues, fiches, demandes, settings, lecteur
 - Primary job-to-be-done: trouver un titre vite, le lire sans friction, contrôler audio/subs/épisodes
 - Success criteria: UI plus pro et cohérente ; aucune feature cassée ; desktop ≥900px et mobile
 - Content/data: posters TMDB/API, progressions, titres, métadonnées, demandes
-- Interaction requirements: nav shell, search, detail → play, player controls, studio layout
+- Interaction requirements: nav shell, search, detail → play, player controls
 - Technical constraints: Flutter + Provider + Material 3 + media_kit ; MediaHub hors scope
 
 ## 2. Existing UI Read
@@ -106,10 +106,7 @@
 
 ### Player HUD
 - Controls over video with quiet glass (no neon glow) ; timeline accent blue ; hide after idle
-- Settings panel: frosted shell, segmented tabs, radio-check track rows (no left accent bar)
 - Episodes sheet / skip intro / next episode: same Quiet Premium glass language
-- Player Studio shop + drawers: elevated surface cards, soft borders, Manrope hierarchy
-- Pack Cinéma Essentiel (boutique): Passer intro · Vitesse · Affichage · Audio · Chapitres · Temps restant · ±30s — Quiet Premium pills/icons, wired to live player actions
 
 ### Empty / loading / error
 - Centered quiet copy ; spinner accent ; no illustration clutter
@@ -142,12 +139,12 @@
 - Bright red `#E50914`, purple gradients, neon glow
 - Glass on every card
 - Fake metrics / marketing sections
-- Break Player Studio or request flows for aesthetics
+- Break request flows for aesthetics
 
 ## 12. Implementation Mapping
 
 - Tokens: `app/lib/theme/app_colors.dart`, `app_theme.dart`
-- Chrome: `glass_chrome.dart`, `liquid_glass_panel.dart`, `control_chrome.dart`
+- Chrome: `glass_chrome.dart`, `liquid_glass_panel.dart`
 - Shell: `main_shell.dart`, `app_top_bar.dart`
 - Browse: `home_screen.dart`, media widgets, library screens, detail widgets
 - Auth: `login_screen.dart`
@@ -157,7 +154,7 @@
 ## 13. Evaluation Plan
 
 - `flutter analyze` on touched files
-- Manual: login → home → movie/show → play → audio/subs/episodes → requests → studio
+- Manual: login → home → movie/show → play → audio/subs/episodes → requests
 - Responsive: compact + wide
 - Contrast on charcoal
 - No feature regression

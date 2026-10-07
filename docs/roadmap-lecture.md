@@ -8,7 +8,7 @@ Phase 1 : [tickets implémentés localement, compatibilité et validation](playb
 
 ## Objectif
 
-Faire d'Onyx un lecteur multimédia privé fiable et agréable au quotidien, sans perdre ses différences : serveur léger, Direct Play prioritaire, confidentialité, Player Studio et prise en charge poussée de mpv.
+Faire d'Onyx un lecteur multimédia privé fiable et agréable au quotidien, sans perdre ses différences : serveur léger, Direct Play prioritaire, confidentialité et prise en charge poussée de mpv.
 
 Le travail porte sur le parcours `bibliothèque → fiche → lecture → changement d'appareil → reprise`. La musique, les photos, la télévision en direct et le DVR ne font pas partie de cette feuille de route.
 
@@ -19,7 +19,7 @@ Le travail porte sur le parcours `bibliothèque → fiche → lecture → change
 - Une perte de réseau, une erreur de transcodage ou une piste incompatible doit produire un message et une action de récupération, jamais un spinner infini.
 - La progression reste propre à l'utilisateur et la plus récente gagne lors d'une synchronisation.
 - Les fonctionnalités hors ligne ne doivent pas dépendre du serveur après le téléchargement.
-- Les modifications du lecteur doivent rester compatibles avec les chromes standard, Chrome Onyx et Player Studio.
+- Le lecteur n'a qu'un chrome, le Chrome Onyx (ADR-0048).
 
 ## État existant à conserver
 
@@ -33,7 +33,7 @@ Le travail porte sur le parcours `bibliothèque → fiche → lecture → change
 - Téléchargements hors ligne et synchronisation différée de progression.
 - Télécommande Android TV, touches multimédias desktop et appairage TV.
 - Picture-in-Picture Android et correspondance de fréquence sur Android TV.
-- Plusieurs serveurs, invitations, droits et Player Studio.
+- Plusieurs serveurs, invitations et droits.
 
 ## Vue d'ensemble
 
@@ -164,7 +164,7 @@ Ajouter un mode `Automatique` par défaut. Il choisit une qualité initiale depu
 - `server/streaming/session.go`
 - `app/lib/screens/player/hooks/use_player_controller.dart`
 - `app/lib/screens/player/web/web_playback_web.dart`
-- `app/lib/screens/player/widgets/player_settings_sheet.dart`
+- `app/lib/screens/player/widgets/onyx/onyx_settings_menu.dart`
 - `app/lib/screens/settings/playback_preferences_screen.dart`
 - `app/lib/services/playback_preferences_storage.dart`
 
@@ -320,8 +320,6 @@ Terminé quand le bon couple audio/sous-titres est sélectionné automatiquement
 - `server/indexer/`
 - nouveau stockage de miniatures côté serveur
 - `app/lib/screens/player/widgets/onyx/onyx_progress_bar.dart`
-- `app/lib/widgets/global/control_chrome.dart`
-- `app/lib/screens/player/widgets/modular_controls_layer.dart`
 - `app/lib/screens/player/player_playback_preferences.dart`
 
 ---
@@ -363,7 +361,6 @@ Terminé quand le bon couple audio/sous-titres est sélectionné automatiquement
 - `server/streaming/session.go`
 - nouveaux handlers d'administration
 - `app/lib/screens/settings/`
-- `app/lib/screens/player/widgets/player_info_sheet.dart`
 
 ### Terminé quand
 

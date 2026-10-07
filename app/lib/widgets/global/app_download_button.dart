@@ -10,6 +10,7 @@ import '../../utils/external_url.dart';
 import 'app_update_dialog.dart';
 import 'glass_chrome.dart';
 import '../../theme/app_icons.dart';
+import '../../l10n/tr.dart';
 
 /// Header shortcut pointing at the installer for the machine in front of us.
 ///
@@ -81,7 +82,7 @@ class _AppDownloadButtonState extends State<AppDownloadButton> {
     if (!mounted || opened) return;
     // Mobile has no way to hand a URL off, so show it for the user to copy.
     ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(content: Text('Téléchargement disponible ici : $url')),
+      SnackBar(content: Text(tr('Téléchargement disponible ici : {0}', [url]))),
     );
   }
 
@@ -112,10 +113,10 @@ class _AppDownloadButtonState extends State<AppDownloadButton> {
   String _tooltip(AppDownload download) {
     final parts = <String>[
       if (_isUpdate)
-        'Mise à jour disponible'
+        tr('Mise à jour disponible')
       else
-        'Télécharger ${download.label}',
-      if (download.version.isNotEmpty) 'Version ${download.version}',
+        tr('Télécharger {0}', [download.label]),
+      if (download.version.isNotEmpty) tr('Version {0}', [download.version]),
       if (download.formattedSize.isNotEmpty) download.formattedSize,
     ];
     return parts.join(' · ');

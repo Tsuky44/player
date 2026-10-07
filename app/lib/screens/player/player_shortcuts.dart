@@ -3,6 +3,7 @@ import 'package:flutter/services.dart';
 
 import '../../theme/app_colors.dart';
 import 'playback/playback_session.dart';
+import '../../l10n/tr.dart';
 
 /// Les raccourcis clavier du lecteur au-delà d'Espace et des flèches.
 ///
@@ -114,7 +115,7 @@ Future<void> showPlayerShortcutsHelp(BuildContext context) {
   return showDialog<void>(
     context: context,
     builder: (context) => AlertDialog(
-      title: const Text('Raccourcis clavier'),
+      title: Text(tr('Raccourcis clavier')),
       content: SizedBox(
         width: 360,
         child: Column(
@@ -128,7 +129,7 @@ Future<void> showPlayerShortcutsHelp(BuildContext context) {
                     SizedBox(
                       width: 120,
                       child: Text(
-                        keys,
+                        tr(keys),
                         style: const TextStyle(
                           color: AppColors.textPrimary,
                           fontWeight: FontWeight.w600,
@@ -138,7 +139,7 @@ Future<void> showPlayerShortcutsHelp(BuildContext context) {
                     ),
                     Expanded(
                       child: Text(
-                        action,
+                        tr(action),
                         style: const TextStyle(color: AppColors.textSecondary),
                       ),
                     ),
@@ -151,7 +152,7 @@ Future<void> showPlayerShortcutsHelp(BuildContext context) {
       actions: [
         TextButton(
           onPressed: () => Navigator.of(context).pop(),
-          child: const Text('Fermer'),
+          child: Text(tr('Fermer')),
         ),
       ],
     ),

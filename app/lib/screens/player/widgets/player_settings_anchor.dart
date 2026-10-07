@@ -5,21 +5,6 @@ class PlayerSettingsAnchor {
   static const double minViewportMargin = 16;
   static const double gapFromButton = 12;
 
-  static double sheetWidth({required bool hasChaptersTab}) =>
-      hasChaptersTab ? 400 : 380;
-
-  static double sheetMaxHeight({required bool hasChaptersTab}) =>
-      hasChaptersTab ? 520 : 480;
-
-  static double menuWidth({required bool hasChaptersTab}) =>
-      hasChaptersTab ? 400 : 380;
-
-  static double menuMaxHeight({required bool hasChaptersTab}) =>
-      hasChaptersTab ? 520 : 480;
-
-  static const double subtitlesSheetWidth = 320;
-  static const double subtitlesSheetMaxHeight = 400;
-
   /// Keeps the popup readable: anchored to the button, shifted when near edges.
   static double horizontalLeft({
     required Rect buttonRect,

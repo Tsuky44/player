@@ -1,3 +1,5 @@
+import '../../../l10n/tr.dart';
+
 /// Le nom de la ligne « sans transcodage » dans les menus Qualité.
 ///
 /// Sur un média téléchargé, cette ligne lit la copie du disque (voir
@@ -13,5 +15,5 @@
   String streamSubtitle = '',
 }) =>
     local
-        ? (label: 'Téléchargé', subtitle: 'Lu depuis cet appareil')
-        : (label: 'Direct', subtitle: streamSubtitle);
+        ? (label: tr('Téléchargé'), subtitle: tr('Lu depuis cet appareil'))
+        : (label: tr('Direct'), subtitle: streamSubtitle);

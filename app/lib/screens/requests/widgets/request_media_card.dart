@@ -4,6 +4,7 @@ import '../../../theme/app_colors.dart';
 import '../../../utils/poster_url.dart';
 import '../../../widgets/global/poster_card.dart';
 import '../../../theme/app_type.dart';
+import '../../../l10n/tr.dart';
 
 class RequestMediaCard extends StatelessWidget {
   final RequestMediaItem item;
@@ -53,7 +54,7 @@ class _TypeBadge extends StatelessWidget {
         border: Border.all(color: Colors.white.withValues(alpha: 0.12)),
       ),
       child: Text(
-        type == RequestMediaType.movie ? 'Film' : 'Série',
+        type == RequestMediaType.movie ? tr('Film') : tr('Série'),
         style: TextStyle(
           fontSize: AppType.micro,
           fontWeight: FontWeight.w600,
@@ -78,14 +79,14 @@ class _StatusDot extends StatelessWidget {
     switch (status) {
       case RequestMediaStatus.available:
         color = AppColors.success;
-        tooltip = 'Disponible';
+        tooltip = tr('Disponible');
       case RequestMediaStatus.partial:
         color = AppColors.warning;
-        tooltip = 'Partiellement disponible';
+        tooltip = tr('Partiellement disponible');
       case RequestMediaStatus.pending:
       case RequestMediaStatus.processing:
         color = AppColors.accentMuted;
-        tooltip = 'En attente';
+        tooltip = tr('En attente');
       case RequestMediaStatus.unknown:
         return const SizedBox.shrink();
     }

@@ -310,6 +310,10 @@ func describeSharedMedia(share sharelinks.Share, mediaID int) models.SharedMedia
 		if info.Episodes, err = loadSharedEpisodes(mediaID); err != nil {
 			log.Printf("describeSharedMedia: %v", err)
 		}
+		// Sans fiche, la page garde le titre et l'affiche : elle reste lisible.
+		if info.Details, err = loadSharedShowDetails(mediaID); err != nil {
+			log.Printf("describeSharedMedia: %v", err)
+		}
 	}
 	return info
 }

@@ -1,4 +1,5 @@
 import 'models.dart';
+import '../l10n/tr.dart';
 
 /// A pairing the television has just opened: the private half it polls with,
 /// and the short half it puts on screen.
@@ -84,7 +85,7 @@ class DevicePairingRequest {
   factory DevicePairingRequest.fromJson(Map<String, dynamic> json) {
     return DevicePairingRequest(
       userCode: json['user_code'] as String? ?? '',
-      deviceName: json['device_name'] as String? ?? 'Téléviseur',
+      deviceName: json['device_name'] as String? ?? tr('Téléviseur'),
       expiresIn: Duration(seconds: (json['expires_in'] as num? ?? 0).toInt()),
     );
   }

@@ -5,6 +5,7 @@ import '../../../services/api_client.dart';
 import '../../../theme/app_colors.dart';
 import '../../../tv/tv_deferred_keyboard.dart';
 import '../widgets/settings_ui.dart';
+import '../../../l10n/tr.dart';
 
 /// Lie le compte à un compte Emby pour que la progression (où l'on en est,
 /// vu / pas vu) suive dans les deux sens. C'est le serveur qui synchronise :
@@ -61,13 +62,13 @@ class _EmbySyncPageState extends State<EmbySyncPage> {
     } catch (e) {
       if (!mounted) return;
       setState(() => _error =
-          settingsErrorText(e, 'Impossible de charger le lien Emby.'));
+          settingsErrorText(e, tr('Impossible de charger le lien Emby.')));
     }
   }
 
   Future<void> _link() async {
     if (_url.text.trim().isEmpty || _username.text.trim().isEmpty) {
-      showSettingsSnack(context, 'Renseignez l’adresse et le nom d’utilisateur.',
+      showSettingsSnack(context, tr('Renseignez l’adresse et le nom d’utilisateur.'),
           error: true);
       return;
     }
@@ -81,11 +82,11 @@ class _EmbySyncPageState extends State<EmbySyncPage> {
       if (!mounted) return;
       setState(() => _apply(status));
       showSettingsSnack(context,
-          'Compte Emby lié. La première synchronisation démarre.');
+          tr('Compte Emby lié. La première synchronisation démarre.'));
     } catch (e) {
       if (mounted) {
         showSettingsSnack(
-            context, settingsErrorText(e, 'Connexion à Emby impossible.'),
+            context, settingsErrorText(e, tr('Connexion à Emby impossible.')),
             error: true);
       }
     }
@@ -101,12 +102,12 @@ class _EmbySyncPageState extends State<EmbySyncPage> {
       showSettingsSnack(
           context,
           result.pulled == 0 && result.pushed == 0
-              ? 'Déjà à jour.'
-              : '${result.pulled} reçue(s) d’Emby, ${result.pushed} envoyée(s) à Emby.');
+              ? tr('Déjà à jour.')
+              : tr('{0} reçue(s) d’Emby, {1} envoyée(s) à Emby.', [result.pulled, result.pushed]));
     } catch (e) {
       if (mounted) {
         showSettingsSnack(
-            context, settingsErrorText(e, 'Échec de la synchronisation.'),
+            context, settingsErrorText(e, tr('Échec de la synchronisation.')),
             error: true);
       }
     }
@@ -118,10 +119,11 @@ class _EmbySyncPageState extends State<EmbySyncPage> {
   Future<void> _unlink() async {
     final confirmed = await confirmSettingsAction(
       context,
-      title: 'Délier le compte Emby ?',
+      title: tr('Délier le compte Emby ?'),
       message:
-          'La progression cesse d’être synchronisée. Rien n’est effacé, ni ici ni sur Emby.',
-      confirmLabel: 'Délier',
+          tr('La progression cesse d’être synchronisée. Rien n’est effacé, '
+              'ni ici ni sur Emby.'),
+      confirmLabel: tr('Délier'),
     );
     if (!confirmed || !mounted) return;
     setState(() => _busy = true);
@@ -136,7 +138,7 @@ class _EmbySyncPageState extends State<EmbySyncPage> {
     } catch (e) {
       if (mounted) {
         showSettingsSnack(
-            context, settingsErrorText(e, 'Impossible de délier le compte.'),
+            context, settingsErrorText(e, tr('Impossible de délier le compte.')),
             error: true);
       }
     }
@@ -165,7 +167,7 @@ class _EmbySyncPageState extends State<EmbySyncPage> {
           prefixIcon: Icon(icon),
           suffixIcon: password
               ? IconButton(
-                  tooltip: _obscure ? 'Afficher' : 'Masquer',
+                  tooltip: _obscure ? tr('Afficher') : tr('Masquer'),
                   onPressed: () => setState(() => _obscure = !_obscure),
                   icon: Icon(_obscure
                       ? Icons.visibility_outlined
@@ -183,9 +185,11 @@ class _EmbySyncPageState extends State<EmbySyncPage> {
     final linked = status?.linked ?? false;
 
     return SettingsPage(
-      title: 'Synchro Emby',
+      title: tr('Synchro Emby'),
       description:
-          'Reprenez vos films et vos séries là où vous les avez laissés, que vous les regardiez ici ou sur Emby. Les médias sont reconnus par leur fiche TMDB.',
+          tr('Reprenez vos films et vos séries là où vous les avez laissés, '
+              'que vous les regardiez ici ou sur Emby. Les médias sont '
+              'reconnus par leur fiche TMDB.'),
       onRefresh: _load,
       children: [
         if (_error != null) SettingsBanner(_error!, tone: BannerTone.error),
@@ -194,9 +198,9 @@ class _EmbySyncPageState extends State<EmbySyncPage> {
           SettingsBanner(status.lastError, tone: BannerTone.error),
         if (status != null && linked)
           SettingsGroup(
-            title: 'Compte lié',
+            title: tr('Compte lié'),
             trailing: SettingsPill(
-              status.lastError.isEmpty ? 'Actif' : 'En erreur',
+              status.lastError.isEmpty ? tr('Actif') : tr('En erreur'),
               color: status.lastError.isEmpty
                   ? AppColors.success
                   : AppColors.error,
@@ -205,7 +209,9 @@ class _EmbySyncPageState extends State<EmbySyncPage> {
                   : Icons.error_outline_rounded,
             ),
             footer:
-                'Ce qui change ici part vers Emby dans la minute ; Emby est relu toutes les 10 minutes. Quand les deux diffèrent, la lecture la plus récente l’emporte.',
+                tr('Ce qui change ici part vers Emby dans la minute ; Emby '
+                    'est relu toutes les 10 minutes. Quand les deux '
+                    'diffèrent, la lecture la plus récente l’emporte.'),
             children: [
               SettingsTile(
                 icon: Icons.person_rounded,
@@ -216,12 +222,12 @@ class _EmbySyncPageState extends State<EmbySyncPage> {
               ),
               SettingsTile(
                 icon: Icons.sync_rounded,
-                title: 'Synchroniser maintenant',
+                title: tr('Synchroniser maintenant'),
                 subtitle: _syncing
-                    ? 'Synchronisation en cours…'
+                    ? tr('Synchronisation en cours…')
                     : status.lastSyncAt == null
-                        ? 'Pas encore synchronisé'
-                        : 'Dernière synchronisation ${relativeTime(status.lastSyncAt!)}',
+                        ? tr('Pas encore synchronisé')
+                        : tr('Dernière synchronisation {0}', [relativeTime(status.lastSyncAt!)]),
                 trailing: _syncing
                     ? const SizedBox(
                         width: 20,
@@ -233,7 +239,7 @@ class _EmbySyncPageState extends State<EmbySyncPage> {
               ),
               SettingsTile(
                 icon: Icons.link_off_rounded,
-                title: 'Délier le compte Emby',
+                title: tr('Délier le compte Emby'),
                 destructive: true,
                 onTap: _syncing || _busy ? null : _unlink,
               ),
@@ -241,10 +247,12 @@ class _EmbySyncPageState extends State<EmbySyncPage> {
           ),
         if (status != null)
           SettingsGroup(
-            title: linked ? 'Reconnecter' : 'Connexion à Emby',
+            title: linked ? tr('Reconnecter') : tr('Connexion à Emby'),
             footer: linked
-                ? 'À faire si le mot de passe Emby a changé ou si la session a été révoquée.'
-                : 'Le mot de passe sert uniquement à ouvrir une session sur Emby : il n’est pas enregistré.',
+                ? tr('À faire si le mot de passe Emby a changé ou si la '
+                    'session a été révoquée.')
+                : tr('Le mot de passe sert uniquement à ouvrir une session '
+                    'sur Emby : il n’est pas enregistré.'),
             padded: true,
             children: [
               Column(
@@ -252,7 +260,7 @@ class _EmbySyncPageState extends State<EmbySyncPage> {
                 children: [
                   _field(
                     controller: _url,
-                    label: 'Adresse du serveur Emby',
+                    label: tr('Adresse du serveur Emby'),
                     hint: 'http://192.168.1.10:8096',
                     icon: Icons.link_rounded,
                     keyboardType: TextInputType.url,
@@ -260,13 +268,13 @@ class _EmbySyncPageState extends State<EmbySyncPage> {
                   const SizedBox(height: 12),
                   _field(
                     controller: _username,
-                    label: 'Nom d’utilisateur Emby',
+                    label: tr('Nom d’utilisateur Emby'),
                     icon: Icons.person_outline_rounded,
                   ),
                   const SizedBox(height: 12),
                   _field(
                     controller: _password,
-                    label: 'Mot de passe Emby',
+                    label: tr('Mot de passe Emby'),
                     icon: Icons.key_rounded,
                     password: true,
                   ),
@@ -276,10 +284,10 @@ class _EmbySyncPageState extends State<EmbySyncPage> {
                     child: FilledButton(
                       onPressed: _busy ? null : _link,
                       child: Text(_busy
-                          ? 'Connexion…'
+                          ? tr('Connexion…')
                           : linked
-                              ? 'Reconnecter'
-                              : 'Lier le compte'),
+                              ? tr('Reconnecter')
+                              : tr('Lier le compte')),
                     ),
                   ),
                 ],

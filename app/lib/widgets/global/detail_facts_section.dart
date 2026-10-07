@@ -4,6 +4,7 @@ import '../../models/models.dart';
 import '../../theme/app_colors.dart';
 import '../../theme/app_type.dart';
 import '../../utils/responsive.dart';
+import '../../l10n/tr.dart';
 
 /// Les crédits d'une fiche : réalisation, scénario, studios.
 ///
@@ -32,10 +33,10 @@ class DetailFactsSection extends StatelessWidget {
         spacing: AppLayout.isCompact(context) ? 24 : 48,
         runSpacing: 16,
         children: [
-          if (hasDirector) _FactColumn(label: 'Réalisation', values: [director]),
+          if (hasDirector) _FactColumn(label: tr('Réalisation'), values: [director]),
           if (writers.isNotEmpty)
-            _FactColumn(label: 'Scénario', values: writers),
-          if (studios.isNotEmpty) _FactColumn(label: 'Studios', values: studios),
+            _FactColumn(label: tr('Scénario'), values: writers),
+          if (studios.isNotEmpty) _FactColumn(label: tr('Studios'), values: studios),
         ],
       ),
     );

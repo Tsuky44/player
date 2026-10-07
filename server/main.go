@@ -103,6 +103,9 @@ func main() {
 	router.PUT("/api/playback/tickets", handlers.RequireAuth(handlers.UpdatePlaybackTicket))
 	router.DELETE("/api/playback/tickets", handlers.RequireAuth(handlers.UpdatePlaybackTicket))
 	router.POST("/api/auth/password", handlers.RequireAuth(handlers.ChangePassword))
+	// Supprimer son propre compte : la session suffit pour demander, le mot de
+	// passe est revérifié dans le handler, et le propriétaire est refusé.
+	router.POST("/api/auth/account/delete", handlers.RequireAuth(handlers.DeleteOwnAccount))
 	// Validation en deux étapes (ADR-0041). otp/login est publique comme
 	// login : elle n'accepte qu'un jeton d'étape qu'un mot de passe correct a
 	// obtenu, et elle ne révèle rien d'autre que « code juste ou non ».
@@ -163,12 +166,6 @@ func main() {
 	router.GET("/api/settings", handlers.RequirePermission(models.PermManageSettings, handlers.GetSettings))
 	router.PUT("/api/settings", handlers.RequirePermission(models.PermManageSettings, handlers.UpdateSettings))
 
-	// Player Studio layouts (per-user, synced across devices)
-	router.GET("/api/me/player-layouts", handlers.RequireAuth(handlers.ListPlayerLayouts))
-	router.POST("/api/me/player-layouts", handlers.RequireAuth(handlers.CreatePlayerLayout))
-	router.PUT("/api/me/player-layouts/:id", handlers.RequireAuth(handlers.UpdatePlayerLayout))
-	router.DELETE("/api/me/player-layouts/:id", handlers.RequireAuth(handlers.DeletePlayerLayout))
-
 	// Réglages de lecture du compte (saut d'intro, langue audio), partagés par
 	// tous ses appareils. Chacun ne lit et n'écrit que les siens. Voir ADR-0043.
 	router.GET("/api/me/playback-preferences", handlers.RequireAuth(handlers.GetPlaybackPreferences))
@@ -204,6 +201,9 @@ func main() {
 	router.POST("/api/peers/:id/approve", handlers.RequirePermission(models.PermManageSettings, handlers.ApprovePeerServer))
 	router.GET("/api/progress", handlers.RequireAuth(handlers.GetProgress))
 	router.POST("/api/progress", handlers.RequireAuth(handlers.UpdateProgress))
+	// Sondé par les écrans ouverts pour suivre en direct ce que le compte
+	// regarde ailleurs. Chacun ne lit que son propre jeton.
+	router.GET("/api/progress/revision", handlers.RequireAuth(handlers.GetProgressRevision))
 	router.POST("/api/continue-watching/hide", handlers.RequireAuth(handlers.HideFromContinueWatching))
 	router.POST("/api/media/:id/watched", handlers.RequireAuth(handlers.SetMediaWatched))
 	// Une saison entière d’un coup : le client envoie les épisodes, le

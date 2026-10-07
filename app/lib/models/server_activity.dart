@@ -3,6 +3,8 @@
 /// `devices.go` et `server_info.go`.
 library;
 
+import '../l10n/tr.dart';
+
 DateTime _date(Object? raw) =>
     DateTime.tryParse(raw as String? ?? '')?.toLocal() ??
     DateTime.fromMillisecondsSinceEpoch(0);
@@ -24,9 +26,11 @@ enum PlayMethod {
   transcode('transcode', 'Transcodage'),
   local('local', 'Fichier téléchargé');
 
-  const PlayMethod(this.wire, this.label);
+  const PlayMethod(this.wire, this._label);
   final String wire;
-  final String label;
+  final String _label;
+
+  String get label => tr(_label);
 
   static PlayMethod parse(String? raw) => PlayMethod.values.firstWhere(
         (m) => m.wire == raw,
@@ -313,7 +317,7 @@ class ConnectedDevice {
 
   /// Une session ouverte avant que l'app ne s'annonce n'a pas de nom.
   String get displayName =>
-      deviceName.isNotEmpty ? deviceName : 'Appareil sans nom';
+      deviceName.isNotEmpty ? deviceName : tr('Appareil sans nom');
 
   factory ConnectedDevice.fromJson(Map<String, dynamic> json) =>
       ConnectedDevice(

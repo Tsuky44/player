@@ -9,6 +9,7 @@ import 'media_card.dart';
 import 'poster_card.dart';
 import 'poster_launch_route.dart';
 import '../../theme/app_icons.dart';
+import '../../l10n/tr.dart';
 
 class MediaRow extends StatelessWidget {
   final String title;
@@ -78,11 +79,11 @@ class MediaRow extends StatelessWidget {
               if (onSeeAll != null)
                 TextButton(
                   onPressed: onSeeAll,
-                  child: const Row(
+                  child: Row(
                     mainAxisSize: MainAxisSize.min,
                     children: [
                       Text(
-                        'Tout voir',
+                        tr('Tout voir'),
                         style: TextStyle(color: AppColors.textSecondary),
                       ),
                       SizedBox(width: 2),

@@ -11,6 +11,7 @@ import '../../widgets/global/media_card.dart';
 import '../../widgets/global/skeleton.dart';
 import 'movie_detail_screen.dart';
 import '../../theme/app_icons.dart';
+import '../../l10n/tr.dart';
 
 enum _SortOption { title, recent, progress }
 
@@ -87,7 +88,7 @@ class _MoviesScreenState extends State<MoviesScreen> {
                       0,
                     ),
                     child: CatalogHeader<_SortOption>(
-                      title: 'Films',
+                      title: tr('Films'),
                       countLabel: lp.isLoadingMovies
                           ? null
                           : '${filtered.length} film${filtered.length > 1 ? 's' : ''}',
@@ -105,19 +106,20 @@ class _MoviesScreenState extends State<MoviesScreen> {
                     sliver: const PosterGridSkeleton(),
                   )
                 else if (lp.movies.isEmpty)
-                  const SliverFillRemaining(
+                  SliverFillRemaining(
                     child: EmptyStateView(
                       icon: AppIcons.movie,
-                      title: 'Aucun film',
+                      title: tr('Aucun film'),
                       message:
-                          'Ajoutez des fichiers vidéo dans votre dossier Films puis synchronisez la bibliothèque.',
+                          tr('Ajoutez des fichiers vidéo dans votre dossier '
+                              'Films puis synchronisez la bibliothèque.'),
                     ),
                   )
                 else if (filtered.isEmpty)
-                  const SliverFillRemaining(
+                  SliverFillRemaining(
                     child: Center(
                       child: Text(
-                        'Aucun film trouvé',
+                        tr('Aucun film trouvé'),
                         style: TextStyle(color: AppColors.textMuted),
                       ),
                     ),

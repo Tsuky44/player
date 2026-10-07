@@ -1,11 +1,9 @@
 import 'package:flutter/material.dart';
 
-/// Locked visual constants for Chrome Onyx, the fixed chrome.
+/// Locked visual constants for Chrome Onyx, the player chrome.
 ///
-/// Nothing here reads from [PlayerLayoutConfig]: this chrome deliberately
-/// ignores skin, blur, glass opacity and accent colour. A fixed look and
-/// "not editable" are the same requirement — a configurable fixed chrome is
-/// not fixed.
+/// Nothing here is a user setting: the look is fixed, the same for every
+/// account and every device.
 abstract final class OnyxChromeTheme {
   const OnyxChromeTheme._();
 

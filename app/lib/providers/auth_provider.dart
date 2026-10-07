@@ -5,6 +5,7 @@ import '../models/otp.dart';
 import '../models/server_account.dart';
 import '../services/api_client.dart';
 import '../utils/app_platform.dart';
+import '../l10n/tr.dart';
 
 /// Ce que donne une tentative d'ouverture de session sur le compte actif.
 ///
@@ -470,7 +471,7 @@ class AuthProvider extends ChangeNotifier {
 
     if (!await apiClient.activateAccount(accountId, synchronize: synchronize)) {
       _isLoading = false;
-      _errorMessage = "Ce serveur n'est plus enregistré sur cet appareil.";
+      _errorMessage = tr('Ce serveur n\'est plus enregistré sur cet appareil.');
       notifyListeners();
       return false;
     }
@@ -525,7 +526,7 @@ class AuthProvider extends ChangeNotifier {
         _isAuthenticated = false;
         _isOfflineSession = false;
         if (announceExpiry) {
-          _errorMessage = 'Session expirée sur ce serveur, reconnectez-vous.';
+          _errorMessage = tr('Session expirée sur ce serveur, reconnectez-vous.');
         }
         return _SessionOutcome.unauthorized;
       }
@@ -736,17 +737,18 @@ class AuthProvider extends ChangeNotifier {
         }
       }
       if (error.type == DioExceptionType.connectionTimeout || error.type == DioExceptionType.receiveTimeout) {
-        return "Connexion au serveur expirée (Timeout).";
+        return tr('Connexion au serveur expirée (Timeout).');
       }
       if (error.type == DioExceptionType.connectionError) {
-        return "Connexion au serveur impossible. Vérifiez l'adresse IP et que le serveur est allumé.";
+        return tr('Connexion au serveur impossible. Vérifiez l\'adresse IP et que '
+            'le serveur est allumé.');
       }
     }
     
     final errorStr = error.toString();
     if (errorStr.contains("SocketException") || errorStr.contains("Failed host lookup")) {
-      return "Adresse serveur introuvable ou réseau inaccessible.";
+      return tr('Adresse serveur introuvable ou réseau inaccessible.');
     }
-    return "Une erreur est survenue : $errorStr";
+    return tr('Une erreur est survenue : {0}', [errorStr]);
   }
 }

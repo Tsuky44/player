@@ -3,9 +3,7 @@ import 'dart:io';
 
 import 'package:flutter_test/flutter_test.dart';
 import 'package:onyx/models/models.dart';
-import 'package:onyx/models/offline_chrome.dart';
 import 'package:onyx/models/offline_download.dart';
-import 'package:onyx/models/player_layout.dart';
 import 'package:onyx/services/api_client.dart';
 import 'package:onyx/services/download_manager.dart';
 import 'package:path_provider_platform_interface/path_provider_platform_interface.dart';
@@ -202,46 +200,6 @@ void main() {
     expect(manager.showPosterPath(7), endsWith(_path(['shows', '7', 'poster.jpg'])));
     // Aucun logo n'a été rapatrié : l'appelant retombe sur le titre écrit.
     expect(manager.showLogoPath(7), isNull);
-  });
-
-  test('le playeur figé est celui du serveur d’où vient le média', () async {
-    final manager = DownloadManager.instance;
-    expect(manager.chromeFor(1), isNull);
-
-    await manager.rememberChrome(OfflineChrome(
-      serverUrl: 'http://nas:8080',
-      presetId: 'preset-42',
-      name: 'Mon playeur',
-      useModular: true,
-      config: PlayerLayoutConfig.fixed(FixedChromeId.onyx),
-      savedAt: DateTime.utc(2026, 9, 3),
-    ));
-
-    final chrome = manager.chromeFor(1);
-    expect(chrome, isNotNull);
-    expect(chrome!.presetId, 'preset-42');
-    expect(chrome.useModular, isTrue);
-    expect(chrome.config.fixedChrome, FixedChromeId.onyx);
-
-    // Écrit sur le disque, pas seulement en mémoire : c'est justement au
-    // démarrage suivant, hors ligne, qu'il servira.
-    final saved = jsonDecode(
-      File('${root.path}/onyx_offline/chromes.json').readAsStringSync(),
-    ) as Map<String, dynamic>;
-    expect(saved.keys, contains('http://nas:8080'));
-    expect(
-      OfflineChrome.fromJson(
-        Map<String, dynamic>.from(saved['http://nas:8080'] as Map),
-      ).config.fixedChrome,
-      FixedChromeId.onyx,
-    );
-  });
-
-  test('une adresse de serveur ne varie pas selon sa barre oblique finale', () {
-    expect(OfflineChrome.normalizeServerUrl('http://nas:8080/'),
-        'http://nas:8080');
-    expect(OfflineChrome.normalizeServerUrl('  http://nas:8080//  '),
-        'http://nas:8080');
   });
 
   test('annuler une série retire ce qui reste à rapatrier, pas ce qui est là',

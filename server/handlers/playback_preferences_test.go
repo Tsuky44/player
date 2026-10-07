@@ -107,26 +107,27 @@ func TestPlaybackPreferencesRejectInvalidInput(t *testing.T) {
 	}
 }
 
-// Un compte qui n'a rien choisi se voit poser la question après trois
-// épisodes, à toute heure : la protection vaut par défaut (ADR-0045).
-func TestStillWatchingDefaultsToThreeEpisodesAllDay(t *testing.T) {
+// Un compte qui n'a rien choisi n'est jamais interrogé : la question ne se
+// pose que si on l'a allumée. Trois épisodes et toute la journée sont ce
+// qu'elle propose à ce moment-là (ADR-0045).
+func TestStillWatchingIsOffUntilAsked(t *testing.T) {
 	setupAuthDB(t)
 	user := createTestUser(t, "alice", false, models.Permissions{})
 
 	prefs := getPlaybackPreferences(t, user)
-	if !prefs.StillWatchingEnabled || prefs.StillWatchingEpisodes != 3 ||
+	if prefs.StillWatchingEnabled || prefs.StillWatchingEpisodes != 3 ||
 		prefs.StillWatchingFrom != models.StillWatchingAllDay ||
 		prefs.StillWatchingUntil != models.StillWatchingAllDay {
 		t.Fatalf("unsaved account: got %+v", prefs)
 	}
 
-	// Enregistrer un autre réglage ne doit pas éteindre la question : la ligne
+	// Enregistrer un autre réglage ne doit pas allumer la question : la ligne
 	// créée porte les mêmes défauts.
 	if rec := putPlaybackPreferences(user, `{"auto_skip_intro":true}`); rec.Code != http.StatusOK {
 		t.Fatalf("put auto_skip_intro: status %d", rec.Code)
 	}
 	prefs = getPlaybackPreferences(t, user)
-	if !prefs.StillWatchingEnabled || prefs.StillWatchingEpisodes != 3 ||
+	if prefs.StillWatchingEnabled || prefs.StillWatchingEpisodes != 3 ||
 		prefs.StillWatchingFrom != models.StillWatchingAllDay {
 		t.Fatalf("after an unrelated update: got %+v", prefs)
 	}

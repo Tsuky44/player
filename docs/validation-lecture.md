@@ -46,7 +46,7 @@ Couverture existante à conserver : `master_playlist_test.go`, `handler_files_te
 
 ## Procédure sur appareils réels
 
-Créer une copie du relevé ci-dessous par appareil, moteur, chrome (standard, Chrome Onyx, Studio) et extrait. Répéter trois fois à froid puis à chaud. Garder le même écran, sortie audio et réseau entre deux versions comparées.
+Créer une copie du relevé ci-dessous par appareil, moteur et extrait. Répéter trois fois à froid puis à chaud. Garder le même écran, sortie audio et réseau entre deux versions comparées.
 
 1. Ouvrir la fiche et lancer la lecture. Mesurer jusqu'à la première image visible, pas seulement jusqu'à l'état « playing ».
 2. Relever le chemin, la raison du transcodage, les codecs, le débit et les compteurs d'images perdues au départ puis après 60 secondes.

@@ -8,6 +8,7 @@ import '../../../widgets/global/app_network_image.dart';
 import 'request_status_badge.dart';
 import '../../../theme/app_icons.dart';
 import '../../../theme/app_type.dart';
+import '../../../l10n/tr.dart';
 
 /// Expandable season accordion with lazy-loaded TMDB episodes.
 class RequestSeasonList extends StatelessWidget {
@@ -28,8 +29,8 @@ class RequestSeasonList extends StatelessWidget {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        const Text(
-          'Saisons',
+        Text(
+          tr('Saisons'),
           style: TextStyle(
             fontSize: AppType.title2,
             fontWeight: FontWeight.w700,
@@ -88,14 +89,14 @@ class _SeasonAccordionState extends State<_SeasonAccordion> {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           content: Text(
-            'Demande envoyée pour la saison ${widget.season.number}.',
+            tr('Demande envoyée pour la saison {0}.', [widget.season.number]),
           ),
         ),
       );
     } catch (_) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Impossible d’envoyer la demande.')),
+        SnackBar(content: Text(tr('Impossible d’envoyer la demande.'))),
       );
     } finally {
       if (mounted) setState(() => _requestingSeason = false);
@@ -125,7 +126,7 @@ class _SeasonAccordionState extends State<_SeasonAccordion> {
       if (!mounted) return;
       setState(() {
         _loading = false;
-        _error = 'Impossible de charger les épisodes.';
+        _error = tr('Impossible de charger les épisodes.');
       });
     }
   }
@@ -134,7 +135,7 @@ class _SeasonAccordionState extends State<_SeasonAccordion> {
   Widget build(BuildContext context) {
     final season = widget.season;
     final title =
-        season.name.isNotEmpty ? season.name : 'Saison ${season.number}';
+        season.name.isNotEmpty ? season.name : tr('Saison {0}', [season.number]);
 
     return Container(
       decoration: BoxDecoration(
@@ -187,7 +188,7 @@ class _SeasonAccordionState extends State<_SeasonAccordion> {
                           ),
                           const SizedBox(height: 4),
                           Text(
-                            '${season.episodeCount} épisodes',
+                            tr('{0} épisodes', [season.episodeCount]),
                             style: TextStyle(
                               color: Colors.white.withValues(alpha: 0.45),
                               fontSize: AppType.subhead,
@@ -215,8 +216,8 @@ class _SeasonAccordionState extends State<_SeasonAccordion> {
                                 height: 16,
                                 child: CircularProgressIndicator(strokeWidth: 2),
                               )
-                            : const Text(
-                                'Demander',
+                            : Text(
+                                tr('Demander'),
                                 style: TextStyle(fontWeight: FontWeight.w600),
                               ),
                       ),
@@ -300,7 +301,7 @@ class _SeasonAccordionState extends State<_SeasonAccordion> {
                   });
                   _toggle();
                 },
-                child: const Text('Réessayer'),
+                child: Text(tr('Réessayer')),
               ),
             ],
           ),
@@ -312,7 +313,7 @@ class _SeasonAccordionState extends State<_SeasonAccordion> {
         padding: const EdgeInsets.symmetric(vertical: 24),
         child: Center(
           child: Text(
-            'Aucun épisode trouvé.',
+            tr('Aucun épisode trouvé.'),
             style: TextStyle(color: Colors.white.withValues(alpha: 0.45)),
           ),
         ),
@@ -369,7 +370,7 @@ class _EpisodeCard extends StatelessWidget {
         const SizedBox(height: 8),
         Text(
           episode.overview.isEmpty
-              ? 'Aucun résumé disponible.'
+              ? tr('Aucun résumé disponible.')
               : episode.overview,
           maxLines: 3,
           overflow: TextOverflow.ellipsis,

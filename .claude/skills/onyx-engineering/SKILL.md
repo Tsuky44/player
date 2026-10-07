@@ -37,7 +37,7 @@ Pendant la tâche, suis la règle « travail silencieux, récap final » du `CLA
 ### Modules *deep*, *seams*, taille des fichiers
 
 - Une nouvelle responsabilité va dans un nouveau fichier ou un nouveau type, avec une interface étroite. L'appelant ne voit pas les détails.
-- Les fichiers-dieux sont `player_screen.dart` (~3 400 lignes), `use_player_controller.dart` (~2 200), `api_client.dart` (~1 200 ; ses points d'accès par domaine vont dans `services/api/`, en mixins `part of`, surchargeables par les doublures de test), `control_chrome.dart`, `models.dart`, `emby_sync.go` et `federation.go`. Pour y ajouter du code, extrais d'abord dans son propre fichier (widget, hook, service, sous-package) le morceau que tu touches, puis modifie-le là. Ton changement ne fait passer aucun fichier au-dessus de 800 lignes.
+- Les fichiers-dieux sont `player_screen.dart` (~3 400 lignes), `use_player_controller.dart` (~2 200), `api_client.dart` (~1 200 ; ses points d'accès par domaine vont dans `services/api/`, en mixins `part of`, surchargeables par les doublures de test), `models.dart`, `emby_sync.go` et `federation.go`. Pour y ajouter du code, extrais d'abord dans son propre fichier (widget, hook, service, sous-package) le morceau que tu touches, puis modifie-le là. Ton changement ne fait passer aucun fichier au-dessus de 800 lignes.
 - Chaque signification a une seule source de vérité (constante, token, helper). Avant d'écrire un helper, cherche s'il existe déjà : `sqlPlaceholders`, `scanSQLiteTime`, `Responsive`, `AppNetworkImage`, `AppMotion`…
 - Le serveur décide (permissions, progression, « vu », droits de lecture) et l'app affiche. Une règle métier côté client n'existe que pour l'UI optimiste, et la réponse du serveur la réconcilie.
 

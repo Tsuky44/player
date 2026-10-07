@@ -10,6 +10,7 @@ import '../../widgets/global/bulk_download_delete.dart';
 import '../../widgets/global/local_file_image.dart';
 import '../../theme/app_icons.dart';
 import '../../theme/app_type.dart';
+import '../../l10n/tr.dart';
 
 /// L'en-tête d'une série, nourri par la fiche rapatriée avec ses épisodes.
 ///
@@ -58,7 +59,7 @@ class _DownloadShowHeaderState extends State<DownloadShowHeader> {
             what: '« ${widget.title} »',
             entries: widget.entries,
           ),
-          tooltip: 'Supprimer la série',
+          tooltip: tr('Supprimer la série'),
           icon: const Icon(AppIcons.delete, size: 20),
           color: AppColors.textSecondary,
         ),
@@ -178,17 +179,17 @@ class DownloadSeasonHeader extends StatelessWidget {
   /// Le libellé d'une saison, « spéciaux » compris : c'est la saison 0 chez
   /// TMDB, et « Saison 0 » ne dit rien à personne.
   static String labelFor(int? seasonNumber) => switch (seasonNumber) {
-        null => 'Sans saison',
-        0 => 'Épisodes spéciaux',
-        final n => 'Saison $n',
+        null => tr('Sans saison'),
+        0 => tr('Épisodes spéciaux'),
+        final n => tr('Saison {0}', [n]),
       };
 
   @override
   Widget build(BuildContext context) {
     final label = labelFor(seasonNumber);
     final what = seasonNumber == null || seasonNumber == 0
-        ? 'ces épisodes'
-        : 'la saison $seasonNumber';
+        ? tr('ces épisodes')
+        : tr('la saison {0}', [seasonNumber]);
     final count = entries.length;
     final bytes = entries.fold<int>(0, (sum, e) => sum + e.bytesReceived);
     return Row(
@@ -204,7 +205,7 @@ class DownloadSeasonHeader extends StatelessWidget {
         const SizedBox(width: 8),
         Expanded(
           child: Text(
-            '$count épisode${count > 1 ? 's' : ''} · ${formatBytes(bytes)}',
+            tr('{0} épisode{1} · {2}', [count, count > 1 ? 's' : '', formatBytes(bytes)]),
             overflow: TextOverflow.ellipsis,
             style: const TextStyle(color: AppColors.textMuted, fontSize: AppType.footnote),
           ),
@@ -215,7 +216,7 @@ class DownloadSeasonHeader extends StatelessWidget {
             what: what,
             entries: entries,
           ),
-          tooltip: 'Supprimer $what',
+          tooltip: tr('Supprimer {0}', [what]),
           icon: const Icon(AppIcons.delete, size: 18),
           visualDensity: VisualDensity.compact,
           color: AppColors.textMuted,

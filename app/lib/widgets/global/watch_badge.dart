@@ -3,6 +3,7 @@ import '../../models/models.dart';
 import '../../theme/app_colors.dart';
 import '../../theme/app_icons.dart';
 import '../../theme/app_type.dart';
+import '../../l10n/tr.dart';
 
 /// Pastille d'avancement posée en haut à droite d'une affiche.
 ///
@@ -58,7 +59,7 @@ class WatchBadge extends StatelessWidget {
     final label = isWatched ? null : (remaining! > 99 ? '99+' : '$remaining');
 
     return Semantics(
-      label: isWatched ? 'Vu' : '$remaining épisode(s) à voir',
+      label: isWatched ? tr('Vu') : tr('{0} épisode(s) à voir', [remaining]),
       child: Container(
         height: _height,
         constraints: const BoxConstraints(minWidth: _height),

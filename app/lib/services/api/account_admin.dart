@@ -224,6 +224,12 @@ mixin _AccountAdminEndpoints {
     return user;
   }
 
+  /// Supprime le compte de la session en cours, sur ce serveur. Le mot de
+  /// passe est revérifié par le serveur, qui refuse le propriétaire.
+  Future<void> deleteOwnAccount(String password) async {
+    await _dio.post("/api/auth/account/delete", data: {"password": password});
+  }
+
   Future<User> getMe() async {
     final response = await _dio.get("/api/auth/me");
     return User.fromJson(response.data as Map<String, dynamic>);

@@ -4,7 +4,6 @@ library;
 import 'package:flutter/foundation.dart';
 
 import '../models/models.dart';
-import '../models/offline_chrome.dart';
 import '../models/offline_download.dart';
 import 'api_client.dart';
 
@@ -44,8 +43,6 @@ class DownloadManager extends ChangeNotifier {
   MediaDetails? detailsForShow(int infoId) => null;
   String? showPosterPath(int infoId) => null;
   String? showLogoPath(int infoId) => null;
-  OfflineChrome? chromeFor(int mediaId) => null;
-  Future<void> rememberChrome(OfflineChrome chrome) async {}
 
   Future<void> download(
     HomeMediaItem item, {

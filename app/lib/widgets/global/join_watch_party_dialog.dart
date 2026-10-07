@@ -8,6 +8,7 @@ import '../../services/watch_party.dart';
 import '../../theme/app_colors.dart';
 import '../../tv/tv_deferred_keyboard.dart';
 import '../../theme/app_type.dart';
+import '../../l10n/tr.dart';
 
 /// Demande le code d'une séance « Regarder ensemble », la rejoint sur le
 /// serveur actif et ouvre le lecteur là où en sont les autres.
@@ -28,8 +29,8 @@ Future<void> showJoinWatchPartyDialog(
     // rester, on ne pourrait rien y voir.
     await session.leave();
     if (!context.mounted) return;
-    ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
-      content: Text('Ce média n’est pas disponible sur votre compte.'),
+    ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+      content: Text(tr('Ce média n’est pas disponible sur votre compte.')),
     ));
     return;
   }
@@ -68,7 +69,7 @@ class _JoinWatchPartyDialogState extends State<_JoinWatchPartyDialog> {
   Future<void> _join() async {
     final code = WatchPartySession.normalizeCode(_code.text);
     if (code.isEmpty) {
-      setState(() => _error = 'Entrez le code affiché chez l’hôte.');
+      setState(() => _error = tr('Entrez le code affiché chez l’hôte.'));
       return;
     }
     // Le même compte que celui sur lequel le lecteur s'ouvrira.
@@ -96,16 +97,16 @@ class _JoinWatchPartyDialogState extends State<_JoinWatchPartyDialog> {
       setState(() {
         _joining = false;
         _error = switch (e.response?.statusCode) {
-          404 => 'Aucune séance avec ce code sur ce serveur.',
-          409 => 'Cette séance est complète.',
-          _ => 'Impossible de rejoindre la séance. Réessayez.',
+          404 => tr('Aucune séance avec ce code sur ce serveur.'),
+          409 => tr('Cette séance est complète.'),
+          _ => tr('Impossible de rejoindre la séance. Réessayez.'),
         };
       });
     } catch (_) {
       if (!mounted) return;
       setState(() {
         _joining = false;
-        _error = 'Impossible de rejoindre la séance. Réessayez.';
+        _error = tr('Impossible de rejoindre la séance. Réessayez.');
       });
     }
   }
@@ -115,7 +116,7 @@ class _JoinWatchPartyDialogState extends State<_JoinWatchPartyDialog> {
     final server = widget.authProvider.activeServer?.displayName;
     return AlertDialog(
       backgroundColor: AppColors.surfaceElevated,
-      title: const Text('Rejoindre une séance'),
+      title: Text(tr('Rejoindre une séance')),
       content: ConstrainedBox(
         constraints: const BoxConstraints(maxWidth: 360),
         child: Column(
@@ -124,9 +125,8 @@ class _JoinWatchPartyDialogState extends State<_JoinWatchPartyDialog> {
           children: [
             Text(
               server == null
-                  ? 'Entrez le code affiché dans le lecteur de l’hôte.'
-                  : 'Entrez le code affiché dans le lecteur de l’hôte, sur '
-                      '$server.',
+                  ? tr('Entrez le code affiché dans le lecteur de l’hôte.')
+                  : tr('Entrez le code affiché dans le lecteur de l’hôte, sur {0}.', [server]),
               style: const TextStyle(color: AppColors.textSecondary),
             ),
             const SizedBox(height: 16),
@@ -145,7 +145,7 @@ class _JoinWatchPartyDialogState extends State<_JoinWatchPartyDialog> {
                   letterSpacing: 6,
                 ),
                 decoration: InputDecoration(
-                  hintText: 'ABC123',
+                  hintText: tr('ABC123'),
                   errorText: _error,
                 ),
                 onSubmitted: (_) => _join(),
@@ -157,7 +157,7 @@ class _JoinWatchPartyDialogState extends State<_JoinWatchPartyDialog> {
       actions: [
         TextButton(
           onPressed: _joining ? null : () => Navigator.of(context).pop(),
-          child: const Text('Annuler'),
+          child: Text(tr('Annuler')),
         ),
         FilledButton(
           onPressed: _joining ? null : _join,
@@ -167,7 +167,7 @@ class _JoinWatchPartyDialogState extends State<_JoinWatchPartyDialog> {
                   height: 16,
                   child: CircularProgressIndicator(strokeWidth: 2),
                 )
-              : const Text('Rejoindre'),
+              : Text(tr('Rejoindre')),
         ),
       ],
     );

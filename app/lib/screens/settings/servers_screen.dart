@@ -14,6 +14,7 @@ import '../../tv/tv_deferred_keyboard.dart';
 import '../../utils/on_screen.dart';
 import '../../widgets/global/otp_code_dialog.dart';
 import '../../theme/app_type.dart';
+import '../../l10n/tr.dart';
 
 /// Les serveurs de cet appareil : celui qui est actif, ceux sur lesquels on
 /// peut basculer, et les demandes d'accès encore sans réponse.
@@ -78,7 +79,7 @@ class _ServersScreenState extends State<ServersScreen> with OnScreenState {
     await auth.refreshAccessRequests();
     _checking = false;
     if (!mounted || auth.pendingAccessRequests.length == before) return;
-    _toast('Une demande d’accès a reçu une réponse.');
+    _toast(tr('Une demande d’accès a reçu une réponse.'));
   }
 
   void _toast(String message, {bool error = false}) {
@@ -94,10 +95,10 @@ class _ServersScreenState extends State<ServersScreen> with OnScreenState {
     final ok = await auth.switchServer(account.id);
     if (!mounted) return;
     if (ok) {
-      _toast('Vous êtes sur ${account.displayName}.');
+      _toast(tr('Vous êtes sur {0}.', [account.displayName]));
       Navigator.of(context).pop();
     } else {
-      _toast(auth.errorMessage ?? 'Bascule impossible.', error: true);
+      _toast(auth.errorMessage ?? tr('Bascule impossible.'), error: true);
     }
   }
 
@@ -109,8 +110,8 @@ class _ServersScreenState extends State<ServersScreen> with OnScreenState {
     await auth.setPrimaryServer(wasPrimary ? null : account.id);
     if (!mounted) return;
     _toast(wasPrimary
-        ? '${account.displayName} n’est plus le serveur principal.'
-        : 'L’app démarrera sur ${account.displayName}.');
+        ? tr('{0} n’est plus le serveur principal.', [account.displayName])
+        : tr('L’app démarrera sur {0}.', [account.displayName]));
     setState(() {});
   }
 
@@ -120,7 +121,7 @@ class _ServersScreenState extends State<ServersScreen> with OnScreenState {
       context: context,
       builder: (ctx) => AlertDialog(
         backgroundColor: AppColors.surface,
-        title: const Text('Nom du serveur'),
+        title: Text(tr('Nom du serveur')),
         content: TvDeferredKeyboard(
           builder: (context, focusNode, canRequestFocus) => TextField(
             focusNode: focusNode,
@@ -128,7 +129,7 @@ class _ServersScreenState extends State<ServersScreen> with OnScreenState {
             controller: controller,
             autofocus: true,
             decoration: InputDecoration(
-              labelText: 'Nom affiché',
+              labelText: tr('Nom affiché'),
               hintText: account.prettyHost,
             ),
           ),
@@ -136,11 +137,11 @@ class _ServersScreenState extends State<ServersScreen> with OnScreenState {
         actions: [
           TextButton(
             onPressed: () => Navigator.of(ctx).pop(),
-            child: const Text('Annuler'),
+            child: Text(tr('Annuler')),
           ),
           FilledButton(
             onPressed: () => Navigator.of(ctx).pop(controller.text),
-            child: const Text('Enregistrer'),
+            child: Text(tr('Enregistrer')),
           ),
         ],
       ),
@@ -156,14 +157,16 @@ class _ServersScreenState extends State<ServersScreen> with OnScreenState {
     final chosen = await showDialog<String>(
       context: context,
       builder: (ctx) => SimpleDialog(
-        title: Text('Lier ${account.username} à un compte'),
+        title: Text(tr('Lier {0} à un compte', [account.username])),
         children: [
-          const Padding(
+          Padding(
             padding: EdgeInsets.fromLTRB(24, 0, 24, 16),
             child: Text(
-                'Choisissez un autre de vos comptes. Les deux serveurs se transmettront votre progression, '
-                'et chacun apparaîtra sur vos autres appareils. Les administrateurs des deux serveurs '
-                'doivent accepter le lien une première fois.'),
+                tr('Choisissez un autre de vos comptes. Les deux serveurs '
+                    'se transmettront votre progression, et chacun '
+                    'apparaîtra sur vos autres appareils. Les '
+                    'administrateurs des deux serveurs doivent accepter le '
+                    'lien une première fois.')),
           ),
           for (final other in candidates)
             SimpleDialogOption(
@@ -175,7 +178,7 @@ class _ServersScreenState extends State<ServersScreen> with OnScreenState {
             ),
           SimpleDialogOption(
             onPressed: () => Navigator.of(ctx).pop(),
-            child: const Text('Annuler'),
+            child: Text(tr('Annuler')),
           ),
         ],
       ),
@@ -194,7 +197,7 @@ class _ServersScreenState extends State<ServersScreen> with OnScreenState {
         : await showDialog<AccountLink>(
             context: context,
             builder: (ctx) => SimpleDialog(
-              title: const Text('Dissocier quel compte ?'),
+              title: Text(tr('Dissocier quel compte ?')),
               children: [
                 for (final link in links)
                   SimpleDialogOption(
@@ -207,7 +210,7 @@ class _ServersScreenState extends State<ServersScreen> with OnScreenState {
                   ),
                 SimpleDialogOption(
                   onPressed: () => Navigator.of(ctx).pop(),
-                  child: const Text('Annuler'),
+                  child: Text(tr('Annuler')),
                 ),
               ],
             ),
@@ -215,7 +218,7 @@ class _ServersScreenState extends State<ServersScreen> with OnScreenState {
     if (link == null || !mounted) return;
     try {
       await api.unlinkAccount(account.id, link);
-      _toast('Compte dissocié. L’historique déjà partagé est conservé.');
+      _toast(tr('Compte dissocié. L’historique déjà partagé est conservé.'));
     } catch (e) {
       _toast(_errorText(e), error: true);
     }
@@ -240,20 +243,21 @@ class _ServersScreenState extends State<ServersScreen> with OnScreenState {
       context: context,
       builder: (ctx) => AlertDialog(
         backgroundColor: AppColors.surface,
-        title: Text('Retirer ${account.displayName} ?'),
-        content: const Text(
-          'Ce serveur disparaît de cet appareil et il faudra retaper un mot de '
-          'passe pour y revenir. Le compte lui-même n’est pas supprimé.',
+        title: Text(tr('Retirer {0} ?', [account.displayName])),
+        content: Text(
+          tr('Ce serveur disparaît de cet appareil et il faudra retaper un '
+              'mot de passe pour y revenir. Le compte lui-même n’est pas '
+              'supprimé.'),
         ),
         actions: [
           TextButton(
             onPressed: () => Navigator.of(ctx).pop(false),
-            child: const Text('Annuler'),
+            child: Text(tr('Annuler')),
           ),
           FilledButton(
             style: FilledButton.styleFrom(backgroundColor: AppColors.error),
             onPressed: () => Navigator.of(ctx).pop(true),
-            child: const Text('Retirer'),
+            child: Text(tr('Retirer')),
           ),
         ],
       ),
@@ -281,16 +285,18 @@ class _ServersScreenState extends State<ServersScreen> with OnScreenState {
 
     final children = <Widget>[
       if (!widget.embedded) ...[
-        const Text(
-          'Liez vos comptes, même avec des noms différents : les serveurs se transmettent votre '
-          'progression, vos serveurs vous suivent sur tous vos appareils, et la lecture reprend '
-          'sur un serveur disponible.',
+        Text(
+          tr('Liez vos comptes, même avec des noms différents : les '
+              'serveurs se transmettent votre progression, vos serveurs vous '
+              'suivent sur tous vos appareils, et la lecture reprend sur un '
+              'serveur disponible.'),
           style: TextStyle(color: AppColors.textSecondary, fontSize: AppType.subhead),
         ),
         const SizedBox(height: 10),
-        const Text(
-          'Désignez un serveur principal pour que l’app y revienne à chaque lancement. '
-          'S’il ne répond pas, elle vous proposera les autres au lieu de basculer toute seule.',
+        Text(
+          tr('Désignez un serveur principal pour que l’app y revienne à '
+              'chaque lancement. S’il ne répond pas, elle vous proposera les '
+              'autres au lieu de basculer toute seule.'),
           style: TextStyle(color: AppColors.textSecondary, fontSize: AppType.subhead),
         ),
         const SizedBox(height: 20),
@@ -313,14 +319,15 @@ class _ServersScreenState extends State<ServersScreen> with OnScreenState {
         ),
       if (elsewhere.isNotEmpty) ...[
         const SizedBox(height: 24),
-        const Text(
-          'Vos autres serveurs',
+        Text(
+          tr('Vos autres serveurs'),
           style: TextStyle(fontWeight: FontWeight.w600),
         ),
         const SizedBox(height: 4),
-        const Text(
-          'Liés à votre compte, mais pas encore ouverts sur cet appareil. '
-          'Entrez votre mot de passe une fois pour pouvoir y basculer.',
+        Text(
+          tr('Liés à votre compte, mais pas encore ouverts sur cet '
+              'appareil. Entrez votre mot de passe une fois pour pouvoir y '
+              'basculer.'),
           style: TextStyle(color: AppColors.textSecondary, fontSize: AppType.footnote),
         ),
         for (final link in elsewhere)
@@ -334,20 +341,21 @@ class _ServersScreenState extends State<ServersScreen> with OnScreenState {
             ),
             trailing: TextButton(
               onPressed: () => _signInToLinked(link),
-              child: const Text('Se connecter'),
+              child: Text(tr('Se connecter')),
             ),
           ),
       ],
       if (pending.isNotEmpty) ...[
         const SizedBox(height: 24),
-        const Text(
-          'Demandes en attente',
+        Text(
+          tr('Demandes en attente'),
           style: TextStyle(fontWeight: FontWeight.w600),
         ),
         const SizedBox(height: 4),
-        const Text(
-          'Un administrateur du serveur doit accepter. La réponse est '
-          'récupérée toute seule, y compris après un redémarrage de l’app.',
+        Text(
+          tr('Un administrateur du serveur doit accepter. La réponse est '
+              'récupérée toute seule, y compris après un redémarrage de '
+              'l’app.'),
           style: TextStyle(color: AppColors.textSecondary, fontSize: AppType.footnote),
         ),
         for (final request in pending)
@@ -366,11 +374,11 @@ class _ServersScreenState extends State<ServersScreen> with OnScreenState {
             ),
             title: Text(request.prettyHost),
             subtitle: Text(
-              'En attente · ${request.username}',
+              tr('En attente · {0}', [request.username]),
               style: const TextStyle(color: AppColors.textSecondary),
             ),
             trailing: IconButton(
-              tooltip: 'Abandonner',
+              tooltip: tr('Abandonner'),
               icon: const Icon(Icons.close_rounded),
               onPressed: () async {
                 await context
@@ -387,7 +395,7 @@ class _ServersScreenState extends State<ServersScreen> with OnScreenState {
         child: FilledButton.tonalIcon(
           onPressed: _addServer,
           icon: const Icon(Icons.add_rounded),
-          label: const Text('Ajouter un serveur'),
+          label: Text(tr('Ajouter un serveur')),
         ),
       ),
     ];
@@ -400,7 +408,7 @@ class _ServersScreenState extends State<ServersScreen> with OnScreenState {
     }
     return Scaffold(
       backgroundColor: AppColors.background,
-      appBar: AppBar(title: const Text('Serveurs')),
+      appBar: AppBar(title: Text(tr('Serveurs'))),
       body: ListView(
         padding: const EdgeInsets.fromLTRB(20, 12, 20, 40),
         children: children,
@@ -489,7 +497,7 @@ class _ServerTile extends StatelessWidget {
             style: const TextStyle(color: AppColors.textSecondary),
           ),
           trailing: PopupMenuButton<String>(
-            tooltip: 'Options du compte ${account.username}',
+            tooltip: tr('Options du compte {0}', [account.username]),
             enabled: !busy,
             onSelected: (value) {
               switch (value) {
@@ -509,20 +517,20 @@ class _ServerTile extends StatelessWidget {
               PopupMenuItem(
                 value: 'primary',
                 child: Text(isPrimary
-                    ? 'Ne plus démarrer ici'
-                    : 'Démarrer sur ce serveur'),
+                    ? tr('Ne plus démarrer ici')
+                    : tr('Démarrer sur ce serveur')),
               ),
               if (onLink != null)
-                const PopupMenuItem(
-                    value: 'link', child: Text('Lier un compte')),
+                PopupMenuItem(
+                    value: 'link', child: Text(tr('Lier un compte'))),
               if (links.isNotEmpty)
-                const PopupMenuItem(
-                    value: 'unlink', child: Text('Dissocier ce compte')),
-              const PopupMenuItem(value: 'rename', child: Text('Renommer')),
+                PopupMenuItem(
+                    value: 'unlink', child: Text(tr('Dissocier ce compte'))),
+              PopupMenuItem(value: 'rename', child: Text(tr('Renommer'))),
               if (onForget != null)
-                const PopupMenuItem(
+                PopupMenuItem(
                   value: 'forget',
-                  child: Text('Retirer de cet appareil'),
+                  child: Text(tr('Retirer de cet appareil')),
                 ),
             ],
           ),
@@ -599,7 +607,7 @@ class _AddServerScreenState extends State<AddServerScreen> {
       _discovering = false;
       if (address != null) _serverController.text = address;
     });
-    if (found == null) _snack('Aucun serveur Onyx trouvé sur ce réseau.');
+    if (found == null) _snack(tr('Aucun serveur Onyx trouvé sur ce réseau.'));
   }
 
   void _snack(String message) {
@@ -630,7 +638,7 @@ class _AddServerScreenState extends State<AddServerScreen> {
           if (mounted) setState(() => _busy = false);
           return;
         }
-        _snack('${account.displayName} ajouté.');
+        _snack(tr('{0} ajouté.', [account.displayName]));
         if (previous != null && previous.id != account.id) {
           await _offerLink(previous, account);
         }
@@ -643,7 +651,7 @@ class _AddServerScreenState extends State<AddServerScreen> {
         );
         if (!mounted) return;
         _snack(
-            'Demande envoyée. Vous serez connecté dès qu’elle sera acceptée.');
+            tr('Demande envoyée. Vous serez connecté dès qu’elle sera acceptée.'));
       }
       if (mounted) Navigator.of(context).pop(true);
     } catch (e) {
@@ -699,21 +707,21 @@ class _AddServerScreenState extends State<AddServerScreen> {
       builder: (ctx) => AlertDialog(
         backgroundColor: AppColors.surface,
         title:
-            Text('Lier à ${previous.username} sur ${previous.displayName} ?'),
-        content: const Text(
-          'Si ces deux comptes sont à vous, vos serveurs se transmettront votre '
-          'progression et chacun apparaîtra sur vos autres appareils. Les '
-          'administrateurs des deux serveurs doivent accepter le lien une '
-          'première fois.',
+            Text(tr('Lier à {0} sur {1} ?', [previous.username, previous.displayName])),
+        content: Text(
+          tr('Si ces deux comptes sont à vous, vos serveurs se '
+              'transmettront votre progression et chacun apparaîtra sur vos '
+              'autres appareils. Les administrateurs des deux serveurs '
+              'doivent accepter le lien une première fois.'),
         ),
         actions: [
           TextButton(
             onPressed: () => Navigator.of(ctx).pop(false),
-            child: const Text('Plus tard'),
+            child: Text(tr('Plus tard')),
           ),
           FilledButton(
             onPressed: () => Navigator.of(ctx).pop(true),
-            child: const Text('Lier'),
+            child: Text(tr('Lier')),
           ),
         ],
       ),
@@ -729,22 +737,22 @@ class _AddServerScreenState extends State<AddServerScreen> {
 
     return Scaffold(
       backgroundColor: AppColors.background,
-      appBar: AppBar(title: const Text('Ajouter un serveur')),
+      appBar: AppBar(title: Text(tr('Ajouter un serveur'))),
       body: Form(
         key: _formKey,
         child: ListView(
           padding: const EdgeInsets.fromLTRB(20, 16, 20, 40),
           children: [
             SegmentedButton<_AddMode>(
-              segments: const [
+              segments: [
                 ButtonSegment(
                   value: _AddMode.request,
-                  label: Text('Demander l’accès'),
+                  label: Text(tr('Demander l’accès')),
                   icon: Icon(Icons.doorbell_outlined, size: 18),
                 ),
                 ButtonSegment(
                   value: _AddMode.signIn,
-                  label: Text('J’ai un compte'),
+                  label: Text(tr('J’ai un compte')),
                   icon: Icon(Icons.login_rounded, size: 18),
                 ),
               ],
@@ -756,11 +764,11 @@ class _AddServerScreenState extends State<AddServerScreen> {
             const SizedBox(height: 14),
             Text(
               requesting
-                  ? 'Choisissez l’identifiant et le mot de passe que vous aurez '
-                      'sur ce serveur. Le compte n’est créé qu’une fois la '
-                      'demande acceptée.'
-                  : 'Entrez les identifiants de votre compte sur ce serveur. '
-                      'Votre serveur actuel n’est pas touché.',
+                  ? tr('Choisissez l’identifiant et le mot de passe que vous '
+                      'aurez sur ce serveur. Le compte n’est créé qu’une '
+                      'fois la demande acceptée.')
+                  : tr('Entrez les identifiants de votre compte sur ce '
+                      'serveur. Votre serveur actuel n’est pas touché.'),
               style:
                   const TextStyle(color: AppColors.textSecondary, fontSize: AppType.subhead),
             ),
@@ -771,13 +779,13 @@ class _AddServerScreenState extends State<AddServerScreen> {
                 canRequestFocus: canRequestFocus,
                 controller: _serverController,
                 keyboardType: TextInputType.url,
-                decoration: const InputDecoration(
-                  labelText: 'Adresse du serveur',
+                decoration: InputDecoration(
+                  labelText: tr('Adresse du serveur'),
                   hintText: 'http://192.168.1.50:8080',
                   prefixIcon: Icon(Icons.dns_rounded),
                 ),
                 validator: (v) =>
-                    v == null || v.trim().isEmpty ? 'Requis' : null,
+                    v == null || v.trim().isEmpty ? tr('Requis') : null,
               ),
             ),
             if (ServerDiscovery.isSupported)
@@ -793,8 +801,8 @@ class _AddServerScreenState extends State<AddServerScreen> {
                         )
                       : const Icon(Icons.travel_explore_rounded, size: 18),
                   label: Text(_discovering
-                      ? 'Recherche…'
-                      : 'Détecter le serveur sur le réseau'),
+                      ? tr('Recherche…')
+                      : tr('Détecter le serveur sur le réseau')),
                 ),
               ),
             const SizedBox(height: 12),
@@ -803,12 +811,12 @@ class _AddServerScreenState extends State<AddServerScreen> {
                 focusNode: focusNode,
                 canRequestFocus: canRequestFocus,
                 controller: _usernameController,
-                decoration: const InputDecoration(
-                  labelText: 'Nom d’utilisateur',
+                decoration: InputDecoration(
+                  labelText: tr('Nom d’utilisateur'),
                   prefixIcon: Icon(Icons.person_outline_rounded),
                 ),
                 validator: (v) =>
-                    v == null || v.trim().isEmpty ? 'Requis' : null,
+                    v == null || v.trim().isEmpty ? tr('Requis') : null,
               ),
             ),
             const SizedBox(height: 12),
@@ -818,13 +826,13 @@ class _AddServerScreenState extends State<AddServerScreen> {
                 canRequestFocus: canRequestFocus,
                 controller: _passwordController,
                 obscureText: true,
-                decoration: const InputDecoration(
-                  labelText: 'Mot de passe',
+                decoration: InputDecoration(
+                  labelText: tr('Mot de passe'),
                   prefixIcon: Icon(Icons.lock_outline_rounded),
                 ),
                 validator: (v) {
-                  if (v == null || v.isEmpty) return 'Requis';
-                  if (v.length < 4) return 'Minimum 4 caractères';
+                  if (v == null || v.isEmpty) return tr('Requis');
+                  if (v.length < 4) return tr('Minimum 4 caractères');
                   return null;
                 },
               ),
@@ -837,9 +845,9 @@ class _AddServerScreenState extends State<AddServerScreen> {
                   canRequestFocus: canRequestFocus,
                   controller: _messageController,
                   maxLength: 280,
-                  decoration: const InputDecoration(
-                    labelText: 'Message (facultatif)',
-                    hintText: 'Dites qui vous êtes',
+                  decoration: InputDecoration(
+                    labelText: tr('Message (facultatif)'),
+                    hintText: tr('Dites qui vous êtes'),
                     prefixIcon: Icon(Icons.chat_bubble_outline_rounded),
                   ),
                 ),
@@ -870,7 +878,7 @@ class _AddServerScreenState extends State<AddServerScreen> {
                       height: 20,
                       child: CircularProgressIndicator(strokeWidth: 2),
                     )
-                  : Text(requesting ? 'Envoyer la demande' : 'Ajouter'),
+                  : Text(requesting ? tr('Envoyer la demande') : tr('Ajouter')),
             ),
           ],
         ),
@@ -916,8 +924,10 @@ Future<void> linkAndReport(
     final link = await api.linkAccounts(fromId, toId);
     messenger.showSnackBar(SnackBar(
       content: Text(link.isActive
-          ? 'Comptes liés. Les serveurs se transmettent désormais votre progression.'
-          : 'Lien demandé. Il sera actif dès que les administrateurs des deux serveurs l’auront accepté.'),
+          ? tr('Comptes liés. Les serveurs se transmettent désormais votre '
+              'progression.')
+          : tr('Lien demandé. Il sera actif dès que les administrateurs des '
+              'deux serveurs l’auront accepté.')),
     ));
   } catch (e) {
     messenger.showSnackBar(SnackBar(
@@ -936,13 +946,13 @@ String _errorText(Object error) {
     switch (error.type) {
       case DioExceptionType.connectionTimeout:
       case DioExceptionType.receiveTimeout:
-        return 'Le serveur ne répond pas (délai dépassé).';
+        return tr('Le serveur ne répond pas (délai dépassé).');
       case DioExceptionType.connectionError:
-        return 'Serveur injoignable. Vérifiez l’adresse et le réseau.';
+        return tr('Serveur injoignable. Vérifiez l’adresse et le réseau.');
       default:
         break;
     }
   }
   if (error is StateError) return error.message;
-  return 'Une erreur est survenue : $error';
+  return tr('Une erreur est survenue : {0}', [error]);
 }

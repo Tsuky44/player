@@ -27,8 +27,6 @@ import 'providers/auth_provider.dart';
 import 'providers/home_provider.dart';
 import 'providers/library_provider.dart';
 import 'providers/media_requests_provider.dart';
-import 'providers/player_layout_provider.dart';
-import 'services/layout_storage.dart';
 import 'providers/search_provider.dart';
 import 'navigation/search_route_observer.dart';
 import 'screens/shared_link/shared_link_app.dart';
@@ -55,9 +53,12 @@ import 'theme/app_colors.dart';
 import 'theme/app_theme.dart';
 import 'desktop_window.dart';
 import 'widgets/global/middle_click_autoscroll.dart';
+import 'l10n/app_language.dart';
+import 'l10n/tr.dart';
 
-/// Les licences des polices embarquées — Manrope (OFL) et les icônes Phosphor
-/// (MIT) —, lues depuis le paquet.
+/// Les licences de ce qu'aucun paquet Dart ne déclare : les polices embarquées
+/// — Manrope (OFL) et les icônes Phosphor (MIT) — et les moteurs de lecture
+/// natifs, lues depuis le paquet.
 ///
 /// Rendu paresseux : `LicenseRegistry` ne tire ce flux que si quelqu'un ouvre
 /// la page des licences, donc les fichiers ne sont pas lus au démarrage.
@@ -67,6 +68,11 @@ Stream<LicenseEntry> _bundledFontLicenses() async* {
   final phosphor =
       await rootBundle.loadString('assets/fonts/Phosphor-LICENSE.txt');
   yield LicenseEntryWithLineBreaks(const ['Phosphor Icons'], phosphor);
+  // Les moteurs de lecture ne sont pas des paquets Dart : rien ne les déclare
+  // à leur place, et la LGPL demande qu'ils soient nommés avec leurs sources.
+  final players = await rootBundle.loadString('assets/legal/third_party.txt');
+  yield LicenseEntryWithLineBreaks(
+      const ['mpv, FFmpeg, AetherEngine, Media3'], players);
 }
 
 /// Enables trackpad / mouse drag scrolling on desktop (required on macOS).
@@ -198,6 +204,11 @@ void main() async {
   // entirely between a phone and a television, and flipping it after the fact
   // would show the password form for a beat on every TV boot.
   await TvMode.initialize();
+
+  // La langue aussi se décide avant la première image : sans cela un
+  // appareil en anglais afficherait un écran de connexion en français, puis
+  // le verrait se retraduire.
+  await AppLanguage.load();
 
   // How much memory playback may spend here. Resolved before the first frame
   // like the TV mode above, because it is read when a media opens and the
@@ -355,18 +366,18 @@ void main() async {
         ChangeNotifierProvider<LibraryProvider>.value(value: libraryProvider),
         ChangeNotifierProvider<MediaRequestsProvider>.value(
             value: mediaRequestsProvider),
-        ChangeNotifierProxyProvider<AuthProvider, PlayerLayoutProvider>(
-          create: (_) => PlayerLayoutProvider(LayoutStorage(), apiClient),
-          update: (_, auth, previous) {
-            final provider =
-                previous ?? PlayerLayoutProvider(LayoutStorage(), apiClient);
-            provider.onAuthChanged(auth);
-            return provider;
-          },
-        ),
         ChangeNotifierProvider(create: (_) => SearchProvider()),
       ],
-      child: OnyxApp(searchRouteObserver: searchRouteObserver),
+      // Changer de langue reconstruit l'app entière : les textes sont lus par
+      // `tr()` au moment du build, et rien d'autre ne dirait à un écran déjà
+      // construit de se retraduire.
+      child: ValueListenableBuilder<AppLanguage>(
+        valueListenable: AppLanguage.notifier,
+        builder: (context, language, _) => OnyxApp(
+          key: ValueKey(language),
+          searchRouteObserver: searchRouteObserver,
+        ),
+      ),
     ),
   );
 
@@ -532,7 +543,7 @@ class SplashScreen extends StatelessWidget {
             const CircularProgressIndicator(strokeWidth: 2.5),
             const SizedBox(height: 20),
             Text(
-              'Connexion à Onyx…',
+              tr('Connexion à Onyx…'),
               style: Theme.of(context).textTheme.bodyLarge?.copyWith(
                     color: AppColors.textMuted,
                     letterSpacing: 0.5,

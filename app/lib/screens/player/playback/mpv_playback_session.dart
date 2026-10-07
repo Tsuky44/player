@@ -678,6 +678,22 @@ class MpvPlaybackSession implements PlaybackSession {
     if (AppPlatform.isWindows) await _set(platform, 'video-crop', '');
   }
 
+  /// Repasse cette lecture sur `d3d11va-copy` quand le sans-copie n'y gagne
+  /// rien — voir [HardwareDecoding.windowsZeroCopyUnwanted]. Pour cette lecture
+  /// seulement : la suivante peut être un 4K, et le réglage est reposé à chaque
+  /// ouverture.
+  Future<bool> _leaveUnwantedZeroCopy() async {
+    if (!AppPlatform.isWindows) return false;
+    final platform = _player.platform as dynamic;
+    final unwanted = HardwareDecoding.windowsZeroCopyUnwanted(
+      preference: HardwareDecoding.preference,
+      decoder: (await _read(platform, 'hwdec-current') ?? '').trim(),
+      height: _player.state.videoParams.h ?? 0,
+    );
+    if (unwanted) await _set(platform, 'hwdec', 'd3d11va-copy');
+    return unwanted;
+  }
+
   /// Cache la bande verte que le décodage sans copie laisse au bord de l'image
   /// — voir [HardwareDecoding.zeroCopyEdgeCrop].
   Future<void> _cropZeroCopyPadding() async {
@@ -716,6 +732,8 @@ class MpvPlaybackSession implements PlaybackSession {
     }
     if (MpvNativeView.enabled && !AppPlatform.isWeb) await _logDolbyVision();
     if (AppPlatform.isWeb) return;
+    // La copie n'expose que l'image : ni rognage ni rattrapage à faire ensuite.
+    if (await _leaveUnwantedZeroCopy()) return;
     await _cropZeroCopyPadding();
     if (_softwareDecodeHandled) return;
     // Les plateformes où le chemin sans copie peut échouer vers le logiciel :
@@ -729,7 +747,7 @@ class MpvPlaybackSession implements PlaybackSession {
 
     final platform = _player.platform as dynamic;
     final height = _player.state.videoParams.h;
-    if (height == null || height < 1440) return;
+    if (height == null || height < HardwareDecoding.zeroCopyMinHeight) return;
 
     // « no » quand rien n'a pris ; certaines constructions répondent une chaîne
     // vide. mpv se rabat du décodeur sans copie **directement** sur le

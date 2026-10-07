@@ -9,6 +9,7 @@ import '../../../theme/app_colors.dart';
 import '../settings_screen.dart';
 import '../widgets/settings_ui.dart';
 import '../../../theme/app_type.dart';
+import '../../../l10n/tr.dart';
 
 /// Ce que l'app a écrit sur elle-même, lisible sans câble.
 ///
@@ -68,7 +69,7 @@ class _LogsPageState extends State<LogsPage> {
       // Un serveur plus ancien n'a pas ce réglage. La section le dit et
       // s'efface : le journal local, lui, marche de toute façon.
       setState(() => _serverError = settingsErrorText(
-          e, 'Réglage indisponible sur ce serveur.'));
+          e, tr('Réglage indisponible sur ce serveur.')));
     }
   }
 
@@ -89,8 +90,8 @@ class _LogsPageState extends State<LogsPage> {
       showSettingsSnack(
         context,
         value
-            ? 'Journaux des lectures activés.'
-            : 'Journaux des lectures désactivés.',
+            ? tr('Journaux des lectures activés.')
+            : tr('Journaux des lectures désactivés.'),
       );
     } catch (e) {
       if (!mounted) return;
@@ -98,7 +99,7 @@ class _LogsPageState extends State<LogsPage> {
       // qui reste sur une position que le serveur a refusée ment.
       setState(() => _serverLogsEnabled = _server?.playbackLogsEnabled ?? true);
       showSettingsSnack(
-          context, settingsErrorText(e, "Échec de l'enregistrement."),
+          context, settingsErrorText(e, tr('Échec de l\'enregistrement.')),
           error: true);
     }
     if (mounted) setState(() => _savingServerLogs = false);
@@ -120,14 +121,14 @@ class _LogsPageState extends State<LogsPage> {
       });
       showSettingsSnack(
         context,
-        value ? 'Mesures des lectures activées.' : 'Mesures désactivées.',
+        value ? tr('Mesures des lectures activées.') : tr('Mesures désactivées.'),
       );
     } catch (e) {
       if (!mounted) return;
       setState(
           () => _serverStatsEnabled = _server?.playbackStatsEnabled ?? true);
       showSettingsSnack(
-          context, settingsErrorText(e, "Échec de l'enregistrement."),
+          context, settingsErrorText(e, tr('Échec de l\'enregistrement.')),
           error: true);
     }
     if (mounted) setState(() => _savingServerStats = false);
@@ -140,18 +141,18 @@ class _LogsPageState extends State<LogsPage> {
     if (!mounted) return;
     showSettingsSnack(
       context,
-      '${shown.length} ligne${shown.length > 1 ? 's' : ''} copiée'
-      '${shown.length > 1 ? 's' : ''}.',
+      tr('{0} ligne{1} copiée{2}.', [shown.length, shown.length > 1 ? 's' : '', shown.length > 1 ? 's' : '']),
     );
   }
 
   Future<void> _clear() async {
     final confirmed = await confirmSettingsAction(
       context,
-      title: 'Vider le journal ?',
+      title: tr('Vider le journal ?'),
       message:
-          'Les lignes déjà enregistrées sont perdues. L’app continue d’en écrire de nouvelles.',
-      confirmLabel: 'Vider',
+          tr('Les lignes déjà enregistrées sont perdues. L’app continue '
+              'd’en écrire de nouvelles.'),
+      confirmLabel: tr('Vider'),
     );
     if (!confirmed || !mounted) return;
     ClientLog.clear();
@@ -172,36 +173,40 @@ class _LogsPageState extends State<LogsPage> {
         final layout = SettingsLayout.maybeOf(context);
 
         return SettingsPage(
-          title: 'Journal',
+          title: tr('Journal'),
           description:
-              'Ce que cette application enregistre sur elle-même : démarrages de lecture, '
-              'réponses du serveur, pannes. Rien n’en sort tant que vous ne copiez pas — '
-              'le journal vit en mémoire et disparaît à la fermeture de l’app. '
-              'Les journaux que les lectures laissent sur le serveur, eux, se relisent '
-              'depuis n’importe quel appareil.',
+              tr('Ce que cette application enregistre sur elle-même : '
+                  'démarrages de lecture, réponses du serveur, pannes. Rien '
+                  'n’en sort tant que vous ne copiez pas — le journal vit en '
+                  'mémoire et disparaît à la fermeture de l’app. Les '
+                  'journaux que les lectures laissent sur le serveur, eux, '
+                  'se relisent depuis n’importe quel appareil.'),
           actions: [
             FilledButton.icon(
               onPressed: shown.isEmpty ? null : () => _copy(shown),
               icon: const Icon(Icons.copy_rounded, size: 18),
-              label: const Text('Copier'),
+              label: Text(tr('Copier')),
             ),
             OutlinedButton.icon(
               onPressed: all.isEmpty ? null : _clear,
               icon: const Icon(Icons.delete_outline_rounded, size: 18),
-              label: const Text('Vider'),
+              label: Text(tr('Vider')),
             ),
           ],
           children: [
             if (_canManageServer) ...[
               SettingsGroup(
-                title: 'Journaux des lectures (serveur)',
+                title: tr('Journaux des lectures (serveur)'),
                 footer:
-                    'Chaque lecture envoie son journal et ses mesures en se terminant, '
-                    'et le serveur garde ceux des dix dernières. On les relit depuis '
-                    'l’Historique, en ouvrant une lecture — y compris celle d’un autre '
-                    'appareil, ce que le journal ci-dessous ne permet pas. Les mesures '
-                    'ont leur propre interrupteur : elles interrogent le lecteur toutes '
-                    'les cinq secondes, là où le journal ne coûte rien avant la fin.',
+                    tr('Chaque lecture envoie son journal et ses mesures en '
+                        'se terminant, et le serveur garde ceux des dix '
+                        'dernières. On les relit depuis l’Historique, en '
+                        'ouvrant une lecture — y compris celle d’un autre '
+                        'appareil, ce que le journal ci-dessous ne permet '
+                        'pas. Les mesures ont leur propre interrupteur : '
+                        'elles interrogent le lecteur toutes les cinq '
+                        'secondes, là où le journal ne coûte rien avant la '
+                        'fin.'),
                 children: [
                   if (_serverError != null)
                     SettingsEmptyNote(_serverError!,
@@ -209,12 +214,13 @@ class _LogsPageState extends State<LogsPage> {
                   else ...[
                     SettingsSwitchTile(
                       icon: Icons.cloud_sync_rounded,
-                      title: 'Conserver les journaux des lectures',
+                      title: tr('Conserver les journaux des lectures'),
                       subtitle: _server == null
-                          ? 'Chargement…'
+                          ? tr('Chargement…')
                           : _serverLogsEnabled
-                              ? 'Les dix dernières lectures gardent leur journal.'
-                              : 'Aucun journal de lecture n’est conservé.',
+                              ? tr('Les dix dernières lectures gardent leur '
+                                  'journal.')
+                              : tr('Aucun journal de lecture n’est conservé.'),
                       value: _serverLogsEnabled,
                       onChanged: _server == null || _savingServerLogs
                           ? null
@@ -222,13 +228,13 @@ class _LogsPageState extends State<LogsPage> {
                     ),
                     SettingsSwitchTile(
                       icon: Icons.speed_rounded,
-                      title: 'Mesurer la lecture',
+                      title: tr('Mesurer la lecture'),
                       subtitle: _server == null
-                          ? 'Chargement…'
+                          ? tr('Chargement…')
                           : _serverStatsEnabled
-                              ? 'Cadence, débit, décodeur et images perdues, '
-                                  'relevés pendant la lecture.'
-                              : 'Aucune mesure n’est relevée.',
+                              ? tr('Cadence, débit, décodeur et images '
+                                  'perdues, relevés pendant la lecture.')
+                              : tr('Aucune mesure n’est relevée.'),
                       value: _serverStatsEnabled,
                       onChanged: _server == null || _savingServerStats
                           ? null
@@ -237,9 +243,10 @@ class _LogsPageState extends State<LogsPage> {
                     if (_canReadHistory && layout != null)
                       SettingsTile(
                         icon: Icons.history_rounded,
-                        title: 'Ouvrir l’Historique',
+                        title: tr('Ouvrir l’Historique'),
                         subtitle:
-                            'Chaque lecture y ouvre son journal, erreurs comprises.',
+                            tr('Chaque lecture y ouvre son journal, erreurs '
+                                'comprises.'),
                         onTap: () =>
                             layout.openSection(SettingsSections.activity),
                       ),
@@ -249,15 +256,15 @@ class _LogsPageState extends State<LogsPage> {
               const SizedBox(height: 16),
             ],
             SettingsGroup(
-              title: 'Journal de cette application',
+              title: tr('Journal de cette application'),
               children: [
                 SettingsSwitchTile(
                   icon: Icons.filter_alt_rounded,
-                  title: 'Erreurs seulement',
+                  title: tr('Erreurs seulement'),
                   subtitle: errors.isEmpty
-                      ? 'Aucune erreur enregistrée depuis le démarrage de l’app.'
-                      : '${errors.length} erreur${errors.length > 1 ? 's' : ''} '
-                          'sur ${all.length} ligne${all.length > 1 ? 's' : ''}.',
+                      ? tr('Aucune erreur enregistrée depuis le démarrage de '
+                          'l’app.')
+                      : tr('{0} erreur{1} sur {2} ligne{3}.', [errors.length, errors.length > 1 ? 's' : '', all.length, all.length > 1 ? 's' : '']),
                   value: _errorsOnly,
                   onChanged: (value) => setState(() => _errorsOnly = value),
                 ),
@@ -267,9 +274,11 @@ class _LogsPageState extends State<LogsPage> {
             if (shown.isEmpty)
               SettingsEmptyNote(
                 _errorsOnly
-                    ? 'Aucune erreur. Si quelque chose vient de mal se passer, '
-                        'coupez ce filtre : la cause est souvent dans les lignes ordinaires.'
-                    : 'Rien pour l’instant. Reproduisez le problème, puis revenez ici.',
+                    ? tr('Aucune erreur. Si quelque chose vient de mal se '
+                        'passer, coupez ce filtre : la cause est souvent '
+                        'dans les lignes ordinaires.')
+                    : tr('Rien pour l’instant. Reproduisez le problème, puis '
+                        'revenez ici.'),
                 icon: Icons.receipt_long_rounded,
               )
             else
@@ -277,7 +286,7 @@ class _LogsPageState extends State<LogsPage> {
               // produire, et faire défiler six cents lignes pour l'atteindre
               // serait une drôle de façon de le présenter.
               SettingsGroup(
-                title: 'Les plus récentes d’abord',
+                title: tr('Les plus récentes d’abord'),
                 padded: true,
                 children: [
                   for (final entry in shown.reversed) _LogLine(entry: entry),
@@ -324,7 +333,7 @@ class _LogLine extends StatelessWidget {
               entry.format(),
               style: TextStyle(
                 fontFamily: 'monospace',
-                fontFamilyFallback: const ['Menlo', 'Consolas', 'Roboto Mono'],
+                fontFamilyFallback: ['Menlo', 'Consolas', tr('Roboto Mono')],
                 fontSize: AppType.footnote,
                 height: 1.4,
                 color: isError ? AppColors.error : AppColors.textSecondary,

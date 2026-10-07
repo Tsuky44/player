@@ -17,14 +17,15 @@ class StillWatchingSettings {
   final int untilMinute;
 
   const StillWatchingSettings({
-    this.enabled = true,
+    this.enabled = false,
     this.episodes = 3,
     this.fromMinute = allDayMinute,
     this.untilMinute = allDayMinute,
   });
 
-  /// Les mêmes valeurs que les défauts du serveur : un compte qui n'a rien
-  /// choisi est protégé du binge endormi sans avoir à trouver le réglage.
+  /// Les mêmes valeurs que les défauts du serveur. Éteint : la question ne se
+  /// pose que si on l'a demandée ; le nombre d'épisodes et la plage sont ce
+  /// qu'elle propose une fois allumée.
   static const StillWatchingSettings defaults = StillWatchingSettings();
 
   static const int allDayMinute = -1;

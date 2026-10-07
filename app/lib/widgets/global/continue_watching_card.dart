@@ -16,6 +16,7 @@ import 'pressable.dart';
 import 'progress_pill.dart';
 import '../../theme/app_icons.dart';
 import '../../theme/app_type.dart';
+import '../../l10n/tr.dart';
 
 class ContinueWatchingCard extends StatefulWidget {
   /// TMDB posters are 2:3 — match that ratio so faces/titles aren't cropped.
@@ -105,19 +106,19 @@ class _ContinueWatchingCardState extends State<ContinueWatchingCard> {
         // premier. Sur un téléviseur, le titre sous l'affiche n'est pas
         // atteignable, la fiche ne l'est que par ici.
         if (widget.onTitleTap != null)
-          const PopupMenuItem(
+          PopupMenuItem(
             value: 'details',
-            child: Text("Aller à l'affiche"),
+            child: Text(tr('Aller à l\'affiche')),
           ),
         if (widget.onMarkAsWatched != null)
-          const PopupMenuItem(
+          PopupMenuItem(
             value: 'watched',
-            child: Text('Marquer comme vu'),
+            child: Text(tr('Marquer comme vu')),
           ),
         if (widget.onRemoveFromRow != null)
-          const PopupMenuItem(
+          PopupMenuItem(
             value: 'hide',
-            child: Text('Supprimer de Reprendre'),
+            child: Text(tr('Supprimer de Reprendre')),
           ),
       ],
     );
@@ -136,7 +137,7 @@ class _ContinueWatchingCardState extends State<ContinueWatchingCard> {
     } catch (e) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Action impossible : $e')),
+        SnackBar(content: Text(tr('Action impossible : {0}', [e]))),
       );
     }
   }
@@ -312,13 +313,13 @@ class _NewEpisodeBadge extends StatelessWidget {
           ),
         ],
       ),
-      child: const Row(
+      child: Row(
         mainAxisSize: MainAxisSize.min,
         children: [
           Icon(AppIcons.isNew, size: 13, color: AppColors.onAccent),
           SizedBox(width: 4),
           Text(
-            'Nouvel épisode',
+            tr('Nouvel épisode'),
             style: TextStyle(
               color: AppColors.onAccent,
               fontSize: AppType.micro,
@@ -350,7 +351,7 @@ class _MoreButton extends StatelessWidget {
       curve: AppMotion.curve,
       child: Builder(
         builder: (buttonContext) => IconButton(
-          tooltip: 'Plus d’actions',
+          tooltip: tr('Plus d’actions'),
           onPressed: () => onPressed(buttonContext),
           style: IconButton.styleFrom(
             backgroundColor: Colors.black.withValues(alpha: 0.55),

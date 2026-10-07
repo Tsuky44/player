@@ -8,6 +8,7 @@ import '../../../theme/app_colors.dart';
 import '../../../tv/tv_deferred_keyboard.dart';
 import '../media_review_screen.dart';
 import '../widgets/settings_ui.dart';
+import '../../../l10n/tr.dart';
 
 /// Les dossiers analysés (manage_settings) et l'indexation (manage_library) :
 /// déléguer un scan est sans risque, repointer le dossier des films ne l'est pas.
@@ -53,7 +54,7 @@ class _LibraryPageState extends State<LibraryPage> {
     } catch (e) {
       if (!mounted) return;
       setState(() => _error =
-          settingsErrorText(e, 'Impossible de lire les dossiers du serveur.'));
+          settingsErrorText(e, tr('Impossible de lire les dossiers du serveur.')));
     }
   }
 
@@ -70,11 +71,12 @@ class _LibraryPageState extends State<LibraryPage> {
         _seriesDir.text = updated.seriesDir;
       });
       showSettingsSnack(context,
-          'Dossiers enregistrés. Lancez une synchronisation pour les analyser.');
+          tr('Dossiers enregistrés. Lancez une synchronisation pour les '
+              'analyser.'));
     } catch (e) {
       if (mounted) {
         showSettingsSnack(
-            context, settingsErrorText(e, 'Échec de l’enregistrement.'),
+            context, settingsErrorText(e, tr('Échec de l’enregistrement.')),
             error: true);
       }
     }
@@ -84,17 +86,17 @@ class _LibraryPageState extends State<LibraryPage> {
   Future<void> _run(String label, Future<void> Function() action) async {
     try {
       await action();
-      if (mounted) showSettingsSnack(context, '$label lancé…');
+      if (mounted) showSettingsSnack(context, tr('{0} lancé…', [label]));
     } catch (_) {
       if (mounted) {
-        showSettingsSnack(context, 'Impossible de lancer : $label',
+        showSettingsSnack(context, tr('Impossible de lancer : {0}', [label]),
             error: true);
       }
     }
   }
 
   String _progress(int processed, int total, String fallback) =>
-      total > 0 ? 'Progression $processed / $total' : fallback;
+      total > 0 ? tr('Progression {0} / {1}', [processed, total]) : fallback;
 
   Widget _busyOr(bool busy, VoidCallback? onRun) => busy
       ? const SizedBox(
@@ -102,7 +104,7 @@ class _LibraryPageState extends State<LibraryPage> {
           height: 18,
           child: CircularProgressIndicator(strokeWidth: 2),
         )
-      : TextButton(onPressed: onRun, child: const Text('Lancer'));
+      : TextButton(onPressed: onRun, child: Text(tr('Lancer')));
 
   Widget _field(TextEditingController controller, String label, String hint,
       IconData icon) {
@@ -126,15 +128,16 @@ class _LibraryPageState extends State<LibraryPage> {
     final home = context.watch<HomeProvider>();
 
     return SettingsPage(
-      title: 'Bibliothèque',
+      title: tr('Bibliothèque'),
       description:
-          'Où le serveur cherche vos films et séries, et les tâches qui tiennent le catalogue à jour.',
+          tr('Où le serveur cherche vos films et séries, et les tâches qui '
+              'tiennent le catalogue à jour.'),
       children: [
         if (perms.manageSettings)
           SettingsGroup(
-            title: 'Dossiers',
+            title: tr('Dossiers'),
             footer:
-                'Chemins tels que le serveur les voit (dans son conteneur).',
+                tr('Chemins tels que le serveur les voit (dans son conteneur).'),
             padded: true,
             children: [
               if (_error != null)
@@ -145,10 +148,10 @@ class _LibraryPageState extends State<LibraryPage> {
                 Column(
                   crossAxisAlignment: CrossAxisAlignment.stretch,
                   children: [
-                    _field(_moviesDir, 'Dossier des films', '/media/Films',
+                    _field(_moviesDir, tr('Dossier des films'), '/media/Films',
                         Icons.movie_outlined),
                     const SizedBox(height: 12),
-                    _field(_seriesDir, 'Dossier des séries', '/media/Series',
+                    _field(_seriesDir, tr('Dossier des séries'), '/media/Series',
                         Icons.tv_rounded),
                     const SizedBox(height: 14),
                     Align(
@@ -156,7 +159,7 @@ class _LibraryPageState extends State<LibraryPage> {
                       child: FilledButton(
                         onPressed: _saving ? null : _savePaths,
                         child:
-                            Text(_saving ? 'Enregistrement…' : 'Enregistrer'),
+                            Text(_saving ? tr('Enregistrement…') : tr('Enregistrer')),
                       ),
                     ),
                   ],
@@ -165,26 +168,27 @@ class _LibraryPageState extends State<LibraryPage> {
           ),
         if (perms.manageLibrary) ...[
           SettingsGroup(
-            title: 'Analyse',
+            title: tr('Analyse'),
             children: [
               SettingsTile(
                 icon: Icons.sync_rounded,
                 iconColor: AppColors.primary,
-                title: 'Synchroniser la bibliothèque',
+                title: tr('Synchroniser la bibliothèque'),
                 subtitle: home.isScanning
-                    ? 'Analyse en cours…'
-                    : 'Ajouter les nouveaux fichiers et retirer ceux qui ont disparu',
+                    ? tr('Analyse en cours…')
+                    : tr('Ajouter les nouveaux fichiers et retirer ceux qui '
+                        'ont disparu'),
                 showChevron: false,
                 trailing: _busyOr(
                   home.isScanning,
-                  () => _run('Synchronisation', home.triggerLibraryScan),
+                  () => _run(tr('Synchronisation'), home.triggerLibraryScan),
                 ),
               ),
               SettingsTile(
                 icon: Icons.fact_check_outlined,
-                title: 'Médias à vérifier',
+                title: tr('Médias à vérifier'),
                 subtitle:
-                    'Films et séries mal identifiés ou aux fiches incomplètes',
+                    tr('Films et séries mal identifiés ou aux fiches incomplètes'),
                 onTap: () => Navigator.of(context).push(
                   MaterialPageRoute(builder: (_) => const MediaReviewScreen()),
                 ),
@@ -192,48 +196,49 @@ class _LibraryPageState extends State<LibraryPage> {
             ],
           ),
           SettingsGroup(
-            title: 'Maintenance',
+            title: tr('Maintenance'),
             footer:
-                'Ces tâches tournent en arrière-plan sur le serveur ; vous pouvez quitter cette page.',
+                tr('Ces tâches tournent en arrière-plan sur le serveur ; '
+                    'vous pouvez quitter cette page.'),
             children: [
               SettingsTile(
                 icon: Icons.image_outlined,
-                title: 'Compléter les affiches et résumés',
+                title: tr('Compléter les affiches et résumés'),
                 subtitle: home.isBackfillingMetadata
-                    ? 'Récupération depuis TMDB…'
-                    : 'Récupérer ce qui manque depuis TMDB',
+                    ? tr('Récupération depuis TMDB…')
+                    : tr('Récupérer ce qui manque depuis TMDB'),
                 showChevron: false,
                 trailing: _busyOr(
                   home.isBackfillingMetadata,
                   () => _run(
-                      'Mise à jour des affiches', home.triggerMetadataBackfill),
+                      tr('Mise à jour des affiches'), home.triggerMetadataBackfill),
                 ),
               ),
               SettingsTile(
                 icon: Icons.manage_search_rounded,
-                title: 'Réidentifier tout le catalogue',
+                title: tr('Réidentifier tout le catalogue'),
                 subtitle: home.isRedetectingAll
                     ? _progress(home.redetectAllProgress.processed,
-                        home.redetectAllProgress.total, 'Réidentification…')
-                    : 'Refaire la correspondance TMDB de chaque film et série',
+                        home.redetectAllProgress.total, tr('Réidentification…'))
+                    : tr('Refaire la correspondance TMDB de chaque film et série'),
                 showChevron: false,
                 trailing: _busyOr(
                   home.isRedetectingAll,
                   () =>
-                      _run('Réidentification', home.triggerRedetectAllMatches),
+                      _run(tr('Réidentification'), home.triggerRedetectAllMatches),
                 ),
               ),
               SettingsTile(
                 icon: Icons.subtitles_outlined,
-                title: 'Extraire les sous-titres',
+                title: tr('Extraire les sous-titres'),
                 subtitle: home.isExtractingSubtitles
                     ? _progress(home.subtitleStats.processed,
-                        home.subtitleStats.total, 'Extraction…')
-                    : 'Préparer les pistes intégrées pour une lecture immédiate',
+                        home.subtitleStats.total, tr('Extraction…'))
+                    : tr('Préparer les pistes intégrées pour une lecture immédiate'),
                 showChevron: false,
                 trailing: _busyOr(
                   home.isExtractingSubtitles,
-                  () => _run('Extraction des sous-titres',
+                  () => _run(tr('Extraction des sous-titres'),
                       home.triggerSubtitleExtract),
                 ),
               ),

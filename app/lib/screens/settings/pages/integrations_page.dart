@@ -5,6 +5,7 @@ import '../../../services/api_client.dart';
 import '../../../theme/app_colors.dart';
 import '../../../tv/tv_deferred_keyboard.dart';
 import '../widgets/settings_ui.dart';
+import '../../../l10n/tr.dart';
 
 /// TMDB (métadonnées, affiches, catalogue de demandes) et MediaHub (envoi des
 /// demandes). Les clés ne sont jamais renvoyées en clair par le serveur.
@@ -69,7 +70,7 @@ class _IntegrationsPageState extends State<IntegrationsPage> {
     } catch (e) {
       if (!mounted) return;
       setState(() => _error = settingsErrorText(
-          e, 'Impossible de charger les paramètres serveur.'));
+          e, tr('Impossible de charger les paramètres serveur.')));
     }
   }
 
@@ -85,11 +86,11 @@ class _IntegrationsPageState extends State<IntegrationsPage> {
       if (!mounted) return;
       setState(() => _apply(updated));
       showSettingsSnack(
-          context, clearKey ? 'Clé TMDB effacée.' : 'TMDB enregistré.');
+          context, clearKey ? tr('Clé TMDB effacée.') : tr('TMDB enregistré.'));
     } catch (e) {
       if (mounted) {
         showSettingsSnack(
-            context, settingsErrorText(e, 'Échec de l’enregistrement.'),
+            context, settingsErrorText(e, tr('Échec de l’enregistrement.')),
             error: true);
       }
     }
@@ -108,11 +109,11 @@ class _IntegrationsPageState extends State<IntegrationsPage> {
       if (!mounted) return;
       setState(() => _apply(updated));
       showSettingsSnack(
-          context, clearKey ? 'Clé MediaHub effacée.' : 'MediaHub enregistré.');
+          context, clearKey ? tr('Clé MediaHub effacée.') : tr('MediaHub enregistré.'));
     } catch (e) {
       if (mounted) {
         showSettingsSnack(
-            context, settingsErrorText(e, 'Échec de l’enregistrement.'),
+            context, settingsErrorText(e, tr('Échec de l’enregistrement.')),
             error: true);
       }
     }
@@ -120,7 +121,7 @@ class _IntegrationsPageState extends State<IntegrationsPage> {
   }
 
   Widget _status(bool configured) => SettingsPill(
-        configured ? 'Configuré' : 'Non configuré',
+        configured ? tr('Configuré') : tr('Non configuré'),
         color: configured ? AppColors.success : AppColors.warning,
         icon: configured ? Icons.check_rounded : Icons.error_outline_rounded,
       );
@@ -130,18 +131,21 @@ class _IntegrationsPageState extends State<IntegrationsPage> {
     final settings = _settings;
 
     return SettingsPage(
-      title: 'Métadonnées',
+      title: tr('Métadonnées'),
       description:
-          'Les services qui donnent au catalogue ses affiches et ses résumés, et qui reçoivent les demandes de médias.',
+          tr('Les services qui donnent au catalogue ses affiches et ses '
+              'résumés, et qui reçoivent les demandes de médias.'),
       children: [
         if (_error != null) SettingsBanner(_error!, tone: BannerTone.error),
         if (settings == null && _error == null) const SettingsLoading(),
         if (settings != null) ...[
           SettingsGroup(
-            title: 'The Movie Database (TMDB)',
+            title: tr('The Movie Database (TMDB)'),
             trailing: _status(settings.tmdbApiKeySet),
             footer:
-                'Sert à identifier les fichiers, récupérer affiches, résumés et distribution, et alimenter le catalogue des demandes.',
+                tr('Sert à identifier les fichiers, récupérer affiches, '
+                    'résumés et distribution, et alimenter le catalogue des '
+                    'demandes.'),
             padded: true,
             children: [
               Column(
@@ -149,14 +153,14 @@ class _IntegrationsPageState extends State<IntegrationsPage> {
                 children: [
                   _KeyField(
                     controller: _tmdbKey,
-                    label: 'Clé API TMDB',
+                    label: tr('Clé API TMDB'),
                     configured: settings.tmdbApiKeySet,
                     hint: settings.tmdbApiKeyHint,
                   ),
                   const SizedBox(height: 12),
                   DropdownMenu<String>(
                     initialSelection: _language,
-                    label: const Text('Langue des métadonnées'),
+                    label: Text(tr('Langue des métadonnées')),
                     leadingIcon: const Icon(Icons.translate_rounded),
                     expandedInsets: EdgeInsets.zero,
                     onSelected: (value) {
@@ -180,11 +184,12 @@ class _IntegrationsPageState extends State<IntegrationsPage> {
             ],
           ),
           SettingsGroup(
-            title: 'MediaHub',
+            title: tr('MediaHub'),
             trailing: _status(
                 settings.mediaHubUrl.isNotEmpty && settings.mediaHubApiKeySet),
             footer:
-                'Les demandes faites depuis l’onglet Demandes y sont transmises pour être téléchargées.',
+                tr('Les demandes faites depuis l’onglet Demandes y sont '
+                    'transmises pour être téléchargées.'),
             padded: true,
             children: [
               Column(
@@ -196,8 +201,8 @@ class _IntegrationsPageState extends State<IntegrationsPage> {
                       canRequestFocus: canRequestFocus,
                       controller: _mediaHubUrl,
                       keyboardType: TextInputType.url,
-                      decoration: const InputDecoration(
-                        labelText: 'Adresse MediaHub',
+                      decoration: InputDecoration(
+                        labelText: tr('Adresse MediaHub'),
                         hintText: 'https://mediahub.example.com',
                         prefixIcon: Icon(Icons.link_rounded),
                       ),
@@ -206,7 +211,7 @@ class _IntegrationsPageState extends State<IntegrationsPage> {
                   const SizedBox(height: 12),
                   _KeyField(
                     controller: _mediaHubKey,
-                    label: 'Clé API MediaHub',
+                    label: tr('Clé API MediaHub'),
                     configured: settings.mediaHubApiKeySet,
                     hint: settings.mediaHubApiKeyHint,
                   ),
@@ -259,11 +264,11 @@ class _KeyFieldState extends State<_KeyField> {
         decoration: InputDecoration(
           labelText: widget.label,
           hintText: widget.configured
-              ? 'Clé active ${widget.hint ?? '••••'} — laisser vide pour la garder'
-              : 'Coller la clé',
+              ? tr('Clé active {0} — laisser vide pour la garder', [widget.hint ?? '••••'])
+              : tr('Coller la clé'),
           prefixIcon: const Icon(Icons.key_rounded),
           suffixIcon: IconButton(
-            tooltip: _obscure ? 'Afficher' : 'Masquer',
+            tooltip: _obscure ? tr('Afficher') : tr('Masquer'),
             onPressed: () => setState(() => _obscure = !_obscure),
             icon: Icon(_obscure
                 ? Icons.visibility_outlined
@@ -297,11 +302,11 @@ class _Actions extends StatelessWidget {
           TextButton(
             onPressed: saving ? null : onClear,
             style: TextButton.styleFrom(foregroundColor: AppColors.error),
-            child: const Text('Effacer la clé'),
+            child: Text(tr('Effacer la clé')),
           ),
         FilledButton(
           onPressed: saving ? null : onSave,
-          child: Text(saving ? 'Enregistrement…' : 'Enregistrer'),
+          child: Text(saving ? tr('Enregistrement…') : tr('Enregistrer')),
         ),
       ],
     );

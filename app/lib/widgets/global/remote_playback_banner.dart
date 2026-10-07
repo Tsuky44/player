@@ -13,6 +13,7 @@ import '../../utils/on_screen.dart';
 import '../../utils/poster_url.dart';
 import '../../theme/app_icons.dart';
 import '../../theme/app_type.dart';
+import '../../l10n/tr.dart';
 
 /// « Lecture en cours sur un autre appareil » : ce que le compte lit ailleurs,
 /// avec de quoi le reprendre ici là où il en est.
@@ -71,6 +72,13 @@ class _RemotePlaybackBannerState extends State<RemotePlaybackBanner>
     if (!mounted) return;
     final next =
         plays.where((p) => !_dismissed.contains(_dismissKey(p))).firstOrNull;
+    // L'autre appareil a changé d'épisode ou s'est arrêté : la rangée
+    // « Reprendre la lecture » d'ici date d'avant, on la relit.
+    final previous = _current;
+    if (previous != null && previous.session.mediaId != next?.session.mediaId) {
+      unawaited(Provider.of<HomeProvider>(context, listen: false)
+          .loadHome(silent: true));
+    }
     setState(() => _current = next);
   }
 
@@ -116,7 +124,7 @@ class _RemotePlaybackBannerState extends State<RemotePlaybackBanner>
         Provider.of<AuthProvider>(context, listen: false).apiClient.baseUrl;
     final poster = cardPosterUrl(s.posterUrl, serverBaseUrl: baseUrl);
     final device =
-        s.deviceName.isNotEmpty ? s.deviceName : 'un autre appareil';
+        s.deviceName.isNotEmpty ? s.deviceName : tr('un autre appareil');
 
     return ConstrainedBox(
       key: ValueKey(_dismissKey(play)),
@@ -156,7 +164,7 @@ class _RemotePlaybackBannerState extends State<RemotePlaybackBanner>
                       mainAxisSize: MainAxisSize.min,
                       children: [
                         Text(
-                          'Lecture en cours sur $device',
+                          tr('Lecture en cours sur {0}', [device]),
                           maxLines: 1,
                           overflow: TextOverflow.ellipsis,
                           style: const TextStyle(
@@ -192,10 +200,10 @@ class _RemotePlaybackBannerState extends State<RemotePlaybackBanner>
                   FilledButton.icon(
                     onPressed: _opening ? null : _resume,
                     icon: const Icon(AppIcons.play, size: 20),
-                    label: const Text('Reprendre'),
+                    label: Text(tr('Reprendre')),
                   ),
                   IconButton(
-                    tooltip: 'Ignorer',
+                    tooltip: tr('Ignorer'),
                     onPressed: () => setState(() {
                       _dismissed.add(_dismissKey(play));
                       _current = null;

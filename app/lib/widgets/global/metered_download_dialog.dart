@@ -5,6 +5,7 @@ import '../../services/download_manager.dart';
 import '../../services/download_preferences.dart';
 import '../../services/network_status.dart';
 import '../../theme/app_colors.dart';
+import '../../l10n/tr.dart';
 
 /// Ce qui a été répondu à « ce réseau se paie à l'octet ».
 enum _MeteredChoice { now, later, cancel }
@@ -46,33 +47,34 @@ Future<bool> confirmDownloadOnThisNetwork(
     context: context,
     builder: (context) => AlertDialog(
       backgroundColor: AppColors.surface,
-      title: const Text('Télécharger sur ce réseau ?'),
+      title: Text(tr('Télécharger sur ce réseau ?')),
       content: Text(
         network.kind == NetworkKind.mobile
-            ? 'Vous êtes en données mobiles. Télécharger $what peut consommer '
-                'plusieurs gigaoctets de votre forfait — un épisode est '
-                'rapatrié dans sa qualité d’origine, sans compression.\n\n'
-                'En Wi-Fi, le téléchargement repartira tout seul.'
-            : 'Ce réseau est signalé comme limité — un partage de connexion, '
-                'par exemple. Télécharger $what peut consommer plusieurs '
-                'gigaoctets du forfait qui le fournit : un épisode est '
-                'rapatrié dans sa qualité d’origine, sans compression.\n\n'
-                'Sur un réseau non limité, le téléchargement repartira tout '
-                'seul.',
+            ? tr('Vous êtes en données mobiles. Télécharger {0} peut '
+                'consommer plusieurs gigaoctets de votre forfait — un '
+                'épisode est rapatrié dans sa qualité d’origine, sans '
+                'compression.\n\nEn Wi-Fi, le téléchargement repartira tout '
+                'seul.', [what])
+            : tr('Ce réseau est signalé comme limité — un partage de '
+                'connexion, par exemple. Télécharger {0} peut consommer '
+                'plusieurs gigaoctets du forfait qui le fournit : un épisode '
+                'est rapatrié dans sa qualité d’origine, sans '
+                'compression.\n\nSur un réseau non limité, le téléchargement '
+                'repartira tout seul.', [what]),
       ),
       actions: [
         TextButton(
           onPressed: () => Navigator.of(context).pop(_MeteredChoice.cancel),
-          child: const Text('Annuler'),
+          child: Text(tr('Annuler')),
         ),
         TextButton(
           onPressed: () => Navigator.of(context).pop(_MeteredChoice.later),
-          child: const Text('Attendre le Wi-Fi'),
+          child: Text(tr('Attendre le Wi-Fi')),
         ),
         TextButton(
           onPressed: () => Navigator.of(context).pop(_MeteredChoice.now),
           style: TextButton.styleFrom(foregroundColor: AppColors.warning),
-          child: const Text('Télécharger quand même'),
+          child: Text(tr('Télécharger quand même')),
         ),
       ],
     ),

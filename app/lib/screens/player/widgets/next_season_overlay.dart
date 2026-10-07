@@ -4,6 +4,7 @@ import '../../../models/models.dart';
 import '../../../theme/app_colors.dart';
 import 'end_card_chrome.dart';
 import '../../../theme/app_type.dart';
+import '../../../l10n/tr.dart';
 
 /// End-of-season page, shown when the season that follows is not on the server
 /// *and* has never been requested — the server withholds the payload otherwise,
@@ -45,9 +46,9 @@ class NextSeasonOverlay extends StatelessWidget {
   bool get _lookahead => onPlayNext != null;
 
   String get _eyebrowLabel {
-    if (season.isRequested) return 'DEMANDE ENVOYÉE';
-    if (_lookahead) return 'PLUS QU’UN ÉPISODE';
-    return 'SAISON TERMINÉE';
+    if (season.isRequested) return tr('DEMANDE ENVOYÉE');
+    if (_lookahead) return tr('PLUS QU’UN ÉPISODE');
+    return tr('SAISON TERMINÉE');
   }
 
   @override
@@ -103,7 +104,7 @@ class _Body extends StatelessWidget {
                 const SizedBox(height: 6),
               ],
               Text(
-                season.name.isNotEmpty ? season.name : 'Saison ${season.number}',
+                season.name.isNotEmpty ? season.name : tr('Saison {0}', [season.number]),
                 maxLines: 2,
                 overflow: TextOverflow.ellipsis,
                 style: const TextStyle(
@@ -137,18 +138,18 @@ class _Body extends StatelessWidget {
   static String _description(NextSeason season, bool lookahead) {
     if (season.isRequested) {
       return lookahead
-          ? 'Demande envoyée. Le téléchargement se lance pendant que tu '
-              'termines l’épisode en cours.'
-          : 'Cette saison a déjà été demandée. Elle apparaîtra dans ta '
-              'bibliothèque dès qu’elle sera disponible.';
+          ? tr('Demande envoyée. Le téléchargement se lance pendant que tu '
+              'termines l’épisode en cours.')
+          : tr('Cette saison a déjà été demandée. Elle apparaîtra dans ta '
+              'bibliothèque dès qu’elle sera disponible.');
     }
     if (lookahead) {
-      return 'Il ne reste plus qu’un épisode disponible, et la saison '
-          '${season.number} n’est pas sur le serveur. La demander maintenant '
-          'lui laisse le temps de se télécharger pendant que tu le regardes.';
+      return tr('Il ne reste plus qu’un épisode disponible, et la saison {0} n’est '
+          'pas sur le serveur. La demander maintenant lui laisse le temps de '
+          'se télécharger pendant que tu le regardes.', [season.number]);
     }
     if (season.overview?.isNotEmpty == true) return season.overview!;
-    return 'Cette saison n’est pas encore sur le serveur.';
+    return tr('Cette saison n’est pas encore sur le serveur.');
   }
 }
 
@@ -166,26 +167,26 @@ class _MetaRow extends StatelessWidget {
       runSpacing: 8,
       children: [
         if (lookahead)
-          const EndCardPill(
-            label: '1 épisode restant',
+          EndCardPill(
+            label: tr('1 épisode restant'),
             icon: Icons.playlist_play_rounded,
           ),
         if (season.episodeCount > 0)
-          EndCardPill(label: '${season.episodeCount} épisodes'),
+          EndCardPill(label: tr('{0} épisodes', [season.episodeCount])),
         if (season.isRequested)
-          const EndCardPill(
-            label: 'En attente',
+          EndCardPill(
+            label: tr('En attente'),
             icon: Icons.hourglass_top_rounded,
             accent: true,
           )
         else if (!season.canRequest)
-          const EndCardPill(
-            label: 'Indisponible',
+          EndCardPill(
+            label: tr('Indisponible'),
             icon: Icons.cloud_off_outlined,
           )
         else
-          const EndCardPill(
-            label: 'Absente du serveur',
+          EndCardPill(
+            label: tr('Absente du serveur'),
             icon: Icons.cloud_off_outlined,
           ),
       ],
@@ -226,7 +227,7 @@ class _Actions extends StatelessWidget {
               foregroundColor: AppColors.textSecondary,
               padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
             ),
-            child: const Text('Fermer'),
+            child: Text(tr('Fermer')),
           ),
         ],
       );
@@ -254,7 +255,7 @@ class _Actions extends StatelessWidget {
                   child: CircularProgressIndicator(strokeWidth: 2),
                 )
               : const Icon(Icons.download_rounded, size: 19),
-          label: Text('Demander la saison ${season.number}'),
+          label: Text(tr('Demander la saison {0}', [season.number])),
         ),
         const SizedBox(width: 8),
         if (onPlayNext != null) ...[
@@ -271,7 +272,7 @@ class _Actions extends StatelessWidget {
             foregroundColor: AppColors.textSecondary,
             padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 20),
           ),
-          child: const Text('Non merci'),
+          child: Text(tr('Non merci')),
         ),
       ],
     );

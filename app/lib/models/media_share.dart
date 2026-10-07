@@ -1,3 +1,6 @@
+import 'models.dart';
+import '../l10n/tr.dart';
+
 /// Dit si [mediaType] (`media_type` côté serveur) est une saison ou une série
 /// entière : un lien qui ouvre plusieurs épisodes, jamais à usage unique.
 bool isSharedCollectionType(String mediaType) =>
@@ -90,11 +93,13 @@ enum ShareLifetime {
   month(24 * 30, '30 jours'),
   forever(0, 'Sans limite');
 
-  const ShareLifetime(this.hours, this.label);
+  const ShareLifetime(this.hours, this._label);
 
   /// La valeur envoyée au serveur ; 0 veut dire « sans échéance ».
   final int hours;
-  final String label;
+  final String _label;
+
+  String get label => tr(_label);
 }
 
 /// Ce qu'un visiteur sans compte apprend d'un lien (POST /api/shared/info et
@@ -111,6 +116,7 @@ class SharedMediaInfo {
     this.posterUrl,
     this.duration = 0,
     this.episodes = const [],
+    this.details,
   });
 
   final bool needsPassword;
@@ -126,12 +132,17 @@ class SharedMediaInfo {
   /// dans l'ordre de diffusion. Vide pour un film ou un épisode.
   final List<SharedEpisode> episodes;
 
+  /// La fiche de la série d'une saison ou d'une série partagée : synopsis,
+  /// fond, logo, genres, distribution. Nulle pour un film ou un épisode.
+  final MediaDetails? details;
+
   /// Le lien ouvre une saison ou une série : le visiteur choisit un épisode.
   bool get isCollection => isSharedCollectionType(mediaType);
 
   factory SharedMediaInfo.fromJson(Map<String, dynamic> json) {
     final expires = json['expires_at'];
     final poster = json['poster_url'] as String?;
+    final details = json['details'];
     return SharedMediaInfo(
       needsPassword: json['needs_password'] == true,
       singleUse: json['single_use'] == true,
@@ -145,6 +156,9 @@ class SharedMediaInfo {
       episodes: (json['episodes'] as List<dynamic>? ?? const [])
           .map((e) => SharedEpisode.fromJson(e as Map<String, dynamic>))
           .toList(),
+      details: details is Map<String, dynamic>
+          ? MediaDetails.fromJson(details)
+          : null,
     );
   }
 }
@@ -158,6 +172,14 @@ class SharedEpisode {
     this.episodeNumber = 0,
     this.title = '',
     this.duration = 0,
+    this.seasonId = 0,
+    this.overview,
+    this.stillUrl,
+    this.releaseDate,
+    this.introStart = 0,
+    this.introEnd = 0,
+    this.outroStart = 0,
+    this.outroEnd = 0,
   });
 
   final int id;
@@ -166,13 +188,36 @@ class SharedEpisode {
   final String title;
   final int duration;
 
+  /// La saison de l'épisode ; 0 quand le serveur, plus ancien, ne la dit pas.
+  final int seasonId;
+  final String? overview;
+  final String? stillUrl;
+  final String? releaseDate;
+
+  /// Les bornes du générique, en secondes ; 0 quand elles ne sont pas connues.
+  final int introStart;
+  final int introEnd;
+  final int outroStart;
+  final int outroEnd;
+
   factory SharedEpisode.fromJson(Map<String, dynamic> json) => SharedEpisode(
         id: json['id'] as int? ?? 0,
         seasonNumber: json['season_number'] as int? ?? 0,
         episodeNumber: json['episode_number'] as int? ?? 0,
         title: json['title'] as String? ?? '',
         duration: json['duration'] as int? ?? 0,
+        seasonId: json['season_id'] as int? ?? 0,
+        overview: _nonEmpty(json['overview']),
+        stillUrl: _nonEmpty(json['still_url']),
+        releaseDate: _nonEmpty(json['release_date']),
+        introStart: json['intro_start'] as int? ?? 0,
+        introEnd: json['intro_end'] as int? ?? 0,
+        outroStart: json['outro_start'] as int? ?? 0,
+        outroEnd: json['outro_end'] as int? ?? 0,
       );
+
+  static String? _nonEmpty(dynamic raw) =>
+      raw is String && raw.isNotEmpty ? raw : null;
 }
 
 /// Un refus du serveur sur un lien : [message] est la phrase à montrer telle

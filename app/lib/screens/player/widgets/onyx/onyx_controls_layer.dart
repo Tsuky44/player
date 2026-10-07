@@ -14,12 +14,12 @@ import 'onyx_brightness_slider.dart';
 import 'onyx_chrome_theme.dart';
 import 'onyx_progress_bar.dart';
 import '../../../../widgets/global/app_slider.dart';
+import '../../../../l10n/tr.dart';
 
-/// Chrome Onyx: the hand-written, fixed player chrome.
+/// Chrome Onyx: the hand-written player chrome, the only one the app has.
 ///
-/// Unlike [ModularControlsLayer] nothing here is placed by the user: the
-/// arrangement is code, not data, which is what lets it be laid out in real
-/// pixels and stay faithful. Player Studio shows it as a frozen preview.
+/// Nothing here is placed by the user: the arrangement is code, not data,
+/// which is what lets it be laid out in real pixels and stay faithful.
 ///
 /// Two arrangements, one breakpoint ([OnyxChromeTheme.compactBreakpoint]):
 /// wide puts the title block and the utility cluster on one row above the
@@ -132,7 +132,7 @@ class OnyxControlsLayer extends StatelessWidget {
   /// larger than it does on Android at the same width. Only what is drawn
   /// shrinks — the touch targets do not, see
   /// [OnyxChromeMetrics.scaledBy]. Passed in rather than read from the
-  /// platform, for the same reason [showVolume] is: the Studio renders this
+  /// platform, for the same reason [showVolume] is: a test renders this
   /// chrome away from any device.
   final double scale;
 
@@ -177,9 +177,9 @@ class OnyxControlsLayer extends StatelessWidget {
   /// reads as a rendering bug, while a button that stops short of it reads as
   /// intent.
   ///
-  /// Empty for anything rendering this chrome away from a screen edge — the
-  /// Studio preview, a windowed desktop — which is why it is passed in rather
-  /// than read from the ambient [MediaQuery].
+  /// Empty for anything rendering this chrome away from a screen edge — a
+  /// windowed desktop — which is why it is passed in rather than read from
+  /// the ambient [MediaQuery].
   final List<Rect> cutouts;
 
   /// Stills of the timeline for the scrubber; null until the player has them.
@@ -269,9 +269,8 @@ class OnyxControlsLayer extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    // Sized from its own constraints rather than the window, so the Studio can
-    // render this same widget shrunk into a preview box and still get the
-    // arrangement that box deserves.
+    // Sized from its own constraints rather than the window, so the chrome
+    // gets the arrangement its own box deserves wherever it is rendered.
     return LayoutBuilder(
       builder: (context, constraints) {
         final width = constraints.maxWidth;
@@ -455,7 +454,7 @@ class OnyxControlsLayer extends StatelessWidget {
             _OnyxIconButton(
               key: const ValueKey('onyx-back'),
               icon: Icons.arrow_back_ios_new_rounded,
-              tooltip: 'Retour',
+              tooltip: tr('Retour'),
               metrics: m,
               isTv: true,
               onPressed: onBack,
@@ -546,7 +545,7 @@ class OnyxControlsLayer extends StatelessWidget {
           children: [
             _OnyxIconButton(
               icon: Icons.arrow_back_ios_new_rounded,
-              tooltip: 'Retour',
+              tooltip: tr('Retour'),
               metrics: m,
               onPressed: onBack,
             ),
@@ -575,7 +574,7 @@ class OnyxControlsLayer extends StatelessWidget {
               _OnyxIconButton(
                 key: const ValueKey('onyx-lock'),
                 icon: Icons.lock_open_rounded,
-                tooltip: 'Verrouiller l’écran',
+                tooltip: tr('Verrouiller l’écran'),
                 metrics: m,
                 onPressed: onLockScreen!,
               ),
@@ -758,7 +757,7 @@ class OnyxControlsLayer extends StatelessWidget {
           _OnyxIconButton(
             key: const ValueKey('onyx-episodes'),
             icon: Icons.playlist_play_rounded,
-            tooltip: 'Épisodes suivants',
+            tooltip: tr('Épisodes suivants'),
             metrics: m,
             isTv: isTv,
             onPressed: onOpenEpisodes!,
@@ -769,7 +768,7 @@ class OnyxControlsLayer extends StatelessWidget {
           key: const ValueKey('onyx-subtitles'),
           buttonKey: subtitlesButtonKey,
           icon: Icons.closed_caption_rounded,
-          tooltip: 'Sous-titres',
+          tooltip: tr('Sous-titres'),
           metrics: m,
           isTv: isTv,
           onPressed: onToggleSubtitles,
@@ -778,7 +777,7 @@ class OnyxControlsLayer extends StatelessWidget {
         _OnyxIconButton(
           key: const ValueKey('onyx-audio'),
           icon: Icons.graphic_eq_rounded,
-          tooltip: 'Pistes audio',
+          tooltip: tr('Pistes audio'),
           metrics: m,
           isTv: isTv,
           onPressed: onOpenAudio,
@@ -792,7 +791,7 @@ class OnyxControlsLayer extends StatelessWidget {
             icon: Icons.speed_rounded,
             // The current rate is the whole point of the control, so it goes
             // in the tooltip rather than making the user open a menu to read it.
-            tooltip: 'Vitesse ×${_formatRate(playbackRate)}',
+            tooltip: tr('Vitesse ×{0}', [_formatRate(playbackRate)]),
             metrics: m,
             onPressed: onCycleSpeed,
           ),
@@ -804,7 +803,7 @@ class OnyxControlsLayer extends StatelessWidget {
             icon: watchPartyActive
                 ? Icons.groups_rounded
                 : Icons.group_add_outlined,
-            tooltip: watchPartyActive ? 'Séance en cours' : 'Regarder ensemble',
+            tooltip: watchPartyActive ? tr('Séance en cours') : tr('Regarder ensemble'),
             metrics: m,
             isTv: isTv,
             onPressed: onOpenWatchParty!,
@@ -815,7 +814,7 @@ class OnyxControlsLayer extends StatelessWidget {
           key: const ValueKey('onyx-settings'),
           buttonKey: settingsButtonKey,
           icon: Icons.settings_rounded,
-          tooltip: 'Réglages',
+          tooltip: tr('Réglages'),
           metrics: m,
           isTv: isTv,
           onPressed: onOpenSettings,
@@ -826,7 +825,7 @@ class OnyxControlsLayer extends StatelessWidget {
           _OnyxIconButton(
             key: const ValueKey('onyx-fullscreen'),
             icon: Icons.fullscreen_rounded,
-            tooltip: 'Plein écran',
+            tooltip: tr('Plein écran'),
             metrics: m,
             onPressed: onToggleFullscreen,
           ),
@@ -880,7 +879,7 @@ class OnyxControlsLayer extends StatelessWidget {
           _OnyxIconButton(
             key: const ValueKey('onyx-previous'),
             icon: Icons.skip_previous_rounded,
-            tooltip: 'Épisode précédent',
+            tooltip: tr('Épisode précédent'),
             metrics: m,
             isTv: isTv,
             onPressed: onSkipPrevious!,
@@ -890,7 +889,7 @@ class OnyxControlsLayer extends StatelessWidget {
         _OnyxIconButton(
           key: const ValueKey('onyx-rewind'),
           icon: Icons.replay_10_rounded,
-          tooltip: 'Reculer de 10 s',
+          tooltip: tr('Reculer de 10 s'),
           metrics: m,
           size: sideSize,
           isTv: isTv,
@@ -900,7 +899,7 @@ class OnyxControlsLayer extends StatelessWidget {
         _OnyxIconButton(
           key: const ValueKey('onyx-play-pause'),
           icon: isPlaying ? Icons.pause_rounded : Icons.play_arrow_rounded,
-          tooltip: isPlaying ? 'Pause' : 'Lecture',
+          tooltip: isPlaying ? tr('Pause') : tr('Lecture'),
           metrics: m,
           size: m.playIconSize,
           focusNode: playPauseFocusNode,
@@ -912,7 +911,7 @@ class OnyxControlsLayer extends StatelessWidget {
         _OnyxIconButton(
           key: const ValueKey('onyx-forward'),
           icon: Icons.forward_10_rounded,
-          tooltip: 'Avancer de 10 s',
+          tooltip: tr('Avancer de 10 s'),
           metrics: m,
           size: sideSize,
           isTv: isTv,
@@ -925,7 +924,7 @@ class OnyxControlsLayer extends StatelessWidget {
           _OnyxIconButton(
             key: const ValueKey('onyx-next'),
             icon: Icons.skip_next_rounded,
-            tooltip: 'Épisode suivant',
+            tooltip: tr('Épisode suivant'),
             metrics: m,
             isTv: isTv,
             onPressed: onSkipNext!,
@@ -1132,7 +1131,7 @@ class _OnyxVolumeControlState extends State<_OnyxVolumeControl> {
       children: [
         _OnyxIconButton(
           icon: _icon(volume),
-          tooltip: volume <= 0 ? 'Rétablir le son' : 'Couper le son',
+          tooltip: volume <= 0 ? tr('Rétablir le son') : tr('Couper le son'),
           metrics: m,
           onPressed: () => _toggleMute(volume),
         ),
@@ -1190,7 +1189,7 @@ class _OnyxSkipIntroButton extends StatelessWidget {
           child: Padding(
             padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 10),
             child: Text(
-              'Passer l’intro',
+              tr('Passer l’intro'),
               style: TextStyle(
                 color: OnyxChromeTheme.iconActive,
                 fontSize: metrics.skipIntroTextSize,

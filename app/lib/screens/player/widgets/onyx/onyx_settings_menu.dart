@@ -12,9 +12,10 @@ import '../../../../utils/app_platform.dart';
 import '../../hooks/use_episode_navigation.dart';
 import '../../hooks/use_player_controller.dart';
 import '../direct_source_label.dart';
-import '../player_settings_ui.dart' show splitTrackLabel;
+import '../track_label.dart';
 import 'onyx_chrome_theme.dart';
 import '../../../../theme/app_type.dart';
+import '../../../../l10n/tr.dart';
 
 part 'onyx_settings_menu_rows.dart';
 
@@ -33,14 +34,13 @@ enum OnyxMenuSection {
 /// Chrome Onyx settings menu: a narrow list of sections, each drilling into a
 /// list of choices, instead of a tall tabbed panel.
 ///
-/// The tabbed [PlayerSettingsSheet] shows every category's chrome at once —
+/// A tabbed panel shows every category's chrome at once —
 /// header, subtitle, five segmented tabs — before showing a single option. On
 /// Chrome Onyx that reads as a dialog dropped on the video. This menu instead
 /// puts one column of rows over the picture: what each setting is *currently*
 /// on is visible without opening anything, and a category costs one tap.
 ///
-/// Like the rest of this chrome, the look is locked and ignores
-/// [PlayerLayoutConfig] — see [OnyxChromeTheme].
+/// Like the rest of this chrome, the look is locked — see [OnyxChromeTheme].
 class OnyxSettingsMenu extends StatefulWidget {
   final PlaybackSession session;
   final PlayerController? playerController;
@@ -245,8 +245,8 @@ class _OnyxSettingsMenuState extends State<OnyxSettingsMenu> {
       return '—';
     }
     final current = widget.session.currentAudioTrack;
-    if (current == null || current.id == 'no') return 'Désactivé';
-    return current.title ?? current.language ?? 'Piste 1';
+    if (current == null || current.id == 'no') return tr('Désactivé');
+    return current.title ?? current.language ?? tr('Piste 1');
   }
 
   String get _subtitlesValue {
@@ -255,12 +255,12 @@ class _OnyxSettingsMenuState extends State<OnyxSettingsMenu> {
 
     if (controller.currentQuality == null) {
       final current = widget.session.currentSubtitleTrack;
-      if (current == null || current.id == 'no') return 'Désactivés';
-      return current.title ?? current.language ?? 'Piste 1';
+      if (current == null || current.id == 'no') return tr('Désactivés');
+      return current.title ?? current.language ?? tr('Piste 1');
     }
 
     final lang = controller.selectedSubtitleLang;
-    if (lang == null) return 'Désactivés';
+    if (lang == null) return tr('Désactivés');
     final track = controller.mediaTracks?.subtitles
         .where((s) => s.lang == lang)
         .firstOrNull;
@@ -268,13 +268,13 @@ class _OnyxSettingsMenuState extends State<OnyxSettingsMenu> {
   }
 
   String get _speedValue =>
-      widget.playbackRate == 1.0 ? 'Normale' : '${_trimRate(widget.playbackRate)}×';
+      widget.playbackRate == 1.0 ? tr('Normale') : '${_trimRate(widget.playbackRate)}×';
 
-  String get _displayValue => _fit == BoxFit.cover ? 'Adaptatif' : 'Original';
+  String get _displayValue => _fit == BoxFit.cover ? tr('Adaptatif') : tr('Original');
 
   String get _sleepValue {
     final remaining = SleepTimer.instance.remaining;
-    return remaining == null ? 'Désactivée' : _sleepRemaining(remaining);
+    return remaining == null ? tr('Désactivée') : _sleepRemaining(remaining);
   }
 
   /// Arrondi à la minute supérieure : « 1 min » tant qu'il reste du temps,
@@ -369,16 +369,16 @@ class _OnyxSettingsMenuState extends State<OnyxSettingsMenu> {
       padding: const EdgeInsets.symmetric(vertical: 6),
       children: [
         if (_hasQuality)
-          row(OnyxMenuSection.quality, 'Qualité', _qualityValue),
-        row(OnyxMenuSection.audio, 'Audio', _audioValue),
-        row(OnyxMenuSection.subtitles, 'Sous-titres', _subtitlesValue),
-        row(OnyxMenuSection.speed, 'Vitesse de lecture', _speedValue),
-        row(OnyxMenuSection.display, 'Affichage', _displayValue),
-        row(OnyxMenuSection.sleep, 'Minuterie de veille', _sleepValue),
+          row(OnyxMenuSection.quality, tr('Qualité'), _qualityValue),
+        row(OnyxMenuSection.audio, tr('Audio'), _audioValue),
+        row(OnyxMenuSection.subtitles, tr('Sous-titres'), _subtitlesValue),
+        row(OnyxMenuSection.speed, tr('Vitesse de lecture'), _speedValue),
+        row(OnyxMenuSection.display, tr('Affichage'), _displayValue),
+        row(OnyxMenuSection.sleep, tr('Minuterie de veille'), _sleepValue),
         if (_hasChapters)
           row(
             OnyxMenuSection.chapters,
-            'Chapitres',
+            tr('Chapitres'),
             '${widget.episodeNav!.chapters.length}',
           ),
       ],
@@ -387,13 +387,13 @@ class _OnyxSettingsMenuState extends State<OnyxSettingsMenu> {
 
   Widget _buildSection() {
     final (title, body) = switch (_section) {
-      OnyxMenuSection.quality => ('Qualité', _buildQuality()),
-      OnyxMenuSection.audio => ('Audio', _buildAudio()),
-      OnyxMenuSection.subtitles => ('Sous-titres', _buildSubtitles()),
-      OnyxMenuSection.speed => ('Vitesse de lecture', _buildSpeed()),
-      OnyxMenuSection.display => ('Affichage', _buildDisplay()),
-      OnyxMenuSection.sleep => ('Minuterie de veille', _buildSleep()),
-      OnyxMenuSection.chapters => ('Chapitres', _buildChapters()),
+      OnyxMenuSection.quality => (tr('Qualité'), _buildQuality()),
+      OnyxMenuSection.audio => (tr('Audio'), _buildAudio()),
+      OnyxMenuSection.subtitles => (tr('Sous-titres'), _buildSubtitles()),
+      OnyxMenuSection.speed => (tr('Vitesse de lecture'), _buildSpeed()),
+      OnyxMenuSection.display => (tr('Affichage'), _buildDisplay()),
+      OnyxMenuSection.sleep => (tr('Minuterie de veille'), _buildSleep()),
+      OnyxMenuSection.chapters => (tr('Chapitres'), _buildChapters()),
       OnyxMenuSection.root => ('', const SizedBox.shrink()),
     };
 
@@ -451,7 +451,7 @@ class _OnyxSettingsMenuState extends State<OnyxSettingsMenu> {
     if (controller == null) return const _OnyxMenuEmpty();
     final direct = directSourceLabel(
       local: controller.isLocalPlayback,
-      streamSubtitle: 'Le fichier tel quel',
+      streamSubtitle: tr('Le fichier tel quel'),
     );
 
     return _sectionList([
@@ -513,11 +513,11 @@ class _OnyxSettingsMenuState extends State<OnyxSettingsMenu> {
       for (var i = 0; i < internal.length; i++)
         _OnyxMenuOption(
           label: internal[i].id == 'no'
-              ? 'Désactivé'
+              ? tr('Désactivé')
               : internal[i].title ??
                   (internal[i].language != null
-                      ? 'Audio (${internal[i].language})'
-                      : 'Audio ${i + 1}'),
+                      ? tr('Audio ({0})', [internal[i].language])
+                      : tr('Audio {0}', [i + 1])),
           selected: internal[i] == current,
           onTap: () {
             widget.session.setAudioTrack(internal[i]);
@@ -544,11 +544,11 @@ class _OnyxSettingsMenuState extends State<OnyxSettingsMenu> {
         for (var i = 0; i < subs.length; i++)
           _OnyxMenuOption(
             label: subs[i].id == 'no'
-                ? 'Désactivés'
+                ? tr('Désactivés')
                 : subs[i].title ??
                     (subs[i].language != null
-                        ? 'Sous-titre (${subs[i].language})'
-                        : 'Sous-titre ${i + 1}'),
+                        ? tr('Sous-titre ({0})', [subs[i].language])
+                        : tr('Sous-titre {0}', [i + 1])),
             selected: subs[i] == current,
             onTap: () {
               controller.selectInternalSubtitle(subs[i]);
@@ -561,7 +561,7 @@ class _OnyxSettingsMenuState extends State<OnyxSettingsMenu> {
     final subtitles = controller.mediaTracks?.subtitles ?? const <MediaSubtitleTrack>[];
     return _sectionList([
       _OnyxMenuOption(
-        label: 'Désactivés',
+        label: tr('Désactivés'),
         selected: controller.selectedSubtitleLang == null,
         onTap: () {
           controller.setSubtitle(null);
@@ -593,7 +593,7 @@ class _OnyxSettingsMenuState extends State<OnyxSettingsMenu> {
     return _sectionList([
       for (final rate in widget.playbackRates)
         _OnyxMenuOption(
-          label: rate == 1.0 ? 'Normale' : '${_trimRate(rate)}×',
+          label: rate == 1.0 ? tr('Normale') : '${_trimRate(rate)}×',
           selected: rate == widget.playbackRate,
           onTap: () {
             widget.onRateChanged(rate);
@@ -606,14 +606,14 @@ class _OnyxSettingsMenuState extends State<OnyxSettingsMenu> {
   Widget _buildDisplay() {
     return _sectionList([
       _OnyxMenuOption(
-        label: 'Original',
-        subtitle: 'Conserve les proportions',
+        label: tr('Original'),
+        subtitle: tr('Conserve les proportions'),
         selected: _fit == BoxFit.contain,
         onTap: () => _setFit(BoxFit.contain),
       ),
       _OnyxMenuOption(
-        label: 'Adaptatif',
-        subtitle: "Remplit l'écran, coupe les bords",
+        label: tr('Adaptatif'),
+        subtitle: tr('Remplit l\'écran, coupe les bords'),
         selected: _fit == BoxFit.cover,
         onTap: () => _setFit(BoxFit.cover),
       ),
@@ -637,7 +637,7 @@ class _OnyxSettingsMenuState extends State<OnyxSettingsMenu> {
 
     return _sectionList([
       _OnyxMenuOption(
-        label: 'Désactivée',
+        label: tr('Désactivée'),
         selected: !timer.isActive,
         onTap: () {
           timer.cancel();
@@ -669,7 +669,7 @@ class _OnyxSettingsMenuState extends State<OnyxSettingsMenu> {
     return _sectionList([
       for (final chapter in chapters)
         _OnyxMenuOption(
-          label: chapter.title.isEmpty ? 'Chapitre ${chapter.id}' : chapter.title,
+          label: chapter.title.isEmpty ? tr('Chapitre {0}', [chapter.id]) : chapter.title,
           value: _timecode(chapter.startTime),
           selected: false,
           onTap: () {

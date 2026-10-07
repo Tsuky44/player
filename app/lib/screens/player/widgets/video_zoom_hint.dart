@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 
 import '../../../theme/app_colors.dart';
 import '../../../theme/app_type.dart';
+import '../../../l10n/tr.dart';
 
 /// Transient label naming the display mode a pinch just landed on.
 ///
@@ -58,7 +59,7 @@ class VideoZoomHint extends StatelessWidget {
                     ),
                     const SizedBox(width: 8),
                     Text(
-                      _isCover ? 'Adaptatif' : 'Original',
+                      _isCover ? tr('Adaptatif') : tr('Original'),
                       style: const TextStyle(
                         color: AppColors.textPrimary,
                         fontSize: AppType.body,

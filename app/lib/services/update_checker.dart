@@ -3,6 +3,7 @@ import 'package:package_info_plus/package_info_plus.dart';
 
 import '../models/app_download.dart';
 import '../utils/app_platform.dart';
+import '../utils/store_build.dart';
 import 'api_client.dart';
 import 'app_updater.dart';
 
@@ -19,6 +20,8 @@ abstract final class UpdateChecker {
   /// release.
   static Future<AppDownload?> findAvailableUpdate(ApiClient api) async {
     if (AppPlatform.isWeb) return null;
+    // Sur un magasin, c'est lui qui met l'app à jour (ADR-0046).
+    if (StoreBuild.enabled) return null;
     try {
       final match = _pickUpdateArtifact(await api.getAppDownloads());
       if (match == null) return null;

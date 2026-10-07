@@ -3,6 +3,7 @@ import '../../../models/media_request.dart';
 import '../../../theme/app_colors.dart';
 import '../../../theme/app_icons.dart';
 import '../../../theme/app_type.dart';
+import '../../../l10n/tr.dart';
 
 /// Hero availability pill — Quiet Premium semantic colors.
 class RequestAvailabilityBadge extends StatelessWidget {
@@ -13,21 +14,21 @@ class RequestAvailabilityBadge extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return switch (status) {
-      RequestMediaStatus.available => const _HeroBadge(
-          label: 'Disponible',
+      RequestMediaStatus.available => _HeroBadge(
+          label: tr('Disponible'),
           foreground: AppColors.success,
           background: AppColors.success,
           border: AppColors.success,
         ),
-      RequestMediaStatus.partial => const _HeroBadge(
-          label: 'Partiellement disponible',
+      RequestMediaStatus.partial => _HeroBadge(
+          label: tr('Partiellement disponible'),
           foreground: AppColors.warning,
           background: AppColors.warning,
           border: AppColors.warning,
         ),
       RequestMediaStatus.pending || RequestMediaStatus.processing =>
-        const _HeroBadge(
-          label: 'Demandé',
+        _HeroBadge(
+          label: tr('Demandé'),
           foreground: AppColors.accentMuted,
           background: AppColors.primary,
           border: AppColors.primary,
@@ -81,19 +82,19 @@ class RequestStatusBadge extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return switch (status) {
-      RequestMediaStatus.available => const _SeasonBadge(
-          label: 'Disponible',
+      RequestMediaStatus.available => _SeasonBadge(
+          label: tr('Disponible'),
           icon: AppIcons.check,
           foreground: AppColors.success,
         ),
-      RequestMediaStatus.partial => const _SeasonBadge(
-          label: 'Partiellement disponible',
+      RequestMediaStatus.partial => _SeasonBadge(
+          label: tr('Partiellement disponible'),
           icon: AppIcons.check,
           foreground: AppColors.warning,
         ),
       RequestMediaStatus.pending || RequestMediaStatus.processing =>
-        const _SeasonBadge(
-          label: 'En attente',
+        _SeasonBadge(
+          label: tr('En attente'),
           icon: AppIcons.schedule,
           foreground: AppColors.accentMuted,
         ),
