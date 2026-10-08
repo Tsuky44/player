@@ -31,10 +31,10 @@ dependencies:
   # épisode de 4 Go sans qu'on l'ait demandé. La joignabilité du serveur, elle,
   # continue de se mesurer sur `GET /api/ping` (ADR-0010 §6) — avoir du réseau
   # n'est pas avoir *ce* serveur.
-  connectivity_plus: ^7.3.1
+  connectivity_plus: ^7.3.2
 
   # UI & Media Kit Packages
-  cached_network_image: ^4.0.0
+  cached_network_image: ^4.0.4
   # Already pulled in by cached_network_image; declared so the app can widen the
   # default 200-file image store (see services/app_image_cache.dart).
   flutter_cache_manager: ^3.4.1
@@ -99,7 +99,7 @@ dependencies:
   # le build Apple TV casse sur « Module 'wakelock_plus' not found ». L'hôte
   # tvOS garde l'écran allumé lui-même (`ScreenAwake`). Gardé par
   # test/tvos_plugins_linkable_test.dart.
-  wakelock_plus: '>=1.1.6 <1.8.0'
+  wakelock_plus: ^1.8.1
 
   # --- Apple TV (tvOS) ---------------------------------------------------
   # tvOS se construit avec flutter-tvos (voir l'ADR-0028), qui n'embarque que
