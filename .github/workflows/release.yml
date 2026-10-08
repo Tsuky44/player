@@ -67,7 +67,7 @@ jobs:
     steps:
       # Historique complet : sans les tags, impossible de trouver la derniere
       # version publiee.
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with:
           fetch-depth: 0
 
@@ -137,9 +137,9 @@ jobs:
     needs: prepare
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
-      - uses: actions/setup-java@v4
+      - uses: actions/setup-java@v6
         with:
           distribution: temurin
           java-version: "17"
@@ -196,7 +196,7 @@ jobs:
              "out/Onyx-${VERSION}-android.apk"
           ls -lh out
 
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v6
         with:
           name: installer-android
           path: out/*.apk
@@ -216,7 +216,7 @@ jobs:
             --build-name="${{ needs.prepare.outputs.version }}" \
             --build-number="${{ github.run_number }}"
 
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v6
         with:
           name: store-android
           path: app/build/app/outputs/bundle/release/app-release.aab
@@ -230,7 +230,7 @@ jobs:
     needs: prepare
     runs-on: macos-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       - uses: subosito/flutter-action@v2
         with:
@@ -282,7 +282,7 @@ jobs:
           rm -rf "$STAGE"
           ls -lh out
 
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v6
         with:
           name: installer-macos
           path: out/*.dmg
@@ -308,7 +308,7 @@ jobs:
       ASC_ISSUER_ID: ${{ secrets.ASC_ISSUER_ID }}
       ASC_KEY_P8: ${{ secrets.ASC_KEY_P8 }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       - uses: subosito/flutter-action@v2
         with:
@@ -356,7 +356,7 @@ jobs:
           rm -rf "$STAGE"
           ls -lh out
 
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v6
         with:
           name: installer-ios
           path: out/*.ipa
@@ -415,7 +415,7 @@ jobs:
       ASC_ISSUER_ID: ${{ secrets.ASC_ISSUER_ID }}
       ASC_KEY_P8: ${{ secrets.ASC_KEY_P8 }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       # Le SDK tvOS n'est pas toujours installe avec Xcode sur les images
       # GitHub : sans lui, xcodebuild ne trouve aucune destination.
@@ -484,7 +484,7 @@ jobs:
           rm -rf "$STAGE"
           ls -lh out
 
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v6
         with:
           name: installer-tvos
           path: out/*.ipa
@@ -539,7 +539,7 @@ jobs:
       - name: Autoriser les chemins longs
         run: git config --global core.longpaths true
 
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       - uses: subosito/flutter-action@v2
         with:
@@ -610,7 +610,7 @@ jobs:
             -Zip "out\Onyx-$env:VERSION-windows-portable.zip" `
             -Version $env:VERSION
 
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v6
         with:
           name: installer-windows
           path: |
@@ -632,7 +632,7 @@ jobs:
     needs: [prepare, test, build-android, build-macos, build-ios, build-tvos, build-windows]
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       - uses: subosito/flutter-action@v2
         with:
@@ -645,7 +645,7 @@ jobs:
       # fichiers ici suffit donc a faire apparaitre les liens dans l'UI : rien a
       # declarer ailleurs.
       - name: Recuperer les installateurs
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v7
         with:
           pattern: installer-*
           merge-multiple: true
@@ -674,18 +674,18 @@ jobs:
       - name: Build du client Web
         run: bash scripts/build-web.sh
 
-      - uses: docker/setup-buildx-action@v3
+      - uses: docker/setup-buildx-action@v4
 
       # Le GITHUB_TOKEN du run suffit pour ghcr.io grace a `packages: write` —
       # aucun PAT a creer ni a saisir, contrairement au script local.
-      - uses: docker/login-action@v3
+      - uses: docker/login-action@v4
         with:
           registry: ghcr.io
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Build & push de l'image
-        uses: docker/build-push-action@v6
+        uses: docker/build-push-action@v7
         with:
           context: ./server
           platforms: linux/amd64
@@ -700,7 +700,7 @@ jobs:
       # Double distribution : l'image sert les installateurs sur /api/downloads
       # pour qui a deja un serveur, la Release les sert a qui n'en a pas encore.
       - name: GitHub Release
-        uses: softprops/action-gh-release@v2
+        uses: softprops/action-gh-release@v3
         with:
           tag_name: ${{ needs.prepare.outputs.version_tag }}
           # Lance a la main, le tag n'existe pas encore : la Release le cree sur
