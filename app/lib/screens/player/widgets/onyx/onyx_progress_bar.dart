@@ -2,6 +2,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
+import '../../../../l10n/tr.dart';
 import '../../../../theme/app_colors.dart';
 import '../../../../tv/tv_focus.dart';
 import '../../../../utils/format.dart';
@@ -165,6 +166,9 @@ class _OnyxProgressBarState extends State<OnyxProgressBar> {
           ),
           child: GestureDetector(
             behavior: HitTestBehavior.opaque,
+            // Décrite d'un bloc par [_described] : un tap et un glissement
+            // anonymes ne disent rien à un lecteur d'écran.
+            excludeFromSemantics: true,
             onTapDown: (d) =>
                 widget.onSeek(_fractionFor(d.localPosition.dx, width)),
             onHorizontalDragStart: (d) =>
@@ -197,7 +201,7 @@ class _OnyxProgressBarState extends State<OnyxProgressBar> {
           ),
         );
 
-        if (!widget.focusable) return bar;
+        if (!widget.focusable) return _described(bar);
 
         // No frame around a focused bar: the bar itself says it. It thickens
         // and turns to the accent, which is what the eye is already on.
@@ -205,9 +209,37 @@ class _OnyxProgressBarState extends State<OnyxProgressBar> {
           focusNode: widget.focusNode,
           onKeyEvent: _handleKey,
           onFocusChange: (focused) => setState(() => _focused = focused),
-          child: bar,
+          child: _described(bar),
         );
       },
+    );
+  }
+
+  /// Ce qu'un lecteur d'écran lit de la barre : un curseur, où en est le
+  /// film, et dix secondes dans chaque sens.
+  Widget _described(Widget bar) {
+    final total = widget.duration.inSeconds;
+    final played = (widget.progress.clamp(0.0, 1.0) * total).round();
+
+    void nudge(int seconds) {
+      if (total <= 0) return;
+      widget.onSeek(((played + seconds) / total).clamp(0.0, 1.0));
+    }
+
+    String at(int seconds) => tr('{0} sur {1}', [
+          formatPlaybackTime(seconds.clamp(0, total)),
+          formatPlaybackTime(total),
+        ]);
+
+    return Semantics(
+      slider: true,
+      label: tr('Position de lecture'),
+      value: at(played),
+      increasedValue: at(played + 10),
+      decreasedValue: at(played - 10),
+      onIncrease: () => nudge(10),
+      onDecrease: () => nudge(-10),
+      child: bar,
     );
   }
 

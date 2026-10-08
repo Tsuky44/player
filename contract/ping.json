@@ -1,0 +1,12 @@
+{
+  "status": "ok",
+  "message": "Project Player Server is running",
+  "playback_ticket_version": 1,
+  "version": "dev",
+  "capabilities": [
+    "playback_tickets",
+    "progress_long_poll",
+    "media_language",
+    "watched_by_credits"
+  ]
+}

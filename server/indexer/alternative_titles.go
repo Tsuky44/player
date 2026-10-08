@@ -10,6 +10,7 @@ import (
 
 	"project-player/server/httpx"
 	"project-player/server/models"
+	"project-player/server/tmdb"
 )
 
 // alternativeTitleCandidates borne le repli : chaque candidat coûte un appel
@@ -106,10 +107,10 @@ func fetchTMDBAlternativeTitles(tmdbID int, mediaType models.MediaType) []string
 		endpoint = "tv"
 	}
 	u := fmt.Sprintf(
-		"https://api.themoviedb.org/3/%s/%d?api_key=%s&append_to_response=alternative_titles,translations",
-		endpoint, tmdbID, apiKey,
+		"/%s/%d?append_to_response=alternative_titles,translations",
+		endpoint, tmdbID,
 	)
-	resp, err := httpx.Standard.Get(u)
+	resp, err := tmdb.Get(httpx.Standard, u)
 	if err != nil {
 		log.Printf("TMDB alternative titles %d: %v", tmdbID, err)
 		return nil

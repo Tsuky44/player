@@ -2,18 +2,16 @@ import 'package:flutter/material.dart';
 import '../player_chrome_fade.dart';
 
 import '../../../../desktop_window.dart';
-import '../../../../theme/app_colors.dart';
 import '../../../../tv/tv_focus.dart';
 import '../../../../tv/tv_focus_rows.dart';
 import '../../../../utils/format.dart';
 import '../../../../widgets/global/app_network_image.dart';
-import '../../../../widgets/global/optimistic_volume.dart';
 import '../avoid_cutouts.dart';
 import '../../playback/timeline_previews.dart';
 import 'onyx_brightness_slider.dart';
+import 'onyx_chrome_buttons.dart';
 import 'onyx_chrome_theme.dart';
 import 'onyx_progress_bar.dart';
-import '../../../../widgets/global/app_slider.dart';
 import '../../../../l10n/tr.dart';
 
 /// Chrome Onyx: the hand-written player chrome, the only one the app has.
@@ -451,7 +449,7 @@ class OnyxControlsLayer extends StatelessWidget {
       child: TvFocusRow(
         child: Row(
           children: [
-            _OnyxIconButton(
+            OnyxIconButton(
               key: const ValueKey('onyx-back'),
               icon: Icons.arrow_back_ios_new_rounded,
               tooltip: tr('Retour'),
@@ -543,7 +541,7 @@ class OnyxControlsLayer extends StatelessWidget {
       child: _dodgeCutouts(
         Row(
           children: [
-            _OnyxIconButton(
+            OnyxIconButton(
               icon: Icons.arrow_back_ios_new_rounded,
               tooltip: tr('Retour'),
               metrics: m,
@@ -558,7 +556,7 @@ class OnyxControlsLayer extends StatelessWidget {
             // remote's focus and hold it. Same conclusion on a phone, for the
             // same reason with different hardware — see [showVolume].
             if (!isTv && showVolume)
-              _OnyxVolumeControl(
+              OnyxVolumeControl(
                 volume: volume,
                 onChanged: onVolumeChanged,
                 metrics: m,
@@ -571,7 +569,7 @@ class OnyxControlsLayer extends StatelessWidget {
             // un téléphone celle-ci est déjà pleine, et ce coin est libre
             // puisque le volume n'y est pas.
             if (!isTv && onLockScreen != null)
-              _OnyxIconButton(
+              OnyxIconButton(
                 key: const ValueKey('onyx-lock'),
                 icon: Icons.lock_open_rounded,
                 tooltip: tr('Verrouiller l’écran'),
@@ -754,7 +752,7 @@ class OnyxControlsLayer extends StatelessWidget {
       children: [
         // Series only: a movie has no episode list to browse.
         if (onOpenEpisodes != null) ...[
-          _OnyxIconButton(
+          OnyxIconButton(
             key: const ValueKey('onyx-episodes'),
             icon: Icons.playlist_play_rounded,
             tooltip: tr('Épisodes suivants'),
@@ -764,7 +762,7 @@ class OnyxControlsLayer extends StatelessWidget {
           ),
           SizedBox(width: m.clusterGap),
         ],
-        _OnyxIconButton(
+        OnyxIconButton(
           key: const ValueKey('onyx-subtitles'),
           buttonKey: subtitlesButtonKey,
           icon: Icons.closed_caption_rounded,
@@ -774,7 +772,7 @@ class OnyxControlsLayer extends StatelessWidget {
           onPressed: onToggleSubtitles,
         ),
         SizedBox(width: m.clusterGap),
-        _OnyxIconButton(
+        OnyxIconButton(
           key: const ValueKey('onyx-audio'),
           icon: Icons.graphic_eq_rounded,
           tooltip: tr('Pistes audio'),
@@ -786,7 +784,7 @@ class OnyxControlsLayer extends StatelessWidget {
         // button fewer is one press fewer to reach the settings.
         if (!isTv) ...[
           SizedBox(width: m.clusterGap),
-          _OnyxIconButton(
+          OnyxIconButton(
             key: const ValueKey('onyx-speed'),
             icon: Icons.speed_rounded,
             // The current rate is the whole point of the control, so it goes
@@ -798,7 +796,7 @@ class OnyxControlsLayer extends StatelessWidget {
         ],
         if (onOpenWatchParty != null) ...[
           SizedBox(width: m.clusterGap),
-          _OnyxIconButton(
+          OnyxIconButton(
             key: const ValueKey('onyx-watch-party'),
             icon: watchPartyActive
                 ? Icons.groups_rounded
@@ -810,7 +808,7 @@ class OnyxControlsLayer extends StatelessWidget {
           ),
         ],
         SizedBox(width: m.clusterGap),
-        _OnyxIconButton(
+        OnyxIconButton(
           key: const ValueKey('onyx-settings'),
           buttonKey: settingsButtonKey,
           icon: Icons.settings_rounded,
@@ -822,7 +820,7 @@ class OnyxControlsLayer extends StatelessWidget {
         // A television has no window to fill: the button would do nothing.
         if (!isTv) ...[
           SizedBox(width: m.clusterGap),
-          _OnyxIconButton(
+          OnyxIconButton(
             key: const ValueKey('onyx-fullscreen'),
             icon: Icons.fullscreen_rounded,
             tooltip: tr('Plein écran'),
@@ -876,7 +874,7 @@ class OnyxControlsLayer extends StatelessWidget {
       children: [
         // Same rule as the next button: only when there is somewhere to go.
         if (onSkipPrevious != null) ...[
-          _OnyxIconButton(
+          OnyxIconButton(
             key: const ValueKey('onyx-previous'),
             icon: Icons.skip_previous_rounded,
             tooltip: tr('Épisode précédent'),
@@ -886,7 +884,7 @@ class OnyxControlsLayer extends StatelessWidget {
           ),
           gap,
         ],
-        _OnyxIconButton(
+        OnyxIconButton(
           key: const ValueKey('onyx-rewind'),
           icon: Icons.replay_10_rounded,
           tooltip: tr('Reculer de 10 s'),
@@ -896,7 +894,7 @@ class OnyxControlsLayer extends StatelessWidget {
           onPressed: onRewind,
         ),
         gap,
-        _OnyxIconButton(
+        OnyxIconButton(
           key: const ValueKey('onyx-play-pause'),
           icon: isPlaying ? Icons.pause_rounded : Icons.play_arrow_rounded,
           tooltip: isPlaying ? tr('Pause') : tr('Lecture'),
@@ -908,7 +906,7 @@ class OnyxControlsLayer extends StatelessWidget {
           onPressed: onPlayPause,
         ),
         gap,
-        _OnyxIconButton(
+        OnyxIconButton(
           key: const ValueKey('onyx-forward'),
           icon: Icons.forward_10_rounded,
           tooltip: tr('Avancer de 10 s'),
@@ -921,7 +919,7 @@ class OnyxControlsLayer extends StatelessWidget {
         // to go to and the button would sit there doing nothing.
         if (onSkipNext != null) ...[
           gap,
-          _OnyxIconButton(
+          OnyxIconButton(
             key: const ValueKey('onyx-next'),
             icon: Icons.skip_next_rounded,
             tooltip: tr('Épisode suivant'),
@@ -935,233 +933,6 @@ class OnyxControlsLayer extends StatelessWidget {
   }
 }
 
-/// Flat Chrome Onyx icon button, reachable three ways: pointer, finger, and D-pad.
-///
-/// The remote is the reason this is wrapped in a [TvFocusable] rather than
-/// left as a bare [GestureDetector]. Nothing in this chrome used to request
-/// focus, so on a television the only focusable widget in it was the volume
-/// slider — the remote landed there and had nowhere else to go.
-class _OnyxIconButton extends StatefulWidget {
-  final IconData icon;
-  final String tooltip;
-  final VoidCallback onPressed;
-  final OnyxChromeMetrics metrics;
-
-  /// Overrides [OnyxChromeMetrics.iconSize] (play/pause is larger).
-  final double? size;
-
-  /// Anchor for popups that open above this button.
-  final GlobalKey? buttonKey;
-
-  /// Supplied for the one button the remote is sent to on entry.
-  final FocusNode? focusNode;
-
-  /// Television treatment: the button under the remote is filled with the
-  /// accent, which reads from across a room where a brighter icon does not.
-  final bool isTv;
-
-  /// Television only: a translucent disc even at rest, for the one button the
-  /// transport is built around.
-  final bool prominent;
-
-  const _OnyxIconButton({
-    super.key,
-    required this.icon,
-    required this.tooltip,
-    required this.onPressed,
-    required this.metrics,
-    this.size,
-    this.buttonKey,
-    this.focusNode,
-    this.isTv = false,
-    this.prominent = false,
-  });
-
-  @override
-  State<_OnyxIconButton> createState() => _OnyxIconButtonState();
-}
-
-class _OnyxIconButtonState extends State<_OnyxIconButton> {
-  bool _hovered = false;
-
-  /// Owned when the chrome does not hand one in. The highlight is read from
-  /// the node itself rather than from a flag kept in step with focus
-  /// callbacks: a callback reports a *change*, and a node that arrives already
-  /// focused, or moves between buttons, never produces one — which is how a
-  /// button could hold the remote without lighting up.
-  FocusNode? _ownedNode;
-
-  FocusNode get _node =>
-      widget.focusNode ?? (_ownedNode ??= FocusNode(debugLabel: 'onyx-button'));
-
-  @override
-  void dispose() {
-    _ownedNode?.dispose();
-    super.dispose();
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    final m = widget.metrics;
-    final iconSize = widget.size ?? m.iconSize;
-    // The box grows with an oversized icon so play/pause is not clipped.
-    final box = iconSize > m.iconSize ? iconSize + 18 : m.hitSize;
-
-    return Tooltip(
-      message: widget.tooltip,
-      waitDuration: const Duration(milliseconds: 500),
-      child: TvFocusable(
-        focusNode: _node,
-        onSelect: widget.onPressed,
-        // A circle, so the ring hugs a round icon instead of boxing it.
-        borderRadius: BorderRadius.circular(box / 2),
-        // The television fill replaces the ring.
-        showRing: !widget.isTv,
-        // Slightly more than the app's cards get: an icon is a much smaller
-        // thing to spot from a sofa, and the box has enough padding around it
-        // that growing it never reaches its neighbour.
-        focusScale: widget.isTv ? 1.15 : 1.12,
-        child: MouseRegion(
-          cursor: SystemMouseCursors.click,
-          onEnter: (_) => setState(() => _hovered = true),
-          onExit: (_) => setState(() => _hovered = false),
-          child: GestureDetector(
-            key: widget.buttonKey,
-            behavior: HitTestBehavior.opaque,
-            onTap: widget.onPressed,
-            child: ListenableBuilder(
-              listenable: _node,
-              builder: (context, _) {
-                final focused = _node.hasFocus;
-                final active = _hovered || focused;
-                final filled = widget.isTv && focused;
-                final Color? disc = filled
-                    ? AppColors.accent
-                    : widget.prominent
-                        ? Colors.white.withValues(alpha: 0.16)
-                        : null;
-                return AnimatedContainer(
-                  duration: const Duration(milliseconds: 140),
-                  curve: Curves.easeOut,
-                  width: box,
-                  height: box,
-                  decoration: BoxDecoration(
-                    shape: BoxShape.circle,
-                    color: disc ?? Colors.transparent,
-                    boxShadow: filled
-                        ? [
-                            BoxShadow(
-                              color: AppColors.accent.withValues(alpha: 0.45),
-                              blurRadius: 18,
-                            ),
-                          ]
-                        : null,
-                  ),
-                  child: Icon(
-                    widget.icon,
-                    size: iconSize,
-                    color: active
-                        ? OnyxChromeTheme.iconActive
-                        : OnyxChromeTheme.icon,
-                  ),
-                );
-              },
-            ),
-          ),
-        ),
-      ),
-    );
-  }
-}
-
-/// Mute toggle plus an always-visible slider.
-///
-/// Muting has to remember where the volume was: setting it to 0 and back to a
-/// hardcoded default would quietly change the user's level.
-class _OnyxVolumeControl extends StatefulWidget {
-  final double volume;
-  final ValueChanged<double> onChanged;
-  final OnyxChromeMetrics metrics;
-
-  /// False on narrow chromes, where only the mute button is shown.
-  final bool showSlider;
-
-  const _OnyxVolumeControl({
-    required this.volume,
-    required this.onChanged,
-    required this.metrics,
-    required this.showSlider,
-  });
-
-  @override
-  State<_OnyxVolumeControl> createState() => _OnyxVolumeControlState();
-}
-
-class _OnyxVolumeControlState extends State<_OnyxVolumeControl> {
-  double _lastAudible = 100;
-  final OptimisticVolume _shown = OptimisticVolume();
-
-  IconData _icon(double volume) {
-    if (volume <= 0) return Icons.volume_off_rounded;
-    if (volume < 50) return Icons.volume_down_rounded;
-    return Icons.volume_up_rounded;
-  }
-
-  void _setVolume(double v) {
-    setState(() => _shown.request(v));
-    widget.onChanged(v);
-  }
-
-  void _toggleMute(double volume) {
-    if (volume > 0) {
-      _lastAudible = volume;
-      _setVolume(0);
-    } else {
-      _setVolume(_lastAudible <= 0 ? 100 : _lastAudible);
-    }
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    final m = widget.metrics;
-    final volume = _shown.resolve(widget.volume);
-
-    return Row(
-      mainAxisSize: MainAxisSize.min,
-      children: [
-        _OnyxIconButton(
-          icon: _icon(volume),
-          tooltip: volume <= 0 ? tr('Rétablir le son') : tr('Couper le son'),
-          metrics: m,
-          onPressed: () => _toggleMute(volume),
-        ),
-        if (widget.showSlider)
-          SizedBox(
-            width: m.isCompact ? 90 : 130,
-            child: SliderTheme(
-              data: const SliderThemeData(
-                trackHeight: 3,
-                activeTrackColor: OnyxChromeTheme.progressPlayed,
-                inactiveTrackColor: OnyxChromeTheme.progressTrack,
-                thumbColor: OnyxChromeTheme.progressPlayed,
-                overlayColor: Colors.white24,
-                thumbShape: RoundSliderThumbShape(enabledThumbRadius: 6),
-                overlayShape: RoundSliderOverlayShape(overlayRadius: 14),
-              ),
-              child: AppSlider(
-                value: volume,
-                max: 100,
-                onChanged: (v) {
-                  if (v > 0) _lastAudible = v;
-                  _setVolume(v);
-                },
-              ),
-            ),
-          ),
-      ],
-    );
-  }
-}
 
 /// Skip-intro affordance: a bordered pill above the controls, shown
 /// only while an intro chapter is playing.

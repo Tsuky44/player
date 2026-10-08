@@ -46,10 +46,20 @@ mixin _ActivityEndpoints {
   }
 
   /// Jeton qui change dès que la progression du compte change, sur n'importe
-  /// quel appareil. Opaque : il se compare au précédent, rien d'autre. Voir
-  /// `server/handlers/progress_revision.go`.
-  Future<String> getProgressRevision() async {
-    final response = await _dio.get('/api/progress/revision');
+  /// quel appareil. Opaque : il se compare au précédent, rien d'autre.
+  ///
+  /// Avec [since], le serveur garde la requête ouverte jusqu'à ce que le jeton
+  /// s'en écarte — une vingtaine de secondes au plus, sous le délai de
+  /// réception du client. Voir `server/handlers/progress_revision.go`.
+  Future<String> getProgressRevision({
+    String? since,
+    CancelToken? cancelToken,
+  }) async {
+    final response = await _dio.get(
+      '/api/progress/revision',
+      queryParameters: {if (since != null) 'since': since},
+      cancelToken: cancelToken,
+    );
     return (response.data as Map<String, dynamic>)['revision'] as String;
   }
 

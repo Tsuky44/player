@@ -12,6 +12,7 @@ import '../models/offline_download.dart';
 import '../models/server_account.dart';
 import '../utils/app_platform.dart';
 import '../utils/poster_url.dart';
+import '../utils/watched_verdict.dart';
 import 'api_client.dart';
 import 'playback_access.dart';
 import 'app_image_cache.dart';
@@ -812,7 +813,9 @@ class DownloadManager extends ChangeNotifier {
     if (!_entries.containsKey(mediaId)) {
       try {
         await dir.delete(recursive: true);
-      } catch (_) {}
+      } catch (_) {
+        // Au pire, un dossier vide reste sur le disque.
+      }
       return true;
     }
     final target = File(p.join(dir.path, entry.fileName));
@@ -1108,12 +1111,11 @@ class DownloadManager extends ChangeNotifier {
 
     // La règle des 90 % est celle du serveur ; l'appliquer ici aussi évite
     // qu'un épisode fini hors ligne attende la reconnexion pour compter comme vu.
-    var finished = isFinished;
     final duration =
         durationSeconds > 0 ? durationSeconds : entry.durationSeconds;
-    if (!finished && duration > 0 && positionSeconds > 0) {
-      finished = (positionSeconds / duration) * 100 >= 90.0;
-    }
+    final finished = isFinished ||
+        countsAsWatched(
+            positionSeconds: positionSeconds, durationSeconds: duration);
 
     _entries[mediaId] = entry.copyWith(
       positionSeconds: positionSeconds,

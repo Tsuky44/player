@@ -273,6 +273,8 @@ class _OnyxSettingsMenuState extends State<OnyxSettingsMenu> {
   String get _displayValue => _fit == BoxFit.cover ? tr('Adaptatif') : tr('Original');
 
   String get _sleepValue {
+    final episodes = SleepTimer.instance.episodesLeft;
+    if (episodes != null) return _sleepEpisodes(episodes);
     final remaining = SleepTimer.instance.remaining;
     return remaining == null ? tr('Désactivée') : _sleepRemaining(remaining);
   }
@@ -285,6 +287,9 @@ class _OnyxSettingsMenuState extends State<OnyxSettingsMenu> {
     final rest = (minutes % 60).toString().padLeft(2, '0');
     return '${minutes ~/ 60} h $rest';
   }
+
+  static String _sleepEpisodes(int count) =>
+      tr('{0} épisode{1}', [count, count > 1 ? 's' : '']);
 
   static String _sleepChoiceLabel(Duration choice) {
     if (choice.inMinutes < 60) return '${choice.inMinutes} minutes';
@@ -464,7 +469,7 @@ class _OnyxSettingsMenuState extends State<OnyxSettingsMenu> {
           selected: controller.currentQuality == null,
           onTap: () {
             widget.onClose();
-            controller.switchToDirectPlay();
+            controller.chooseQuality(null);
           },
         ),
       for (final tier in _qualityTiers)
@@ -475,7 +480,7 @@ class _OnyxSettingsMenuState extends State<OnyxSettingsMenu> {
             selected: controller.currentQuality == tier.key,
             onTap: () {
               widget.onClose();
-              controller.switchToQuality(tier.key);
+              controller.chooseQuality(tier.key);
             },
           );
         }(),
@@ -631,9 +636,13 @@ class _OnyxSettingsMenuState extends State<OnyxSettingsMenu> {
 
   /// La lecture se met en pause à l'échéance, où qu'elle en soit : la
   /// minuterie suit d'un épisode au suivant. Voir [SleepTimer].
+  ///
+  /// Le compte en épisodes n'est proposé que devant un épisode : un film n'a
+  /// pas de suivant à ne pas lancer.
   Widget _buildSleep() {
     final timer = SleepTimer.instance;
     final remaining = timer.remaining;
+    final episodesLeft = timer.episodesLeft;
 
     return _sectionList([
       _OnyxMenuOption(
@@ -644,6 +653,24 @@ class _OnyxSettingsMenuState extends State<OnyxSettingsMenu> {
           widget.onClose();
         },
       ),
+      if (widget.episodeNav != null)
+        for (final count in SleepTimer.episodeChoices)
+          () {
+            final selected = timer.episodesChosen == count;
+            return _OnyxMenuOption(
+              label: count == 1
+                  ? tr('À la fin de l’épisode')
+                  : tr('Après {0} épisodes', [count]),
+              value: selected && episodesLeft != null && episodesLeft < count
+                  ? tr('reste {0}', [_sleepEpisodes(episodesLeft)])
+                  : null,
+              selected: selected,
+              onTap: () {
+                timer.startEpisodes(count);
+                widget.onClose();
+              },
+            );
+          }(),
       for (final choice in SleepTimer.choices)
         () {
           final selected = timer.chosen == choice;

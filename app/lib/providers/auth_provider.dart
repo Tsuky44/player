@@ -229,7 +229,10 @@ class AuthProvider extends ChangeNotifier {
         _isOfflineSession = false;
         notifyListeners();
       }
-    } catch (_) {}
+    } catch (_) {
+      // Serveur toujours injoignable : la session hors ligne continue. Seul un
+      // 401 la ferme.
+    }
   }
 
   /// La connexion en cours attend un code (ADR-0041). L'écran de connexion le
@@ -497,7 +500,7 @@ class AuthProvider extends ChangeNotifier {
         return false;
       case _SessionOutcome.unreachable:
       case _SessionOutcome.faulted:
-        return await _openOfflineSession();
+        return _openOfflineSession();
     }
   }
 

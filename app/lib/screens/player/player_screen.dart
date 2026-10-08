@@ -11,7 +11,6 @@ import '../../providers/home_provider.dart';
 import '../../providers/library_provider.dart';
 import '../../navigation/search_route_observer.dart';
 import '../../services/api_client.dart';
-import '../../models/remote_playback.dart';
 import '../../services/download_manager.dart';
 import '../../services/server_reachability.dart';
 import '../../services/media_details_cache.dart';
@@ -22,14 +21,18 @@ import '../../services/watch_party.dart';
 import 'chrome_auto_hide.dart';
 import 'display_cutouts.dart';
 import 'video_fit.dart';
-import '../../tv/tv_focus.dart';
 import '../../tv/tv_mode.dart';
 import '../../tv/touchpad_motion.dart';
 import '../../tv/tv_touchpad.dart';
 import '../../utils/poster_url.dart';
+import 'hooks/use_episodes_panel.dart';
+import 'hooks/use_gesture_hints.dart';
+import 'hooks/use_playback_handoff.dart';
 import 'hooks/use_player_controller.dart';
 import 'hooks/use_episode_navigation.dart';
 import 'hooks/use_player_media_keys.dart';
+import 'hooks/use_player_popup.dart';
+import 'hooks/use_player_watch_party.dart';
 import 'widgets/seek_feedback_overlay.dart';
 import 'widgets/video_zoom_hint.dart';
 import 'widgets/next_episode_overlay.dart';
@@ -37,26 +40,36 @@ import 'widgets/next_season_overlay.dart';
 import 'widgets/upcoming_episode_overlay.dart';
 import 'widgets/onyx/onyx_controls_layer.dart';
 import 'widgets/onyx/onyx_settings_menu.dart';
-import 'widgets/player_settings_anchor.dart';
 import 'widgets/player_episodes_panel.dart';
+import 'widgets/player_popups.dart';
 import 'widgets/player_screen_lock.dart';
 import 'widgets/player_status_panels.dart';
+import 'widgets/player_tap_zones.dart';
+import 'widgets/player_video_stage.dart';
 import 'widgets/still_watching_prompt.dart';
 import 'widgets/watch_party_overlay.dart';
-import 'playback/away_from_screen.dart';
 import 'playback/live_subtitles.dart';
 import 'playback/relay_trigger.dart';
 import 'playback/remote_seek.dart';
 import 'playback/sleep_timer.dart';
 import 'playback/still_watching.dart';
 import 'pinch_zoom_fit.dart';
+import 'player_key_routing.dart';
+import 'player_media_info.dart';
 import 'subtitle_padding.dart';
 import 'player_playback_preferences.dart';
 import 'player_shortcuts.dart';
 import '../../desktop_window.dart';
-import '../../utils/release_tag.dart';
-import '../../utils/format.dart';
+import '../../utils/watched_verdict.dart';
 import '../../l10n/tr.dart';
+
+// L'écran du lecteur est découpé par sujet. Ce fichier garde l'état, son
+// cycle de vie et la construction de l'arbre ; les comportements sont dans
+// des extensions sur cet état, une par sujet. Voir ADR-0052.
+part 'player_screen_chrome.dart';
+part 'player_screen_flow.dart';
+part 'player_screen_remote.dart';
+part 'player_screen_startup.dart';
 
 class PlayerScreen extends StatefulWidget {
   final dynamic media; // Can be Media or HomeMediaItem
@@ -86,7 +99,14 @@ class PlayerScreen extends StatefulWidget {
 
 class _PlayerScreenState extends State<PlayerScreen> {
   late final PlayerController _playerController;
+  late final PlayerMediaInfo _info =
+      PlayerMediaInfo(widget.media as Object, seasonNumber: widget.seasonNumber);
   EpisodeNavigationController? _episodeNav;
+  late final EpisodesPanelController _episodesPanel;
+  late final PlaybackHandoffWatch _handoff;
+  late final PlayerWatchParty _party;
+  final GestureHints _hints = GestureHints();
+  final PinchTracker _pinch = PinchTracker();
   bool _isInitialized = false;
   bool _showControls = true;
   bool _isEpisodeTransition = false;
@@ -104,86 +124,30 @@ class _PlayerScreenState extends State<PlayerScreen> {
   bool _startupStalled = false;
   Timer? _startupWatchdog;
 
-  /// How long the picture may take before the screen admits something is wrong.
-  ///
-  /// Long enough not to fire on a genuinely slow open — a big remux over a
-  /// weak link, a server that has to spin a disk up — and short enough that
-  /// nobody sits through it twice wondering whether to press something.
-  static const Duration _startupDeadline = Duration(seconds: 25);
-
   /// True from the moment this screen starts leaving — a pop, or a jump to the
   /// next episode. The focus is on its way to another screen from here on, and
   /// this one must stop claiming it back.
   bool _isLeaving = false;
   bool _progressFlushed = false;
+
+  /// Le lecteur a été quitté pendant le générique de fin, pour l'épisode
+  /// suivant ou pour de bon : l'épisode compte comme vu, même sous le seuil.
+  /// Voir [countsAsWatched].
+  bool _leftDuringCredits = false;
   ApiClient? _apiClient;
   Timer? _relayTimer;
 
   /// Quand le relais peut seulement s'envisager. Voir [RelayTrigger].
   final RelayTrigger _relayTrigger = RelayTrigger();
-
-  /// Reprise sur un autre appareil : le serveur est interrogé toutes les
-  /// quelques secondes pour savoir si ce titre a démarré ailleurs sur le même
-  /// compte. [_handedOffTo] nomme cet appareil tant que la lecture y est.
-  Timer? _handoffTimer;
-  String? _handedOffTo;
-  bool _resumingHere = false;
-  static const Duration _handoffPollInterval = Duration(seconds: 4);
   bool _findingRelay = false;
   bool _wantsPlayback = true;
   String? _sourceAccountId;
   int _resumePosition = 0;
 
-  /// La séance « Regarder ensemble » à laquelle ce lecteur est accroché, s'il
-  /// y en a une. Voir [WatchPartySession].
-  WatchPartySession? _party;
-  late final _WatchPartyBinding _partyBinding = _WatchPartyBinding(this);
-  StreamSubscription<String>? _partyNotices;
-  String? _partyNotice;
-  bool _partyNoticeVisible = false;
-  Timer? _partyNoticeTimer;
-
-  /// Jusqu'à quand un recalage demandé par la séance est en train de se poser.
-  DateTime? _partySeekSettlesAt;
-
-  /// Le facteur que la séance applique à la vitesse choisie, pour rattraper
-  /// un petit écart sans couper. 1 hors séance.
-  double _partyRateFactor = 1;
-
-  /// Ce lecteur cède la place à un autre (épisode suivant, relance) : la
-  /// séance continue avec lui, elle ne doit pas être quittée ici.
-  bool _partyHandOver = false;
-
-
   /// How the video is fitted inside the player viewport.
   /// [BoxFit.contain] = original (letterbox possible).
   /// [BoxFit.cover]   = adaptive (fills screen, may crop edges).
   BoxFit _videoFit = BoxFit.contain;
-
-  /// Pinch-to-zoom, the gesture people expect on a phone:
-  /// spreading two fingers fills the screen ([BoxFit.cover]), pinching them
-  /// back gives the original framing ([BoxFit.contain]). Reading the pinch
-  /// itself belongs to [PinchZoomFit]; what is left here is when to listen and
-  /// what to do with the answer.
-  ///
-  /// One fit decision per pinch. Without it, fingers drifting back across the
-  /// threshold mid-gesture would keep flipping the picture.
-  bool _pinchResolved = false;
-
-  /// The fingers on the picture right now, and how far apart the first two
-  /// were when the second landed.
-  ///
-  /// The pinch is read from raw pointers rather than from a scale recognizer,
-  /// and that is the whole reason it answers every time. A recognizer has to
-  /// win the gesture arena, and over the video it was up against the tap and
-  /// double-tap of the three seek zones underneath it: a pinch that spread
-  /// slowly, or whose fingers landed a moment apart, was awarded to a tap
-  /// before the scale recognizer had seen enough movement to claim it — the
-  /// "sometimes nothing happens" of it. A [Listener] takes part in no arena at
-  /// all, so it sees the fingers whatever the taps do, and the taps keep
-  /// working.
-  final Map<int, Offset> _pinchPointers = <int, Offset>{};
-  double? _pinchStartSpan;
 
   /// True while the film is playing in the system's little window, over
   /// whatever the phone is doing instead.
@@ -212,23 +176,6 @@ class _PlayerScreenState extends State<PlayerScreen> {
   /// out of the chrome everywhere except a phone or tablet.
   double? _screenBrightness;
 
-  BoxFit _zoomHintFit = BoxFit.contain;
-  bool _zoomHintVisible = false;
-  bool _zoomHintMounted = false;
-  Timer? _zoomHintTimer;
-
-  /// Running total of a burst of double-tap seeks, in seconds. Reset once the
-  /// taps stop, or the moment one goes the other way.
-  int _seekHintSeconds = 0;
-  bool _seekHintForward = true;
-
-  /// Bumped per tap so the overlay can replay its arc; see
-  /// [SeekFeedbackOverlay.pulse].
-  int _seekHintPulse = 0;
-  bool _seekHintVisible = false;
-  bool _seekHintMounted = false;
-  Timer? _seekHintTimer;
-
   /// When the last side-zone seek landed; see [_handleSideZoneTap].
   DateTime? _lastSideSeekAt;
   static const _sideSeekBurstWindow = Duration(milliseconds: 1000);
@@ -242,7 +189,6 @@ class _PlayerScreenState extends State<PlayerScreen> {
 
   /// Key attached to the subtitles button so we can anchor the popup above it.
   final GlobalKey _subtitlesButtonKey = GlobalKey();
-
 
   /// Anchors subtitle lift to the real progress/timeline bar position.
   final GlobalKey _timelineAnchorKey = GlobalKey();
@@ -277,18 +223,22 @@ class _PlayerScreenState extends State<PlayerScreen> {
     _safeSetState(() {});
   });
 
-  /// The settings / subtitles / info popup currently on the overlay, with the
-  /// closure that dismisses it. Back goes through this before it reaches the
-  /// player. One at a time: each of these covers the screen with its own
-  /// dismiss barrier, so a second one stacked on it would be unreachable.
-  ({OverlayEntry entry, VoidCallback dismiss})? _openPopup;
-
-  /// Focus scope lent to whichever popup is open, so a remote can walk into a
-  /// menu that is not a route and would otherwise never receive the focus.
-  final FocusScopeNode _popupFocusScope =
-      FocusScopeNode(debugLabel: 'player-popup');
-
-  static const double _volumeStep = 5.0;
+  /// Les menus ouverts par-dessus le lecteur. Voir [PlayerPopupHost].
+  late final PlayerPopupHost _popups = PlayerPopupHost(
+    isActive: () => !_isDisposing && mounted,
+    onDismissed: () {
+      // The remote came from the control bar and has to go back to it, or the
+      // next key press has nowhere to land.
+      if (TvMode.isTv) {
+        _enterControlBar();
+      } else {
+        _keyboardFocusNode.requestFocus();
+        // Le chrome est resté affiché tout le temps du menu (voir
+        // [chromeMayAutoHide]) : son compte à rebours repart d'ici.
+        if (_showControls) _hideControlsWithDelay();
+      }
+    },
+  );
 
   /// Whether this screen may take over the device's orientation and system
   /// bars for the duration of a playback.
@@ -314,184 +264,36 @@ class _PlayerScreenState extends State<PlayerScreen> {
   DateTime? _lastPositionUiRefresh;
   static const _positionUiRefreshInterval = Duration(milliseconds: 250);
 
+  /// Mouse moved over the video: see [_handlePointerHover].
+  static const Duration _hoverRearmInterval = Duration(milliseconds: 200);
+  DateTime? _lastHoverRearm;
+
   String? _mediaLogoUrl;
-
-  bool _showEpisodesPanel = false;
   bool _requestingNextSeason = false;
-  bool _episodesPanelLoading = false;
-  List<Media> _episodesPanelSeasons = [];
-  List<HomeMediaItem> _episodesPanelEpisodes = [];
-  int? _episodesPanelSeasonId;
-  String _episodesPanelShowTitle = '';
 
-  /// The episode before this one inside the same season, when there is one.
+  /// How big the fixed chrome is drawn.
   ///
-  /// The server only answers "what comes next", so this is resolved from the
-  /// season listing instead — the same call the episode panel makes.
-  HomeMediaItem? _previousEpisode;
+  /// The same widget at the same width reads slightly larger on an iPhone than
+  /// on an Android phone, so it is trimmed there. Only what is drawn: the
+  /// targets stay the size of a finger.
+  static const double _iosChromeScale = 0.9;
 
-  String get _playerTitle =>
-      playerMediaTitle(widget.media, seasonNumber: widget.seasonNumber);
+  double get _chromeScale => AppPlatform.isIOS ? _iosChromeScale : 1;
 
-  Future<void> _loadMediaLogo(Media media) async {
-    final api = _apiClient;
-    if (api == null) return;
+  /// `setState`, pour les extensions de cet état qui ne peuvent pas
+  /// l'appeler elles-mêmes (le membre est protégé).
+  void _update(VoidCallback fn) => setState(fn);
 
-    int? detailsId;
-    if (media.type == MediaType.movie || media.type == MediaType.show) {
-      detailsId = media.id;
-    } else if (media.type == MediaType.episode) {
-      // The logo belongs to the show, so an episode has to resolve its parent.
-      // showId is only present when the player was opened from a home row;
-      // parentId covers the episode-list route, which otherwise got no logo.
-      if (widget.media is HomeMediaItem) {
-        detailsId = (widget.media as HomeMediaItem).showId;
-      }
-      if (detailsId == null || detailsId <= 0) {
-        detailsId = media.parentId;
-      }
-    }
-    if (detailsId == null || detailsId <= 0) return;
-
-    // Already resolved this session (detail page, or a previous playback):
-    // set it synchronously so the chrome opens on the logo, not on the title.
-    // The URL is normalised to the same size the detail header asked for, so
-    // the bytes are in the image cache too and it draws on the first frame.
-    final cached = MediaDetailsCache.peek(detailsId);
-    if (cached != null) {
-      setState(() => _mediaLogoUrl = logoImageUrl(cached.logoUrl));
-      return;
-    }
-
-    final url = await MediaDetailsCache.resolveLogo(api, detailsId);
-    if (!mounted) return;
-    setState(() => _mediaLogoUrl = logoImageUrl(url));
-  }
-
-  int? _seasonNumberFor(dynamic media) {
-    if (widget.seasonNumber != null && widget.seasonNumber! > 0) {
-      return widget.seasonNumber;
-    }
-    if (media is HomeMediaItem) {
-      return media.media.effectiveSeasonNumber;
-    }
-    if (media is Media) {
-      return media.effectiveSeasonNumber;
-    }
-    return null;
-  }
-
-  Media get _actualMedia {
-    if (widget.media is HomeMediaItem) {
-      return (widget.media as HomeMediaItem).media;
-    }
-    return widget.media as Media;
-  }
-
-  bool get _isEpisode => _actualMedia.type == MediaType.episode;
-
-  int get _currentEpisodeId => _actualMedia.id;
-
-  int? get _currentSeasonId => _actualMedia.parentId;
-
-  int? get _currentShowId {
-    if (widget.media is HomeMediaItem) {
-      return (widget.media as HomeMediaItem).showId;
-    }
-    return null;
-  }
-
-  String get _episodesShowTitle {
-    if (widget.media is HomeMediaItem) {
-      return (widget.media as HomeMediaItem).displayTitle;
-    }
-    final parts = _playerTitle.split(' – ');
-    return parts.isNotEmpty ? parts.first : _playerTitle;
-  }
-
-  Future<void> _openEpisodesPanel() async {
-    if (!_isEpisode || _apiClient == null) return;
-    setState(() {
-      _showEpisodesPanel = true;
-      _showControls = true;
-      _episodesPanelLoading = true;
-      _episodesPanelShowTitle = _episodesShowTitle;
-      _episodesPanelSeasonId = _currentSeasonId;
-      _episodesPanelEpisodes = [];
-    });
-    _controlsTimer?.cancel();
-    await _loadEpisodesPanelData();
-  }
-
-  /// Resolves [_previousEpisode] from the current season listing.
-  ///
-  /// Season-crossing is deliberately not attempted: going back would mean
-  /// fetching the previous season's episodes to find its last one, and the
-  /// episode panel already covers that case.
-  Future<void> _loadPreviousEpisode() async {
-    final api = _apiClient;
-    final seasonId = _currentSeasonId;
-    if (!_isEpisode || api == null || seasonId == null || seasonId <= 0) return;
-
+  void _safeSetState(VoidCallback fn) {
+    if (_isDisposing || !mounted) return;
     try {
-      final episodes = await api.getSeasonEpisodes(seasonId);
-      if (!mounted) return;
-      final idx = episodes.indexWhere((e) => e.media.id == _currentEpisodeId);
-      if (idx <= 0) return;
-      setState(() => _previousEpisode = episodes[idx - 1]);
-    } catch (_) {
-      // A missing back button is a smaller failure than a broken player.
+      setState(fn);
+    } on Object {
+      // Widget disposed between check and call
     }
   }
 
-  void _goToPreviousEpisode() {
-    final previous = _previousEpisode;
-    if (previous == null) return;
-    _navigateToEpisode(previous);
-  }
-
-  void _closeEpisodesPanel() {
-    if (!_showEpisodesPanel) return;
-    setState(() => _showEpisodesPanel = false);
-    _hideControlsWithDelay();
-  }
-
-  Future<void> _loadEpisodesPanelData({int? seasonId}) async {
-    final api = _apiClient;
-    if (api == null) return;
-
-    final targetSeasonId = seasonId ?? _currentSeasonId;
-    if (targetSeasonId == null || targetSeasonId <= 0) {
-      if (mounted) setState(() => _episodesPanelLoading = false);
-      return;
-    }
-
-    try {
-      if (_episodesPanelSeasons.isEmpty) {
-        final showId = _currentShowId;
-        if (showId != null && showId > 0) {
-          _episodesPanelSeasons = await api.getShowSeasons(showId);
-        }
-      }
-
-      final episodes = await api.getSeasonEpisodes(targetSeasonId);
-      if (!mounted) return;
-
-      final showTitle =
-          episodes.isNotEmpty && episodes.first.showTitle?.isNotEmpty == true
-              ? episodes.first.showTitle!
-              : _episodesPanelShowTitle;
-
-      setState(() {
-        _episodesPanelEpisodes = episodes;
-        _episodesPanelSeasonId = targetSeasonId;
-        _episodesPanelShowTitle = showTitle;
-        _episodesPanelLoading = false;
-      });
-    } catch (_) {
-      if (mounted) setState(() => _episodesPanelLoading = false);
-    }
-  }
+  void _rebuild() => _safeSetState(() {});
 
   @override
   void initState() {
@@ -517,11 +319,51 @@ class _PlayerScreenState extends State<PlayerScreen> {
     PictureInPicture.active.addListener(_handlePictureInPictureChanged);
     PictureInPicture.closed.addListener(_handlePictureInPictureClosed);
     _keyboardFocusNode.addListener(_handlePlayerFocusChanged);
-    WatchPartySession.active.addListener(_handleWatchPartyChanged);
+    _hints.addListener(_rebuild);
     SleepTimer.instance.retain();
     StillWatching.instance.retain();
     SleepTimer.instance.addListener(_applySleepTimer);
-    _playerController = PlayerController();
+    _playerController = PlayerController()
+      ..onQualityAdapted = (tier) => _party.showNotice(
+          tr('Connexion lente : qualité réduite à {0}', [tier.label]));
+    _party = PlayerWatchParty(
+      controller: _playerController,
+      api: () => _apiClient,
+      // Une installation sans carnet de comptes n'a pas d'identifiant : la
+      // séance n'en dépend pas.
+      accountKey: () => _sourceAccountId ?? WatchPartySession.defaultAccountKey,
+      mediaId: () => _info.media.id,
+      isGone: () => _isLeaving || _isDisposing || !mounted,
+      playbackRate: () => _playbackRate,
+      setWantsPlayback: (wanted) => _wantsPlayback = wanted,
+      openMedia: (media, {required resumeAtSeconds, required startPaused}) =>
+          _navigateToEpisode(
+            media,
+            fromParty: true,
+            resumeAtSeconds: resumeAtSeconds,
+            startPaused: startPaused,
+          ),
+    )
+      ..addListener(_rebuild)
+      ..listen();
+    _handoff = PlaybackHandoffWatch(
+      api: () => _apiClient,
+      controller: _playerController,
+      inParty: () => _party.party != null,
+      isLeaving: () => _isLeaving || !mounted,
+      pause: _pauseByChoice,
+      resume: () {
+        _wantsPlayback = true;
+        if (!_playerController.isPlaying) _playerController.togglePlayPause();
+      },
+      leave: () => unawaited(_leavePlayer()),
+    )..addListener(_rebuild);
+    _episodesPanel = EpisodesPanelController(
+      api: () => _apiClient,
+      currentSeasonId: _info.seasonId,
+      currentShowId: _info.showId,
+      currentEpisodeId: _info.media.id,
+    )..addListener(_rebuild);
     _mediaKeys = PlayerMediaKeysBinding(
       onPlayPause: _togglePlayPause,
       onRewind: () => _seekRelative(-10),
@@ -534,1242 +376,6 @@ class _PlayerScreenState extends State<PlayerScreen> {
     });
   }
 
-  Future<void> _init() async {
-    final authProvider = Provider.of<AuthProvider>(context, listen: false);
-    final sharedApi = authProvider.apiClient;
-    _sourceAccountId = sharedApi.accountId;
-    final apiClient = _sourceAccountId == null ? sharedApi : await sharedApi.pinToAccount(_sourceAccountId!);
-    if (!mounted || _isLeaving) return;
-    _apiClient = apiClient;
-    _handleWatchPartyChanged();
-    if (_sourceAccountId != null) {
-      unawaited(sharedApi.mediaFailover.refreshIdentities(_sourceAccountId!));
-      _relayTimer = Timer.periodic(const Duration(seconds: 10), (_) => _tryRelay());
-    }
-    _seedOfflineDetails();
-
-    // Extract the actual Media object (handle both Media and HomeMediaItem)
-    Media actualMedia;
-    if (widget.media is HomeMediaItem) {
-      actualMedia = (widget.media as HomeMediaItem).media;
-    } else {
-      actualMedia = widget.media as Media;
-    }
-
-    int knownDuration = actualMedia.duration;
-    if (widget.media is HomeMediaItem) {
-      final item = widget.media as HomeMediaItem;
-      knownDuration = item.effectiveDuration;
-    }
-
-    _resumePosition = widget.resumeAtSeconds ??
-        (widget.media is HomeMediaItem && !(widget.media as HomeMediaItem).isFinished
-            ? (widget.media as HomeMediaItem).currentPositionSeconds : 0);
-    final resumePositionFuture = _loadResumePosition(apiClient, actualMedia).then((position) {
-      _resumePosition = position;
-      return position;
-    });
-
-    await _playerController.init(
-      media: actualMedia,
-      apiClient: apiClient,
-      knownDurationSeconds: knownDuration,
-      inheritedPreferences: widget.inheritedPreferences,
-      // Handed over rather than awaited here: the controller needs the resume
-      // point at the exact moment it opens the stream, so mpv can start at that
-      // second instead of starting at 0 and seeking afterwards.
-      resumePositionFuture: resumePositionFuture,
-      // What the home row already knows: lets the stream open without waiting
-      // on the server, which only has to confirm it.
-      provisionalResumeSeconds: widget.autoAdvance ? 0 : _resumePosition,
-      onCompleted: _onPlaybackCompleted,
-      onPositionChanged: _onPositionChanged,
-      onPlayingChanged: () {
-        _safeSetState(() {});
-        unawaited(_syncMediaSession(force: true));
-      },
-      onDurationChanged: () {
-        if (_isDisposing || !mounted) return;
-        setState(() {});
-      },
-      onQualitySwitchingChanged: () {
-        _safeSetState(() {});
-      },
-      onBufferingChanged: () {
-        _relayTrigger.noteBuffering(_playerController.isBuffering);
-        _safeSetState(() {});
-      },
-      onFirstFrame: () {
-        // The picture is here; nothing left for the deadline to catch.
-        _startupWatchdog?.cancel();
-        // Le lecteur sait enfin où il en est : c'est le moment de le caler sur
-        // la séance, au lieu d'attendre la prochaine vérification.
-        _party?.resync();
-        // Lifts the start-up cover: the texture now holds this media.
-        _safeSetState(() {});
-        // Restart the auto-hide countdown here rather than leave the one armed
-        // when play() was issued. On a slow open — a transcode taking several
-        // seconds to produce a frame — that first countdown expired while the
-        // screen was still covered, so the chrome was already gone by the time
-        // the picture appeared and the player looked broken on arrival.
-        _showControlsTransient();
-      },
-      onTracksChanged: () {
-        // Background subtitle extraction finished: rebuild so the settings
-        // menu reflects the freshly available tracks.
-        _safeSetState(() {});
-      },
-      onFailure: () {
-        // Le moteur a renoncé. Il n'y a plus rien à attendre du compte à
-        // rebours : l'écran d'échec sait maintenant quoi dire, et le dire tout
-        // de suite vaut mieux que le dire dans vingt secondes.
-        _startupWatchdog?.cancel();
-        _safeSetState(() => _startupStalled = true);
-      },
-    );
-
-    if (!mounted || _isLeaving) return;
-    unawaited(_loadMediaLogo(actualMedia));
-
-    if (actualMedia.type == MediaType.episode) {
-      // Extract timestamps from the media if available (from season episodes list)
-      EpisodeTimestamps? initialTimestamps;
-      if (widget.media is HomeMediaItem) {
-        final homeMediaItem = widget.media as HomeMediaItem;
-        initialTimestamps = EpisodeTimestamps(
-          introStart: homeMediaItem.introStart,
-          introEnd: homeMediaItem.introEnd,
-          outroStart: homeMediaItem.outroStart,
-          outroEnd: homeMediaItem.outroEnd,
-        );
-      }
-
-      _episodeNavListener = () {
-        _safeSetState(() {});
-      };
-      _episodeNav = EpisodeNavigationController(
-        apiClient: apiClient,
-        episodeId: actualMedia.id,
-        initialTimestamps: initialTimestamps,
-        session: _playerController.session,
-        onAutoPlay: _autoAdvanceToNextEpisode,
-        onAutoSkipIntro: _autoSkipIntro,
-      );
-      _episodeNav!.addListener(_episodeNavListener!);
-      unawaited(_episodeNav!.load());
-      unawaited(_loadPreviousEpisode());
-    }
-
-    if (mounted) setState(() {});
-    final resumeAt = await resumePositionFuture;
-    if (!mounted || _isLeaving) return;
-    await _startPlayback(resumeAtSeconds: resumeAt);
-  }
-
-  /// Verse la fiche rapatriée avec ce média dans le cache que lisent les
-  /// écrans, pour que le logo-titre et le reste existent sans serveur.
-  ///
-  /// Uniquement hors ligne : en ligne, la fiche du serveur est plus fraîche, et
-  /// pré-remplir le cache la retarderait de sa durée de validité.
-  void _seedOfflineDetails() {
-    final reachability =
-        Provider.of<ServerReachability>(context, listen: false);
-    if (reachability.isOnline) return;
-    final downloads = DownloadManager.instance;
-    final details = downloads.offlineDetails(_actualMedia.id);
-    if (details == null) return;
-    // Sous l'identifiant qui a servi à la demander : le lecteur cherche la
-    // fiche par l'identifiant de la série, pas par celui de l'épisode.
-    final infoId = downloads.entryFor(_actualMedia.id)?.infoId;
-    MediaDetailsCache.remember(infoId ?? details.id, details);
-  }
-
-  void _safeSetState(VoidCallback fn) {
-    if (_isDisposing || !mounted) return;
-    try {
-      setState(fn);
-    } on Object {
-      // Widget disposed between check and call
-    }
-  }
-
-  bool _needsPositionUiRefresh() => _showControls || _showEpisodesPanel;
-
-  void _refreshPositionUi({bool force = false}) {
-    if (!_needsPositionUiRefresh()) return;
-
-    final now = DateTime.now();
-    if (!force &&
-        _lastPositionUiRefresh != null &&
-        now.difference(_lastPositionUiRefresh!) < _positionUiRefreshInterval) {
-      return;
-    }
-    _lastPositionUiRefresh = now;
-    _safeSetState(() {});
-  }
-
-  /// Hands the system the shape of the film, so it knows what the little
-  /// window should look like before the user asks for it.
-  ///
-  /// Android only lets the window be created at the instant the user leaves —
-  /// there is no asking afterwards — so the shape goes over in advance and is
-  /// refreshed only when it actually changes.
-  void _syncPictureInPicture() {
-    if (!PictureInPicture.supported || _isDisposing || _isLeaving) return;
-    final aspect = _playerController.videoAspectRatio;
-    if (aspect <= 0) return;
-    final shape = (aspect * 1000).round();
-    if (shape == _armedShape) return;
-    _armedShape = shape;
-    unawaited(PictureInPicture.arm(width: shape, height: 1000));
-  }
-
-  void _handlePictureInPictureChanged() {
-    final inPip = PictureInPicture.active.value;
-    if (!mounted || _inPip == inPip) return;
-    // A menu open when the window shrinks would be most of the window.
-    if (inPip) {
-      _dismissTopPopup();
-      _controlsTimer?.cancel();
-    }
-    _safeSetState(() {
-      _inPip = inPip;
-      if (inPip) _showControls = false;
-    });
-  }
-
-  /// The window was closed rather than restored.
-  ///
-  /// Pause rather than leave: the activity is already on its way out, and
-  /// navigating from under it would be a route change nobody is there to see.
-  /// What matters is that a film with nowhere left to play stops playing.
-  void _handlePictureInPictureClosed() {
-    if (!mounted || !_playerController.isPlaying) return;
-    _wantsPlayback = false;
-    unawaited(_playerController.session.pause());
-  }
-
-  void _onPositionChanged() {
-    if (_isDisposing || !mounted) return;
-    _syncPictureInPicture();
-    _episodeNav?.checkPosition(
-      _playerController.position.inSeconds,
-      mediaDurationSeconds: _playerController.duration.inSeconds,
-    );
-    unawaited(_syncMediaSession());
-    _refreshPositionUi();
-  }
-
-  void _scheduleSubtitlePaddingSync() {
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (mounted) _syncSubtitlePadding(context);
-    });
-  }
-
-  Future<void> _syncMediaSession({bool force = false}) async {
-    if (!_isInitialized || _isDisposing) return;
-
-    final positionSeconds = _playerController.position.inSeconds;
-    final playing = _playerController.isPlaying;
-    if (!force &&
-        _lastMediaSessionPlaying == playing &&
-        _lastMediaSessionSyncPos >= 0 &&
-        (positionSeconds - _lastMediaSessionSyncPos).abs() < 15) {
-      return;
-    }
-
-    _lastMediaSessionSyncPos = positionSeconds;
-    _lastMediaSessionPlaying = playing;
-
-    await _mediaKeys.syncSession(
-      title: _playerTitle,
-      durationSeconds: _playerController.duration.inSeconds,
-      positionSeconds: positionSeconds,
-      playing: playing,
-    );
-  }
-
-  void _onPlaybackCompleted() {
-    if (_isDisposing || !mounted) return;
-    _safeSetState(() {});
-    // An end card wins over auto-advance: leaving would answer its question by
-    // walking away from it, and both cards carry their own "next episode".
-    // Staying on the last frame is what keeps them there to be acted on.
-    //
-    // The gap card goes first: when the library holds a later season, crossing
-    // a hole in this one has to stay a deliberate act, never an auto-advance.
-    if (_episodeNav?.revealUpcomingEpisodeCard() ?? false) return;
-    if (_episodeNav?.nextEpisode != null && !_endCardVisible) {
-      _autoAdvanceToNextEpisode();
-      return;
-    }
-    if (_episodeNav?.revealNextSeasonCard() ?? false) return;
-    unawaited(_leavePlayer());
-  }
-
-  Future<int> _loadResumePosition(
-    ApiClient apiClient,
-    Media actualMedia,
-  ) async {
-    // An episode reached by auto-advance always starts at zero, and the answer
-    // below is discarded — so asking at all would just put an HTTP round-trip
-    // in front of the picture, now that the open waits on this.
-    if (widget.resumeAtSeconds != null) return widget.resumeAtSeconds!;
-    if (widget.autoAdvance) return 0;
-
-    int savedPositionSeconds = 0;
-    if (widget.media is HomeMediaItem) {
-      final item = widget.media as HomeMediaItem;
-      if (!item.isFinished) {
-        savedPositionSeconds = item.currentPositionSeconds;
-      }
-    }
-
-    // Une lecture hors ligne pas encore rejouée fait autorité : le serveur en
-    // est resté à la dernière fois qu'il a eu des nouvelles, et lui demander
-    // reviendrait à rembobiner l'épisode qu'on vient de regarder dans le train.
-    final offline = DownloadManager.instance.entryFor(actualMedia.id);
-    if (offline != null && offline.needsSync) {
-      savedPositionSeconds = offline.isFinished ? 0 : offline.positionSeconds;
-    } else {
-      try {
-        final progressData = await apiClient.getProgress(actualMedia.id);
-        final fromApi = progressData["current_position_seconds"] as int? ?? 0;
-        final isFinished = progressData["is_finished"] as bool? ?? false;
-        if (isFinished) {
-          savedPositionSeconds = 0;
-        } else {
-          savedPositionSeconds = fromApi;
-        }
-      } catch (e) {
-        debugPrint("Player: Failed to query progress: ${redactPlaybackDiagnostic(e)}");
-        // Serveur injoignable : le manifeste local est tout ce qui reste, et
-        // pour un média téléchargé c'est exactement ce qu'il faut.
-        if (offline != null) {
-          savedPositionSeconds = offline.isFinished ? 0 : offline.positionSeconds;
-        }
-      }
-    }
-
-    return (!widget.autoAdvance && savedPositionSeconds >= 3)
-        ? savedPositionSeconds
-        : 0;
-  }
-
-  Future<void> _startPlayback({int resumeAtSeconds = 0}) async {
-    if (!mounted || _isLeaving) return;
-    Media actualMedia;
-    if (widget.media is HomeMediaItem) {
-      actualMedia = (widget.media as HomeMediaItem).media;
-    } else {
-      actualMedia = widget.media as Media;
-    }
-
-    await _playerController.startPlayback(
-      mediaId: actualMedia.id,
-      apiClient: _apiClient!,
-      resumeAtSeconds: resumeAtSeconds,
-    );
-    if (!mounted || _isLeaving) return;
-    if (widget.startPaused) await _playerController.session.pause();
-    setState(() => _isInitialized = true);
-    // L'échéance a pu tomber pendant le passage à cet épisode.
-    _applySleepTimer();
-    _startHandoffWatch();
-    _armStartupWatchdog();
-    _scheduleSubtitlePaddingSync();
-    unawaited(_mediaKeys.attach(
-      title: _playerTitle,
-      durationSeconds: _playerController.duration.inSeconds,
-      positionSeconds: _playerController.position.inSeconds,
-    ));
-    _keyboardFocusNode.requestFocus();
-    _hideControlsWithDelay();
-  }
-
-  /// Starts the countdown on the first picture. Cancelled the moment it lands;
-  /// re-armed by a retry.
-  void _armStartupWatchdog() {
-    _startupWatchdog?.cancel();
-    if (_playerController.hasFirstFrame) return;
-    _startupWatchdog = Timer(_startupDeadline, () {
-      if (!mounted || _isDisposing) return;
-      if (_playerController.hasFirstFrame) return;
-      setState(() => _startupStalled = true);
-    });
-  }
-
-  Future<void> _tryRelay() async {
-    final source = _sourceAccountId;
-    if (!mounted || _isLeaving || _isDisposing || _findingRelay || source == null) return;
-    // Une séance vit sur un serveur : basculer sur un autre y couperait
-    // l'appareil des autres participants.
-    if (_party != null) return;
-    if (DownloadManager.instance.localVideoPath(_actualMedia.id) != null) return;
-    final auth = context.read<AuthProvider>();
-    if (auth.activeServer?.id != source) return;
-    if (!_relayTrigger.inTrouble(hasFirstFrame: _playerController.hasFirstFrame)) return;
-    _findingRelay = true;
-    try {
-      final relay = await auth.apiClient.mediaFailover.findReplacement(
-        sourceAccountId: source, media: _actualMedia,
-        excluded: widget.relayAttempts.entries
-            .where((attempt) => DateTime.now().difference(attempt.value) < const Duration(seconds: 30))
-            .map((attempt) => attempt.key).toSet(),
-      );
-      if (relay == null || !mounted || _isLeaving || auth.activeServer?.id != source) return;
-      var position = _playerController.hasFirstFrame
-          ? _playerController.position.inSeconds : _resumePosition;
-      if (!_playerController.hasFirstFrame && position == 0 &&
-          !widget.autoAdvance && widget.resumeAtSeconds == null) {
-        position = relay.resumeAtSeconds;
-      }
-      final preferences = _playerController.exportPreferences();
-      // The old player remains pinned while the destination authenticates.
-      // Retire it only once the destination is ready.
-      _isLeaving = true;
-      final switched = await auth.switchServer(relay.account.id, synchronize: false);
-      if (!mounted) return;
-      if (!switched) {
-        await auth.switchServer(source, synchronize: false);
-        _isLeaving = false;
-        _safeSetState(() => _startupStalled = true);
-        return;
-      }
-      final targetApi = await auth.apiClient.pinToAccount(relay.account.id);
-      if (!mounted) return;
-      if (_playerController.hasFirstFrame) position = _playerController.position.inSeconds;
-      final paused = !_wantsPlayback;
-      _playerController.cancelStreams();
-      _progressFlushed = true;
-      _relayTimer?.cancel();
-      unawaited(targetApi.sendProgress(mediaId: relay.media.id,
-          currentPositionSeconds: position, duration: relay.media.duration,
-          isFinished: false, clientUpdatedAt: DateTime.now().toUtc())
-          .catchError((Object _) => false));
-      if (!mounted) return;
-      _isEpisodeTransition = true;
-      ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-        content: Text(tr('Lecture reprise sur {0}.', [relay.account.displayName])),
-      ));
-      Navigator.of(context).pushReplacement(MaterialPageRoute(
-        settings: const RouteSettings(name: SearchRouteObserver.playerRouteName),
-        builder: (_) => PlayerScreen(media: relay.media,
-          inheritedPreferences: preferences, initialVideoFit: _videoFit,
-          seasonNumber: widget.seasonNumber, resumeAtSeconds: position,
-          startPaused: paused, relayAttempts: {...widget.relayAttempts, source: DateTime.now()}),
-      ));
-    } on Object catch (error) {
-      debugPrint('Player relay unavailable: ${redactPlaybackDiagnostic(error)}');
-      if (mounted && !_progressFlushed) {
-        try {
-          await auth.switchServer(source, synchronize: false);
-        } on Object catch (restoreError) {
-          debugPrint('Player source restoration failed: $restoreError');
-        }
-        _isLeaving = false;
-      }
-    } finally { _findingRelay = false; }
-  }
-
-  /// Opens this same media again, from scratch.
-  ///
-  /// A fresh screen rather than a seek or a re-open on the spot: the engine,
-  /// its HTTP connection and every subscription are rebuilt, which is what a
-  /// stalled start needs — whatever it got stuck on is not worth diagnosing
-  /// from here.
-  void _retryPlayback() {
-    if (!mounted) return;
-    _startupWatchdog?.cancel();
-    _isLeaving = true;
-    _partyHandOver = true;
-    _playerController.cancelStreams();
-    final inheritedPreferences = _playerController.exportPreferences();
-    final videoFit = _videoFit;
-
-    Navigator.of(context).pushReplacement(
-      MaterialPageRoute(
-        settings: const RouteSettings(name: SearchRouteObserver.playerRouteName),
-        builder: (_) => PlayerScreen(
-          media: widget.media,
-          inheritedPreferences: inheritedPreferences,
-          initialVideoFit: videoFit,
-          seasonNumber: widget.seasonNumber,
-        ),
-      ),
-    );
-  }
-
-  void _handleMediaFastForward() {
-    if (_episodeNav?.nextEpisode != null) {
-      _goToNextEpisode();
-    } else {
-      _seekRelative(10);
-    }
-  }
-
-  void _toggleControls() {
-    setState(() => _showControls = !_showControls);
-    if (_showControls) {
-      _refreshPositionUi(force: true);
-      _scheduleSubtitlePaddingSync();
-      _hideControlsWithDelay();
-    }
-  }
-
-  void _handleVideoTap({bool togglePlayback = false}) {
-    _keyboardFocusNode.requestFocus();
-    // A finger on the picture counts as being there, exactly like a mouse move:
-    // no countdown gets to act on a player someone is holding.
-    _episodeNav?.onUserActivity();
-
-    // Touch: one rule for all three zones, so the middle of the screen is not
-    // a different player from its edges — and that rule is only ever about the
-    // chrome. A tap shows it or puts it away; play and pause belong to the
-    // button, which is a target the user aimed at. On a phone the film is
-    // watched with the screen in reach of a hand that is also holding it, and
-    // every stray touch stopping it — a thumb steadying the phone, a finger
-    // reaching for the controls — is a pause nobody asked for.
-    if (_touchTapRules) {
-      _toggleControls();
-      return;
-    }
-
-    if (togglePlayback) {
-      _togglePlayPause();
-      _showControlsTransient();
-      return;
-    }
-    _toggleControls();
-  }
-
-  /// A screen held in a hand: a phone or a tablet, and not a television.
-  ///
-  /// Three things turn on it — how a tap is read, whether a pinch can happen at
-  /// all, and what "original" framing means — because all three are answers to
-  /// the same fact: the screen is small, close, and touched.
-  bool get _handheld => AppPlatform.isMobile && !TvMode.isTv;
-
-  /// A window to move: see [_startWindowDrag].
-  bool get _windowDragEnabled => AppPlatform.isDesktop;
-
-  /// A double-click anywhere on the picture opens and closes full screen,
-  /// instead of moving the film ten seconds.
-  ///
-  /// Only where there is a window to enlarge. On that kind of screen the
-  /// double-click already means "take the whole display" in every other
-  /// player, and the ±10 s jump has buttons a pointer can aim at. A thumb
-  /// cannot aim, which is why a touchscreen keeps the double-tap that seeks:
-  /// there the side zones *are* the buttons.
-  bool get _doubleTapTogglesFullscreen => AppPlatform.isDesktop;
-
-  /// Phones and tablets, but not a television: a remote drives the chrome with
-  /// its own keys and never produces a tap.
-  bool get _touchTapRules => _handheld;
-
-  /// Reads the brightness the screen is already on, so the bar opens where the
-  /// user left it instead of jumping on first touch.
-  Future<void> _loadScreenBrightness() async {
-    final value = await ScreenBrightnessControl.current();
-    if (value == null || !mounted || _isDisposing) return;
-    setState(() => _screenBrightness = value);
-  }
-
-  void _setScreenBrightness(double value) {
-    setState(() => _screenBrightness = value.clamp(0.0, 1.0));
-    unawaited(ScreenBrightnessControl.set(value));
-  }
-
-  void _hideControlsWithDelay() {
-    _controlsTimer?.cancel();
-    _controlsTimer = Timer(const Duration(seconds: 4), () {
-      if (_isDisposing) return;
-      if (!mounted) return;
-      if (!chromeMayAutoHide(
-        isPlaying: _playerController.isPlaying,
-        isDraggingSlider: _playerController.isDraggingSlider,
-        menuOpen: _openPopup != null,
-      )) {
-        return;
-      }
-      // The remote has been parked on a button for the whole countdown. The
-      // bar goes — but the focus has to leave with it, or the next arrow press
-      // lands on a control nobody can see and the player stops answering its
-      // own keys. This used to re-arm the timer instead, which meant a chrome
-      // the remote had touched once never went away again.
-      if (_remoteBrowsingControls) {
-        _leaveControlBar();
-        return;
-      }
-      if (_showControls) {
-        setState(() => _showControls = false);
-      }
-    });
-  }
-
-  /// Mouse moved over the video.
-  ///
-  /// Hover fires on every pointer sample — 60 to 120 times a second — and
-  /// [_showControlsTransient] rebuilds the whole player tree, refreshes the
-  /// timeline and re-measures the subtitle padding. Paying that per sample made
-  /// the chrome stutter under the very gesture meant to summon it. When the
-  /// chrome is already up there is nothing to show, so re-arming the countdown
-  /// is the entire job.
-  ///
-  /// Et ce travail-là est lui-même espacé. Une souris de jeu rapporte jusqu'à
-  /// mille positions par seconde : réarmer à chaque échantillon détruisait et
-  /// reconstruisait mille `Timer` par seconde de mouvement, au-dessus d'une
-  /// image 4K. Le compte à rebours dure quatre secondes — le décaler de deux
-  /// dixièmes ne se voit pas, et c'est tout ce que coûte ce filtre.
-  static const Duration _hoverRearmInterval = Duration(milliseconds: 200);
-  DateTime? _lastHoverRearm;
-
-  void _handlePointerHover() {
-    _episodeNav?.onUserActivity();
-    if (_showControls) {
-      final now = DateTime.now();
-      final last = _lastHoverRearm;
-      if (last != null && now.difference(last) < _hoverRearmInterval) return;
-      _lastHoverRearm = now;
-      _hideControlsWithDelay();
-      return;
-    }
-    _lastHoverRearm = DateTime.now();
-    _showControlsTransient();
-  }
-
-  /// Whether one of the end-of-episode pages — the season request or the
-  /// episode this season still awaits — currently owns the screen.
-  bool get _endCardVisible => _episodeNav?.showEndCard ?? false;
-
-  void _showControlsTransient() {
-    // Everything that raises the chrome does so because someone asked for it —
-    // a seek, the volume, the remote entering the control bar. A countdown
-    // started for an empty room has no business surviving that.
-    _episodeNav?.onUserActivity();
-    // The end card owns the screen: waking the HUD on every mouse move would
-    // stack a progress bar and a play button over it.
-    if (_endCardVisible || _stillWatchingAsked) return;
-    setState(() => _showControls = true);
-    _refreshPositionUi(force: true);
-    _scheduleSubtitlePaddingSync();
-    _hideControlsWithDelay();
-    // Every route that raises the chrome goes through here, so this is the one
-    // place the television invariant has to hold.
-    _ensureRemoteInChrome();
-  }
-
-  /// Whether the player chrome — timeline, transport, top-right menus — may be
-  /// on screen. Single decision point so nothing slips through while an end
-  /// card is up; only the back button survives it.
-  bool get _controlsVisible =>
-      _showControls &&
-      !_endCardVisible &&
-      !_screenLocked &&
-      !_stillWatchingAsked;
-
-  void _lockScreen() {
-    _controlsTimer?.cancel();
-    _dismissTopPopup();
-    setState(() {
-      _screenLocked = true;
-      _showControls = false;
-    });
-  }
-
-  void _unlockScreen() {
-    if (!mounted || _isDisposing) return;
-    setState(() => _screenLocked = false);
-    // Celui qui vient de déverrouiller veut les commandes.
-    _showControlsTransient();
-  }
-
-  /// Hide the cursor while controls are hidden during playback.
-  /// Never on an end card, which has buttons to aim at.
-  bool get _shouldHideCursor =>
-      !_showControls &&
-      !_endCardVisible &&
-      _playerController.isPlaying &&
-      // Never during start-up. `isPlaying` goes true when play() is issued,
-      // which on a slow open is seconds before there is any picture — hiding
-      // the pointer over a black screen looks like the app froze.
-      _playerController.hasFirstFrame &&
-      !_playerController.isDraggingSlider;
-
-  void _seekRelative(int seconds) {
-    // The controller's position is absolute in both modes (HLS adds the
-    // session's start offset), unlike mpv's own, which is relative to the
-    // stream. Using the absolute one is what makes clamping against the full
-    // duration correct, and lets the controller decide whether the target needs
-    // a new HLS session.
-    final maxSeconds = _playerController.duration.inSeconds;
-    var target = _playerController.position.inSeconds + seconds;
-    if (target < 0) target = 0;
-    if (maxSeconds > 0 && target > maxSeconds) target = maxSeconds;
-    _seekTo(target);
-    _showControlsTransient();
-  }
-
-  void _runShortcut(PlayerShortcutMatch match) {
-    switch (match.shortcut) {
-      case PlayerShortcut.playPause:
-        _togglePlayPause();
-      case PlayerShortcut.seekBack:
-        _seekRelative(-10);
-      case PlayerShortcut.seekForward:
-        _seekRelative(10);
-      case PlayerShortcut.toggleFullscreen:
-        if (AppPlatform.isDesktop || AppPlatform.isWeb) {
-          unawaited(_toggleFullscreen());
-        }
-      case PlayerShortcut.toggleMute:
-        togglePlayerMute(_playerController.session);
-        _showControlsTransient();
-        _safeSetState(() {});
-      case PlayerShortcut.nextEpisode:
-        if (_episodeNav?.nextEpisode != null) _goToNextEpisode();
-      case PlayerShortcut.seekToFraction:
-        _seekToFraction(match.fraction);
-      case PlayerShortcut.showHelp:
-        unawaited(showPlayerShortcutsHelp(context));
-    }
-  }
-
-  void _adjustVolume(double delta) {
-    final session = _playerController.session;
-    final next = (session.volume + delta).clamp(0.0, 100.0);
-    session.setVolume(next);
-    _showControlsTransient();
-    _safeSetState(() {});
-  }
-
-  /// Whether the remote is currently walking the on-screen controls rather than
-  /// driving playback.
-  ///
-  /// A television has exactly four direction keys and they have to do two jobs:
-  /// scrub the film, and move between the buttons on the HUD. Which job they do
-  /// is decided by who holds the focus. The player itself holds it by default,
-  /// so arrows scrub — what a remote should do the moment a film is on.
-  /// Pressing OK hands the focus to the control bar; from there the same arrows
-  /// walk the buttons, and Back hands it straight back.
-  bool get _remoteBrowsingControls =>
-      TvMode.isTv &&
-      // `hasFocus` and not merely "the player is not primary": the chrome
-      // lives inside this node, so a button holding the focus keeps the
-      // subtree focused. Focus that has escaped the subtree altogether is a
-      // different state, and treating it as "browsing the controls" is what
-      // used to wedge the chrome on screen forever.
-      _keyboardFocusNode.hasFocus &&
-      !_keyboardFocusNode.hasPrimaryFocus;
-
-  /// Keeps the player holding the focus whenever nothing else legitimately is.
-  ///
-  /// The chrome's buttons are inside [_keyboardFocusNode], so a remote sitting
-  /// on one still routes its keys through here. What has to be caught is the
-  /// focus leaving the subtree: the chrome faded out from under it, a panel
-  /// closed, a popup went away. From there the arrows reach nothing at all and
-  /// the player looks frozen. A popup on the overlay is the one legitimate
-  /// reason for the focus to be somewhere else.
-  void _handlePlayerFocusChanged() {
-    if (_isDisposing || !mounted) return;
-    // Not while this screen is on its way out, either: the screen coming up
-    // underneath is taking the focus, and it is right to let it. Asked of the
-    // widget tree instead — `ModalRoute.of` from here is an ancestor lookup on
-    // an element that may already be deactivated, which throws.
-    if (!_keyboardFocusNode.hasFocus && _openPopup == null && !_isLeaving) {
-      _keyboardFocusNode.requestFocus();
-      // On a television the player node is a parking spot, not a destination.
-      // If the chrome is up — a menu just closed over it, a panel went away —
-      // the remote belongs on a control, outlined, and not sitting invisibly
-      // on the video with the arrows doing something else.
-      _ensureRemoteInChrome();
-      return;
-    }
-    // Read all over the build, and it just changed.
-    _safeSetState(() {});
-  }
-
-  /// Hands the remote to the control bar, and puts the chrome up to receive it.
-  void _enterControlBar([_RemoteEntry entry = _RemoteEntry.playPause]) {
-    _remoteEntry = entry;
-    _showControlsTransient();
-  }
-
-  /// One step of a remote seek: left or right, pressed or held.
-  void _remoteSeekStep(int direction) {
-    // A swipe on the Apple TV touchpad already moves the scrubber with the
-    // finger ([_handleTouchpadMove]); the arrow the engine derives from that
-    // same swipe would count it twice.
-    if (!TvTouchpad.isSwiping) {
-      _remoteSeek.step(
-        direction,
-        fromSeconds: _playerController.position.inSeconds,
-        durationSeconds: _playerController.duration.inSeconds,
-      );
-    }
-    _showControlsTransient();
-  }
-
-  /// Le doigt glisse sur le trackpad de l'Apple TV : là où gauche et droite
-  /// feraient avancer le film (le film lui-même, ou la barre de lecture), la
-  /// cible suit le doigt, d'autant plus loin qu'il va vite (ADR-0039).
-  void _handleTouchpadMove(TouchpadMove move) {
-    if (!_isInitialized || _isDisposing || !TvMode.isTv) return;
-    // Un glissé vertical appelle les commandes, par les flèches du moteur.
-    if (move.dx.abs() < move.dy.abs()) return;
-    if (_openPopup != null || _showEpisodesPanel || _endCardVisible) return;
-    final seeks = !_remoteBrowsingControls || _progressFocusNode.hasPrimaryFocus;
-    if (!seeks) return;
-    _remoteEntry = _RemoteEntry.scrubber;
-    _remoteSeek.scrub(
-      move.dx,
-      speed: move.speed,
-      fromSeconds: _playerController.position.inSeconds,
-      durationSeconds: _playerController.duration.inSeconds,
-    );
-    _showControlsTransient();
-  }
-
-  /// The position the chrome shows: a remote seek's target while one is
-  /// pending, the player's own otherwise.
-  Duration get _displayedPosition {
-    final target = _remoteSeek.target;
-    return target != null ? Duration(seconds: target) : _playerController.position;
-  }
-
-  /// The invariant that makes the remote legible: on a television, chrome on
-  /// screen means something on it is outlined.
-  ///
-  /// The player used to keep the focus for itself while the HUD was up, which
-  /// gave two indistinguishable states — same picture, same bar, but in one of
-  /// them nothing was highlighted and the arrows scrubbed, and in the other a
-  /// button was highlighted and the arrows walked. Which one you were in
-  /// depended on whether the HUD had been woken by OK or by a seek. This
-  /// collapses them into one: the HUD is up, something is outlined — the
-  /// scrubber if the remote came in seeking, play/pause otherwise (see
-  /// [_remoteEntry]).
-  void _ensureRemoteInChrome() {
-    if (!TvMode.isTv) return;
-    if (_isDisposing || _isLeaving || !_showControls) return;
-    // A popup, the episode browser or an end card owns the focus while it is
-    // up, and taking it back would trap the remote behind them.
-    if (_openPopup != null || _showEpisodesPanel || _endCardVisible) return;
-
-    // After the frame: a hidden chrome excludes its own controls from focus,
-    // so until it is painted there is nothing for the focus to land on.
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (!mounted || _isDisposing || _isLeaving) return;
-      if (!_showControls || _openPopup != null || _showEpisodesPanel) return;
-      // Already standing on a control — including one the user walked to.
-      // Re-requesting would drag them back to the scrubber on every seek.
-      if (_remoteBrowsingControls) return;
-      final preferred = _remoteEntry == _RemoteEntry.scrubber
-          ? [_progressFocusNode, _playPauseFocusNode]
-          : [_playPauseFocusNode, _progressFocusNode];
-      _remoteEntry = _RemoteEntry.playPause;
-      for (final node in preferred) {
-        if (node.context != null) {
-          node.requestFocus();
-          return;
-        }
-      }
-      // Chromes with neither node fall back to whatever traversal reaches
-      // first.
-      _keyboardFocusNode.nextFocus();
-    });
-  }
-
-  /// Takes the remote back off the control bar.
-  void _leaveControlBar() {
-    _keyboardFocusNode.requestFocus();
-    setState(() => _showControls = false);
-  }
-
-  KeyEventResult _handlePlayerKeyEvent(FocusNode node, KeyEvent event) {
-    if (!_isInitialized || _isDisposing) return KeyEventResult.ignored;
-    // La question a ses deux boutons, et rien d'autre ne répond : une touche
-    // qui relancerait la lecture y répondrait à la place de quelqu'un.
-    if (_stillWatchingAsked) return KeyEventResult.ignored;
-    if (event is! KeyDownEvent && event is! KeyRepeatEvent) {
-      return KeyEventResult.ignored;
-    }
-
-    // Whatever the key turns out to do — even nothing at all — pressing one
-    // means someone is watching, so the intro and the next episode stop
-    // counting down.
-    _episodeNav?.onUserActivity();
-
-    final mediaResult = _mediaKeys.handleKeyboardEvent(event);
-    if (mediaResult != null) return mediaResult;
-
-    final key = event.logicalKey;
-    final browsingControls = _remoteBrowsingControls;
-
-    // Any key pressed while the remote is on the control bar means the user is
-    // there, so the hide countdown starts over — the same thing a mouse move
-    // does for a pointer. Without it the bar would fade out mid-navigation.
-    if (browsingControls) _hideControlsWithDelay();
-
-    // OK / D-pad centre / controller A. Space keeps its own branch below,
-    // because a keyboard user expects it to be play-pause and nothing else.
-    if (key == LogicalKeyboardKey.select ||
-        key == LogicalKeyboardKey.gameButtonA ||
-        key == LogicalKeyboardKey.enter ||
-        key == LogicalKeyboardKey.numpadEnter) {
-      if (event is KeyRepeatEvent) return KeyEventResult.handled;
-      // A focused button answers for itself — the app-wide shortcut turns this
-      // very key into its activation.
-      if (browsingControls) return KeyEventResult.ignored;
-      // Chrome caché et « Passer l'intro » seul à l'écran : OK le presse,
-      // au lieu de réveiller un chrome dont personne n'a besoin. Chrome
-      // visible, c'est lui qui répond (le bouton y est atteignable).
-      if (TvMode.isTv &&
-          !_showControls &&
-          (_episodeNav?.showSkipIntro ?? false)) {
-        unawaited(_skipIntroFromControl());
-        return KeyEventResult.handled;
-      }
-      // On a television OK never toggles playback from here: it
-      // wakes the HUD with the remote on play/pause, so the next OK pauses.
-      // Reaching this branch with the HUD already up means the focus slipped,
-      // and putting it back is the repair.
-      if (TvMode.isTv) {
-        _enterControlBar(_RemoteEntry.playPause);
-      } else {
-        _togglePlayPause();
-      }
-      return KeyEventResult.handled;
-    }
-
-    if (key == LogicalKeyboardKey.space) {
-      if (event is KeyRepeatEvent) return KeyEventResult.handled;
-      _togglePlayPause();
-      return KeyEventResult.handled;
-    }
-
-    // Les lettres et les chiffres d'un clavier d'ordinateur (voir
-    // [matchPlayerShortcut]). Pas sur un téléviseur : une télécommande n'en a
-    // pas, et ses touches de couleur ne doivent rien déclencher par surprise.
-    if (!TvMode.isTv) {
-      final shortcut = matchPlayerShortcut(event);
-      if (shortcut != null) {
-        _runShortcut(shortcut);
-        return KeyEventResult.handled;
-      }
-    }
-
-    // While the remote is on the control bar the arrows belong to focus
-    // traversal, or the buttons would be unreachable.
-    final isArrow = key == LogicalKeyboardKey.arrowLeft ||
-        key == LogicalKeyboardKey.arrowRight ||
-        key == LogicalKeyboardKey.arrowUp ||
-        key == LogicalKeyboardKey.arrowDown;
-
-    if (!browsingControls && isArrow) {
-      // Left and right seek at once — the press is not spent
-      // waking the HUD — and the HUD comes up on the scrubber, showing where
-      // the seek is going, so the next press goes on from there. Up and down
-      // only bring the HUD up, on play/pause. Volume is untouched: the set owns
-      // it and its remote has the keys for it.
-      if (TvMode.isTv) {
-        if (key == LogicalKeyboardKey.arrowLeft ||
-            key == LogicalKeyboardKey.arrowRight) {
-          _remoteEntry = _RemoteEntry.scrubber;
-          _remoteSeekStep(key == LogicalKeyboardKey.arrowLeft ? -1 : 1);
-          return KeyEventResult.handled;
-        }
-        // Held down, the wake-up press must not queue forty more of itself.
-        if (event is KeyRepeatEvent) return KeyEventResult.handled;
-        _enterControlBar(_RemoteEntry.playPause);
-        return KeyEventResult.handled;
-      }
-
-      if (key == LogicalKeyboardKey.arrowLeft) {
-        _seekRelative(-10);
-        return KeyEventResult.handled;
-      }
-
-      if (key == LogicalKeyboardKey.arrowRight) {
-        _seekRelative(10);
-        return KeyEventResult.handled;
-      }
-
-      _adjustVolume(
-        key == LogicalKeyboardKey.arrowUp ? _volumeStep : -_volumeStep,
-      );
-      return KeyEventResult.handled;
-    }
-
-    if (kTvBackKeys.contains(key)) {
-      // Innermost first: a menu opened from the chrome, then the episode
-      // panel, then the control bar, and only then the player itself.
-      if (_dismissTopPopup()) return KeyEventResult.handled;
-      if (_showEpisodesPanel) {
-        _closeEpisodesPanel();
-        return KeyEventResult.handled;
-      }
-      if (browsingControls) {
-        _leaveControlBar();
-        return KeyEventResult.handled;
-      }
-      unawaited(_exitFullscreenIfActive());
-      return KeyEventResult.handled;
-    }
-
-    return KeyEventResult.ignored;
-  }
-
-  /// L'épisode suivant, lancé par le lecteur et non par quelqu'un : la fin du
-  /// compte à rebours du générique, ou la fin du fichier.
-  ///
-  /// C'est le seul endroit où [StillWatching] peut retenir l'enchaînement. Un
-  /// « épisode suivant » demandé à la main ne passe pas par ici.
-  void _autoAdvanceToNextEpisode() {
-    if (_stillWatchingAsked) return;
-    // En séance partagée, d'autres regardent : leur présence vaut la nôtre.
-    if (_party == null && !StillWatching.instance.allowAutoAdvance()) {
-      _askStillWatching();
-      return;
-    }
-    _goToNextEpisode();
-  }
-
-  void _askStillWatching() {
-    if (!mounted || _isLeaving || _isDisposing) return;
-    _dismissTopPopup();
-    _closeEpisodesPanel();
-    _controlsTimer?.cancel();
-    _wantsPlayback = false;
-    if (_playerController.isPlaying) _playerController.togglePlayPause();
-    setState(() {
-      _stillWatchingAsked = true;
-      _showControls = false;
-      // Un écran verrouillé avalerait le doigt qui vient répondre.
-      _screenLocked = false;
-    });
-  }
-
-  void _confirmStillWatching() {
-    StillWatching.instance.noteActivity();
-    setState(() => _stillWatchingAsked = false);
-    _keyboardFocusNode.requestFocus();
-    if (_episodeNav?.nextEpisode != null) {
-      _goToNextEpisode();
-      return;
-    }
-    _togglePlayPause();
-  }
-
-  void _goToNextEpisode() {
-    final next = _episodeNav?.nextEpisode;
-    if (next == null) return;
-    _navigateToEpisode(next);
-  }
-
-  /// How much of the screen the video keeps. It gives way to an end card
-  /// without ever being hidden: the credits stay visible and playing.
-  double get _videoScale => _endCardVisible ? 0.34 : 1.0;
-
-  /// Puts away whichever end card is up. Both are dismissed the same ways —
-  /// the close button, and a tap on the video the card shrank.
-  void _dismissEndCard() {
-    final nav = _episodeNav;
-    if (nav == null) return;
-    if (nav.showUpcomingEpisodeCard) {
-      nav.dismissUpcomingEpisodeCard();
-      return;
-    }
-    nav.dismissNextSeasonCard();
-  }
-
-  /// Corner radius of the shrunk video, pre-divided by the scale so it looks
-  /// like 16pt on screen. Zero at full size, where rounding would just crop.
-  double get _videoCornerRadius => _videoScale < 1 ? 16 / _videoScale : 0;
-
-  Future<void> _requestNextSeason() async {
-    final season = _episodeNav?.nextSeason;
-    if (season == null || _requestingNextSeason || !season.canRequest) return;
-    if (season.showTmdbId <= 0) return;
-
-    setState(() => _requestingNextSeason = true);
-    try {
-      await _apiClient!.requestTmdbMedia(
-        tmdbId: season.showTmdbId,
-        mediaType: 'tv',
-        title: season.showTitle,
-        seasons: [season.number],
-      );
-      // Confirm in place (the card switches to its requested state) rather than
-      // leaving the player: the credits are still running and the user chose
-      // when to go.
-      _episodeNav?.markNextSeasonRequested();
-    } catch (_) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text(tr('Impossible d’envoyer la demande.'))),
-        );
-      }
-    } finally {
-      if (mounted) setState(() => _requestingNextSeason = false);
-    }
-  }
-
-  void _goToEpisode(HomeMediaItem episode) {
-    _navigateToEpisode(episode);
-  }
-
-  void _navigateToEpisode(
-    HomeMediaItem next, {
-    bool fromParty = false,
-    int? resumeAtSeconds,
-    bool startPaused = false,
-  }) {
-    if (next.media.id == _currentEpisodeId) {
-      _closeEpisodesPanel();
-      return;
-    }
-
-    _closeEpisodesPanel();
-    _isEpisodeTransition = true;
-    _isLeaving = true;
-    // La séance passe à l'épisode avec ce lecteur — sauf si c'est elle qui
-    // l'a demandé, auquel cas elle y est déjà.
-    final party = _party;
-    if (party != null) {
-      _partyHandOver = true;
-      party.detach(_partyBinding);
-      if (!fromParty) unawaited(party.sendMedia(next.media.id));
-      resumeAtSeconds ??= 0;
-    }
-    final inheritedPreferences = _playerController.exportPreferences();
-    final videoFit = _videoFit;
-
-    // Cancel all streams BEFORE navigation
-    _playerController.cancelStreams();
-    if (_episodeNav != null && _episodeNavListener != null) {
-      _episodeNav!.removeListener(_episodeNavListener!);
-      _episodeNav!.dispose();
-      _episodeNav = null;
-      _episodeNavListener = null;
-    }
-
-    unawaited(_syncProgressOnExit(popAfter: false));
-
-    // L'ancien moteur s'arrête avant que le suivant ne s'ouvre, pas à la
-    // destruction de cet écran. Sur iOS, mpv désactive la session audio de
-    // l'app en libérant sa sortie : un épisode téléchargé, qui démarre presque
-    // aussitôt, jouait déjà quand cet arrêt tombait, et se figeait en pause.
-    // La position envoyée au serveur est celle du contrôleur, lue ci-dessus.
-    final stopped = _playerController.session
-        .stop()
-        .timeout(const Duration(seconds: 1))
-        .catchError((Object _) {});
-
-    // Awaiting the stop also lets pending stream events flush safely.
-    unawaited(stopped.then((_) {
-      if (!mounted) return;
-      Navigator.of(context).pushReplacement(
-        MaterialPageRoute(
-          settings:
-              const RouteSettings(name: SearchRouteObserver.playerRouteName),
-          builder: (_) => PlayerScreen(
-            media: next,
-            inheritedPreferences: inheritedPreferences,
-            autoAdvance: true,
-            initialVideoFit: videoFit,
-            seasonNumber: _seasonNumberFor(next),
-            resumeAtSeconds: resumeAtSeconds,
-            startPaused: startPaused,
-          ),
-        ),
-      );
-    }));
-  }
-
-  Future<void> _syncProgressOnExit({required bool popAfter}) async {
-    if (_progressFlushed) {
-      if (popAfter && mounted) Navigator.of(context).pop();
-      return;
-    }
-    _progressFlushed = true;
-    _controlsTimer?.cancel();
-
-    Media actualMedia;
-    HomeMediaItem? sourceItem;
-    if (widget.media is HomeMediaItem) {
-      sourceItem = widget.media as HomeMediaItem;
-      actualMedia = sourceItem.media;
-    } else {
-      actualMedia = widget.media as Media;
-    }
-
-    final posSeconds = _playerController.position.inSeconds;
-    var durSeconds = _playerController.duration.inSeconds;
-    if (durSeconds <= 0 && widget.media is HomeMediaItem) {
-      durSeconds = (widget.media as HomeMediaItem).effectiveDuration;
-    } else if (durSeconds <= 0) {
-      durSeconds = actualMedia.duration;
-    }
-
-    final isFinished =
-        durSeconds > 0 && (posSeconds / durSeconds) * 100 >= 90.0;
-
-    HomeProvider? homeProvider;
-    LibraryProvider? libraryProvider;
-    if (mounted) {
-      homeProvider = Provider.of<HomeProvider>(context, listen: false);
-      libraryProvider = Provider.of<LibraryProvider>(context, listen: false);
-      // Une progression cédée à un autre appareil n'a rien à montrer ici :
-      // la rangée attend ce que le serveur dira de lui.
-      if (posSeconds > 0 && _playerController.reporter.ownsProgress) {
-        homeProvider.updateContinueWatchingProgress(
-          mediaId: actualMedia.id,
-          positionSeconds: posSeconds,
-          durationSeconds: durSeconds,
-          isFinished: isFinished,
-          sourceItem: sourceItem,
-        );
-      }
-    }
-
-    if (_apiClient != null) {
-      await _playerController.finishPlayback(
-        mediaId: actualMedia.id,
-        apiClient: _apiClient!,
-        isFinished: isFinished,
-      );
-    }
-
-    homeProvider?.loadHome(silent: true);
-    // Les pastilles « vu / en cours » de la bibliothèque sont calculées côté
-    // serveur : sans ce rafraîchissement, l'épisode qu'on vient de finir n'y
-    // compterait qu'au prochain démarrage.
-    unawaited(libraryProvider?.refreshCatalogSilently() ?? Future.value());
-
-    if (popAfter && mounted) Navigator.of(context).pop();
-  }
-
-  Future<void> _leavePlayer() {
-    // Tout de suite, pas à la destruction de l'écran : celle-ci n'arrive qu'une
-    // fois l'animation de sortie terminée, et jusque-là le film continuerait de
-    // s'entendre par-dessus l'écran qu'on rejoint.
-    //
-    // `stop` plutôt que `pause` : c'est là que le décodeur matériel est rendu,
-    // et c'est la partie chère du démontage. La payer maintenant la fait tomber
-    // pendant l'animation, au lieu de figer l'écran d'arrivée. La position et
-    // la durée envoyées au serveur sont celles que le contrôleur a en mémoire,
-    // pas celles du moteur — l'arrêter d'abord ne les perd pas.
-    unawaited(_playerController.session.stop());
-    _safeSetState(() => _isLeaving = true);
-    // Quitter le lecteur, c'est quitter la séance : les autres continuent.
-    final party = _party;
-    if (party != null && !_partyHandOver) unawaited(party.leave());
-    // Dans un navigateur, le plein écran appartient au film : hors du lecteur,
-    // plus aucun bouton ne permettrait d'en sortir.
-    if (AppPlatform.isWeb) unawaited(_exitFullscreenIfActive());
-    return _syncProgressOnExit(popAfter: true);
-  }
-
   @override
   void dispose() {
     _isDisposing = true;
@@ -1777,7 +383,7 @@ class _PlayerScreenState extends State<PlayerScreen> {
     TvTouchpad.removeMoveListener(_handleTouchpadMove);
     // A menu belongs to the app's overlay, not to this route: left open, it
     // would still be on screen after the player is gone.
-    _dismissTopPopup();
+    _popups.dispose();
     unawaited(_mediaKeys.detach());
     // Disarmed on the way out: the little window is for a film that is playing,
     // and leaving it armed would put the library in a corner of the home
@@ -1786,29 +392,19 @@ class _PlayerScreenState extends State<PlayerScreen> {
     PictureInPicture.closed.removeListener(_handlePictureInPictureClosed);
     unawaited(PictureInPicture.disarm());
     _keyboardFocusNode.removeListener(_handlePlayerFocusChanged);
-    WatchPartySession.active.removeListener(_handleWatchPartyChanged);
     SleepTimer.instance.removeListener(_applySleepTimer);
     SleepTimer.instance.release();
     StillWatching.instance.release();
-    final party = _party;
-    if (party != null) {
-      party.removeListener(_handlePartyUpdated);
-      party.detach(_partyBinding);
-      if (!_partyHandOver) unawaited(party.leave());
-    }
-    unawaited(_partyNotices?.cancel() ?? Future<void>.value());
-    _partyNoticeTimer?.cancel();
+    _party.dispose();
     _keyboardFocusNode.dispose();
     _playPauseFocusNode.dispose();
     _progressFocusNode.dispose();
-    _popupFocusScope.dispose();
     _controlsTimer?.cancel();
     _startupWatchdog?.cancel();
     _relayTimer?.cancel();
-    _handoffTimer?.cancel();
-    _awayGuard.dispose();
-    _zoomHintTimer?.cancel();
-    _seekHintTimer?.cancel();
+    _handoff.dispose();
+    _hints.dispose();
+    _episodesPanel.dispose();
     _remoteSeek.dispose();
     if (!_progressFlushed && _apiClient != null) {
       unawaited(_syncProgressOnExit(popAfter: false));
@@ -1841,754 +437,11 @@ class _PlayerScreenState extends State<PlayerScreen> {
     super.dispose();
   }
 
-  /// How big the fixed chrome is drawn.
-  ///
-  /// The same widget at the same width reads slightly larger on an iPhone than
-  /// on an Android phone, so it is trimmed there. Only what is drawn: the
-  /// targets stay the size of a finger.
-  static const double _iosChromeScale = 0.9;
-
-  double get _chromeScale => AppPlatform.isIOS ? _iosChromeScale : 1;
-
-  void _updateVideoFit(BoxFit fit) {
-    // La surface est reconstruite avec le nouveau cadrage ; chaque moteur
-    // l'applique à sa façon — Flutter met une texture à l'échelle, la vue
-    // native se redimensionne elle-même.
-    setState(() => _videoFit = fit);
-  }
-
-  void _syncSubtitlePadding(BuildContext context) {
-    if (!mounted || !_isInitialized) return;
-
-    final screenSize = MediaQuery.sizeOf(context);
-    final measuredTop = _measureTimelineTop(context);
-    final padding = SubtitlePaddingCalculator.resolve(
-      controlsVisible: _showControls,
-      screenSize: screenSize,
-      measuredTimelineTopDy: measuredTop,
-    );
-
-    if (padding == _lastSubtitlePadding) return;
-    _lastSubtitlePadding = padding;
-
-    _playerController.session.setSubtitlePadding(
-      padding,
-      duration: const Duration(milliseconds: 200),
-    );
-    _playerController.liveSubtitles.setPadding(
-      padding,
-      duration: const Duration(milliseconds: 200),
-    );
-
-    // Timeline may not be laid out on the first frame after controls appear.
-    if (_showControls && measuredTop == null) {
-      WidgetsBinding.instance.addPostFrameCallback((_) {
-        if (mounted) _syncSubtitlePadding(context);
-      });
-    }
-  }
-
-  double? _measureTimelineTop(BuildContext context) {
-    if (!_showControls) return null;
-
-    final box =
-        _timelineAnchorKey.currentContext?.findRenderObject() as RenderBox?;
-    if (box == null || !box.hasSize) return null;
-
-    return box.localToGlobal(Offset.zero).dy;
-  }
-
-  /// Puts a popup on the overlay and gives a remote a way in and out of it.
-  ///
-  /// An [OverlayEntry] is not a route: nothing moves the focus into it, and
-  /// Back does not close it. On a television that leaves every menu the chrome
-  /// opens unreachable, and leaves Back meaning "quit the film" while a menu is
-  /// still on screen. So the content is wrapped in a focus scope the remote is
-  /// walked into, and the dismissal is registered where the player's own Back
-  /// handling can find it.
-  ///
-  /// [builder] receives the dismissal to wire into its barrier and its close
-  /// button, in place of calling `entry.remove()` itself — going through it is
-  /// what keeps the focus and the registration in step.
-  void _insertPlayerPopup(Widget Function(VoidCallback dismiss) builder) {
-    // Never two at once; the one underneath could not be reached anyway.
-    _dismissTopPopup();
-
-    late final OverlayEntry entry;
-    var dismissed = false;
-
-    void dismiss() {
-      if (dismissed) return;
-      dismissed = true;
-      if (identical(_openPopup?.entry, entry)) _openPopup = null;
-      entry.remove();
-      if (_isDisposing || !mounted) return;
-      // The remote came from the control bar and has to go back to it, or the
-      // next key press has nowhere to land.
-      if (TvMode.isTv) {
-        _enterControlBar();
-      } else {
-        _keyboardFocusNode.requestFocus();
-        // Le chrome est resté affiché tout le temps du menu (voir
-        // [chromeMayAutoHide]) : son compte à rebours repart d'ici.
-        if (_showControls) _hideControlsWithDelay();
-      }
-    }
-
-    entry = OverlayEntry(
-      builder: (ctx) => FocusScope(
-        node: _popupFocusScope,
-        onKeyEvent: (node, event) {
-          if (event is! KeyDownEvent) return KeyEventResult.ignored;
-          final key = event.logicalKey;
-          if (kTvBackKeys.contains(key)) {
-            dismiss();
-            return KeyEventResult.handled;
-          }
-          return KeyEventResult.ignored;
-        },
-        child: builder(dismiss),
-      ),
-    );
-
-    _openPopup = (entry: entry, dismiss: dismiss);
-    Overlay.of(context).insert(entry);
-
-    // Only a remote is walked in: on a desktop the pointer is already where
-    // the user is looking, and stealing the focus would move it away.
-    if (!TvMode.isTv) return;
-    // After the frame — the scope has no children to offer until the entry
-    // has been built at least once.
-    //
-    // The first focusable it finds is a floor, not a verdict: a menu knows
-    // better than this method where its remote belongs — the track being
-    // played, the row it was opened from — and says so from its own
-    // post-frame callback, registered during the build this one waits for and
-    // therefore running after it.
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (dismissed || !mounted || _isDisposing) return;
-      _popupFocusScope.requestFocus();
-      _popupFocusScope.nextFocus();
-    });
-  }
-
-  /// Closes the popup on screen, if there is one. Returns whether it did, so
-  /// Back can stop there instead of also acting on the player.
-  bool _dismissTopPopup() {
-    final popup = _openPopup;
-    if (popup == null) return false;
-    popup.dismiss();
-    return true;
-  }
-
-  /// Chrome Onyx settings menu, anchored to the button that opened it.
-  void _showOnyxSettingsMenu({
-    OnyxMenuSection section = OnyxMenuSection.root,
-    required GlobalKey anchorKey,
-  }) {
-    final screenSize = MediaQuery.sizeOf(context);
-    final renderBox = anchorKey.currentContext?.findRenderObject() as RenderBox?;
-
-    const menuWidth = OnyxSettingsMenu.width;
-    const menuMaxHeight = OnyxSettingsMenu.maxHeight;
-
-    late final double left;
-    late final double? bottom;
-    late final double? top;
-    late final double maxHeight;
-    if (renderBox != null) {
-      final buttonRect = renderBox.localToGlobal(Offset.zero) & renderBox.size;
-      left = PlayerSettingsAnchor.horizontalLeft(
-        buttonRect: buttonRect,
-        screenSize: screenSize,
-        popupWidth: menuWidth,
-      );
-      final vertical = PlayerSettingsAnchor.verticalPlacement(
-        buttonRect: buttonRect,
-        screenSize: screenSize,
-        popupMaxHeight: menuMaxHeight,
-      );
-      bottom = vertical.bottom;
-      top = vertical.top;
-      maxHeight = vertical.maxHeight;
-    } else {
-      left = (screenSize.width - menuWidth) / 2;
-      top = (screenSize.height - menuMaxHeight) / 2;
-      bottom = null;
-      maxHeight = menuMaxHeight;
-    }
-
-    _insertPlayerPopup(
-      (dismiss) => GestureDetector(
-        onTap: dismiss,
-        behavior: HitTestBehavior.translucent,
-        child: Material(
-          type: MaterialType.transparency,
-          child: SizedBox(
-            width: screenSize.width,
-            height: screenSize.height,
-            child: Stack(
-              children: [
-                Positioned(
-                  left: left,
-                  bottom: bottom,
-                  top: top,
-                  child: ConstrainedBox(
-                    constraints: BoxConstraints(maxHeight: maxHeight),
-                    child: OnyxSettingsMenu(
-                      session: _playerController.session,
-                      playerController: _playerController,
-                      episodeNav: _episodeNav,
-                      currentFit: _videoFit,
-                      onFitChanged: _updateVideoFit,
-                      playbackRate: _playbackRate,
-                      playbackRates: _playbackRates,
-                      onRateChanged: _setPlaybackRate,
-                      onSeekToAbsolute:
-                          _seekTo,
-                      initialSection: section,
-                      onClose: dismiss,
-                    ),
-                  ),
-                ),
-              ],
-            ),
-          ),
-        ),
-      ),
-    );
-  }
-
-  Future<void> _setPlaybackRate(double rate) async {
-    await _playerController.session.setRate(rate * _partyRateFactor);
-    if (!mounted) return;
-    setState(() => _playbackRate = rate);
-    _showControlsTransient();
-  }
-
-  Future<void> _cyclePlaybackRate() async {
-    final idx = _playbackRates.indexOf(_playbackRate);
-    final next = _playbackRates[(idx < 0 ? 0 : idx + 1) % _playbackRates.length];
-    await _playerController.session.setRate(next * _partyRateFactor);
-    if (!mounted) return;
-    setState(() => _playbackRate = next);
-    _showControlsTransient();
-  }
-
-  /// Only where two fingers can reach the picture: a television is driven by a
-  /// remote and a desktop by a mouse, and neither can produce this gesture.
-  bool get _pinchToZoomEnabled => _handheld;
-
-  /// How far apart the first two fingers are, or null with fewer than two.
-  double? _pinchSpan() {
-    if (_pinchPointers.length < 2) return null;
-    final fingers = _pinchPointers.values.toList();
-    return (fingers[1] - fingers[0]).distance;
-  }
-
-  void _handlePinchPointerDown(PointerDownEvent event) {
-    _pinchPointers[event.pointer] = event.position;
-    // The span is re-baselined on every finger that lands, so a second finger
-    // arriving late starts the pinch from where it actually started.
-    _pinchStartSpan = _pinchSpan();
-  }
-
-  void _handlePinchPointerMove(PointerMoveEvent event) {
-    if (!_pinchPointers.containsKey(event.pointer)) return;
-    _pinchPointers[event.pointer] = event.position;
-    if (_pinchResolved) return;
-    final start = _pinchStartSpan;
-    final span = _pinchSpan();
-    if (start == null || span == null || start <= 0) return;
-    final next = PinchZoomFit.resolve(
-      scale: span / start,
-      pointerCount: _pinchPointers.length,
-    );
-    if (next == null) return;
-    _pinchResolved = true;
-    if (next != _videoFit) _updateVideoFit(next);
-    // Shown even when the fit does not change, so pinching a picture that
-    // already fills the screen answers instead of doing nothing at all.
-    _showZoomHint(next);
-  }
-
-  void _handlePinchPointerEnd(PointerEvent event) {
-    _pinchPointers.remove(event.pointer);
-    _pinchStartSpan = _pinchSpan();
-    // Only once the hand is off the glass: lifting one finger of a pinch that
-    // has already answered and spreading again is the same gesture, not a new
-    // one, and re-arming there would flip the picture back mid-movement.
-    if (_pinchPointers.isEmpty) _pinchResolved = false;
-  }
-
-  void _showZoomHint(BoxFit fit) {
-    _zoomHintTimer?.cancel();
-    setState(() {
-      _zoomHintFit = fit;
-      _zoomHintVisible = true;
-      _zoomHintMounted = true;
-    });
-    _zoomHintTimer = Timer(const Duration(milliseconds: 900), () {
-      if (!mounted || _isDisposing) return;
-      setState(() => _zoomHintVisible = false);
-      // Taken out of the tree only once it has finished fading, so the blur
-      // layer is not paid for over the rest of the film.
-      _zoomHintTimer = Timer(const Duration(milliseconds: 300), () {
-        if (!mounted || _isDisposing) return;
-        setState(() => _zoomHintMounted = false);
-      });
-    });
-  }
-
-  /// A double-tap on one of the side zones: move the film, and say so.
-  ///
-  /// Separate from [_seekRelative] because the two have different audiences.
-  /// The ±10 buttons and the media keys are already visible causes with a
-  /// visible chrome to read the result off; a double-tap has neither, and is
-  /// the only seek that can arrive several times in a second.
-  void _handleDoubleTapSeek(int seconds) {
-    _lastSideSeekAt = DateTime.now();
-    _seekRelative(seconds);
-    _showSeekHint(seconds);
-  }
-
-  /// A double-click on the picture, on a desktop: full screen on, full screen
-  /// off — see [_doubleTapTogglesFullscreen].
-  ///
-  /// The focus request is the same one every tap path makes: the keyboard
-  /// shortcuts are on this screen's focus node, and a click that leaves it
-  /// behind would take space and arrows with it.
-  void _handleDoubleTapFullscreen() {
-    _keyboardFocusNode.requestFocus();
-    unawaited(_toggleFullscreen());
-  }
-
-  /// A single tap on a side zone: the same as a tap in the middle, so play and
-  /// pause do not depend on aiming for the centre of the picture.
-  ///
-  /// Except in a seek burst. The double-tap recognizer pairs taps two by two,
-  /// so the third tap of a quick run arrives here alone — and pausing the film
-  /// in the middle of a rewind is not what that tap meant. While the last seek
-  /// is still recent, a lone tap keeps seeking the same way instead.
-  void _handleSideZoneTap(int seconds) {
-    final last = _lastSideSeekAt;
-    if (last != null &&
-        DateTime.now().difference(last) < _sideSeekBurstWindow) {
-      _handleDoubleTapSeek(seconds);
-      return;
-    }
-    _handleVideoTap(togglePlayback: true);
-  }
-
-  void _showSeekHint(int seconds) {
-    final forward = seconds > 0;
-    _seekHintTimer?.cancel();
-    setState(() {
-      // A burst only accumulates while it keeps going the same way. Tapping
-      // back after tapping forward starts a new count, because "30 s" would
-      // otherwise be describing a journey that ended 10 s from where it began.
-      _seekHintSeconds =
-          (_seekHintVisible && forward == _seekHintForward)
-              ? _seekHintSeconds + seconds.abs()
-              : seconds.abs();
-      _seekHintForward = forward;
-      _seekHintPulse++;
-      _seekHintVisible = true;
-      _seekHintMounted = true;
-    });
-    _seekHintTimer = Timer(const Duration(milliseconds: 700), () {
-      if (!mounted || _isDisposing) return;
-      setState(() => _seekHintVisible = false);
-      // Out of the tree once faded, so its ticker is not left running over the
-      // rest of the film.
-      _seekHintTimer = Timer(const Duration(milliseconds: 300), () {
-        if (!mounted || _isDisposing) return;
-        setState(() => _seekHintMounted = false);
-      });
-    });
-  }
-
-  /// The intro skipping itself: the countdown ran out with nobody touching
-  /// anything. The controller has already put the button away, so all that is
-  /// left is the seek — done quietly, without waking the chrome, since there is
-  /// by definition nobody in front of it.
-  Future<void> _autoSkipIntro() async {
-    final nav = _episodeNav;
-    if (nav == null || _isDisposing || !mounted) return;
-    await _seekTo(nav.introSkipTarget);
-  }
-
-  Future<void> _skipIntroFromControl() async {
-    final nav = _episodeNav;
-    if (nav == null || !nav.showSkipIntro) return;
-    final end = nav.introSkipTarget;
-    await _seekTo(end);
-    nav.skipIntro();
-    _showControlsTransient();
-  }
-
-  /// The episode's own title (TV) or the media title (movies) — as opposed
-  /// to [_episodesShowTitle], which is the show name. `_playerTitle` combines
-  /// show name + code and must not be used here or the code/title repeat.
-  String get _episodeOrMovieTitle {
-    final media = widget.media;
-    if (media is HomeMediaItem && media.media.type == MediaType.episode) {
-      return media.episodeTitle ?? media.media.title;
-    }
-    return _episodesShowTitle;
-  }
-
-  /// Same line without the release tag parsed from the filename. The chrome
-  /// over the video names the episode; the quality/source belongs to the info
-  /// panel, which is where someone goes looking for it.
-  String get _episodeOverline => composeEpisodeInfoLine(
-        seasonEpisodeCode: _actualMedia.seasonEpisodeCode,
-        title: _episodeOrMovieTitle,
-      );
-
-  /// Bold line of the Chrome Onyx title block: the show name on an episode, the film
-  /// title on a movie.
-  String get _onyxTitleLine => _episodesShowTitle;
-
-  /// Muted line above it: `S1:E3 - …` on an episode, the release year on a
-  /// movie.
-  String? get _onyxOverline {
-    if (_isEpisode) return _episodeOverline;
-    return extractYear(_actualMedia.releaseDate);
-  }
-
-  /// Downloaded-ahead fraction for the Chrome Onyx scrubber.
-  double get _bufferedFraction {
-    final total = _playerController.duration.inSeconds;
-    if (total <= 0) return 0;
-    return (_playerController.session.bufferedAhead.inSeconds / total)
-        .clamp(0.0, 1.0);
-  }
-
-  /// Chapter starts as fractions, for the Chrome Onyx scrubber ticks. Empty when the
-  /// backend found no chapters — the bar then reads as a plain timeline.
-  List<double> get _chapterMarks {
-    final chapters = _episodeNav?.chapters ?? const [];
-    final total = _playerController.duration.inSeconds;
-    if (chapters.isEmpty || total <= 0) return const [];
-    return [
-      for (final chapter in chapters)
-        (chapter.startTime / total).clamp(0.0, 1.0),
-    ];
-  }
-
-  Future<void> _toggleFullscreen() async {
-    final isFullScreen = await WindowControls.isFullScreen();
-    await WindowControls.setFullScreen(!isFullScreen);
-  }
-
-  /// The player hides the caption bar, which was the only handle the window
-  /// had: without this, a film started on one screen could not be carried to
-  /// another. Dragging the picture moves the window instead — a click that
-  /// does not move stays a tap, since the pan only claims a moving pointer.
-  ///
-  /// Not in full screen, where the window covers a display and moving it
-  /// would only tear it off the edges.
-  Future<void> _startWindowDrag() async {
-    if (await WindowControls.isFullScreen()) return;
-    await WindowControls.startDragging();
-  }
-
-  Future<void> _exitFullscreenIfActive() async {
-    if (await WindowControls.isFullScreen()) {
-      await WindowControls.setFullScreen(false);
-    }
-  }
-
-  void _togglePlayPause() {
-    // En pause parce que la lecture est passée ailleurs : relancer ici, c'est
-    // la reprendre, pas lire en double.
-    if (_handedOffTo != null) {
-      unawaited(_resumeHere());
-      return;
-    }
-    // Une touche de casque ou la notification du système arrivent ici sans
-    // passer par le clavier ni par l'écran. Devant la question, « lecture »
-    // est la réponse « oui » — pas une reprise sous le panneau.
-    if (_stillWatchingAsked) {
-      _confirmStillWatching();
-      return;
-    }
-    StillWatching.instance.noteActivity();
-    _wantsPlayback = !_playerController.isPlaying;
-    _playerController.togglePlayPause();
-    final party = _party;
-    if (party != null) {
-      unawaited(party.sendPlaying(
-          _playerController.isPlaying, _playerController.position));
-    }
-    _hideControlsWithDelay();
-  }
-
-  /// La minuterie de veille est arrivée à son terme : la lecture s'arrête ici.
-  ///
-  /// Un lecteur qui s'en va ou qui n'a pas encore démarré laisse l'échéance en
-  /// place : c'est l'épisode suivant qui la prendra. Voir [SleepTimer].
-  void _applySleepTimer() {
-    if (!mounted || _isLeaving || _isDisposing || !_isInitialized) return;
-    if (!SleepTimer.instance.takeDue()) return;
-    _wantsPlayback = false;
-    if (_playerController.isPlaying) _playerController.togglePlayPause();
-    _showPartyNotice(tr('Minuterie de veille : lecture en pause'));
-    _showControlsTransient();
-  }
-
-  /// Toute recherche voulue par la personne devant l'écran passe ici, pour que
-  /// la séance, s'il y en a une, suive. Les recalages venus de la séance, eux,
-  /// vont droit au contrôleur ([_WatchPartyBinding.applySeek]).
-  Future<void> _seekTo(int absoluteSeconds) async {
-    final target = absoluteSeconds < 0 ? 0 : absoluteSeconds;
-    // Annoncé avant d'attendre : une reconstruction de session HLS peut
-    // prendre plusieurs secondes, les autres n'ont pas à les attendre.
-    final party = _party;
-    if (party != null) {
-      unawaited(party.sendSeek(Duration(seconds: target),
-          playing: _playerController.isPlaying));
-    }
-    await _playerController.seekToAbsoluteSeconds(target);
-  }
-
-  // ==================== Reprise sur un autre appareil ====================
-
-  void _startHandoffWatch() {
-    _handoffTimer?.cancel();
-    _handoffTimer =
-        Timer.periodic(_handoffPollInterval, (_) => _pollHandoff());
-    _awayGuard.attach();
-  }
-
-  /// La TV éteinte puis rallumée sur le lecteur. Voir [PlayerAwayGuard].
-  late final PlayerAwayGuard _awayGuard = PlayerAwayGuard(
-    // Une séance « Regarder ensemble » garde ses propres règles.
-    enabled: () =>
-        TvMode.isTv && _party == null && !_isLeaving && _apiClient != null,
-    pause: () {
-      _wantsPlayback = false;
-      if (_playerController.isPlaying) _playerController.togglePlayPause();
-    },
-    closeSession: () async {
-      final api = _apiClient;
-      final mediaId = _playerController.mediaId;
-      if (api == null || mediaId == null) return;
-      await _playerController.reporter
-          .suspend(mediaId: mediaId, apiClient: api);
-    },
-    reopenSession: () {
-      final api = _apiClient;
-      final mediaId = _playerController.mediaId;
-      if (api == null || mediaId == null || _isLeaving) return;
-      _playerController.reporter
-          .startHeartbeat(mediaId: mediaId, apiClient: api, announce: false);
-    },
-    localSeconds: () => _playerController.position.inSeconds,
-    fetchProgress: () async {
-      final api = _apiClient;
-      final mediaId = _playerController.mediaId;
-      if (api == null || mediaId == null) return null;
-      return parseServerProgress(await api.getProgress(mediaId));
-    },
-    apply: (verdict) {
-      if (!mounted || _isLeaving) return;
-      switch (verdict) {
-        case StayHere():
-          break;
-        case SeekTo(:final seconds):
-          unawaited(_playerController.seekToAbsoluteSeconds(seconds));
-        case LeavePlayer():
-          unawaited(_leavePlayer());
-      }
-    },
-  );
-
-  Future<void> _pollHandoff() async {
-    final api = _apiClient;
-    // Une séance « Regarder ensemble » a ses propres règles : plusieurs
-    // appareils y lisent le même titre, c'est le but.
-    if (api == null || _party != null || _handedOffTo != null || _isLeaving) {
-      return;
-    }
-    final PlaybackHandoff? handoff;
-    try {
-      handoff = await api.getPlaybackHandoff();
-    } catch (_) {
-      return; // Serveur plus ancien, ou réseau absent : on lit, simplement.
-    }
-    if (handoff == null || !mounted || _isLeaving || _handedOffTo != null) {
-      return;
-    }
-    _wantsPlayback = false;
-    if (_playerController.isPlaying) _playerController.togglePlayPause();
-    // Sa position d'ici est désormais en retard : quitter le lecteur ne doit
-    // pas l'écrire par-dessus celle de l'appareil qui lit.
-    _playerController.reporter.yieldProgress();
-    _safeSetState(() => _handedOffTo = handoff!.deviceName);
-  }
-
-  /// Rapatrie ici la lecture qui continue sur l'autre appareil, là où il en
-  /// est.
-  Future<void> _resumeHere() async {
-    final api = _apiClient;
-    if (api == null || _resumingHere) return;
-    _safeSetState(() => _resumingHere = true);
-    AwayVerdict verdict = const StayHere();
-    try {
-      final handoff = await api.getPlaybackHandoff().catchError((_) => null);
-      final remote = handoff?.playback;
-      // L'autre appareil s'est arrêté, ou lit autre chose : sa dernière
-      // position de ce média est sur le serveur, pas ici.
-      verdict = remote != null && remote.mediaId == _playerController.mediaId
-          ? SeekTo(remote.positionSeconds)
-          : await _awayGuard.reconcile();
-      if (verdict case SeekTo(:final seconds)) {
-        await _playerController.seekToAbsoluteSeconds(seconds);
-      }
-    } finally {
-      if (verdict is LeavePlayer) {
-        _safeSetState(() => _resumingHere = false);
-        if (mounted && !_isLeaving) unawaited(_leavePlayer());
-      } else {
-        _playerController.announcePlaybackHere();
-        _wantsPlayback = true;
-        if (!_playerController.isPlaying) _playerController.togglePlayPause();
-        _safeSetState(() {
-          _handedOffTo = null;
-          _resumingHere = false;
-        });
-      }
-    }
-  }
-
-  // ==================== Regarder ensemble ====================
-
-  /// Le serveur qui héberge une séance ouverte d'ici. Une installation sans
-  /// carnet de comptes n'a pas d'identifiant : la séance n'en dépend pas.
-  String get _partyAccountKey =>
-      _sourceAccountId ?? WatchPartySession.defaultAccountKey;
-
-  void _handleWatchPartyChanged() {
-    final next = WatchPartySession.active.value;
-    final eligible = next != null &&
-        !next.isClosed &&
-        _apiClient != null &&
-        next.accountId == _partyAccountKey;
-    final target = eligible ? next : null;
-    if (identical(target, _party)) return;
-    _party?.detach(_partyBinding);
-    _party?.removeListener(_handlePartyUpdated);
-    _party = target;
-    if (target != null) {
-      target.addListener(_handlePartyUpdated);
-      // L'abonnement précédent n'est coupé qu'ici, pas à la fin de la séance :
-      // son dernier message (« La séance est terminée ») arrive après.
-      unawaited(_partyNotices?.cancel());
-      _partyNotices = target.notices.listen(_showPartyNotice);
-      target.attach(_partyBinding);
-    }
-    _safeSetState(() {});
-  }
-
-  /// La séance a changé (participants, attente) : le bouton et le message
-  /// « En attente de… » suivent.
-  void _handlePartyUpdated() => _safeSetState(() {});
-
-  /// Le panneau s'ouvre partout où un serveur peut héberger une séance — pas
-  /// pour le visiteur d'un lien de partage, qui n'a pas de compte pour en
-  /// ouvrir une.
-  VoidCallback? get _watchPartyAction =>
-      _apiClient != null && !_apiClient!.isGuest ? _showWatchPartyPanel : null;
-
-  void _showPartyNotice(String text) {
-    _partyNoticeTimer?.cancel();
-    _safeSetState(() {
-      _partyNotice = text;
-      _partyNoticeVisible = true;
-    });
-    _partyNoticeTimer = Timer(const Duration(seconds: 3), () {
-      _safeSetState(() => _partyNoticeVisible = false);
-    });
-  }
-
-  Future<void> _startWatchParty() async {
-    final api = _apiClient;
-    if (api == null) {
-      throw StateError('Aucun serveur pour héberger la séance');
-    }
-    await WatchPartySession.create(
-      api: api,
-      accountId: _partyAccountKey,
-      mediaId: _actualMedia.id,
-      position: _playerController.position,
-      playing: _playerController.isPlaying,
-    );
-  }
-
-  void _leaveWatchParty() {
-    final party = _party;
-    if (party == null) return;
-    unawaited(party.leave());
-    _showPartyNotice(tr('Vous avez quitté la séance'));
-  }
-
-  void _showWatchPartyPanel() {
-    _controlsTimer?.cancel();
-    _insertPlayerPopup(
-      (dismiss) => GestureDetector(
-        onTap: dismiss,
-        behavior: HitTestBehavior.translucent,
-        child: Material(
-          type: MaterialType.transparency,
-          child: Center(
-            child: GestureDetector(
-              // Un tap dans le panneau ne doit pas le fermer.
-              onTap: () {},
-              child: WatchPartyPanel(
-                party: _party,
-                onStart: () async {
-                  await _startWatchParty();
-                  dismiss();
-                  if (mounted) _showWatchPartyPanel();
-                },
-                onLeave: () {
-                  dismiss();
-                  _leaveWatchParty();
-                },
-                onClose: () {
-                  dismiss();
-                  _hideControlsWithDelay();
-                },
-              ),
-            ),
-          ),
-        ),
-      ),
-    );
-  }
-
-  /// Seek from a progress-bar fraction.
-  ///
-  /// It used to call player.seek() directly with `fraction * duration`, which is
-  /// an ABSOLUTE position, while mpv expects a position on the HLS stream
-  /// timeline — and that timeline restarts at 0 at the session's start offset.
-  /// Seeking to an absolute value therefore overshot by the whole offset, mpv
-  /// clamped it to the end of what had been encoded so far, and the player
-  /// parked there waiting on segments that did not exist yet. Going through the
-  /// controller applies the offset and, just as importantly, lets it decide
-  /// whether the target needs a fresh session instead of an in-session seek.
-  void _seekToFraction(double fraction) {
-    final totalSeconds = _playerController.duration.inSeconds;
-    if (totalSeconds <= 0) return;
-    _seekTo((fraction * totalSeconds).round());
-    _showControlsTransient();
-  }
-
   @override
   Widget build(BuildContext context) {
     final isTv = TvScope.of(context);
+    final party = _party.party;
+    final nav = _episodeNav;
 
     return Focus(
       focusNode: _keyboardFocusNode,
@@ -2598,31 +451,7 @@ class _PlayerScreenState extends State<PlayerScreen> {
         canPop: false,
         onPopInvokedWithResult: (didPop, _) async {
           if (didPop) return;
-          // Devant la question, Retour est une réponse : « non ».
-          if (_stillWatchingAsked) {
-            await _leavePlayer();
-            return;
-          }
-          // Écran verrouillé, le Retour du système ne quitte pas le film : il
-          // montre le cadenas, comme un appui sur l'image.
-          if (_screenLocked) {
-            _screenLockKey.currentState?.reveal();
-            return;
-          }
-          // The remote's Back arrives here, not as a key event — and it has to
-          // unwind the same stack the key path does, innermost first, or it
-          // walks out of the film with a menu still open on top of it.
-          if (_dismissTopPopup()) return;
-          if (_showEpisodesPanel) {
-            _closeEpisodesPanel();
-            return;
-          }
-          // On the control bar Back means "put that away", not "leave".
-          if (_remoteBrowsingControls) {
-            _leaveControlBar();
-            return;
-          }
-          await _leavePlayer();
+          await _handleBack();
         },
         child: Scaffold(
           backgroundColor: Colors.black,
@@ -2632,72 +461,34 @@ class _PlayerScreenState extends State<PlayerScreen> {
             onHover: (event) => _handlePointerHover(),
             child: Stack(
               children: [
-                // The video shrinks into a corner while the end-of-season card
-                // is up, so the credits stay watchable — the card never hides
-                // what is still playing. Scaling instead of resizing keeps the
-                // media_kit texture at one size, which avoids a reallocation
-                // hitch mid-animation.
-                RepaintBoundary(
-                  child: AnimatedScale(
-                    scale: _videoScale,
-                    alignment: Alignment.centerLeft,
-                    duration: const Duration(milliseconds: 320),
-                    curve: Curves.easeOutCubic,
-                    child: AnimatedPadding(
-                      padding: EdgeInsets.all(_videoScale < 1 ? 26 : 0),
-                      duration: const Duration(milliseconds: 320),
-                      curve: Curves.easeOutCubic,
-                      // Radius and shadow are divided by the scale so they read
-                      // at their intended size once shrunk, instead of being
-                      // squashed along with the picture.
-                      child: AnimatedPhysicalModel(
-                        duration: const Duration(milliseconds: 320),
-                        curve: Curves.easeOutCubic,
-                        color: Colors.black,
-                        shadowColor: Colors.black,
-                        elevation: _videoScale < 1 ? 24 / _videoScale : 0,
-                        borderRadius:
-                            BorderRadius.circular(_videoCornerRadius),
-                        // Only while the card has actually shrunk the picture.
-                        // At full size the radius is 0, so this clips a
-                        // rectangle to itself — an antialiased full-screen clip
-                        // over every decoded frame, for nothing. It is free to
-                        // skip on a desktop GPU and it is not free on a stick.
-                        clipBehavior:
-                            _videoScale < 1 ? Clip.antiAlias : Clip.none,
-                        animateColor: false,
-                        child: SizedBox.expand(
-                          // Le widget de rendu appartient au moteur : mpv
-                          // dessine dans une texture, ExoPlayer dans une
-                          // SurfaceView composée par le plan vidéo de l'écran.
-                          //
-                          // Retiré dès qu'on s'en va. Une SurfaceView est une
-                          // couche du système : Flutter ne peut pas l'emmener
-                          // dans son animation de sortie, et elle y restait
-                          // figée sur sa dernière image pendant que le reste
-                          // glissait. Du noir s'anime, lui.
-                          child: _isLeaving
-                              ? const ColoredBox(color: Colors.black)
-                              // Les sous-titres d'une session HLS sont peints
-                              // ici, pour tous les moteurs — voir ADR-0031.
-                              : LiveSubtitleLayer(
-                                  feed: _playerController.liveSubtitles,
-                                  child: _playerController.session.buildSurface(
-                                    // The chosen framing, drawn the way this
-                                    // screen wants it — see [VideoFitRendering].
-                                    fit: VideoFitRendering.resolve(
-                                      _videoFit,
-                                      handheld: _handheld,
-                                      screen: MediaQuery.sizeOf(context),
-                                    ),
-                                    aspectRatio:
-                                        _playerController.videoAspectRatio,
-                                  ),
-                                ),
+                PlayerVideoStage(
+                  scale: _videoScale,
+                  // Le widget de rendu appartient au moteur : mpv
+                  // dessine dans une texture, ExoPlayer dans une
+                  // SurfaceView composée par le plan vidéo de l'écran.
+                  //
+                  // Retiré dès qu'on s'en va. Une SurfaceView est une
+                  // couche du système : Flutter ne peut pas l'emmener
+                  // dans son animation de sortie, et elle y restait
+                  // figée sur sa dernière image pendant que le reste
+                  // glissait. Du noir s'anime, lui.
+                  child: _isLeaving
+                      ? const ColoredBox(color: Colors.black)
+                      // Les sous-titres d'une session HLS sont peints
+                      // ici, pour tous les moteurs — voir ADR-0031.
+                      : LiveSubtitleLayer(
+                          feed: _playerController.liveSubtitles,
+                          child: _playerController.session.buildSurface(
+                            // The chosen framing, drawn the way this
+                            // screen wants it — see [VideoFitRendering].
+                            fit: VideoFitRendering.resolve(
+                              _videoFit,
+                              handheld: _handheld,
+                              screen: MediaQuery.sizeOf(context),
+                            ),
+                            aspectRatio: _playerController.videoAspectRatio,
+                          ),
                         ),
-                      ),
-                    ),
-                  ),
                 ),
                 // Everything above the picture, and only when there is room
                 // for it.
@@ -2736,185 +527,43 @@ class _PlayerScreenState extends State<PlayerScreen> {
                       child: ColoredBox(color: Colors.black),
                     ),
                   ),
-                // A pinch spans two of the tap zones below, so it cannot be
-                // handled by them: the fingers have to be counted somewhere
-                // above all three. Watching the pointers rather than competing
-                // for them is what makes it reliable — see [_pinchPointers].
                 Positioned.fill(
-                  child: Listener(
-                    behavior: HitTestBehavior.deferToChild,
-                    // Left null off a touchscreen: nothing there can produce a
-                    // second finger, and this would only be bookkeeping.
-                    onPointerDown:
-                        _pinchToZoomEnabled ? _handlePinchPointerDown : null,
-                    onPointerMove:
-                        _pinchToZoomEnabled ? _handlePinchPointerMove : null,
-                    onPointerUp:
-                        _pinchToZoomEnabled ? _handlePinchPointerEnd : null,
-                    onPointerCancel:
-                        _pinchToZoomEnabled ? _handlePinchPointerEnd : null,
-                    child: Row(
-                      children: [
-                        Expanded(
-                          flex: 3,
-                          child: GestureDetector(
-                            behavior: HitTestBehavior.opaque,
-                            onDoubleTap: _doubleTapTogglesFullscreen
-                                ? _handleDoubleTapFullscreen
-                                : () => _handleDoubleTapSeek(-10),
-                            onTap: () => _handleSideZoneTap(-10),
-                            onPanStart: _windowDragEnabled
-                                ? (_) => _startWindowDrag()
-                                : null,
-                            child: Container(color: Colors.transparent),
-                          ),
-                        ),
-                        Expanded(
-                          flex: 4,
-                          child: GestureDetector(
-                            behavior: HitTestBehavior.opaque,
-                            onTap: () => _handleVideoTap(togglePlayback: true),
-                            // The middle never had a double-tap: there is no
-                            // ±10 s zone at the centre of the picture. Full
-                            // screen, though, is taken from anywhere.
-                            onDoubleTap: _doubleTapTogglesFullscreen
-                                ? _handleDoubleTapFullscreen
-                                : null,
-                            onPanStart: _windowDragEnabled
-                                ? (_) => _startWindowDrag()
-                                : null,
-                            child: Container(color: Colors.transparent),
-                          ),
-                        ),
-                        Expanded(
-                          flex: 3,
-                          child: GestureDetector(
-                            behavior: HitTestBehavior.opaque,
-                            onDoubleTap: _doubleTapTogglesFullscreen
-                                ? _handleDoubleTapFullscreen
-                                : () => _handleDoubleTapSeek(10),
-                            onTap: () => _handleSideZoneTap(10),
-                            onPanStart: _windowDragEnabled
-                                ? (_) => _startWindowDrag()
-                                : null,
-                            child: Container(color: Colors.transparent),
-                          ),
-                        ),
-                      ],
-                    ),
+                  child: PlayerTapZones(
+                    // Only where two fingers can reach the picture: a
+                    // television is driven by a remote and a desktop by a
+                    // mouse, and neither can produce this gesture.
+                    pinch: _handheld ? _pinch : null,
+                    onPinchFit: _applyPinchFit,
+                    doubleTapTogglesFullscreen: _doubleTapTogglesFullscreen,
+                    onDoubleTapFullscreen: _handleDoubleTapFullscreen,
+                    onDoubleTapSeek: _handleDoubleTapSeek,
+                    onSideTap: _handleSideZoneTap,
+                    onCenterTap: () => _handleVideoTap(togglePlayback: true),
+                    onWindowDrag:
+                        _windowDragEnabled ? () => _startWindowDrag() : null,
                   ),
                 ),
-                if (_seekHintMounted)
+                if (_hints.seekMounted)
                   Positioned.fill(
                     child: SeekFeedbackOverlay(
-                      forward: _seekHintForward,
-                      seconds: _seekHintSeconds,
-                      pulse: _seekHintPulse,
-                      visible: _seekHintVisible,
+                      forward: _hints.seekForward,
+                      seconds: _hints.seekSeconds,
+                      pulse: _hints.seekPulse,
+                      visible: _hints.seekVisible,
                     ),
                   ),
-                if (_zoomHintMounted)
+                if (_hints.zoomMounted)
                   Positioned.fill(
                     child: VideoZoomHint(
-                      fit: _zoomHintFit,
-                      visible: _zoomHintVisible,
+                      fit: _hints.zoomFit,
+                      visible: _hints.zoomVisible,
                     ),
                   ),
-                OnyxControlsLayer(
-                  visible: _controlsVisible,
-                  timelineAnchorKey: _timelineAnchorKey,
-                  isPlaying: _playerController.isPlaying,
-                  position: _displayedPosition,
-                  duration: _playerController.duration,
-                  buffered: _bufferedFraction,
-                  onPlayPause: _togglePlayPause,
-                  onRewind: () => _seekRelative(-10),
-                  onForward: () => _seekRelative(10),
-                  // The scrubber under the remote chains its steps instead
-                  // of seeking on each one — see [_remoteSeekStep].
-                  onScrubStepBack: () => _remoteSeekStep(-1),
-                  onScrubStepForward: () => _remoteSeekStep(1),
-                  // Walking the chrome is using it: the countdown that
-                  // hides it starts over.
-                  onRemoteNavigate: _hideControlsWithDelay,
-                  onSeekFraction: _seekToFraction,
-                  onScrubbingChanged: (scrubbing) {
-                    // Hold the chrome open for the whole drag, then start
-                    // the hide countdown again on release.
-                    if (scrubbing) {
-                      _controlsTimer?.cancel();
-                      _safeSetState(() => _showControls = true);
-                    } else {
-                      _hideControlsWithDelay();
-                    }
-                  },
-                  title: _onyxTitleLine,
-                  overline: _onyxOverline,
-                  logoUrl: _mediaLogoUrl,
-                  volume: _playerController.session.volume,
-                  onVolumeChanged: (v) =>
-                      _playerController.session.setVolume(v),
-                  brightness: _screenBrightness,
-                  onBrightnessChanged: _setScreenBrightness,
-                  onBrightnessDraggingChanged: (dragging) {
-                    // Same deal as the scrubber: the chrome cannot fade out
-                    // from under a finger that is still on it.
-                    if (dragging) {
-                      _controlsTimer?.cancel();
-                      _safeSetState(() => _showControls = true);
-                    } else {
-                      _hideControlsWithDelay();
-                    }
-                  },
-                  onBack: _leavePlayer,
-                  onToggleSubtitles: () => _showOnyxSettingsMenu(
-                    section: OnyxMenuSection.subtitles,
-                    anchorKey: _subtitlesButtonKey,
-                  ),
-                  onOpenAudio: () => _showOnyxSettingsMenu(
-                    section: OnyxMenuSection.audio,
-                    anchorKey: _subtitlesButtonKey,
-                  ),
-                  onCycleSpeed: _cyclePlaybackRate,
-                  onOpenSettings: () => _showOnyxSettingsMenu(
-                    anchorKey: _settingsButtonKey,
-                  ),
-                  onOpenWatchParty: _watchPartyAction,
-                  watchPartyActive: _party != null,
-                  onToggleFullscreen: _toggleFullscreen,
-                  playbackRate: _playbackRate,
-                  onLockScreen: _handheld ? _lockScreen : null,
-                  onSkipNext: (_episodeNav?.nextEpisode != null)
-                      ? _goToNextEpisode
-                      : null,
-                  onSkipPrevious:
-                      _previousEpisode != null ? _goToPreviousEpisode : null,
-                  onOpenEpisodes: _isEpisode ? _openEpisodesPanel : null,
-                  onSkipIntro: (_episodeNav?.showSkipIntro ?? false)
-                      ? _skipIntroFromControl
-                      : null,
-                  chapterMarks: _chapterMarks,
-                  settingsButtonKey: _settingsButtonKey,
-                  subtitlesButtonKey: _subtitlesButtonKey,
-                  isTv: isTv,
-                  playPauseFocusNode: _playPauseFocusNode,
-                  progressFocusNode: _progressFocusNode,
-                  // Row by row, and only the rows the camera is actually
-                  // on. Padding the layer would have stepped the whole
-                  // interface aside for something in the way of one control.
-                  cutouts: DisplayCutouts.rects(context),
-                  // Only non-null once the first frame is on screen.
-                  previews: _playerController.timelinePreviews,
-                  remoteSeekPending: _remoteSeek.target != null,
-                  // The phone has volume keys; the desktop has nothing but
-                  // this.
-                  showVolume: !AppPlatform.isMobile,
-                  scale: _chromeScale,
-                ),
+                _buildChrome(isTv),
                 // Regarder ensemble : les annonces (« alex a mis en pause ») et
                 // l'attente d'un participant qui charge, en haut au centre. Le
                 // bouton, lui, est dans la barre du chrome.
-                if (_party != null || _partyNoticeVisible)
+                if (party != null || _party.noticeVisible)
                   Positioned(
                     top: macOSWindowControlsTopInset + 20,
                     left: 0,
@@ -2923,9 +572,9 @@ class _PlayerScreenState extends State<PlayerScreen> {
                       bottom: false,
                       child: Center(
                         child: WatchPartyToast(
-                          message: _party?.waitingMessage ?? _partyNotice,
-                          visible: _party?.waitingMessage != null ||
-                              _partyNoticeVisible,
+                          message: party?.waitingMessage ?? _party.notice,
+                          visible: party?.waitingMessage != null ||
+                              _party.noticeVisible,
                         ),
                       ),
                     ),
@@ -2933,16 +582,20 @@ class _PlayerScreenState extends State<PlayerScreen> {
                 // Overlays must be AFTER the chrome in Stack to render on top.
                 // Requires an actual next episode: at the end of a season the
                 // pill would otherwise sit there doing nothing when tapped.
-                if ((_episodeNav?.showNextEpisodeOutro ?? false) &&
-                    _episodeNav?.nextEpisode != null &&
+                if (nav != null &&
+                    nav.showNextEpisodeOutro &&
+                    nav.nextEpisode != null &&
                     !_endCardVisible)
                   NextEpisodeOverlay(
-                    nextEpisode: _episodeNav!.nextEpisode,
-                    autoPlayActive: _episodeNav!.outroAutoPlayActive,
-                    frozen: _episodeNav!.outroAutoPlayFrozen,
-                    countdownSeconds: _episodeNav!.outroCountdownSeconds,
+                    nextEpisode: nav.nextEpisode,
+                    // Pas de compte à rebours vers un épisode que la
+                    // minuterie de veille ne laissera pas démarrer.
+                    autoPlayActive: nav.outroAutoPlayActive &&
+                        !SleepTimer.instance.stopsAfterThisEpisode,
+                    frozen: nav.outroAutoPlayFrozen,
+                    countdownSeconds: nav.outroCountdownSeconds,
                     onPlayNext: _goToNextEpisode,
-                    onCancel: () => _episodeNav!.cancelAutoPlay(),
+                    onCancel: () => nav.cancelAutoPlay(),
                   ),
                 // Tapping the shrunk video is a second way to say "no thanks":
                 // it dismisses the page and gives the picture and the controls
@@ -2971,49 +624,42 @@ class _PlayerScreenState extends State<PlayerScreen> {
                     left: 20,
                     child: PlayerBackButton(onTap: _leavePlayer),
                   ),
-                if (_episodeNav?.showUpcomingEpisodeCard ?? false)
+                if (nav != null && nav.showUpcomingEpisodeCard)
                   UpcomingEpisodeOverlay(
-                    episode: _episodeNav!.upcomingEpisode!,
-                    onDismiss: () =>
-                        _episodeNav!.dismissUpcomingEpisodeCard(),
-                    onPlayNext: _episodeNav?.nextEpisode != null
-                        ? _goToNextEpisode
-                        : null,
+                    episode: nav.upcomingEpisode!,
+                    onDismiss: () => nav.dismissUpcomingEpisodeCard(),
+                    onPlayNext:
+                        nav.nextEpisode != null ? _goToNextEpisode : null,
                     videoInset:
                         MediaQuery.of(context).size.width * _videoScale,
                   ),
-                if (_episodeNav?.showNextSeasonCard ?? false)
+                if (nav != null && nav.showNextSeasonCard)
                   NextSeasonOverlay(
-                    season: _episodeNav!.nextSeason!,
+                    season: nav.nextSeason!,
                     submitting: _requestingNextSeason,
                     onRequest: _requestNextSeason,
-                    onDismiss: () => _episodeNav!.dismissNextSeasonCard(),
-                    onPlayNext: (_episodeNav?.isSeasonLookahead ?? false)
-                        ? _goToNextEpisode
-                        : null,
+                    onDismiss: () => nav.dismissNextSeasonCard(),
+                    onPlayNext:
+                        nav.isSeasonLookahead ? _goToNextEpisode : null,
                     videoInset:
                         MediaQuery.of(context).size.width * _videoScale,
                   ),
-                if (_showEpisodesPanel && _isEpisode)
+                if (_episodesPanel.isOpen && _info.isEpisode)
                   PlayerEpisodesPanel(
-                    showTitle: _episodesPanelShowTitle,
-                    currentEpisodeId: _currentEpisodeId,
-                    seasons: _episodesPanelSeasons,
-                    selectedSeasonId:
-                        _episodesPanelSeasonId ?? _currentSeasonId ?? 0,
-                    onSeasonChanged: (seasonId) {
-                      setState(() {
-                        _episodesPanelLoading = true;
-                        _episodesPanelEpisodes = [];
-                      });
-                      unawaited(_loadEpisodesPanelData(seasonId: seasonId));
-                    },
-                    episodes: _episodesPanelEpisodes,
-                    isLoading: _episodesPanelLoading,
+                    showTitle: _episodesPanel.showTitle,
+                    currentEpisodeId: _info.media.id,
+                    seasons: _episodesPanel.seasons,
+                    selectedSeasonId: _episodesPanel.selectedSeasonId ??
+                        _info.seasonId ??
+                        0,
+                    onSeasonChanged: (seasonId) =>
+                        unawaited(_episodesPanel.selectSeason(seasonId)),
+                    episodes: _episodesPanel.episodes,
+                    isLoading: _episodesPanel.isLoading,
                     onClose: _closeEpisodesPanel,
-                    onEpisodeSelected: _goToEpisode,
+                    onEpisodeSelected: _navigateToEpisode,
                   ),
-                // Start-up spinner. IgnorePointer like the two below: loading is
+                // Start-up spinner. IgnorePointer like the one below: loading is
                 // exactly when the user may want to go back, so the cover must
                 // never eat taps meant for the chrome.
                 //
@@ -3029,43 +675,19 @@ class _PlayerScreenState extends State<PlayerScreen> {
                       ),
                     )
                   else
-                    const Positioned.fill(
-                      child: IgnorePointer(
-                        child: Center(
-                          child: CircularProgressIndicator(
-                            color: Color(0xFF00A4DC),
-                            strokeWidth: 3,
-                          ),
-                        ),
-                      ),
-                    ),
-                if (_handedOffTo != null)
+                    const PlayerLoadingSpinner(),
+                if (_handoff.handedOffTo != null)
                   Positioned.fill(
                     child: PlayingElsewhere(
-                      deviceName: _handedOffTo!,
-                      busy: _resumingHere,
-                      onResume: _resumeHere,
+                      deviceName: _handoff.handedOffTo!,
+                      busy: _handoff.resumingHere,
+                      onResume: _handoff.resumeHere,
                       onBack: _leavePlayer,
                     ),
                   ),
-                // Both spinners below are IgnorePointer, not AbsorbPointer: they
-                // cover the whole screen and sit above the controls, so
-                // absorbing taps made every player button dead for as long as a
-                // seek took to load. Loading is exactly when the user is most
-                // likely to want to pause, seek again or go back, so the
-                // spinner has to be purely decorative.
                 if (_playerController.isSwitchingQuality ||
                     (_playerController.isBuffering && _isInitialized))
-                  const Positioned.fill(
-                    child: IgnorePointer(
-                      child: Center(
-                        child: CircularProgressIndicator(
-                          color: Color(0xFF00A4DC),
-                          strokeWidth: 3,
-                        ),
-                      ),
-                    ),
-                  ),
+                  const PlayerLoadingSpinner(),
                 if (_stillWatchingAsked)
                   Positioned.fill(
                     child: StillWatchingPrompt(
@@ -3091,78 +713,8 @@ class _PlayerScreenState extends State<PlayerScreen> {
       ),
     );
   }
-}
 
+}
 
 /// Where the remote lands when the player's HUD comes up.
 enum _RemoteEntry { playPause, scrubber }
-
-/// Le lecteur, tel que la séance le voit. Tout ce qui arrive par ici vient
-/// des autres appareils et ne repart donc pas : voir [WatchPartyPlayer].
-class _WatchPartyBinding implements WatchPartyPlayer {
-  _WatchPartyBinding(this._state);
-
-  final _PlayerScreenState _state;
-  PlayerController get _controller => _state._playerController;
-
-  @override
-  int get mediaId => _state._actualMedia.id;
-
-  @override
-  bool get isReady =>
-      _controller.hasFirstFrame && !_state._isLeaving && !_state._isDisposing;
-
-  @override
-  bool get isLoading =>
-      !_controller.hasFirstFrame ||
-      _controller.isBuffering ||
-      _controller.isSwitchingQuality;
-
-  @override
-  bool get isBusy {
-    final settles = _state._partySeekSettlesAt;
-    return _controller.isBuffering ||
-        _controller.isSwitchingQuality ||
-        (settles != null && DateTime.now().isBefore(settles));
-  }
-
-  @override
-  bool get isPlaying => _controller.isPlaying;
-
-  @override
-  Duration get position => _controller.position;
-
-  @override
-  Future<void> applyPlaying(bool playing) async {
-    if (_controller.isPlaying == playing) return;
-    _state._wantsPlayback = playing;
-    _controller.togglePlayPause();
-    _state._safeSetState(() {});
-  }
-
-  @override
-  Future<void> applySeek(Duration position) async {
-    // Le temps que la position rapportée par le moteur rejoigne la cible.
-    _state._partySeekSettlesAt =
-        DateTime.now().add(const Duration(milliseconds: 1200));
-    await _controller.seekToAbsolutePosition(position);
-  }
-
-  @override
-  Future<void> applyRateFactor(double factor) async {
-    _state._partyRateFactor = factor;
-    await _controller.session.setRate(_state._playbackRate * factor);
-  }
-
-  @override
-  void openMedia(HomeMediaItem media, Duration position,
-      {required bool playing}) {
-    if (_state._isLeaving || _state._isDisposing || !_state.mounted) return;
-    _state._navigateToEpisode(
-      media,
-      fromParty: true,
-      resumeAtSeconds: position.inSeconds,
-      startPaused: !playing,
-    );
-  }
-}

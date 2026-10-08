@@ -1,0 +1,127 @@
+{
+  "versions": [
+    {
+      "id": 1,
+      "type": "episode",
+      "title": "title-value",
+      "file_path": "file_path-value",
+      "parent_id": 3,
+      "poster_url": "poster_url-value",
+      "overview": "overview-value",
+      "release_date": "2020-01-02",
+      "tmdb_id": 4,
+      "season_number": 5,
+      "episode_number": 6,
+      "imdb_id": "imdb_id-value",
+      "intro_start": 7,
+      "intro_end": 8,
+      "outro_start": 9,
+      "outro_end": 10,
+      "created_at": "2026-01-02T03:04:05Z",
+      "current_position_seconds": 11,
+      "duration": 12,
+      "is_finished": true,
+      "show_title": "show_title-value",
+      "show_poster_url": "show_poster_url-value",
+      "show_id": 13,
+      "episode_title": "episode_title-value",
+      "updated_at": "2026-01-02T03:04:05Z",
+      "has_new_episode": true,
+      "label": "label-value"
+    }
+  ],
+  "id": 14,
+  "tmdb_id": 15,
+  "type": "episode",
+  "title": "title-value",
+  "original_title": "original_title-value",
+  "tagline": "tagline-value",
+  "overview": "overview-value",
+  "poster_url": "poster_url-value",
+  "backdrop_url": "backdrop_url-value",
+  "logo_url": "logo_url-value",
+  "file_name": "file_name-value",
+  "local_folder": "local_folder-value",
+  "local_episode_file": "local_episode_file-value",
+  "release_date": "2020-01-02",
+  "runtime": 16,
+  "duration": 17,
+  "status": "Returning Series",
+  "vote_average": 18.5,
+  "genres": [
+    "genres-value"
+  ],
+  "studios": [
+    "studios-value"
+  ],
+  "countries": [
+    "countries-value"
+  ],
+  "original_language": "original_language-value",
+  "director": "director-value",
+  "writers": [
+    "writers-value"
+  ],
+  "editors": [
+    "editors-value"
+  ],
+  "cast": [
+    {
+      "tmdb_id": 19,
+      "name": "name-value",
+      "character": "character-value",
+      "profile_url": "profile_url-value"
+    }
+  ],
+  "keywords": [
+    "keywords-value"
+  ],
+  "trailer_key": "trailer_key-value",
+  "budget": 20,
+  "revenue": 21,
+  "recommendations": [
+    {
+      "id": 22,
+      "type": "episode",
+      "title": "title-value",
+      "poster_url": "poster_url-value",
+      "backdrop_url": "backdrop_url-value",
+      "release_date": "2020-01-02",
+      "vote_average": 23.5,
+      "overview": "overview-value"
+    }
+  ],
+  "similar": [
+    {
+      "id": 24,
+      "type": "episode",
+      "title": "title-value",
+      "poster_url": "poster_url-value",
+      "backdrop_url": "backdrop_url-value",
+      "release_date": "2020-01-02",
+      "vote_average": 25.5,
+      "overview": "overview-value"
+    }
+  ],
+  "similar_titles": [
+    {
+      "tmdb_id": 26,
+      "local_id": 27,
+      "title": "title-value",
+      "poster_url": "poster_url-value",
+      "backdrop_url": "backdrop_url-value",
+      "year": "year-value",
+      "media_type": "episode",
+      "character": "character-value",
+      "rating": 28.5
+    }
+  ],
+  "collection": {
+    "id": 29,
+    "name": "name-value",
+    "backdrop_url": "backdrop_url-value",
+    "poster_url": "poster_url-value"
+  },
+  "number_of_seasons": 30,
+  "number_of_episodes": 31
+}

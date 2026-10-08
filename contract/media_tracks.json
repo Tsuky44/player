@@ -1,0 +1,54 @@
+{
+  "video": {
+    "index": 1,
+    "codec_name": "codec_name-value",
+    "width": 2,
+    "height": 3,
+    "frame_rate": 4.5,
+    "pix_fmt": "pix_fmt-value",
+    "profile": "profile-value",
+    "color_transfer": "color_transfer-value",
+    "color_primaries": "color_primaries-value",
+    "color_space": "color_space-value",
+    "dovi_profile": 6,
+    "dovi_bl_compat_id": 7,
+    "hdr10_plus": true,
+    "hdr_format": "dolbyvision",
+    "bit_depth": 5
+  },
+  "audio": [
+    {
+      "index": 8,
+      "typed_index": 9,
+      "codec_name": "codec_name-value",
+      "language": "language-value",
+      "title": "title-value",
+      "channels": 10,
+      "default": true,
+      "profile": "profile-value",
+      "channel_layout": "channel_layout-value",
+      "sample_rate": 11,
+      "bit_rate": 12,
+      "spatial_format": "",
+      "lossless": false
+    }
+  ],
+  "subtitles": [
+    {
+      "codec": "subrip",
+      "forced": false,
+      "index": 2,
+      "language": "fre",
+      "title": "Français"
+    }
+  ],
+  "qualities": [
+    {
+      "key": "key-value",
+      "label": "label-value",
+      "width": 13,
+      "height": 14,
+      "bitrate_bps": 15
+    }
+  ]
+}

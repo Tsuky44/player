@@ -10,6 +10,7 @@ import (
 	"project-player/server/config"
 	"project-player/server/database"
 	"project-player/server/indexer"
+	"project-player/server/safego"
 	"project-player/server/subtitles"
 
 	"github.com/julienschmidt/httprouter"
@@ -56,10 +57,10 @@ func DebugIntroOutro(w http.ResponseWriter, r *http.Request, _ httprouter.Params
 		episodes = append(episodes, ep)
 	}
 
-	json.NewEncoder(w).Encode(map[string]interface{}{
-		"count":    len(episodes),
-		"episodes": episodes,
-	})
+	json.NewEncoder(w).Encode(struct {
+		Count    int            `json:"count"`
+		Episodes []EpisodeDebug `json:"episodes"`
+	}{len(episodes), episodes})
 }
 
 // DetectShowIntroOutro triggers intro/outro detection for a specific show
@@ -82,10 +83,10 @@ func DetectShowIntroOutro(w http.ResponseWriter, r *http.Request, ps httprouter.
 		return
 	}
 
-	json.NewEncoder(w).Encode(map[string]interface{}{
-		"show_id": showID,
-		"seasons": results,
-		"message": "Detection completed successfully",
+	json.NewEncoder(w).Encode(showDetectionResponse{
+		ShowID:  showID,
+		Seasons: results,
+		Message: "Detection completed successfully",
 	})
 }
 
@@ -110,6 +111,7 @@ func TriggerScan(w http.ResponseWriter, r *http.Request, _ httprouter.Params, _ 
 func TriggerShowDedupe(w http.ResponseWriter, r *http.Request, _ httprouter.Params, _ int) {
 	w.Header().Set("Content-Type", "application/json")
 	go func() {
+		defer safego.Recover("handlers/indexer_admin.go:112")
 		indexer.DedupeDuplicateShows()
 		indexer.DedupeDuplicateMovies()
 	}()
@@ -157,15 +159,15 @@ func TriggerProbeBackfill(w http.ResponseWriter, r *http.Request, _ httprouter.P
 func GetScanStatus(w http.ResponseWriter, r *http.Request, _ httprouter.Params, _ int) {
 	w.Header().Set("Content-Type", "application/json")
 
-	json.NewEncoder(w).Encode(map[string]interface{}{
-		"is_scanning":             indexer.IsScanning(),
-		"is_backfilling_metadata": indexer.IsBackfilling(),
-		"is_redetecting_all":      indexer.IsRedetectingAll(),
-		"redetect_all":            indexer.RedetectAllProgressSnapshot(),
-		"is_extracting_subtitles": subtitles.IsExtracting(),
-		"subtitle_extraction":     subtitles.LastExtractStats(),
-		"last_scan":               indexer.LastScanReport(),
-		"library_monitor":         indexer.LibraryMonitorStatus(),
+	json.NewEncoder(w).Encode(scanStatusResponse{
+		IsScanning:            indexer.IsScanning(),
+		IsBackfillingMetadata: indexer.IsBackfilling(),
+		IsRedetectingAll:      indexer.IsRedetectingAll(),
+		RedetectAll:           indexer.RedetectAllProgressSnapshot(),
+		IsExtractingSubtitles: subtitles.IsExtracting(),
+		SubtitleExtraction:    subtitles.LastExtractStats(),
+		LastScan:              indexer.LastScanReport(),
+		LibraryMonitor:        indexer.LibraryMonitorStatus(),
 	})
 }
 
@@ -201,8 +203,5 @@ func GetMediaReviewQueue(w http.ResponseWriter, r *http.Request, _ httprouter.Pa
 		return
 	}
 
-	json.NewEncoder(w).Encode(map[string]interface{}{
-		"count": len(items),
-		"items": items,
-	})
+	json.NewEncoder(w).Encode(mediaReviewResponse{Count: len(items), Items: items})
 }

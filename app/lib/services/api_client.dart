@@ -7,6 +7,8 @@ import 'package:shared_preferences/shared_preferences.dart';
 import '../models/app_download.dart';
 import '../models/device_pairing.dart';
 import '../models/server_account.dart';
+import '../models/server_capabilities.dart';
+import '../l10n/app_language.dart';
 import 'client_identity.dart';
 import 'client_log.dart';
 import 'install_origin.dart';
@@ -46,6 +48,8 @@ part 'api/series_track_preferences.dart';
 part 'api/media_shares.dart';
 part 'api/shared_link_client.dart';
 part 'api/otp.dart';
+part 'api/playback.dart';
+part 'api/media.dart';
 
 class _PlaybackRequestScope {
   const _PlaybackRequestScope(this.origin, this.authorization);
@@ -62,7 +66,9 @@ class ApiClient
         _PlaybackPreferencesEndpoints,
         _SeriesTrackPreferencesEndpoints,
         _MediaShareEndpoints,
-        _OtpEndpoints {
+        _OtpEndpoints,
+        _PlaybackEndpoints,
+        _MediaEndpoints {
   static String get _defaultBaseUrl {
     // On web the Go server serves this very bundle, so the page origin is
     // already the API root. Hardcoding a host here would turn every call into a
@@ -92,16 +98,21 @@ class ApiClient
   /// « une » adresse et « un » jeton : il applique ceux du compte actif, et
   /// changer de serveur revient à en désigner un autre. Voir ADR-0013.
   final ServerRegistry servers;
+  @override
   late final MediaFailover mediaFailover = MediaFailover(servers);
 
   /// Les listes de la médiathèque, relues seulement quand elles changent.
+  @override
   final ConditionalGetCache _libraryLists = ConditionalGetCache();
   String? _pinnedAccountId;
+  @override
   String? get accountId => _pinnedAccountId ?? servers.active?.id;
 
   String? _baseUrl;
+  @override
   String? _token;
   String? _savedUsername;
+  @override
   bool _configLoaded = false;
 
   /// Whether the address in [baseUrl] was ever chosen, as opposed to falling
@@ -146,6 +157,9 @@ class ApiClient
       // Ce que cet appareil annonce de lui-même : son nom et son application,
       // pour la liste des appareils connectés et le tableau de bord.
       options.headers.addAll(ClientIdentity.headers);
+
+      // Le serveur répond les titres et synopsis dans cette langue (ADR-0049).
+      options.headers['Accept-Language'] = AppLanguage.current.code;
 
       options.connectTimeout = const Duration(seconds: 10);
       options.receiveTimeout = const Duration(seconds: 30);
@@ -382,215 +396,6 @@ class ApiClient
     await prefs.setString('last_username', value);
   }
 
-  // Stream URL generator (Direct Play)
-  String getStreamUrl(int mediaId, {PlaybackAccess? access}) {
-    if (access != null && access.mediaId != mediaId) {
-      throw StateError('Média différent du ticket');
-    }
-    final url = "${access?.origin ?? baseUrl}/stream?media_id=$mediaId";
-    return access?.protect(url) ?? url;
-  }
-
-  /// [forDownload] demande un ticket d'échéance longue : sur iPhone, un
-  /// téléchargement continue écran verrouillé sans que l'app puisse le
-  /// renouveler (ADR-0040). Un serveur qui ne connaît pas `purpose` l'ignore.
-  Future<PlaybackAccess> openPlaybackAccess(int mediaId,
-      {bool forDownload = false}) async {
-    if (!_configLoaded) await _loadConfig();
-    final scope = _PlaybackRequestScope(baseUrl, _token);
-    Options scoped(String method) => Options(
-        method: method,
-        followRedirects: false,
-        extra: {'playbackScope': scope});
-    Response<dynamic> response;
-    try {
-      response = await _dio.request('/api/playback/tickets',
-          data: {
-            'media_id': mediaId,
-            if (forDownload) 'purpose': 'download',
-          },
-          options: scoped('POST'));
-    } on DioException catch (error) {
-      if (error.response?.statusCode != 404 &&
-          error.response?.statusCode != 405) {
-        rethrow;
-      }
-      // A missing media on a new server also returns 404. Only an explicit
-      // legacy ping permits old public URLs; auth/timeouts never do.
-      final ping = await _dio.request('/api/ping', options: scoped('GET'));
-      final data = ping.data;
-      if (data is! Map ||
-          data['status'] != 'ok' ||
-          data.containsKey('playback_ticket_version')) {
-        rethrow;
-      }
-      return PlaybackAccess(
-          origin: scope.origin,
-          mediaId: mediaId,
-          token: null,
-          expiresAt: null,
-          renew: () async => DateTime.now(),
-          revoke: () async {});
-    }
-    final data = response.data as Map<String, dynamic>;
-    final token = data['ticket'] as String;
-    if (!RegExp(r'^[A-Za-z0-9_-]{43}$').hasMatch(token)) {
-      throw StateError('Ticket de lecture invalide');
-    }
-    return PlaybackAccess(
-      origin: scope.origin,
-      mediaId: mediaId,
-      token: token,
-      expiresAt: DateTime.parse(data['expires_at'] as String),
-      renew: () async {
-        final result = await _dio.request('/api/playback/tickets',
-            data: {'ticket': token}, options: scoped('PUT'));
-        return DateTime.parse(result.data['expires_at'] as String);
-      },
-      revoke: () async {
-        await _dio.request('/api/playback/tickets',
-            data: {'ticket': token}, options: scoped('DELETE'));
-      },
-    );
-  }
-
-  // HLS session destroy URL (to notify server on stop)
-  String getHlsDestroyUrl(int mediaId, String sessionId,
-      {PlaybackAccess? access}) {
-    final url =
-        "${access?.origin ?? baseUrl}/api/v1/stream/$mediaId/$sessionId";
-    return access?.protect(url) ?? url;
-  }
-
-  /// URL of an external WebVTT subtitle for a given language. [start] shifts the
-  /// timeline to match an HLS stream that begins at an offset; Direct Play uses 0.
-  String getSubtitleUrl(int mediaId, String lang,
-      {int start = 0, PlaybackAccess? access}) {
-    // URL ends in ".vtt" so libmpv/media_kit detects the WebVTT parser from the
-    // extension; without it the external track silently fails to load.
-    final url =
-        "${access?.origin ?? baseUrl}/api/v1/media/$mediaId/subtitles/${Uri.encodeComponent(lang)}.vtt?start=$start";
-    return access?.protect(url) ?? url;
-  }
-
-  /// Spacing of the timeline stills for a media, as JSON. Also what starts the
-  /// server filling them in, which is why the player only calls it once the
-  /// first frame is on screen.
-  Future<Map<String, dynamic>> openTimelinePreviews(int mediaId,
-      {required PlaybackAccess access}) async {
-    final response = await _dio.post(
-      access.protect("${access.origin}/api/v1/media/$mediaId/previews"),
-      options: Options(extra: {'playbackMedia': true}),
-    );
-    return response.data as Map<String, dynamic>;
-  }
-
-  /// One timeline still, as JPEG bytes.
-  Future<Uint8List> fetchTimelinePreview(int mediaId, int index,
-      {required PlaybackAccess access}) async {
-    final response = await _dio.get<List<int>>(
-      access.protect("${access.origin}/api/v1/media/$mediaId/previews/$index.jpg"),
-      options: Options(
-          responseType: ResponseType.bytes, extra: {'playbackMedia': true}),
-    );
-    final data = response.data;
-    if (data == null || data.isEmpty) throw StateError('Empty preview');
-    return data is Uint8List ? data : Uint8List.fromList(data);
-  }
-
-  /// Download the raw WebVTT text for a subtitle. Fetching it ourselves and
-  /// injecting via SubtitleTrack.data() is far more reliable than asking mpv to
-  /// fetch a URL while it is already busy pulling an HLS stream.
-  Future<String> fetchSubtitleContent(int mediaId, String lang,
-      {int start = 0, PlaybackAccess? access}) async {
-    final lease = access ?? await openPlaybackAccess(mediaId);
-    try {
-      final response = await _dio.get<String>(
-        getSubtitleUrl(mediaId, lang, start: start, access: lease),
-        options: Options(
-            responseType: ResponseType.plain, extra: {'playbackMedia': true}),
-      );
-      return response.data ?? "";
-    } finally {
-      if (access == null) await lease.close();
-    }
-  }
-
-  /// Start an HLS transcoding session and return its descriptor. The server
-  /// blocks until the first segment is ready, so the returned [HlsSession.masterUrl]
-  /// can be opened immediately by the player.
-  Future<HlsSession> startHlsSession(
-    int mediaId,
-    String quality, {
-    int startSeconds = 0,
-    int audioIndex = 0,
-    int burnSubtitleIndex = -1,
-    PlaybackAccess? access,
-    PlaybackCapabilities? capabilities,
-  }) async {
-    final stopwatch = Stopwatch()..start();
-    final response = await _dio.post(
-      "${access?.origin ?? baseUrl}/api/v1/stream/$mediaId/start",
-      options: Options(extra: {'playbackMedia': true}),
-      queryParameters: {
-        "quality": quality,
-        "start": startSeconds,
-        "audio": audioIndex,
-        // Bitmap subtitles have no out-of-band form, so the transcoder paints
-        // the chosen one into the video. -1 means none.
-        "burnsub": burnSubtitleIndex,
-        // Ce client rouvre une session pour reculer au-delà de ce qu'elle a
-        // gardé (retain_seconds) : le serveur peut effacer le reste.
-        "purge": 1,
-        ...?access?.query,
-        // What this device can decode and play back. Without it the server
-        // assumes the weakest client it has ever had to serve — H.264 8-bit and
-        // stereo AAC — and re-encodes a file this one could have taken as it is.
-        // Celles du moteur qui lira la session quand ce n'est pas celui de
-        // l'appareil — AVPlayer à côté de mpv sur iPhone et Mac (ADR-0035).
-        ...(capabilities ?? PlaybackCapabilitiesResolver.current)
-            .toQueryParameters(),
-      },
-    );
-    stopwatch.stop();
-    final session = HlsSession.fromJson(response.data as Map<String, dynamic>);
-    // A returned URL must remain on the issuing origin. The server supplies
-    // the URL, but it must not accidentally send its ticket to another host.
-    if (access != null) access.protect(session.masterUrl);
-    // Logs both what was ASKED (startSeconds) and what the server CONFIRMS
-    // (session.startOffset) side by side — the fastest way to tell whether a
-    // seek landing at the wrong position is a client bug (mismatch here) or
-    // something downstream (the two agree, but playback still drifts).
-    debugPrint(
-        "ApiClient: startHlsSession took ${stopwatch.elapsedMilliseconds}ms "
-        "for media $mediaId quality $quality audio $audioIndex "
-        "requestedStart=${startSeconds}s confirmedStart=${session.startOffset}s "
-        "video=${session.videoMode}"
-        "${session.videoReason.isEmpty ? '' : ' (${session.videoReason})'} "
-        "session=${session.sessionId}");
-    return session;
-  }
-
-  // Notify server to destroy an HLS transcoding session (kills FFmpeg + temp files)
-  Future<void> destroyHlsSession(int mediaId, String sessionId,
-      {PlaybackAccess? access}) async {
-    if (sessionId.isEmpty) return;
-    try {
-      await _dio.delete(getHlsDestroyUrl(mediaId, sessionId, access: access),
-          options: Options(extra: {'playbackMedia': true}));
-    } catch (_) {
-      // Best-effort: the server reaper cleans up idle sessions anyway.
-    }
-  }
-
-  /// Points the client at an address, without claiming an account there.
-  ///
-  /// C'est le chemin de l'écran de connexion : on désigne un serveur avant de
-  /// savoir si on y a un compte. Si l'adresse correspond à un compte déjà
-  /// enregistré, elle le réactive — sinon la session en cours est **laissée
-  /// intacte en mémoire de registre**, mais le jeton cesse d'être envoyé : le
-  /// présenter à un autre serveur reviendrait à lui confier une session qui ne
-  /// le concerne pas.
   Future<void> setConnection(String serverUrl, {String? token}) async {
     final formattedUrl = ServerAccount.normalizeUrl(serverUrl);
 
@@ -621,6 +426,7 @@ class ApiClient
     await prefs.setString("server_url", url);
   }
 
+  @override
   Future<void> _loadConfig() async {
     final prefs = await SharedPreferences.getInstance();
     await servers.load();
@@ -760,7 +566,9 @@ class ApiClient
       final active = servers.active;
       if (active == null) return;
       await servers.writeProfile(active.id, jsonEncode(user.toJson()));
-    } catch (_) {}
+    } catch (_) {
+      // Le profil en cache n'est qu'un confort hors ligne.
+    }
   }
 
   Future<User?> readCachedProfile() async {
@@ -780,7 +588,9 @@ class ApiClient
       final active = servers.active;
       if (active == null) return;
       await servers.clearProfile(active.id);
-    } catch (_) {}
+    } catch (_) {
+      // Un profil resté en cache sera remplacé à la prochaine connexion.
+    }
   }
 
   // ==================== AUTH API ====================
@@ -892,329 +702,4 @@ class ApiClient
       "new_password": newPassword,
     });
   }
-
-  // ==================== MEDIA API ====================
-
-  /// Client apps (APK / DMG / EXE) embedded in the server image. Unauthenticated
-  /// server-side, so this also works from the login screen.
-  Future<List<AppDownload>> getAppDownloads() async {
-    final response = await _dio.get("/api/downloads");
-    return _parseDownloads(response.data as Map<String, dynamic>);
-  }
-
-  /// Absolute URL for an artifact, ready to hand to the browser or the shell.
-  String getAppDownloadUrl(AppDownload download) {
-    return "$baseUrl${download.url}";
-  }
-
-  /// Fetches an artifact to [savePath] for the in-app updater.
-  ///
-  /// On its own Dio on purpose: the shared client pins a 30 s receive timeout
-  /// that a 150 MB installer trips on any slow link, and /api/downloads is
-  /// unauthenticated so none of the interceptor's work is needed here.
-  Future<void> downloadAppArtifact(
-    AppDownload download,
-    String savePath, {
-    ProgressCallback? onReceiveProgress,
-    CancelToken? cancelToken,
-  }) async {
-    final dio = Dio(BaseOptions(
-      connectTimeout: const Duration(seconds: 15),
-      receiveTimeout: const Duration(minutes: 5),
-    ));
-    try {
-      await dio.download(
-        getAppDownloadUrl(download),
-        savePath,
-        onReceiveProgress: onReceiveProgress,
-        cancelToken: cancelToken,
-      );
-    } finally {
-      dio.close();
-    }
-  }
-
-  /// Replaces the installer of one platform (admin only). The platform is
-  /// deduced server-side from the extension, so [filename] must keep it.
-  ///
-  /// Either [path] (desktop/mobile: streamed from disk) or [bytes] (web, where
-  /// there is no file path) must be given. [onProgress] receives sent/total,
-  /// total being -1 while the size is unknown.
-  ///
-  /// Returns the refreshed artifact list.
-  Future<List<AppDownload>> uploadAppDownload({
-    required String filename,
-    String? path,
-    List<int>? bytes,
-    String? version,
-    void Function(int sent, int total)? onProgress,
-  }) async {
-    final formData = FormData.fromMap({
-      if (version != null && version.isNotEmpty) "version": version,
-      "file": path != null
-          ? await MultipartFile.fromFile(path, filename: filename)
-          : MultipartFile.fromBytes(bytes ?? const [], filename: filename),
-    });
-
-    final response = await _dio.post(
-      "/api/downloads",
-      data: formData,
-      onSendProgress: onProgress,
-      // A 150 MB installer over a home connection outlives the default
-      // timeouts, and the server answers only once the file is on disk.
-      options: Options(
-        sendTimeout: const Duration(minutes: 30),
-        receiveTimeout: const Duration(minutes: 5),
-      ),
-    );
-    return _parseDownloads(response.data as Map<String, dynamic>);
-  }
-
-  /// Removes one published installer (admin only). Returns the refreshed list.
-  Future<List<AppDownload>> deleteAppDownload(AppDownload download) async {
-    final response = await _dio.delete("/api/downloads/${download.file}");
-    return _parseDownloads(response.data as Map<String, dynamic>);
-  }
-
-  List<AppDownload> _parseDownloads(Map<String, dynamic> data) {
-    return (data['artifacts'] as List<dynamic>? ?? const [])
-        .map((e) => AppDownload.fromJson(e as Map<String, dynamic>))
-        .toList();
-  }
-
-  Future<HomeResponse> getHome() async {
-    final id = accountId;
-    if (id != null) unawaited(mediaFailover.refreshIdentities(id));
-    final response = await _dio.get("/api/home");
-    return HomeResponse.fromJson(response.data as Map<String, dynamic>);
-  }
-
-  Future<List<HomeMediaItem>> getMovies() async {
-    final data =
-        await _libraryLists.get(_dio, "/api/movies", scope: accountId ?? '');
-    return (data as List<dynamic>)
-        .map((e) => HomeMediaItem.fromJson(e as Map<String, dynamic>))
-        .toList();
-  }
-
-  Future<List<Media>> getShows() async {
-    final data =
-        await _libraryLists.get(_dio, "/api/shows", scope: accountId ?? '');
-    return (data as List<dynamic>)
-        .map((e) => Media.fromJson(e as Map<String, dynamic>))
-        .toList();
-  }
-
-  Future<List<Media>> getShowSeasons(int showId) async {
-    final response = await _dio.get("/api/shows/$showId/seasons");
-    return (response.data as List<dynamic>)
-        .map((e) => Media.fromJson(e as Map<String, dynamic>))
-        .toList();
-  }
-
-  Future<List<HomeMediaItem>> getSeasonEpisodes(int seasonId) async {
-    final response = await _dio.get("/api/seasons/$seasonId/episodes");
-    return (response.data as List<dynamic>)
-        .map((e) => HomeMediaItem.fromJson(e as Map<String, dynamic>))
-        .toList();
-  }
-
-  Future<List<HomeMediaItem>> getShowSeasonEpisodes(
-      int showId, int seasonNumber) async {
-    final response =
-        await _dio.get("/api/shows/$showId/seasons/$seasonNumber/episodes");
-    return (response.data as List<dynamic>)
-        .map((e) => HomeMediaItem.fromJson(e as Map<String, dynamic>))
-        .toList();
-  }
-
-  Future<ShowResumeResponse> getShowResumeEpisode(int showId) async {
-    final response = await _dio.get("/api/shows/$showId/resume");
-    return ShowResumeResponse.fromJson(response.data as Map<String, dynamic>);
-  }
-
-  // ==================== PROGRESSION HEARTBEAT ====================
-
-  Future<Map<String, dynamic>> getProgress(int mediaId) async {
-    final response = await _dio.get("/api/progress", queryParameters: {
-      "media_id": mediaId,
-    });
-    return response.data as Map<String, dynamic>;
-  }
-
-  /// [clientUpdatedAt] date une lecture qui a eu lieu avant l'envoi — le rejeu
-  /// d'un visionnage hors ligne. Le serveur s'en sert pour ne pas écraser une
-  /// progression plus récente venue d'un autre appareil ; un battement de coeur
-  /// normal l'omet et vaut « maintenant ».
-  Future<bool> sendProgress({
-    required int mediaId,
-    required int currentPositionSeconds,
-    required int duration,
-    required bool isFinished,
-    DateTime? clientUpdatedAt,
-  }) async {
-    final response = await _dio.post("/api/progress", data: {
-      "media_id": mediaId,
-      "current_position_seconds": currentPositionSeconds,
-      "duration": duration,
-      "is_finished": isFinished,
-      if (clientUpdatedAt != null)
-        "client_updated_at": clientUpdatedAt.toUtc().toIso8601String(),
-    });
-
-    return response.data["is_finished"] as bool? ?? isFinished;
-  }
-
-  // ==================== EPISODE NAVIGATION ====================
-
-  Future<NextEpisodeResponse> getNextEpisode(int episodeId) async {
-    final response = await _dio.get("/api/episodes/$episodeId/next");
-    return NextEpisodeResponse.fromJson(response.data as Map<String, dynamic>);
-  }
-
-  Future<EpisodeTimestamps> getEpisodeTimestamps(int episodeId) async {
-    final response = await _dio.get("/api/episodes/$episodeId/timestamps");
-    return EpisodeTimestamps.fromJson(response.data as Map<String, dynamic>);
-  }
-
-  Future<List<VideoChapter>> getEpisodeChapters(int episodeId) async {
-    final response = await _dio.get("/api/episodes/$episodeId/chapters");
-    final data = response.data["chapters"] as List? ?? [];
-    return data
-        .map((json) => VideoChapter.fromJson(json as Map<String, dynamic>))
-        .toList();
-  }
-
-  /// Fetches rich catalog details (cast, genres, rating, backdrop,
-  /// crew…) for a movie or show, merging local library data with live TMDB.
-  /// La fiche sous sa forme brute, telle que le téléchargement hors ligne la
-  /// range sur le disque. Voir [getMediaTracksJson] pour le même raisonnement.
-  Future<Map<String, dynamic>> getMediaDetailsJson(int mediaId) async {
-    final response = await _dio.get("/api/media/$mediaId/details");
-    return response.data as Map<String, dynamic>;
-  }
-
-  Future<MediaDetails> getMediaDetails(int mediaId) async {
-    return MediaDetails.fromJson(await getMediaDetailsJson(mediaId));
-  }
-
-  /// Fetches an actor/crew profile with filmography (TMDB person id).
-  Future<PersonDetails> getPersonDetails(int personTmdbId) async {
-    final response = await _dio.get("/api/person/$personTmdbId");
-    return PersonDetails.fromJson(response.data as Map<String, dynamic>);
-  }
-
-  /// Fetches a movie saga/collection with all its films (TMDB collection id).
-  Future<CollectionDetails> getCollectionDetails(int collectionTmdbId) async {
-    final response = await _dio.get("/api/collection/$collectionTmdbId");
-    return CollectionDetails.fromJson(response.data as Map<String, dynamic>);
-  }
-
-  Future<MediaTracks> getMediaTracks(int mediaId) async {
-    return MediaTracks.fromJson(await getMediaTracksJson(mediaId));
-  }
-
-  /// Charge la liste des pistes sous sa forme brute.
-  ///
-  /// Le téléchargement hors ligne met cette réponse de côté telle quelle et la
-  /// reparse sans serveur : la garder en JSON évite d'avoir à sérialiser
-  /// [MediaTracks] en sens inverse, et la copie locale reste lisible par une
-  /// version plus riche du modèle.
-  Future<Map<String, dynamic>> getMediaTracksJson(int mediaId) async {
-    final response = await _dio.get("/api/media/$mediaId/tracks");
-    return response.data as Map<String, dynamic>;
-  }
-
-  Future<RequestCatalogPage> getRequestCatalog({
-    required int page,
-    required String type,
-    String? query,
-    RequestCatalogFilters filters = RequestCatalogFilters.defaults,
-  }) async {
-    final response = await _dio.get('/api/requests/catalog', queryParameters: {
-      'page': page,
-      'type': type,
-      if (query != null && query.trim().isNotEmpty) 'query': query.trim(),
-      if (filters.hasDiscoverParams) ...filters.toQueryParams(),
-    });
-    return RequestCatalogPage.fromJson(response.data as Map<String, dynamic>);
-  }
-
-  Future<List<RequestGenre>> getRequestFilterGenres(String type) async {
-    final response =
-        await _dio.get('/api/requests/filter-options', queryParameters: {
-      'type': type,
-    });
-    final genres = response.data['genres'] as List<dynamic>? ?? const [];
-    return genres
-        .map((e) => RequestGenre.fromJson(e as Map<String, dynamic>))
-        .toList();
-  }
-
-  Future<List<RequestWatchProvider>> getRequestWatchProviders({
-    required String type,
-    required String region,
-  }) async {
-    final response =
-        await _dio.get('/api/requests/watch-providers', queryParameters: {
-      'type': type,
-      'region': region,
-    });
-    final providers = response.data['providers'] as List<dynamic>? ?? const [];
-    return providers
-        .map((e) => RequestWatchProvider.fromJson(e as Map<String, dynamic>))
-        .toList();
-  }
-
-  Future<RequestMediaDetails> getRequestMediaDetails(
-      int tmdbId, RequestMediaType type) async {
-    final response = await _dio.get(
-      '/api/requests/media/$tmdbId',
-      queryParameters: {'type': type.name},
-    );
-    return RequestMediaDetails.fromJson(response.data as Map<String, dynamic>);
-  }
-
-  Future<List<RequestEpisode>> getRequestSeasonEpisodes(
-      int tmdbId, int seasonNumber) async {
-    final response = await _dio.get(
-      '/api/requests/media/$tmdbId/seasons/$seasonNumber/episodes',
-    );
-    final episodes = response.data['episodes'] as List<dynamic>? ?? const [];
-    return episodes
-        .map((item) => RequestEpisode.fromJson(item as Map<String, dynamic>))
-        .toList();
-  }
-
-  Future<void> requestMedia(
-    RequestMediaItem media, {
-    List<int>? seasons,
-  }) {
-    return requestTmdbMedia(
-      tmdbId: media.id,
-      mediaType: media.mediaType.name,
-      title: media.title,
-      posterPath: media.posterPath,
-      seasons: seasons,
-    );
-  }
-
-  /// Sends a MediaHub request from anywhere a TMDB id is known — the requests
-  /// catalog, the library show page, or the player's end-of-season card.
-  Future<void> requestTmdbMedia({
-    required int tmdbId,
-    required String mediaType,
-    required String title,
-    String? posterPath,
-    List<int>? seasons,
-  }) async {
-    await _dio.post('/api/requests', data: {
-      'tmdbId': tmdbId,
-      'mediaType': mediaType,
-      'title': title,
-      'posterPath': posterPath,
-      if (seasons != null && seasons.isNotEmpty) 'seasons': seasons,
-    });
-  }
-
 }

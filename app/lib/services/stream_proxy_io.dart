@@ -181,7 +181,9 @@ abstract final class StreamProxy {
       try {
         return await Socket.connect(address, port,
             timeout: const Duration(seconds: 3));
-      } catch (_) {}
+      } catch (_) {
+        // Adresse périmée : on essaie la suivante, puis le nom.
+      }
     }
     return Socket.connect(host, port, timeout: const Duration(seconds: 30));
   }

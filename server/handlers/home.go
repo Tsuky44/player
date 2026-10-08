@@ -77,6 +77,16 @@ func Home(w http.ResponseWriter, r *http.Request, _ httprouter.Params, userID in
 	}
 	discoveryShows = indexer.DedupeShowMediaListForDisplay(discoveryShows)
 
+	lang := languageOf(r)
+	lang.itemList(continueWatching)
+	var rows []*models.Media
+	for _, list := range [][]models.Media{recentMovies, recentShows, discoveryMovies, discoveryShows} {
+		for i := range list {
+			rows = append(rows, &list[i])
+		}
+	}
+	lang.media(rows...)
+
 	// Respond
 	json.NewEncoder(w).Encode(models.HomeResponse{
 		ContinueWatching: continueWatching,

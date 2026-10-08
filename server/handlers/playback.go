@@ -11,6 +11,7 @@ import (
 
 	"project-player/server/database"
 	"project-player/server/indexer"
+	"project-player/server/safego"
 	"project-player/server/streaming"
 	"project-player/server/subtitles"
 
@@ -52,12 +53,12 @@ func GetEpisodeTimestamps(w http.ResponseWriter, r *http.Request, ps httprouter.
 		introStart, introEnd = 0, 0
 	}
 
-	json.NewEncoder(w).Encode(map[string]interface{}{
-		"media_id":    episodeID,
-		"intro_start": introStart,
-		"intro_end":   introEnd,
-		"outro_start": outroStart,
-		"outro_end":   outroEnd,
+	json.NewEncoder(w).Encode(episodeTimestampsResponse{
+		MediaID:    episodeID,
+		IntroStart: introStart,
+		IntroEnd:   introEnd,
+		OutroStart: outroStart,
+		OutroEnd:   outroEnd,
 	})
 }
 
@@ -103,9 +104,7 @@ func GetEpisodeChapters(w http.ResponseWriter, r *http.Request, ps httprouter.Pa
 	if chapters == nil {
 		chapters = []streaming.Chapter{}
 	}
-	json.NewEncoder(w).Encode(map[string]interface{}{
-		"chapters": chapters,
-	})
+	json.NewEncoder(w).Encode(chaptersResponse{Chapters: chapters})
 }
 
 // GetMediaTracks returns the audio and subtitle tracks of a media file as
@@ -153,7 +152,7 @@ func GetMediaTracks(w http.ResponseWriter, r *http.Request, ps httprouter.Params
 			writeJSONError(w, http.StatusInternalServerError, "Failed to probe media tracks")
 			return
 		}
-		go indexer.PersistProbeAfterLiveProbe(mediaID, filePath, probe)
+		go safego.Run("PersistProbeAfterLiveProbe", func() { indexer.PersistProbeAfterLiveProbe(mediaID, filePath, probe) })
 	}
 
 	// Audio comes from the file (ffprobe). Subtitles merge ffprobe discovery
@@ -173,10 +172,10 @@ func GetMediaTracks(w http.ResponseWriter, r *http.Request, ps httprouter.Params
 		sourceHeight = probe.Video.Height
 	}
 
-	json.NewEncoder(w).Encode(map[string]interface{}{
-		"video":     probe.Video,
-		"audio":     probe.Audio,
-		"subtitles": subs,
-		"qualities": streaming.QualityLadderFor(sourceHeight),
+	json.NewEncoder(w).Encode(mediaTracksResponse{
+		Video:     probe.Video,
+		Audio:     probe.Audio,
+		Subtitles: subs,
+		Qualities: streaming.QualityLadderFor(sourceHeight),
 	})
 }

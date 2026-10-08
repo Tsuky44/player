@@ -1,0 +1,78 @@
+{
+  "is_scanning": true,
+  "is_backfilling_metadata": true,
+  "is_redetecting_all": true,
+  "redetect_all": {
+    "total": 1,
+    "processed": 2,
+    "updated": 3,
+    "skipped": 4
+  },
+  "is_extracting_subtitles": true,
+  "subtitle_extraction": {
+    "total": 5,
+    "processed": 6,
+    "succeeded": 7,
+    "failed": 8,
+    "tracks": 9
+  },
+  "last_scan": {
+    "running": true,
+    "started_at": "2026-01-02T03:04:05Z",
+    "finished_at": "2026-01-02T03:04:05Z",
+    "duration_seconds": 10.5,
+    "movies": {
+      "root": "root-value",
+      "directories": 11,
+      "video_files": 12,
+      "indexed": 13,
+      "already_indexed": 14,
+      "modified": 15,
+      "skipped": 16,
+      "skipped_folders": 17,
+      "matched": 18,
+      "unmatched": 19,
+      "failed": 20
+    },
+    "series": {
+      "root": "root-value",
+      "directories": 21,
+      "video_files": 22,
+      "indexed": 23,
+      "already_indexed": 24,
+      "modified": 25,
+      "skipped": 26,
+      "skipped_folders": 27,
+      "matched": 28,
+      "unmatched": 29,
+      "failed": 30
+    },
+    "skipped": [
+      {
+        "path": "path-value",
+        "reason": "reason-value"
+      }
+    ],
+    "unmatched": [
+      {
+        "path": "path-value",
+        "title": "title-value",
+        "type": "episode"
+      }
+    ],
+    "errors": [
+      "errors-value"
+    ],
+    "skipped_truncated": true,
+    "unmatched_truncated": true
+  },
+  "library_monitor": {
+    "running": true,
+    "notifications": true,
+    "watch_limit_hit": true,
+    "folders": 31,
+    "pending_folders": 32,
+    "pending_files": 33,
+    "poll_seconds": 34
+  }
+}

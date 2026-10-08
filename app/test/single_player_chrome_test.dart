@@ -25,8 +25,14 @@ void main() {
           'docs/adr/0048-un-seul-lecteur-le-chrome-onyx.md.',
     );
 
-    final screen =
-        File('lib/screens/player/player_screen.dart').readAsStringSync();
+    // L'écran et ses fichiers `part` : c'est une seule bibliothèque.
+    final screen = Directory('lib/screens/player')
+        .listSync()
+        .whereType<File>()
+        .where((file) => RegExp(r'[\\/]player_screen(_\w+)?\.dart$')
+            .hasMatch(file.path))
+        .map((file) => file.readAsStringSync())
+        .join();
     final mounted = RegExp(r'\b(\w*ControlsLayer|\w*HUDOverlay)\(')
         .allMatches(screen)
         .map((match) => match.group(1))

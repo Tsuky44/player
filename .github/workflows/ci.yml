@@ -70,6 +70,16 @@ jobs:
       - name: go vet
         run: go vet ./...
 
+      # Au-dela de vet : code mort, valeurs jamais lues, comparaisons toujours
+      # vraies. Les regles ecartees sont dans server/staticcheck.conf.
+      - name: staticcheck
+        run: go run honnef.co/go/tools/cmd/staticcheck@latest ./...
+
+      # Echoue seulement si le serveur appelle reellement le code vulnerable
+      # d'une dependance, pas des qu'un module de go.sum a un avis.
+      - name: govulncheck
+        run: go run golang.org/x/vuln/cmd/govulncheck@latest ./...
+
       # -race : le serveur est fait de goroutines de fond (sessions HLS,
       # indexeur, watch parties) qui partagent de l'etat en memoire.
       - name: go test

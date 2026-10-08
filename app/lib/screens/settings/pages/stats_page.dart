@@ -40,7 +40,9 @@ class _StatsPageState extends State<StatsPage> {
     _load();
     context.read<ApiClient>().getUsers().then((users) {
       if (mounted) setState(() => _users = users);
-    }).catchError((_) {});
+    }).catchError((_) {
+      // Sans la liste des comptes, le filtre par utilisateur ne s'affiche pas.
+    });
   }
 
   Future<void> _load() async {

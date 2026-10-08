@@ -8,6 +8,32 @@ import '../playback/playback_session.dart';
 import '../../../theme/app_type.dart';
 import '../../../l10n/tr.dart';
 
+/// Le cercle d'attente du lecteur : démarrage, recherche, changement de
+/// qualité.
+///
+/// IgnorePointer, not AbsorbPointer: it covers the whole screen and sits above
+/// the controls, so absorbing taps made every player button dead for as long
+/// as a seek took to load. Loading is exactly when the user is most likely to
+/// want to pause, seek again or go back, so the spinner has to be purely
+/// decorative.
+class PlayerLoadingSpinner extends StatelessWidget {
+  const PlayerLoadingSpinner({super.key});
+
+  /// Le bleu du cercle, un seul pour toutes les attentes du lecteur.
+  static const Color color = Color(0xFF00A4DC);
+
+  @override
+  Widget build(BuildContext context) {
+    return const Positioned.fill(
+      child: IgnorePointer(
+        child: Center(
+          child: CircularProgressIndicator(color: color, strokeWidth: 3),
+        ),
+      ),
+    );
+  }
+}
+
 /// Standalone back control, shown while the end-of-season page hides the rest
 /// of the player chrome. Kept independent of the HUD so it cannot be swept away
 /// with it.

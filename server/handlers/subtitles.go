@@ -10,6 +10,7 @@ import (
 	"strings"
 
 	"project-player/server/playbackauth"
+	"project-player/server/safego"
 	"project-player/server/subtitles"
 
 	"github.com/julienschmidt/httprouter"
@@ -139,6 +140,7 @@ func ForceMediaSubtitleExtract(w http.ResponseWriter, r *http.Request, ps httpro
 		// Background ensure: never block the HTTP stream with a full-file FFmpeg
 		// read while the client is already pulling the same file for Direct Play.
 		go func(id int, path string) {
+			defer safego.Recover("handlers/subtitles.go:141")
 			if _, extractErr := subtitles.EnsureExtractedSync(id, path); extractErr != nil {
 				log.Printf("ForceMediaSubtitleExtract background %d: %v", id, extractErr)
 			}
@@ -152,10 +154,10 @@ func ForceMediaSubtitleExtract(w http.ResponseWriter, r *http.Request, ps httpro
 	}
 
 	tracks, _ := subtitles.List(mediaID)
-	_ = json.NewEncoder(w).Encode(map[string]interface{}{
-		"status":    "success",
-		"media_id":  mediaID,
-		"tracks":    count,
-		"subtitles": tracks,
+	_ = json.NewEncoder(w).Encode(subtitleExtractionResponse{
+		Status:    "success",
+		MediaID:   mediaID,
+		Tracks:    count,
+		Subtitles: tracks,
 	})
 }

@@ -7,6 +7,8 @@ import (
 	"net/http"
 
 	"project-player/server/config"
+	"project-player/server/indexer"
+	"project-player/server/medialang"
 
 	"github.com/julienschmidt/httprouter"
 )
@@ -27,6 +29,7 @@ func UpdateSettings(w http.ResponseWriter, r *http.Request, _ httprouter.Params,
 		return
 	}
 
+	previousLanguage := medialang.Base()
 	snapshot, err := config.ApplyUpdate(req)
 	if errors.Is(err, config.ErrInvalidOTPPolicy) {
 		writeJSONError(w, http.StatusBadRequest, "Politique de validation en deux étapes inconnue")
@@ -36,6 +39,15 @@ func UpdateSettings(w http.ResponseWriter, r *http.Request, _ httprouter.Params,
 		log.Printf("UpdateSettings error: %v", err)
 		writeJSONError(w, http.StatusInternalServerError, "Failed to save settings")
 		return
+	}
+
+	// La langue des métadonnées a changé : les textes déjà en base suivent
+	// tout de suite, et ce qui manque dans l'autre langue se complète derrière.
+	if language := medialang.Base(); language != previousLanguage {
+		if err := medialang.Rebase(previousLanguage, language); err != nil {
+			log.Printf("UpdateSettings: %v", err)
+		}
+		indexer.TranslateMissingAsync()
 	}
 
 	json.NewEncoder(w).Encode(snapshot)

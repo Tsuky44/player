@@ -250,9 +250,7 @@ func ListDownloads(w http.ResponseWriter, r *http.Request, _ httprouter.Params) 
 	// The set changes only on a deploy, but a stale list would point at files
 	// that no longer exist, so keep it short-lived.
 	w.Header().Set("Cache-Control", "public, max-age=60")
-	json.NewEncoder(w).Encode(map[string]any{
-		"artifacts": listArtifacts(),
-	})
+	json.NewEncoder(w).Encode(artifactsResponse{Artifacts: listArtifacts()})
 }
 
 // ServeDownload streams one artifact. The browser downloads it directly, so
@@ -470,9 +468,7 @@ func UploadDownload(w http.ResponseWriter, r *http.Request, _ httprouter.Params,
 		log.Printf("UploadDownload: chmod %s: %v", finalPath, err)
 	}
 
-	json.NewEncoder(w).Encode(map[string]any{
-		"artifacts": listArtifacts(),
-	})
+	json.NewEncoder(w).Encode(artifactsResponse{Artifacts: listArtifacts()})
 }
 
 // DeleteDownload removes one published artifact (DELETE /api/downloads/:file).
@@ -501,7 +497,5 @@ func DeleteDownload(w http.ResponseWriter, r *http.Request, ps httprouter.Params
 		return
 	}
 
-	json.NewEncoder(w).Encode(map[string]any{
-		"artifacts": listArtifacts(),
-	})
+	json.NewEncoder(w).Encode(artifactsResponse{Artifacts: listArtifacts()})
 }

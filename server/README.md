@@ -52,11 +52,13 @@ docker compose up -d --build
 ```
 Le serveur démarrera sur le port **8080** (http://localhost:8080) et créera la base de données SQLite dans `./data/player.db`.
 
-Les sous-titres extraits et les aperçus de la barre de lecture sont rangés à côté de la base. Le journal s'écrit en texte sur la sortie d'erreur ; `LOG_FORMAT=json` donne une ligne JSON par entrée, et `LOG_LEVEL` (`debug`, `info`, `warn`, `error`) règle ce qui est écrit.
+Les sous-titres extraits et les aperçus de la barre de lecture sont rangés à côté de la base. Avant toute migration du schéma, la base est copiée à côté d'elle (`player.db.pre-<migration>-<date>.bak`, les trois dernières sont gardées) ; `DB_SKIP_MIGRATION_BACKUP=true` s'en passe quand le disque n'a pas la place. Le conteneur tourne sous root par défaut ; `PUID` (et `PGID`) le font tourner sous un compte sans privilèges, à qui `./data` est rendu au démarrage — les dossiers de médias doivent alors lui être lisibles. Le journal s'écrit en texte sur la sortie d'erreur ; `LOG_FORMAT=json` donne une ligne JSON par entrée, et `LOG_LEVEL` (`debug`, `info`, `warn`, `error`) règle ce qui est écrit.
 
 ---
 
 ## 📡 Documentation de l'API REST
+
+**`GET /api/ping`** (public) dit que le serveur répond, et ce qu'il est : `{"status":"ok","version":"main-abc1234","playback_ticket_version":1,"capabilities":["playback_tickets","progress_long_poll","media_language","watched_by_credits"]}`. Une app lit `capabilities` pour savoir ce que ce serveur sait faire ; la liste est tenue dans `handlers/ping.go`. Les réponses que l'app lit par un modèle ont leur forme de référence dans `contract/` (ADR-0051).
 
 Toutes les routes API (sauf l'inscription/connexion et le stream) requièrent l'en-tête HTTP d'authentification suivant :
 `Authorization: Bearer <votre_token_de_session>`
@@ -259,11 +261,15 @@ n'affecte que les liens futurs.
   ```
 
 #### ➡️ Suivre la progression en direct
-* **Route :** `GET /api/progress/revision`
+* **Route :** `GET /api/progress/revision?since=<jeton>`
 * **Note de fonctionnement :** rend un jeton opaque qui change dès que ce que le compte a regardé
   change (position envoyée par un autre appareil, média coché vu, entrée retirée de « Reprendre la
-  lecture »). L'accueil et les fiches le sondent tant qu'ils sont à l'écran et ne relisent leurs
-  données que s'il a bougé. Le jeton se compare au précédent, rien d'autre.
+  lecture »). Le jeton se compare au précédent, rien d'autre.
+  * Sans `since` : répond tout de suite avec le jeton courant.
+  * Avec `since` (long-poll) : attend que le jeton s'en écarte, au plus 20 secondes, puis répond
+    avec le jeton courant — inchangé si rien n'a bougé. L'accueil et les fiches gardent une telle
+    requête ouverte tant qu'ils sont à l'écran et relisent leurs données quand elle rend un jeton
+    neuf.
 * **Réponse (JSON) :**
   ```json
   { "revision": "1284.37.2.2026-10-07 18:02:11" }
@@ -350,6 +356,15 @@ appareils du compte. Voir `docs/adr/0044-pistes-retenues-par-serie.md`.
 
 ### 📂 3. Navigation Bibliothèque
 
+#### 🌐 Langue des fiches
+Les titres et synopsis sont servis dans la langue que le client annonce par l'en-tête
+`Accept-Language` (`fr` ou `en`, les langues de l'interface — ADR-0049). Sans en-tête, ou avec une
+autre langue, la réponse reste dans la « langue des métadonnées » du serveur ; si l'en-tête liste
+plusieurs langues, la première des deux l'emporte. Concerne l'accueil,
+les listes de films, séries et épisodes, la reprise, l'épisode suivant, les fiches détaillées, les
+personnes, les sagas et le catalogue des demandes. Un texte que TMDB n'a pas dans la langue
+demandée reste dans celle du serveur.
+
 #### ➡️ Liste des Films
 * **Route :** `GET /api/movies`
 * **Réponse (JSON) :** Liste complète de tous les films avec la progression de l'utilisateur connecté sous chaque film (si commencée).
@@ -360,9 +375,11 @@ appareils du compte. Voir `docs/adr/0044-pistes-retenues-par-serie.md`.
 
 #### ➡️ Liste des Saisons d'une Série
 * **Route :** `GET /api/shows/:id/seasons`
+* **Réponse (JSON) :** Saisons présentes et saisons connues de TMDB mais absentes (`id` 0, `is_available` false). Chaque saison porte `request_status`, `can_request` et `episode_count` (total TMDB). Une saison présente mais incomplète annonce elle aussi l'état de sa demande MediaHub, et `can_request` true quand personne ne l'a demandée.
 
 #### ➡️ Liste des Épisodes d'une Saison
 * **Route :** `GET /api/seasons/:id/episodes`
+* **Paramètre :** `missing=1` (optionnel) ajoute les épisodes annoncés par TMDB que le serveur n'a pas — à venir ou absents — avec `id` 0, `is_available` false et leur date de sortie dans `release_date`. Chaque épisode porte alors `is_available`.
 * **Réponse (JSON) :** Liste complète des épisodes de la saison avec l'état de progression/lecture associé à chaque épisode pour l'utilisateur connecté.
 
 ---

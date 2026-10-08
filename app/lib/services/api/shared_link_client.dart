@@ -260,7 +260,10 @@ class SharedLinkApiClient extends ApiClient {
       (await _show())?.seasons ?? const [];
 
   @override
-  Future<List<HomeMediaItem>> getSeasonEpisodes(int seasonId) async =>
+  Future<List<HomeMediaItem>> getSeasonEpisodes(
+    int seasonId, {
+    bool includeMissing = false,
+  }) async =>
       (await _show())?.episodesOf(seasonId) ?? const [];
 
   /// La fiche de la série du lien, pour le logo du lecteur ; rien de plus que

@@ -12,9 +12,9 @@ import 'package:flutter_test/flutter_test.dart';
 /// fichier « pour que le test passe » est exactement ce que ce test existe pour
 /// empêcher.
 const Map<String, String> _allowed = {
-  'lib/screens/player/player_screen.dart':
-      'la lecture continue fenêtre réduite (relais, reprise sur un autre '
-          'appareil)',
+  'lib/screens/player/player_screen_startup.dart':
+      'la lecture continue fenêtre réduite : le relais par un autre serveur '
+          'doit rester possible',
   'lib/screens/auth/login_screen.dart':
       'attend la validation faite sur le téléphone, souvent app réduite',
   'lib/screens/auth/phone_sign_in_panel.dart':
@@ -22,6 +22,16 @@ const Map<String, String> _allowed = {
   'lib/widgets/global/app_update_dialog.dart':
       'compte à rebours d\'une seconde avant le redémarrage de la mise à jour',
 };
+
+/// Le source de la bibliothèque à laquelle [file] appartient : le sien, ou
+/// celui du fichier nommé par son `part of`.
+String _libraryOf(File file, String source) {
+  final owner = RegExp(r'''^part of ['"]([^'"]+)['"];''', multiLine: true)
+      .firstMatch(source);
+  if (owner == null) return source;
+  final parent = File.fromUri(file.absolute.uri.resolve(owner.group(1)!));
+  return parent.existsSync() ? parent.readAsStringSync() : source;
+}
 
 void main() {
   // Une minuterie posée dans `initState` tourne tant que le widget existe :
@@ -36,8 +46,11 @@ void main() {
 
       final source = entity.readAsStringSync();
       if (!source.contains('Timer.periodic(')) continue;
-      if (!source.contains('extends State<')) continue;
-      if (source.contains('OnScreenState')) continue;
+      // Un fichier `part` appartient à sa bibliothèque : c'est elle qui dit
+      // s'il s'agit d'un écran.
+      final library = _libraryOf(entity, source);
+      if (!library.contains('extends State<')) continue;
+      if (library.contains('OnScreenState')) continue;
       // La liste blanche est écrite en barres obliques ; Windows rend des
       // barres inverses.
       final path = entity.path.replaceAll('\\', '/');

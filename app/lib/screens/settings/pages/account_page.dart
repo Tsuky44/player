@@ -35,7 +35,9 @@ class _AccountPageState extends State<AccountPage> {
     await Future.wait([
       api.getMyPlaybackStats(days: 30).then((stats) {
         if (mounted) setState(() => _stats = stats);
-      }).catchError((_) {}),
+      }).catchError((_) {
+        // Sans statistiques, la page s'affiche sans ce bloc.
+      }),
       api.getMyDevices().then((devices) {
         if (mounted) {
           setState(() {
@@ -152,7 +154,10 @@ class _AccountPageState extends State<AccountPage> {
     for (final device in others) {
       try {
         await api.revokeMyDevice(device.id);
-      } catch (_) {}
+      } catch (_) {
+        // Un appareil qui échoue ne retient pas les autres ; la liste rechargée
+        // dit ce qu'il reste.
+      }
     }
     if (!mounted) return;
     showSettingsSnack(context, tr('Les autres appareils ont été déconnectés.'));

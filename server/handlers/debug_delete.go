@@ -122,13 +122,13 @@ func DebugDeleteShow(w http.ResponseWriter, r *http.Request, ps httprouter.Param
 	log.Printf("DebugDeleteShow: removed %d episodes, %d subtitle files for show %q",
 		len(episodeIDs), deletedSubs, showTitle)
 
-	_ = json.NewEncoder(w).Encode(map[string]any{
-		"status":                 "success",
-		"show_id":                showID,
-		"show_title":             showTitle,
-		"episodes_removed":       len(episodeIDs),
-		"subtitle_files_deleted": deletedSubs,
-		"message":                "Show deleted. Trigger a scan to re-index it.",
+	_ = json.NewEncoder(w).Encode(showDeletedResponse{
+		Status:               "success",
+		ShowID:               showID,
+		ShowTitle:            showTitle,
+		EpisodesRemoved:      len(episodeIDs),
+		SubtitleFilesDeleted: deletedSubs,
+		Message:              "Show deleted. Trigger a scan to re-index it.",
 	})
 }
 

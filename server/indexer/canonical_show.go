@@ -145,11 +145,6 @@ func ResolveCanonicalMovieID(movieID int) int {
 	return ids[0]
 }
 
-// showDedupeKeyForMedia builds the dedupe key used by DedupeShowMediaList.
-func showDedupeKeyForMedia(s models.Media) string {
-	return normalizedShowDedupeKey(s.Title, s.TMDBID)
-}
-
 // PreferShowWithBetterPoster picks the show with a poster when merging duplicates for display.
 func PreferShowWithBetterPoster(a, b models.Media) models.Media {
 	aPoster := strings.TrimSpace(a.PosterURL)

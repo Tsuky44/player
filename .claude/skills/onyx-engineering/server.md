@@ -13,6 +13,8 @@ Module `project-player/server`, Go 1.21, routeur `httprouter`, SQLite `modernc.o
 | `database` | `InitDB`, PRAGMA, migrations. `database.DB` est global. |
 | `models` | Structs partagées et JSON. `Permission*` vit ici. |
 | `httpx` | Les seuls clients HTTP sortants. |
+| `tmdb`, `safego`, `ttlcache` | Garde-fous transverses : accès à TMDB, goroutines gardées, caches bornés (ADR-0050). |
+| `codeguard` | Des tests seulement : ceux qui relisent tout le serveur pour faire tenir une convention (aucun fichier au-dessus de 800 lignes, ADR-0052). |
 | `config`, `middleware`, `webui` | Réglages, gzip, SPA embarquée. |
 
 Un handler reste **mince**. Dès que la logique dépasse « lire la requête → une requête SQL → répondre », elle part dans une fonction pure et testable (sur le modèle de `findResumeEpisodeRow`) ou dans le package du domaine. Pour une nouvelle fonctionnalité avec un état et un cycle de vie, crée un sous-package profond comme `playbackauth` plutôt qu'un fichier de plus dans `handlers`.
@@ -29,7 +31,9 @@ Un handler reste **mince**. Dès que la logique dépasse « lire la requête →
 
 - Entrée JSON : `r.Body = http.MaxBytesReader(w, r.Body, limite)` puis `json.NewDecoder(r.Body).Decode(&req)`. Valide les champs et renvoie `400` sur une entrée invalide.
 - Paramètres d'URL : `strconv.Atoi(ps.ByName("id"))`, avec `400` en cas d'échec.
-- Sortie : `w.Header().Set("Content-Type", "application/json")` puis `json.NewEncoder(w).Encode(resp)`. La réponse est une struct de `models`, jamais une `map[string]interface{}` improvisée.
+- Sortie : `w.Header().Set("Content-Type", "application/json")` puis `json.NewEncoder(w).Encode(resp)`. La réponse est une struct (de `models`, ou de `handlers/responses.go` pour une forme sans domaine), jamais une `map[string]interface{}` improvisée.
+- Contrat : une réponse que l'app lit par un modèle typé a son fichier dans `contract/`. La changer, c'est régénérer (`ONYX_UPDATE_CONTRACT=1 go test ./handlers -run TestAPIContract`) puis faire passer `app/test/api_contract_test.dart` (ADR-0051).
+- Un comportement que l'app doit pouvoir distinguer d'un serveur plus ancien reçoit une capacité dans `handlers/ping.go`.
 - Erreur : `http.Error(w, "message court", status)` avec le bon code (400, 401, 403, 404, 409, 500). Le détail interne part dans `log.Printf("<handler>: <étape>: %v", err)`, jamais dans la réponse.
 - Codes d'état : `sql.ErrNoRows` donne `404`, un conflit d'unicité donne `409`.
 
@@ -45,6 +49,9 @@ Un handler reste **mince**. Dès que la logique dépasse « lire la requête →
 ## Clients sortants, tâches de fond, processus
 
 - Appels sortants : `httpx.Fast`, `Standard`, `Catalog` ou `Long`, choisis selon l'échéance. Ils partagent un seul pool de connexions. Un nouveau client ne se crée que dans `httpx`.
+- TMDB : `tmdb.Get(client, "/tv/1399?language=fr-FR")`, jamais une URL écrite à la main. Le package pose la clé et la retire des erreurs (ADR-0050).
+- Goroutine : `go safego.Run(…)` pour une tâche qui a une fin, `go safego.Forever(…)` pour une boucle, ou `defer safego.Recover(…)` en première ligne d'une goroutine anonyme. Une goroutine nue qui panique arrête tout le serveur (ADR-0050).
+- Cache en mémoire : `ttlcache.New(ttl, max)`, toujours avec un plafond.
 - Tâche de fond : une fonction `RunX(ctx context.Context)` lancée depuis `main.go` avec `playbackContext`, qui rend la main sur `ctx.Done()`. Les nettoyages périodiques suivent le modèle des *reapers* existants.
 - Un état partagé vit dans un petit store (struct + `sync.Mutex` + méthodes), avec un constructeur de test (`newTestWatchPartyStore`).
 - ffmpeg/ffprobe passent par `streaming`. Tout processus lancé est lié à un `context` et tué à l'annulation. Les travaux secondaires (aperçus) tournent en priorité basse.

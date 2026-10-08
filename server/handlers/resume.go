@@ -234,18 +234,17 @@ func GetShowResumeEpisode(w http.ResponseWriter, r *http.Request, ps httprouter.
 
 	row, ok := findResumeEpisodeRow(episodes)
 	if !ok || row == nil {
-		json.NewEncoder(w).Encode(map[string]interface{}{
-			"has_episode": false,
-		})
+		json.NewEncoder(w).Encode(resumeEpisodeResponse{})
 		return
 	}
 
 	row.item.SeasonNumber = row.seasonNumber
 	row.item.EpisodeNumber = row.episodeNumber
+	languageOf(r).items(&row.item)
 
-	json.NewEncoder(w).Encode(map[string]interface{}{
-		"has_episode": true,
-		"season_id":   row.seasonID,
-		"episode":     row.item,
+	json.NewEncoder(w).Encode(resumeEpisodeResponse{
+		HasEpisode: true,
+		SeasonID:   &row.seasonID,
+		Episode:    &row.item,
 	})
 }

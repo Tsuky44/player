@@ -4,6 +4,7 @@ import '../../../services/playback_preferences_storage.dart';
 import '../../../theme/app_colors.dart';
 import '../../../utils/app_platform.dart';
 import '../../player/display_frame_rate.dart';
+import '../../player/playback/adaptive_quality.dart';
 import '../../player/hardware_decoding.dart';
 import '../widgets/settings_dropdown_label.dart';
 import '../widgets/settings_ui.dart';
@@ -156,6 +157,28 @@ class _PlaybackPageState extends State<PlaybackPage> {
                 ),
             ],
           ),
+        SettingsGroup(
+          title: tr('Connexion'),
+          // La ligne est celle au bout de laquelle se trouve cet appareil :
+          // le réglage ne suit pas le compte (ADR-0053).
+          footer: tr('Propre à cet appareil : il dépend du réseau où il se '
+              'trouve.'),
+          children: [
+            SettingsSwitchTile(
+              icon: Icons.network_check_rounded,
+              title: tr('Adapter la qualité à la connexion'),
+              subtitle:
+                  tr('Quand la lecture se coupe plusieurs fois de suite, '
+                      'passe à un débit que la connexion tient. Le menu '
+                      'Qualité du lecteur permet de remonter à tout moment.'),
+              value: AdaptiveQualityPreference.enabled,
+              onChanged: (value) async {
+                await AdaptiveQualityPreference.setEnabled(value);
+                if (mounted) setState(() {});
+              },
+            ),
+          ],
+        ),
         SettingsGroup(
           title: tr('Séries'),
           footer:

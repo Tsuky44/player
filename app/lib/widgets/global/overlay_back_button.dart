@@ -2,6 +2,7 @@ import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
 import '../../desktop_window.dart';
+import '../../l10n/tr.dart';
 import '../../utils/app_platform.dart';
 import '../../theme/app_icons.dart';
 
@@ -47,6 +48,7 @@ class OverlayBackButton extends StatelessWidget {
         child: Align(
           alignment: Alignment.topLeft,
           child: IconButton(
+            tooltip: tr('Retour'),
             padding: EdgeInsets.zero,
             constraints: const BoxConstraints.tightFor(
               width: _buttonSize,

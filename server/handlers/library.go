@@ -46,6 +46,7 @@ func GetMovies(w http.ResponseWriter, r *http.Request, _ httprouter.Params, user
 		writeJSONError(w, http.StatusInternalServerError, "Unable to load versions")
 		return
 	}
+	languageOf(r).itemList(results)
 	writeETaggedJSON(w, r, results)
 }
 
@@ -96,7 +97,14 @@ func GetShows(w http.ResponseWriter, r *http.Request, _ httprouter.Params, userI
 		stats = map[int]showWatchStats{}
 	}
 
-	writeETaggedJSON(w, r, buildShowLibraryItems(results, stats))
+	// Après le regroupement : il compare les titres de base des doublons.
+	items := buildShowLibraryItems(results, stats)
+	shows := make([]*models.Media, len(items))
+	for i := range items {
+		shows[i] = &items[i].Media
+	}
+	languageOf(r).media(shows...)
+	writeETaggedJSON(w, r, items)
 }
 
 // loadShowWatchStats counts, per show row, the episodes present on disk and how
@@ -164,7 +172,9 @@ func buildShowLibraryItems(shows []models.Media, stats map[int]showWatchStats) [
 	return items
 }
 
-// GetSeasonEpisodes returns all episodes for a season, with watch progressions (GET /api/seasons/:id/episodes)
+// GetSeasonEpisodes returns all episodes for a season, with watch progressions (GET /api/seasons/:id/episodes).
+// With ?missing=1, the episodes TMDB lists but the server lacks are merged in,
+// flagged is_available false.
 func GetSeasonEpisodes(w http.ResponseWriter, r *http.Request, ps httprouter.Params, userID int) {
 	w.Header().Set("Content-Type", "application/json")
 
@@ -205,6 +215,15 @@ func GetSeasonEpisodes(w http.ResponseWriter, r *http.Request, ps httprouter.Par
 	results, err = groupMediaVersions(results)
 	if err != nil {
 		writeJSONError(w, http.StatusInternalServerError, "Unable to load versions")
+		return
+	}
+	lang := languageOf(r)
+	lang.itemList(results)
+	// Sur demande seulement : le lecteur, les téléchargements et les anciens
+	// clients parcourent cette liste comme « ce qui se lit », et un épisode
+	// sans fichier au milieu les ferait trébucher.
+	if r.URL.Query().Get("missing") == "1" {
+		json.NewEncoder(w).Encode(withMissingEpisodes(seasonID, results, lang))
 		return
 	}
 	json.NewEncoder(w).Encode(results)

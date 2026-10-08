@@ -293,7 +293,10 @@ class LibraryProvider extends ChangeNotifier {
     try {
       List<HomeMediaItem> result;
       if (season.id > 0) {
-        result = await apiClient.getSeasonEpisodes(season.id);
+        result = await apiClient.getSeasonEpisodes(
+          season.id,
+          includeMissing: true,
+        );
       } else {
         final seasonNum = season.effectiveSeasonNumber ?? season.seasonNumber;
         if (seasonNum == null || seasonNum <= 0) {
@@ -340,8 +343,8 @@ class LibraryProvider extends ChangeNotifier {
     final requested = seasonNumbers.toSet();
     _seasons = [
       for (final season in _seasons)
-        if (!season.isAvailable &&
-            season.effectiveSeasonNumber != null &&
+        // Présente ou non : une saison incomplète se demande aussi.
+        if (season.effectiveSeasonNumber != null &&
             requested.contains(season.effectiveSeasonNumber))
           season.copyWith(requestStatus: 'pending', canRequest: false)
         else

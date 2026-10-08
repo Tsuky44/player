@@ -238,7 +238,9 @@ mixin _AccountAdminEndpoints {
   Future<void> logout() async {
     try {
       await _dio.post("/api/auth/logout");
-    } catch (_) {}
+    } catch (_) {
+      // Serveur injoignable : la session locale est effacée quand même.
+    }
     await clearAuth();
   }
 }

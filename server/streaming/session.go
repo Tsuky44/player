@@ -12,6 +12,8 @@ import (
 	"sync"
 	"syscall"
 	"time"
+
+	"project-player/server/safego"
 )
 
 var (
@@ -101,9 +103,9 @@ func (s *TranscodeSession) Start() error {
 	s.lastAccess = time.Now()
 	s.mu.Unlock()
 
-	go s.watch()
+	go safego.Run("watch", func() { s.watch() })
 	if throttleEnabled {
-		go s.throttle()
+		go safego.Run("throttle", func() { s.throttle() })
 	}
 	return nil
 }
@@ -286,6 +288,7 @@ func (s *TranscodeSession) Kill() {
 
 		done := make(chan struct{})
 		go func() {
+			defer safego.Recover("streaming/session.go:288")
 			for s.IsActive() {
 				time.Sleep(20 * time.Millisecond)
 			}

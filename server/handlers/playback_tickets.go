@@ -42,7 +42,7 @@ func CreatePlaybackTicket(w http.ResponseWriter, r *http.Request, _ httprouter.P
 	}
 	w.Header().Set("Content-Type", "application/json")
 	w.Header().Set("Cache-Control", "no-store")
-	json.NewEncoder(w).Encode(map[string]interface{}{"ticket": token, "expires_at": ticket.ExpiresAt, "renew_after_seconds": ticketRenewAfterSeconds})
+	json.NewEncoder(w).Encode(playbackTicketResponse{Ticket: token, ExpiresAt: ticket.ExpiresAt, RenewAfterSeconds: ticketRenewAfterSeconds})
 }
 
 // Secrets travel in the body, never in the management URL or access logs.
@@ -66,5 +66,5 @@ func UpdatePlaybackTicket(w http.ResponseWriter, r *http.Request, _ httprouter.P
 		return
 	}
 	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(map[string]interface{}{"expires_at": ticket.ExpiresAt})
+	json.NewEncoder(w).Encode(playbackTicketRenewal{ExpiresAt: ticket.ExpiresAt})
 }

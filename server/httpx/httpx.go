@@ -5,7 +5,7 @@
 // http.Client per call — which is what the indexer and the request handlers
 // used to do — gives each one its own idle-connection pool, so nothing is ever
 // reused and every lookup pays a fresh TCP+TLS handshake to the same host.
-// Against api.themoviedb.org that is 100–300 ms added to each call, and the
+// Against the TMDB API that is 100–300 ms added to each call, and the
 // detail screens make several in a row.
 //
 // Timeouts are the one thing that legitimately differs between callers, so the

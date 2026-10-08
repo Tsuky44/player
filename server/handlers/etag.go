@@ -34,6 +34,8 @@ func writeETaggedJSON(w http.ResponseWriter, r *http.Request, v any) {
 	w.Header().Set("ETag", etag)
 	w.Header().Set("Cache-Control", "private, no-cache")
 	w.Header().Add("Vary", "Authorization")
+	// Les fiches sont servies dans la langue de l'app (ADR-0049).
+	w.Header().Add("Vary", "Accept-Language")
 	if etagMatches(r.Header.Get("If-None-Match"), etag) {
 		w.WriteHeader(http.StatusNotModified)
 		return

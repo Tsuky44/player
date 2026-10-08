@@ -16,6 +16,7 @@ import (
 	"project-player/server/database"
 	"project-player/server/httpx"
 	"project-player/server/models"
+	"project-player/server/tmdb"
 )
 
 var (
@@ -80,10 +81,10 @@ func fetchTMDBEpisodeTranslation(showTMDBID, seasonNum, episodeNum int) (title, 
 		return "", ""
 	}
 	u := fmt.Sprintf(
-		"https://api.themoviedb.org/3/tv/%d/season/%d/episode/%d/translations?api_key=%s",
-		showTMDBID, seasonNum, episodeNum, apiKey,
+		"/tv/%d/season/%d/episode/%d/translations",
+		showTMDBID, seasonNum, episodeNum,
 	)
-	resp, err := httpx.Standard.Get(u)
+	resp, err := tmdb.Get(httpx.Standard, u)
 	if err != nil || resp.StatusCode != http.StatusOK {
 		if resp != nil {
 			resp.Body.Close()
@@ -113,13 +114,13 @@ func fetchTMDBEpisode(showTMDBID, seasonNum, episodeNum int) (title, overview, p
 
 	fetch := func(lang string) tmdbEpisodeDetails {
 		u := fmt.Sprintf(
-			"https://api.themoviedb.org/3/tv/%d/season/%d/episode/%d?api_key=%s",
-			showTMDBID, seasonNum, episodeNum, apiKey,
+			"/tv/%d/season/%d/episode/%d",
+			showTMDBID, seasonNum, episodeNum,
 		)
 		if lang != "" {
-			u += "&language=" + lang
+			u += "?language=" + lang
 		}
-		resp, err := httpx.Standard.Get(u)
+		resp, err := tmdb.Get(httpx.Standard, u)
 		if err != nil || resp.StatusCode != http.StatusOK {
 			if resp != nil {
 				resp.Body.Close()

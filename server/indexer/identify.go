@@ -14,6 +14,7 @@ import (
 
 	"project-player/server/httpx"
 	"project-player/server/models"
+	"project-player/server/tmdb"
 )
 
 // Title-similarity gates for accepting an automatic match (refuse
@@ -197,8 +198,8 @@ func searchTMDBWithConfidence(rawTitle string, hintYear int, mediaType models.Me
 			return cached
 		}
 		u := fmt.Sprintf(
-			"https://api.themoviedb.org/3/search/%s?api_key=%s&query=%s",
-			endpoint, apiKey, url.QueryEscape(query),
+			"/search/%s?query=%s",
+			endpoint, url.QueryEscape(query),
 		)
 		if lang != "" {
 			u += "&language=" + lang
@@ -219,7 +220,7 @@ func searchTMDBWithConfidence(rawTitle string, hintYear int, mediaType models.Me
 			if attempt > 0 {
 				time.Sleep(600 * time.Millisecond)
 			}
-			resp, err := httpx.Standard.Get(u)
+			resp, err := tmdb.Get(httpx.Standard, u)
 			if err != nil {
 				continue
 			}
@@ -396,10 +397,10 @@ func findTMDBIDByExternal(externalID, source string, mediaType models.MediaType)
 		return 0
 	}
 	u := fmt.Sprintf(
-		"https://api.themoviedb.org/3/find/%s?api_key=%s&external_source=%s",
-		url.PathEscape(externalID), apiKey, url.QueryEscape(source),
+		"/find/%s?external_source=%s",
+		url.PathEscape(externalID), url.QueryEscape(source),
 	)
-	resp, err := httpx.Standard.Get(u)
+	resp, err := tmdb.Get(httpx.Standard, u)
 	if err != nil {
 		log.Printf("TMDB find: %v", err)
 		return 0

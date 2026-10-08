@@ -85,28 +85,28 @@ func GetNextEpisode(w http.ResponseWriter, r *http.Request, ps httprouter.Params
 		return
 	}
 
+	lang := languageOf(r)
+
 	// 1. Next episode within the same season.
 	if item, ok := findEpisodeInSeason(userID, seasonID, currentEpisodeNum); ok {
-		response := map[string]interface{}{
-			"has_next": true,
-			"episode":  item,
-		}
-		if season := lookaheadMissingSeason(userID, item.ID); season != nil {
-			response["next_season"] = season
-		}
-		_ = json.NewEncoder(w).Encode(response)
+		lang.items(&item)
+		_ = json.NewEncoder(w).Encode(nextEpisodeResponse{
+			HasNext:    true,
+			Episode:    &item,
+			NextSeason: lookaheadMissingSeason(userID, item.ID, lang),
+		})
 		return
 	}
 
 	showID, currentSeasonNum := seasonPosition(seasonID)
 	if showID == 0 || currentSeasonNum <= 0 {
-		_ = json.NewEncoder(w).Encode(map[string]interface{}{"has_next": false})
+		_ = json.NewEncoder(w).Encode(nextEpisodeResponse{})
 		return
 	}
 
 	// The season this episode ends may simply not be over: computed once here
 	// because every branch below has to defer to it.
-	upcoming := describeUpcomingEpisode(showID, currentSeasonNum, currentEpisodeNum)
+	upcoming := describeUpcomingEpisode(showID, currentSeasonNum, currentEpisodeNum, lang)
 
 	// 2. First episode of the following season, when it is held locally.
 	//
@@ -115,50 +115,36 @@ func GetNextEpisode(w http.ResponseWriter, r *http.Request, ps httprouter.Params
 	// silently skipped over to a later season that happens to be present.
 	nextNumber, nextSeasonID := resolveFollowingSeason(showID, currentSeasonNum)
 	if nextNumber == 0 {
-		_ = json.NewEncoder(w).Encode(withUpcoming(
-			map[string]interface{}{"has_next": false}, upcoming))
+		_ = json.NewEncoder(w).Encode(nextEpisodeResponse{UpcomingEpisode: upcoming})
 		return
 	}
 	if nextSeasonID > 0 {
 		if item, ok := findEpisodeInSeason(userID, nextSeasonID, 0); ok {
-			response := map[string]interface{}{
-				"has_next": true,
-				"episode":  item,
-			}
+			lang.items(&item)
+			response := nextEpisodeResponse{HasNext: true, Episode: &item}
 			if upcoming != nil {
 				// Playing on is still offered, but through the card, so
 				// crossing a hole in the current season stays a deliberate act.
-				response["upcoming_episode"] = upcoming
-			} else if season := lookaheadMissingSeason(userID, item.ID); season != nil {
-				response["next_season"] = season
+				response.UpcomingEpisode = upcoming
+			} else {
+				response.NextSeason = lookaheadMissingSeason(userID, item.ID, lang)
 			}
 			_ = json.NewEncoder(w).Encode(response)
 			return
 		}
 		// Season row exists but holds no episode: nothing to play, and nothing
 		// to request either (MediaHub would report it as partial/available).
-		_ = json.NewEncoder(w).Encode(withUpcoming(
-			map[string]interface{}{"has_next": false}, upcoming))
+		_ = json.NewEncoder(w).Encode(nextEpisodeResponse{UpcomingEpisode: upcoming})
 		return
 	}
 
 	// 3/4. Nothing left to play: the season's next episode when it has one,
 	// the missing season that follows otherwise.
-	response := map[string]interface{}{"has_next": false}
-	if upcoming != nil {
-		response["upcoming_episode"] = upcoming
-	} else if season := describeMissingSeason(showID, nextNumber); season != nil {
-		response["next_season"] = season
+	response := nextEpisodeResponse{UpcomingEpisode: upcoming}
+	if upcoming == nil {
+		response.NextSeason = describeMissingSeason(showID, nextNumber, lang)
 	}
 	_ = json.NewEncoder(w).Encode(response)
-}
-
-// withUpcoming attaches the upcoming episode to a response when there is one.
-func withUpcoming(response map[string]interface{}, upcoming *upcomingEpisodePayload) map[string]interface{} {
-	if upcoming != nil {
-		response["upcoming_episode"] = upcoming
-	}
-	return response
 }
 
 // currentEpisodePosition returns the season row and episode number of an episode.
@@ -206,7 +192,7 @@ func resolveFollowingSeason(showID, currentNumber int) (number, localSeasonID in
 			best, bestID = season.SeasonNumber, season.ID
 		}
 	}
-	for _, season := range FetchTMDBShowSeasons(showTMDBID(showID)) {
+	for _, season := range FetchTMDBShowSeasons(showTMDBID(showID), baseMediaLanguage()) {
 		if season.Number > currentNumber && (best == 0 || season.Number < best) {
 			best, bestID = season.Number, 0
 		}
@@ -221,7 +207,7 @@ func resolveFollowingSeason(showID, currentNumber int) (number, localSeasonID in
 // It lets the player raise the request card one episode early, so the download
 // and the import can run while that final episode plays instead of after it.
 // Returns nil whenever the offer would be premature or actionless.
-func lookaheadMissingSeason(userID, nextEpisodeID int) *nextSeasonPayload {
+func lookaheadMissingSeason(userID, nextEpisodeID int, lang mediaLanguage) *nextSeasonPayload {
 	seasonID, episodeNumber, err := currentEpisodePosition(nextEpisodeID)
 	if err != nil {
 		return nil
@@ -237,7 +223,7 @@ func lookaheadMissingSeason(userID, nextEpisodeID int) *nextSeasonPayload {
 
 	// A season still airing is not one to look past: its own next episode is
 	// what follows, and there is nothing to download early for.
-	if describeUpcomingEpisode(showID, seasonNumber, episodeNumber) != nil {
+	if describeUpcomingEpisode(showID, seasonNumber, episodeNumber, lang) != nil {
 		return nil
 	}
 
@@ -245,7 +231,7 @@ func lookaheadMissingSeason(userID, nextEpisodeID int) *nextSeasonPayload {
 	if number == 0 || localSeasonID > 0 {
 		return nil // no season after it, or the server already holds it
 	}
-	return describeMissingSeason(showID, number)
+	return describeMissingSeason(showID, number, lang)
 }
 
 // describeUpcomingEpisode describes the episode TMDB lists right after
@@ -256,14 +242,14 @@ func lookaheadMissingSeason(userID, nextEpisodeID int) *nextSeasonPayload {
 // any later episode TMDB knows about is by definition absent from the server.
 // Returns nil when the season holds nothing more, which is what hands the
 // screen back to the end-of-season card.
-func describeUpcomingEpisode(showID, seasonNumber, afterEpisodeNumber int) *upcomingEpisodePayload {
+func describeUpcomingEpisode(showID, seasonNumber, afterEpisodeNumber int, lang mediaLanguage) *upcomingEpisodePayload {
 	if afterEpisodeNumber <= 0 {
 		// An unnumbered episode says nothing about its position in the season;
 		// episode 1 would then read as "upcoming" for every one of them.
 		return nil
 	}
 
-	episodes := FetchTMDBSeasonEpisodes(showTMDBID(showID), seasonNumber)
+	episodes := FetchTMDBSeasonEpisodes(showTMDBID(showID), seasonNumber, lang)
 	if len(episodes) == 0 {
 		return nil // TMDB unreachable or season unknown: claim nothing
 	}
@@ -275,7 +261,7 @@ func describeUpcomingEpisode(showID, seasonNumber, afterEpisodeNumber int) *upco
 
 	payload := &upcomingEpisodePayload{
 		ShowID:         showID,
-		ShowTitle:      showTitle(showID),
+		ShowTitle:      lang.showTitle(showID, showTitle(showID)),
 		SeasonNumber:   seasonNumber,
 		Number:         next.Number,
 		Name:           next.Name,
@@ -309,7 +295,7 @@ func nextTMDBEpisodeAfter(episodes []TMDBEpisodeSummary, afterEpisodeNumber int)
 // describeMissingSeason builds the end-of-season card payload, or nil when the
 // card would have nothing to offer — MediaHub unreachable, or the season
 // already asked for.
-func describeMissingSeason(showID, seasonNumber int) *nextSeasonPayload {
+func describeMissingSeason(showID, seasonNumber int, lang mediaLanguage) *nextSeasonPayload {
 	tmdbID := showTMDBID(showID)
 	statuses := mediaHubSeasonStatuses(tmdbID)
 	if statuses == nil {
@@ -330,14 +316,14 @@ func describeMissingSeason(showID, seasonNumber int) *nextSeasonPayload {
 	payload := &nextSeasonPayload{
 		ShowID:        showID,
 		ShowTMDBID:    tmdbID,
-		ShowTitle:     showTitle(showID),
+		ShowTitle:     lang.showTitle(showID, showTitle(showID)),
 		Number:        seasonNumber,
-		Name:          "Saison " + strconv.Itoa(seasonNumber),
+		Name:          lang.seasonLabel(seasonNumber),
 		RequestStatus: status,
 		CanRequest:    true,
 	}
 
-	for _, season := range FetchTMDBShowSeasons(tmdbID) {
+	for _, season := range FetchTMDBShowSeasons(tmdbID, lang) {
 		if season.Number != seasonNumber {
 			continue
 		}

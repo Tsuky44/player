@@ -27,3 +27,65 @@ abstract final class PinchZoomFit {
     return null;
   }
 }
+
+/// Les doigts posés sur l'image, et la décision d'un pincement en cours.
+///
+/// The pinch is read from raw pointers rather than from a scale recognizer,
+/// and that is the whole reason it answers every time. A recognizer has to
+/// win the gesture arena, and over the video it was up against the tap and
+/// double-tap of the three seek zones underneath it: a pinch that spread
+/// slowly, or whose fingers landed a moment apart, was awarded to a tap
+/// before the scale recognizer had seen enough movement to claim it — the
+/// "sometimes nothing happens" of it. A [Listener] takes part in no arena at
+/// all, so it sees the fingers whatever the taps do, and the taps keep
+/// working.
+class PinchTracker {
+  /// The fingers on the picture right now, and how far apart the first two
+  /// were when the second landed.
+  final Map<int, Offset> _pointers = <int, Offset>{};
+  double? _startSpan;
+
+  /// One fit decision per pinch. Without it, fingers drifting back across the
+  /// threshold mid-gesture would keep flipping the picture.
+  bool _resolved = false;
+
+  /// How far apart the first two fingers are, or null with fewer than two.
+  double? _span() {
+    if (_pointers.length < 2) return null;
+    final fingers = _pointers.values.toList();
+    return (fingers[1] - fingers[0]).distance;
+  }
+
+  void down(PointerDownEvent event) {
+    _pointers[event.pointer] = event.position;
+    // The span is re-baselined on every finger that lands, so a second finger
+    // arriving late starts the pinch from where it actually started.
+    _startSpan = _span();
+  }
+
+  /// The fit the pinch has just decided on, once per gesture; null otherwise.
+  BoxFit? move(PointerMoveEvent event) {
+    if (!_pointers.containsKey(event.pointer)) return null;
+    _pointers[event.pointer] = event.position;
+    if (_resolved) return null;
+    final start = _startSpan;
+    final span = _span();
+    if (start == null || span == null || start <= 0) return null;
+    final next = PinchZoomFit.resolve(
+      scale: span / start,
+      pointerCount: _pointers.length,
+    );
+    if (next == null) return null;
+    _resolved = true;
+    return next;
+  }
+
+  void end(PointerEvent event) {
+    _pointers.remove(event.pointer);
+    _startSpan = _span();
+    // Only once the hand is off the glass: lifting one finger of a pinch that
+    // has already answered and spreading again is the same gesture, not a new
+    // one, and re-arming there would flip the picture back mid-movement.
+    if (_pointers.isEmpty) _resolved = false;
+  }
+}

@@ -4,6 +4,8 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:onyx/screens/player/pinch_zoom_fit.dart';
 
 void main() {
+  pinchTrackerTests();
+
   BoxFit? pinch(double scale, {int fingers = 2}) =>
       PinchZoomFit.resolve(scale: scale, pointerCount: fingers);
 
@@ -36,5 +38,55 @@ void main() {
     expect(pinch(1.4, fingers: 1), isNull);
     expect(pinch(0.6, fingers: 1), isNull);
     expect(pinch(1.4, fingers: 0), isNull);
+  });
+}
+
+// Le suivi des doigts, au-dessus des zones de tap. Voir [PinchTracker].
+PointerDownEvent _fingerDown(int pointer, Offset at) =>
+    PointerDownEvent(pointer: pointer, position: at);
+
+PointerMoveEvent _fingerMove(int pointer, Offset to) =>
+    PointerMoveEvent(pointer: pointer, position: to);
+
+void pinchTrackerTests() {
+  group('PinchTracker', () {
+    test('deux doigts qui s’écartent décident une fois, pas à chaque geste',
+        () {
+      final tracker = PinchTracker()
+        ..down(_fingerDown(1, const Offset(100, 100)))
+        ..down(_fingerDown(2, const Offset(200, 100)));
+
+      expect(tracker.move(_fingerMove(2, const Offset(205, 100))), isNull);
+      expect(tracker.move(_fingerMove(2, const Offset(260, 100))), BoxFit.cover);
+      // Les doigts qui reviennent en arrière ne rebasculent pas l'image.
+      expect(tracker.move(_fingerMove(2, const Offset(150, 100))), isNull);
+    });
+
+    test('un nouveau pincement n’est possible qu’une fois la main levée', () {
+      final tracker = PinchTracker()
+        ..down(_fingerDown(1, const Offset(100, 100)))
+        ..down(_fingerDown(2, const Offset(200, 100)));
+      expect(tracker.move(_fingerMove(2, const Offset(260, 100))), BoxFit.cover);
+
+      // Un doigt levé puis reposé : c'est le même geste.
+      tracker
+        ..end(const PointerUpEvent(pointer: 2))
+        ..down(_fingerDown(2, const Offset(260, 100)));
+      expect(tracker.move(_fingerMove(2, const Offset(120, 100))), isNull);
+
+      tracker
+        ..end(const PointerUpEvent(pointer: 1))
+        ..end(const PointerUpEvent(pointer: 2))
+        ..down(_fingerDown(1, const Offset(100, 100)))
+        ..down(_fingerDown(2, const Offset(300, 100)));
+      expect(
+          tracker.move(_fingerMove(2, const Offset(150, 100))), BoxFit.contain);
+    });
+
+    test('un seul doigt ne pince rien', () {
+      final tracker = PinchTracker()
+        ..down(_fingerDown(1, const Offset(100, 100)));
+      expect(tracker.move(_fingerMove(1, const Offset(400, 100))), isNull);
+    });
   });
 }

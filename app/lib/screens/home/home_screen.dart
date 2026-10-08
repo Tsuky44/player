@@ -51,20 +51,9 @@ class _HomeScreenState extends State<HomeScreen>
 
   /// L'accueil n'était chargé qu'à l'ouverture de l'app : un téléphone sorti
   /// de veille gardait la rangée « Reprendre la lecture » d'avant, pendant que
-  /// la série avançait sur un autre appareil. Chaque retour à l'écran la relit.
-  /// Le tout premier passage est celui d'`initState`, qui charge déjà.
-  @override
-  void didChangeOnScreen(bool onScreen) {
-    super.didChangeOnScreen(onScreen);
-    if (!onScreen || _homeProvider == null) return;
-    _homeProvider!.loadHome(silent: true);
-  }
-
-  @override
-  bool get reloadsOnReturn => true;
-
-  /// Et pendant qu'il reste affiché : la série qui avance ailleurs déplace la
-  /// rangée « Reprendre la lecture » sans qu'on ait à quitter l'accueil.
+  /// la série avançait sur un autre appareil. Il se relit à chaque retour à
+  /// l'écran, et pendant qu'il reste affiché dès que la série avance ailleurs.
+  /// Le tout premier chargement est celui d'`initState`.
   @override
   void onProgressChanged() => _homeProvider?.loadHome(silent: true);
 
@@ -152,7 +141,7 @@ class _HomeScreenState extends State<HomeScreen>
     }
   }
 
-  void _playMedia(
+  Future<void> _playMedia(
     BuildContext context,
     dynamic media, {
     LaunchOrigin? origin,

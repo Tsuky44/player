@@ -1,0 +1,38 @@
+# Mises a jour de dependances, proposees en pull requests une fois par semaine.
+#
+# Regroupees par ecosysteme : une PR pour le serveur, une pour l'app, une pour
+# les actions, plutot qu'une par paquet. Les montees de version majeure
+# restent a part, pour etre lues une a une.
+version: 2
+updates:
+  - package-ecosystem: gomod
+    directory: /server
+    schedule:
+      interval: weekly
+    groups:
+      go-minor:
+        update-types: [minor, patch]
+
+  # Les paquets media_kit sont des copies locales (packages/), epinglees dans
+  # pubspec.yaml avec la raison de chaque blocage : Dependabot respecte ces
+  # contraintes et ne propose que ce qu'elles permettent.
+  - package-ecosystem: pub
+    directory: /app
+    schedule:
+      interval: weekly
+    groups:
+      pub-minor:
+        update-types: [minor, patch]
+
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+    groups:
+      actions:
+        patterns: ["*"]
+
+  - package-ecosystem: docker
+    directory: /server
+    schedule:
+      interval: weekly

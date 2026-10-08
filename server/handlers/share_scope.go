@@ -6,6 +6,7 @@ import (
 
 	"project-player/server/database"
 	"project-player/server/indexer"
+	"project-player/server/medialang"
 	"project-player/server/models"
 	"project-player/server/sharelinks"
 )
@@ -149,7 +150,7 @@ func loadSharedShowDetails(scopeID int) (*models.MediaDetails, error) {
 	if err != nil {
 		return nil, fmt.Errorf("load show of shared media %d: %w", scopeID, err)
 	}
-	if catalog := indexer.FetchMediaCatalogDetails(tmdbID, models.TypeShow); catalog != nil {
+	if catalog := indexer.FetchMediaCatalogDetails(tmdbID, models.TypeShow, medialang.Base()); catalog != nil {
 		mergeCatalogDetails(&details, catalog)
 	}
 	return &details, nil

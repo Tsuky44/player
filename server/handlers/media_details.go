@@ -31,20 +31,22 @@ func EnrichMediaMetadata(w http.ResponseWriter, r *http.Request, ps httprouter.P
 		writeJSONError(w, http.StatusNotFound, "No metadata found on TMDB")
 		return
 	}
+	indexer.TranslateMissingAsync()
 
-	writeMediaByID(w, mediaID)
+	writeMediaByID(w, r, mediaID)
 }
 
 // writeMediaByID reloads a media row and writes it as the response. The three
 // metadata endpoints (enrich, redetect, rematch) all answer with the refreshed
 // record, and each carried its own copy of this read.
-func writeMediaByID(w http.ResponseWriter, mediaID int) {
+func writeMediaByID(w http.ResponseWriter, r *http.Request, mediaID int) {
 	m, err := scanMedia(database.DB.QueryRow(
 		`SELECT `+mediaColumns+` FROM medias m WHERE m.id = ?`, mediaID))
 	if err != nil {
 		writeJSONError(w, http.StatusNotFound, "Media not found")
 		return
 	}
+	languageOf(r).media(&m)
 	json.NewEncoder(w).Encode(m)
 }
 
@@ -141,7 +143,9 @@ func GetMediaDetails(w http.ResponseWriter, r *http.Request, ps httprouter.Param
 		}
 	}
 
-	if catalog := indexer.FetchMediaCatalogDetails(details.TMDBID, mt); catalog != nil {
+	lang := languageOf(r)
+	lang.details(&details)
+	if catalog := indexer.FetchMediaCatalogDetails(details.TMDBID, mt, lang.code); catalog != nil {
 		mergeCatalogDetails(&details, catalog)
 		details.SimilarTitles = similarCatalogItems(catalog, details.TMDBID)
 	}
@@ -245,8 +249,9 @@ func RedetectMediaMetadata(w http.ResponseWriter, r *http.Request, ps httprouter
 		writeJSONError(w, http.StatusNotFound, "No matching title found on TMDB")
 		return
 	}
+	indexer.TranslateMissingAsync()
 
-	writeMediaByID(w, mediaID)
+	writeMediaByID(w, r, mediaID)
 }
 
 // GetPersonDetails returns an actor/crew profile with filmography
@@ -261,7 +266,7 @@ func GetPersonDetails(w http.ResponseWriter, r *http.Request, ps httprouter.Para
 		return
 	}
 
-	person := indexer.FetchPersonDetails(personID)
+	person := indexer.FetchPersonDetails(personID, languageOf(r).code)
 	if person == nil {
 		writeJSONError(w, http.StatusNotFound, "Person not found")
 		return
@@ -282,7 +287,7 @@ func GetCollectionDetails(w http.ResponseWriter, r *http.Request, ps httprouter.
 		return
 	}
 
-	collection := indexer.FetchCollectionDetails(collectionID)
+	collection := indexer.FetchCollectionDetails(collectionID, languageOf(r).code)
 	if collection == nil {
 		writeJSONError(w, http.StatusNotFound, "Collection not found")
 		return
@@ -367,7 +372,7 @@ func SearchTMDBMetadata(w http.ResponseWriter, r *http.Request, _ httprouter.Par
 	if results == nil {
 		results = []models.TMDBSearchCandidate{}
 	}
-	json.NewEncoder(w).Encode(map[string]interface{}{"results": results})
+	json.NewEncoder(w).Encode(tmdbSearchResponse{Results: results})
 }
 
 // RematchMediaMetadata re-identifies a movie/show against TMDB, letting the user
@@ -393,6 +398,7 @@ func RematchMediaMetadata(w http.ResponseWriter, r *http.Request, ps httprouter.
 		writeJSONError(w, http.StatusNotFound, "No matching title found on TMDB")
 		return
 	}
+	indexer.TranslateMissingAsync()
 
-	writeMediaByID(w, mediaID)
+	writeMediaByID(w, r, mediaID)
 }

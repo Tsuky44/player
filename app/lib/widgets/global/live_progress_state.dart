@@ -6,36 +6,40 @@ import '../../services/progress_revision_watch.dart';
 import '../../utils/on_screen.dart';
 
 /// Pour un écran qui montre où le compte en est (accueil, fiche d'un film ou
-/// d'une série) : tant qu'on le voit, il apprend en quelques secondes ce qui a
-/// été regardé sur un autre appareil, au lieu d'attendre un redémarrage.
+/// d'une série) : tant qu'on le voit, il apprend à l'instant ce qui a été
+/// regardé sur un autre appareil, au lieu d'attendre un redémarrage.
 ///
-/// L'écran dit seulement quoi relire, dans [onProgressChanged]. Le sondage
-/// s'arrête dès qu'il n'est plus vu ([OnScreenState]) : sous le lecteur, ses
-/// propres battements de coeur le feraient se relire pour rien.
+/// L'écran dit seulement quoi relire, dans [onProgressChanged]. Il y est
+/// appelé à chaque changement venu d'ailleurs, et d'office à chaque retour à
+/// l'écran — à la sortie du lecteur, au retour d'une fiche, au réveil de
+/// l'app. La toute première apparition n'en fait pas partie : l'écran charge
+/// alors lui-même ses données.
+///
+/// L'attente s'arrête dès qu'il n'est plus vu ([OnScreenState]) : sous le
+/// lecteur, ses propres battements de coeur le feraient se relire pour rien.
 mixin LiveProgressState<T extends StatefulWidget> on OnScreenState<T> {
   late final ProgressRevisionWatch _progressWatch = ProgressRevisionWatch(
-    fetch: () => Provider.of<AuthProvider>(context, listen: false)
-        .apiClient
-        .getProgressRevision(),
+    fetch: (since, cancelToken) =>
+        Provider.of<AuthProvider>(context, listen: false)
+            .apiClient
+            .getProgressRevision(since: since, cancelToken: cancelToken),
     onChanged: () {
       if (mounted) onProgressChanged();
     },
   );
 
-  /// La progression du compte a changé : relire ce que l'écran en montre,
-  /// sans indicateur de chargement.
-  void onProgressChanged();
+  bool _shownBefore = false;
 
-  /// Vrai pour l'écran qui relit déjà ses données à chaque retour au premier
-  /// plan : il n'a pas à être prévenu une seconde fois à ce moment-là.
-  @protected
-  bool get reloadsOnReturn => false;
+  /// Relire ce que l'écran montre de la progression, sans indicateur de
+  /// chargement.
+  void onProgressChanged();
 
   @override
   @mustCallSuper
   void didChangeOnScreen(bool onScreen) {
     if (onScreen) {
-      _progressWatch.start(adoptFirst: reloadsOnReturn);
+      _progressWatch.start(refresh: _shownBefore);
+      _shownBefore = true;
     } else {
       _progressWatch.stop();
     }

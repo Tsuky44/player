@@ -140,7 +140,7 @@ List<_Category> _categoriesFor(Permissions p) {
       id: SettingsSections.device,
       label: tr('Cet appareil'),
       icon: Icons.devices_rounded,
-      hint: tr('Mode télécommande, téléviseur, stockage'),
+      hint: tr('Langue, mode télécommande, téléviseur, stockage'),
       admin: false,
       builder: (_) => const DevicePage(),
     ),

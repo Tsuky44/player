@@ -31,7 +31,7 @@ const Map<String, String> _gatedElsewhere = {
       'ses deux actions ne s’ouvrent que depuis ShowMetadataMenu',
   'lib/screens/settings/media_review_screen.dart':
       'atteint seulement depuis la page Bibliothèque, sous perms.manageLibrary',
-  'lib/screens/player/hooks/use_player_controller.dart':
+  'lib/screens/player/hooks/player_controller_tracks.dart':
       'extraction de fond lancée par le lecteur ; elle échoue en silence',
 };
 

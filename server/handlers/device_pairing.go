@@ -13,6 +13,7 @@ import (
 
 	"project-player/server/database"
 	"project-player/server/models"
+	"project-player/server/safego"
 
 	"github.com/julienschmidt/httprouter"
 )
@@ -409,12 +410,12 @@ func sqliteFuture(d time.Duration) string {
 // StartDevicePairingReaper sweeps codes nobody claimed. Expiry is enforced on
 // read, so this only keeps the table from accumulating dead rows.
 func StartDevicePairingReaper() {
-	go func() {
+	go safego.Forever("device-pairing reaper", func() {
 		for {
 			purgeExpiredDevicePairings()
 			time.Sleep(devicePairingReaperInterval)
 		}
-	}()
+	})
 }
 
 func purgeExpiredDevicePairings() {

@@ -392,7 +392,5 @@ func HideFromContinueWatching(w http.ResponseWriter, r *http.Request, _ httprout
 		return
 	}
 
-	json.NewEncoder(w).Encode(map[string]interface{}{
-		"status": "success",
-	})
+	json.NewEncoder(w).Encode(statusResponse{Status: "success"})
 }

@@ -249,6 +249,7 @@ func TestAClosedSessionIsNotServedFromTheCache(t *testing.T) {
 			authedRequest(http.MethodGet, "/api/auth/me", "", token), nil)
 		return called
 	}
+	//lint:ignore SA4000 deux appels voulus : le second passe par le cache de session
 	if !authenticates() || !authenticates() {
 		t.Fatal("a live session must authenticate, cached or not")
 	}

@@ -21,6 +21,7 @@ import (
 
 	"project-player/server/database"
 	"project-player/server/playbackauth"
+	"project-player/server/safego"
 
 	"github.com/julienschmidt/httprouter"
 )
@@ -444,6 +445,7 @@ func (g *previewGenerator) warm(set *previewSet, ticket [32]byte) {
 	job := &previewWarmJob{cancel: cancel, done: make(chan struct{}), started: time.Now()}
 	g.jobs[set.dir] = job
 	go func() {
+		defer safego.Recover("streaming/previews.go:446")
 		defer close(job.done)
 		defer cancel()
 		g.runWarm(ctx, set, ticket)

@@ -71,6 +71,33 @@ func reachedWatchedThreshold(positionSeconds, durationSeconds int) bool {
 	return float64(positionSeconds)/float64(durationSeconds)*100 >= watchedThresholdPercent
 }
 
+// creditsFloorPercent borne la règle du générique : en dessous, un marqueur
+// d'outro est tenu pour une fausse détection et ne décide de rien. Miroir de
+// `creditsFloorPercent` côté app (`watched_verdict.dart`).
+const creditsFloorPercent = 70.0
+
+// reachedCredits dit si une lecture arrivée à positionSeconds est entrée dans
+// le générique de fin. Le seuil seul ne suffit pas : un épisode d'animé de
+// 24 min dont le générique dure 3 min 30 y entre à 85 %, et restait « en
+// cours » alors que tout l'épisode avait été regardé.
+func reachedCredits(positionSeconds, outroStartSeconds, durationSeconds int) bool {
+	if outroStartSeconds <= 0 || durationSeconds <= 0 || positionSeconds < outroStartSeconds {
+		return false
+	}
+	return float64(positionSeconds)/float64(durationSeconds)*100 >= creditsFloorPercent
+}
+
+// episodeOutroStart lit le début du générique détecté pour un épisode, 0 s'il
+// n'y en a pas.
+func episodeOutroStart(mediaID int) int {
+	var outroStart int
+	_ = database.DB.QueryRow(
+		"SELECT COALESCE(outro_start, 0) FROM medias WHERE id = ? AND type = 'episode'",
+		mediaID,
+	).Scan(&outroStart)
+	return outroStart
+}
+
 // UpdateProgress handles the streaming heartbeat and saves progress (POST /api/progress)
 func UpdateProgress(w http.ResponseWriter, r *http.Request, _ httprouter.Params, userID int) {
 	w.Header().Set("Content-Type", "application/json")
@@ -103,7 +130,12 @@ func UpdateProgress(w http.ResponseWriter, r *http.Request, _ httprouter.Params,
 		).Scan(&effectiveDuration)
 	}
 
-	isFinished := req.IsFinished || reachedWatchedThreshold(req.CurrentPositionSeconds, effectiveDuration)
+	// Le générique se décide ici et non dans l'app : un battement, une app
+	// passée en arrière-plan ou tuée pendant le générique comptent alors comme
+	// une sortie propre.
+	isFinished := req.IsFinished ||
+		reachedWatchedThreshold(req.CurrentPositionSeconds, effectiveDuration) ||
+		reachedCredits(req.CurrentPositionSeconds, episodeOutroStart(req.MediaID), effectiveDuration)
 
 	// When the play is being replayed after the fact, it carries its own time
 	// and only wins if nothing more recent has landed since. A live heartbeat
@@ -160,10 +192,7 @@ func UpdateProgress(w http.ResponseWriter, r *http.Request, _ httprouter.Params,
 	).Scan(&mediaType)
 	UnhideContinueWatchingOnProgress(userID, req.MediaID, mediaType, req.CurrentPositionSeconds)
 
-	json.NewEncoder(w).Encode(map[string]interface{}{
-		"status":      "success",
-		"is_finished": isFinished,
-	})
+	json.NewEncoder(w).Encode(progressSavedResponse{Status: "success", IsFinished: isFinished})
 }
 
 type watchedRequest struct {
@@ -279,10 +308,10 @@ func SetMediaWatched(w http.ResponseWriter, r *http.Request, ps httprouter.Param
 		return
 	}
 
-	json.NewEncoder(w).Encode(map[string]interface{}{
-		"status":                   "success",
-		"is_finished":              req.Watched,
-		"current_position_seconds": position,
+	json.NewEncoder(w).Encode(watchedResponse{
+		Status:                 "success",
+		IsFinished:             req.Watched,
+		CurrentPositionSeconds: position,
 	})
 }
 
@@ -364,11 +393,7 @@ func SetMediaWatchedBatch(w http.ResponseWriter, r *http.Request, _ httprouter.P
 		return
 	}
 
-	json.NewEncoder(w).Encode(map[string]interface{}{
-		"status":  "success",
-		"watched": req.Watched,
-		"updated": updated,
-	})
+	json.NewEncoder(w).Encode(watchedBatchResponse{Status: "success", Watched: req.Watched, Updated: updated})
 }
 
 // GetProgress returns the watch progression for a specific media ID (GET /api/progress?media_id=...)
@@ -402,10 +427,7 @@ func GetProgress(w http.ResponseWriter, r *http.Request, _ httprouter.Params, us
 	if err != nil {
 		if err == sql.ErrNoRows {
 			// No progression exists yet
-			json.NewEncoder(w).Encode(map[string]interface{}{
-				"current_position_seconds": 0,
-				"is_finished":              false,
-			})
+			json.NewEncoder(w).Encode(progressResponse{})
 		} else {
 			log.Printf("Progress error: failed to query: %v", err)
 			writeJSONError(w, http.StatusInternalServerError, "Internal database error")
@@ -413,8 +435,5 @@ func GetProgress(w http.ResponseWriter, r *http.Request, _ httprouter.Params, us
 		return
 	}
 
-	json.NewEncoder(w).Encode(map[string]interface{}{
-		"current_position_seconds": currentPosition,
-		"is_finished":              isFinished,
-	})
+	json.NewEncoder(w).Encode(progressResponse{CurrentPositionSeconds: currentPosition, IsFinished: isFinished})
 }

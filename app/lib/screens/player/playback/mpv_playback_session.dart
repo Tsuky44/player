@@ -504,7 +504,9 @@ class MpvPlaybackSession implements PlaybackSession {
     for (final name in _observed) {
       try {
         await platform.unobserveProperty(name);
-      } catch (_) {}
+      } catch (_) {
+        // Le moteur se ferme : une propriété déjà relâchée n'est pas une panne.
+      }
     }
   }
 

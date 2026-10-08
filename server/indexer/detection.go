@@ -12,7 +12,9 @@ import (
 
 	"project-player/server/database"
 	"project-player/server/httpx"
+	"project-player/server/safego"
 	"project-player/server/streaming"
+	"project-player/server/tmdb"
 )
 
 // ChapterItem represents a simplified chapter structure
@@ -183,8 +185,8 @@ func GetIMDbIDFromTMDB(tmdbID int) (string, error) {
 		return "", fmt.Errorf("TMDB_API_KEY not set")
 	}
 
-	url := fmt.Sprintf("https://api.themoviedb.org/3/tv/%d/external_ids?api_key=%s", tmdbID, apiKey)
-	resp, err := httpx.Standard.Get(url)
+	url := fmt.Sprintf("/tv/%d/external_ids", tmdbID)
+	resp, err := tmdb.Get(httpx.Standard, url)
 	if err != nil {
 		return "", fmt.Errorf("failed to fetch TMDB external IDs: %v", err)
 	}
@@ -345,9 +347,31 @@ func DetectIntrosOutros() {
 	log.Println("Detection: Process completed.")
 }
 
+// EpisodeDetectionResult est ce que la détection a retenu pour un épisode.
+type EpisodeDetectionResult struct {
+	ID         int    `json:"id"`
+	Title      string `json:"title"`
+	IntroStart int    `json:"intro_start"`
+	IntroEnd   int    `json:"intro_end"`
+	OutroStart int    `json:"outro_start"`
+	OutroEnd   int    `json:"outro_end"`
+	HasIntro   bool   `json:"has_intro"`
+	HasOutro   bool   `json:"has_outro"`
+}
+
+// SeasonDetectionResult est le résultat d'une saison : ses épisodes, ou
+// l'erreur qui a empêché de les analyser — jamais les deux. Episodes est un
+// pointeur pour qu'une saison analysée sans épisode écrive `[]` et non rien.
+type SeasonDetectionResult struct {
+	SeasonID    int                       `json:"season_id"`
+	SeasonTitle string                    `json:"season_title"`
+	Error       string                    `json:"error,omitempty"`
+	Episodes    *[]EpisodeDetectionResult `json:"episodes,omitempty"`
+}
+
 // DetectIntrosOutrosForShow triggers detection for a specific show (all its seasons)
 // Returns detailed results for each episode
-func DetectIntrosOutrosForShow(showID int) ([]map[string]interface{}, error) {
+func DetectIntrosOutrosForShow(showID int) ([]SeasonDetectionResult, error) {
 	log.Printf("Detection: Starting intro/outro detection for show ID %d...", showID)
 
 	// Get all seasons for this show
@@ -377,7 +401,7 @@ func DetectIntrosOutrosForShow(showID int) ([]map[string]interface{}, error) {
 		seasons = append(seasons, s)
 	}
 
-	results := []map[string]interface{}{}
+	results := []SeasonDetectionResult{}
 	for _, season := range seasons {
 		// Reset intro/outro for this season's episodes before re-detecting
 		_, _ = database.DB.Exec(`
@@ -389,10 +413,10 @@ func DetectIntrosOutrosForShow(showID int) ([]map[string]interface{}, error) {
 		// Run detection
 		if err := AnalyzeSeason(season.ID); err != nil {
 			log.Printf("Detection error on Season ID %d: %v", season.ID, err)
-			results = append(results, map[string]interface{}{
-				"season_id":    season.ID,
-				"season_title": season.Title,
-				"error":        err.Error(),
+			results = append(results, SeasonDetectionResult{
+				SeasonID:    season.ID,
+				SeasonTitle: season.Title,
+				Error:       err.Error(),
 			})
 			continue
 		}
@@ -410,30 +434,30 @@ func DetectIntrosOutrosForShow(showID int) ([]map[string]interface{}, error) {
 			continue
 		}
 
-		episodeResults := []map[string]interface{}{}
+		episodeResults := []EpisodeDetectionResult{}
 		for epRows.Next() {
 			var id, introStart, introEnd, outroStart, outroEnd int
 			var title string
 			if err := epRows.Scan(&id, &title, &introStart, &introEnd, &outroStart, &outroEnd); err != nil {
 				continue
 			}
-			episodeResults = append(episodeResults, map[string]interface{}{
-				"id":          id,
-				"title":       title,
-				"intro_start": introStart,
-				"intro_end":   introEnd,
-				"outro_start": outroStart,
-				"outro_end":   outroEnd,
-				"has_intro":   introStart > 0 && introEnd > 0,
-				"has_outro":   outroStart > 0 && outroEnd > 0,
+			episodeResults = append(episodeResults, EpisodeDetectionResult{
+				ID:         id,
+				Title:      title,
+				IntroStart: introStart,
+				IntroEnd:   introEnd,
+				OutroStart: outroStart,
+				OutroEnd:   outroEnd,
+				HasIntro:   introStart > 0 && introEnd > 0,
+				HasOutro:   outroStart > 0 && outroEnd > 0,
 			})
 		}
 		epRows.Close()
 
-		results = append(results, map[string]interface{}{
-			"season_id":    season.ID,
-			"season_title": season.Title,
-			"episodes":     episodeResults,
+		results = append(results, SeasonDetectionResult{
+			SeasonID:    season.ID,
+			SeasonTitle: season.Title,
+			Episodes:    &episodeResults,
 		})
 	}
 
@@ -500,6 +524,7 @@ func RequestSeasonAnalysis(seasonID int) bool {
 	seasonAnalyses.Unlock()
 
 	go func() {
+		defer safego.Recover("indexer/detection.go:503")
 		defer func() {
 			seasonAnalyses.Lock()
 			delete(seasonAnalyses.running, seasonID)
@@ -700,14 +725,6 @@ func analyzeSeason(seasonID int, pendingOnly bool, only map[int]bool) error {
 // min helper
 func min(a, b int) int {
 	if a < b {
-		return a
-	}
-	return b
-}
-
-// max helper
-func max(a, b int) int {
-	if a > b {
 		return a
 	}
 	return b

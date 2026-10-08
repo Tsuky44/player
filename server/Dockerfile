@@ -1,5 +1,13 @@
 # Stage 1: Build the Go binary
-FROM --platform=linux/amd64 golang:1.27-alpine AS builder
+#
+# Le compilateur tourne sur la machine qui construit (BUILDPLATFORM) et vise
+# l'architecture de l'image (TARGETARCH) : Go compile en croisé, donc l'image
+# arm64 ne coûte pas une compilation émulée.
+FROM --platform=$BUILDPLATFORM golang:1.27-alpine AS builder
+
+ARG TARGETARCH
+# La version annoncée sur /api/ping. Voir buildinfo.
+ARG VERSION=dev
 
 WORKDIR /app
 
@@ -12,18 +20,20 @@ RUN go mod download
 # Copy all source files
 COPY . .
 
-# Build a statically-linked binary (pure Go, CGO disabled) for linux/amd64
-# (matches the server architecture, even if built on a Mac arm64).
-RUN CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -ldflags="-w -s" -o media-server .
+# Build a statically-linked binary (pure Go, CGO disabled) for the image's
+# architecture — amd64 unless the build asks for another platform.
+RUN CGO_ENABLED=0 GOOS=linux GOARCH=${TARGETARCH:-amd64} go build \
+    -ldflags="-w -s -X project-player/server/buildinfo.Version=${VERSION}" -o media-server .
 
 # Stage 2: Final lightweight runtime image
 #
 # Épinglée : `latest` changeait de version d'Alpine — et donc de FFmpeg — sans
 # que rien ne change ici. Monter de version doit être un changement voulu.
-FROM --platform=linux/amd64 alpine:3.24
+FROM alpine:3.24
 
 # Install basic dependencies (ca-certificates, tzdata, ffmpeg)
-RUN apk --no-cache add ca-certificates tzdata ffmpeg
+# su-exec : quitter root au démarrage quand PUID est réglé (docker-entrypoint.sh).
+RUN apk --no-cache add ca-certificates tzdata ffmpeg su-exec
 
 WORKDIR /app
 
@@ -32,6 +42,12 @@ COPY --from=builder /app/media-server .
 
 # Create the data directory (where the database lives)
 RUN mkdir -p /app/data
+
+# Le `sed` retire les fins de ligne Windows : l'image se construit aussi depuis
+# un poste Windows (publish-image.ps1), où le script arrive en CRLF et ne
+# trouverait plus son interpréteur (« /bin/sh^M »).
+COPY docker-entrypoint.sh /app/docker-entrypoint.sh
+RUN sed -i 's/\r$//' /app/docker-entrypoint.sh && chmod +x /app/docker-entrypoint.sh
 
 # Installable client apps (APK / DMG / EXE) served on /api/downloads. Staged by
 # publish-image.sh, which mixes what this host could build with what it pulled
@@ -51,4 +67,4 @@ ENV MOVIES_DIR=/media/Films \
     SERIES_DIR=/media/Series
 
 # Run the media server with database pointing to the persistent volume
-ENTRYPOINT ["./media-server", "-port", "8080", "-db", "/app/data/player.db"]
+ENTRYPOINT ["/app/docker-entrypoint.sh", "-port", "8080", "-db", "/app/data/player.db"]

@@ -14,6 +14,7 @@ import (
 
 	"project-player/server/database"
 	"project-player/server/models"
+	"project-player/server/safego"
 )
 
 // scanning guards the single background scan. It is read from the HTTP
@@ -60,6 +61,7 @@ func ScanMedia(moviesDir, seriesDir string) bool {
 	}
 
 	go func() {
+		defer safego.Recover("indexer/indexer.go:62")
 		defer scanning.Store(false)
 		scanRun.Lock()
 		defer scanRun.Unlock()
@@ -108,7 +110,7 @@ func ScanMedia(moviesDir, seriesDir string) bool {
 		// background so /api/home and browsing stay responsive during startup.
 		seriesStats := LastScanReport().Series
 		if seriesStats.Indexed > 0 || seriesStats.Modified > 0 {
-			go DetectIntrosOutros()
+			go safego.Run("DetectIntrosOutros", func() { DetectIntrosOutros() })
 		}
 
 		BackfillMissingMetadataAsync()

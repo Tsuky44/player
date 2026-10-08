@@ -7,6 +7,7 @@ import '../../../services/api_client.dart';
 import '../../../services/client_log.dart';
 import '../../../services/download_manager.dart';
 import '../../../services/playback_access.dart';
+import '../../../utils/watched_verdict.dart';
 import '../playback/playback_stats.dart';
 
 /// L'instant de la lecture, tel que le rapporteur le décrit au serveur.
@@ -31,6 +32,16 @@ class PlaybackReporter {
 
   /// Les mesures de la séance, envoyées avec son journal.
   final PlaybackStatsCollector stats;
+
+  /// Rythme d'envoi de la position. C'est lui qui borne le retard de
+  /// « Reprendre la lecture » sur les autres appareils du compte, prévenus à
+  /// chaque envoi : à quinze secondes, la barre d'un autre écran avançait par
+  /// à-coups et reprenait jusqu'à quinze secondes trop tôt.
+  static const progressInterval = Duration(seconds: 5);
+
+  /// Le signal d'activité (tableau de bord, historique) garde son rythme de
+  /// quinze secondes : rien n'y gagne à l'entendre plus souvent.
+  static const activityEveryBeats = 3;
 
   Timer? _heartbeat;
 
@@ -91,10 +102,13 @@ class PlaybackReporter {
         mediaId: mediaId,
         apiClient: apiClient,
         event: announce ? 'start' : 'progress');
-    _heartbeat = Timer.periodic(const Duration(seconds: 15), (_) {
+    var beat = 0;
+    _heartbeat = Timer.periodic(progressInterval, (_) {
       // The activity signal goes out paused too: a film on pause is still
       // someone watching, and the dashboard says so.
-      _report(mediaId: mediaId, apiClient: apiClient);
+      if (++beat % activityEveryBeats == 0) {
+        _report(mediaId: mediaId, apiClient: apiClient);
+      }
       if (moment().playing && !_yielded) {
         _sendProgress(
             mediaId: mediaId, apiClient: apiClient, isFinished: false);
@@ -143,12 +157,10 @@ class PlaybackReporter {
 
     final now = moment();
     if (now.positionSeconds > 0) {
-      var finalIsFinished = isFinished;
-      if (!finalIsFinished &&
-          now.durationSeconds > 0 &&
-          (now.positionSeconds / now.durationSeconds) * 100 >= 90.0) {
-        finalIsFinished = true;
-      }
+      final finalIsFinished = isFinished ||
+          countsAsWatched(
+              positionSeconds: now.positionSeconds,
+              durationSeconds: now.durationSeconds);
       await _sendProgress(
           mediaId: mediaId, apiClient: apiClient, isFinished: finalIsFinished);
     }
@@ -187,7 +199,9 @@ class PlaybackReporter {
           quality: now.quality,
           event: event,
         )
-        .catchError((_) {});
+        .catchError((_) {
+          // Un signal perdu n'arrête pas la lecture : le suivant le remplace.
+        });
 
     // Le journal part avec le dernier signal, et **avant** lui : le serveur le
     // rattache à la séance encore ouverte, et c'est ce signal-là qui la ferme.

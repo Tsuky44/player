@@ -77,4 +77,97 @@ void main() {
     await tester.pump(const Duration(minutes: 10));
     expect(timer.isDue, isTrue);
   });
+
+  // Le compte en épisodes : « encore N, puis coupe ». Le lecteur demande
+  // avant d'enchaîner si l'épisode à l'écran est le dernier.
+  test('un seul épisode : le lecteur s’arrête à sa fin', () {
+    timer.retain();
+    timer.startEpisodes(1);
+
+    expect(timer.isActive, isTrue);
+    expect(timer.stopsAfterThisEpisode, isTrue);
+
+    timer.episodeFinished();
+    expect(timer.isActive, isFalse);
+    expect(timer.stopsAfterThisEpisode, isFalse);
+  });
+
+  test('le compte en épisodes suit d’un épisode au suivant', () {
+    timer.retain();
+    timer.startEpisodes(3);
+    expect(timer.stopsAfterThisEpisode, isFalse);
+
+    timer.episodeFinished();
+    // Le suivant s'ouvre avant que le précédent ne se ferme.
+    timer.retain();
+    timer.release();
+    expect(timer.episodesLeft, 2);
+    expect(timer.episodesChosen, 3);
+
+    timer.episodeFinished();
+    expect(timer.stopsAfterThisEpisode, isTrue);
+  });
+
+  test('sans compte en épisodes, une fin d’épisode ne change rien', () {
+    timer.retain();
+    var notified = 0;
+    timer.addListener(() => notified++);
+
+    timer.episodeFinished();
+
+    expect(notified, 0);
+    expect(timer.isActive, isFalse);
+  });
+
+  testWidgets('durée et épisodes se remplacent l’un l’autre', (tester) async {
+    timer.retain();
+    timer.start(const Duration(minutes: 5));
+    timer.startEpisodes(2);
+
+    expect(timer.chosen, isNull);
+    await tester.pump(const Duration(minutes: 5));
+    // La durée abandonnée ne coupe pas au milieu de l'épisode.
+    expect(timer.isDue, isFalse);
+
+    timer.start(const Duration(minutes: 5));
+    expect(timer.episodesLeft, isNull);
+    expect(timer.stopsAfterThisEpisode, isFalse);
+
+    // Avant la fin du test : il refuse de se terminer sur une minuterie qui
+    // court encore.
+    timer.resetForTest();
+  });
+
+  // La fin du fichier tombait sur une carte (épisode à venir, saison
+  // suivante) avant d'arriver à la minuterie : le lecteur restait ouvert toute
+  // la nuit. La fin du dernier épisode se prend avant tout le reste.
+  test('la fin du dernier épisode du compte se prend une seule fois', () {
+    timer.retain();
+    timer.startEpisodes(2);
+    expect(timer.takeLastEpisodeEnd(), isFalse,
+        reason: 'il en reste un après celui-ci');
+    expect(timer.episodesLeft, 2);
+
+    timer.episodeFinished();
+    var notified = 0;
+    timer.addListener(() => notified++);
+    expect(timer.takeLastEpisodeEnd(), isTrue);
+    expect(timer.isActive, isFalse);
+    expect(notified, 1);
+    expect(timer.takeLastEpisodeEnd(), isFalse);
+  });
+
+  test('sans compte en épisodes, une fin de fichier ne ferme rien', () {
+    timer.retain();
+    expect(timer.takeLastEpisodeEnd(), isFalse);
+  });
+
+  test('quitter le lecteur oublie le compte en épisodes', () {
+    timer.retain();
+    timer.startEpisodes(2);
+
+    timer.release();
+
+    expect(timer.isActive, isFalse);
+  });
 }

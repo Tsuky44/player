@@ -132,7 +132,7 @@ func TestNextTMDBEpisodeAfterReturnsNilOnTheLastEpisode(t *testing.T) {
 func TestDescribeUpcomingEpisodeIgnoresUnnumberedEpisodes(t *testing.T) {
 	showID, _ := setupSeasonsTestDB(t, 1)
 
-	if upcoming := describeUpcomingEpisode(showID, 1, 0); upcoming != nil {
+	if upcoming := describeUpcomingEpisode(showID, 1, 0, baseMediaLanguage()); upcoming != nil {
 		t.Fatalf("expected no upcoming episode for an unnumbered one, got %+v", upcoming)
 	}
 }

@@ -7,7 +7,7 @@ import '../../../theme/app_type.dart';
 import '../../../l10n/tr.dart';
 
 /// Panel shown under the season picker when the selected season is not on the
-/// server. It offers the request when MediaHub allows it, states that the
+/// server, or is there but incomplete (still airing, files missing). It offers the request when MediaHub allows it, states that the
 /// season is already requested when it is, and stays purely informative when
 /// MediaHub could not be consulted — never a button that would do nothing.
 class MissingSeasonBanner extends StatelessWidget {
@@ -33,7 +33,20 @@ class MissingSeasonBanner extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final seasonNumber = season.effectiveSeasonNumber ?? 0;
-    final airDate = formatAirDate(season.releaseDate);
+    // Une saison présente mais incomplète : sa date et son résumé sont déjà
+    // ceux de la page, seul l'état de la demande reste à dire.
+    final held = season.isAvailable;
+    final airDate = held ? null : formatAirDate(season.releaseDate);
+    final String title;
+    if (held) {
+      title = season.isRequested
+          ? tr('Saison demandée, les épisodes manquants arriveront')
+          : tr('Saison incomplète sur le serveur');
+    } else {
+      title = season.isRequested
+          ? tr('Saison déjà demandée, pas encore disponible')
+          : tr('Saison manquante sur le serveur');
+    }
 
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
@@ -58,9 +71,7 @@ class MissingSeasonBanner extends StatelessWidget {
               const SizedBox(width: 8),
               Expanded(
                 child: Text(
-                  season.isRequested
-                      ? tr('Saison déjà demandée, pas encore disponible')
-                      : tr('Saison manquante sur le serveur'),
+                  title,
                   style: const TextStyle(
                     color: AppColors.textPrimary,
                     fontWeight: FontWeight.w600,
@@ -79,7 +90,7 @@ class MissingSeasonBanner extends StatelessWidget {
                 ),
             ],
           ),
-          if (season.overview?.isNotEmpty == true) ...[
+          if (!held && season.overview?.isNotEmpty == true) ...[
             const SizedBox(height: 8),
             Text(
               season.overview!,

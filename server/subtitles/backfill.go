@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"project-player/server/database"
+	"project-player/server/safego"
 )
 
 // extracting is read by the scan-status endpoint while the extraction
@@ -49,7 +50,7 @@ func TryStartForceExtractAll() bool {
 	extractStats = ExtractStats{}
 	extractMutex.Unlock()
 
-	go runForceExtractAll()
+	go safego.Run("runForceExtractAll", func() { runForceExtractAll() })
 	return true
 }
 

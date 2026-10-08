@@ -11,6 +11,7 @@ import (
 
 	"project-player/server/database"
 	"project-player/server/models"
+	"project-player/server/safego"
 
 	"github.com/julienschmidt/httprouter"
 	"golang.org/x/crypto/bcrypt"
@@ -536,12 +537,12 @@ func clampText(raw string, max int) string {
 // StartAccessRequestReaper balaie les demandes mortes. L'expiration est
 // appliquée à la lecture, donc ceci ne fait que récupérer des lignes.
 func StartAccessRequestReaper() {
-	go func() {
+	go safego.Forever("access-request reaper", func() {
 		for {
 			purgeExpiredAccessRequests()
 			time.Sleep(accessRequestReaperInterval)
 		}
-	}()
+	})
 }
 
 func purgeExpiredAccessRequests() {

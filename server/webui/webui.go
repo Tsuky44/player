@@ -142,6 +142,12 @@ func (h *Handler) serveFile(w http.ResponseWriter, r *http.Request, name string)
 	}
 
 	w.Header().Set("Content-Type", contentType)
+	// Le type annoncé fait foi : un navigateur ne doit pas deviner qu'un
+	// fichier du bundle est un script. Et l'adresse d'une page — qui peut
+	// porter un identifiant de média — ne part pas vers les sites tiers
+	// (affiches TMDB, polices).
+	w.Header().Set("X-Content-Type-Options", "nosniff")
+	w.Header().Set("Referrer-Policy", "no-referrer")
 	w.Header().Set("ETag", etag)
 	w.Header().Set("Cache-Control", cacheControl)
 

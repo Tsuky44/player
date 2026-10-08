@@ -61,7 +61,9 @@ class PreparedUpdate {
   Future<void> discard() async {
     try {
       await Directory(_workDir).delete(recursive: true);
-    } catch (_) {}
+    } catch (_) {
+      // Ménage au mieux : le dossier est dans le répertoire temporaire.
+    }
   }
 }
 
@@ -127,7 +129,9 @@ abstract final class AppUpdater {
         if (!name.startsWith('onyx-update-')) continue;
         entry.delete(recursive: true).ignore();
       }
-    } catch (_) {}
+    } catch (_) {
+      // Ménage au mieux : un reste de mise à jour sera repris au prochain passage.
+    }
   }
 
   /// Unpacks [archivePath] and writes the helper that will apply it.

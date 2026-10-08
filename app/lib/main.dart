@@ -42,6 +42,7 @@ import 'tv/tv_pairing_link.dart';
 import 'tv/tv_touchpad.dart';
 import 'tv/tv_ui_scale.dart';
 import 'screens/player/display_frame_rate.dart';
+import 'screens/player/playback/adaptive_quality.dart';
 import 'services/picture_in_picture.dart';
 import 'screens/player/hardware_decoding.dart';
 import 'screens/player/playback_profile.dart';
@@ -184,6 +185,7 @@ void main() async {
     PlaybackCapabilitiesResolver.initialize(),
     HardwareDecoding.initialize(),
     DisplayFrameRate.initialize(),
+    AdaptiveQualityPreference.initialize(),
     // Les réglages de lecture que le player consulte sans attendre — le saut
     // d'intro automatique — chargés une fois pour toutes.
     PlaybackPreferencesStorage.initialize(),
@@ -327,6 +329,18 @@ void main() async {
     // identifiant ne veut rien dire sur un autre serveur : on repart de zéro.
     autoDownloads.refresh();
   };
+
+  // Les titres et synopsis viennent du serveur dans la langue de l'app
+  // (ADR-0049) : en changer périme ce qui est en mémoire, comme un changement
+  // de serveur. Les téléchargements, eux, gardent le texte du jour où ils ont
+  // été faits.
+  AppLanguage.notifier.addListener(() {
+    if (!authProvider.isAuthenticated) return;
+    MediaDetailsCache.clear();
+    homeProvider.reset();
+    libraryProvider.reset();
+    mediaRequestsProvider.reset();
+  });
 
   // Le retour du serveur est le seul moment qui compte pour les deux : la
   // session en cache redevient une vraie session, et ce qui a été regardé hors

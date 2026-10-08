@@ -13,6 +13,7 @@ import (
 
 	"project-player/server/database"
 	"project-player/server/indexer"
+	"project-player/server/medialang"
 	"project-player/server/models"
 
 	"github.com/julienschmidt/httprouter"
@@ -77,7 +78,7 @@ func GetShowSeasons(w http.ResponseWriter, r *http.Request, ps httprouter.Params
 		return
 	}
 
-	seasons := mergeMissingSeasons(showID, local)
+	seasons := mergeMissingSeasons(showID, local, languageOf(r))
 	_ = json.NewEncoder(w).Encode(seasons)
 }
 
@@ -130,9 +131,18 @@ func loadLocalSeasons(showID int) ([]showSeasonPayload, error) {
 
 // mergeMissingSeasons appends the TMDB seasons the library does not hold, and
 // stamps each of them with its MediaHub status.
-func mergeMissingSeasons(showID int, local []showSeasonPayload) []showSeasonPayload {
+func mergeMissingSeasons(showID int, local []showSeasonPayload, lang mediaLanguage) []showSeasonPayload {
+	// L'indexeur nomme en français les saisons qu'il crée : ce nom-là suit la
+	// langue demandée, un nom venu du dossier reste tel quel.
+	for i := range local {
+		number := local[i].SeasonNumber
+		if number > 0 && local[i].Title == medialang.SeasonLabel("fr", number) {
+			local[i].Title = lang.seasonLabel(number)
+		}
+	}
+
 	tmdbID := showTMDBID(showID)
-	tmdbSeasons := FetchTMDBShowSeasons(tmdbID)
+	tmdbSeasons := FetchTMDBShowSeasons(tmdbID, lang)
 	if len(tmdbSeasons) == 0 {
 		// No TMDB match, or TMDB unreachable: local seasons only, unchanged
 		// behaviour from before this endpoint was enriched.
@@ -151,6 +161,24 @@ func mergeMissingSeasons(showID int, local []showSeasonPayload) []showSeasonPayl
 	// offered as requestable rather than guessing.
 	statuses := mediaHubSeasonStatuses(tmdbID)
 
+	// Une saison présente mais incomplète (série en cours de diffusion, fichiers
+	// manquants) dit elle aussi si la suite est demandée ou reste à demander.
+	heldEpisodes := loadHeldEpisodeCounts(showID)
+	totalEpisodes := make(map[int]int, len(tmdbSeasons))
+	for _, tmdbSeason := range tmdbSeasons {
+		totalEpisodes[tmdbSeason.Number] = tmdbSeason.EpisodeCount
+	}
+	for i := range local {
+		number := local[i].SeasonNumber
+		total := totalEpisodes[number]
+		if number <= 0 || total <= 0 {
+			continue
+		}
+		local[i].EpisodeCount = total
+		local[i].RequestStatus, local[i].CanRequest = heldSeasonRequest(
+			statuses, number, heldEpisodes[local[i].ID], total)
+	}
+
 	seasons := local
 	for _, tmdbSeason := range tmdbSeasons {
 		if held[tmdbSeason.Number] {
@@ -167,7 +195,7 @@ func mergeMissingSeasons(showID int, local []showSeasonPayload) []showSeasonPayl
 
 		title := tmdbSeason.Name
 		if title == "" {
-			title = "Saison " + strconv.Itoa(tmdbSeason.Number)
+			title = lang.seasonLabel(tmdbSeason.Number)
 		}
 		posterURL := ""
 		if tmdbSeason.PosterPath != "" {
@@ -196,6 +224,61 @@ func mergeMissingSeasons(showID int, local []showSeasonPayload) []showSeasonPayl
 
 	sortSeasons(seasons)
 	return seasons
+}
+
+// heldSeasonRequest décide ce qu'annonce une saison présente sur le serveur :
+// « disponible » tant qu'elle est complète, sinon l'état de sa demande
+// MediaHub, et « à demander » quand personne ne l'a encore demandée.
+//
+// statuses nil veut dire MediaHub injoignable : rien n'est alors proposé,
+// comme pour une saison absente.
+func heldSeasonRequest(statuses map[int]string, number, held, total int) (status string, canRequest bool) {
+	if statuses == nil || held >= total {
+		return requestStatusAvailable, false
+	}
+	switch known := statuses[number]; known {
+	case "", requestStatusUnknown:
+		return requestStatusUnknown, true
+	case requestStatusAvailable:
+		// MediaHub la croit complète : la redemander ne ferait rien.
+		return requestStatusAvailable, false
+	default:
+		return known, false
+	}
+}
+
+// loadHeldEpisodeCounts compte, par saison locale, les épisodes distincts que
+// le serveur possède. Deux versions d'un même épisode n'en font qu'un ; un
+// épisode sans numéro compte pour un, quitte à surestimer — une saison crue
+// complète à tort ne propose rien, ce qui vaut mieux qu'une demande inutile.
+func loadHeldEpisodeCounts(showID int) map[int]int {
+	counts := map[int]int{}
+	rows, err := database.DB.Query(`
+		SELECT season.id,
+		       COUNT(DISTINCT NULLIF(ep.episode_number, 0)) +
+		       COALESCE(SUM(CASE WHEN COALESCE(ep.episode_number, 0) = 0 THEN 1 ELSE 0 END), 0)
+		FROM medias ep
+		JOIN medias season ON ep.parent_id = season.id AND season.type = 'season'
+		WHERE ep.type = 'episode' AND season.parent_id = ?
+		GROUP BY season.id`, showID)
+	if err != nil {
+		log.Printf("Seasons: held episode counts: %v", err)
+		return counts
+	}
+	defer rows.Close()
+
+	for rows.Next() {
+		var seasonID, count int
+		if err := rows.Scan(&seasonID, &count); err != nil {
+			log.Printf("Seasons: held episode counts scan: %v", err)
+			continue
+		}
+		counts[seasonID] = count
+	}
+	if err := rows.Err(); err != nil {
+		log.Printf("Seasons: held episode counts rows: %v", err)
+	}
+	return counts
 }
 
 // sortSeasons orders by season number, keeping unnumbered local rows last so a

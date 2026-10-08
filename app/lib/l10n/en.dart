@@ -64,6 +64,8 @@ const Map<String, String> kEnglish = <String, String>{
       'Refresh',
   'Adaptatif':
       'Fit',
+  'Adapter la qualité à la connexion':
+      'Adapt quality to the connection',
   'Adapter l’écran au film':
       'Match the display to the movie',
   'Administrateur':
@@ -160,6 +162,8 @@ const Map<String, String> kEnglish = <String, String>{
       'Apps',
   'Appuyez de nouveau sur Retour pour quitter':
       'Press Back again to quit',
+  'Après {0} épisodes':
+      'After {0} episodes',
   'Arabe':
       'Arabic',
   'Attendre le Wi-Fi':
@@ -504,6 +508,8 @@ const Map<String, String> kEnglish = <String, String>{
       'Connect your TV',
   'Connectez-vous à votre serveur':
       'Sign in to your server',
+  'Connexion':
+      'Connection',
   'Connexion au serveur expirée (Timeout).':
       'Connection to the server timed out.',
   'Connexion au serveur impossible. Vérifiez l\'adresse IP et que le serveur est allumé.':
@@ -518,6 +524,8 @@ const Map<String, String> kEnglish = <String, String>{
       'Could not connect.',
   'Connexion impossible. Vérifiez que le téléphone et le téléviseur sont sur le même réseau Wi-Fi.':
       'Could not connect. Check that the phone and the TV are on the same Wi-Fi network.',
+  'Connexion lente : qualité réduite à {0}':
+      'Slow connection: quality lowered to {0}',
   'Connexion à Emby':
       'Sign in to Emby',
   'Connexion à Emby impossible.':
@@ -1184,6 +1192,8 @@ const Map<String, String> kEnglish = <String, String>{
       'Metadata language',
   'Langue originale':
       'Original language',
+  'Langue, mode télécommande, téléviseur, stockage':
+      'Language, remote control mode, TV, storage',
   'Le code a été annulé. Rien n\'a été connecté.':
       'The code was cancelled. Nothing was connected.',
   'Le code fait 8 caractères.':
@@ -1414,8 +1424,6 @@ const Map<String, String> kEnglish = <String, String>{
       'MB',
   'Mode télécommande':
       'Remote control mode',
-  'Mode télécommande, téléviseur, stockage':
-      'Remote control mode, TV, storage',
   'Modifier les droits':
       'Edit rights',
   'Modifier l’adresse':
@@ -1650,6 +1658,10 @@ const Map<String, String> kEnglish = <String, String>{
       'Progress shared between servers',
   'Progression {0} / {1}':
       'Progress {0} / {1}',
+  'Propre à cet appareil : il dépend du réseau où il se trouve.':
+      'Specific to this device: it depends on the network it is on.',
+  'Position de lecture':
+      'Playback position',
   'Propres à cet appareil : ils dépendent de son matériel.':
       'Specific to this device: they depend on its hardware.',
   'Propriétaire':
@@ -1674,6 +1686,8 @@ const Map<String, String> kEnglish = <String, String>{
       'Quality',
   'Quand la poser':
       'When to ask',
+  'Quand la lecture se coupe plusieurs fois de suite, passe à un débit que la connexion tient. Le menu Qualité du lecteur permet de remonter à tout moment.':
+      'When playback stalls several times in a row, switches to a bitrate the connection can hold. The player’s Quality menu lets you go back up at any time.',
   'Quand le bouton « Passer l’intro » apparaît, l’intro est sautée au bout de 5 secondes. Le moindre mouvement de souris ou appui sur une touche annule le saut.':
       'When the “Skip intro” button appears, the intro is skipped after 5 seconds. Any mouse movement or key press cancels the skip.',
   'Quand même':
@@ -1760,6 +1774,8 @@ const Map<String, String> kEnglish = <String, String>{
       'Resume the download',
   'Reprendre là où vous en êtes sur Emby':
       'Pick up where you left off on Emby',
+  'Reprendre {0}':
+      'Resume {0}',
   'Reprendre à {0}':
       'Resume at {0}',
   'Reprenez vos films et vos séries là où vous les avez laissés, que vous les regardiez ici ou sur Emby. Les médias sont reconnus par leur fiche TMDB.':
@@ -1768,6 +1784,8 @@ const Map<String, String> kEnglish = <String, String>{
       'Required',
   'Restaurer':
       'Restore',
+  'reste {0}':
+      '{0} left',
   'Retirer':
       'Remove',
   'Retirer ce lien ?':
@@ -1874,6 +1892,10 @@ const Map<String, String> kEnglish = <String, String>{
       'Season already requested, not available yet',
   'Saison en cours':
       'Current season',
+  'Saison demandée, les épisodes manquants arriveront':
+      'Season requested, the missing episodes will arrive',
+  'Saison incomplète sur le serveur':
+      'Season incomplete on the server',
   'Saison manquante sur le serveur':
       'Season missing on the server',
   'Saison marquée non vue':
@@ -2508,6 +2530,8 @@ const Map<String, String> kEnglish = <String, String>{
       '{0} received from Emby, {1} sent to Emby.',
   '{0} résultat{1}':
       '{0} result{1}',
+  '{0} sur {1}':
+      '{0} of {1}',
   '{0} sur disque · {1} de contenu':
       '{0} on disk · {1} of content',
   '{0} sélectionné{1}':
@@ -2564,6 +2588,8 @@ const Map<String, String> kEnglish = <String, String>{
       'Discover',
   'À faire si le mot de passe Emby a changé ou si la session a été révoquée.':
       'Do this if the Emby password has changed or the session has been revoked.',
+  'À la fin de l’épisode':
+      'At the end of the episode',
   'À l’heure de l’appareil qui lit. En dehors, les épisodes s’enchaînent sans question.':
       'In the time of the device that is playing. Outside it, episodes play in a row without a question.',
   'À l’instant':

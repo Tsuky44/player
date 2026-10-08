@@ -15,6 +15,7 @@ import (
 
 	"project-player/server/database"
 	"project-player/server/models"
+	"project-player/server/safego"
 )
 
 // The library monitor indexes what arrives in the library as it arrives,
@@ -141,7 +142,7 @@ func StartLibraryMonitor(opts MonitorOptions) {
 			log.Printf("Library monitor: filesystem notifications unavailable (%v) — relying on the folder poll", err)
 		} else {
 			m.watcher = watcher
-			go m.watchLoop()
+			go safego.Forever("m.watchLoop", m.watchLoop)
 		}
 	}
 
@@ -149,11 +150,11 @@ func StartLibraryMonitor(opts MonitorOptions) {
 	monitor = m
 	monitorMu.Unlock()
 
-	go m.runLoop()
-	go m.post.loop()
-	go m.maintenanceLoop()
+	go safego.Forever("m.runLoop", m.runLoop)
+	go safego.Forever("m.post.loop", m.post.loop)
+	go safego.Forever("m.maintenanceLoop", m.maintenanceLoop)
 	if opts.Bootstrap {
-		go m.bootstrap()
+		go safego.Run("bootstrap", func() { m.bootstrap() })
 	}
 
 	log.Printf("Library monitor: started (notifications=%t, poll=%v)", m.watcher != nil, opts.PollInterval)
@@ -366,7 +367,7 @@ func (m *libraryMonitor) watchLoop() {
 			if errors.Is(err, fsnotify.ErrEventOverflow) {
 				// Events were dropped: the poll is what finds what they carried.
 				log.Println("Library monitor: notification queue overflowed — polling the folders now")
-				go m.pollOnce()
+				go safego.Run("pollOnce", func() { m.pollOnce() })
 				continue
 			}
 			log.Printf("Library monitor: notification error: %v", err)

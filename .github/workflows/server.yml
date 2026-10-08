@@ -113,11 +113,20 @@ jobs:
       - name: Build du client Web
         run: bash scripts/build-web.sh
 
+      # L'image arm64 (NAS ARM, Raspberry Pi) installe FFmpeg sous emulation ;
+      # le binaire Go, lui, est compile en croise sans elle.
+      - name: QEMU (arm64)
+        uses: docker/setup-qemu-action@v3
+        with:
+          platforms: arm64
+
       - name: Build & push de l'image
         uses: docker/build-push-action@v6
         with:
           context: ./server
-          platforms: linux/amd64
+          platforms: linux/amd64,linux/arm64
+          build-args: |
+            VERSION=${{ steps.meta.outputs.sha_tag }}
           push: true
           tags: |
             ${{ steps.meta.outputs.image }}:${{ steps.meta.outputs.tag }}

@@ -39,6 +39,7 @@ class AppSlider extends StatefulWidget {
     this.min = 0.0,
     this.max = 1.0,
     this.label,
+    this.semanticLabel,
   });
 
   final double value;
@@ -50,6 +51,10 @@ class AppSlider extends StatefulWidget {
 
   /// Ce qu'annonce le lecteur d'écran à la place du pourcentage.
   final String? label;
+
+  /// Le nom du curseur pour un lecteur d'écran (« Volume »). Sans lui, il
+  /// n'annonce qu'une valeur, sans dire de quoi.
+  final String? semanticLabel;
 
   @override
   State<AppSlider> createState() => _AppSliderState();
@@ -168,6 +173,7 @@ class _AppSliderState extends State<AppSlider> {
     return Semantics(
       slider: true,
       enabled: _enabled,
+      label: widget.semanticLabel,
       value: _announce(fraction),
       increasedValue: _announce((fraction + _step).clamp(0.0, 1.0)),
       decreasedValue: _announce((fraction - _step).clamp(0.0, 1.0)),

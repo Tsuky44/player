@@ -223,6 +223,17 @@ class PlaybackStatsCollector {
         startupMillis: _startupMillis,
       );
 
+  /// Le débit que les pistes annoncent, image et son, moyenné sur les relevés.
+  /// Null tant que le moteur n'en a donné aucun.
+  int? get declaredBitrateBps {
+    if (_videoBitrateSamples == 0) return null;
+    final video = _videoBitrateSum / _videoBitrateSamples;
+    final audio = _audioBitrateSamples == 0
+        ? 0
+        : _audioBitrateSum / _audioBitrateSamples;
+    return (video + audio).round();
+  }
+
   /// Ce qui a transité, rapporté au temps écoulé.
   ///
   /// Null quand le moteur ne compte pas les octets : une moyenne inventée

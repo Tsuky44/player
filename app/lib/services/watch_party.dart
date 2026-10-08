@@ -385,7 +385,9 @@ class WatchPartySession extends ChangeNotifier {
         _acceptTimed(json, sent);
       } on DioException catch (e) {
         if (_isGone(e)) return;
-      } catch (_) {}
+      } catch (_) {
+        // Réseau absent : la boucle réessaie après son délai.
+      }
       await Future<void>.delayed(
           Duration(seconds: _rttSamples.length < 3 ? 1 : 15));
     }

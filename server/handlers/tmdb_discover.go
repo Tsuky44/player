@@ -103,14 +103,9 @@ func (f discoverFilters) active() bool {
 	return false
 }
 
-func discoverURL(mediaType, apiKey, lang string, page int, f discoverFilters) string {
-	u := url.URL{
-		Scheme: "https",
-		Host:   "api.themoviedb.org",
-		Path:   "/3/discover/" + mediaType,
-	}
-	q := u.Query()
-	q.Set("api_key", apiKey)
+// discoverURL est le chemin de la recherche par filtres, pour tmdb.Get.
+func discoverURL(mediaType, lang string, page int, f discoverFilters) string {
+	q := url.Values{}
 	q.Set("language", lang)
 	q.Set("page", strconv.Itoa(page))
 	q.Set("sort_by", f.SortBy)
@@ -153,8 +148,7 @@ func discoverURL(mediaType, apiKey, lang string, page int, f discoverFilters) st
 		}
 		q.Set("with_watch_providers", strings.Join(parts, "|"))
 	}
-	u.RawQuery = q.Encode()
-	return u.String()
+	return "/discover/" + mediaType + "?" + q.Encode()
 }
 
 // MediaHub discoverMixed genre mapping (tmdb.ts).
@@ -210,17 +204,17 @@ func uniquePositiveInts(in []int) []int {
 	return out
 }
 
-func fetchTMDBDiscoverMixed(client *http.Client, apiKey, lang string, page int, f discoverFilters) (tmdbCatalogResponse, error) {
+func fetchTMDBDiscoverMixed(client *http.Client, lang string, page int, f discoverFilters) (tmdbCatalogResponse, error) {
 	movieF := f
 	movieF.Genres = expandGenresForMovie(f.Genres)
 	tvF := f
 	tvF.Genres = expandGenresForTV(f.Genres)
 
 	var movies, series tmdbCatalogResponse
-	if err := fetchTMDBCatalogPage(client, discoverURL("movie", apiKey, lang, page, movieF), &movies); err != nil {
+	if err := fetchTMDBCatalogPage(client, discoverURL("movie", lang, page, movieF), &movies); err != nil {
 		return tmdbCatalogResponse{}, err
 	}
-	if err := fetchTMDBCatalogPage(client, discoverURL("tv", apiKey, lang, page, tvF), &series); err != nil {
+	if err := fetchTMDBCatalogPage(client, discoverURL("tv", lang, page, tvF), &series); err != nil {
 		return tmdbCatalogResponse{}, err
 	}
 
@@ -257,7 +251,7 @@ func TmdbRequestFilterOptions(w http.ResponseWriter, r *http.Request, _ httprout
 	}
 
 	mediaType := r.URL.Query().Get("type")
-	lang := tmdbRequestLanguage()
+	lang := languageOf(r).tmdbLocale()
 	client := httpx.Catalog
 
 	type genreRow struct {
@@ -266,7 +260,7 @@ func TmdbRequestFilterOptions(w http.ResponseWriter, r *http.Request, _ httprout
 	}
 
 	fetchGenres := func(t string) ([]genreRow, error) {
-		u := fmt.Sprintf("https://api.themoviedb.org/3/genre/%s/list?api_key=%s&language=%s", t, apiKey, lang)
+		u := fmt.Sprintf("/genre/%s/list?language=%s", t, lang)
 		var raw struct {
 			Genres []genreRow `json:"genres"`
 		}
@@ -310,7 +304,9 @@ func TmdbRequestFilterOptions(w http.ResponseWriter, r *http.Request, _ httprout
 		return
 	}
 
-	json.NewEncoder(w).Encode(map[string]any{"genres": genres})
+	json.NewEncoder(w).Encode(struct {
+		Genres []genreRow `json:"genres"`
+	}{genres})
 }
 
 // TmdbRequestWatchProviders handles GET /api/requests/watch-providers
@@ -327,7 +323,7 @@ func TmdbRequestWatchProviders(w http.ResponseWriter, r *http.Request, _ httprou
 	if region == "" {
 		region = "FR"
 	}
-	lang := tmdbRequestLanguage()
+	lang := languageOf(r).tmdbLocale()
 	client := httpx.Catalog
 
 	type providerRow struct {
@@ -338,8 +334,8 @@ func TmdbRequestWatchProviders(w http.ResponseWriter, r *http.Request, _ httprou
 
 	fetchProviders := func(t string) ([]providerRow, error) {
 		u := fmt.Sprintf(
-			"https://api.themoviedb.org/3/watch/providers/%s?api_key=%s&language=%s&watch_region=%s",
-			t, apiKey, lang, url.QueryEscape(region),
+			"/watch/providers/%s?language=%s&watch_region=%s",
+			t, lang, url.QueryEscape(region),
 		)
 		var raw struct {
 			Results []providerRow `json:"results"`
@@ -389,5 +385,7 @@ func TmdbRequestWatchProviders(w http.ResponseWriter, r *http.Request, _ httprou
 		})
 	}
 
-	json.NewEncoder(w).Encode(map[string]any{"providers": providers})
+	json.NewEncoder(w).Encode(struct {
+		Providers []providerRow `json:"providers"`
+	}{providers})
 }

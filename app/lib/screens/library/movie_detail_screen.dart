@@ -197,6 +197,7 @@ class _MovieDetailScreenState extends State<MovieDetailScreen>
         _currentPosition = data['current_position_seconds'] as int? ?? 0;
       });
     } catch (_) {
+      // Sans réponse, la fiche garde la progression qu'elle affichait.
     } finally {
       if (mounted && mediaId == _playbackMedia.id && _loadingProgress) {
         setState(() => _loadingProgress = false);
@@ -204,8 +205,9 @@ class _MovieDetailScreenState extends State<MovieDetailScreen>
     }
   }
 
-  /// Le film a avancé sur un autre appareil : « Reprendre » et la barre de
-  /// progression suivent. Pas pendant que « vu » est en train d'être basculé
+  /// Le film a avancé sur un autre appareil, ou on revient sur la fiche (du
+  /// lecteur, d'une autre page) : « Reprendre » et la barre de progression
+  /// suivent. Pas pendant que « vu » est en train d'être basculé
   /// ici, dont la réponse fait déjà foi.
   @override
   void onProgressChanged() {

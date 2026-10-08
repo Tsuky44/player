@@ -6,11 +6,13 @@ import (
 	"net/http"
 	"sort"
 	"strings"
-	"sync"
 	"time"
 
 	"project-player/server/httpx"
+	"project-player/server/medialang"
 	"project-player/server/models"
+	"project-player/server/tmdb"
+	"project-player/server/ttlcache"
 )
 
 // ---- Live TMDB "catalog" details (cast, genres, rating, backdrop…) ----
@@ -135,17 +137,14 @@ type tmdbImagesResponse struct {
 	Logos []tmdbLogoImage `json:"logos"`
 }
 
-type catalogCacheEntry struct {
-	details *models.MediaDetails
-	stored  time.Time
-}
-
-var (
-	catalogCache   = map[string]catalogCacheEntry{}
-	catalogCacheMu sync.RWMutex
-)
-
 const catalogCacheTTL = 6 * time.Hour
+
+// catalogCacheMaxEntries : une fiche détaillée pèse quelques dizaines de
+// kilo-octets (distribution, recommandations), et sa clé est un identifiant
+// TMDB quelconque dès qu'on parcourt le catalogue des demandes.
+const catalogCacheMaxEntries = 128
+
+var catalogCache = ttlcache.New[*models.MediaDetails](catalogCacheTTL, catalogCacheMaxEntries)
 
 func profileURLFromPath(path string) string {
 	if path == "" {
@@ -168,12 +167,12 @@ func logoURLFromPath(path string) string {
 	return "https://image.tmdb.org/t/p/original" + path
 }
 
-func pickBestLogoURLFromLogos(logos []tmdbLogoImage) string {
+func pickBestLogoURLFromLogos(logos []tmdbLogoImage, language string) string {
 	if len(logos) == 0 {
 		return ""
 	}
-	// Same priority as MediaHub MediaPageContent: fr → en → first available.
-	for _, lang := range []string{"fr", "en"} {
+	// La langue demandée, puis l'anglais, puis le premier logo disponible.
+	for _, lang := range []string{language, "en"} {
 		for _, l := range logos {
 			if l.FilePath != "" && l.Iso6391 == lang {
 				return logoURLFromPath(l.FilePath)
@@ -188,13 +187,13 @@ func pickBestLogoURLFromLogos(logos []tmdbLogoImage) string {
 	return ""
 }
 
-func pickBestLogoURL(r *tmdbCatalogResponse) string {
-	return pickBestLogoURLFromLogos(r.Images.Logos)
+func pickBestLogoURL(r *tmdbCatalogResponse, language string) string {
+	return pickBestLogoURLFromLogos(r.Images.Logos, language)
 }
 
 // fetchTMDBLogoURL loads title logos from the dedicated TMDB /images endpoint
 // (more reliable than append_to_response alone).
-func fetchTMDBLogoURL(tmdbID int, mediaType models.MediaType) string {
+func fetchTMDBLogoURL(tmdbID int, mediaType models.MediaType, language string) string {
 	apiKey := tmdbAPIKey()
 	if apiKey == "" || tmdbID <= 0 {
 		return ""
@@ -204,10 +203,10 @@ func fetchTMDBLogoURL(tmdbID int, mediaType models.MediaType) string {
 		endpoint = "tv"
 	}
 	u := fmt.Sprintf(
-		"https://api.themoviedb.org/3/%s/%d/images?api_key=%s&include_image_language=fr,en,null",
-		endpoint, tmdbID, apiKey,
+		"/%s/%d/images?include_image_language=fr,en,null",
+		endpoint, tmdbID,
 	)
-	resp, err := httpx.Standard.Get(u)
+	resp, err := tmdb.Get(httpx.Standard, u)
 	if err != nil || resp.StatusCode != http.StatusOK {
 		if resp != nil {
 			resp.Body.Close()
@@ -220,12 +219,13 @@ func fetchTMDBLogoURL(tmdbID int, mediaType models.MediaType) string {
 	if err := json.NewDecoder(resp.Body).Decode(&out); err != nil {
 		return ""
 	}
-	return pickBestLogoURLFromLogos(out.Logos)
+	return pickBestLogoURLFromLogos(out.Logos, language)
 }
 
-// FetchMediaCatalogDetails returns rich TMDB metadata for a movie/show.
+// FetchMediaCatalogDetails returns rich TMDB metadata for a movie/show, in the
+// given interface language (see medialang).
 // Returns nil when no API key is configured or the title can't be found.
-func FetchMediaCatalogDetails(tmdbID int, mediaType models.MediaType) *models.MediaDetails {
+func FetchMediaCatalogDetails(tmdbID int, mediaType models.MediaType, language string) *models.MediaDetails {
 	apiKey := tmdbAPIKey()
 	if apiKey == "" || tmdbID <= 0 {
 		return nil
@@ -234,13 +234,10 @@ func FetchMediaCatalogDetails(tmdbID int, mediaType models.MediaType) *models.Me
 		return nil
 	}
 
-	cacheKey := fmt.Sprintf("%s:%d:v3", mediaType, tmdbID)
-	catalogCacheMu.RLock()
-	if entry, ok := catalogCache[cacheKey]; ok && time.Since(entry.stored) < catalogCacheTTL {
-		catalogCacheMu.RUnlock()
-		return entry.details
+	cacheKey := fmt.Sprintf("%s:%d:%s:v3", mediaType, tmdbID, language)
+	if cached, ok := catalogCache.Get(cacheKey); ok {
+		return cached
 	}
-	catalogCacheMu.RUnlock()
 
 	endpoint := "movie"
 	appendTo := "credits,images,videos,keywords,recommendations,similar"
@@ -251,13 +248,13 @@ func FetchMediaCatalogDetails(tmdbID int, mediaType models.MediaType) *models.Me
 
 	fetch := func(lang string) *tmdbCatalogResponse {
 		u := fmt.Sprintf(
-			"https://api.themoviedb.org/3/%s/%d?api_key=%s&append_to_response=%s&include_image_language=fr,en,null",
-			endpoint, tmdbID, apiKey, appendTo,
+			"/%s/%d?append_to_response=%s&include_image_language=fr,en,null",
+			endpoint, tmdbID, appendTo,
 		)
 		if lang != "" {
 			u += "&language=" + lang
 		}
-		resp, err := httpx.Standard.Get(u)
+		resp, err := tmdb.Get(httpx.Standard, u)
 		if err != nil || resp.StatusCode != http.StatusOK {
 			if resp != nil {
 				resp.Body.Close()
@@ -272,7 +269,7 @@ func FetchMediaCatalogDetails(tmdbID int, mediaType models.MediaType) *models.Me
 		return &out
 	}
 
-	loc := fetch(tmdbLanguage())
+	loc := fetch(medialang.TMDBLocale(language))
 	if loc == nil {
 		return nil
 	}
@@ -298,19 +295,17 @@ func FetchMediaCatalogDetails(tmdbID int, mediaType models.MediaType) *models.Me
 		}
 	}
 
-	details := buildCatalogDetails(loc, tmdbID, mediaType)
+	details := buildCatalogDetails(loc, tmdbID, mediaType, language)
 	if details.LogoURL == "" {
-		details.LogoURL = fetchTMDBLogoURL(tmdbID, mediaType)
+		details.LogoURL = fetchTMDBLogoURL(tmdbID, mediaType, language)
 	}
 
-	catalogCacheMu.Lock()
-	catalogCache[cacheKey] = catalogCacheEntry{details: details, stored: time.Now()}
-	catalogCacheMu.Unlock()
+	catalogCache.Put(cacheKey, details)
 
 	return details
 }
 
-func buildCatalogDetails(r *tmdbCatalogResponse, tmdbID int, mediaType models.MediaType) *models.MediaDetails {
+func buildCatalogDetails(r *tmdbCatalogResponse, tmdbID int, mediaType models.MediaType, language string) *models.MediaDetails {
 	d := &models.MediaDetails{
 		TMDBID:           tmdbID,
 		Type:             mediaType,
@@ -318,7 +313,7 @@ func buildCatalogDetails(r *tmdbCatalogResponse, tmdbID int, mediaType models.Me
 		Overview:         strings.TrimSpace(r.Overview),
 		BackdropURL:      backdropURLFromPath(r.BackdropPath),
 		PosterURL:        posterURLFromPath(r.PosterPath),
-		LogoURL:          pickBestLogoURL(r),
+		LogoURL:          pickBestLogoURL(r, language),
 		Status:           strings.TrimSpace(r.Status),
 		VoteAverage:      r.VoteAverage,
 		Budget:           r.Budget,
@@ -553,7 +548,7 @@ type tmdbPersonResponse struct {
 }
 
 // FetchPersonDetails returns an actor/crew profile with filmography, or nil.
-func FetchPersonDetails(personID int) *models.PersonDetails {
+func FetchPersonDetails(personID int, language string) *models.PersonDetails {
 	apiKey := tmdbAPIKey()
 	if apiKey == "" || personID <= 0 {
 		return nil
@@ -561,13 +556,13 @@ func FetchPersonDetails(personID int) *models.PersonDetails {
 
 	fetch := func(lang string) *tmdbPersonResponse {
 		u := fmt.Sprintf(
-			"https://api.themoviedb.org/3/person/%d?api_key=%s&append_to_response=combined_credits",
-			personID, apiKey,
+			"/person/%d?append_to_response=combined_credits",
+			personID,
 		)
 		if lang != "" {
 			u += "&language=" + lang
 		}
-		resp, err := httpx.Standard.Get(u)
+		resp, err := tmdb.Get(httpx.Standard, u)
 		if err != nil || resp.StatusCode != http.StatusOK {
 			if resp != nil {
 				resp.Body.Close()
@@ -582,7 +577,7 @@ func FetchPersonDetails(personID int) *models.PersonDetails {
 		return &out
 	}
 
-	loc := fetch(tmdbLanguage())
+	loc := fetch(medialang.TMDBLocale(language))
 	if loc == nil {
 		return nil
 	}
@@ -660,7 +655,7 @@ type tmdbCollectionResponse struct {
 }
 
 // FetchCollectionDetails returns a movie saga with its ordered parts, or nil.
-func FetchCollectionDetails(collectionID int) *models.CollectionDetails {
+func FetchCollectionDetails(collectionID int, language string) *models.CollectionDetails {
 	apiKey := tmdbAPIKey()
 	if apiKey == "" || collectionID <= 0 {
 		return nil
@@ -668,13 +663,13 @@ func FetchCollectionDetails(collectionID int) *models.CollectionDetails {
 
 	fetch := func(lang string) *tmdbCollectionResponse {
 		u := fmt.Sprintf(
-			"https://api.themoviedb.org/3/collection/%d?api_key=%s",
-			collectionID, apiKey,
+			"/collection/%d",
+			collectionID,
 		)
 		if lang != "" {
-			u += "&language=" + lang
+			u += "?language=" + lang
 		}
-		resp, err := httpx.Standard.Get(u)
+		resp, err := tmdb.Get(httpx.Standard, u)
 		if err != nil || resp.StatusCode != http.StatusOK {
 			if resp != nil {
 				resp.Body.Close()
@@ -689,7 +684,7 @@ func FetchCollectionDetails(collectionID int) *models.CollectionDetails {
 		return &out
 	}
 
-	loc := fetch(tmdbLanguage())
+	loc := fetch(medialang.TMDBLocale(language))
 	if loc == nil {
 		return nil
 	}

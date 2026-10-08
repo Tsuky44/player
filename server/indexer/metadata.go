@@ -18,6 +18,8 @@ import (
 	"project-player/server/database"
 	"project-player/server/httpx"
 	"project-player/server/models"
+	"project-player/server/safego"
+	"project-player/server/tmdb"
 )
 
 // backfilling is read by the scan-status endpoint while the backfill goroutine
@@ -72,11 +74,6 @@ func posterURLFromPath(path string) string {
 		return ""
 	}
 	return "https://image.tmdb.org/t/p/w500" + path
-}
-
-// humanizeFilenameTitle turns a release filename into a readable local title.
-func humanizeFilenameTitle(raw string) string {
-	return ReleaseDisplayTitle(raw, models.TypeMovie)
 }
 
 type tmdbSearchResult struct {
@@ -377,10 +374,10 @@ func fetchTMDBTranslation(tmdbID int, mediaType models.MediaType) (title, overvi
 	}
 
 	u := fmt.Sprintf(
-		"https://api.themoviedb.org/3/%s/%d/translations?api_key=%s",
-		endpoint, tmdbID, apiKey,
+		"/%s/%d/translations",
+		endpoint, tmdbID,
 	)
-	resp, err := httpx.Standard.Get(u)
+	resp, err := tmdb.Get(httpx.Standard, u)
 	if err != nil || resp.StatusCode != http.StatusOK {
 		if resp != nil {
 			resp.Body.Close()
@@ -430,11 +427,11 @@ func fetchTMDBDetailsByID(tmdbID int, mediaType models.MediaType) (posterURL, ov
 	}
 
 	fetch := func(lang string) tmdbDetails {
-		u := fmt.Sprintf("https://api.themoviedb.org/3/%s/%d?api_key=%s", endpoint, tmdbID, apiKey)
+		u := fmt.Sprintf("/%s/%d", endpoint, tmdbID)
 		if lang != "" {
-			u += "&language=" + lang
+			u += "?language=" + lang
 		}
-		resp, err := httpx.Standard.Get(u)
+		resp, err := tmdb.Get(httpx.Standard, u)
 		if err != nil || resp.StatusCode != http.StatusOK {
 			if resp != nil {
 				resp.Body.Close()
@@ -714,6 +711,9 @@ func backfillMissingMetadata() {
 
 	backfillEpisodePosters()
 	backfillEpisodeMetadata()
+	// En dernier : une traduction se rattache à l'identité TMDB que les
+	// étapes précédentes viennent peut-être de fixer.
+	translateMissing()
 	log.Printf("TMDB: metadata backfill done in %v (%d updated)", time.Since(start), updated)
 }
 
@@ -734,10 +734,10 @@ func SearchTMDBCandidates(query string, mediaType models.MediaType) []models.TMD
 	}
 
 	u := fmt.Sprintf(
-		"https://api.themoviedb.org/3/search/%s?api_key=%s&query=%s&language=%s",
-		endpoint, apiKey, url.QueryEscape(query), tmdbLanguage(),
+		"/search/%s?query=%s&language=%s",
+		endpoint, url.QueryEscape(query), tmdbLanguage(),
 	)
-	resp, err := httpx.Standard.Get(u)
+	resp, err := tmdb.Get(httpx.Standard, u)
 	if err != nil || resp.StatusCode != http.StatusOK {
 		if resp != nil {
 			resp.Body.Close()
@@ -926,6 +926,7 @@ func BackfillMissingMetadataAsync() bool {
 		return false
 	}
 	go func() {
+		defer safego.Recover("indexer/metadata.go:932")
 		defer backfilling.Store(false)
 		backfillMissingMetadata()
 	}()
@@ -967,6 +968,7 @@ func RedetectAllMediaAsync() bool {
 		return false
 	}
 	go func() {
+		defer safego.Recover("indexer/metadata.go:973")
 		defer redetectingAll.Store(false)
 		redetectAllMedia()
 	}()
@@ -1022,6 +1024,8 @@ func redetectAllMedia() {
 	dedupeDuplicateShows()
 	dedupeDuplicateMovies()
 	InvalidateStreamCaches()
+	// Chaque fiche ré-identifiée a rendu sa traduction caduque.
+	translateMissing()
 
 	redetectAllMutex.Lock()
 	snap := redetectAllProgress

@@ -203,5 +203,5 @@ class _FakeSession implements PlaybackSession {
   Future<void> setAudioTrack(PlaybackTrack track) async => chosen = track;
 
   @override
-  noSuchMethod(Invocation invocation) => super.noSuchMethod(invocation);
+  dynamic noSuchMethod(Invocation invocation) => super.noSuchMethod(invocation);
 }

@@ -6,11 +6,12 @@ import (
 	"net/http"
 	"strconv"
 	"strings"
-	"sync"
 	"time"
 
 	"project-player/server/config"
 	"project-player/server/httpx"
+	"project-player/server/tmdb"
+	"project-player/server/ttlcache"
 )
 
 // Shared TMDB/MediaHub lookups used by both the requests catalog and the
@@ -28,39 +29,10 @@ const (
 // caller falls back to local-only seasons instead.
 var tmdbFastClient = httpx.Fast
 
-type cacheEntry[T any] struct {
-	value    T
-	storedAt time.Time
-}
-
-// ttlCache is a tiny in-memory cache. Entries are never evicted actively; the
-// key space here is bounded by the number of shows in the library.
-type ttlCache[T any] struct {
-	mu      sync.RWMutex
-	ttl     time.Duration
-	entries map[string]cacheEntry[T]
-}
-
-func newTTLCache[T any](ttl time.Duration) *ttlCache[T] {
-	return &ttlCache[T]{ttl: ttl, entries: map[string]cacheEntry[T]{}}
-}
-
-func (c *ttlCache[T]) get(key string) (T, bool) {
-	c.mu.RLock()
-	entry, ok := c.entries[key]
-	c.mu.RUnlock()
-	if !ok || time.Since(entry.storedAt) > c.ttl {
-		var zero T
-		return zero, false
-	}
-	return entry.value, true
-}
-
-func (c *ttlCache[T]) put(key string, value T) {
-	c.mu.Lock()
-	c.entries[key] = cacheEntry[T]{value: value, storedAt: time.Now()}
-	c.mu.Unlock()
-}
+// tmdbCacheMaxEntries plafonne chacun des caches ci-dessous. Leurs clés
+// portent la langue de la requête et, pour le catalogue des demandes, des
+// séries que la médiathèque n'a pas : leur nombre n'est pas borné par elle.
+const tmdbCacheMaxEntries = 512
 
 // TMDBSeasonSummary is one season as TMDB describes it, independent of what the
 // library actually holds.
@@ -85,19 +57,20 @@ type TMDBEpisodeSummary struct {
 }
 
 var (
-	tmdbSeasonsCache    = newTTLCache[[]TMDBSeasonSummary](tmdbSeasonsCacheTTL)
-	tmdbEpisodesCache   = newTTLCache[[]TMDBEpisodeSummary](tmdbEpisodesCacheTTL)
-	mediaHubStatusCache = newTTLCache[map[int]string](mediaHubStatusCacheTTL)
+	tmdbSeasonsCache    = ttlcache.New[[]TMDBSeasonSummary](tmdbSeasonsCacheTTL, tmdbCacheMaxEntries)
+	tmdbEpisodesCache   = ttlcache.New[[]TMDBEpisodeSummary](tmdbEpisodesCacheTTL, tmdbCacheMaxEntries)
+	mediaHubStatusCache = ttlcache.New[map[int]string](mediaHubStatusCacheTTL, tmdbCacheMaxEntries)
 )
 
 // FetchTMDBShowSeasons returns every season TMDB knows for a show, specials
-// (season 0) excluded. Returns nil when TMDB is unreachable or unconfigured.
-func FetchTMDBShowSeasons(tmdbID int) []TMDBSeasonSummary {
+// (season 0) excluded, named in lang. Returns nil when TMDB is unreachable or
+// unconfigured.
+func FetchTMDBShowSeasons(tmdbID int, lang mediaLanguage) []TMDBSeasonSummary {
 	if tmdbID <= 0 {
 		return nil
 	}
-	key := strconv.Itoa(tmdbID)
-	if cached, ok := tmdbSeasonsCache.get(key); ok {
+	key := strconv.Itoa(tmdbID) + "/" + lang.code
+	if cached, ok := tmdbSeasonsCache.Get(key); ok {
 		return cached
 	}
 
@@ -106,10 +79,10 @@ func FetchTMDBShowSeasons(tmdbID int) []TMDBSeasonSummary {
 		return nil
 	}
 	target := fmt.Sprintf(
-		"https://api.themoviedb.org/3/tv/%d?api_key=%s&language=%s",
-		tmdbID, apiKey, tmdbRequestLanguage(),
+		"/tv/%d?language=%s",
+		tmdbID, lang.tmdbLocale(),
 	)
-	resp, err := tmdbFastClient.Get(target)
+	resp, err := tmdb.Get(tmdbFastClient, target)
 	if err != nil {
 		return nil
 	}
@@ -150,18 +123,18 @@ func FetchTMDBShowSeasons(tmdbID int) []TMDBSeasonSummary {
 			AirDate:      s.AirDate,
 		})
 	}
-	tmdbSeasonsCache.put(key, seasons)
+	tmdbSeasonsCache.Put(key, seasons)
 	return seasons
 }
 
-// FetchTMDBSeasonEpisodes returns the episodes TMDB lists for one season.
-// Returns nil when TMDB is unreachable or the season does not exist.
-func FetchTMDBSeasonEpisodes(tmdbID, seasonNumber int) []TMDBEpisodeSummary {
+// FetchTMDBSeasonEpisodes returns the episodes TMDB lists for one season, in
+// lang. Returns nil when TMDB is unreachable or the season does not exist.
+func FetchTMDBSeasonEpisodes(tmdbID, seasonNumber int, lang mediaLanguage) []TMDBEpisodeSummary {
 	if tmdbID <= 0 || seasonNumber < 0 {
 		return nil
 	}
-	key := fmt.Sprintf("%d/%d", tmdbID, seasonNumber)
-	if cached, ok := tmdbEpisodesCache.get(key); ok {
+	key := fmt.Sprintf("%d/%d/%s", tmdbID, seasonNumber, lang.code)
+	if cached, ok := tmdbEpisodesCache.Get(key); ok {
 		return cached
 	}
 
@@ -170,10 +143,10 @@ func FetchTMDBSeasonEpisodes(tmdbID, seasonNumber int) []TMDBEpisodeSummary {
 		return nil
 	}
 	target := fmt.Sprintf(
-		"https://api.themoviedb.org/3/tv/%d/season/%d?api_key=%s&language=%s",
-		tmdbID, seasonNumber, apiKey, tmdbRequestLanguage(),
+		"/tv/%d/season/%d?language=%s",
+		tmdbID, seasonNumber, lang.tmdbLocale(),
 	)
-	resp, err := tmdbFastClient.Get(target)
+	resp, err := tmdb.Get(tmdbFastClient, target)
 	if err != nil {
 		return nil
 	}
@@ -221,7 +194,7 @@ func FetchTMDBSeasonEpisodes(tmdbID, seasonNumber int) []TMDBEpisodeSummary {
 			Rating:    ep.VoteAverage,
 		})
 	}
-	tmdbEpisodesCache.put(key, episodes)
+	tmdbEpisodesCache.Put(key, episodes)
 	return episodes
 }
 
@@ -238,7 +211,7 @@ func mediaHubSeasonStatuses(tmdbID int) map[int]string {
 	}
 
 	key := strconv.Itoa(tmdbID)
-	if cached, ok := mediaHubStatusCache.get(key); ok {
+	if cached, ok := mediaHubStatusCache.Get(key); ok {
 		return cached
 	}
 
@@ -254,7 +227,7 @@ func mediaHubSeasonStatuses(tmdbID int) map[int]string {
 		}
 		statuses[season.SeasonNumber] = season.Status
 	}
-	mediaHubStatusCache.put(key, statuses)
+	mediaHubStatusCache.Put(key, statuses)
 	return statuses
 }
 
@@ -264,7 +237,5 @@ func invalidateMediaHubStatus(tmdbID int) {
 	if tmdbID <= 0 {
 		return
 	}
-	mediaHubStatusCache.mu.Lock()
-	delete(mediaHubStatusCache.entries, strconv.Itoa(tmdbID))
-	mediaHubStatusCache.mu.Unlock()
+	mediaHubStatusCache.Delete(strconv.Itoa(tmdbID))
 }

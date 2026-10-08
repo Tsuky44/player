@@ -3,6 +3,7 @@ package streaming
 import (
 	"log"
 	"project-player/server/playbackauth"
+	"project-player/server/safego"
 	"sync"
 	"time"
 )
@@ -20,7 +21,7 @@ func NewSessionManager(tickets *playbackauth.Store) *SessionManager {
 		sessions: make(map[string]*TranscodeSession),
 		tickets:  tickets,
 	}
-	go m.reaper()
+	go safego.Forever("m.reaper", m.reaper)
 	return m
 }
 
@@ -106,6 +107,7 @@ func (m *SessionManager) DestroyAll() {
 	for _, id := range ids {
 		wg.Add(1)
 		go func(id string) {
+			defer safego.Recover("streaming/manager.go:108")
 			defer wg.Done()
 			m.DestroySession(id)
 		}(id)

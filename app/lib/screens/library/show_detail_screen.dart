@@ -193,8 +193,9 @@ class _ShowDetailScreenState extends State<ShowDetailScreen>
     }
   }
 
-  /// La série a avancé sur un autre appareil : l'épisode à reprendre, les
-  /// pastilles « vu » et les barres de progression se relisent sous la page.
+  /// La série a avancé sur un autre appareil, ou on revient sur la fiche (du
+  /// lecteur, d'une autre page) : l'épisode à reprendre, les pastilles « vu »
+  /// et les barres de progression se relisent sous la page.
   /// Pas pendant qu'une saison entière est en train d'être cochée ici : ce
   /// geste relit déjà tout à sa fin.
   @override
@@ -446,7 +447,9 @@ class _ShowDetailScreenState extends State<ShowDetailScreen>
       final e = details.localEpisodeFile?.trim();
       if (f != null && f.isNotEmpty) folder = f;
       if (e != null && e.isNotEmpty) episode = e;
-    } catch (_) {}
+    } catch (_) {
+      // Sans fiche, le dossier et l'épisode déduits du chemin suffisent.
+    }
     return (folder: folder, episode: episode);
   }
 
@@ -619,6 +622,13 @@ class _ShowDetailScreenState extends State<ShowDetailScreen>
     final selectedMissing = selectedSeason != null &&
         !selectedSeason.isAvailable &&
         (selectedSeason.effectiveSeasonNumber ?? 0) > 0;
+    // Saison présente mais incomplète : le bandeau ne sort que s'il a quelque
+    // chose à dire — demandée, ou à demander. Les lignes d'épisodes disent
+    // déjà le reste.
+    final selectedIncomplete = selectedSeason != null &&
+        selectedSeason.isAvailable &&
+        (selectedSeason.effectiveSeasonNumber ?? 0) > 0 &&
+        (selectedSeason.canRequest || selectedSeason.isRequested);
 
     // Nothing watched yet: offer the first playable episode of the season on
     // screen, which on opening the page is season 1 — so a show never started
@@ -719,7 +729,7 @@ class _ShowDetailScreenState extends State<ShowDetailScreen>
                 ),
               ),
             ),
-          if (selectedMissing)
+          if (selectedMissing || selectedIncomplete)
             SliverToBoxAdapter(
               child: Padding(
                 padding: AppLayout.pageInsets(context, top: 8),

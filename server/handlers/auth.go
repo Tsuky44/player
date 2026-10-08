@@ -129,7 +129,7 @@ func Register(w http.ResponseWriter, r *http.Request, _ httprouter.Params) {
 	}
 
 	// Resolve what this account will be allowed to do before touching the DB.
-	permissions := models.DefaultPermissions()
+	var permissions models.Permissions
 	var invitation *Invitation
 	switch {
 	case firstAccount:
@@ -182,13 +182,10 @@ func Register(w http.ResponseWriter, r *http.Request, _ httprouter.Params) {
 		return
 	}
 
-	json.NewEncoder(w).Encode(map[string]interface{}{
-		"status":  "success",
-		"message": "User registered successfully",
-		"user": map[string]interface{}{
-			"id":       userID,
-			"username": req.Username,
-		},
+	json.NewEncoder(w).Encode(registerResponse{
+		Status:  "success",
+		Message: "User registered successfully",
+		User:    registeredUser{ID: userID, Username: req.Username},
 	})
 }
 

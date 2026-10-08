@@ -35,7 +35,9 @@ class _ActivityPageState extends State<ActivityPage> {
     _reload();
     context.read<ApiClient>().getUsers().then((users) {
       if (mounted) setState(() => _users = users);
-    }).catchError((_) {});
+    }).catchError((_) {
+      // Sans la liste des comptes, le filtre par utilisateur ne s'affiche pas.
+    });
   }
 
   Future<void> _reload() async {
@@ -78,7 +80,9 @@ class _ActivityPageState extends State<ActivityPage> {
         _entries.addAll(entries);
         _hasMore = entries.length == _pageSize;
       });
-    } catch (_) {}
+    } catch (_) {
+      // La page suivante n'est pas venue : le bouton reste là pour réessayer.
+    }
     if (mounted) setState(() => _loadingMore = false);
   }
 

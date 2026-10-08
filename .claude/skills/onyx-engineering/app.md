@@ -17,7 +17,9 @@ Les dépendances vont dans un seul sens : **widget → provider → service → 
 
 - Un widget n'appelle jamais `Dio` directement : il passe par un provider ou un service.
 - Un contrôleur d'écran (`use_player_controller.dart`) orchestre, et les widgets qu'il pilote restent passifs : ils prennent des valeurs et des callbacks.
-- Un nouvel appel au serveur devient une méthode typée de `ApiClient` qui renvoie un modèle. `api_client.dart` est un fichier-dieu : regroupe les nouveaux appels d'un même domaine dans un fichier dédié plutôt que de le faire grossir.
+- Le modèle d'une réponse se vérifie contre `contract/` dans `test/api_contract_test.dart` (ADR-0051). Pour savoir ce qu'un serveur sait faire, lire `ServerCapabilities` plutôt que deviner à partir d'une erreur.
+- Un nouvel appel au serveur devient une méthode typée de `ApiClient` qui renvoie un modèle. Elle va dans le mixin de son domaine sous `services/api/` (`media.dart`, `playback.dart`, `activity.dart`…), ou dans un nouveau, pas dans `api_client.dart`.
+- Le lecteur (`screens/player/`) : la décision d'une touche est une fonction pure (`routePlayerKey`, dans `player_key_routing.dart`) que l'écran exécute. Un comportement nouveau avec son propre état est une classe de `hooks/`, testée sans monter l'écran. Dans un fichier `part` de l'écran, `setState` s'écrit `_update` (le membre est protégé). Voir ADR-0052.
 
 ## Providers
 
@@ -36,7 +38,7 @@ Plusieurs comptes coexistent (ADR-0013, ADR-0017) : `ServerRegistry`, `ApiClient
 ## Plateformes
 
 - Pour du code spécifique au web ou au natif, on utilise un **trio d'imports conditionnels** : `x.dart` (interface et export conditionnel), `x_io.dart` et `x_web.dart` (voir `download_manager*`, `tv_link_host*`, `app_updater*`). `dart:io` ne s'importe jamais hors d'un fichier `_io`.
-- Les différences entre plateformes natives passent par `utils/app_platform.dart` et `tv/tv_mode.dart`, jamais par un `Platform.isX` dispersé dans un écran.
+- Les différences entre plateformes natives passent par `utils/app_platform.dart` et `tv/tv_mode.dart`, jamais par un `Platform.isX` dispersé dans un écran. `test/no_dart_io_outside_io_files_test.dart` vérifie ces deux règles.
 - **Lecture** : chaque moteur implémente `PlaybackSession` (`abstract interface class`, dans `screens/player/playback/playback_session.dart`) : mpv/media_kit, ExoPlayer (ADR-0009), AVPlayer sur tvOS (ADR-0028). Une capacité de lecture nouvelle s'ajoute à l'interface puis à chaque moteur. Le lecteur ne teste pas le moteur en cours d'exécution.
 - Les capacités de décodage sont déclarées par le client (ADR-0014, `playback_capabilities.dart`), et c'est le serveur qui décide Direct Play ou HLS.
 - Hors ligne : l'app démarre sans réseau. On teste la joignabilité sur `GET /api/ping` (ADR-0010 §6). La présence d'un réseau ne prouve pas que ce serveur est joignable.
@@ -49,5 +51,6 @@ Plusieurs comptes coexistent (ADR-0013, ADR-0017) : `ServerRegistry`, `ApiClient
 
 - Les tests sont dans `app/test/`, un fichier par règle ou par composant, nommé d'après le comportement (`seek_resume_test.dart`, `download_network_gate_test.dart`).
 - Les doublures partagées sont dans `test/test_doubles.dart` (un `Registry` avec deux comptes, un `Adapter` Dio). Étends-les plutôt que de recréer une doublure ailleurs.
+- Une commande dessinée à la main (icône, affiche, curseur) porte un nom pour les lecteurs d'écran : une infobulle, ou `Semantics(label:)` qui dit l'action (« Reprendre Dune »). `test/accessibility_labels_test.dart` monte les écrans courants et le vérifie ; un nouvel écran s'y ajoute (ADR-0054).
 - Une logique extraite dans une fonction ou une classe pure se teste sans widget. Les tests de widget couvrent le contrat visible : focus TV, mise en page, états.
 - `ClientLog.resetForTest()` et les autres points d'entrée `ForTest` existent pour remettre à zéro un état global. Ajoute-en un à tout nouveau singleton.

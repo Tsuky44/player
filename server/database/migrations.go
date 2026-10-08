@@ -4,6 +4,8 @@ import (
 	"database/sql"
 	"fmt"
 	"log"
+	"os"
+	"strconv"
 	"strings"
 )
 
@@ -643,6 +645,28 @@ var migrations = []migration{
 			`DROP TABLE IF EXISTS user_player_layouts;`,
 		},
 	},
+	{
+		id:   20,
+		name: "media translations",
+		// Voir ADR-0049. medias garde le titre et le synopsis dans la langue
+		// des métadonnées du serveur ; cette table porte les mêmes textes dans
+		// les autres langues de l'interface. source_tmdb_id est l'identité TMDB
+		// dont la ligne a été tirée (celle de la série pour un épisode) : une
+		// fiche ré-identifiée rend sa traduction caduque sans rien effacer.
+		// Un texte vide veut dire « TMDB n'en a pas », pas « à refaire ».
+		stmts: []string{
+			`CREATE TABLE IF NOT EXISTS media_translations (
+				media_id INTEGER NOT NULL,
+				language TEXT NOT NULL,
+				source_tmdb_id INTEGER NOT NULL DEFAULT 0,
+				title TEXT NOT NULL DEFAULT '',
+				overview TEXT NOT NULL DEFAULT '',
+				fetched_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+				PRIMARY KEY (media_id, language),
+				FOREIGN KEY (media_id) REFERENCES medias(id) ON DELETE CASCADE
+			);`,
+		},
+	},
 }
 
 // applyMigrations brings the database up to the latest schema version.
@@ -661,6 +685,10 @@ func applyMigrations(db *sql.DB) error {
 		return err
 	}
 
+	if err := backupIfMigrating(db, applied); err != nil {
+		return err
+	}
+
 	ran := 0
 	for _, m := range migrations {
 		if applied[m.id] {
@@ -675,6 +703,51 @@ func applyMigrations(db *sql.DB) error {
 
 	if ran == 0 {
 		log.Printf("Database: schema up to date (%d migration(s) applied previously).", len(applied))
+	}
+	return nil
+}
+
+// backupIfMigrating copie la base quand une migration va la modifier et
+// qu'elle contient déjà quelque chose. Une copie qui échoue arrête le
+// démarrage : migrer sans filet est précisément ce qu'elle évite. Un disque
+// trop plein pour la copie se contourne avec DB_SKIP_MIGRATION_BACKUP=true.
+func backupIfMigrating(db *sql.DB, applied map[int]bool) error {
+	next := 0
+	for _, m := range migrations {
+		if !applied[m.id] {
+			next = m.id
+			break
+		}
+	}
+	if next == 0 {
+		return nil
+	}
+
+	// Une base neuve n'a que la table que applyMigrations vient de créer.
+	var tables int
+	if err := db.QueryRow(`
+		SELECT COUNT(*) FROM sqlite_master
+		WHERE type = 'table' AND name != 'schema_migrations' AND name NOT LIKE 'sqlite_%'`).Scan(&tables); err != nil {
+		return fmt.Errorf("failed to inspect the database before migrating: %w", err)
+	}
+	if tables == 0 {
+		return nil
+	}
+
+	if skip, _ := strconv.ParseBool(strings.TrimSpace(os.Getenv("DB_SKIP_MIGRATION_BACKUP"))); skip {
+		log.Printf("Database: DB_SKIP_MIGRATION_BACKUP is set — migrating from %04d without a backup.", next)
+		return nil
+	}
+	dbPath, err := mainDatabaseFile(db)
+	if err != nil {
+		return fmt.Errorf("failed to locate the database file before migrating: %w", err)
+	}
+	target, err := backupBeforeMigrating(db, dbPath, next)
+	if err != nil {
+		return fmt.Errorf("%w (set DB_SKIP_MIGRATION_BACKUP=true to migrate without a copy)", err)
+	}
+	if target != "" {
+		log.Printf("Database: backup written to %s before migrating.", target)
 	}
 	return nil
 }

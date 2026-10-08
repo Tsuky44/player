@@ -177,7 +177,12 @@ class _ContinueWatchingCardState extends State<ContinueWatchingCard> {
               children: [
                 Pressable(
                   onTap: _play,
-                  builder: (context, pressed) => SizedBox(
+                  // L'affiche n'a pas de texte : sans ce nom, un lecteur
+                  // d'écran n'annonce qu'un bouton.
+                  builder: (context, pressed) => Semantics(
+                      button: true,
+                      label: tr('Reprendre {0}', [widget.item.displayTitle]),
+                      child: SizedBox(
                     key: _posterKey,
                     width: width,
                     height: height,
@@ -232,7 +237,7 @@ class _ContinueWatchingCardState extends State<ContinueWatchingCard> {
                         ),
                       ),
                     ),
-                  ),
+                  )),
                 ),
                 const SizedBox(height: 6),
                 MouseRegion(

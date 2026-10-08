@@ -93,9 +93,9 @@ func RequireAnyPermission(perms []models.Permission, next AuthenticatedHandle) h
 			}
 			w.Header().Set("Content-Type", "application/json")
 			w.WriteHeader(http.StatusForbidden)
-			json.NewEncoder(w).Encode(map[string]any{
-				"error":               "Droits insuffisants",
-				"missing_permissions": missing,
+			json.NewEncoder(w).Encode(forbiddenResponse{
+				Error:              "Droits insuffisants",
+				MissingPermissions: missing,
 			})
 			return
 		}

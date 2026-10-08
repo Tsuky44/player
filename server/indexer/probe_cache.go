@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"project-player/server/database"
+	"project-player/server/safego"
 	"project-player/server/streamcache"
 	"project-player/server/streaming"
 )
@@ -87,6 +88,7 @@ func BackfillMissingProbesAsync() bool {
 	}
 
 	go func() {
+		defer safego.Recover("indexer/probe_cache.go:89")
 		defer probingBackfill.Store(false)
 
 		rows, err := database.DB.Query(`
@@ -130,6 +132,7 @@ func BackfillMissingProbesAsync() bool {
 		for i := 0; i < workers; i++ {
 			wg.Add(1)
 			go func() {
+				defer safego.Recover("indexer/probe_cache.go:132")
 				defer wg.Done()
 				for item := range jobs {
 					info, err := os.Stat(item.path)

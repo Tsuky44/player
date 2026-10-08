@@ -262,7 +262,9 @@ class ServerRegistry extends ChangeNotifier {
     if (token == null || token.isEmpty) {
       try {
         token = await _secureStorage.read(key: _legacyTokenKey);
-      } catch (_) {}
+      } catch (_) {
+        // Trousseau illisible : pas de jeton à reprendre, on se reconnectera.
+      }
     }
     if (token == null || token.isEmpty) return;
 
@@ -291,7 +293,9 @@ class ServerRegistry extends ChangeNotifier {
     await prefs.remove(_legacyProfileKey);
     try {
       await _secureStorage.delete(key: _legacyTokenKey);
-    } catch (_) {}
+    } catch (_) {
+      // Trousseau illisible : le jeton hérité n'y est de toute façon plus lu.
+    }
   }
 
   Future<void> _persist() async {
@@ -473,7 +477,9 @@ class ServerRegistry extends ChangeNotifier {
         await prefs.setString('$_tokenPrefix$id', fromSecure);
         return fromSecure;
       }
-    } catch (_) {}
+    } catch (_) {
+      // Trousseau illisible : pas de jeton, l'app redemandera la connexion.
+    }
     return null;
   }
 
@@ -482,7 +488,9 @@ class ServerRegistry extends ChangeNotifier {
     await prefs.setString('$_tokenPrefix$id', token);
     try {
       await _secureStorage.write(key: '$_tokenPrefix$id', value: token);
-    } catch (_) {}
+    } catch (_) {
+      // Le trousseau n'est qu'une copie : le jeton est déjà dans les préférences.
+    }
   }
 
   Future<void> _deleteToken(String id) async {
@@ -490,7 +498,9 @@ class ServerRegistry extends ChangeNotifier {
     await prefs.remove('$_tokenPrefix$id');
     try {
       await _secureStorage.delete(key: '$_tokenPrefix$id');
-    } catch (_) {}
+    } catch (_) {
+      // Le trousseau n'est qu'une copie : le jeton est déjà retiré des préférences.
+    }
   }
 
   // ==================== PROFILS EN CACHE ====================

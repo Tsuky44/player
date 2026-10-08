@@ -121,7 +121,9 @@ class PlayerEnginePool {
       // `dispose` stops the player on its way out, so this covers the unload
       // too; racing it with a separate `stop` would only produce a rejected
       // command against an instance that is already gone.
-      unawaited(engine.player.dispose().catchError((_) {}));
+      unawaited(engine.player.dispose().catchError((_) {
+        // Une instance déjà détruite refuse la commande : il n'y a plus rien à arrêter.
+      }));
       return;
     }
 
@@ -134,7 +136,9 @@ class PlayerEnginePool {
     //
     // Kept rather than dropped: the next playback has to wait for it. See
     // [PlayerEngine.pendingStop].
-    engine.pendingStop = engine.player.stop().catchError((_) {});
+    engine.pendingStop = engine.player.stop().catchError((_) {
+      // Un arrêt refusé ne doit pas bloquer la lecture qui attend ce moteur.
+    });
     _idle = engine;
   }
 

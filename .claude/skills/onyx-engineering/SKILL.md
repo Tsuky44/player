@@ -37,7 +37,9 @@ Pendant la tâche, suis la règle « travail silencieux, récap final » du `CLA
 ### Modules *deep*, *seams*, taille des fichiers
 
 - Une nouvelle responsabilité va dans un nouveau fichier ou un nouveau type, avec une interface étroite. L'appelant ne voit pas les détails.
-- Les fichiers-dieux sont `player_screen.dart` (~3 400 lignes), `use_player_controller.dart` (~2 200), `api_client.dart` (~1 200 ; ses points d'accès par domaine vont dans `services/api/`, en mixins `part of`, surchargeables par les doublures de test), `models.dart`, `emby_sync.go` et `federation.go`. Pour y ajouter du code, extrais d'abord dans son propre fichier (widget, hook, service, sous-package) le morceau que tu touches, puis modifie-le là. Ton changement ne fait passer aucun fichier au-dessus de 800 lignes.
+- Aucun fichier ne dépasse 800 lignes : `app/test/file_size_guard_test.dart` et `server/codeguard/size_test.go` le vérifient (ADR-0052). Ceux qui y sont encore figurent dans la liste de ces tests, avec un plafond qui ne se relève pas. Pour y ajouter du code, extrais d'abord dans son propre fichier (widget, hook, service, sous-package) le morceau que tu touches, puis modifie-le là.
+- Le lecteur est découpé par sujet. Ce qui a un état et une interface étroite est une classe de `screens/player/hooks/` (`PlaybackHandoffWatch`, `PlayerWatchParty`, `EpisodesPanelController`…) à qui l'écran donne des fonctions. Ce qui reste lié à l'état de l'écran ou du contrôleur vit dans des fichiers `part`, un par sujet (`player_screen_chrome.dart`, `player_controller_hls.dart`…). Une nouvelle responsabilité du lecteur est une classe, pas une méthode de plus dans un `part`.
+- Les points d'accès d'`ApiClient` vont par domaine dans `services/api/`, en mixins `part of`, surchargeables par les doublures de test. Les modèles vont par domaine dans `models/` ; `models.dart` ne fait que les réexporter.
 - Chaque signification a une seule source de vérité (constante, token, helper). Avant d'écrire un helper, cherche s'il existe déjà : `sqlPlaceholders`, `scanSQLiteTime`, `Responsive`, `AppNetworkImage`, `AppMotion`…
 - Le serveur décide (permissions, progression, « vu », droits de lecture) et l'app affiche. Une règle métier côté client n'existe que pour l'UI optimiste, et la réponse du serveur la réconcilie.
 
@@ -51,7 +53,7 @@ Le dépôt commente le *pourquoi* : la panne observée, la mesure, l'alternative
 
 ### Erreurs
 
-Chaque erreur est traitée, remontée avec son contexte (`fmt.Errorf("…: %w", err)`) ou journalisée. Côté client, un échec se dégrade de façon visible (état d'erreur, données en cache) et l'écran ne reste jamais figé.
+Chaque erreur est traitée, remontée avec son contexte (`fmt.Errorf("…: %w", err)`) ou journalisée. Côté client, un échec se dégrade de façon visible (état d'erreur, données en cache) et l'écran ne reste jamais figé. Un `catch` qui ignore une erreur le dit dans son bloc, par un commentaire qui explique pourquoi c'est le bon choix : `app/test/no_silent_catch_test.dart` refuse un bloc vide.
 
 ### Budgets
 

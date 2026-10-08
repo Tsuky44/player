@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"project-player/server/database"
+	"project-player/server/safego"
 )
 
 // Session lifetime.
@@ -192,12 +193,12 @@ func lookupSession(token string) (userID int, ok bool, err error) {
 // StartSessionReaper deletes expired sessions in the background. Call once at
 // startup, after InitDB.
 func StartSessionReaper() {
-	go func() {
+	go safego.Forever("session reaper", func() {
 		for {
 			purgeExpiredSessions()
 			time.Sleep(sessionReaperInterval)
 		}
-	}()
+	})
 }
 
 func purgeExpiredSessions() {

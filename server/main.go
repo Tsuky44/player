@@ -21,6 +21,7 @@ import (
 	"project-player/server/logging"
 	"project-player/server/middleware"
 	"project-player/server/models"
+	"project-player/server/safego"
 	"project-player/server/streaming"
 	"project-player/server/webui"
 
@@ -63,11 +64,11 @@ func main() {
 	handlers.StartAccessRequestReaper()
 	playbackContext, stopPlaybackReaper := context.WithCancel(context.Background())
 	defer stopPlaybackReaper()
-	go handlers.PlaybackTickets.RunReaper(playbackContext)
-	go handlers.RunFederation(playbackContext)
-	go handlers.RunEmbySync(playbackContext)
-	go handlers.RunPlaybackActivity(playbackContext)
-	go handlers.RunWatchParties(playbackContext)
+	go safego.Forever("handlers.PlaybackTickets.RunReaper", func() { handlers.PlaybackTickets.RunReaper(playbackContext) })
+	go safego.Forever("handlers.RunFederation", func() { handlers.RunFederation(playbackContext) })
+	go safego.Forever("handlers.RunEmbySync", func() { handlers.RunEmbySync(playbackContext) })
+	go safego.Forever("handlers.RunPlaybackActivity", func() { handlers.RunPlaybackActivity(playbackContext) })
+	go safego.Forever("handlers.RunWatchParties", func() { handlers.RunWatchParties(playbackContext) })
 
 	// Initialize router
 	router := httprouter.New()
@@ -78,10 +79,7 @@ func main() {
 	corsRouter := setupCORS(handler)
 
 	// Base API route
-	router.GET("/api/ping", func(w http.ResponseWriter, r *http.Request, _ httprouter.Params) {
-		w.Header().Set("Content-Type", "application/json")
-		w.Write([]byte(`{"status": "ok", "message": "Project Player Server is running", "playback_ticket_version": 1}`))
-	})
+	router.GET("/api/ping", handlers.Ping)
 
 	// Intro/outro inspection and forced re-detection. These were open to anyone
 	// "for easier debugging", which made detect-show a free way for an
@@ -176,7 +174,7 @@ func main() {
 	router.GET("/api/media-identities", handlers.RequireAuth(handlers.GetMediaIdentities))
 	router.POST("/api/media-resolve", handlers.RequireAuth(handlers.ResolveMedia))
 	router.GET("/api/progress/sync", handlers.RequireAuth(handlers.ExportProgress))
-	router.POST("/api/progress/sync", handlers.RequireAuth(handlers.ImportProgress))
+	router.POST("/api/progress/sync", handlers.RequireAuth(handlers.NotifiesProgress(handlers.ImportProgress)))
 
 	// Serveurs liés (ADR-0017) : la progression passe d'un serveur à l'autre
 	// sans dépendre d'une app ouverte.
@@ -200,15 +198,17 @@ func main() {
 	router.DELETE("/api/peers/:id", handlers.RequirePermission(models.PermManageSettings, handlers.RemovePeerServer))
 	router.POST("/api/peers/:id/approve", handlers.RequirePermission(models.PermManageSettings, handlers.ApprovePeerServer))
 	router.GET("/api/progress", handlers.RequireAuth(handlers.GetProgress))
-	router.POST("/api/progress", handlers.RequireAuth(handlers.UpdateProgress))
-	// Sondé par les écrans ouverts pour suivre en direct ce que le compte
-	// regarde ailleurs. Chacun ne lit que son propre jeton.
+	router.POST("/api/progress", handlers.RequireAuth(handlers.NotifiesProgress(handlers.UpdateProgress)))
+	// Attendu par les écrans ouverts pour suivre en direct ce que le compte
+	// regarde ailleurs (long-poll). Chacun ne lit que son propre jeton ; les
+	// routes qui écrivent la progression portent NotifiesProgress pour les
+	// réveiller.
 	router.GET("/api/progress/revision", handlers.RequireAuth(handlers.GetProgressRevision))
-	router.POST("/api/continue-watching/hide", handlers.RequireAuth(handlers.HideFromContinueWatching))
-	router.POST("/api/media/:id/watched", handlers.RequireAuth(handlers.SetMediaWatched))
+	router.POST("/api/continue-watching/hide", handlers.RequireAuth(handlers.NotifiesProgress(handlers.HideFromContinueWatching)))
+	router.POST("/api/media/:id/watched", handlers.RequireAuth(handlers.NotifiesProgress(handlers.SetMediaWatched)))
 	// Une saison entière d’un coup : le client envoie les épisodes, le
 	// serveur tranche en une transaction.
-	router.POST("/api/progress/watched", handlers.RequireAuth(handlers.SetMediaWatchedBatch))
+	router.POST("/api/progress/watched", handlers.RequireAuth(handlers.NotifiesProgress(handlers.SetMediaWatchedBatch)))
 
 	// Activité : le lecteur signale ce qu'il lit, les administrateurs voient
 	// qui regarde quoi, l'historique et les statistiques. Voir activity.go.
@@ -429,6 +429,7 @@ func main() {
 	// l'arrêt d'un conteneur en laisse dix avant de tout tuer.
 	hlsHandler.Close()
 	stopPlaybackReaper()
+	handlers.ProgressWatchers.Shutdown()
 	shutdown, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 	if err := server.Shutdown(shutdown); err != nil {
@@ -444,7 +445,7 @@ func setupCORS(router http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Access-Control-Allow-Origin", "*")
 		w.Header().Set("Access-Control-Allow-Methods", "POST, GET, OPTIONS, PUT, DELETE")
-		w.Header().Set("Access-Control-Allow-Headers", "Accept, Content-Type, Content-Length, Accept-Encoding, X-CSRF-Token, Authorization, X-Onyx-Device, X-Onyx-Client")
+		w.Header().Set("Access-Control-Allow-Headers", "Accept, Accept-Language, Content-Type, Content-Length, Accept-Encoding, X-CSRF-Token, Authorization, X-Onyx-Device, X-Onyx-Client")
 
 		// Handle preflight OPTIONS request
 		if r.Method == "OPTIONS" {

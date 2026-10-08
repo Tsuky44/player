@@ -31,6 +31,9 @@ func TestBackfillDoesNotFetchCompleteLibrary(t *testing.T) {
 		`INSERT INTO medias (id,type,title,tmdb_id,poster_url,overview,release_date) VALUES (2,'show','Show',123,'poster','overview','2020-01-01')`,
 		`INSERT INTO medias (id,type,title,parent_id,season_number) VALUES (3,'season','Saison 1',2,1)`,
 		`INSERT INTO medias (id,type,title,parent_id,season_number,episode_number,tmdb_id,poster_url,overview,release_date) VALUES (4,'episode','Pilot',3,1,1,456,'poster','overview','2020-01-01')`,
+		// Complète veut dire traduite aussi (ADR-0049) : l'épisode se rattache
+		// à l'identité de sa série.
+		`INSERT INTO media_translations (media_id,language,source_tmdb_id,title) VALUES (1,'en',348,'Alien'),(2,'en',123,'Show'),(4,'en',123,'Pilot')`,
 	} {
 		if _, err := database.DB.Exec(q); err != nil {
 			t.Fatal(err)

@@ -96,13 +96,6 @@ const (
 	sectionSeries
 )
 
-func (s section) label() string {
-	if s == sectionSeries {
-		return "series"
-	}
-	return "movies"
-}
-
 func withSection(s section, fn func(*ScanSectionStats)) {
 	reportMu.Lock()
 	defer reportMu.Unlock()

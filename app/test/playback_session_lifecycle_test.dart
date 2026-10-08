@@ -29,5 +29,5 @@ class _ContractProbe implements PlaybackSession {
   Future<void> dispose() async {}
 
   @override
-  noSuchMethod(Invocation invocation) => super.noSuchMethod(invocation);
+  dynamic noSuchMethod(Invocation invocation) => super.noSuchMethod(invocation);
 }

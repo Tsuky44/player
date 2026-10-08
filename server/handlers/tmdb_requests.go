@@ -13,16 +13,14 @@ import (
 	"project-player/server/httpx"
 	"project-player/server/indexer"
 	"project-player/server/models"
+	"project-player/server/safego"
+	"project-player/server/tmdb"
 
 	"github.com/julienschmidt/httprouter"
 )
 
 func tmdbRequestAPIKey() string {
 	return config.TMDBAPIKey()
-}
-
-func tmdbRequestLanguage() string {
-	return config.TMDBLanguage()
 }
 
 type tmdbCatalogRow struct {
@@ -45,7 +43,7 @@ type tmdbCatalogResponse struct {
 }
 
 func fetchTMDBCatalogPage(client *http.Client, tmdbURL string, raw interface{}) error {
-	resp, err := client.Get(tmdbURL)
+	resp, err := tmdb.Get(client, tmdbURL)
 	if err != nil {
 		return err
 	}
@@ -120,7 +118,7 @@ func TmdbRequestCatalog(w http.ResponseWriter, r *http.Request, _ httprouter.Par
 	query := strings.TrimSpace(r.URL.Query().Get("query"))
 	discover := parseDiscoverFilters(r.URL.Query())
 
-	lang := tmdbRequestLanguage()
+	lang := languageOf(r).tmdbLocale()
 	client := httpx.Catalog
 
 	var raw tmdbCatalogResponse
@@ -129,27 +127,27 @@ func TmdbRequestCatalog(w http.ResponseWriter, r *http.Request, _ httprouter.Par
 	if query != "" {
 		var tmdbURL string
 		if mediaType == "movie" {
-			tmdbURL = fmt.Sprintf("https://api.themoviedb.org/3/search/movie?api_key=%s&language=%s&page=%d&query=%s", apiKey, lang, page, url.QueryEscape(query))
+			tmdbURL = fmt.Sprintf("/search/movie?language=%s&page=%d&query=%s", lang, page, url.QueryEscape(query))
 		} else if mediaType == "tv" {
-			tmdbURL = fmt.Sprintf("https://api.themoviedb.org/3/search/tv?api_key=%s&language=%s&page=%d&query=%s", apiKey, lang, page, url.QueryEscape(query))
+			tmdbURL = fmt.Sprintf("/search/tv?language=%s&page=%d&query=%s", lang, page, url.QueryEscape(query))
 		} else {
-			tmdbURL = fmt.Sprintf("https://api.themoviedb.org/3/search/multi?api_key=%s&language=%s&page=%d&query=%s", apiKey, lang, page, url.QueryEscape(query))
+			tmdbURL = fmt.Sprintf("/search/multi?language=%s&page=%d&query=%s", lang, page, url.QueryEscape(query))
 		}
 		err = fetchTMDBCatalogPage(client, tmdbURL, &raw)
 	} else if discover.active() {
 		if mediaType == "movie" || mediaType == "tv" {
-			err = fetchTMDBCatalogPage(client, discoverURL(mediaType, apiKey, lang, page, discover), &raw)
+			err = fetchTMDBCatalogPage(client, discoverURL(mediaType, lang, page, discover), &raw)
 		} else {
-			raw, err = fetchTMDBDiscoverMixed(client, apiKey, lang, page, discover)
+			raw, err = fetchTMDBDiscoverMixed(client, lang, page, discover)
 		}
 	} else {
 		var tmdbURL string
 		if mediaType == "movie" {
-			tmdbURL = fmt.Sprintf("https://api.themoviedb.org/3/trending/movie/week?api_key=%s&language=%s&page=%d", apiKey, lang, page)
+			tmdbURL = fmt.Sprintf("/trending/movie/week?language=%s&page=%d", lang, page)
 		} else if mediaType == "tv" {
-			tmdbURL = fmt.Sprintf("https://api.themoviedb.org/3/trending/tv/week?api_key=%s&language=%s&page=%d", apiKey, lang, page)
+			tmdbURL = fmt.Sprintf("/trending/tv/week?language=%s&page=%d", lang, page)
 		} else {
-			tmdbURL = fmt.Sprintf("https://api.themoviedb.org/3/trending/all/week?api_key=%s&language=%s&page=%d", apiKey, lang, page)
+			tmdbURL = fmt.Sprintf("/trending/all/week?language=%s&page=%d", lang, page)
 		}
 		err = fetchTMDBCatalogPage(client, tmdbURL, &raw)
 	}
@@ -195,10 +193,10 @@ func TmdbRequestCatalog(w http.ResponseWriter, r *http.Request, _ httprouter.Par
 
 	enrichCatalogAvailability(results)
 
-	json.NewEncoder(w).Encode(map[string]any{
-		"page":       raw.Page,
-		"totalPages": raw.TotalPages,
-		"results":    results,
+	json.NewEncoder(w).Encode(requestCatalogResponse{
+		Page:       raw.Page,
+		TotalPages: raw.TotalPages,
+		Results:    results,
 	})
 }
 
@@ -219,6 +217,7 @@ func enrichCatalogAvailability(items []catalogItem) {
 	for i := range items {
 		wg.Add(1)
 		go func(i int) {
+			defer safego.Recover("handlers/tmdb_requests.go:218")
 			defer wg.Done()
 			sem <- struct{}{}
 			defer func() { <-sem }()
@@ -271,7 +270,7 @@ func TmdbRequestDetails(w http.ResponseWriter, r *http.Request, ps httprouter.Pa
 		return
 	}
 
-	details := indexer.FetchMediaCatalogDetails(tmdbID, mediaType)
+	details := indexer.FetchMediaCatalogDetails(tmdbID, mediaType, languageOf(r).code)
 	if details == nil {
 		writeJSONError(w, http.StatusNotFound, "Media not found on TMDB")
 		return
@@ -288,10 +287,10 @@ func TmdbRequestDetails(w http.ResponseWriter, r *http.Request, ps httprouter.Pa
 	// Fetch seasons for TV shows
 	var seasons []seasonInfo
 	if mediaType == models.TypeShow {
-		lang := tmdbRequestLanguage()
+		lang := languageOf(r).tmdbLocale()
 		client := httpx.Catalog
-		url := fmt.Sprintf("https://api.themoviedb.org/3/tv/%d?api_key=%s&language=%s", tmdbID, apiKey, lang)
-		resp, err := client.Get(url)
+		url := fmt.Sprintf("/tv/%d?language=%s", tmdbID, lang)
+		resp, err := tmdb.Get(client, url)
 		if err == nil {
 			defer resp.Body.Close()
 			if resp.StatusCode == http.StatusOK {
@@ -369,38 +368,70 @@ func TmdbRequestDetails(w http.ResponseWriter, r *http.Request, ps httprouter.Pa
 		}
 	}
 
-	json.NewEncoder(w).Encode(map[string]any{
-		"id":               tmdbID,
-		"mediaType":        mtStr,
-		"title":            details.Title,
-		"originalTitle":    details.OriginalTitle,
-		"tagline":          details.Tagline,
-		"overview":         details.Overview,
-		"posterPath":       extractPath(details.PosterURL),
-		"backdropPath":     extractPath(details.BackdropURL),
-		"logoPath":         extractPath(details.LogoURL),
-		"releaseDate":      details.ReleaseDate,
-		"rating":           details.VoteAverage,
-		"runtime":          details.Runtime,
-		"genres":           details.Genres,
-		"studios":          details.Studios,
-		"countries":        details.Countries,
-		"originalLanguage": details.OriginalLang,
-		"tmdbStatus":       details.Status,
-		"status":           status,
-		"director":         details.Director,
-		"writers":          details.Writers,
-		"editors":          details.Editors,
-		"keywords":         details.Keywords,
-		"trailerKey":       details.TrailerKey,
-		"budget":           details.Budget,
-		"revenue":          details.Revenue,
-		"cast":             cast,
-		"seasons":          seasons,
-		"numberOfSeasons":  details.NumberOfSeasons,
-		"numberOfEpisodes": details.NumberOfEpisodes,
-		"recommendations":  mapRelatedForRequest(details.Recommendations, mtStr),
-		"similar":          mapRelatedForRequest(details.Similar, mtStr),
+	json.NewEncoder(w).Encode(struct {
+		ID               int                  `json:"id"`
+		MediaType        string               `json:"mediaType"`
+		Title            string               `json:"title"`
+		OriginalTitle    string               `json:"originalTitle"`
+		Tagline          string               `json:"tagline"`
+		Overview         string               `json:"overview"`
+		PosterPath       string               `json:"posterPath"`
+		BackdropPath     string               `json:"backdropPath"`
+		LogoPath         string               `json:"logoPath"`
+		ReleaseDate      string               `json:"releaseDate"`
+		Rating           float64              `json:"rating"`
+		Runtime          int                  `json:"runtime"`
+		Genres           []string             `json:"genres"`
+		Studios          []string             `json:"studios"`
+		Countries        []string             `json:"countries"`
+		OriginalLanguage string               `json:"originalLanguage"`
+		TMDBStatus       string               `json:"tmdbStatus"`
+		Status           string               `json:"status"`
+		Director         string               `json:"director"`
+		Writers          []string             `json:"writers"`
+		Editors          []string             `json:"editors"`
+		Keywords         []string             `json:"keywords"`
+		TrailerKey       string               `json:"trailerKey"`
+		Budget           int64                `json:"budget"`
+		Revenue          int64                `json:"revenue"`
+		Cast             []castMember         `json:"cast"`
+		Seasons          []seasonInfo         `json:"seasons"`
+		NumberOfSeasons  int                  `json:"numberOfSeasons"`
+		NumberOfEpisodes int                  `json:"numberOfEpisodes"`
+		Recommendations  []requestRelatedItem `json:"recommendations"`
+		Similar          []requestRelatedItem `json:"similar"`
+	}{
+		ID:               tmdbID,
+		MediaType:        mtStr,
+		Title:            details.Title,
+		OriginalTitle:    details.OriginalTitle,
+		Tagline:          details.Tagline,
+		Overview:         details.Overview,
+		PosterPath:       extractPath(details.PosterURL),
+		BackdropPath:     extractPath(details.BackdropURL),
+		LogoPath:         extractPath(details.LogoURL),
+		ReleaseDate:      details.ReleaseDate,
+		Rating:           details.VoteAverage,
+		Runtime:          details.Runtime,
+		Genres:           details.Genres,
+		Studios:          details.Studios,
+		Countries:        details.Countries,
+		OriginalLanguage: details.OriginalLang,
+		TMDBStatus:       details.Status,
+		Status:           status,
+		Director:         details.Director,
+		Writers:          details.Writers,
+		Editors:          details.Editors,
+		Keywords:         details.Keywords,
+		TrailerKey:       details.TrailerKey,
+		Budget:           details.Budget,
+		Revenue:          details.Revenue,
+		Cast:             cast,
+		Seasons:          seasons,
+		NumberOfSeasons:  details.NumberOfSeasons,
+		NumberOfEpisodes: details.NumberOfEpisodes,
+		Recommendations:  mapRelatedForRequest(details.Recommendations, mtStr),
+		Similar:          mapRelatedForRequest(details.Similar, mtStr),
 	})
 }
 
@@ -426,13 +457,13 @@ func TmdbRequestSeasonEpisodes(w http.ResponseWriter, r *http.Request, ps httpro
 		return
 	}
 
-	lang := tmdbRequestLanguage()
+	lang := languageOf(r).tmdbLocale()
 	client := httpx.Catalog
 	reqURL := fmt.Sprintf(
-		"https://api.themoviedb.org/3/tv/%d/season/%d?api_key=%s&language=%s",
-		tmdbID, seasonNum, apiKey, lang,
+		"/tv/%d/season/%d?language=%s",
+		tmdbID, seasonNum, lang,
 	)
-	resp, err := client.Get(reqURL)
+	resp, err := tmdb.Get(client, reqURL)
 	if err != nil {
 		writeJSONError(w, http.StatusBadGateway, "Failed to fetch season from TMDB")
 		return
@@ -501,15 +532,15 @@ func TmdbRequestSeasonEpisodes(w http.ResponseWriter, r *http.Request, ps httpro
 		})
 	}
 
-	_ = json.NewEncoder(w).Encode(map[string]any{
-		"tmdbId":       tmdbID,
-		"seasonNumber": seasonNum,
-		"episodes":     episodes,
-	})
+	_ = json.NewEncoder(w).Encode(struct {
+		TMDBID       int           `json:"tmdbId"`
+		SeasonNumber int           `json:"seasonNumber"`
+		Episodes     []episodeInfo `json:"episodes"`
+	}{tmdbID, seasonNum, episodes})
 }
 
-func mapRelatedForRequest(items []models.RelatedMedia, fallbackType string) []map[string]any {
-	out := make([]map[string]any, 0, len(items))
+func mapRelatedForRequest(items []models.RelatedMedia, fallbackType string) []requestRelatedItem {
+	out := make([]requestRelatedItem, 0, len(items))
 	for _, item := range items {
 		mt := fallbackType
 		if item.Type == models.TypeShow {
@@ -517,16 +548,16 @@ func mapRelatedForRequest(items []models.RelatedMedia, fallbackType string) []ma
 		} else if item.Type == models.TypeMovie {
 			mt = "movie"
 		}
-		out = append(out, map[string]any{
-			"id":           item.ID,
-			"mediaType":    mt,
-			"title":        item.Title,
-			"overview":     item.Overview,
-			"posterPath":   extractPath(item.PosterURL),
-			"backdropPath": extractPath(item.BackdropURL),
-			"releaseDate":  item.ReleaseDate,
-			"rating":       item.VoteAverage,
-			"status":       "unknown",
+		out = append(out, requestRelatedItem{
+			ID:           item.ID,
+			MediaType:    mt,
+			Title:        item.Title,
+			Overview:     item.Overview,
+			PosterPath:   extractPath(item.PosterURL),
+			BackdropPath: extractPath(item.BackdropURL),
+			ReleaseDate:  item.ReleaseDate,
+			Rating:       item.VoteAverage,
+			Status:       "unknown",
 		})
 	}
 	return out
