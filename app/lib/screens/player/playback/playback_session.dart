@@ -174,6 +174,15 @@ class PlaybackFailure {
   String toString() => 'PlaybackFailure(${kind.name}, $message)';
 }
 
+/// L'avance en mémoire d'un moteur qui dit *jusqu'où* il a reçu ([bufferedTo])
+/// plutôt que de combien il devance la lecture — mpv, ExoPlayer et
+/// AetherEngine parlent tous en position. Jamais négative : après une
+/// recherche, la position peut un instant dépasser ce qui était reçu.
+Duration aheadOf(Duration bufferedTo, Duration position) {
+  final ahead = bufferedTo - position;
+  return ahead.isNegative ? Duration.zero : ahead;
+}
+
 /// Le moteur de lecture, vu par le reste de l'application.
 ///
 /// C'est la seule frontière entre le contrôleur — reprise, sessions HLS,
@@ -243,7 +252,8 @@ abstract interface class PlaybackSession {
   Duration get position;
   Duration get duration;
 
-  /// De combien la mise en mémoire tampon devance la tête de lecture.
+  /// De combien la mise en mémoire tampon devance la tête de lecture : une
+  /// durée, pas la position jusqu'où le moteur a reçu. Voir [aheadOf].
   Duration get bufferedAhead;
 
   double get volume;
@@ -280,7 +290,12 @@ abstract interface class PlaybackSession {
 
   /// Idem pour une session transcodée : les tampons y sont plus courts, le
   /// serveur produisant les segments au fil de l'eau.
-  Future<void> applyStreamingTuning(PlaybackProfile profile);
+  ///
+  /// [sourceReady] : la session a été préparée d'avance, ses premiers segments
+  /// existent. Le moteur peut partir dès qu'il a de quoi afficher, sans
+  /// attendre l'avance qu'il prend d'ordinaire contre un encodeur qui démarre.
+  Future<void> applyStreamingTuning(PlaybackProfile profile,
+      {bool sourceReady = false});
 
   /// Ce que le moteur sait dire de la lecture en cours. Pour la journalisation
   /// seule — rien ne doit en dépendre.

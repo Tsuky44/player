@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
+import 'interface_tour/tour_anchor.dart';
 import '../../models/models.dart';
 import '../../services/api_client.dart';
 import '../../services/media_details_cache.dart';
@@ -265,21 +266,24 @@ class _HeroBannerState extends State<HeroBanner> {
                       ),
                     ],
                     const SizedBox(height: 24),
-                    Wrap(
-                      spacing: 12,
-                      runSpacing: 12,
-                      children: [
-                        _PlayButton(
-                          label: tr(widget.playLabel),
-                          onPressed: widget.onPlay,
-                          autofocus: widget.autofocusPlay,
-                        ),
-                        if (widget.onInfo != null)
-                          _InfoButton(
-                            onPressed: widget.onInfo!,
-                            compact: isCompact,
+                    TourTarget(
+                      anchor: TourAnchor.hero,
+                      child: Wrap(
+                        spacing: 12,
+                        runSpacing: 12,
+                        children: [
+                          _PlayButton(
+                            label: tr(widget.playLabel),
+                            onPressed: widget.onPlay,
+                            autofocus: widget.autofocusPlay,
                           ),
-                      ],
+                          if (widget.onInfo != null)
+                            _InfoButton(
+                              onPressed: widget.onInfo!,
+                              compact: isCompact,
+                            ),
+                        ],
+                      ),
                     ),
                   ],
                 ),

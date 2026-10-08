@@ -13,6 +13,7 @@ import '../../widgets/global/account_menu.dart';
 import '../../widgets/global/app_download_button.dart';
 import '../../widgets/global/empty_state.dart';
 import '../../widgets/global/glass_chrome.dart';
+import '../../widgets/global/interface_tour/tour_anchor.dart';
 import '../../widgets/global/hero_carousel.dart';
 import '../../widgets/global/live_progress_state.dart';
 import '../../widgets/global/media_row.dart';
@@ -258,33 +259,36 @@ class _HomeScreenState extends State<HomeScreen>
                             if (data != null &&
                                 data.continueWatching.isNotEmpty)
                               SliverToBoxAdapter(
-                                child: MediaRow(
-                                  title: tr('Reprendre la lecture'),
-                                  items: data.continueWatching,
-                                  isContinueWatching: true,
-                                  // Never on a television, where taking the
-                                  // focus also scrolls this row to the middle
-                                  // of the screen — the banner the user has
-                                  // not seen yet goes off the top, and the home
-                                  // screen opens on a poster. The banner's play
-                                  // button holds the focus there instead.
-                                  autofocusFirstItem: !isTv,
-                                  onItemTap: (item) =>
-                                      _playMedia(context, item),
-                                  onContinueWatchingPlay: (item, origin) =>
-                                      _playMedia(context, item, origin: origin),
-                                  onContinueWatchingTitleTap: (item, origin) =>
-                                      _openContinueWatchingDetails(
-                                    context,
-                                    item,
-                                    origin: origin,
+                                child: TourTarget(
+                                  anchor: TourAnchor.resume,
+                                  child: MediaRow(
+                                    title: tr('Reprendre la lecture'),
+                                    items: data.continueWatching,
+                                    isContinueWatching: true,
+                                    // Never on a television, where taking the
+                                    // focus also scrolls this row to the middle
+                                    // of the screen — the banner the user has
+                                    // not seen yet goes off the top, and the home
+                                    // screen opens on a poster. The banner's play
+                                    // button holds the focus there instead.
+                                    autofocusFirstItem: !isTv,
+                                    onItemTap: (item) =>
+                                        _playMedia(context, item),
+                                    onContinueWatchingPlay: (item, origin) =>
+                                        _playMedia(context, item, origin: origin),
+                                    onContinueWatchingTitleTap: (item, origin) =>
+                                        _openContinueWatchingDetails(
+                                      context,
+                                      item,
+                                      origin: origin,
+                                    ),
+                                    onContinueWatchingMarkWatched: (item) =>
+                                        homeProvider
+                                            .markContinueWatchingAsWatched(item),
+                                    onContinueWatchingRemove: (item) =>
+                                        homeProvider
+                                            .hideContinueWatchingItem(item),
                                   ),
-                                  onContinueWatchingMarkWatched: (item) =>
-                                      homeProvider
-                                          .markContinueWatchingAsWatched(item),
-                                  onContinueWatchingRemove: (item) =>
-                                      homeProvider
-                                          .hideContinueWatchingItem(item),
                                 ),
                               ),
                             if (data != null &&
@@ -292,14 +296,18 @@ class _HomeScreenState extends State<HomeScreen>
                               const SliverToBoxAdapter(
                                   child: SizedBox(height: 32)),
                               SliverToBoxAdapter(
-                                child: MediaRow(
-                                  title: tr('Films récents'),
-                                  items: data.recentMovies,
-                                  autofocusFirstItem:
-                                      !isTv && data.continueWatching.isEmpty,
-                                  onSeeAll: widget.onNavigateToMovies,
-                                  onItemTap: (item) =>
-                                      _openMedia(context, item as Media),
+                                child: _recentTarget(
+                                  // La présentation ne montre les nouveautés qu'à un compte
+                                  // qui n'a rien à reprendre : sinon c'est « Reprendre » qui
+                                  // dit ce qu'il y a à dire des rangées.
+                                  shown: data.continueWatching.isEmpty,
+                                  child: MediaRow(
+                                    title: tr('Films récents'),
+                                    items: data.recentMovies,
+                                    autofocusFirstItem: !isTv && data.continueWatching.isEmpty,
+                                    onSeeAll: widget.onNavigateToMovies,
+                                    onItemTap: (item) => _openMedia(context, item as Media),
+                                  ),
                                 ),
                               ),
                             ],
@@ -308,15 +316,18 @@ class _HomeScreenState extends State<HomeScreen>
                               const SliverToBoxAdapter(
                                   child: SizedBox(height: 32)),
                               SliverToBoxAdapter(
-                                child: MediaRow(
-                                  title: tr('Séries récentes'),
-                                  items: data.recentShows,
-                                  autofocusFirstItem: !isTv &&
-                                      data.continueWatching.isEmpty &&
+                                child: _recentTarget(
+                                  shown: data.continueWatching.isEmpty &&
                                       data.recentMovies.isEmpty,
-                                  onSeeAll: widget.onNavigateToShows,
-                                  onItemTap: (item) =>
-                                      _openMedia(context, item as Media),
+                                  child: MediaRow(
+                                    title: tr('Séries récentes'),
+                                    items: data.recentShows,
+                                    autofocusFirstItem: !isTv &&
+                                        data.continueWatching.isEmpty &&
+                                        data.recentMovies.isEmpty,
+                                    onSeeAll: widget.onNavigateToShows,
+                                    onItemTap: (item) => _openMedia(context, item as Media),
+                                  ),
                                 ),
                               ),
                             ],
@@ -368,6 +379,11 @@ class _HomeScreenState extends State<HomeScreen>
     );
   }
 }
+
+/// Désigne [child] comme la rangée de nouveautés de la présentation de
+/// l'interface, quand c'est elle qui doit être montrée.
+Widget _recentTarget({required bool shown, required Widget child}) =>
+    shown ? TourTarget(anchor: TourAnchor.recent, child: child) : child;
 
 /// L'accueil d'un serveur qui n'a encore rien indexé.
 ///

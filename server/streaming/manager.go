@@ -57,6 +57,8 @@ func (m *SessionManager) LiveCountExcept(ticket [32]byte) int {
 	defer m.mu.RUnlock()
 	n := 0
 	for _, s := range m.sessions {
+		// Une session en attente occupe un encodeur comme une autre : elle
+		// compte, sauf pour son propre ticket.
 		if !s.superseded && s.TicketHash != ticket {
 			n++
 		}
@@ -90,6 +92,43 @@ func (m *SessionManager) Supersede(ticket [32]byte, keepID string) {
 	for _, id := range ids {
 		id := id
 		time.AfterFunc(supersedeGrace, func() { m.DestroySession(id) })
+	}
+}
+
+// standbyGrace est ce qu'une session préparée attend son lecteur.
+//
+// Le lecteur la demande une dizaine de secondes avant d'en avoir besoin
+// (ADR-0056). Passé ce délai personne ne viendra : il a été fermé, ou il a
+// renoncé à changer de qualité sans pouvoir le dire.
+var standbyGrace = 45 * time.Second
+
+// Claim est appelé au premier segment servi d'une session : si elle était en
+// attente, c'est le moment où le lecteur a changé de source, donc celui où
+// les autres sessions du ticket sont remplacées.
+func (m *SessionManager) Claim(session *TranscodeSession) {
+	m.mu.Lock()
+	waiting := session.standby
+	session.standby = false
+	m.mu.Unlock()
+	if waiting {
+		m.Supersede(session.TicketHash, session.ID)
+	}
+}
+
+// DropStandby détruit les sessions en attente du ticket, sauf keepID : le
+// lecteur n'en prépare qu'une à la fois, et celle qu'il vient de demander
+// rend la précédente inutile.
+func (m *SessionManager) DropStandby(ticket [32]byte, keepID string) {
+	m.mu.RLock()
+	var ids []string
+	for id, s := range m.sessions {
+		if id != keepID && s.TicketHash == ticket && s.standby {
+			ids = append(ids, id)
+		}
+	}
+	m.mu.RUnlock()
+	for _, id := range ids {
+		m.DestroySession(id)
 	}
 }
 
@@ -132,22 +171,33 @@ func (m *SessionManager) DestroySession(id string) {
 
 // reaper runs periodically to kill idle sessions and clean up zombie processes.
 func (m *SessionManager) reaper() {
-	ticker := time.NewTicker(30 * time.Second)
+	ticker := time.NewTicker(reapInterval)
 	defer ticker.Stop()
 
 	for range ticker.C {
-		m.mu.RLock()
-		var toKill []string
-		for id, s := range m.sessions {
-			if time.Since(s.LastAccess()) > 5*time.Minute || (m.tickets != nil && !m.tickets.IsLive(s.TicketHash, s.MediaID)) {
-				toKill = append(toKill, id)
-			}
-		}
-		m.mu.RUnlock()
+		m.reap()
+	}
+}
 
-		for _, id := range toKill {
-			log.Printf("SessionManager: reaper killing idle session %s", id)
-			m.DestroySession(id)
+// reapInterval borne le temps qu'une session inutile survit à ce qui la rend
+// inutile : un ticket fermé, ou une attente que personne n'est venu chercher.
+const reapInterval = 15 * time.Second
+
+func (m *SessionManager) reap() {
+	m.mu.RLock()
+	var toKill []string
+	for id, s := range m.sessions {
+		idle := time.Since(s.LastAccess())
+		if idle > 5*time.Minute ||
+			(s.standby && idle > standbyGrace) ||
+			(m.tickets != nil && !m.tickets.IsLive(s.TicketHash, s.MediaID)) {
+			toKill = append(toKill, id)
 		}
+	}
+	m.mu.RUnlock()
+
+	for _, id := range toKill {
+		log.Printf("SessionManager: reaper killing idle session %s", id)
+		m.DestroySession(id)
 	}
 }

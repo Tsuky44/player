@@ -155,6 +155,7 @@ mixin _PlaybackEndpoints {
     int burnSubtitleIndex = -1,
     PlaybackAccess? access,
     PlaybackCapabilities? capabilities,
+    bool standby = false,
   }) async {
     final stopwatch = Stopwatch()..start();
     final response = await _dio.post(
@@ -170,6 +171,9 @@ mixin _PlaybackEndpoints {
         // Ce client rouvre une session pour reculer au-delà de ce qu'elle a
         // gardé (retain_seconds) : le serveur peut effacer le reste.
         "purge": 1,
+        // Une session préparée à côté de celle qui est lue : le serveur ne
+        // remplace rien tant que son premier segment n'est pas demandé.
+        if (standby) "standby": 1,
         ...?access?.query,
         // What this device can decode and play back. Without it the server
         // assumes the weakest client it has ever had to serve — H.264 8-bit and
@@ -197,6 +201,93 @@ mixin _PlaybackEndpoints {
         "${session.videoReason.isEmpty ? '' : ' (${session.videoReason})'} "
         "session=${session.sessionId}");
     return session;
+  }
+
+  /// Attend que la session [masterUrl] ait un premier segment à donner.
+  ///
+  /// Le serveur répond à `/start` avant d'avoir rien encodé, et tient la
+  /// demande de la playlist vidéo jusqu'à ce que le premier segment existe :
+  /// la demander, c'est attendre ce moment. Rend faux si rien n'est venu dans
+  /// [budget] — la session est trop lente, ou morte.
+  Future<bool> awaitHlsReady(String masterUrl,
+      {Duration budget = const Duration(seconds: 12)}) async {
+    // Le délai se tient ici : l'intercepteur impose le sien à chaque requête.
+    final cancel = CancelToken();
+    final deadline = Timer(budget, cancel.cancel);
+    Future<String> fetch(String url) async {
+      final response = await _dio.get<String>(
+        url,
+        cancelToken: cancel,
+        options: Options(
+            responseType: ResponseType.plain, extra: {'playbackMedia': true}),
+      );
+      return response.data ?? '';
+    }
+
+    try {
+      final variant = firstHlsVariantUri(await fetch(masterUrl));
+      if (variant == null) return false;
+      final playlist =
+          await fetch(Uri.parse(masterUrl).resolve(variant).toString());
+      return playlist.contains('#EXTINF');
+    } catch (_) {
+      // Pas prête à temps : l'appelant garde ce qu'il lit.
+      return false;
+    } finally {
+      deadline.cancel();
+    }
+  }
+
+  /// Mesure ce que la ligne porte entre ce serveur et cet appareil, en bits
+  /// par seconde, en tirant un morceau du fichier pendant [budget] au plus.
+  ///
+  /// [wantBps] est le débit qu'on cherche à établir : le morceau demandé pèse
+  /// deux secondes à ce débit, pour qu'une ligne qui le porte ait fini avant
+  /// la fin du budget et qu'une mesure ne tire jamais plus qu'il ne faut. Une
+  /// ligne plus lente est mesurée sur ce qui est arrivé. Null quand rien
+  /// d'exploitable n'est venu.
+  ///
+  /// Le serveur ne peut pas donner ce chiffre : une session HLS n'est produite
+  /// qu'à la vitesse de la lecture, donc reçue à cette vitesse quelle que soit
+  /// la réserve de la ligne. Voir ADR-0056.
+  Future<int?> measureLineBps(
+    int mediaId, {
+    required PlaybackAccess access,
+    required int wantBps,
+    Duration budget = const Duration(seconds: 3),
+  }) async {
+    if (wantBps <= 0) return null;
+    final bytes = (wantBps / 8 * 2).round().clamp(256 * 1024, 24 * 1024 * 1024);
+    final cancel = CancelToken();
+    final watch = Stopwatch();
+    Timer? deadline;
+    var received = 0;
+    try {
+      final response = await _dio.get<ResponseBody>(
+        getStreamUrl(mediaId, access: access),
+        cancelToken: cancel,
+        options: Options(
+          responseType: ResponseType.stream,
+          headers: {'Range': 'bytes=0-${bytes - 1}'},
+          extra: {'playbackMedia': true},
+        ),
+      );
+      // Le chronomètre part aux en-têtes : la connexion et la recherche du
+      // fichier ne disent rien du débit.
+      watch.start();
+      deadline = Timer(budget, cancel.cancel);
+      await for (final chunk in response.data!.stream) {
+        received += chunk.length;
+      }
+    } catch (_) {
+      // Coupé au bout du budget : ce qui est arrivé jusque-là est la mesure.
+    } finally {
+      deadline?.cancel();
+      watch.stop();
+    }
+    final millis = watch.elapsedMilliseconds;
+    if (received < 64 * 1024) return null;
+    return (received * 8000 / (millis < 50 ? 50 : millis)).round();
   }
 
   // Notify server to destroy an HLS transcoding session (kills FFmpeg + temp files)

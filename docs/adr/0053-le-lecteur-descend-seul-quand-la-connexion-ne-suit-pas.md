@@ -1,7 +1,7 @@
 # ADR-0053 — Le lecteur descend seul quand la connexion ne suit pas
 
-- **Statut :** accepté. La décision est testée ; **l'enchaînement complet (coupures réelles, puis
-  nouvelle session) n'a tourné sur aucun appareil.**
+- **Statut :** remplacé par l'[ADR-0056](0056-qualite-automatique.md), qui décide avant la
+  coupure, remonte, et retire le compte des trois coupures. Le texte reste pour l'histoire.
 - **Date :** 2026-10-08
 - **Portée :** `app/lib/screens/player/playback/adaptive_quality.dart`,
   `app/lib/screens/player/hooks/player_controller_hls.dart` (`_noteStall`, `chooseQuality`),

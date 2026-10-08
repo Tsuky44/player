@@ -173,9 +173,24 @@ func GetMediaTracks(w http.ResponseWriter, r *http.Request, ps httprouter.Params
 	}
 
 	json.NewEncoder(w).Encode(mediaTracksResponse{
-		Video:     probe.Video,
-		Audio:     probe.Audio,
-		Subtitles: subs,
-		Qualities: streaming.QualityLadderFor(sourceHeight),
+		Video:            probe.Video,
+		Audio:            probe.Audio,
+		Subtitles:        subs,
+		Qualities:        streaming.QualityLadderFor(sourceHeight),
+		SourceBitrateBps: sourceBitrateBps(mediaID),
 	})
+}
+
+// sourceBitrateBps est le débit moyen du fichier, d'après ce que l'indexeur a
+// déjà noté. Il compte le son et les sous-titres avec l'image : c'est bien ce
+// que la ligne porte en Direct Play. 0 quand la taille ou la durée manquent.
+func sourceBitrateBps(mediaID int) int64 {
+	var fileSize, duration sql.NullInt64
+	err := database.DB.QueryRow(
+		"SELECT file_size, duration FROM medias WHERE id = ?", mediaID,
+	).Scan(&fileSize, &duration)
+	if err != nil || fileSize.Int64 <= 0 || duration.Int64 <= 0 {
+		return 0
+	}
+	return fileSize.Int64 * 8 / duration.Int64
 }

@@ -324,11 +324,17 @@ class MediaTracks {
   /// (voir ADR-0013), donc « le serveur est à jour » ne se suppose jamais.
   final List<QualityTier> qualities;
 
+  /// Ce que le fichier demande à la ligne en Direct Play, en bits par
+  /// seconde ; 0 quand le serveur ne le sait pas ou ne l'annonce pas. La
+  /// qualité automatique s'en sert pour choisir un barreau (ADR-0056).
+  final int sourceBitrateBps;
+
   MediaTracks({
     this.video,
     required this.audio,
     required this.subtitles,
     this.qualities = const [],
+    this.sourceBitrateBps = 0,
   });
 
   factory MediaTracks.fromJson(Map<String, dynamic> json) {
@@ -344,6 +350,7 @@ class MediaTracks {
               ?.map((e) => MediaSubtitleTrack.fromJson(e as Map<String, dynamic>))
               .toList() ??
           [],
+      sourceBitrateBps: (json['source_bitrate_bps'] as num?)?.toInt() ?? 0,
       qualities: (json['qualities'] as List<dynamic>?)
               ?.whereType<Map<String, dynamic>>()
               .map(QualityTier.fromJson)

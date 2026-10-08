@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:provider/provider.dart';
 
 import '../../../services/app_image_cache.dart';
 import '../../../services/download_manager.dart';
@@ -8,6 +9,8 @@ import '../../../utils/app_platform.dart';
 import '../../../utils/format.dart';
 import '../tv_link_scanner_screen.dart';
 import '../widgets/about_group.dart';
+import '../../../providers/auth_provider.dart';
+import '../../../widgets/global/interface_tour/interface_tour.dart';
 import '../widgets/settings_ui.dart';
 import '../../../l10n/app_language.dart';
 import '../../../l10n/tr.dart';
@@ -114,6 +117,25 @@ class _DevicePageState extends State<DevicePage> {
             ),
           ],
         ),
+        // Hors ligne il n'y a que les téléchargements à l'écran : la
+        // présentation n'aurait rien de ce qu'elle décrit à montrer.
+        if (!context.watch<AuthProvider>().isOfflineSession)
+          SettingsGroup(
+            title: tr('Interface'),
+            children: [
+              SettingsTile(
+                icon: Icons.explore_outlined,
+                title: tr('Revoir la présentation'),
+                subtitle: tr('Rejoue le tour de l’accueil et de la '
+                    'navigation.'),
+                onTap: () {
+                  Navigator.of(context, rootNavigator: true)
+                      .popUntil((route) => route.isFirst);
+                  InterfaceTourReplay.request();
+                },
+              ),
+            ],
+          ),
         // Le lien se fait en scannant le code affiché par l'autre écran
         // (téléviseur, navigateur, ordinateur) : il faut une caméra, donc un
         // téléphone.

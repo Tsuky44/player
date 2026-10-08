@@ -76,6 +76,10 @@ type TranscodeSession struct {
 	// superseded est posé, sous le verrou du gestionnaire, quand une session
 	// plus récente sur le même ticket la remplace. Voir SessionManager.Supersede.
 	superseded bool
+	// standby est posé, sous le même verrou, pour une session que le lecteur
+	// prépare sans encore la lire : elle ne remplace rien tant que son premier
+	// segment n'a pas été demandé. Voir SessionManager.Claim et ADR-0056.
+	standby bool
 
 	ctx    context.Context
 	cancel context.CancelFunc

@@ -11,6 +11,7 @@ import '../hardware_decoding.dart';
 import '../player_engine.dart';
 import '../playback_profile.dart';
 import 'cache_pause_policy.dart';
+import 'mpv_diagnostics.dart';
 import 'mpv_native_surface.dart';
 import 'mpv_startup_trace.dart';
 import 'mpv_subtitle_overlay.dart';
@@ -207,7 +208,8 @@ class MpvPlaybackSession implements PlaybackSession {
   Duration get duration => _player.state.duration;
 
   @override
-  Duration get bufferedAhead => _player.state.buffer;
+  Duration get bufferedAhead =>
+      aheadOf(_player.state.buffer, _player.state.position);
 
   @override
   double get volume => _player.state.volume;
@@ -359,6 +361,9 @@ class MpvPlaybackSession implements PlaybackSession {
     await _set(platform, 'network-timeout', '60');
     await _set(platform, 'stream-lavf-o',
         'reconnect=1,reconnect_streamed=1,reconnect_delay_max=5');
+    // Le moteur est mis en commun : l'option posée pour une session HLS ne
+    // regarde pas un fichier.
+    await _set(platform, 'demuxer-lavf-o', '');
     _adaptCachePause = true;
     await _startObserving();
     await _set(platform, 'cache-pause', 'yes');
@@ -414,7 +419,8 @@ class MpvPlaybackSession implements PlaybackSession {
   }
 
   @override
-  Future<void> applyStreamingTuning(PlaybackProfile profile) async {
+  Future<void> applyStreamingTuning(PlaybackProfile profile,
+      {bool sourceReady = false}) async {
     if (AppPlatform.isWeb) return;
     final platform = _player.platform as dynamic;
 
@@ -439,13 +445,22 @@ class MpvPlaybackSession implements PlaybackSession {
     }
     await _set(platform, 'stream-lavf-o',
         'reconnect=1,reconnect_streamed=1,reconnect_delay_max=5');
+    // Une session se lit depuis son premier segment. FFmpeg prend une playlist
+    // sans fin pour du direct et part trois segments avant le dernier, sans
+    // lire EXT-X-START : invisible sur une session qui vient de naître,
+    // quarante-quatre secondes de film sautées, mesurées, sur une session
+    // préparée d'avance (ADR-0056).
+    await _set(platform, 'demuxer-lavf-o', 'live_start_index=0');
     // En transcodage, une coupure vient le plus souvent de l'encodeur et non
     // du réseau : l'attente reste fixe.
     _adaptCachePause = false;
     await _startObserving();
     await _set(platform, 'cache-pause', 'yes');
     await _set(platform, 'cache-pause-wait', '3');
-    await _set(platform, 'cache-pause-initial', 'yes');
+    // Devant une session préparée, attendre trois secondes d'avance avant la
+    // première image, c'est figer l'écran le temps de les télécharger : 5,4 s
+    // mesurées sur une ligne à 5 Mbit/s.
+    await _set(platform, 'cache-pause-initial', sourceReady ? 'no' : 'yes');
     // Contournement du pont de texture de media_kit, qui peut bloquer la sortie
     // vidéo : mpv saute des images au lieu de geler. La vue native n'a pas ce
     // pont, et display-desync y laisserait le son dériver de l'image — elle
@@ -611,11 +626,10 @@ class MpvPlaybackSession implements PlaybackSession {
     _seekTimeout?.cancel();
     _seekTimeout = null;
     if (!log || timeline == null) return;
-    final ahead = _player.state.buffer - _player.state.position;
     unawaited(_read(_player.platform as dynamic, 'cache-speed').then((speed) {
       final bytes = int.tryParse(speed ?? '');
       debugPrint(timeline.describe(
-        cacheAhead: ahead.isNegative ? Duration.zero : ahead,
+        cacheAhead: bufferedAhead,
         bitsPerSecond: bytes == null ? null : bytes * 8,
       ));
     }));
@@ -770,32 +784,6 @@ class MpvPlaybackSession implements PlaybackSession {
   Future<PlaybackDiagnostics> readDiagnostics() async {
     if (AppPlatform.isWeb) return PlaybackDiagnostics.none;
     final platform = _player.platform as dynamic;
-    return PlaybackDiagnostics(
-      videoCodec: await _read(platform, 'video-codec'),
-      // `hwdec-current` est la réponse de mpv, pas ce qu'on lui a demandé : un
-      // décodeur qui n'a pas démarré se rabat en silence.
-      hardwareDecoder: await _read(platform, 'hwdec-current'),
-      containerFps:
-          double.tryParse(await _read(platform, 'container-fps') ?? ''),
-      droppedByDisplay:
-          int.tryParse(await _read(platform, 'frame-drop-count') ?? ''),
-      droppedByDecoder:
-          int.tryParse(await _read(platform, 'decoder-frame-drop-count') ?? ''),
-      sourceChannels: await _read(platform, 'audio-params/channel-count'),
-      outputChannels: await _read(platform, 'audio-out-params/channel-count'),
-      audioCodec: await _read(platform, 'audio-codec-name'),
-      renderedFrames: int.tryParse(await _read(platform, 'frame-count') ?? ''),
-      // La cadence telle qu'elle sort, pas telle qu'elle est annoncée. mpv la
-      // moyenne lui-même sur les dernières images, ce qui évite d'avoir à
-      // dériver un compteur sur deux relevés.
-      estimatedFps:
-          double.tryParse(await _read(platform, 'estimated-vf-fps') ?? ''),
-      videoBitrate:
-          double.tryParse(await _read(platform, 'video-bitrate') ?? ''),
-      audioBitrate:
-          double.tryParse(await _read(platform, 'audio-bitrate') ?? ''),
-      bytesLoaded: int.tryParse(
-          await _read(platform, 'demuxer-cache-state/total-bytes') ?? ''),
-    );
+    return readMpvDiagnostics((name) => _read(platform, name));
   }
 }

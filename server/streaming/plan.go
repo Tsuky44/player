@@ -88,6 +88,15 @@ func PlanVideo(probe *ProbeResult, quality string, burn bool, sourceBitrateBps, 
 	if ceilingBps > 0 && sourceBitrateBps > ceilingBps {
 		return encodePlan("source bitrate above the copy ceiling")
 	}
+	// Un barreau est une promesse de débit (ADR-0022) : recopier un fichier
+	// plus lourd que lui, c'est envoyer le débit du fichier sous l'étiquette
+	// du barreau. Mesuré sur un fichier H.264 à 10 Mbit/s : « 1080p · 4 Mbit/s »
+	// en envoyait 10, et descendre d'un barreau ne soulageait pas la ligne
+	// (ADR-0056). Le barreau natif de la source fait exception — c'est celui
+	// que le web et les replis demandent *pour* obtenir la recopie.
+	if rung := int64(EstimateBandwidth(quality)); sourceBitrateBps > rung && !isNativeTier(quality, v.Height) {
+		return encodePlan("source bitrate above the " + quality + " rung")
+	}
 	return VideoPlan{Copy: true}
 }
 

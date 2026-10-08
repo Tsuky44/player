@@ -48,6 +48,9 @@ extension PlayerControllerHls on PlayerController {
     // position. It used to depend on which of those two finished first — the
     // track list normally won, and the resume point was simply dropped.
     final startSeconds = await _resolveWebResumeSeconds();
+    // Un navigateur n'ouvre pas le fichier : ce barreau est le sommet de
+    // l'Auto.
+    _autoCeilingKey = quality;
     debugPrint(
         "Player: web session — source ${height}px, surface ${surface}px, "
         "asking $quality from ${startSeconds}s (video=${tracks.video?.codec})");
@@ -76,42 +79,12 @@ extension PlayerControllerHls on PlayerController {
   // ==================== Quality switching ====================
 
   /// Le choix fait dans le menu Qualité : [key] est un barreau, ou null pour
-  /// le Direct Play. Il l'emporte sur l'adaptation jusqu'à la fin de cette
-  /// lecture.
+  /// le Direct Play. Il retire la main à l'Auto jusqu'à la fin de cette
+  /// lecture, ou jusqu'à ce qu'« Auto » soit choisie à nouveau.
   Future<void> chooseQuality(String? key) {
-    _adaptive.noteUserChoice();
+    _auto.enabled = false;
+    _noteDisturbance();
     return key == null ? switchToDirectPlay() : switchToQuality(key);
-  }
-
-  /// Une mise en mémoire tampon vient de commencer. Si elle fait la preuve que
-  /// la connexion ne tient pas le débit, le lecteur descend d'un barreau.
-  void _noteStall() {
-    if (!AdaptiveQualityPreference.enabled) return;
-    // Un fichier sur le disque n'a pas de ligne à accuser, et un tampon vide
-    // avant la première image ou pendant un changement de session n'en accuse
-    // aucune.
-    if (isLocalPlayback || !hasFirstFrame || !isPlaying) return;
-    if (isSwitchingQuality || _hlsSwapInFlight) return;
-    final ladder = mediaTracks?.qualities ?? const <QualityTier>[];
-    if (ladder.isEmpty) return;
-    if (!_adaptive.noteStall(DateTime.now())) return;
-
-    final tier = AdaptiveQuality.stepDown(
-      ladder: ladder,
-      currentKey: currentQuality,
-      sourceHeight: mediaTracks?.video?.height ?? 0,
-      demandBps: _stats.declaredBitrateBps,
-    );
-    if (tier == null) return;
-    debugPrint('Player: la connexion ne suit pas '
-        '(${currentQuality ?? 'direct'}) — passage à ${tier.key}');
-    unawaited(switchToQuality(tier.key).then((_) {
-      // Annoncé une fois la session ouverte : un serveur qui la refuse laisse
-      // la lecture où elle était, et il n'y a alors rien à expliquer.
-      if (!_disposed && currentQuality == tier.key) {
-        onQualityAdapted?.call(tier);
-      }
-    }));
   }
 
   /// Switch transcoding quality (or start transcoding from Direct Play),
@@ -150,12 +123,29 @@ extension PlayerControllerHls on PlayerController {
   /// Core HLS (re)launch: ask the server for a fresh session, open its master
   /// playlist directly (mpv handles child playlists/segments), force the full
   /// duration and re-apply the audio/subtitle selection.
+  ///
+  /// [prepared] est une session déjà ouverte par l'Auto, qui commence à
+  /// [startSeconds] : il ne reste qu'à y passer. [quiet] tait le sablier — la
+  /// lecture arrive juste à cette seconde, il n'y a rien à faire patienter.
   Future<void> _openHlsSession({
     required String quality,
     required int startSeconds,
+    HlsSession? prepared,
+    HlsPreload? preload,
+    bool quiet = false,
   }) async {
-    if (_media == null || _apiClient == null || _disposed) return;
-    _adaptive.noteDisturbance(DateTime.now());
+    if (_media == null || _apiClient == null || _disposed) {
+      preload?.close();
+      return;
+    }
+    _noteDisturbance();
+    if (_hlsSwapInFlight && prepared != null) {
+      // Quelqu'un vient de demander autre chose : sa demande passe devant.
+      preload?.close();
+      unawaited(_apiClient!.destroyHlsSession(_media!.id, prepared.sessionId,
+          access: _playbackAccess));
+      return;
+    }
     if (_hlsSwapInFlight) {
       // Une session est déjà en train de s'ouvrir. Cette demande-ci était
       // ignorée : un second saut pendant l'ouverture était perdu, et la lecture
@@ -167,7 +157,7 @@ extension PlayerControllerHls on PlayerController {
       return;
     }
 
-    isSwitchingQuality = true;
+    if (!quiet) isSwitchingQuality = true;
     _hlsSwapInFlight = true;
     _hlsQualityInFlight = quality;
     // Move the reported position to the target straight away. The rebuild takes
@@ -177,13 +167,13 @@ extension PlayerControllerHls on PlayerController {
     // until the video finally starts.
     position = Duration(seconds: startSeconds);
     _onPositionChanged?.call();
-    _onQualitySwitchingChanged?.call();
+    if (!quiet) _onQualitySwitchingChanged?.call();
 
     final mediaId = _media!.id;
     final oldSessionId = _hlsSessionId;
     final api = _apiClient!;
     PlaybackAccess? access = _playbackAccess;
-    HlsSession? pendingSession;
+    HlsSession? pendingSession = prepared;
     var adopted = false;
 
     try {
@@ -195,14 +185,15 @@ extension PlayerControllerHls on PlayerController {
         }
         _playbackAccess = access;
       }
-      final hls = await api.startHlsSession(
-        mediaId,
-        quality,
-        startSeconds: startSeconds,
-        audioIndex: _selectedAudioIndex,
-        burnSubtitleIndex: _hlsBurnedSubTypedIndex,
-        access: access,
-      );
+      final hls = prepared ??
+          await api.startHlsSession(
+            mediaId,
+            quality,
+            startSeconds: startSeconds,
+            audioIndex: _selectedAudioIndex,
+            burnSubtitleIndex: _hlsBurnedSubTypedIndex,
+            access: access,
+          );
       pendingSession = hls;
       if (_disposed) return;
 
@@ -212,7 +203,10 @@ extension PlayerControllerHls on PlayerController {
             .destroyHlsSession(mediaId, oldSessionId, access: _playbackAccess);
       }
 
-      await session.applyStreamingTuning(PlaybackProfiles.current);
+      // Avec le début déjà téléchargé, le moteur a son avance d'emblée : il
+      // n'y a rien à lui faire sauter.
+      await session.applyStreamingTuning(PlaybackProfiles.current,
+          sourceReady: prepared != null && preload == null);
       // The session publishes exactly the renditions the server was asked for,
       // and the selection among them is made by index through _hlsAudioMap. A
       // language preference left over from Direct Play would only give mpv a
@@ -221,8 +215,15 @@ extension PlayerControllerHls on PlayerController {
       if (_disposed) return;
       // No longer a Direct Play stream opened at a known second.
       _openedAtSeconds = -1;
-      await session.open(hls.masterUrl, play: true);
+      if (quiet) {
+        _quietSwapUntil = DateTime.now().add(_quietSwapWindow);
+      }
+      await session.open(preload?.masterUrl ?? hls.masterUrl, play: true);
       if (_disposed) return;
+      // Le relais de la session précédente n'a plus de lecteur.
+      _hlsPreload?.close();
+      _hlsPreload = preload;
+      preload = null;
       // Two defects to undo on web. media_kit trusts `canPlayType` to decide
       // whether the browser speaks HLS — Chromium says "maybe" and cannot — so
       // hls.js has to be put back in charge. And it builds a fresh hls.js per
@@ -241,6 +242,9 @@ extension PlayerControllerHls on PlayerController {
       // assigned only once we know player.open() has actually taken effect.
       _hlsSessionId = hls.sessionId;
       _hlsVideoMode = hls.videoMode;
+      if (quality == _autoCeilingKey) {
+        _autoCeilingCopies = hls.isDirectStream;
+      }
       adopted = true;
       currentQuality = quality;
       _hlsStartOffset = startSeconds;
@@ -258,7 +262,7 @@ extension PlayerControllerHls on PlayerController {
       _onPositionChanged?.call();
 
       _reapplySelectionsAfterLoad();
-      _hideLoadingAfterBuffer();
+      if (!quiet) _hideLoadingAfterBuffer();
 
       // Kick off .vtt extraction in the background and poll until ready so a
       // language picked in Direct Play (or in the menu) attaches without reload.
@@ -277,6 +281,7 @@ extension PlayerControllerHls on PlayerController {
       if (!_disposed) _onQualitySwitchingChanged?.call();
     } finally {
       _hlsQualityInFlight = null;
+      preload?.close();
       if (!adopted && pendingSession != null) {
         await api.destroyHlsSession(mediaId, pendingSession.sessionId,
             access: access);
@@ -296,15 +301,31 @@ extension PlayerControllerHls on PlayerController {
     ));
   }
 
+  /// Ce que le sablier attend derrière un changement de source préparé.
+  static const _quietSwapWindow = Duration(seconds: 2);
+
   /// Switch back to Direct Play from HLS, resuming at the same second.
-  Future<void> switchToDirectPlay() async {
+  ///
+  /// [quiet] : c'est l'Auto qui remonte. Ni sablier ni durée remise à zéro —
+  /// celle de la session était déjà celle du fichier.
+  Future<void> switchToDirectPlay({bool quiet = false}) async {
     if (_media == null || _apiClient == null) return;
     if (currentQuality == null) return;
 
     final savedSeconds = position.inSeconds;
-    _adaptive.noteDisturbance(DateTime.now());
-    isSwitchingQuality = true;
-    _onQualitySwitchingChanged?.call();
+    // À la milliseconde quand c'est l'Auto qui remonte : rouvrir à la seconde
+    // entière rejouait jusqu'à une seconde de film, mesuré.
+    final resumeAt = quiet ? position : Duration(seconds: savedSeconds);
+    _noteDisturbance();
+    if (quiet) {
+      // Les positions que l'ancienne session envoie encore se liraient, sans
+      // son décalage, comme un retour au début du film.
+      _hlsSwapInFlight = true;
+      _quietSwapUntil = DateTime.now().add(_quietSwapWindow);
+    } else {
+      isSwitchingQuality = true;
+      _onQualitySwitchingChanged?.call();
+    }
 
     await _destroyHlsSession();
 
@@ -313,7 +334,7 @@ extension PlayerControllerHls on PlayerController {
     _hlsAudioMap = const [];
     // Direct Play renders bitmap subtitles natively; nothing is burned in.
     _hlsBurnedSubTypedIndex = -1;
-    duration = Duration.zero;
+    if (!quiet) duration = Duration.zero;
 
     await session.applyDirectPlayTuning(PlaybackProfiles.current);
     // Back to the file's own tracks: load straight onto the language the user
@@ -327,16 +348,20 @@ extension PlayerControllerHls on PlayerController {
     _openedAtSeconds = savedSeconds > 0 ? savedSeconds : 0;
     await session.open(
       streamUrl,
-      start: savedSeconds > 0 ? Duration(seconds: savedSeconds) : null,
+      start: savedSeconds > 0 ? resumeAt : null,
       play: true,
     );
     if (savedSeconds > 0) {
-      position = Duration(seconds: savedSeconds);
+      position = resumeAt;
       _onPositionChanged?.call();
     }
 
     _reapplySelectionsAfterLoad();
 
+    if (quiet) {
+      _hlsSwapInFlight = false;
+      return;
+    }
     isSwitchingQuality = false;
     _onQualitySwitchingChanged?.call();
   }
@@ -414,9 +439,7 @@ extension PlayerControllerHls on PlayerController {
   /// Absolute second up to which the player currently holds buffered media.
   int _bufferedAbsoluteSeconds() {
     try {
-      final buffered = session.bufferedAhead.inSeconds;
-      if (buffered <= 0) return position.inSeconds;
-      return buffered + _hlsStartOffset;
+      return (position + session.bufferedAhead).inSeconds;
     } catch (_) {
       return position.inSeconds;
     }
@@ -430,7 +453,7 @@ extension PlayerControllerHls on PlayerController {
   /// segments.
   Future<void> seekToAbsoluteSeconds(int absoluteSeconds) async {
     final target = absoluteSeconds < 0 ? 0 : absoluteSeconds;
-    _adaptive.noteDisturbance(DateTime.now());
+    _noteDisturbance();
 
     if (currentQuality == null) {
       await session.seek(Duration(seconds: target));
@@ -465,7 +488,7 @@ extension PlayerControllerHls on PlayerController {
   /// ensuite par la vitesse.
   Future<void> seekToAbsolutePosition(Duration target) async {
     if (target.isNegative) target = Duration.zero;
-    _adaptive.noteDisturbance(DateTime.now());
+    _noteDisturbance();
     if (currentQuality == null) {
       position = target;
       _onPositionChanged?.call();
@@ -516,6 +539,8 @@ extension PlayerControllerHls on PlayerController {
   }
 
   Future<void> _destroyHlsSession() async {
+    _hlsPreload?.close();
+    _hlsPreload = null;
     _hlsLiveSubtitles = null;
     _hlsRetainSeconds = null;
     liveSubtitles.stop();

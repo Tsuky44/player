@@ -172,6 +172,18 @@ func nativeTierHeight(sourceHeight int) int {
 	}
 }
 
+// isNativeTier dit si quality est le barreau d'origine de la résolution de la
+// source : « 1080p » pour un fichier 1080p, pas « 1080p-4m ». Ces cinq clés
+// sont celles d'avant l'échelle (ADR-0022) ; qui les demande veut la
+// résolution du fichier, pas un débit.
+func isNativeTier(quality string, sourceHeight int) bool {
+	switch quality {
+	case "360p", "480p", "720p", "1080p", "2160p":
+		return presetFor(quality).H == nativeTierHeight(sourceHeight)
+	}
+	return false
+}
+
 // bitrateBps is what the label promises: video plus audio. It reads the same
 // two fields the encoder is handed, so the number in the menu cannot describe a
 // stream the server does not produce.

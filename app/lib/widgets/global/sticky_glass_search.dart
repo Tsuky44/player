@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'glass_catalog_search.dart';
+import 'interface_tour/tour_anchor.dart';
 
 /// In-bar catalog search that fills the width given by its parent (e.g. Expanded).
 class InlineCatalogSearch extends StatelessWidget {
@@ -12,10 +13,13 @@ class InlineCatalogSearch extends StatelessWidget {
         final w = constraints.maxWidth.clamp(120.0, 420.0);
         return Align(
           alignment: Alignment.centerRight,
-          child: GlassCatalogSearch(
-            compactTrigger: false,
-            collapsedWidth: w,
-            expandedWidth: w,
+          child: TourTarget(
+            anchor: TourAnchor.search,
+            child: GlassCatalogSearch(
+              compactTrigger: false,
+              collapsedWidth: w,
+              expandedWidth: w,
+            ),
           ),
         );
       },

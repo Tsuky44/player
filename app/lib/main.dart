@@ -42,7 +42,7 @@ import 'tv/tv_pairing_link.dart';
 import 'tv/tv_touchpad.dart';
 import 'tv/tv_ui_scale.dart';
 import 'screens/player/display_frame_rate.dart';
-import 'screens/player/playback/adaptive_quality.dart';
+import 'screens/player/playback/auto_quality.dart';
 import 'services/picture_in_picture.dart';
 import 'screens/player/hardware_decoding.dart';
 import 'screens/player/playback_profile.dart';
@@ -185,7 +185,7 @@ void main() async {
     PlaybackCapabilitiesResolver.initialize(),
     HardwareDecoding.initialize(),
     DisplayFrameRate.initialize(),
-    AdaptiveQualityPreference.initialize(),
+    AutoQualityPreference.initialize(),
     // Les réglages de lecture que le player consulte sans attendre — le saut
     // d'intro automatique — chargés une fois pour toutes.
     PlaybackPreferencesStorage.initialize(),

@@ -265,8 +265,8 @@ class ExoPlaybackSession implements PlaybackSession {
   Duration get bufferedAhead {
     final status = _status;
     if (status == null) return Duration.zero;
-    final ahead = status.bufferedPositionMs - status.positionMs;
-    return Duration(milliseconds: ahead > 0 ? ahead : 0);
+    return aheadOf(Duration(milliseconds: status.bufferedPositionMs),
+        Duration(milliseconds: status.positionMs));
   }
 
   /// ExoPlayer travaille en 0..1 ; le reste de l'app parle en 0..100, comme
@@ -374,7 +374,8 @@ class ExoPlaybackSession implements PlaybackSession {
       _run((p) => p.applyTuning(_tuningFor(profile, streaming: false)));
 
   @override
-  Future<void> applyStreamingTuning(PlaybackProfile profile) =>
+  Future<void> applyStreamingTuning(PlaybackProfile profile,
+          {bool sourceReady = false}) =>
       _run((p) => p.applyTuning(_tuningFor(profile, streaming: true)));
 
   /// Traduit un profil — écrit dans le vocabulaire de mpv, en octets et en

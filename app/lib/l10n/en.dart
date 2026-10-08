@@ -64,8 +64,6 @@ const Map<String, String> kEnglish = <String, String>{
       'Refresh',
   'Adaptatif':
       'Fit',
-  'Adapter la qualité à la connexion':
-      'Adapt quality to the connection',
   'Adapter l’écran au film':
       'Match the display to the movie',
   'Administrateur':
@@ -270,6 +268,8 @@ const Map<String, String> kEnglish = <String, String>{
       'Australia',
   'Auto':
       'Auto',
+  'Auto · {0}':
+      'Auto · {0}',
   'Automatique (piste du fichier)':
       'Automatic (file track)',
   'Autoriser cet appareil':
@@ -524,8 +524,6 @@ const Map<String, String> kEnglish = <String, String>{
       'Could not connect.',
   'Connexion impossible. Vérifiez que le téléphone et le téléviseur sont sur le même réseau Wi-Fi.':
       'Could not connect. Check that the phone and the TV are on the same Wi-Fi network.',
-  'Connexion lente : qualité réduite à {0}':
-      'Slow connection: quality lowered to {0}',
   'Connexion à Emby':
       'Sign in to Emby',
   'Connexion à Emby impossible.':
@@ -1684,10 +1682,10 @@ const Map<String, String> kEnglish = <String, String>{
       'Period',
   'Qualité':
       'Quality',
+  'Qualité automatique':
+      'Automatic quality',
   'Quand la poser':
       'When to ask',
-  'Quand la lecture se coupe plusieurs fois de suite, passe à un débit que la connexion tient. Le menu Qualité du lecteur permet de remonter à tout moment.':
-      'When playback stalls several times in a row, switches to a bitrate the connection can hold. The player’s Quality menu lets you go back up at any time.',
   'Quand le bouton « Passer l’intro » apparaît, l’intro est sautée au bout de 5 secondes. Le moindre mouvement de souris ou appui sur une touche annule le saut.':
       'When the “Skip intro” button appears, the intro is skipped after 5 seconds. Any mouse movement or key press cancels the skip.',
   'Quand même':
@@ -1784,6 +1782,10 @@ const Map<String, String> kEnglish = <String, String>{
       'Required',
   'Restaurer':
       'Restore',
+  'S’adapte à la connexion':
+      'Adapts to the connection',
+  'Une lecture démarre au fichier tel quel, baisse le débit avant que l’image ne se fige et le remonte quand la connexion va mieux. Sinon elle reste au fichier tel quel ; le menu Qualité du lecteur garde les deux choix.':
+      'Playback starts with the file as it is, lowers the bitrate before the picture freezes and raises it again when the connection improves. Otherwise it stays on the file as it is; the player’s Quality menu keeps both choices.',
   'reste {0}':
       '{0} left',
   'Retirer':
@@ -2662,4 +2664,46 @@ const Map<String, String> kEnglish = <String, String>{
       '— no indexed path —',
   '≈ {0} par jour':
       '≈ {0} per day',
+  'Quelques repères pour vous y retrouver. Cela prend moins d’une minute.':
+      'A few landmarks to find your way around. It takes less than a minute.',
+  'Votre médiathèque':
+      'Your library',
+  'L’accueil reprend là où vous vous êtes arrêté. Films et Séries ouvrent tout le catalogue.':
+      'Home picks up where you left off. Movies and TV shows open the whole catalog.',
+  'Un titre manque ? Demandez-le ici et suivez son arrivée.':
+      'Missing a title? Request it here and follow its arrival.',
+  'Vos téléchargements vous attendent ici, prêts à être regardés sans connexion.':
+      'Your downloads wait here, ready to watch without a connection.',
+  'Recherche':
+      'Search',
+  'Retrouvez un film ou une série par son titre.':
+      'Find a movie or a TV show by its title.',
+  'Votre compte':
+      'Your account',
+  'Paramètres, serveurs et séances à plusieurs se trouvent dans ce menu.':
+      'Settings, servers and watch parties live in this menu.',
+  'Présentation de l’interface':
+      'Interface tour',
+  'Étape {0} sur {1}':
+      'Step {0} of {1}',
+  'Passer':
+      'Skip',
+  'Terminer':
+      'Finish',
+  'À la une':
+      'Featured',
+  'Le bandeau met un titre en avant. Lancez-le d’ici, ou ouvrez sa fiche.':
+      'The banner puts one title forward. Play it from here, or open its page.',
+  'Vos lectures en cours vous attendent ici. Un appui, et le film reprend où vous l’aviez laissé.':
+      'What you are watching waits here. One press, and it resumes where you left it.',
+  'Les nouveautés':
+      'New arrivals',
+  'Les derniers ajouts s’affichent ici. Ce que vous commencez apparaîtra juste au-dessus, prêt à être repris.':
+      'The latest additions show up here. What you start will appear just above, ready to resume.',
+  'Interface':
+      'Interface',
+  'Revoir la présentation':
+      'Replay the tour',
+  'Rejoue le tour de l’accueil et de la navigation.':
+      'Replays the tour of the home screen and the navigation.',
 };

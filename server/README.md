@@ -409,6 +409,7 @@ demandée reste dans celle du serveur.
 
 #### ➡️ Transcodage (HLS)
 * **Configuration :**
+  * `ONYX_DEV_LINE_KBPS` : **développement seulement.** Bride tous les flux vidéo (Direct Play et segments HLS) à ce débit, pour reproduire une ligne lente ; `0` démarre libre. Quand la variable est définie, `PUT /api/dev/line?kbps=N` (administrateur) change le débit pendant une lecture. Voir ADR-0056.
   * `MAX_TRANSCODES` : nombre maximal de sessions simultanées (par défaut la moitié des cœurs, au moins 4 ; `0` retire la limite). Au-delà, `/start` répond 503 avec `Retry-After`.
   * `HLS_DIR` : dossier de travail des sessions (par défaut `onyx-hls` dans le dossier temporaire du système). Les sessions laissées par un arrêt brutal y sont effacées au démarrage.
   * `HLS_MIN_FREE_MB` : espace libre minimal sur ce dossier pour ouvrir une session (`2048` par défaut, `0` pour désactiver).

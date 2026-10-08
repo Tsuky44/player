@@ -4,7 +4,7 @@ import '../../../services/playback_preferences_storage.dart';
 import '../../../theme/app_colors.dart';
 import '../../../utils/app_platform.dart';
 import '../../player/display_frame_rate.dart';
-import '../../player/playback/adaptive_quality.dart';
+import '../../player/playback/auto_quality.dart';
 import '../../player/hardware_decoding.dart';
 import '../widgets/settings_dropdown_label.dart';
 import '../widgets/settings_ui.dart';
@@ -160,20 +160,22 @@ class _PlaybackPageState extends State<PlaybackPage> {
         SettingsGroup(
           title: tr('Connexion'),
           // La ligne est celle au bout de laquelle se trouve cet appareil :
-          // le réglage ne suit pas le compte (ADR-0053).
+          // le réglage ne suit pas le compte (ADR-0056).
           footer: tr('Propre à cet appareil : il dépend du réseau où il se '
               'trouve.'),
           children: [
             SettingsSwitchTile(
               icon: Icons.network_check_rounded,
-              title: tr('Adapter la qualité à la connexion'),
+              title: tr('Qualité automatique'),
               subtitle:
-                  tr('Quand la lecture se coupe plusieurs fois de suite, '
-                      'passe à un débit que la connexion tient. Le menu '
-                      'Qualité du lecteur permet de remonter à tout moment.'),
-              value: AdaptiveQualityPreference.enabled,
+                  tr('Une lecture démarre au fichier tel quel, baisse le '
+                      'débit avant que l’image ne se fige et le remonte '
+                      'quand la connexion va mieux. Sinon elle reste au '
+                      'fichier tel quel ; le menu Qualité du lecteur garde '
+                      'les deux choix.'),
+              value: AutoQualityPreference.enabled,
               onChanged: (value) async {
-                await AdaptiveQualityPreference.setEnabled(value);
+                await AutoQualityPreference.setEnabled(value);
                 if (mounted) setState(() {});
               },
             ),

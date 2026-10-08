@@ -306,7 +306,7 @@ extension PlayerControllerTracks on PlayerController {
     if (index == _selectedAudioIndex) return;
     // Une piste qui change recharge le tampon, sans que la ligne y soit pour
     // rien.
-    _adaptive.noteDisturbance(DateTime.now());
+    _noteDisturbance();
     _selectedAudioIndex = index;
     _carriedAudioLang = null;
     final chosenLang = _selectedAudioLang;
@@ -381,6 +381,8 @@ extension PlayerControllerTracks on PlayerController {
         currentQuality == null) {
       final quality = qualityForSourceHeight(mediaTracks?.video?.height ?? 0);
       debugPrint('Player: Direct Play refusé ($failure) — repli HLS $quality');
+      _directPlayRuledOut = true;
+      _autoCeilingKey = quality;
       try {
         await switchToQuality(quality);
         return;
@@ -408,6 +410,9 @@ extension PlayerControllerTracks on PlayerController {
     final quality = qualityForSourceHeight(mediaTracks!.video?.height ?? 0);
     debugPrint("Player: ${track.codec} illisible en Direct Play "
         "(${PlaybackCapabilitiesResolver.current.label}) — HLS $quality");
+    // L'Auto ne ramènera pas la lecture sur une piste muette.
+    _directPlayRuledOut = true;
+    _autoCeilingKey = quality;
     await switchToQuality(quality);
   }
 

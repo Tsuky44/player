@@ -367,6 +367,9 @@ extension PlayerControllerStartup on PlayerController {
       _reapplySelectionsAfterLoad();
     }
     startHeartbeat(mediaId: mediaId, apiClient: apiClient);
+    _auto
+      ..enabled = AutoQualityPreference.enabled
+      ..start();
     _setPlaying(session.isPlaying);
     _scheduleDeferredSubtitleExtraction();
   }

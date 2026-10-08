@@ -323,9 +323,7 @@ class _PlayerScreenState extends State<PlayerScreen> {
     SleepTimer.instance.retain();
     StillWatching.instance.retain();
     SleepTimer.instance.addListener(_applySleepTimer);
-    _playerController = PlayerController()
-      ..onQualityAdapted = (tier) => _party.showNotice(
-          tr('Connexion lente : qualité réduite à {0}', [tier.label]));
+    _playerController = PlayerController();
     _party = PlayerWatchParty(
       controller: _playerController,
       api: () => _apiClient,

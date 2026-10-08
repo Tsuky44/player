@@ -16,6 +16,7 @@ import (
 
 	"project-player/server/config"
 	"project-player/server/database"
+	"project-player/server/devline"
 	"project-player/server/handlers"
 	"project-player/server/indexer"
 	"project-player/server/logging"
@@ -326,6 +327,13 @@ func main() {
 	// Publishing the installers this server hands out is server administration.
 	router.POST("/api/downloads", handlers.RequirePermission(models.PermManageSettings, handlers.UploadDownload))
 	router.DELETE("/api/downloads/:file", handlers.RequirePermission(models.PermManageSettings, handlers.DeleteDownload))
+
+	// Développement seulement : régler en cours de route le débit de la ligne
+	// que devline simule. La route n'existe pas sans ONYX_DEV_LINE_KBPS.
+	if devline.Enabled() {
+		router.GET("/api/dev/line", handlers.RequirePermission(models.PermManageSettings, devline.Handle))
+		router.PUT("/api/dev/line", handlers.RequirePermission(models.PermManageSettings, devline.Handle))
+	}
 
 	// 5. Temporary query tickets work with native players without custom headers.
 	router.GET("/stream", handlers.StreamMedia)

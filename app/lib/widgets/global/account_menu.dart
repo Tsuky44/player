@@ -7,6 +7,7 @@ import '../../theme/app_colors.dart';
 import '../../tv/tv_mode.dart';
 import '../../utils/app_platform.dart';
 import 'glass_chrome.dart';
+import 'interface_tour/tour_anchor.dart';
 import 'join_watch_party_dialog.dart';
 import '../../theme/app_icons.dart';
 import '../../theme/app_type.dart';
@@ -33,7 +34,9 @@ class AccountMenu extends StatelessWidget {
     final activeId = authProvider.activeServer?.id;
     final canSwitch = servers.length > 1;
 
-    return PopupMenuButton<String>(
+    return TourTarget(
+      anchor: TourAnchor.account,
+      child: PopupMenuButton<String>(
       tooltip: tr('Menu'),
       offset: const Offset(0, 44),
       padding: EdgeInsets.zero,
@@ -145,6 +148,7 @@ class AccountMenu extends StatelessWidget {
             color: AppColors.textPrimary,
           ),
         ),
+      ),
       ),
     );
   }

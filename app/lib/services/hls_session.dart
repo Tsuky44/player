@@ -42,6 +42,12 @@ class HlsSession {
   /// nouvelle session. Null : tout est gardé.
   final int? retainSeconds;
 
+  /// Vrai quand le serveur garde cette session en attente : elle ne remplace
+  /// celle qui est lue qu'à son premier segment demandé. Faux d'un serveur qui
+  /// ne connaît pas l'attente, où demander une session condamne déjà
+  /// l'ancienne. Voir ADR-0056.
+  final bool standby;
+
   HlsSession({
     required this.sessionId,
     required this.masterUrl,
@@ -53,6 +59,7 @@ class HlsSession {
     this.videoReason = '',
     this.subtitles,
     this.retainSeconds,
+    this.standby = false,
   });
 
   /// True when the picture is reaching the viewer untouched.
@@ -72,6 +79,7 @@ class HlsSession {
       videoMode: json['video_mode'] as String? ?? '',
       videoReason: json['video_reason'] as String? ?? '',
       retainSeconds: (json['retain_seconds'] as num?)?.toInt(),
+      standby: json['standby'] as bool? ?? false,
       subtitles: (json['subtitles'] as List?)
           ?.whereType<Map<String, dynamic>>()
           .map(LiveSubtitleSource.fromJson)
@@ -96,4 +104,21 @@ class LiveSubtitleSource {
         typedIndex: (json['typed_index'] as num?)?.toInt() ?? -1,
         url: json['url'] as String? ?? '',
       );
+}
+
+/// L'adresse de la variante vidéo d'une playlist maîtresse, telle qu'elle y
+/// est écrite (relative, ticket compris) : la première ligne qui suit un
+/// `#EXT-X-STREAM-INF`. Null si la playlist n'en annonce aucune.
+String? firstHlsVariantUri(String master) {
+  var expectUri = false;
+  for (final raw in master.split('\n')) {
+    final line = raw.trim();
+    if (line.isEmpty) continue;
+    if (line.startsWith('#EXT-X-STREAM-INF')) {
+      expectUri = true;
+    } else if (expectUri && !line.startsWith('#')) {
+      return line;
+    }
+  }
+  return null;
 }

@@ -487,6 +487,7 @@ extension _PlayerChrome on _PlayerScreenState {
 
   Future<void> _setPlaybackRate(double rate) async {
     await _playerController.session.setRate(rate * _party.rateFactor);
+    _playerController.playbackSpeed = rate;
     if (!mounted) return;
     _update(() => _playbackRate = rate);
     _showControlsTransient();
@@ -497,6 +498,7 @@ extension _PlayerChrome on _PlayerScreenState {
     final idx = rates.indexOf(_playbackRate);
     final next = rates[(idx < 0 ? 0 : idx + 1) % rates.length];
     await _playerController.session.setRate(next * _party.rateFactor);
+    _playerController.playbackSpeed = next;
     if (!mounted) return;
     _update(() => _playbackRate = next);
     _showControlsTransient();
@@ -506,8 +508,9 @@ extension _PlayerChrome on _PlayerScreenState {
   double get _bufferedFraction {
     final total = _playerController.duration.inSeconds;
     if (total <= 0) return 0;
-    return (_playerController.session.bufferedAhead.inSeconds / total)
-        .clamp(0.0, 1.0);
+    final buffered =
+        _playerController.position + _playerController.session.bufferedAhead;
+    return (buffered.inSeconds / total).clamp(0.0, 1.0);
   }
 
   /// Chapter starts as fractions, for the Chrome Onyx scrubber ticks. Empty when the

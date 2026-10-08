@@ -11,6 +11,7 @@ import '../../providers/home_provider.dart';
 import '../../services/api_client.dart';
 import '../../services/auto_updater_service.dart';
 import '../../services/download_manager.dart';
+import '../../services/interface_tour_storage.dart';
 import '../../services/server_reachability.dart';
 import '../../services/update_checker.dart';
 import '../../theme/app_colors.dart';
@@ -20,6 +21,8 @@ import '../../widgets/global/app_download_button.dart';
 import '../../widgets/global/app_update_dialog.dart';
 import '../../widgets/global/glass_catalog_search.dart';
 import '../../widgets/global/glass_chrome.dart';
+import '../../widgets/global/interface_tour/interface_tour.dart';
+import '../../widgets/global/interface_tour/tour_anchor.dart';
 import '../../desktop_window.dart';
 import '../../navigation/shell_navigator.dart';
 import '../../tv/tv_mode.dart';
@@ -104,8 +107,90 @@ class _MainShellState extends State<MainShell> {
     });
   }
 
+  /// Les zones du chrome que la présentation de l'interface montre.
+  final TourAnchors _tourAnchors = TourAnchors();
+
+  /// Le compte pour lequel la question « a-t-il vu la présentation ? » a déjà
+  /// été posée, pour ne la reposer qu'à un changement de compte.
+  String? _tourCheckedFor;
+  bool _tourOpen = false;
+  late final AuthProvider _auth = context.read<AuthProvider>();
+
+  /// Joue la présentation de l'interface à la première session d'un compte sur
+  /// cet appareil.
+  ///
+  /// Seulement sur l'accueil nu : par-dessus une fiche, une mise à jour ou
+  /// l'approbation d'un téléviseur, elle décrirait un écran qu'on ne voit pas.
+  /// Ce n'est que partie remise — rien n'est noté tant qu'elle n'a pas été
+  /// montrée, et elle revient au lancement suivant.
+  Future<void> _maybeStartTour() async {
+    final accountId = _auth.activeServer?.id;
+    if (accountId == null || accountId == _tourCheckedFor) return;
+    if (_auth.isOfflineSession || _tourOpen) return;
+    _tourCheckedFor = accountId;
+    if (await InterfaceTourStorage.hasSeen(accountId)) return;
+    if (mounted) await _playTour(onlyOnBareHome: true);
+  }
+
+  /// « Revoir la présentation », depuis les réglages : eux se sont déjà
+  /// refermés, il reste à revenir sur l'accueil.
+  void _onTourReplayRequested() {
+    if (_auth.isOfflineSession) return;
+    _selectTab(0);
+    unawaited(_playTour());
+  }
+
+  Future<void> _playTour({bool onlyOnBareHome = false}) async {
+    if (_tourOpen) return;
+    _tourOpen = true;
+    try {
+      // Le bandeau et les rangées font partie de ce qu'on montre : tant que
+      // l'accueil charge, ils n'existent pas.
+      await _homeSettled();
+      if (!mounted) return;
+      if (onlyOnBareHome) {
+        if (_selectedIndex != 0 || _pageOpen || _updateDialogOpen) return;
+        if (!(ModalRoute.of(context)?.isCurrent ?? true)) return;
+      }
+      final accountId = _auth.activeServer?.id;
+      await showInterfaceTour(context, anchors: _tourAnchors);
+      if (accountId != null) await InterfaceTourStorage.markSeen(accountId);
+    } finally {
+      _tourOpen = false;
+    }
+  }
+
+  /// Rend la main quand l'accueil a fini de charger — sur ses données ou sur
+  /// une erreur — et que son contenu est posé à l'écran.
+  Future<void> _homeSettled() async {
+    final home = context.read<HomeProvider>();
+    bool pending() =>
+        home.isLoading || (home.homeData == null && home.errorMessage == null);
+    if (pending()) {
+      final settled = Completer<void>();
+      void check() {
+        if (!mounted || !pending()) settled.complete();
+      }
+
+      home.addListener(check);
+      await settled.future;
+      home.removeListener(check);
+    }
+    await WidgetsBinding.instance.endOfFrame;
+  }
+
+  /// Un autre compte vient de s'ouvrir sans que la coquille soit remontée —
+  /// une bascule de serveur : c'est une première session comme une autre.
+  void _onAuthChanged() {
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) _maybeStartTour();
+    });
+  }
+
   @override
   void dispose() {
+    _auth.removeListener(_onAuthChanged);
+    InterfaceTourReplay.requests.removeListener(_onTourReplayRequested);
     _warmTimer?.cancel();
     _autoUpdate?.dispose();
     for (final node in _tabNodes) {
@@ -127,11 +212,16 @@ class _MainShellState extends State<MainShell> {
         if (mounted) _warmOtherTabs();
       });
       final code = TvPairingLink.take();
-      if (code == null) return;
+      if (code == null) {
+        _maybeStartTour();
+        return;
+      }
       Navigator.of(context).push(
         MaterialPageRoute(builder: (_) => TvPairingScreen(initialCode: code)),
       );
     });
+    _auth.addListener(_onAuthChanged);
+    InterfaceTourReplay.requests.addListener(_onTourReplayRequested);
     final api = context.read<ApiClient>();
     _autoUpdate = AutoUpdateService(
       findUpdate: () => UpdateChecker.findAvailableUpdate(api),
@@ -277,7 +367,10 @@ class _MainShellState extends State<MainShell> {
     // donc besoin de la lire qu'une fois. Voir l'ADR-0025. Ce qui vient en
     // surimpression — le menu de compte, la recherche du catalogue — n'entre
     // pas dans le groupe : il couvre le chrome et doit le flouter.
-    return BackdropGroup(child: _buildShell(context));
+    return TourAnchorScope(
+      anchors: _tourAnchors,
+      child: BackdropGroup(child: _buildShell(context)),
+    );
   }
 
   Widget _buildShell(BuildContext context) {
@@ -429,44 +522,61 @@ class _DesktopGlassHeader extends StatelessWidget {
           children: [
             GlassBrand(onTap: () => onTabSelected(0)),
             const SizedBox(width: 20),
-            GlassNavTab(
-              label: tr('Accueil'),
-              selected: selectedIndex == 0,
-              focusNode: tabNodes[0],
-              onTap: () => onTabSelected(0),
-            ),
-            GlassNavTab(
-              label: tr('Films'),
-              selected: selectedIndex == 1,
-              focusNode: tabNodes[1],
-              onTap: () => onTabSelected(1),
-            ),
-            GlassNavTab(
-              label: tr('Séries'),
-              selected: selectedIndex == 2,
-              focusNode: tabNodes[2],
-              onTap: () => onTabSelected(2),
+            TourTarget(
+              anchor: TourAnchor.library,
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  GlassNavTab(
+                    label: tr('Accueil'),
+                    selected: selectedIndex == 0,
+                    focusNode: tabNodes[0],
+                    onTap: () => onTabSelected(0),
+                  ),
+                  GlassNavTab(
+                    label: tr('Films'),
+                    selected: selectedIndex == 1,
+                    focusNode: tabNodes[1],
+                    onTap: () => onTabSelected(1),
+                  ),
+                  GlassNavTab(
+                    label: tr('Séries'),
+                    selected: selectedIndex == 2,
+                    focusNode: tabNodes[2],
+                    onTap: () => onTabSelected(2),
+                  ),
+                ],
+              ),
             ),
             // The whole request catalog sits behind request_media server-side,
             // so an account without it gets no entry point either.
             if (authProvider.permissions.requestMedia)
-              GlassNavTab(
-                label: tr('Demandes'),
-                selected: selectedIndex == 3,
-                focusNode: tabNodes[3],
-                onTap: () => onTabSelected(3),
+              TourTarget(
+                anchor: TourAnchor.requests,
+                child: GlassNavTab(
+                  label: tr('Demandes'),
+                  selected: selectedIndex == 3,
+                  focusNode: tabNodes[3],
+                  onTap: () => onTabSelected(3),
+                ),
               ),
             if (canDownload)
-              GlassNavTab(
-                label: tr('Téléchargements'),
-                selected: selectedIndex == 4,
-                focusNode: tabNodes[4],
-                onTap: () => onTabSelected(4),
+              TourTarget(
+                anchor: TourAnchor.downloads,
+                child: GlassNavTab(
+                  label: tr('Téléchargements'),
+                  selected: selectedIndex == 4,
+                  focusNode: tabNodes[4],
+                  onTap: () => onTabSelected(4),
+                ),
               ),
             const Spacer(),
-            const GlassCatalogSearch(
-              collapsedWidth: 200,
-              expandedWidth: 280,
+            const TourTarget(
+              anchor: TourAnchor.search,
+              child: GlassCatalogSearch(
+                collapsedWidth: 200,
+                expandedWidth: 280,
+              ),
             ),
             const SizedBox(width: 12),
             _IndexerActions(homeProvider: homeProvider),

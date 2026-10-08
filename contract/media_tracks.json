@@ -50,5 +50,6 @@
       "height": 14,
       "bitrate_bps": 15
     }
-  ]
+  ],
+  "source_bitrate_bps": 16
 }

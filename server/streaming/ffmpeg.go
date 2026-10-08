@@ -341,6 +341,18 @@ func audioAndMuxerArgs(opt TranscodeOptions, preset qualityPreset, audioIdxs []i
 		plan := PlanAudio(opt.Probe, idx, opt.caps(), preset)
 		if plan.Copy {
 			args = append(args, fmt.Sprintf("-c:a:%d", i), "copy")
+			if opt.StartSeconds > 0 && !opt.Video.Copy {
+				// Une piste recopiée part du point-clé où FFmpeg a cherché, donc
+				// avant la seconde demandée, et le multiplexeur décale toute la
+				// session d'autant. Mesuré sur une session demandée à 57 s, dans
+				// un fichier aux points-clés toutes les deux secondes : une
+				// seconde de son rejouée, l'image une seconde en retard, et une
+				// position affichée une seconde trop loin jusqu'à la fin.
+				//
+				// Pas quand l'image est recopiée elle aussi : elle part forcément
+				// de ce point-clé, et le son doit l'accompagner.
+				args = append(args, fmt.Sprintf("-copypriorss:a:%d", i), "0")
+			}
 			continue
 		}
 		args = append(args,

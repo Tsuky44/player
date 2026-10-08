@@ -7,7 +7,7 @@ import '../../../utils/app_platform.dart';
 import '../web/web_playback.dart';
 import '../display_frame_rate.dart';
 import '../hardware_decoding.dart';
-import '../playback/adaptive_quality.dart';
+import '../playback/auto_quality.dart';
 import '../playback/carried_subtitle.dart';
 import '../playback/embedded_subtitle_pairing.dart';
 import '../playback/hls_retain_window.dart';
@@ -18,6 +18,7 @@ import '../playback/playback_stats.dart';
 import '../playback/series_track_memory.dart';
 import '../playback/startup_timeline.dart';
 import 'playback_reporter.dart';
+import 'use_auto_quality.dart';
 import '../playback/timeline_previews.dart';
 import '../playback_profile.dart';
 import '../web_quality.dart';
@@ -26,6 +27,7 @@ import '../../../services/client_log.dart';
 import '../../../services/playback_access.dart';
 import '../../../services/dns_warmup.dart';
 import '../../../services/download_manager.dart';
+import '../../../services/hls_preload.dart';
 import '../../../services/playback_capabilities.dart';
 import '../../../services/playback_preferences_storage.dart';
 import '../player_playback_preferences.dart';
@@ -33,6 +35,7 @@ import '../player_playback_preferences.dart';
 // Le contrôleur est découpé par sujet : ce fichier garde l'état, le signal
 // de première image, les préférences héritées, le rapport au serveur et le
 // démontage. Le reste est dans des extensions, une par sujet. Voir ADR-0052.
+part 'player_controller_auto.dart';
 part 'player_controller_hls.dart';
 part 'player_controller_startup.dart';
 part 'player_controller_tracks.dart';
@@ -120,6 +123,8 @@ class PlayerController {
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (_disposed || hasFirstFrame) return;
       hasFirstFrame = true;
+      // Le tampon qui se remplit au démarrage n'est pas une ligne qui cale.
+      _noteDisturbance();
       _mark('shown');
       _printStartup();
       _startTimelinePreviews();
@@ -218,12 +223,45 @@ class PlayerController {
   /// `copy` or `encode`, as the server reported for the current HLS session.
   String _hlsVideoMode = '';
 
-  /// Quand descendre sur l'échelle des débits. Voir [AdaptiveQuality].
-  final AdaptiveQuality _adaptive = AdaptiveQuality();
+  /// La qualité automatique de cette lecture. Voir [AutoQualityPilot] et
+  /// ADR-0056.
+  late final AutoQualityPilot _auto = AutoQualityPilot(
+    read: _autoReading,
+    measureLine: _measureLine,
+    move: _autoMove,
+  );
 
-  /// Le lecteur vient de descendre de lui-même au barreau donné : l'écran le
-  /// dit, pour que l'image moins fine ait une explication.
-  ValueChanged<QualityTier>? onQualityAdapted;
+  /// Cet appareil ne lit pas ce fichier lui-même (codec ou piste audio qu'il
+  /// ne décode pas) : l'Auto ne remonte pas plus haut que [_autoCeilingKey],
+  /// le barreau pris à la place du Direct Play.
+  bool _directPlayRuledOut = false;
+  String? _autoCeilingKey;
+
+  /// Le serveur recopie l'image de ce barreau-là : il pèse ce que pèse le
+  /// fichier, pas son débit affiché.
+  bool _autoCeilingCopies = false;
+
+  /// Change à chaque fois que quelqu'un reprend la main sur la lecture : une
+  /// bascule en préparation qui ne retrouve pas le sien renonce.
+  int _handoffEpoch = 0;
+  bool _handoffInFlight = false;
+
+  /// La session préparée à côté de celle qui est lue, à rendre au serveur si
+  /// le lecteur se ferme avant de l'avoir prise.
+  String? _preparedSessionId;
+
+  /// Le relais local par lequel le moteur lit la session en cours, quand son
+  /// début a été téléchargé d'avance. Voir [HlsPreload].
+  HlsPreload? _hlsPreload;
+
+  /// Jusqu'à quand le sablier se tait derrière un changement de source
+  /// préparé : le moteur regarnit son tampon, et ça ne se montre que si ça
+  /// dure.
+  DateTime? _quietSwapUntil;
+
+  /// La vitesse de lecture choisie, que l'écran tient à jour : à 2×, le
+  /// tampon fond deux fois plus vite sans que la ligne y soit pour rien.
+  double playbackSpeed = 1;
 
   /// Les mesures de cette séance. Voir [PlaybackStatsCollector].
   final PlaybackStatsCollector _stats = PlaybackStatsCollector();
@@ -567,10 +605,29 @@ class PlayerController {
 
   void _setBuffering(bool buffering) {
     if (isBuffering == buffering) return;
+    final quietUntil = _quietSwapUntil;
+    if (buffering && quietUntil != null) {
+      _quietSwapUntil = null;
+      final left = quietUntil.difference(DateTime.now());
+      if (left > Duration.zero) {
+        final seen = position;
+        Timer(left, () {
+          // mpv se dit encore « en tampon » deux secondes après avoir repris,
+          // pendant que l'image défile : seul un film qui n'avance pas mérite
+          // le sablier.
+          final moving =
+              position - seen > const Duration(milliseconds: 500);
+          if (!_disposed && session.isBuffering && !moving) {
+            _setBuffering(true);
+          }
+        });
+        return;
+      }
+    }
     isBuffering = buffering;
     _stats.noteBuffering(buffering);
     _onBufferingChanged?.call();
-    if (buffering) _noteStall();
+    if (buffering) unawaited(_auto.noteStall());
   }
 
   void togglePlayPause() {
@@ -578,7 +635,7 @@ class PlayerController {
     _setPlaying(next);
     if (next) {
       // Une reprise regarnit le tampon : ce n'est pas la ligne qui cale.
-      _adaptive.noteDisturbance(DateTime.now());
+      _noteDisturbance();
       session.play();
     } else {
       session.pause();
@@ -642,12 +699,17 @@ class PlayerController {
 
   Future<void> _releasePlaybackAccess() async {
     final access = _playbackAccess;
-    final sessionId = _hlsSessionId;
+    final sessionIds = [_hlsSessionId, _preparedSessionId].nonNulls.toList();
     _playbackAccess = null;
     _hlsSessionId = null;
-    if (sessionId != null && _media != null && _apiClient != null) {
-      await _apiClient!
-          .destroyHlsSession(_media!.id, sessionId, access: access);
+    _preparedSessionId = null;
+    _hlsPreload?.close();
+    _hlsPreload = null;
+    if (_media != null && _apiClient != null) {
+      for (final sessionId in sessionIds) {
+        await _apiClient!
+            .destroyHlsSession(_media!.id, sessionId, access: access);
+      }
     }
     await access?.close();
   }
@@ -659,6 +721,7 @@ class PlayerController {
 
   void cancelStreams() {
     _printStartup(complete: false);
+    _auto.stop();
     _reportActivityStopped();
     _stats.stop();
     _disposeTimelinePreviews();
@@ -689,6 +752,7 @@ class PlayerController {
 
   void dispose() {
     _printStartup(complete: false);
+    _auto.stop();
     _reportActivityStopped();
     _stats.stop();
     _disposeTimelinePreviews();

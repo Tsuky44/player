@@ -102,6 +102,11 @@ type mediaTracksResponse struct {
 	Audio     []streaming.AudioStreamInfo `json:"audio"`
 	Subtitles []interface{}               `json:"subtitles"`
 	Qualities []streaming.QualityTier     `json:"qualities"`
+	// SourceBitrateBps est ce que le fichier demande à la ligne en Direct
+	// Play, taille sur durée. La qualité automatique du lecteur s'en sert pour
+	// savoir quel barreau est vraiment plus léger que le fichier, et quand la
+	// ligne peut le reprendre (ADR-0056). 0 : inconnu.
+	SourceBitrateBps int64 `json:"source_bitrate_bps"`
 }
 
 type playbackTicketResponse struct {

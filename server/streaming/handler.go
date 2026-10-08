@@ -11,6 +11,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"project-player/server/devline"
 	"project-player/server/playbackauth"
 	"strconv"
 	"strings"
@@ -196,6 +197,10 @@ type startResponse struct {
 	// the URL it grows at. Absent from a server that predates ADR-0031, which
 	// the client takes as "fetch them the old way".
 	Subtitles []liveSubtitle `json:"subtitles"`
+	// Standby confirme que la session attend son lecteur sans rien remplacer
+	// (`standby=1`). Absent d'un serveur qui ne connaît pas l'attente : la
+	// session en cours y est déjà condamnée, et le client ne peut plus renoncer.
+	Standby bool `json:"standby,omitempty"`
 }
 
 // liveSubtitle is one text track a session writes, as /start announces it.
@@ -342,6 +347,10 @@ func (h *Handler) handleStart(w http.ResponseWriter, r *http.Request, mediaID in
 		cancel:         cancel,
 		cmd:            cmd,
 	}
+	// Une session préparée : le lecteur lit encore autre chose, et ne passera
+	// à celle-ci qu'à la seconde où elle commence (ADR-0056).
+	standby := isTruthy(r.URL.Query().Get("standby"))
+	session.standby = standby
 	cmd.Stderr = &session.stderr
 
 	if err := session.Start(); err != nil {
@@ -376,8 +385,15 @@ func (h *Handler) handleStart(w http.ResponseWriter, r *http.Request, mediaID in
 		return
 	}
 
-	// The one this ticket watched until now is being replaced.
-	h.manager.Supersede(ticketHash, sessionID)
+	if standby {
+		// Elle ne remplace rien avant d'être lue : la session en cours doit
+		// vivre jusqu'au changement de source, et au-delà si le lecteur
+		// renonce. Une attente plus ancienne, elle, ne sert plus.
+		h.manager.DropStandby(ticketHash, sessionID)
+	} else {
+		// The one this ticket watched until now is being replaced.
+		h.manager.Supersede(ticketHash, sessionID)
+	}
 
 	videoMode := "encode"
 	// The screen may have closed while FFmpeg was starting. Do not publish an
@@ -413,6 +429,7 @@ func (h *Handler) handleStart(w http.ResponseWriter, r *http.Request, mediaID in
 		Container:      string(caps.Container),
 		RetainSeconds:  retain,
 		Subtitles:      subtitles,
+		Standby:        standby,
 	}
 
 	w.Header().Set("Content-Type", "application/json")
@@ -448,8 +465,13 @@ func (h *Handler) handleServeFile(w http.ResponseWriter, r *http.Request, sessio
 		return
 	}
 
-	if idx, isSeg := parseVideoSegmentIndex(filename); isSeg {
+	// `warm=1` : le lecteur prend d'avance le début d'une session préparée,
+	// pendant qu'il lit encore l'autre (ADR-0056). Ce n'est pas encore la lire :
+	// rien n'est remplacé, et l'encodeur n'a pas à courir devant.
+	warming := isTruthy(r.URL.Query().Get("warm"))
+	if idx, isSeg := parseVideoSegmentIndex(filename); isSeg && !warming {
 		session.NoteSegment(idx)
+		h.manager.Claim(session)
 	} else {
 		session.Touch()
 	}
@@ -514,6 +536,7 @@ func (h *Handler) handleServeFile(w http.ResponseWriter, r *http.Request, sessio
 		// Reauthorize every request, including seeks. A cache must not continue
 		// serving personal media after ticket expiry or revocation.
 		w.Header().Set("Cache-Control", "private, no-store")
+		w = devline.Wrap(w)
 	case ".m3u8":
 		w.Header().Set("Content-Type", "application/vnd.apple.mpegurl")
 		// The variant playlist grows as segments land — never cache it.
@@ -594,119 +617,6 @@ func waitForSessionFile(session *TranscodeSession, path string, timeout time.Dur
 		time.Sleep(25 * time.Millisecond)
 	}
 	return false
-}
-
-// loadCachedProbe returns the probe persisted by the indexer, provided the file
-// has not changed on disk since. Mirrors indexer.LoadCachedProbe, which cannot
-// be imported here (indexer already depends on this package).
-func (h *Handler) loadCachedProbe(mediaID int, filePath string) (*ProbeResult, bool) {
-	var tracksJSON sql.NullString
-	var storedModTime sql.NullInt64
-	err := h.db.QueryRow(
-		"SELECT tracks_json, file_mod_time FROM medias WHERE id = ?",
-		mediaID,
-	).Scan(&tracksJSON, &storedModTime)
-	if err != nil || !tracksJSON.Valid || tracksJSON.String == "" {
-		return nil, false
-	}
-
-	info, err := os.Stat(filePath)
-	if err != nil {
-		return nil, false
-	}
-	if storedModTime.Valid && storedModTime.Int64 != info.ModTime().Unix() {
-		return nil, false
-	}
-
-	probe, err := UnmarshalProbeResult(tracksJSON.String)
-	if err != nil {
-		return nil, false
-	}
-	// An entry written by an older build carries fewer fields than the
-	// copy-or-encode decision now reads, and a missing field is
-	// indistinguishable from a "no" — so it is re-probed once and rewritten
-	// rather than trusted. See probeVersion.
-	if !probe.Current() {
-		return nil, false
-	}
-	return probe, true
-}
-
-// persistProbe rewrites the cached probe after a live one, so a media whose
-// entry was stale costs one ffprobe in total rather than one per session start.
-//
-// Deliberately narrow: it touches tracks_json and the mod-time stamp that
-// validates it, and leaves every other column to the indexer.
-func (h *Handler) persistProbe(mediaID int, filePath string, probe *ProbeResult) {
-	tracksJSON, err := MarshalProbeResult(probe)
-	if err != nil {
-		return
-	}
-	var modTime int64
-	if info, statErr := os.Stat(filePath); statErr == nil {
-		modTime = info.ModTime().Unix()
-	}
-	if _, err := h.db.Exec(
-		"UPDATE medias SET tracks_json = ?, file_mod_time = ?, probed_at = CURRENT_TIMESTAMP WHERE id = ?",
-		tracksJSON, modTime, mediaID,
-	); err != nil {
-		log.Printf("HLS: failed to persist refreshed probe for media %d: %v", mediaID, err)
-	}
-}
-
-// defaultCopyBitrateCeiling caps what the server will push out untouched.
-//
-// Copying the picture means sending the file's own bitrate, with no ceiling of
-// its own — a Blu-ray remux at 30 Mbps would leave the CPU idle and stall the
-// viewer instead. 12 Mbps clears ordinary 1080p rips (3–10 Mbps) while keeping
-// remuxes on the transcoding path. Override with COPY_BITRATE_CEILING_MBPS; 0
-// disables the ceiling entirely.
-const defaultCopyBitrateCeiling = 12_000_000
-
-func copyBitrateCeiling() int64 {
-	raw := strings.TrimSpace(os.Getenv("COPY_BITRATE_CEILING_MBPS"))
-	if raw == "" {
-		return defaultCopyBitrateCeiling
-	}
-	mbps, err := strconv.ParseFloat(raw, 64)
-	if err != nil || mbps < 0 {
-		log.Printf("HLS: invalid COPY_BITRATE_CEILING_MBPS %q, using default", raw)
-		return defaultCopyBitrateCeiling
-	}
-	return int64(mbps * 1_000_000)
-}
-
-// sourceBitrate estimates the file's overall bitrate in bits per second from
-// what the indexer already stores, so no extra probe is needed.
-//
-// It counts audio and subtitles along with the picture, which overstates the
-// video slightly — an error in the safe direction: it can only push a borderline
-// file onto the transcoding path, never the reverse.
-func (h *Handler) sourceBitrate(mediaID int) int64 {
-	var fileSize sql.NullInt64
-	var duration sql.NullInt64
-	err := h.db.QueryRow(
-		"SELECT file_size, duration FROM medias WHERE id = ?", mediaID,
-	).Scan(&fileSize, &duration)
-	if err != nil || !fileSize.Valid || !duration.Valid ||
-		fileSize.Int64 <= 0 || duration.Int64 <= 0 {
-		return 0 // unknown — treated as "no ceiling breach"
-	}
-	return fileSize.Int64 * 8 / duration.Int64
-}
-
-func (h *Handler) getMediaFilePath(mediaID int) (string, error) {
-	var filePath string
-	if err := h.db.QueryRow("SELECT file_path FROM medias WHERE id = ?", mediaID).Scan(&filePath); err != nil {
-		return "", err
-	}
-	if filePath == "" {
-		return "", fmt.Errorf("media has no file path")
-	}
-	if _, err := os.Stat(filePath); os.IsNotExist(err) {
-		return "", fmt.Errorf("physical file not found: %s", filePath)
-	}
-	return filePath, nil
 }
 
 // isBurnableSubtitle reports whether 0:s:index is a bitmap subtitle stream.

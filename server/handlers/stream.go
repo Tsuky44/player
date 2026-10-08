@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"project-player/server/database"
+	"project-player/server/devline"
 	"project-player/server/models"
 	"project-player/server/playbackauth"
 	"project-player/server/streamcache"
@@ -64,6 +65,7 @@ func StreamMedia(w http.ResponseWriter, r *http.Request, _ httprouter.Params) {
 	if !allowed {
 		return
 	}
+	w = devline.Wrap(w)
 	var metrics *streamMetrics
 	if streamDebugEnabled() {
 		metrics = newStreamMetrics(w, r, mediaID, start)

@@ -221,15 +221,25 @@ class _OnyxSettingsMenuState extends State<OnyxSettingsMenu> {
   // --- Current-value summaries shown on the root rows ----------------------
 
   String get _qualityValue {
+    final playing = _playingQualityLabel(short: true);
+    // En Auto, la ligne dit les deux : qui choisit, et ce qui est joué.
+    return (_controller?.isAutoQuality ?? false)
+        ? tr('Auto · {0}', [playing])
+        : playing;
+  }
+
+  /// Ce qui est joué en ce moment : le fichier, ou un barreau de l'échelle.
+  ///
+  /// [short] pour la ligne de résumé, étroite : la résolution seule, sans le
+  /// débit qui l'accompagne dans le menu déroulé.
+  String _playingQualityLabel({required bool short}) {
     final quality = _controller?.currentQuality;
     if (quality == null) {
       return directSourceLabel(local: _controller?.isLocalPlayback ?? false)
           .label;
     }
-    // La ligne de résumé est étroite : la résolution seule, sans le débit qui
-    // l'accompagne dans le menu déroulé.
     for (final tier in _qualityTiers) {
-      if (tier.key == quality) return tier.resolutionLabel;
+      if (tier.key == quality) return short ? tier.resolutionLabel : tier.label;
     }
     return quality == '2160p' ? '4K' : quality;
   }
@@ -459,14 +469,31 @@ class _OnyxSettingsMenuState extends State<OnyxSettingsMenu> {
       streamSubtitle: tr('Le fichier tel quel'),
     );
 
+    final auto = controller.isAutoQuality;
+
     return _sectionList([
+      // L'Auto choisit entre toutes les lignes qui suivent, d'après ce que la
+      // connexion porte (ADR-0056). Absente d'un fichier téléchargé et face à
+      // un serveur qui n'annonce pas ses débits : elle n'aurait rien à choisir.
+      if (controller.autoQualityAvailable)
+        _OnyxMenuOption(
+          label: tr('Auto'),
+          subtitle: auto
+              ? _playingQualityLabel(short: false)
+              : tr('S’adapte à la connexion'),
+          selected: auto,
+          onTap: () {
+            widget.onClose();
+            controller.chooseAutoQuality();
+          },
+        ),
       // Direct Play is native-only: it hands the player the file itself, which
       // a browser cannot open.
       if (!AppPlatform.isWeb)
         _OnyxMenuOption(
           label: direct.label,
           subtitle: direct.subtitle,
-          selected: controller.currentQuality == null,
+          selected: !auto && controller.currentQuality == null,
           onTap: () {
             widget.onClose();
             controller.chooseQuality(null);
@@ -477,7 +504,7 @@ class _OnyxSettingsMenuState extends State<OnyxSettingsMenu> {
           return _OnyxMenuOption(
             label: tier.resolutionLabel,
             subtitle: tier.bitrateLabel,
-            selected: controller.currentQuality == tier.key,
+            selected: !auto && controller.currentQuality == tier.key,
             onTap: () {
               widget.onClose();
               controller.chooseQuality(tier.key);

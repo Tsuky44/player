@@ -305,8 +305,8 @@ class AetherPlaybackSession implements PlaybackSession {
   Duration get bufferedAhead {
     final status = _status;
     if (status == null) return Duration.zero;
-    final ahead = status.bufferedPositionMs - status.positionMs;
-    return Duration(milliseconds: ahead > 0 ? ahead : 0);
+    return aheadOf(Duration(milliseconds: status.bufferedPositionMs),
+        Duration(milliseconds: status.positionMs));
   }
 
   @override
@@ -362,7 +362,8 @@ class AetherPlaybackSession implements PlaybackSession {
   Future<void> applyDirectPlayTuning(PlaybackProfile profile) async {}
 
   @override
-  Future<void> applyStreamingTuning(PlaybackProfile profile) async {}
+  Future<void> applyStreamingTuning(PlaybackProfile profile,
+      {bool sourceReady = false}) async {}
 
   @override
   Future<void> setPreferredAudioLanguages(List<String> priorities) =>

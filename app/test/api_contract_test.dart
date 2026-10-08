@@ -119,6 +119,8 @@ void main() {
     expect(tracks.subtitles, hasLength(1));
     expect(tracks.qualities, hasLength(1),
         reason: 'une marche sans `key` ni `label` est écartée par l\'app');
+    expect(tracks.sourceBitrateBps, greaterThan(0),
+        reason: 'la qualité automatique choisit ses barreaux contre ce débit');
   });
 
   test('ce que le serveur annonce de lui-même', () {

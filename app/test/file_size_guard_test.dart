@@ -37,10 +37,6 @@ const Map<String, (int ceiling, String why)> _grandfathered = {
     866,
     'quinze widgets de réglages ; à ranger par famille',
   ),
-  'lib/screens/player/playback/mpv_playback_session.dart': (
-    801,
-    'au seuil : le prochain ajout commence par une extraction',
-  ),
 };
 
 /// Fichiers que la limite ne concerne pas, et pourquoi.
