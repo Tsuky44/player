@@ -145,6 +145,73 @@ const maxAC3Channels = 6
 // channels — is what this produces for a client that declares nothing, so
 // nothing regresses.
 func PlanAudio(probe *ProbeResult, typedIndex int, caps Capabilities, preset qualityPreset) AudioPlan {
+	return PlanAudioWithin(probe, typedIndex, caps, preset, 0)
+}
+
+// AudioBudget est ce que le son d'une session peut peser, en bits par seconde,
+// ou 0 quand rien ne le borne.
+//
+// Un barreau est une promesse de débit (ADR-0022), et son étiquette compte le
+// son au débit du préréglage. Recopiée, une piste pèse ce qu'elle pèse dans le
+// fichier : mesuré sur un film en E-AC-3 7.1 à 1 Mbit/s, « 360p · 420 kbit/s »
+// en envoyait 1,4 et « 1080p · 4 Mbit/s » en envoyait 5, sur une ligne à 5 —
+// la qualité automatique descendait sans que la ligne en soit soulagée
+// (ADR-0056). Le son a droit à sa part du préréglage, plus un dixième du
+// barreau : assez pour garder un 5.1 là où il ne change rien au débit, trop peu
+// pour qu'il double un barreau du bas.
+//
+// Une image recopiée n'est pas un barreau : la session envoie le fichier, et
+// le son l'accompagne tel quel.
+func AudioBudget(quality string, video VideoPlan) int {
+	if video.Copy {
+		return 0
+	}
+	preset := presetFor(quality)
+	audio := parseBitrate(preset.AudioBitrate)
+	return audio + (parseBitrate(preset.VideoBitrate)+audio)/10
+}
+
+// audioWeightBps est ce qu'une piste pèse dans le fichier. Matroska ne
+// l'annonce presque jamais : faute de chiffre, ce que le codec pèse d'habitude
+// pour ce nombre de canaux, et « trop » pour ceux qui ne compressent pas.
+func audioWeightBps(a AudioStreamInfo) int {
+	if a.BitRate > 0 {
+		return a.BitRate
+	}
+	channels := a.Channels
+	if channels < 2 {
+		channels = 2
+	}
+	switch canonicalAudioCodec(a.Codec) {
+	case "aac", "opus", "vorbis":
+		return channels * 64_000
+	case "mp3":
+		return 320_000
+	case "ac3":
+		if channels > 2 {
+			return 640_000
+		}
+		return 224_000
+	case "eac3":
+		if channels > 6 {
+			return 1_024_000
+		}
+		if channels > 2 {
+			return 768_000
+		}
+		return 224_000
+	case "dts":
+		return 1_536_000
+	default:
+		// TrueHD, FLAC, PCM, ou un codec inconnu.
+		return 1 << 30
+	}
+}
+
+// PlanAudioWithin est PlanAudio pour une session dont le son ne doit pas peser
+// plus que budgetBps (voir AudioBudget) ; 0 ne borne rien.
+func PlanAudioWithin(probe *ProbeResult, typedIndex int, caps Capabilities, preset qualityPreset, budgetBps int) AudioPlan {
+	fits := func(bps int) bool { return budgetBps <= 0 || bps <= budgetBps }
 	stereoFallback := AudioPlan{
 		Codec:    "aac",
 		Channels: 2,
@@ -166,7 +233,8 @@ func PlanAudio(probe *ProbeResult, typedIndex int, caps Capabilities, preset qua
 	if codec != "" &&
 		caps.DecodesAudio(codec) &&
 		caps.CanCarryAudio(codec) &&
-		srcChannels <= caps.MaxAudioChannels {
+		srcChannels <= caps.MaxAudioChannels &&
+		fits(audioWeightBps(a)) {
 		return AudioPlan{Copy: true, Channels: srcChannels}
 	}
 
@@ -188,6 +256,11 @@ func PlanAudio(probe *ProbeResult, typedIndex int, caps Capabilities, preset qua
 			if ch > maxAC3Channels {
 				ch = maxAC3Channels
 			}
+			if !fits(parseBitrate(surroundBitrate(candidate, ch))) {
+				// Même réencodé, le 5.1 pèserait plus que le barreau ne le
+				// permet : stéréo, au débit du préréglage.
+				return stereoFallback
+			}
 			return AudioPlan{
 				Codec:    candidate,
 				Channels: ch,
@@ -197,6 +270,9 @@ func PlanAudio(probe *ProbeResult, typedIndex int, caps Capabilities, preset qua
 	}
 	// Multichannel AAC as the last surround option: universally muxable, and
 	// every client that declares more than two channels decodes it.
+	if !fits(outChannels * 64_000) {
+		return stereoFallback
+	}
 	return AudioPlan{
 		Codec:    "aac",
 		Channels: outChannels,

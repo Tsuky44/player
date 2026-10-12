@@ -64,15 +64,27 @@ class SeriesTrackPreferences {
   /// Null tant que rien n'a été choisi pour les sous-titres de cette série.
   final SeriesSubtitleChoice? subtitle;
 
-  const SeriesTrackPreferences({this.audioLang, this.subtitle});
+  /// La langue qu'on a choisi d'attendre plutôt que de poursuivre la série
+  /// dans une autre, ou null quand on n'attend rien (ADR-0057).
+  final String? awaitAudioLang;
 
+  const SeriesTrackPreferences({
+    this.audioLang,
+    this.subtitle,
+    this.awaitAudioLang,
+  });
+
+  /// Rien à appliquer à un épisode. La langue attendue n'entre pas en compte :
+  /// elle ne règle aucune piste, elle dit ce que l'accueil doit proposer.
   bool get isEmpty => audioLang == null && subtitle == null;
 
   factory SeriesTrackPreferences.fromJson(Map<String, dynamic> json) {
     final lang = (json['audio_lang'] as String?)?.trim() ?? '';
+    final awaited = (json['await_audio_lang'] as String?)?.trim() ?? '';
     return SeriesTrackPreferences(
       audioLang: lang.isEmpty ? null : lang,
       subtitle: SeriesSubtitleChoice.fromJson(json['subtitle']),
+      awaitAudioLang: awaited.isEmpty ? null : awaited,
     );
   }
 
@@ -80,11 +92,27 @@ class SeriesTrackPreferences {
   Map<String, Object> toJson() => {
         'audio_lang': audioLang ?? '',
         if (subtitle != null) 'subtitle': subtitle!.toJson(),
+        'await_audio_lang': awaitAudioLang ?? '',
       };
 
-  SeriesTrackPreferences withAudioLang(String lang) =>
-      SeriesTrackPreferences(audioLang: lang, subtitle: subtitle);
+  SeriesTrackPreferences withAudioLang(String lang) => SeriesTrackPreferences(
+        audioLang: lang,
+        subtitle: subtitle,
+        awaitAudioLang: awaitAudioLang,
+      );
 
   SeriesTrackPreferences withSubtitle(SeriesSubtitleChoice choice) =>
-      SeriesTrackPreferences(audioLang: audioLang, subtitle: choice);
+      SeriesTrackPreferences(
+        audioLang: audioLang,
+        subtitle: choice,
+        awaitAudioLang: awaitAudioLang,
+      );
+
+  /// [lang] vide pour cesser d'attendre.
+  SeriesTrackPreferences withAwaitedAudio(String lang) =>
+      SeriesTrackPreferences(
+        audioLang: audioLang,
+        subtitle: subtitle,
+        awaitAudioLang: lang.isEmpty ? null : lang,
+      );
 }

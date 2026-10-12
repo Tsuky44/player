@@ -151,11 +151,17 @@ type resumeEpisodeResponse struct {
 // nextEpisodeResponse : `episode` n'existe que si `has_next`, et les deux
 // cartes de fin (saison à demander, épisode à venir) seulement quand elles ont
 // quelque chose à proposer. L'app distingue une clé absente d'une carte vide.
+//
+// `episode_audio_langs` sont les langues audio de `episode`, celle qu'on
+// entendra par défaut en tête : le lecteur y lit s'il peut enchaîner dans la
+// langue qu'on écoute (ADR-0057). Absent tant que le fichier n'a pas été sondé
+// ou qu'aucune de ses pistes ne déclare sa langue.
 type nextEpisodeResponse struct {
-	HasNext         bool                    `json:"has_next"`
-	Episode         *models.HomeMediaItem   `json:"episode,omitempty"`
-	NextSeason      *nextSeasonPayload      `json:"next_season,omitempty"`
-	UpcomingEpisode *upcomingEpisodePayload `json:"upcoming_episode,omitempty"`
+	HasNext           bool                    `json:"has_next"`
+	Episode           *models.HomeMediaItem   `json:"episode,omitempty"`
+	EpisodeAudioLangs []string                `json:"episode_audio_langs,omitempty"`
+	NextSeason        *nextSeasonPayload      `json:"next_season,omitempty"`
+	UpcomingEpisode   *upcomingEpisodePayload `json:"upcoming_episode,omitempty"`
 }
 
 type subtitleExtractionResponse struct {

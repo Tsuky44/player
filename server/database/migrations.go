@@ -667,6 +667,29 @@ var migrations = []migration{
 			);`,
 		},
 	},
+	{
+		id:   21,
+		name: "audio languages per media and awaited language",
+		// Voir ADR-0057. tracks_json dit quelles langues un fichier porte, pas
+		// depuis quand : media_audio_langs garde une ligne par média et par
+		// langue, datée du jour où le serveur l'a vue pour la première fois.
+		// C'est ce qui permet d'annoncer la VF d'un épisode présent depuis des
+		// semaines en VO. `und` tient la place d'un fichier sans langue
+		// déclarée, pour qu'il ne soit pas relu à chaque démarrage.
+		// await_audio_lang vaut '' tant que le compte n'attend aucune langue
+		// pour cette série.
+		stmts: []string{
+			`CREATE TABLE IF NOT EXISTS media_audio_langs (
+				media_id INTEGER NOT NULL,
+				lang TEXT NOT NULL,
+				position INTEGER NOT NULL DEFAULT 0,
+				first_seen_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+				PRIMARY KEY (media_id, lang),
+				FOREIGN KEY (media_id) REFERENCES medias(id) ON DELETE CASCADE
+			);`,
+			`ALTER TABLE user_show_track_preferences ADD COLUMN await_audio_lang TEXT NOT NULL DEFAULT '';`,
+		},
+	},
 }
 
 // applyMigrations brings the database up to the latest schema version.

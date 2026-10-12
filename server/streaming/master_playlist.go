@@ -69,6 +69,9 @@ type MasterPlaylistOptions struct {
 	// BandwidthBps is what the variant is advertised at. Zero falls back to the
 	// preset's own ceiling.
 	BandwidthBps int
+	// AudioBudgetBps est celui que FFmpeg a reçu : les deux doivent annoncer
+	// les mêmes canaux. Voir AudioBudget.
+	AudioBudgetBps int
 	// Caps is the client declaration the session was built from. The renditions
 	// have to be described as they are actually being produced, and since
 	// PlanAudio is what decides that, the master has to ask it the same
@@ -110,7 +113,7 @@ func BuildMasterPlaylist(opt MasterPlaylistOptions) string {
 			// survive — and it is not a cosmetic lie: a player picks a
 			// rendition partly on this number, so a 5.1 track advertised as
 			// stereo is one a client with an amplifier may pass over.
-			plan := PlanAudio(opt.Probe, srcIdx, opt.caps(), presetFor(opt.Quality))
+			plan := PlanAudioWithin(opt.Probe, srcIdx, opt.caps(), presetFor(opt.Quality), opt.AudioBudgetBps)
 			b.WriteString(fmt.Sprintf(`,CHANNELS="%d"`, plan.Channels))
 			b.WriteString(`,URI="` + audioVariantPlaylist(k) + `"` + "\n")
 		}

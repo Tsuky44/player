@@ -212,6 +212,14 @@ class MpvPlaybackSession implements PlaybackSession {
       aheadOf(_player.state.buffer, _player.state.position);
 
   @override
+  Future<int?> receivingBps() async {
+    if (AppPlatform.isWeb) return null;
+    final bytes =
+        int.tryParse(await _read(_player.platform as dynamic, 'cache-speed') ?? '');
+    return bytes == null ? null : bytes * 8;
+  }
+
+  @override
   double get volume => _player.state.volume;
 
   @override

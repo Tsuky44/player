@@ -256,6 +256,57 @@ void main() {
     });
   });
 
+  group('viser d’après la ligne mesurée', () {
+    test('du fichier au barreau que la ligne tient, d’un seul saut', () {
+      // Mesuré : un film en Direct Play sur une ligne à 5 Mbit/s descendait
+      // de six crans, un par coupure. 4,8 reçus, dont 80 % font 3,84 : le
+      // premier barreau à 3,84 ou moins est 720p · 3,5.
+      expect(_at(null).downTo(4800000)?.tier?.key, '720p');
+    });
+
+    test('depuis un barreau, pareil', () {
+      expect(_at('1080p-10').downTo(4800000)?.tier?.key, '720p');
+      expect(_at('1080p').downTo(1500000)?.tier?.key, '360p');
+    });
+
+    test('jamais vers plus lourd que ce qui est lu', () {
+      // La ligne porterait 1080p · 6, mais c'est 1080p · 4 qui coupe.
+      expect(_at('1080p-4').downTo(9000000)?.tier?.key, '720p');
+    });
+
+    test('une ligne qui tient ce qui est lu n’est pas en cause', () {
+      expect(_at('1080p').carries(8000000), isTrue);
+      expect(_at('1080p').carries(7000000), isFalse,
+          reason: '7 × 0,8 = 5,6 : sous les 6 du barreau');
+      expect(_at(null).carries(30000000), isTrue);
+    });
+
+    test('un encodeur à la traîne demande une image plus petite, pas un '
+        'débit plus bas', () {
+      expect(_at('1080p-4').smallerPicture()?.tier?.key, '720p');
+      expect(_at('1080p-10').smallerPicture()?.tier?.key, '720p');
+      expect(_at('360p').smallerPicture(), isNull);
+      expect(_at(null).smallerPicture(), isNull,
+          reason: 'le Direct Play ne passe pas par l’encodeur');
+    });
+
+    test('au-dessus de ce que le serveur encode assez vite, plus rien n’est '
+        'proposé', () {
+      final ladder = AutoLadder(
+        tiers: _ladder,
+        currentKey: '720p-2',
+        sourceHeight: 2160,
+        sourceBps: 20000000,
+        maxEncodeHeight: 720,
+      );
+      expect(ladder.up(9000000)?.tier?.key, '720p',
+          reason: '9 Mbit/s justifieraient 1080p · 6, que le serveur ne '
+              'tient pas');
+      expect(ladder.up(100000000)?.isDirect, isTrue,
+          reason: 'le fichier tel quel ne coûte rien au serveur');
+    });
+  });
+
   group('remonter', () {
     AutoTarget? up(int capacity,
             {String? current = '720p-2',

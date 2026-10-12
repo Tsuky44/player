@@ -82,6 +82,7 @@ void main() {
 
     expect(next.hasNext, isTrue);
     expect(next.episode?.media.title, 'title-value');
+    expect(next.episodeAudioLangs, ['episode_audio_langs-value']);
     expect(next.nextSeason, isNotNull);
     expect(next.upcomingEpisode, isNotNull);
 

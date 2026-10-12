@@ -85,6 +85,46 @@ void main() {
     expect(nav.showSkipIntro, isTrue);
   });
 
+  testWidgets('the pill fills only while the countdown runs', (tester) async {
+    await PlaybackPreferencesStorage.setAutoSkipIntro(true);
+    final nav = buildController(onAutoSkipIntro: () {});
+    addTearDown(nav.dispose);
+
+    expect(nav.introAutoSkipCountdown, isNull);
+    nav.checkPosition(20, mediaDurationSeconds: 3000);
+    expect(
+      nav.introAutoSkipCountdown,
+      const Duration(seconds: EpisodeNavigationController.autoSkipIntroSeconds),
+    );
+
+    nav.onUserActivity();
+    expect(nav.introAutoSkipCountdown, isNull);
+  });
+
+  testWidgets('a skipped intro is not offered again while the seek lands',
+      (tester) async {
+    await PlaybackPreferencesStorage.setAutoSkipIntro(true);
+    var skipped = 0;
+    final nav = buildController(onAutoSkipIntro: () => skipped++);
+    addTearDown(nav.dispose);
+
+    nav.checkPosition(20, mediaDurationSeconds: 3000);
+    await tester.pump(const Duration(seconds: 5));
+    expect(skipped, 1);
+
+    // The seek is slow: the position still reads inside the intro.
+    nav.checkPosition(26, mediaDurationSeconds: 3000);
+    expect(nav.showSkipIntro, isFalse);
+    await tester.pump(const Duration(seconds: 10));
+    expect(skipped, 1);
+
+    // Landed, then brought back by hand: it is an intro like any other again.
+    nav.checkPosition(100, mediaDurationSeconds: 3000);
+    nav.checkPosition(20, mediaDurationSeconds: 3000);
+    expect(nav.showSkipIntro, isTrue);
+    nav.skipIntro();
+  });
+
   testWidgets('leaving the intro puts the countdown away', (tester) async {
     await PlaybackPreferencesStorage.setAutoSkipIntro(true);
     var skipped = 0;

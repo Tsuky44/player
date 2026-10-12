@@ -1,3 +1,4 @@
+import '../l10n/app_language.dart';
 import '../l10n/tr.dart';
 import 'media_subtitle_track.dart';
 
@@ -35,6 +36,13 @@ String languageName(String? code) {
   };
   final name = map[c];
   return name == null ? code.toUpperCase() : tr(name);
+}
+
+/// [languageName] tel qu'il s'écrit au milieu d'une phrase : « en français »,
+/// mais « in French ».
+String languageNameInSentence(String? code) {
+  final name = languageName(code);
+  return AppLanguage.current == AppLanguage.english ? name : name.toLowerCase();
 }
 
 String? _channelsLabel(int channels) {

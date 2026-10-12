@@ -23,11 +23,19 @@ class _Playback {
   int? lineBps;
   bool moveSucceeds = true;
 
+  /// Ce que la sonde répond au moment de descendre.
+  AutoSounding sounding = const AutoSounding();
+  int soundings = 0;
+  final passives = <bool>[];
+
+  /// Ce que le moteur dit recevoir pendant une mesure, null s'il ne dit rien.
+  int? inUseBps;
+
   final moves = <String>[];
   final urgent = <bool>[];
   final measures = <int>[];
 
-  late final pilot = AutoQualityPilot(
+  late final AutoQualityPilot pilot = AutoQualityPilot(
     now: () => now,
     read: () => AutoQualityReading(
       eligible: eligible,
@@ -41,11 +49,18 @@ class _Playback {
         sourceBps: 20000000,
         directAllowed: directAllowed,
         ceilingKey: ceilingKey,
+        maxEncodeHeight: pilot.maxEncodeHeight,
       ),
     ),
+    sound: ({required passive}) async {
+      soundings++;
+      passives.add(passive);
+      return sounding;
+    },
     measureLine: (wantBps) async {
       measures.add(wantBps);
-      return lineBps;
+      final spare = lineBps;
+      return spare == null ? null : (spareBps: spare, inUseBps: inUseBps);
     },
     move: (target, {required urgent}) async {
       moves.add(target.toString());
@@ -193,6 +208,170 @@ void main() {
 
     expect(playback.moves, ['1080p']);
     expect(playback.quality, isNull);
+  });
+
+  group('avec une ligne mesurée', () {
+    test('une coupure en Direct Play va droit au barreau que la ligne tient',
+        () async {
+      // 20 Mbit/s de fichier, 2,6 de ligne : 720p · 2, sans passer par les
+      // deux barreaux au-dessus.
+      final playback = _Playback()
+        ..buffered = 60
+        ..sounding = const AutoSounding(lineBps: 2600000);
+      await playback.play(30);
+      await playback.pilot.noteStall();
+
+      expect(playback.moves, ['720p-2']);
+      expect(playback.urgent, [true]);
+    });
+
+    test('un tampon qui fond aussi', () async {
+      final playback = _Playback()
+        ..slope = -0.5
+        ..sounding = const AutoSounding(lineBps: 1300000);
+      await playback.play(20);
+
+      expect(playback.moves, ['360p']);
+      expect(playback.soundings, 1);
+    });
+
+    test('une ligne qui tient ce qui est lu : la première coupure passe, '
+        'la deuxième descend d’un cran', () async {
+      final playback = _Playback()
+        ..quality = '1080p'
+        ..buffered = 60
+        ..sounding = const AutoSounding(lineBps: 50000000);
+      await playback.play(30);
+      await playback.pilot.noteStall();
+      expect(playback.moves, isEmpty);
+
+      await playback.play(30);
+      await playback.pilot.noteStall();
+      expect(playback.moves, ['720p-2']);
+    });
+  });
+
+  group('pendant un délai de grâce', () {
+    test('une coupure n’accuse rien sans mesure', () async {
+      final playback = _Playback()..buffered = 60;
+      playback.pilot.noteDisturbance();
+      await playback.play(5);
+      await playback.pilot.noteStall();
+
+      expect(playback.moves, isEmpty);
+      expect(playback.passives, [true],
+          reason: 'rien qui coûte à la ligne, ni l’avis d’un encodeur qui '
+              'vient de démarrer');
+    });
+
+    test('une ligne mesurée sous le débit lu fait descendre sans attendre',
+        () async {
+      // Mesuré : un film à 41 Mbit/s sur une ligne à 5 restait figé dix-huit
+      // secondes après sa première image.
+      final playback = _Playback()
+        ..buffered = 1
+        ..sounding = const AutoSounding(lineBps: 4800000);
+      playback.pilot.noteDisturbance();
+      await playback.play(2);
+      await playback.pilot.noteStall();
+
+      expect(playback.moves, ['720p-2']);
+      expect(playback.urgent, [true]);
+    });
+
+    test('une ligne qui livre ce qui est lu n’est pas accusée, même sans '
+        'marge', () async {
+      final playback = _Playback()
+        ..quality = '1080p'
+        ..buffered = 1
+        ..sounding = const AutoSounding(lineBps: 6500000);
+      playback.pilot.noteDisturbance();
+      await playback.play(2);
+      await playback.pilot.noteStall();
+
+      expect(playback.moves, isEmpty);
+    });
+  });
+
+  test('ce que le moteur reçoit pendant la mesure remplace l’estimation',
+      () async {
+    // 3 Mbit/s à côté d'une lecture qui en reçoit 2 : 5 en tout. La pente
+    // du tampon aurait fait compter davantage et remonter à tort.
+    final playback = _Playback()
+      ..quality = '720p-2'
+      ..buffered = 20
+      ..slope = 0.9
+      ..lineBps = 3000000
+      ..inUseBps = 2000000;
+    await playback.play(100);
+
+    expect(playback.measures, isNotEmpty);
+    expect(playback.moves, isEmpty);
+  });
+
+  group('quand c’est le serveur qui ne suit pas', () {
+    test('une image plus petite, et pas de descente en débit', () async {
+      final playback = _Playback()
+        ..quality = '1080p'
+        ..buffered = 60
+        ..sounding = const AutoSounding(encoderBehind: true);
+      await playback.play(30);
+      await playback.pilot.noteStall();
+
+      expect(playback.moves, ['720p-2']);
+      expect(playback.pilot.maxEncodeHeight, 720);
+    });
+
+    test('rien de plus petit : on ne bouge pas, et on ne remonte pas',
+        () async {
+      final playback = _Playback()
+        ..quality = '360p'
+        ..buffered = 60
+        ..sounding = const AutoSounding(encoderBehind: true);
+      await playback.play(30);
+      await playback.pilot.noteStall();
+      expect(playback.moves, isEmpty);
+      expect(playback.pilot.maxEncodeHeight, 360);
+
+      // Le serveur a repris de l'avance : la ligne justifierait 1080p, que
+      // le serveur ne tient pas. Le fichier, lui, ne lui coûte rien.
+      playback
+        ..sounding = const AutoSounding()
+        ..lineBps = 100000000;
+      await playback.play(200);
+      expect(playback.moves, ['direct']);
+    });
+
+    test('si la ligne porte le fichier, c’est lui qu’on lit', () async {
+      // Mesuré : un serveur à 0,6× restait à 360p, figé toutes les trente
+      // secondes, sur une ligne qui portait le fichier vingt fois.
+      final playback = _Playback()
+        ..quality = '720p-2'
+        ..buffered = 60
+        ..sounding = const AutoSounding(encoderBehind: true);
+      await playback.play(30);
+      playback.lineBps = 100000000;
+      await playback.pilot.noteStall();
+
+      expect(playback.moves, ['direct']);
+      expect(playback.pilot.maxEncodeHeight, 0,
+          reason: 'aucun barreau n’a été condamné');
+    });
+
+    test('redemander l’Auto dans le menu lui rend toute l’échelle', () async {
+      final playback = _Playback()
+        ..quality = '1080p'
+        ..buffered = 60
+        ..sounding = const AutoSounding(encoderBehind: true);
+      await playback.play(30);
+      await playback.pilot.noteStall();
+      expect(playback.pilot.maxEncodeHeight, 720);
+
+      playback.pilot
+        ..enabled = false
+        ..enabled = true;
+      expect(playback.pilot.maxEncodeHeight, 0);
+    });
   });
 
   test('choisie dans le menu depuis un barreau bas, l’Auto mesure sans '

@@ -66,6 +66,26 @@ class AutoTarget {
   String toString() => tier?.key ?? 'direct';
 }
 
+/// Ce qu'une sonde dit de la ligne et du serveur au moment de descendre.
+///
+/// La pente du tampon dit *que* la lecture manque de données, pas combien la
+/// ligne en porte ni qui les retient. Mesuré sur un film à 55 Mbit/s et une
+/// ligne à 5 : six descentes d'un cran, vingt et une coupures, et un arrêt à
+/// « 360p · 420 kbit/s » — chaque barreau était choisi d'après le précédent,
+/// jamais d'après la ligne. Voir ADR-0056.
+class AutoSounding {
+  const AutoSounding({this.lineBps, this.encoderBehind = false});
+
+  /// Ce que la ligne porte, en bits par seconde, compté sur ce qui arrive
+  /// pendant que la lecture tire tout ce qu'elle peut. Null quand rien ne
+  /// permet de le dire.
+  final int? lineBps;
+
+  /// C'est l'encodeur du serveur que la lecture attend, pas la ligne :
+  /// descendre en débit ne changerait rien.
+  final bool encoderBehind;
+}
+
 /// Ce que dit un relevé de la lecture.
 enum AutoVerdict {
   /// Rien à faire.
@@ -219,6 +239,14 @@ class AutoQuality {
     _climbWait = doubled > maxClimbWait ? maxClimbWait : doubled;
   }
 
+  /// Si [now] tombe dans un délai de grâce : le tampon qui se regarnit est
+  /// peut-être celui que le lecteur vient de jeter, et seule une ligne
+  /// mesurée peut alors être accusée.
+  bool inGrace(DateTime now) {
+    final quiet = _quietUntil;
+    return quiet != null && now.isBefore(quiet);
+  }
+
   /// Une mise en mémoire tampon en pleine lecture. Renvoie `true` quand elle
   /// accuse la ligne : c'est le moment de descendre, sans en attendre une
   /// deuxième.
@@ -349,6 +377,7 @@ class AutoLadder {
     this.directAllowed = true,
     this.ceilingKey,
     this.ceilingBps = 0,
+    this.maxEncodeHeight = 0,
   });
 
   /// L'échelle que le serveur annonce pour ce média.
@@ -373,6 +402,11 @@ class AutoLadder {
   final String? ceilingKey;
   final int ceilingBps;
 
+  /// La plus grande image que le serveur encode assez vite pour cette
+  /// lecture, 0 tant que rien ne l'a pris en défaut. Au-dessus, un barreau
+  /// ferait attendre la lecture quelle que soit la ligne.
+  final int maxEncodeHeight;
+
   /// Les barreaux du plus exigeant au moins exigeant ; à débit égal, la plus
   /// grande image d'abord, comme le serveur les range (ADR-0022).
   ///
@@ -381,12 +415,26 @@ class AutoLadder {
   List<QualityTier> get _rungs {
     final native = qualityForSourceHeight(sourceHeight);
     return [
-      ...tiers.where(
-          (t) => t.bitrateBps > 0 && !(directAllowed && t.key == native)),
+      ...tiers.where((t) =>
+          t.bitrateBps > 0 &&
+          !(directAllowed && t.key == native) &&
+          _encodable(t)),
     ]..sort((a, b) {
         final byDemand = _demand(b).compareTo(_demand(a));
         return byDemand != 0 ? byDemand : b.height.compareTo(a.height);
       });
+  }
+
+  /// Un barreau recopié ne passe pas par l'encodeur.
+  bool _encodable(QualityTier tier) =>
+      maxEncodeHeight <= 0 ||
+      tier.height <= maxEncodeHeight ||
+      (tier.key == ceilingKey && ceilingBps > 0);
+
+  /// La hauteur d'image du barreau lu, 0 en Direct Play.
+  int get currentHeight {
+    final current = tiers.where((t) => t.key == currentKey);
+    return current.isEmpty ? 0 : current.first.height;
   }
 
   int _demand(QualityTier tier) =>
@@ -427,12 +475,54 @@ class AutoLadder {
           : rungs.first.bitrateBps;
     }
 
-    final lower = rungs
-        .where((t) => t.key != currentKey && _demand(t) < sending)
+    final carried = sending * (ratio < 0.9 ? ratio : 0.9);
+    return _under(carried * AutoQuality.headroom, below: sending);
+  }
+
+  /// Le barreau à demander sur une ligne qui porte [capacityBps], mesurés :
+  /// le plus haut qu'elle tient avec de la marge, d'un seul saut. Null au bas
+  /// de l'échelle.
+  AutoTarget? downTo(int capacityBps) {
+    final sending = _sending;
+    return _under(capacityBps * AutoQuality.headroom,
+        below: sending > 0 ? sending : 1 << 62);
+  }
+
+  /// Si une ligne qui porte [capacityBps] tient ce qui est lu, marge
+  /// comprise : ce n'est alors pas elle qui a vidé le tampon.
+  bool carries(int capacityBps) {
+    final sending = _sending;
+    return sending > 0 && capacityBps * AutoQuality.headroom >= sending;
+  }
+
+  /// Si une ligne qui porte [capacityBps] livre moins que ce qui est lu,
+  /// sans marge aucune : la lecture ne peut pas tenir, quoi qu'elle vienne de
+  /// faire de son tampon.
+  bool starves(int capacityBps) {
+    final sending = _sending;
+    return sending > 0 && capacityBps < sending;
+  }
+
+  /// Le barreau à demander quand c'est l'encodeur qui ne suit pas : une image
+  /// plus petite, qui lui coûte moins, sans demander plus à la ligne. Null
+  /// s'il n'y a pas plus petit, ou en Direct Play.
+  AutoTarget? smallerPicture() {
+    final height = currentHeight;
+    if (height <= 0) return null;
+    final sending = _sending;
+    for (final rung in _rungs) {
+      if (rung.height < height && (sending <= 0 || _demand(rung) <= sending)) {
+        return AutoTarget.tier(rung);
+      }
+    }
+    return null;
+  }
+
+  AutoTarget? _under(double ceiling, {required int below}) {
+    final lower = _rungs
+        .where((t) => t.key != currentKey && _demand(t) < below)
         .toList();
     if (lower.isEmpty) return null;
-    final carried = sending * (ratio < 0.9 ? ratio : 0.9);
-    final ceiling = carried * AutoQuality.headroom;
     for (final rung in lower) {
       if (_demand(rung) <= ceiling) return AutoTarget.tier(rung);
     }

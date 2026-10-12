@@ -213,19 +213,42 @@ func buildShowContinueWatching(userID int, hidden map[string]struct{}) ([]models
 		return nil, err
 	}
 
-	now := time.Now().UTC()
-	var items []models.HomeMediaItem
+	// Une série dont on attend la langue suit les épisodes de cette langue,
+	// pas ceux du fichier (ADR-0057).
+	waits := loadLanguageWaits(userID)
+	var candidates []resumeCandidate
 	for _, act := range visible {
 		episodes := episodesByShow[act.showID]
 		row, ok := findResumeEpisodeRow(episodes)
 		if !ok || row == nil {
 			continue
 		}
-		if !meetsShowContinueWatchingThreshold(row, episodes) {
+		wait := waits.of(act.showID)
+		started := meetsShowContinueWatchingThreshold(row, episodes)
+		if !started && wait == nil {
 			continue
 		}
-		item := episodeRowToContinueWatchingItem(act.showID, act.title, act.poster, row, act.updatedAt)
-		item.HasNewEpisode = isNewEpisodeRelease(episodes, row, now)
+		candidates = append(candidates, resumeCandidate{
+			act: act, episodes: episodes, row: row, started: started, wait: wait,
+		})
+	}
+	candidates = append(candidates, waits.unstartedCandidates(userID, hidden)...)
+
+	now := time.Now().UTC()
+	verdicts := judgeLanguageWaits(candidates, now)
+	var items []models.HomeMediaItem
+	for i, c := range candidates {
+		wait := verdicts[i]
+		if wait.stillWaiting {
+			continue
+		}
+		// Une série jamais vraiment commencée n'entre dans la rangée que
+		// portée par l'arrivée de la langue attendue.
+		if !c.started && !wait.arrived {
+			continue
+		}
+		item := episodeRowToContinueWatchingItem(c.act.showID, c.act.title, c.act.poster, c.row, c.act.updatedAt)
+		item.HasNewEpisode = wait.arrived || isNewEpisodeRelease(c.episodes, c.row, now)
 		items = append(items, item)
 	}
 

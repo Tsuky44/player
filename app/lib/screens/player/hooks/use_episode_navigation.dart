@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
+import '../playback/audio_language_gap.dart';
 import '../playback/playback_session.dart';
 import '../../../models/models.dart';
 import '../../../services/api_client.dart';
@@ -17,6 +18,39 @@ class EpisodeNavigationController extends ChangeNotifier {
 
   EpisodeTimestamps? timestamps;
   HomeMediaItem? nextEpisode;
+
+  /// Les langues audio de [nextEpisode], vide quand le serveur ne les connaît
+  /// pas. Voir [AudioLanguageGap].
+  List<String> nextEpisodeAudioLangs = const [];
+
+  /// La question en cours : l'épisode suivant n'existe pas dans la langue
+  /// qu'on suit. Elle tient l'écran comme les deux autres cartes de fin.
+  AudioLanguageGap? _languageGap;
+  AudioLanguageGap? get languageGap => _languageGap;
+  bool get showLanguageGapCard => _languageGap != null;
+
+  /// « Non » a été répondu, ou la carte fermée : plus rien n'enchaîne de
+  /// lui-même sur cet épisode. Redemander la suite à la main repose la
+  /// question — on a le droit de changer d'avis.
+  bool _languageGapDeclined = false;
+  bool get languageGapDeclined => _languageGapDeclined;
+
+  /// La même question, posée au lancement : c'est l'épisode qu'on vient
+  /// d'ouvrir qui n'existe pas dans la langue qu'on suit.
+  AudioLanguageGap? _launchLanguageGap;
+  AudioLanguageGap? get launchLanguageGap => _launchLanguageGap;
+  bool get showLaunchLanguageCard => _launchLanguageGap != null;
+
+  void askLaunchLanguage(AudioLanguageGap gap) {
+    _launchLanguageGap = gap;
+    notifyListeners();
+  }
+
+  void closeLaunchLanguageCard() {
+    if (_launchLanguageGap == null) return;
+    _launchLanguageGap = null;
+    notifyListeners();
+  }
 
   /// Set when the season that follows is missing from the server.
   ///
@@ -135,6 +169,19 @@ class EpisodeNavigationController extends ChangeNotifier {
   int _introCountdownSeconds = autoSkipIntroSeconds;
   int get introCountdownSeconds => _introCountdownSeconds;
 
+  /// How long the running countdown lasts, for the pill that fills over it.
+  /// Null when nothing is counting down, frozen included.
+  Duration? get introAutoSkipCountdown =>
+      introAutoSkipActive && !introAutoSkipFrozen
+          ? const Duration(seconds: autoSkipIntroSeconds)
+          : null;
+
+  /// The intro has skipped itself and the seek has not landed yet. Position
+  /// ticks keep reporting the intro meanwhile — several seconds of them when
+  /// the seek rebuilds an HLS session — and each would bring the pill back
+  /// with a fresh countdown.
+  bool _introAutoSkipped = false;
+
   EpisodeNavigationController({
     required ApiClient apiClient,
     required int episodeId,
@@ -199,6 +246,7 @@ class EpisodeNavigationController extends ChangeNotifier {
       final response = await _apiClient.getNextEpisode(_episodeId);
       if (response.hasNext) {
         nextEpisode = response.episode;
+        nextEpisodeAudioLangs = response.episodeAudioLangs;
       }
       nextSeason = response.nextSeason;
       upcomingEpisode = response.upcomingEpisode;
@@ -365,7 +413,11 @@ class EpisodeNavigationController extends ChangeNotifier {
       }
     }
 
-    if (inIntro) {
+    if (!inIntro) _introAutoSkipped = false;
+
+    if (inIntro && _introAutoSkipped) {
+      // Already skipped, still seeking: nothing to offer.
+    } else if (inIntro) {
       if (!showSkipIntro) {
         showSkipIntro = true;
         _introSkipTarget = introTarget;
@@ -397,13 +449,41 @@ class EpisodeNavigationController extends ChangeNotifier {
       if (inOutro && upcomingEpisode != null && !_upcomingDismissed) {
         _upcomingForced = true;
       }
-      if (inOutro && nextEpisode != null && !showEndCard) {
+      if (inOutro &&
+          nextEpisode != null &&
+          !showEndCard &&
+          !_languageGapDeclined) {
         _startOutroAutoPlay();
       } else {
         _cancelOutroAutoPlay();
       }
       notifyListeners();
     }
+  }
+
+  /// Retient le passage à l'épisode suivant quand il lui manque la langue
+  /// qu'on suit, et lève la carte qui pose la question. Rend vrai tant que
+  /// l'enchaînement ne doit pas se faire.
+  ///
+  /// [automatic] pour un enchaînement que personne n'a demandé — compte à
+  /// rebours, fin du fichier : après un « non », il ne repose pas la question.
+  bool holdForLanguageGap(AudioLanguageGap? gap, {required bool automatic}) {
+    if (gap == null) return false;
+    if (_languageGap != null) return true;
+    if (_languageGapDeclined && automatic) return true;
+    _languageGap = gap;
+    _cancelOutroAutoPlay();
+    notifyListeners();
+    return true;
+  }
+
+  /// Range la carte sans enchaîner. Ce que ce refus vaut pour la suite de la
+  /// série — attendre sa langue — est l'affaire de l'écran, pas la sienne.
+  void declineLanguageGap() {
+    if (_languageGap == null) return;
+    _languageGap = null;
+    _languageGapDeclined = true;
+    notifyListeners();
   }
 
   /// Arms the countdown that skips the intro by itself. Does nothing unless the
@@ -420,6 +500,7 @@ class EpisodeNavigationController extends ChangeNotifier {
         timer.cancel();
         introAutoSkipActive = false;
         showSkipIntro = false;
+        _introAutoSkipped = true;
         onAutoSkipIntro?.call();
         notifyListeners();
         return;
@@ -481,7 +562,11 @@ class EpisodeNavigationController extends ChangeNotifier {
 
   /// Whether either end card owns the screen. Both shrink the video, suppress
   /// the chrome and hold auto-advance back, so the session asks this one thing.
-  bool get showEndCard => showNextSeasonCard || showUpcomingEpisodeCard;
+  bool get showEndCard =>
+      showNextSeasonCard ||
+      showUpcomingEpisodeCard ||
+      showLanguageGapCard ||
+      showLaunchLanguageCard;
 
   /// Forces the card up when playback reached the very end without the outro
   /// ever being detected, so a missing chapter marker cannot swallow the offer.

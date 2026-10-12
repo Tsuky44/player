@@ -388,6 +388,10 @@ func main() {
 		Bootstrap: !*scanOnStartup,
 	})
 
+	// Les langues audio des médias sondés avant que le serveur en tienne le
+	// registre (ADR-0057). Sans ffprobe, et sans effet une fois rattrapé.
+	indexer.BackfillAudioLanguagesAsync()
+
 	// Trigger startup scan if configured
 	if *scanOnStartup {
 		moviesDir := config.MoviesDir()

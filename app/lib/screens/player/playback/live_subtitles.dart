@@ -248,6 +248,9 @@ MediaTracks withLiveSubtitles(
     video: tracks.video,
     audio: tracks.audio,
     qualities: tracks.qualities,
+    // Sans lui, l'Auto prenait le fichier pour un inconnu dès la première
+    // session ouverte, et y remontait sur une ligne qui ne le portait pas.
+    sourceBitrateBps: tracks.sourceBitrateBps,
     subtitles: [
       for (final s in tracks.subtitles)
         if (!s.image && live.contains(s.typedIndex))

@@ -276,11 +276,16 @@ extension _PlayerChrome on _PlayerScreenState {
   /// without ever being hidden: the credits stay visible and playing.
   double get _videoScale => _endCardVisible ? 0.34 : 1.0;
 
-  void _showControlsTransient() {
-    // Everything that raises the chrome does so because someone asked for it —
-    // a seek, the volume, the remote entering the control bar. A countdown
-    // started for an empty room has no business surviving that.
-    _episodeNav?.onUserActivity();
+  void _showControlsTransient({bool byUser = true}) {
+    // Nearly everything that raises the chrome does so because someone asked
+    // for it — a seek, the volume, the remote entering the control bar. A
+    // countdown started for an empty room has no business surviving that.
+    //
+    // [byUser] is false for the few times the player raises it on its own.
+    // The first frame is one, and it used to count: an intro that opens the
+    // episode had its countdown frozen before anyone could see it run, so the
+    // intro never skipped itself.
+    if (byUser) _episodeNav?.onUserActivity();
     // The end card owns the screen: waking the HUD on every mouse move would
     // stack a progress bar and a play button over it.
     if (_endCardVisible || _stillWatchingAsked) return;
@@ -583,6 +588,7 @@ extension _PlayerChrome on _PlayerScreenState {
       onOpenEpisodes: _info.isEpisode ? _openEpisodesPanel : null,
       onSkipIntro:
           (nav?.showSkipIntro ?? false) ? _skipIntroFromControl : null,
+      skipIntroCountdown: nav?.introAutoSkipCountdown,
       chapterMarks: _chapterMarks,
       settingsButtonKey: _settingsButtonKey,
       subtitlesButtonKey: _subtitlesButtonKey,

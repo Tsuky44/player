@@ -336,21 +336,37 @@ La langue audio et le sous-titre choisis dans un épisode valent pour toute sa s
 appareils du compte. Voir `docs/adr/0044-pistes-retenues-par-serie.md`.
 * **Route :** `GET /api/episodes/:id/track-preferences` (`404` si le média n'est pas un épisode)
 * **Réponse (JSON) :** `updated_at` est vide tant que rien n'a été choisi pour la série ;
-  `subtitle.mode` vaut `""` (pas de choix), `"off"` ou `"on"`.
+  `subtitle.mode` vaut `""` (pas de choix), `"off"` ou `"on"` ; `await_audio_lang` est vide tant
+  que le compte n'attend aucune langue pour cette série.
   ```json
   {
     "show_id": 42,
     "audio_lang": "en",
     "subtitle": { "mode": "on", "lang": "fr", "key": "fr", "forced": false, "image": false },
+    "await_audio_lang": "",
     "updated_at": "2026-10-05 21:04:11"
   }
   ```
 * **Route :** `PUT /api/episodes/:id/track-preferences`
-* **Corps (JSON) :** partiel — `audio_lang` et `subtitle` sont indépendants (`400` si invalide).
+* **Corps (JSON) :** partiel — `audio_lang`, `subtitle` et `await_audio_lang` sont indépendants
+  (`400` si invalide). Choisir un `audio_lang` différent de la langue attendue lève l'attente.
   ```json
   { "subtitle": { "mode": "off" } }
   ```
 * **Réponse (JSON) :** l'état stocké, au même format que le `GET`.
+
+#### ⏳ Attendre sa langue
+Une série suivie en VF dont l'épisode suivant n'existe encore qu'en VO. Voir
+`docs/adr/0057-attendre-sa-langue.md`.
+* `GET /api/episodes/:id/next` joint `episode_audio_langs` à `episode` : les langues audio de
+  l'épisode suivant (`["ja", "fr"]`), celle de sa piste par défaut en tête. La clé est absente
+  tant que le fichier n'a pas été sondé ou qu'aucune piste ne déclare sa langue.
+* `PUT /api/episodes/:id/track-preferences` avec `{ "await_audio_lang": "fr" }` : le compte
+  attend le français pour cette série ; `""` cesse d'attendre.
+* Tant que l'épisode à reprendre n'a pas la langue attendue, la série n'apparaît plus dans
+  `continue_watching` de `GET /api/home`. Elle y revient avec `has_new_episode: true` quand la
+  piste arrive, même sur un fichier présent depuis longtemps — et même si la série n'a jamais
+  été commencée.
 
 ---
 

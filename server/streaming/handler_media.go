@@ -2,11 +2,14 @@ package streaming
 
 import (
 	"database/sql"
+	"encoding/json"
 	"fmt"
 	"log"
+	"net/http"
 	"os"
 	"strconv"
 	"strings"
+	"time"
 )
 
 // Ce que le gestionnaire de sessions lit de la base sur un média : la sonde
@@ -78,6 +81,20 @@ func (h *Handler) persistProbe(mediaID int, filePath string, probe *ProbeResult)
 // remuxes on the transcoding path. Override with COPY_BITRATE_CEILING_MBPS; 0
 // disables the ceiling entirely.
 const defaultCopyBitrateCeiling = 12_000_000
+
+// handleHealth dit où en est l'encodeur d'une session, pour que le lecteur
+// sache qui accuser quand son tampon fond (ADR-0056). La demande ne compte pas
+// comme une lecture : elle ne garde pas la session en vie et ne la réclame pas.
+func (h *Handler) handleHealth(w http.ResponseWriter, sessionID string) {
+	session, ok := h.manager.GetSession(sessionID)
+	if !ok {
+		http.Error(w, "session not found", http.StatusNotFound)
+		return
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Cache-Control", "private, no-store")
+	_ = json.NewEncoder(w).Encode(session.Health(time.Now()))
+}
 
 func copyBitrateCeiling() int64 {
 	raw := strings.TrimSpace(os.Getenv("COPY_BITRATE_CEILING_MBPS"))

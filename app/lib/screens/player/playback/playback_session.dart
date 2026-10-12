@@ -256,6 +256,12 @@ abstract interface class PlaybackSession {
   /// durée, pas la position jusqu'où le moteur a reçu. Voir [aheadOf].
   Duration get bufferedAhead;
 
+  /// Ce que le moteur reçoit du réseau en ce moment, en bits par seconde, ou
+  /// null s'il ne sait pas le dire. Pendant que le tampon fond, c'est ce que
+  /// la ligne porte : la qualité automatique s'en sert pour viser le bon
+  /// barreau d'un seul saut (ADR-0056).
+  Future<int?> receivingBps();
+
   double get volume;
   PlaybackVideoParams get videoParams;
 

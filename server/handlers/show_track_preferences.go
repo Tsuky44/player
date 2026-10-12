@@ -20,8 +20,9 @@ import (
 // showTrackPreferencesUpdate est partiel : choisir un sous-titre ne remet pas
 // la langue audio à zéro, et inversement.
 type showTrackPreferencesUpdate struct {
-	AudioLang *string                    `json:"audio_lang"`
-	Subtitle  *models.ShowSubtitleChoice `json:"subtitle"`
+	AudioLang      *string                    `json:"audio_lang"`
+	Subtitle       *models.ShowSubtitleChoice `json:"subtitle"`
+	AwaitAudioLang *string                    `json:"await_audio_lang"`
 }
 
 var errInvalidSubtitleChoice = errors.New("invalid subtitle choice")
@@ -87,12 +88,12 @@ func loadShowTrackPreferences(userID, showID int) (models.ShowTrackPreferences, 
 	prefs := models.ShowTrackPreferences{ShowID: showID}
 	err := database.DB.QueryRow(`
 		SELECT audio_lang, subtitle_mode, subtitle_lang, subtitle_key,
-		       subtitle_forced, subtitle_image, updated_at
+		       subtitle_forced, subtitle_image, await_audio_lang, updated_at
 		FROM user_show_track_preferences
 		WHERE user_id = ? AND show_id = ?
 	`, userID, showID).Scan(
 		&prefs.AudioLang, &prefs.Subtitle.Mode, &prefs.Subtitle.Lang, &prefs.Subtitle.Key,
-		&prefs.Subtitle.Forced, &prefs.Subtitle.Image, &prefs.UpdatedAt,
+		&prefs.Subtitle.Forced, &prefs.Subtitle.Image, &prefs.AwaitAudioLang, &prefs.UpdatedAt,
 	)
 	if errors.Is(err, sql.ErrNoRows) {
 		return prefs, nil
@@ -112,6 +113,18 @@ func applyShowTrackPreferencesUpdate(
 			return models.ShowTrackPreferences{}, err
 		}
 		current.AudioLang = lang
+		// Choisir une autre langue à la main, c'est cesser d'attendre la
+		// première : la série reprend dans celle qu'on vient de prendre.
+		if lang != "" && lang != current.AwaitAudioLang {
+			current.AwaitAudioLang = ""
+		}
+	}
+	if update.AwaitAudioLang != nil {
+		lang, err := normalizeAudioLang(*update.AwaitAudioLang)
+		if err != nil {
+			return models.ShowTrackPreferences{}, err
+		}
+		current.AwaitAudioLang = lang
 	}
 	if update.Subtitle != nil {
 		choice, err := normalizeSubtitleChoice(*update.Subtitle)
@@ -189,8 +202,8 @@ func UpdateShowTrackPreferences(w http.ResponseWriter, r *http.Request, ps httpr
 	if _, err := database.DB.Exec(`
 		INSERT INTO user_show_track_preferences (
 			user_id, show_id, audio_lang, subtitle_mode, subtitle_lang, subtitle_key,
-			subtitle_forced, subtitle_image, updated_at
-		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
+			subtitle_forced, subtitle_image, await_audio_lang, updated_at
+		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
 		ON CONFLICT(user_id, show_id) DO UPDATE SET
 			audio_lang = excluded.audio_lang,
 			subtitle_mode = excluded.subtitle_mode,
@@ -198,9 +211,10 @@ func UpdateShowTrackPreferences(w http.ResponseWriter, r *http.Request, ps httpr
 			subtitle_key = excluded.subtitle_key,
 			subtitle_forced = excluded.subtitle_forced,
 			subtitle_image = excluded.subtitle_image,
+			await_audio_lang = excluded.await_audio_lang,
 			updated_at = CURRENT_TIMESTAMP
 	`, userID, showID, next.AudioLang, next.Subtitle.Mode, next.Subtitle.Lang, next.Subtitle.Key,
-		next.Subtitle.Forced, next.Subtitle.Image); err != nil {
+		next.Subtitle.Forced, next.Subtitle.Image, next.AwaitAudioLang); err != nil {
 		log.Printf("UpdateShowTrackPreferences: save: %v", err)
 		writeJSONError(w, http.StatusInternalServerError, "Internal database error")
 		return

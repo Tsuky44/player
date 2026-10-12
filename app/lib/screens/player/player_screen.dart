@@ -37,6 +37,7 @@ import 'widgets/seek_feedback_overlay.dart';
 import 'widgets/video_zoom_hint.dart';
 import 'widgets/next_episode_overlay.dart';
 import 'widgets/next_season_overlay.dart';
+import 'widgets/language_gap_overlay.dart';
 import 'widgets/upcoming_episode_overlay.dart';
 import 'widgets/onyx/onyx_controls_layer.dart';
 import 'widgets/onyx/onyx_settings_menu.dart';
@@ -270,6 +271,10 @@ class _PlayerScreenState extends State<PlayerScreen> {
 
   String? _mediaLogoUrl;
   bool _requestingNextSeason = false;
+
+  /// La question « continuer ou attendre ? » ne se pose qu'une fois par
+  /// lancement. Voir [_askLaunchLanguage].
+  bool _launchLanguageAsked = false;
 
   /// How big the fixed chrome is drawn.
   ///
@@ -622,7 +627,31 @@ class _PlayerScreenState extends State<PlayerScreen> {
                     left: 20,
                     child: PlayerBackButton(onTap: _leavePlayer),
                   ),
-                if (nav != null && nav.showUpcomingEpisodeCard)
+                // Une seule page à la fois : la question de la langue se pose
+                // au moment d'enchaîner, donc à la place de celle qui l'a
+                // lancée.
+                if (nav != null && nav.showLaunchLanguageCard)
+                  LanguageGapOverlay(
+                    gap: nav.launchLanguageGap!,
+                    episode: _info.item,
+                    atLaunch: true,
+                    onContinue: _continueAtLaunch,
+                    onWait: () => unawaited(_waitAtLaunch()),
+                    onDismiss: _dismissEndCard,
+                    videoInset:
+                        MediaQuery.of(context).size.width * _videoScale,
+                  )
+                else if (nav != null && nav.showLanguageGapCard)
+                  LanguageGapOverlay(
+                    gap: nav.languageGap!,
+                    episode: nav.nextEpisode,
+                    onContinue: _continueInOfferedLanguage,
+                    onWait: _waitForAudioLanguage,
+                    onDismiss: _dismissEndCard,
+                    videoInset:
+                        MediaQuery.of(context).size.width * _videoScale,
+                  )
+                else if (nav != null && nav.showUpcomingEpisodeCard)
                   UpcomingEpisodeOverlay(
                     episode: nav.upcomingEpisode!,
                     onDismiss: () => nav.dismissUpcomingEpisodeCard(),
@@ -631,7 +660,10 @@ class _PlayerScreenState extends State<PlayerScreen> {
                     videoInset:
                         MediaQuery.of(context).size.width * _videoScale,
                   ),
-                if (nav != null && nav.showNextSeasonCard)
+                if (nav != null &&
+                    nav.showNextSeasonCard &&
+                    !nav.showLanguageGapCard &&
+                    !nav.showLaunchLanguageCard)
                   NextSeasonOverlay(
                     season: nav.nextSeason!,
                     submitting: _requestingNextSeason,

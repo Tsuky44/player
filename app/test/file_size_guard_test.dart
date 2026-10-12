@@ -18,7 +18,7 @@ const int _maxLines = 800;
 /// d'abord dans son propre fichier le morceau que vous touchez.
 const Map<String, (int ceiling, String why)> _grandfathered = {
   'lib/screens/player/widgets/onyx/onyx_controls_layer.dart': (
-    1049,
+    1014,
     'le Chrome Onyx et ses boutons ; ses rangées restent à extraire',
   ),
   'lib/services/download_manager_io.dart': (

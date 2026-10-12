@@ -29,6 +29,15 @@ extension _PlayerFlow on _PlayerScreenState {
     //
     // The gap card goes first: when the library holds a later season, crossing
     // a hole in this one has to stay a deliberate act, never an auto-advance.
+    //
+    // La question de la langue passe avant les deux : tant qu'elle attend sa
+    // réponse on reste sur la dernière image, et après un « non » il n'y a
+    // plus rien à enchaîner.
+    if (_episodeNav?.showLanguageGapCard ?? false) return;
+    if (_episodeNav?.languageGapDeclined ?? false) {
+      unawaited(_leavePlayer());
+      return;
+    }
     if (_episodeNav?.revealUpcomingEpisodeCard() ?? false) return;
     if (_episodeNav?.nextEpisode != null && !_endCardVisible) {
       _autoAdvanceToNextEpisode();
@@ -168,7 +177,7 @@ extension _PlayerFlow on _PlayerScreenState {
       _askStillWatching();
       return;
     }
-    _goToNextEpisode();
+    _goToNextEpisode(automatic: true);
   }
 
   void _askStillWatching() {
@@ -196,10 +205,100 @@ extension _PlayerFlow on _PlayerScreenState {
     _togglePlayPause();
   }
 
-  void _goToNextEpisode() {
-    final next = _episodeNav?.nextEpisode;
-    if (next == null) return;
+  /// [automatic] quand personne ne l'a demandé : voir
+  /// [EpisodeNavigationController.holdForLanguageGap].
+  void _goToNextEpisode({bool automatic = false}) {
+    final nav = _episodeNav;
+    final next = nav?.nextEpisode;
+    if (nav == null || next == null) return;
+    final gap =
+        _playerController.audioLanguageGapWith(nav.nextEpisodeAudioLangs);
+    if (nav.holdForLanguageGap(gap, automatic: automatic)) return;
     _navigateToEpisode(next);
+  }
+
+  /// « Continuer en japonais » : on enchaîne, et la série cesse d'attendre.
+  void _continueInOfferedLanguage() {
+    final nav = _episodeNav;
+    final next = nav?.nextEpisode;
+    final gap = nav?.languageGap;
+    if (next == null || gap == null) return;
+    unawaited(_playerController.continueWithoutAudioLanguage(gap.wanted));
+    _navigateToEpisode(next);
+  }
+
+  /// Au lancement d'un épisode qui n'a pas la langue qu'on suit — celle de la
+  /// série, sinon la langue audio par défaut du compte : la lecture se met en
+  /// pause et demande s'il faut continuer ou attendre (ADR-0057).
+  ///
+  /// Appelé quand la lecture démarre et quand la liste des pistes arrive : il
+  /// lui faut les deux. Un épisode enchaîné depuis le précédent a déjà eu sa
+  /// question, un épisode repris a déjà eu sa réponse, et en séance partagée
+  /// on ne met pas les autres en pause pour la poser.
+  Future<void> _askLaunchLanguage() async {
+    final nav = _episodeNav;
+    if (_launchLanguageAsked || nav == null || !_isInitialized) return;
+    if (_playerController.mediaTracks == null) return;
+    _launchLanguageAsked = true;
+    if (widget.inheritedPreferences != null ||
+        widget.autoAdvance ||
+        _resumePosition > 0 ||
+        _party.party != null) {
+      return;
+    }
+    final gap = await _playerController.launchLanguageGap();
+    if (gap == null || !mounted || _isLeaving || _isDisposing) return;
+    _popups.dismissTop();
+    _closeEpisodesPanel();
+    _pauseByChoice();
+    nav.askLaunchLanguage(gap);
+  }
+
+  void _resumeAfterLaunchQuestion() {
+    _episodeNav?.closeLaunchLanguageCard();
+    _wantsPlayback = true;
+    if (!_playerController.isPlaying) _playerController.togglePlayPause();
+    _keyboardFocusNode.requestFocus();
+    _hideControlsWithDelay();
+  }
+
+  void _continueAtLaunch() {
+    final gap = _episodeNav?.launchLanguageGap;
+    if (gap == null) return;
+    unawaited(_playerController.continueWithoutAudioLanguage(gap.wanted));
+    _resumeAfterLaunchQuestion();
+  }
+
+  /// « Attendre » au lancement : on quitte le lecteur, et la série reviendra
+  /// dans « Reprendre la lecture » avec un épisode dans cette langue.
+  Future<void> _waitAtLaunch() async {
+    final nav = _episodeNav;
+    final gap = nav?.launchLanguageGap;
+    if (nav == null || gap == null) return;
+    nav.closeLaunchLanguageCard();
+    // Attendu avant de partir, mais pas indéfiniment : l'accueil qu'on rejoint
+    // relit le serveur, qui doit déjà savoir. Un serveur muet garde le choix
+    // noté sur l'appareil, et il partira plus tard.
+    await _playerController
+        .awaitAudioLanguage(gap.wanted)
+        .timeout(const Duration(seconds: 2), onTimeout: () {});
+    if (!mounted) return;
+    await _leavePlayer();
+  }
+
+  /// « Attendre le français » : l'épisode en cours va à son terme, rien
+  /// n'enchaîne, et la série ne reviendra dans « Reprendre la lecture » qu'avec un
+  /// épisode dans cette langue (ADR-0057).
+  void _waitForAudioLanguage() {
+    final nav = _episodeNav;
+    final gap = nav?.languageGap;
+    if (nav == null || gap == null) return;
+    unawaited(_playerController.awaitAudioLanguage(gap.wanted));
+    nav.declineLanguageGap();
+    _party.showNotice(tr(
+      'La série reviendra dans « Reprendre la lecture » dès qu’un épisode sera disponible en {0}.',
+      [languageNameInSentence(gap.wanted)],
+    ));
   }
 
   void _goToPreviousEpisode() {
@@ -213,6 +312,15 @@ extension _PlayerFlow on _PlayerScreenState {
   void _dismissEndCard() {
     final nav = _episodeNav;
     if (nav == null) return;
+    // Fermer la question n'y répond pas : rien n'est retenu pour la série.
+    if (nav.showLaunchLanguageCard) {
+      _resumeAfterLaunchQuestion();
+      return;
+    }
+    if (nav.showLanguageGapCard) {
+      nav.declineLanguageGap();
+      return;
+    }
     if (nav.showUpcomingEpisodeCard) {
       nav.dismissUpcomingEpisodeCard();
       return;

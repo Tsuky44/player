@@ -76,19 +76,128 @@ extension PlayerControllerAuto on PlayerController {
         directAllowed: !_hlsOnly && !_directPlayRuledOut,
         ceilingKey: _autoCeilingKey,
         ceilingBps: _autoCeilingCopies ? sourceBps : 0,
+        maxEncodeHeight: _auto.maxEncodeHeight,
       ),
       speed: playbackSpeed,
     );
   }
 
-  Future<int?> _measureLine(int wantBps) async {
+  Future<AutoLineMeasure?> _measureLine(int wantBps) async {
     final media = _media;
     final api = _apiClient;
     final access = _playbackAccess;
     if (media == null || api == null || access == null || _disposed) {
       return null;
     }
-    return api.measureLineBps(media.id, access: access, wantBps: wantBps);
+    // Ce que le moteur reçoit pendant la mesure : les deux se partagent la
+    // ligne au même instant.
+    var measuring = true;
+    final inUse = () async {
+      var sum = 0;
+      var count = 0;
+      while (measuring && !_disposed) {
+        int? bps;
+        try {
+          bps = await session.receivingBps();
+        } catch (_) {
+          // Moteur fermé entre-temps : rien à compter.
+          return null;
+        }
+        if (bps == null) return null;
+        sum += bps;
+        count++;
+        await Future<void>.delayed(const Duration(milliseconds: 400));
+      }
+      return count == 0 ? null : sum ~/ count;
+    }();
+    final spare = await api
+        .measureLineBps(media.id, access: access, wantBps: wantBps)
+        .whenComplete(() => measuring = false);
+    final using = await inUse;
+    return spare == null ? null : (spareBps: spare, inUseBps: using);
+  }
+
+  /// Sonde la ligne et le serveur, au moment où le tampon fond.
+  ///
+  /// D'abord le serveur : si son encodeur n'a pas d'avance sur ce que le
+  /// lecteur lui demande, c'est lui qu'on attend. Sinon la ligne, comptée sur
+  /// ce que le moteur reçoit — il tire alors tout ce qu'elle porte.
+  Future<AutoSounding> _autoSound({required bool passive}) async {
+    final media = _media;
+    final api = _apiClient;
+    final access = _playbackAccess;
+    if (media == null || api == null || access == null || _disposed) {
+      return const AutoSounding();
+    }
+
+    final sessionId = _hlsSessionId;
+    if (currentQuality != null &&
+        sessionId != null &&
+        _hlsVideoMode != 'copy') {
+      final health =
+          await api.hlsSessionHealth(media.id, sessionId, access: access);
+      // Deux segments : en dessous, le lecteur demande ce qui n'existe pas
+      // encore. Un encodeur qui suit en garde une trentaine de secondes.
+      if (health != null && health.aheadSeconds < 4) {
+        // Ce que le moteur reçoit est alors ce que l'encodeur produit, pas
+        // ce que la ligne porte. Mesuré avec un encodeur à 0,6× : la ligne,
+        // à 5 Mbit/s, « mesurée » à 1,5 puis 0,3, et une descente jusqu'en
+        // bas de l'échelle.
+        //
+        // Une session à peine ouverte n'a pas encore eu le temps de prendre
+        // de l'avance : rien ne l'accuse, mais rien ne se mesure non plus.
+        if (passive) return const AutoSounding();
+        debugPrint('Auto: encodeur à ${health.aheadSeconds}s d’avance, '
+            '${health.speed.toStringAsFixed(1)}× la vitesse de lecture');
+        return const AutoSounding(encoderBehind: true);
+      }
+    }
+
+    final received = await _receivingBps();
+    if (received != null) return AutoSounding(lineBps: received);
+    if (passive) return const AutoSounding();
+
+    // Le moteur ne dit pas ce qu'il reçoit : tirer un morceau du fichier à
+    // côté. La ligne se partage alors entre la mesure et la lecture, dont la
+    // part se déduit de la pente du tampon quand elle est connue ; sinon la
+    // mesure seule, qui pèche par défaut — un barreau trop bas se rattrape
+    // en une remontée, un barreau trop haut en une coupure.
+    final ladder = _autoReading().ladder;
+    final wanted = ladder.sendingBps > 0 ? ladder.sendingBps : ladder.sourceBps;
+    final measure = await _measureLine(wanted > 0 ? wanted : 8000000);
+    if (measure == null) return const AutoSounding();
+    final ratio = _auto.measuredRatio;
+    final inUse = measure.inUseBps ??
+        (ratio == null ? 0 : (ratio * ladder.sendingBps).round());
+    return AutoSounding(lineBps: measure.spareBps + inUse);
+  }
+
+  /// Ce que le moteur reçoit, moyenné sur une seconde et demie ; null s'il
+  /// ne le publie pas.
+  ///
+  /// Le premier relevé attend : le moteur compte sur la seconde écoulée, et
+  /// juste après une recherche elle ne contient encore rien.
+  Future<int?> _receivingBps() async {
+    var sum = 0;
+    var count = 0;
+    for (var i = 0; i < 3; i++) {
+      await Future<void>.delayed(const Duration(milliseconds: 500));
+      if (_disposed) return null;
+      int? bps;
+      try {
+        bps = await session.receivingBps();
+      } catch (_) {
+        // Moteur fermé entre-temps : rien à mesurer.
+        return null;
+      }
+      if (bps == null) return null;
+      sum += bps;
+      count++;
+    }
+    final mean = sum ~/ count;
+    // Un moteur qui ne reçoit rien ne mesure pas une ligne : il attend
+    // autre chose.
+    return mean < 64000 ? null : mean;
   }
 
   /// Exécute une décision de l'Auto. Rend vrai quand la lecture est bien

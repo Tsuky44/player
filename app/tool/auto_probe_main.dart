@@ -27,6 +27,7 @@ const _token = String.fromEnvironment('E2E_TOKEN');
 const _plan =
     String.fromEnvironment('E2E_PLAN', defaultValue: '14000@0,5000@40,0@200');
 const _lasts = int.fromEnvironment('E2E_SECONDS', defaultValue: 420);
+const _mediaId = int.fromEnvironment('E2E_MEDIA', defaultValue: 1);
 
 class _Registry extends ServerRegistry {
   @override
@@ -88,7 +89,7 @@ Future<void> main() async {
   ));
 
   final media = Media(
-    id: 1,
+    id: _mediaId,
     type: MediaType.movie,
     title: 'Essai Auto',
     duration: 600,
@@ -109,7 +110,7 @@ Future<void> main() async {
   );
   // Le film d'essai est un sifflement continu : personne n'a à l'entendre.
   await controller.session.setVolume(0);
-  await controller.startPlayback(mediaId: 1, apiClient: api);
+  await controller.startPlayback(mediaId: _mediaId, apiClient: api);
   await controller.session.setVolume(0);
 
   final clock = Stopwatch()..start();

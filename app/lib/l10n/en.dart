@@ -2706,4 +2706,20 @@ const Map<String, String> kEnglish = <String, String>{
       'Replay the tour',
   'Rejoue le tour de l’accueil et de la navigation.':
       'Replays the tour of the home screen and the navigation.',
+  'PAS ENCORE EN {0}':
+      'NOT IN {0} YET',
+  'L’épisode suivant n’est pas disponible en {0}.':
+      'The next episode is not available in {0}.',
+  'Cet épisode n’est pas disponible en {0}.':
+      'This episode is not available in {0}.',
+  'Disponible en {0}':
+      'Available in {0}',
+  'Voulez-vous le regarder en {0} ? Si vous préférez attendre, la série reviendra dans « Reprendre la lecture » dès que l’épisode sera disponible en {1}.':
+      'Do you want to watch it in {0}? If you would rather wait, the series will come back to “Continue watching” as soon as the episode is available in {1}.',
+  'Continuer en {0}':
+      'Continue in {0}',
+  'Attendre la version en {0}':
+      'Wait for the {0} version',
+  'La série reviendra dans « Reprendre la lecture » dès qu’un épisode sera disponible en {0}.':
+      'The series will come back to “Continue watching” as soon as an episode is available in {0}.',
 };

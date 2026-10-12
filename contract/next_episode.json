@@ -59,6 +59,9 @@
     "updated_at": "2026-01-02T03:04:05Z",
     "has_new_episode": true
   },
+  "episode_audio_langs": [
+    "episode_audio_langs-value"
+  ],
   "next_season": {
     "show_id": 27,
     "show_tmdb_id": 28,

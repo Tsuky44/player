@@ -36,6 +36,7 @@ class SeriesTrackMemory {
 
   static const _audioField = 'audio_lang';
   static const _subtitleField = 'subtitle';
+  static const _awaitedAudioField = 'await_audio_lang';
 
   final ApiClient _api;
   final int _episodeId;
@@ -76,6 +77,48 @@ class SeriesTrackMemory {
 
   void rememberSubtitle(SeriesSubtitleChoice choice) =>
       _remember(_subtitleField, (prefs) => prefs.withSubtitle(choice));
+
+  /// La langue qu'on préfère attendre pour cette série, ou vide pour cesser
+  /// d'attendre (ADR-0057). Elle suit le même chemin qu'un choix de piste :
+  /// notée sur l'appareil, envoyée dès que le serveur répond.
+  ///
+  /// Rend la main une fois le serveur prévenu, ou le choix noté pour plus
+  /// tard : qui quitte le lecteur sur cette réponse retrouve un accueil qui
+  /// en tient déjà compte.
+  Future<void> rememberAwaitedAudio(String lang) {
+    _remember(_awaitedAudioField, (prefs) => prefs.withAwaitedAudio(lang));
+    return _queue;
+  }
+
+  String get _acceptedKey => '$_cacheKey|other_language';
+
+  /// Si l'on a déjà répondu « continuer » à un épisode sans [lang].
+  ///
+  /// Gardé sur l'appareil, par saison comme la copie locale : ce n'est pas un
+  /// réglage de la série mais la mémoire d'une question déjà posée ici.
+  Future<bool> acceptedWithout(String lang) async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      return prefs.getString(_acceptedKey) == lang;
+    } catch (_) {
+      // Sans stockage, la question se repose : c'est le défaut le plus sûr.
+      return false;
+    }
+  }
+
+  /// Retient qu'on continue sans [lang], ou l'oublie quand [lang] est null.
+  Future<void> acceptOtherLanguage(String? lang) async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      if (lang == null) {
+        await prefs.remove(_acceptedKey);
+      } else {
+        await prefs.setString(_acceptedKey, lang);
+      }
+    } catch (_) {
+      // Une réponse qui n'a pas pu s'écrire sera simplement redemandée.
+    }
+  }
 
   /// Ce qui a été choisi ici sans atteindre le serveur part d'abord : c'est
   /// l'appareil qui porte alors la valeur récente, pas le compte.
@@ -125,6 +168,8 @@ class SeriesTrackMemory {
       if (fields.contains(_audioField)) _audioField: prefs.audioLang ?? '',
       if (fields.contains(_subtitleField) && subtitle != null)
         _subtitleField: subtitle.toJson(),
+      if (fields.contains(_awaitedAudioField))
+        _awaitedAudioField: prefs.awaitAudioLang ?? '',
     };
   }
 

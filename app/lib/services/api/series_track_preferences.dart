@@ -18,7 +18,7 @@ mixin _SeriesTrackPreferencesEndpoints {
   }
 
   /// Mise à jour partielle : seuls les champs de [fields] sont envoyés, avec
-  /// les clés du serveur (`audio_lang`, `subtitle`).
+  /// les clés du serveur (`audio_lang`, `subtitle`, `await_audio_lang`).
   Future<SeriesTrackPreferences> updateSeriesTrackPreferences(
     int episodeId,
     Map<String, Object> fields,

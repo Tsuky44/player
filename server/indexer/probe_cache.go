@@ -68,6 +68,7 @@ func ProbeAndPersist(mediaID int, title, filePath string, fileSize int64, modTim
 		log.Printf("Indexer: failed to persist probe for media %d: %v", mediaID, err)
 		return
 	}
+	noteAudioLanguages(mediaID, probe)
 
 	streamcache.Global().Invalidate(mediaID)
 }
@@ -227,6 +228,7 @@ func PersistProbeAfterLiveProbe(mediaID int, filePath string, probe *streaming.P
 		nullFloat(analysis.GOPSeconds),
 		mediaID,
 	)
+	noteAudioLanguages(mediaID, probe)
 	streamcache.Global().Invalidate(mediaID)
 }
 

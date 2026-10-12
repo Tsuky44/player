@@ -94,6 +94,56 @@ type TranscodeSession struct {
 	producedSegments     int
 	// purgedBelow est le premier index de segment encore sur le disque.
 	purgedBelow int
+	// startedAt date le lancement de FFmpeg, et burstSpeed fige sa vitesse au
+	// premier arrêt par le bridage : après, il ne tourne plus que par à-coups
+	// et le temps écoulé ne mesure plus rien. Voir Health.
+	startedAt  time.Time
+	burstSpeed float64
+}
+
+// SessionHealth est ce qu'une session dit de son encodeur.
+type SessionHealth struct {
+	// AheadSeconds est ce que l'encodeur a produit au-delà du dernier segment
+	// demandé. Une trentaine de secondes quand il suit ; presque rien quand
+	// c'est lui que le lecteur attend.
+	AheadSeconds int `json:"ahead_seconds"`
+	// Speed est sa vitesse rapportée à celle de la lecture, 0 tant qu'elle
+	// n'est pas mesurable : celle qu'il avait en prenant son avance, ou celle
+	// qu'il a depuis le début s'il ne l'a jamais prise. Sous 1, aucune ligne
+	// ne rendra la lecture fluide.
+	Speed float64 `json:"speed"`
+}
+
+// Health mesure l'avance et la vitesse de l'encodeur à l'instant now.
+//
+// C'est ce qui distingue, vu du lecteur, une ligne trop lente d'un serveur
+// trop lent : les deux vident le tampon, mais descendre en débit ne soulage
+// que la première. Voir ADR-0056.
+func (s *TranscodeSession) Health(now time.Time) SessionHealth {
+	produced := s.countVideoSegments()
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	ahead := (produced - 1 - s.lastRequestedSegment) * segmentDuration
+	if ahead < 0 {
+		ahead = 0
+	}
+	return SessionHealth{AheadSeconds: ahead, Speed: s.speedLocked(produced, now)}
+}
+
+// speedLocked est la vitesse de l'encodeur ; s.mu est tenu.
+func (s *TranscodeSession) speedLocked(produced int, now time.Time) float64 {
+	if s.burstSpeed > 0 {
+		return s.burstSpeed
+	}
+	if s.startedAt.IsZero() {
+		return 0
+	}
+	ran := now.Sub(s.startedAt)
+	// Sur moins que ça, le démarrage de FFmpeg pèse plus que l'encodage.
+	if ran < 3*time.Second {
+		return 0
+	}
+	return float64(produced*segmentDuration) / ran.Seconds()
 }
 
 // Start launches FFmpeg and the JIT throttling watchdog.
@@ -105,6 +155,7 @@ func (s *TranscodeSession) Start() error {
 	}
 	s.active = true
 	s.lastAccess = time.Now()
+	s.startedAt = s.lastAccess
 	s.mu.Unlock()
 
 	go safego.Run("watch", func() { s.watch() })
@@ -183,6 +234,9 @@ func (s *TranscodeSession) throttle() {
 				s.signal(syscall.SIGSTOP)
 				s.mu.Lock()
 				s.paused = true
+				if s.burstSpeed == 0 {
+					s.burstSpeed = s.speedLocked(produced, time.Now())
+				}
 				s.mu.Unlock()
 			} else if bufferAhead < segmentsAhead && paused {
 				s.signal(syscall.SIGCONT)
@@ -275,6 +329,10 @@ func (s *TranscodeSession) signal(sig syscall.Signal) {
 
 // Kill terminates FFmpeg (continuing it first if paused) and removes temp files.
 func (s *TranscodeSession) Kill() {
+	if health := s.Health(time.Now()); health.Speed > 0 && s.producedSegments >= 10 {
+		// Sous 1, c'est le serveur qui faisait attendre le lecteur, pas la ligne.
+		log.Printf("Session %s: %s encodé à %.1f× la vitesse de lecture", s.ID, s.Quality, health.Speed)
+	}
 	s.mu.Lock()
 	if !s.active {
 		s.mu.Unlock()

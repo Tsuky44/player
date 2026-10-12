@@ -185,12 +185,18 @@ class UpcomingEpisode {
 class NextEpisodeResponse {
   final bool hasNext;
   final HomeMediaItem? episode;
+
+  /// Les langues audio de [episode], celle qu'on entendra par défaut en tête.
+  /// Vide quand le serveur ne les connaît pas : on ne peut alors rien affirmer
+  /// de ce qui manque (ADR-0057).
+  final List<String> episodeAudioLangs;
   final NextSeason? nextSeason;
   final UpcomingEpisode? upcomingEpisode;
 
   NextEpisodeResponse({
     required this.hasNext,
     this.episode,
+    this.episodeAudioLangs = const [],
     this.nextSeason,
     this.upcomingEpisode,
   });
@@ -202,6 +208,9 @@ class NextEpisodeResponse {
     return NextEpisodeResponse(
       hasNext: json['has_next'] as bool? ?? false,
       episode: episodeJson != null ? HomeMediaItem.fromJson(episodeJson) : null,
+      episodeAudioLangs: (json['episode_audio_langs'] as List? ?? const [])
+          .whereType<String>()
+          .toList(),
       nextSeason: seasonJson != null ? NextSeason.fromJson(seasonJson) : null,
       upcomingEpisode:
           upcomingJson != null ? UpcomingEpisode.fromJson(upcomingJson) : null,

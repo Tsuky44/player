@@ -138,6 +138,25 @@ void main() {
     expect(liveSourceFor(sources, marked.subtitles[2]), isNull);
   });
 
+  test('marquer les pistes ne perd rien de ce que le serveur a dit du média',
+      () {
+    // Le débit du fichier disparaissait à la première session ouverte : la
+    // qualité automatique remontait au fichier sur une ligne à 13 Mbit/s
+    // qui en aurait demandé 62 (ADR-0056).
+    final tracks = MediaTracks(
+      audio: const [],
+      subtitles: const [],
+      sourceBitrateBps: 41000000,
+      qualities: const [
+        QualityTier(key: '720p', label: '720p', height: 720, bitrateBps: 3660000),
+      ],
+    );
+
+    final marked = withLiveSubtitles(tracks, const []);
+    expect(marked.sourceBitrateBps, 41000000);
+    expect(marked.qualities.single.key, '720p');
+  });
+
   test('un serveur plus ancien ne dit rien : on retombe sur l\'extraction', () {
     final old = HlsSession.fromJson({'session_id': 's', 'master_url': 'm'});
     expect(old.subtitles, isNull);

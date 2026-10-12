@@ -261,6 +261,10 @@ class ExoPlaybackSession implements PlaybackSession {
   @override
   Duration get duration => _lastDuration;
 
+  /// Le moteur ne publie pas ce qu'il reçoit : la ligne se mesure à côté.
+  @override
+  Future<int?> receivingBps() async => null;
+
   @override
   Duration get bufferedAhead {
     final status = _status;

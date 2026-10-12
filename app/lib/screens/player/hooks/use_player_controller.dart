@@ -7,6 +7,7 @@ import '../../../utils/app_platform.dart';
 import '../web/web_playback.dart';
 import '../display_frame_rate.dart';
 import '../hardware_decoding.dart';
+import '../playback/audio_language_gap.dart';
 import '../playback/auto_quality.dart';
 import '../playback/carried_subtitle.dart';
 import '../playback/embedded_subtitle_pairing.dart';
@@ -37,6 +38,7 @@ import '../player_playback_preferences.dart';
 // démontage. Le reste est dans des extensions, une par sujet. Voir ADR-0052.
 part 'player_controller_auto.dart';
 part 'player_controller_hls.dart';
+part 'player_controller_language.dart';
 part 'player_controller_startup.dart';
 part 'player_controller_tracks.dart';
 
@@ -131,6 +133,8 @@ class PlayerController {
       _onFirstFrame?.call();
       unawaited(_onPictureLive());
     });
+    // Sans rien qui bouge à l'écran, aucune image ne viendrait l'appeler.
+    WidgetsBinding.instance.ensureVisualUpdate();
   }
 
   /// Starts the timeline stills — never earlier than the first frame, so the
@@ -229,6 +233,7 @@ class PlayerController {
     read: _autoReading,
     measureLine: _measureLine,
     move: _autoMove,
+    sound: _autoSound,
   );
 
   /// Cet appareil ne lit pas ce fichier lui-même (codec ou piste audio qu'il

@@ -30,6 +30,9 @@ type ShowTrackPreferences struct {
 	// choisie pour cette série.
 	AudioLang string             `json:"audio_lang"`
 	Subtitle  ShowSubtitleChoice `json:"subtitle"`
+	// La langue que le compte a choisi d'attendre plutôt que de poursuivre la
+	// série dans une autre (ADR-0057). Vide quand il n'attend rien.
+	AwaitAudioLang string `json:"await_audio_lang"`
 	// Vide tant que le compte n'a rien enregistré pour cette série.
 	UpdatedAt string `json:"updated_at"`
 }

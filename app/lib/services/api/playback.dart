@@ -290,6 +290,41 @@ mixin _PlaybackEndpoints {
     return (received * 8000 / (millis < 50 ? 50 : millis)).round();
   }
 
+  /// L'avance, en secondes, que l'encodeur de la session [sessionId] a sur
+  /// ce que le lecteur lui a demandé, et sa vitesse rapportée à celle de la
+  /// lecture (0 tant qu'elle n'est pas mesurable). Null quand le serveur ne
+  /// sait pas répondre — une version d'avant l'ADR-0056, ou une session
+  /// disparue.
+  Future<({int aheadSeconds, double speed})?> hlsSessionHealth(
+    int mediaId,
+    String sessionId, {
+    PlaybackAccess? access,
+  }) async {
+    if (sessionId.isEmpty) return null;
+    try {
+      final url =
+          "${access?.origin ?? baseUrl}/api/v1/stream/$mediaId/$sessionId/health";
+      final response = await _dio.get<Map<String, dynamic>>(
+        access?.protect(url) ?? url,
+        options: Options(
+          extra: {'playbackMedia': true},
+          receiveTimeout: const Duration(seconds: 3),
+        ),
+      );
+      final data = response.data;
+      final ahead = data?['ahead_seconds'];
+      if (ahead is! num) return null;
+      final speed = data?['speed'];
+      return (
+        aheadSeconds: ahead.toInt(),
+        speed: speed is num ? speed.toDouble() : 0.0,
+      );
+    } catch (_) {
+      // Pas de réponse : rien n'accuse l'encodeur, la ligne reste suspecte.
+      return null;
+    }
+  }
+
   // Notify server to destroy an HLS transcoding session (kills FFmpeg + temp files)
   Future<void> destroyHlsSession(int mediaId, String sessionId,
       {PlaybackAccess? access}) async {

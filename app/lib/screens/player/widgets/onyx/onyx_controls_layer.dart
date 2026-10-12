@@ -2,7 +2,6 @@ import 'package:flutter/material.dart';
 import '../player_chrome_fade.dart';
 
 import '../../../../desktop_window.dart';
-import '../../../../tv/tv_focus.dart';
 import '../../../../tv/tv_focus_rows.dart';
 import '../../../../utils/format.dart';
 import '../../../../widgets/global/app_network_image.dart';
@@ -12,6 +11,7 @@ import 'onyx_brightness_slider.dart';
 import 'onyx_chrome_buttons.dart';
 import 'onyx_chrome_theme.dart';
 import 'onyx_progress_bar.dart';
+import 'onyx_skip_intro_button.dart';
 import '../../../../l10n/tr.dart';
 
 /// Chrome Onyx: the hand-written player chrome, the only one the app has.
@@ -108,6 +108,10 @@ class OnyxControlsLayer extends StatelessWidget {
 
   /// Only while an intro chapter is playing.
   final VoidCallback? onSkipIntro;
+
+  /// Set while the intro counts down to skipping itself: the pill fills over
+  /// that time.
+  final Duration? skipIntroCountdown;
 
   /// Opens the « Regarder ensemble » panel. Null where no server can host a
   /// session (offline playback).
@@ -225,6 +229,7 @@ class OnyxControlsLayer extends StatelessWidget {
     this.onSkipPrevious,
     this.onOpenEpisodes,
     this.onSkipIntro,
+    this.skipIntroCountdown,
     this.chapterMarks = const [],
     this.settingsButtonKey,
     this.subtitlesButtonKey,
@@ -349,8 +354,11 @@ class OnyxControlsLayer extends StatelessWidget {
                       ),
                       child: Align(
                         alignment: Alignment.centerRight,
-                        child: _OnyxSkipIntroButton(
-                            onPressed: onSkipIntro!, metrics: m),
+                        child: OnyxSkipIntroButton(
+                          onPressed: onSkipIntro!,
+                          metrics: m,
+                          autoSkipIn: skipIntroCountdown,
+                        ),
                       ),
                     ),
                   _fadeWithChrome(_buildBottom(m)),
@@ -426,9 +434,10 @@ class OnyxControlsLayer extends StatelessWidget {
                     child: Align(
                       alignment: Alignment.centerRight,
                       child: TvFocusRow(
-                        child: _OnyxSkipIntroButton(
+                        child: OnyxSkipIntroButton(
                           onPressed: onSkipIntro!,
                           metrics: m,
+                          autoSkipIn: skipIntroCountdown,
                         ),
                       ),
                     ),
@@ -929,47 +938,6 @@ class OnyxControlsLayer extends StatelessWidget {
           ),
         ],
       ],
-    );
-  }
-}
-
-
-/// Skip-intro affordance: a bordered pill above the controls, shown
-/// only while an intro chapter is playing.
-class _OnyxSkipIntroButton extends StatelessWidget {
-  final VoidCallback onPressed;
-  final OnyxChromeMetrics metrics;
-
-  const _OnyxSkipIntroButton({required this.onPressed, required this.metrics});
-
-  @override
-  Widget build(BuildContext context) {
-    return TvFocusable(
-      onSelect: onPressed,
-      borderRadius: BorderRadius.circular(6),
-      focusScale: 1.06,
-      child: Material(
-        color: Colors.black.withValues(alpha: 0.55),
-        shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(6),
-          side: const BorderSide(color: OnyxChromeTheme.icon, width: 1.4),
-        ),
-        child: InkWell(
-          borderRadius: BorderRadius.circular(6),
-          onTap: onPressed,
-          child: Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 10),
-            child: Text(
-              tr('Passer l’intro'),
-              style: TextStyle(
-                color: OnyxChromeTheme.iconActive,
-                fontSize: metrics.skipIntroTextSize,
-                fontWeight: FontWeight.w600,
-              ),
-            ),
-          ),
-        ),
-      ),
     );
   }
 }

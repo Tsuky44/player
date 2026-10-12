@@ -91,9 +91,10 @@ func GetNextEpisode(w http.ResponseWriter, r *http.Request, ps httprouter.Params
 	if item, ok := findEpisodeInSeason(userID, seasonID, currentEpisodeNum); ok {
 		lang.items(&item)
 		_ = json.NewEncoder(w).Encode(nextEpisodeResponse{
-			HasNext:    true,
-			Episode:    &item,
-			NextSeason: lookaheadMissingSeason(userID, item.ID, lang),
+			HasNext:           true,
+			Episode:           &item,
+			EpisodeAudioLangs: episodeAudioLanguages(item.ID),
+			NextSeason:        lookaheadMissingSeason(userID, item.ID, lang),
 		})
 		return
 	}
@@ -121,7 +122,11 @@ func GetNextEpisode(w http.ResponseWriter, r *http.Request, ps httprouter.Params
 	if nextSeasonID > 0 {
 		if item, ok := findEpisodeInSeason(userID, nextSeasonID, 0); ok {
 			lang.items(&item)
-			response := nextEpisodeResponse{HasNext: true, Episode: &item}
+			response := nextEpisodeResponse{
+				HasNext:           true,
+				Episode:           &item,
+				EpisodeAudioLangs: episodeAudioLanguages(item.ID),
+			}
 			if upcoming != nil {
 				// Playing on is still offered, but through the card, so
 				// crossing a hole in the current season stays a deliberate act.

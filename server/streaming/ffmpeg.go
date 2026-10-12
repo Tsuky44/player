@@ -107,6 +107,8 @@ type TranscodeOptions struct {
 	// the encoding path it is roughly fifty times cheaper, and the picture comes
 	// out bit-identical to the source instead of a generation down.
 	Video VideoPlan
+	// AudioBudgetBps borne ce que le son peut peser ; voir AudioBudget.
+	AudioBudgetBps int
 	// Caps is what the client declared it can decode. The zero value means a
 	// client that declared nothing, which is treated as the browser this server
 	// was originally written for — see LegacyCapabilities.
@@ -338,7 +340,7 @@ func audioAndMuxerArgs(opt TranscodeOptions, preset qualityPreset, audioIdxs []i
 	// already take, keep the channels when it can carry them, and fold to stereo
 	// only when there is nothing else left.
 	for i, idx := range audioIdxs {
-		plan := PlanAudio(opt.Probe, idx, opt.caps(), preset)
+		plan := PlanAudioWithin(opt.Probe, idx, opt.caps(), preset, opt.AudioBudgetBps)
 		if plan.Copy {
 			args = append(args, fmt.Sprintf("-c:a:%d", i), "copy")
 			if opt.StartSeconds > 0 && !opt.Video.Copy {

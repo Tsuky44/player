@@ -153,6 +153,8 @@ func (h *Handler) Dispatch(w http.ResponseWriter, r *http.Request, _ httprouter.
 		h.manager.DestroySession(parts[1])
 		w.Header().Set("Content-Type", "application/json")
 		w.Write([]byte(`{"status":"destroyed"}`))
+	case len(parts) == 3 && parts[2] == "health" && r.Method == http.MethodGet:
+		h.handleHealth(w, parts[1])
 	case len(parts) == 3 && r.Method == http.MethodGet:
 		h.handleServeFile(w, r, parts[1], parts[2])
 	default:
@@ -301,6 +303,7 @@ func (h *Handler) handleStart(w http.ResponseWriter, r *http.Request, mediaID in
 		BurnSubtitle:           burnSubtitle >= 0,
 		BurnSubtitleTypedIndex: burnSubtitle,
 		Video:                  videoPlan,
+		AudioBudgetBps:         AudioBudget(quality, videoPlan),
 		Caps:                   caps,
 		LiveSubtitles:          subtitleTracks,
 	})
@@ -318,6 +321,7 @@ func (h *Handler) handleStart(w http.ResponseWriter, r *http.Request, mediaID in
 		AudioTypedIndexes:      audioMap,
 		DefaultAudioTypedIndex: audioIndex,
 		BandwidthBps:           advertisedBandwidth,
+		AudioBudgetBps:         AudioBudget(quality, videoPlan),
 		Caps:                   caps,
 	})
 

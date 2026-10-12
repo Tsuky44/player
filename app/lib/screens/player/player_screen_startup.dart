@@ -77,12 +77,13 @@ extension _PlayerStartup on _PlayerScreenState {
         // seconds to produce a frame — that first countdown expired while the
         // screen was still covered, so the chrome was already gone by the time
         // the picture appeared and the player looked broken on arrival.
-        _showControlsTransient();
+        _showControlsTransient(byUser: false);
       },
       onTracksChanged: () {
         // Background subtitle extraction finished: rebuild so the settings
         // menu reflects the freshly available tracks.
         _safeSetState(() {});
+        unawaited(_askLaunchLanguage());
       },
       onFailure: () {
         // Le moteur a renoncé. Il n'y a plus rien à attendre du compte à
@@ -238,6 +239,7 @@ extension _PlayerStartup on _PlayerScreenState {
     ));
     _keyboardFocusNode.requestFocus();
     _hideControlsWithDelay();
+    unawaited(_askLaunchLanguage());
   }
 
   /// Starts the countdown on the first picture. Cancelled the moment it lands;

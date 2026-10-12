@@ -30,35 +30,55 @@ class AutoQualityReading {
   final double speed;
 }
 
+/// Une mesure active de la ligne : ce qu'un téléchargement à côté de la
+/// lecture a obtenu, et ce que la lecture tirait pendant ce temps — null
+/// quand le moteur ne le dit pas.
+typedef AutoLineMeasure = ({int spareBps, int? inUseBps});
+
 /// Tient la qualité automatique pendant une lecture (ADR-0056).
 ///
 /// [AutoQuality] décide, cette classe exécute : une fois par seconde elle lit
 /// la lecture, et quand la décision tombe elle demande au contrôleur de
 /// changer de source — ou, pour remonter, de mesurer d'abord la ligne. Elle ne
-/// connaît ni moteur ni serveur : le contrôleur lui donne trois fonctions.
+/// connaît ni moteur ni serveur : le contrôleur lui donne quatre fonctions.
 class AutoQualityPilot {
   AutoQualityPilot({
     required AutoQualityReading Function() read,
-    required Future<int?> Function(int wantBps) measureLine,
+    required Future<AutoLineMeasure?> Function(int wantBps) measureLine,
     required Future<bool> Function(AutoTarget target, {required bool urgent})
         move,
+    Future<AutoSounding> Function({required bool passive})? sound,
     AutoQuality? rules,
     DateTime Function() now = DateTime.now,
   })  : _read = read,
         _measureLine = measureLine,
         _move = move,
+        _sound = sound,
         _rules = rules ?? AutoQuality(),
         _now = now;
 
   final AutoQualityReading Function() _read;
-  final Future<int?> Function(int wantBps) _measureLine;
+  final Future<AutoLineMeasure?> Function(int wantBps) _measureLine;
   final Future<bool> Function(AutoTarget target, {required bool urgent}) _move;
+
+  /// Sonde la ligne et le serveur au moment de descendre. Sans elle, le
+  /// barreau se choisit d'après la pente du tampon. `passive` : ne rien
+  /// rendre qui coûte à la ligne ou qui ne vaille pas pour une session à
+  /// peine ouverte.
+  final Future<AutoSounding> Function({required bool passive})? _sound;
   final AutoQuality _rules;
   final DateTime Function() _now;
 
   Timer? _timer;
   bool _enabled = false;
   bool _busy = false;
+  DateTime? _sparedAt;
+  int _maxEncodeHeight = 0;
+
+  /// La plus grande image que le serveur a su encoder assez vite pendant
+  /// cette lecture, 0 tant qu'il n'a pas été pris en défaut. Le contrôleur la
+  /// rend dans [AutoLadder.maxEncodeHeight] : l'Auto ne remonte pas au-dessus.
+  int get maxEncodeHeight => _maxEncodeHeight;
 
   /// Ce que la ligne porte de ce qui est lu, d'après les derniers relevés ;
   /// null tant que rien n'a été mesuré.
@@ -70,7 +90,12 @@ class AutoQualityPilot {
   set enabled(bool value) {
     if (_enabled == value) return;
     _enabled = value;
-    if (value) _rules.noteChosen(_now());
+    if (value) {
+      _rules.noteChosen(_now());
+      // Qui redemande l'Auto veut qu'elle réessaie : le serveur a pu se
+      // libérer depuis.
+      _maxEncodeHeight = 0;
+    }
   }
 
   void start() {
@@ -91,8 +116,38 @@ class AutoQualityPilot {
     if (!_enabled || _busy) return;
     final reading = _read();
     if (!reading.eligible || !reading.playing) return;
-    if (!_rules.noteStall(_now())) return;
+    final now = _now();
+    if (_rules.inGrace(now)) {
+      await _descendIfStarved();
+      return;
+    }
+    if (!_rules.noteStall(now)) return;
     await _descend(reading, urgent: true);
+  }
+
+  /// Une coupure pendant un délai de grâce — au démarrage, après une
+  /// recherche. Le tampon vide ne prouve rien, mais ce que le moteur reçoit,
+  /// si : une ligne qui livre moins que ce qui est lu ne tiendra pas, et il
+  /// n'y a pas à attendre la coupure suivante pour le savoir. Mesuré : un
+  /// film à 41 Mbit/s sur une ligne à 5 restait figé dix-huit secondes avant
+  /// que l'Auto ait le droit d'agir.
+  Future<void> _descendIfStarved() async {
+    final sound = _sound;
+    if (sound == null) return;
+    await _run(() async {
+      final line = (await sound(passive: true)).lineBps;
+      if (line == null) return;
+      final ladder = _read().ladder;
+      if (!ladder.starves(line)) return;
+      final target = ladder.downTo(line);
+      if (target == null) return;
+      debugPrint('Auto: ligne mesurée à ${(line / 1e6).toStringAsFixed(1)} '
+          'Mbit/s — passage de ${ladder.currentKey ?? 'direct'} à $target '
+          '(coupure, sans attendre)');
+      if (await _move(target, urgent: true)) {
+        _rules.noteMoved(_now(), up: false);
+      }
+    }, quietOnFailure: false);
   }
 
   /// Un relevé. Appelé chaque seconde par [start] ; public pour les tests.
@@ -123,17 +178,18 @@ class AutoQualityPilot {
 
   Future<void> _descend(AutoQualityReading reading,
       {required bool urgent}) async {
-    final target = reading.ladder.down(_rules.fillRatio);
-    if (target == null) {
-      // Au bas de l'échelle : rien à tenter avant le prochain délai de grâce.
-      _rules.noteDisturbance(_now());
-      return;
-    }
-    debugPrint('Auto: la ligne porte '
-        '${(_rules.fillRatio * 100).round()} % de '
-        '${reading.ladder.currentKey ?? 'direct'} — passage à $target'
-        '${urgent ? ' (coupure)' : ''}');
     await _run(() async {
+      final sounding =
+          await _sound?.call(passive: false) ?? const AutoSounding();
+      // La sonde a pris une seconde ou deux : l'échelle se relit.
+      final ladder = _sound == null ? reading.ladder : _read().ladder;
+      if (sounding.encoderBehind && await _leaveTheEncoder(ladder)) return;
+      final target = _aim(ladder, sounding, urgent: urgent);
+      if (target == null) {
+        // Rien à tenter avant le prochain délai de grâce.
+        _rules.noteDisturbance(_now());
+        return;
+      }
       final moved = await _move(target, urgent: urgent);
       if (moved) {
         _rules.noteMoved(_now(), up: false);
@@ -141,6 +197,82 @@ class AutoQualityPilot {
         _rules.noteDisturbance(_now());
       }
     });
+  }
+
+  /// Le serveur n'encode pas assez vite : si la ligne porte le fichier tel
+  /// quel, c'est lui qu'il faut lire — il ne coûte rien au serveur. Rend vrai
+  /// quand la lecture y est passée.
+  Future<bool> _leaveTheEncoder(AutoLadder ladder) async {
+    if (ladder.up(1 << 62)?.isDirect != true) return false;
+    final measure = await _measureLine(ladder.climbDemandBps);
+    if (measure == null) return false;
+    final capacity = measure.spareBps + (measure.inUseBps ?? 0);
+    if (ladder.up(capacity)?.isDirect != true) return false;
+    debugPrint('Auto: le serveur n’encode pas '
+        '${ladder.currentKey} assez vite, et la ligne porte '
+        '${(capacity / 1e6).toStringAsFixed(1)} Mbit/s — retour au fichier');
+    if (!await _move(const AutoTarget.direct(), urgent: true)) return false;
+    _rules.noteMoved(_now(), up: true);
+    return true;
+  }
+
+  /// Le barreau à viser, d'après ce que la sonde a trouvé.
+  AutoTarget? _aim(AutoLadder ladder, AutoSounding sounding,
+      {required bool urgent}) {
+    final from = ladder.currentKey ?? 'direct';
+    final why = urgent ? ' (coupure)' : '';
+
+    if (sounding.encoderBehind) {
+      final target = ladder.smallerPicture();
+      // Ni ce barreau ni rien de plus grand ne sera retenté.
+      final height = ladder.currentHeight;
+      if (height > 0) {
+        _maxEncodeHeight = target?.tier?.height ?? height;
+      }
+      debugPrint('Auto: le serveur n’encode pas $from assez vite — '
+          '${target == null ? 'rien de plus petit à demander' : 'passage à $target'}'
+          '$why. La ligne n’y est pour rien.');
+      return target;
+    }
+
+    final line = sounding.lineBps;
+    if (line == null) {
+      final target = ladder.down(_rules.fillRatio);
+      if (target != null) {
+        debugPrint('Auto: la ligne porte '
+            '${(_rules.fillRatio * 100).round()} % de $from — '
+            'passage à $target$why');
+      }
+      return target;
+    }
+
+    final mbit = (line / 1e6).toStringAsFixed(1);
+    if (ladder.carries(line)) {
+      // La ligne tient ce qui est lu : un accroc, ou une scène plus lourde
+      // que la moyenne du fichier. Une fois, on laisse passer ; si ça
+      // recommence, un cran de moins.
+      final spared = _sparedAt;
+      final now = _now();
+      if (spared == null || now.difference(spared) > _rules.relapseWindow) {
+        _sparedAt = now;
+        debugPrint('Auto: ligne mesurée à $mbit Mbit/s, assez pour $from — '
+            'on ne change rien$why');
+        return null;
+      }
+      _sparedAt = null;
+      final target = ladder.down(0.9);
+      if (target != null) {
+        debugPrint('Auto: ligne mesurée à $mbit Mbit/s mais $from coupe '
+            'encore — passage à $target$why');
+      }
+      return target;
+    }
+    final target = ladder.downTo(line);
+    if (target != null) {
+      debugPrint('Auto: ligne mesurée à $mbit Mbit/s — '
+          'passage de $from à $target$why');
+    }
+    return target;
   }
 
   Future<void> _climb(AutoQualityReading reading) async {
@@ -153,11 +285,18 @@ class AutoQualityPilot {
       // elle-même au même moment fait partie de ce que la ligne porte.
       // Mesuré : 1,7 Mbit/s « libres » sur une ligne à 5, dont la lecture
       // prenait le reste pour remplir son tampon.
-      final inUse =
+      //
+      // Cette part se lit dans le moteur quand il la donne. Sinon elle se
+      // déduit de la pente du tampon — qui date des vingt dernières secondes,
+      // pas de l'instant de la mesure. Mesuré : 10,8 Mbit/s trouvés sur une
+      // ligne à 5, une remontée à 1080p et une rechute dix secondes après.
+      final guessed =
           ((_rules.measuredRatio ?? 1) * reading.speed * ladder.sendingBps)
               .round();
-      final spare = await _measureLine(ladder.climbDemandBps);
-      final capacity = spare == null ? null : spare + inUse;
+      final measure = await _measureLine(ladder.climbDemandBps);
+      final capacity = measure == null
+          ? null
+          : measure.spareBps + (measure.inUseBps ?? guessed);
       final target = capacity == null ? null : ladder.up(capacity);
       if (target == null) {
         debugPrint('Auto: ligne mesurée à '
@@ -180,14 +319,15 @@ class AutoQualityPilot {
 
   /// Une seule action à la fois : les relevés qui tombent pendant une mesure
   /// ou un changement de source décriraient la manœuvre, pas la ligne.
-  Future<void> _run(Future<void> Function() action) async {
+  Future<void> _run(Future<void> Function() action,
+      {bool quietOnFailure = true}) async {
     _busy = true;
     try {
       await action();
     } catch (e) {
       // Le message peut porter l'adresse d'un flux, ticket compris.
       debugPrint('Auto: manœuvre abandonnée (${e.runtimeType})');
-      _rules.noteDisturbance(_now());
+      if (quietOnFailure) _rules.noteDisturbance(_now());
     } finally {
       _busy = false;
     }
