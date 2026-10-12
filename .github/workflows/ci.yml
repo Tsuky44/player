@@ -72,8 +72,21 @@ jobs:
 
       # Au-dela de vet : code mort, valeurs jamais lues, comparaisons toujours
       # vraies. Les regles ecartees sont dans server/staticcheck.conf.
+      #
+      # Construit dans un module a part, avec le golang.org/x/tools du jour :
+      # `go run staticcheck@latest` fige celui de la derniere version publiee,
+      # qui ne sait pas lire les donnees d'export de Go 1.27 (« export data
+      # version 5 is greater than maximum supported version 4 »).
       - name: staticcheck
-        run: go run honnef.co/go/tools/cmd/staticcheck@latest ./...
+        run: |
+          tool_dir="$(mktemp -d)"
+          (
+            cd "$tool_dir"
+            go mod init staticcheck-ci
+            go get honnef.co/go/tools/cmd/staticcheck@latest golang.org/x/tools@latest
+            go build -o staticcheck honnef.co/go/tools/cmd/staticcheck
+          )
+          "$tool_dir/staticcheck" ./...
 
       # Echoue seulement si le serveur appelle reellement le code vulnerable
       # d'une dependance, pas des qu'un module de go.sum a un avis.
