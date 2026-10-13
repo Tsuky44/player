@@ -17,8 +17,6 @@ const (
 	KeyMediaHubAPIKey       = "mediahub_api_key"
 	KeyTMDBAPIKey           = "tmdb_api_key"
 	KeyTMDBLanguage         = "tmdb_language"
-	KeyMoviesDir            = "movies_dir"
-	KeySeriesDir            = "series_dir"
 	KeyPlaybackLogsEnabled  = "playback_logs_enabled"
 	KeyPlaybackStatsEnabled = "playback_stats_enabled"
 	KeyOTPPolicy            = "otp_policy"
@@ -101,16 +99,6 @@ func setStored(key, value string) error {
 	return nil
 }
 
-func envOr(key, fallback string) string {
-	if v, ok := os.LookupEnv(key); ok {
-		v = strings.TrimSpace(v)
-		if v != "" {
-			return v
-		}
-	}
-	return fallback
-}
-
 // MediaHubURL returns persisted URL, then MEDIAHUB_URL env.
 func MediaHubURL() string {
 	if v, ok := getStored(KeyMediaHubURL); ok {
@@ -155,22 +143,6 @@ func TMDBLanguage() string {
 		return "fr-FR"
 	}
 	return lang
-}
-
-// MoviesDir returns library movies path (db → env → default).
-func MoviesDir() string {
-	if v, ok := getStored(KeyMoviesDir); ok {
-		return v
-	}
-	return envOr("MOVIES_DIR", "/media/Films")
-}
-
-// SeriesDir returns library series path (db → env → default).
-func SeriesDir() string {
-	if v, ok := getStored(KeySeriesDir); ok {
-		return v
-	}
-	return envOr("SERIES_DIR", "/media/Series")
 }
 
 // PlaybackLogsEnabled returns whether playback logs are enabled (db → env → true).
@@ -227,8 +199,6 @@ type PublicSettings struct {
 	TMDBAPIKeySet        bool   `json:"tmdb_api_key_set"`
 	TMDBAPIKeyHint       string `json:"tmdb_api_key_hint,omitempty"`
 	TMDBLanguage         string `json:"tmdb_language"`
-	MoviesDir            string `json:"movies_dir"`
-	SeriesDir            string `json:"series_dir"`
 	PlaybackLogsEnabled  bool   `json:"playback_logs_enabled"`
 	PlaybackStatsEnabled bool   `json:"playback_stats_enabled"`
 	OTPPolicy            string `json:"otp_policy"`
@@ -256,8 +226,6 @@ func Snapshot() PublicSettings {
 		TMDBAPIKeySet:        tmdbKey != "",
 		TMDBAPIKeyHint:       maskSecret(tmdbKey),
 		TMDBLanguage:         TMDBLanguage(),
-		MoviesDir:            MoviesDir(),
-		SeriesDir:            SeriesDir(),
 		PlaybackLogsEnabled:  PlaybackLogsEnabled(),
 		PlaybackStatsEnabled: PlaybackStatsEnabled(),
 		OTPPolicy:            string(OTPPolicy()),
@@ -272,8 +240,6 @@ type UpdateRequest struct {
 	TMDBAPIKey           *string `json:"tmdb_api_key"`
 	ClearTMDBAPIKey      bool    `json:"clear_tmdb_api_key"`
 	TMDBLanguage         *string `json:"tmdb_language"`
-	MoviesDir            *string `json:"movies_dir"`
-	SeriesDir            *string `json:"series_dir"`
 	PlaybackLogsEnabled  *bool   `json:"playback_logs_enabled"`
 	PlaybackStatsEnabled *bool   `json:"playback_stats_enabled"`
 	// OTPPolicy : une des valeurs d'otp.Policy. Le handler refuse les autres
@@ -324,16 +290,6 @@ func ApplyUpdate(req UpdateRequest) (PublicSettings, error) {
 			lang = "fr-FR"
 		}
 		if err := setStored(KeyTMDBLanguage, lang); err != nil {
-			return PublicSettings{}, err
-		}
-	}
-	if req.MoviesDir != nil {
-		if err := setStored(KeyMoviesDir, *req.MoviesDir); err != nil {
-			return PublicSettings{}, err
-		}
-	}
-	if req.SeriesDir != nil {
-		if err := setStored(KeySeriesDir, *req.SeriesDir); err != nil {
 			return PublicSettings{}, err
 		}
 	}

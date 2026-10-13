@@ -38,13 +38,19 @@ class CatalogHeader<T> extends StatelessWidget {
       crossAxisAlignment: CrossAxisAlignment.baseline,
       textBaseline: TextBaseline.alphabetic,
       children: [
-        Text(
-          title,
-          style: Theme.of(context).textTheme.displaySmall?.copyWith(
-                fontWeight: FontWeight.w700,
-                fontSize: compact ? 28 : 34,
-                letterSpacing: compact ? -0.6 : -0.9,
-              ),
+        // Le titre est le nom qu'un administrateur a donné à sa bibliothèque :
+        // sa longueur n'est pas la nôtre, il se coupe plutôt que de déborder.
+        Flexible(
+          child: Text(
+            title,
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: Theme.of(context).textTheme.displaySmall?.copyWith(
+                  fontWeight: FontWeight.w700,
+                  fontSize: compact ? 28 : 34,
+                  letterSpacing: compact ? -0.6 : -0.9,
+                ),
+          ),
         ),
         if (countLabel != null) ...[
           const SizedBox(width: 12),

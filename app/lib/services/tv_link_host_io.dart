@@ -36,8 +36,9 @@ class TvLinkHost implements TvLinkSession {
   Future<TvLinkOffer?> start({required String deviceName}) async {
     await stop();
 
-    final host = await _localAddress();
-    if (host == null) return null;
+    final addresses = await _localAddresses();
+    if (addresses.isEmpty) return null;
+    final host = addresses.first;
 
     final code = _generateCode();
     HttpServer server;
@@ -58,8 +59,14 @@ class TvLinkHost implements TvLinkSession {
     });
 
     final name = Uri.encodeQueryComponent(deviceName);
+    // A television has one interface. A computer has a VPN, a hypervisor and a
+    // container bridge beside its Wi-Fi, and nothing here can tell which of
+    // them the phone is on — so the runners-up travel too, and the phone tries
+    // them when the first one does not answer.
+    final others = addresses.skip(1).take(_maxAlternates).join(',');
+    final alternates = others.isEmpty ? '' : '&a=$others';
     return TvLinkOffer(
-      url: 'http://$host:${server.port}/link?c=$code&n=$name',
+      url: 'http://$host:${server.port}/link?c=$code&n=$name$alternates',
       host: host,
       port: server.port,
     );
@@ -200,11 +207,15 @@ class TvLinkHost implements TvLinkSession {
     return bytes.map((b) => b.toRadixString(16).padLeft(2, '0')).join();
   }
 
-  /// This device's address on the local network.
+  /// How many addresses the QR carries beyond the first. Each one is a few more
+  /// modules to photograph and a few more seconds for the phone to rule out.
+  static const int _maxAlternates = 3;
+
+  /// This device's addresses on the local network, likeliest first.
   ///
   /// A link-local address means DHCP failed, and nothing can reach it — the
   /// offer would be a QR pointing nowhere, so it is treated as "no network".
-  static Future<String?> _localAddress() async {
+  static Future<List<String>> _localAddresses() async {
     List<NetworkInterface> interfaces;
     try {
       interfaces = await NetworkInterface.list(
@@ -214,16 +225,63 @@ class TvLinkHost implements TvLinkSession {
       );
     } catch (error) {
       debugPrint('TvLinkHost: cannot list interfaces ($error)');
-      return null;
+      return const [];
     }
 
-    for (final interface in interfaces) {
-      for (final address in interface.addresses) {
-        if (address.address.startsWith('169.254.')) continue;
-        return address.address;
-      }
+    return rankAddresses([
+      for (final interface in interfaces)
+        for (final address in interface.addresses)
+          (interface: interface.name, address: address.address),
+    ]);
+  }
+
+  /// Orders [candidates] by how likely a phone on the home network is to reach
+  /// them: the Wi-Fi or Ethernet address first, virtual adapters and VPNs last.
+  @visibleForTesting
+  static List<String> rankAddresses(
+    List<({String interface, String address})> candidates,
+  ) {
+    final ranked = [
+      for (final candidate in candidates)
+        if (!candidate.address.startsWith('169.254.')) candidate,
+    ];
+    // Stable: interfaces of the same rank keep the order the OS listed them in.
+    final order = {
+      for (var i = 0; i < ranked.length; i++) ranked[i]: i,
+    };
+    ranked.sort((a, b) {
+      final byRank = _rank(a).compareTo(_rank(b));
+      return byRank != 0 ? byRank : order[a]!.compareTo(order[b]!);
+    });
+    return {for (final candidate in ranked) candidate.address}.toList();
+  }
+
+  static final RegExp _virtualInterface = RegExp(
+    'vethernet|hyper-v|wsl|virtualbox|vmware|docker|tailscale|zerotier|'
+    'wireguard|vpn|utun|tun[0-9]|tap[0-9]|bridge',
+    caseSensitive: false,
+  );
+
+  static int _rank(({String interface, String address}) candidate) {
+    final parts = candidate.address.split('.').map(int.tryParse).toList();
+    final first = parts.isEmpty ? null : parts[0];
+    final second = parts.length < 2 ? null : parts[1];
+
+    final int range;
+    if (first == 192 && second == 168) {
+      range = 0;
+    } else if (first == 10) {
+      range = 1;
+    } else if (first == 172 && second != null && second >= 16 && second < 32) {
+      // Private, but far more often a hypervisor's switch than a home router.
+      range = 2;
+    } else if (first == 100 && second != null && second >= 64 && second < 128) {
+      // Carrier-grade NAT space: in practice, a mesh VPN.
+      range = 3;
+    } else {
+      range = 4;
     }
-    return null;
+    return range + (_virtualInterface.hasMatch(candidate.interface) ? 10 : 0);
   }
 
   static const String _instructionsPage = '''
@@ -232,7 +290,7 @@ class TvLinkHost implements TvLinkSession {
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Onyx — Connecter ce téléviseur</title>
+<title>Onyx — Connecter cet appareil</title>
 <style>
   body { margin:0; background:#0b0b0d; color:#f4f4f5; font-family:system-ui,sans-serif;
          display:flex; min-height:100vh; align-items:center; justify-content:center; }
@@ -247,7 +305,7 @@ class TvLinkHost implements TvLinkSession {
   <h1>Presque&nbsp;!</h1>
   <p>Ce code doit être scanné depuis l'application Onyx, pas depuis l'appareil photo.</p>
   <p>Ouvrez <strong>Onyx</strong> sur votre téléphone, puis
-     <strong>Compte → Connecter un téléviseur</strong>, et scannez à nouveau.</p>
+     <strong>Compte → Connecter un appareil</strong>, et scannez à nouveau.</p>
 </main>
 </body>
 </html>

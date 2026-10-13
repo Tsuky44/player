@@ -22,12 +22,15 @@ import 'services/downloads/download_keep_alive.dart';
 import 'services/dns_warmup.dart';
 import 'services/download_preferences.dart';
 import 'services/network_status.dart';
+import 'services/new_episodes/new_episode_alerts.dart';
+import 'services/new_episodes/new_episode_notifications.dart';
 import 'services/server_reachability.dart';
 import 'providers/auth_provider.dart';
 import 'providers/home_provider.dart';
 import 'providers/library_provider.dart';
 import 'providers/media_requests_provider.dart';
 import 'providers/search_provider.dart';
+import 'navigation/new_episode_opener.dart';
 import 'navigation/search_route_observer.dart';
 import 'screens/shared_link/shared_link_app.dart';
 import 'screens/auth/login_screen.dart';
@@ -366,6 +369,26 @@ void main() async {
   reachability.start();
   unawaited(apiClient.refreshAccountLinks());
 
+  // Un nouvel épisode d'une série suivie s'annonce par une notification, sur
+  // tous les serveurs de l'appareil et sans ouvrir l'app (ADR-0059). La tâche
+  // de fond fait le gros du travail ; l'app ouverte la double, parce qu'iOS
+  // choisit seul l'heure de la sienne.
+  final newEpisodeOpener =
+      NewEpisodeOpener(auth: authProvider, navigatorKey: rootNavigatorKey);
+  if (NewEpisodeAlerts.supported) {
+    NewEpisodeNotifications.onOpen = newEpisodeOpener.open;
+    unawaited(NewEpisodeAlerts.start());
+    void lookForNewEpisodes() {
+      if (!authProvider.isAuthenticated) return;
+      unawaited(NewEpisodeAlerts.askPermissionOnce());
+      unawaited(NewEpisodeAlerts.checkInForeground(apiClient));
+    }
+
+    authProvider.addListener(lookForNewEpisodes);
+    reachability.addRestoredListener(lookForNewEpisodes);
+    AppLifecycleListener(onResume: lookForNewEpisodes);
+  }
+
   runApp(
     MultiProvider(
       providers: [
@@ -405,6 +428,13 @@ void main() async {
     // Une demande d'accès approuvée pendant que l'app était fermée n'attend que
     // d'être relevée : le serveur garde la session prête pendant une semaine.
     unawaited(authProvider.refreshAccessRequests());
+    // L'app a peut-être été lancée en touchant une notification : la fiche de
+    // la série s'ouvre dès que la session est là.
+    if (NewEpisodeAlerts.supported) {
+      unawaited(NewEpisodeNotifications.launchAlert().then((alert) {
+        if (alert != null) newEpisodeOpener.open(alert);
+      }));
+    }
   });
 }
 

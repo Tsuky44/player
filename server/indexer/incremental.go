@@ -2,10 +2,10 @@ package indexer
 
 import (
 	"os"
-	"path/filepath"
 	"strings"
 
 	"project-player/server/database"
+	"project-player/server/libraries"
 	"project-player/server/streamcache"
 )
 
@@ -52,13 +52,9 @@ func queryIndexedFiles(query string, args ...interface{}) (map[string]indexedFil
 	return files, rows.Err()
 }
 
-// pathPrefixRange bounds the stored paths beneath dir as a half-open range,
-// [dir + "/", dir + "0"): '0' is the character after '/', so the range holds
-// exactly the paths that continue with a slash. Unlike LIKE, a range is served
-// by idx_medias_file_path, and it has no wildcard to escape in a folder name.
+// pathPrefixRange bounds the stored paths beneath dir: see libraries.PathRange.
 func pathPrefixRange(dir string) (lower, upper string) {
-	base := strings.TrimSuffix(filepath.ToSlash(filepath.Clean(dir)), "/")
-	return base + "/", base + "0"
+	return libraries.PathRange(dir)
 }
 
 func (f indexedFile) changed(info os.FileInfo) bool {

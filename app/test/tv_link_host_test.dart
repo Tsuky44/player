@@ -117,6 +117,19 @@ void main() {
     );
   });
 
+  test('the home network comes before virtual adapters and VPNs', () {
+    expect(
+      TvLinkHost.rankAddresses([
+        (interface: 'Tailscale', address: '100.101.102.103'),
+        (interface: 'vEthernet (WSL)', address: '172.28.0.1'),
+        (interface: 'vEthernet (Default Switch)', address: '192.168.240.1'),
+        (interface: 'Ethernet', address: '169.254.10.20'),
+        (interface: 'Wi-Fi', address: '192.168.1.42'),
+      ]),
+      ['192.168.1.42', '192.168.240.1', '172.28.0.1', '100.101.102.103'],
+    );
+  });
+
   test('a browser that scanned the code is told where to go', () async {
     final offer = await host.start(deviceName: 'Salon');
     if (offer == null) return;
@@ -132,6 +145,6 @@ void main() {
     // The camera app opens a browser, and a browser has no session to give.
     // A blank error there is a dead end; this is the one instruction that
     // unsticks it.
-    expect(body, contains('Connecter un téléviseur'));
+    expect(body, contains('Connecter un appareil'));
   });
 }

@@ -74,7 +74,7 @@ class _TvLinkScannerScreenState extends State<TvLinkScannerScreen> {
         return;
       }
 
-      final offer = _TvOffer.parse(raw);
+      final offer = TvOffer.parse(raw);
       if (offer == null) continue;
 
       setState(() {
@@ -87,38 +87,52 @@ class _TvLinkScannerScreenState extends State<TvLinkScannerScreen> {
     }
   }
 
-  Future<void> _deliver(_TvOffer offer) async {
+  Future<void> _deliver(TvOffer offer) async {
     final apiClient = context.read<ApiClient>();
     try {
       final session = await apiClient.createDeviceSession();
 
-      // A bare client: this request goes to the television on the local
+      // A bare client: this request goes to the other device on the local
       // network, not to the server, so none of the API client's base address,
       // headers or auth interceptors apply to it.
-      final response = await Dio(
+      final client = Dio(
         BaseOptions(
           connectTimeout: const Duration(seconds: 5),
           receiveTimeout: const Duration(seconds: 10),
-          // Read the television's own answer instead of throwing on it: a
-          // refused code is a message to show, not an exception.
+          // Read the device's own answer instead of throwing on it: a refused
+          // code is a message to show, not an exception.
           validateStatus: (_) => true,
         ),
-      ).postUri<dynamic>(
-        offer.endpoint,
-        data: {
-          'code': offer.code,
-          'server': apiClient.baseUrl,
-          'token': session.token,
-          'user': session.user.toJson(),
-        },
       );
+      final data = {
+        'code': offer.code,
+        'server': apiClient.baseUrl,
+        'token': session.token,
+        'user': session.user.toJson(),
+      };
+
+      // A computer offers every address it has, likeliest first. Only silence
+      // moves on to the next one: an answer, even a refusal, came from the
+      // device that showed the code.
+      late Response<dynamic> response;
+      for (var i = 0; i < offer.endpoints.length; i++) {
+        try {
+          response = await client.postUri<dynamic>(
+            offer.endpoints[i],
+            data: data,
+          );
+          break;
+        } on DioException {
+          if (i == offer.endpoints.length - 1) rethrow;
+        }
+      }
 
       if (!mounted) return;
       if (response.statusCode != 200) {
         setState(() {
           _phase = _LinkPhase.failed;
-          _error = tr('Le téléviseur a refusé la connexion. Affichez un nouveau code '
-              'sur l\'écran et réessayez.');
+          _error = tr('L’appareil a refusé la connexion. Affichez un nouveau '
+              'code sur son écran et réessayez.');
         });
         return;
       }
@@ -130,17 +144,17 @@ class _TvLinkScannerScreenState extends State<TvLinkScannerScreen> {
       setState(() {
         _phase = _LinkPhase.failed;
         _error = timedOut
-            ? tr('Le téléviseur n\'a pas répondu. Vérifiez que le téléphone '
-                'et le téléviseur sont sur le même réseau Wi-Fi.')
-            : tr('Connexion impossible. Vérifiez que le téléphone et le '
-                'téléviseur sont sur le même réseau Wi-Fi.');
+            ? tr('L’appareil n’a pas répondu. Vérifiez que le téléphone et '
+                'lui sont sur le même réseau.')
+            : tr('Connexion impossible. Vérifiez que le téléphone et '
+                'l’appareil sont sur le même réseau.');
       });
     } catch (_) {
       if (!mounted) return;
       setState(() {
         _phase = _LinkPhase.failed;
-        _error = tr('Connexion impossible. Vérifiez que le téléphone et le '
-            'téléviseur sont sur le même réseau Wi-Fi.');
+        _error = tr('Connexion impossible. Vérifiez que le téléphone et '
+            'l’appareil sont sur le même réseau.');
       });
     }
   }
@@ -219,9 +233,9 @@ class _TvLinkScannerScreenState extends State<TvLinkScannerScreen> {
   Widget _buildBusy() {
     return _Message(
       icon: Icons.cast_connected_rounded,
-      title: tr('Connexion du téléviseur…'),
+      title: tr('Connexion de l’appareil…'),
       body: _deviceName == null
-          ? tr('Envoi de la session au téléviseur.')
+          ? tr('Envoi de la session à l’appareil.')
           : tr('Envoi de la session à {0}.', [_deviceName]),
       busy: true,
     );
@@ -230,9 +244,9 @@ class _TvLinkScannerScreenState extends State<TvLinkScannerScreen> {
   Widget _buildDone() {
     return _Message(
       icon: Icons.check_circle_outline_rounded,
-      title: tr('Téléviseur connecté'),
+      title: tr('Appareil connecté'),
       body: _deviceName == null
-          ? tr('Le téléviseur est connecté à votre compte.')
+          ? tr('L’appareil est connecté à votre compte.')
           : tr('{0} est connecté à votre compte.', [_deviceName]),
       action: FilledButton(
         onPressed: () => Navigator.of(context).pop(true),
@@ -245,7 +259,7 @@ class _TvLinkScannerScreenState extends State<TvLinkScannerScreen> {
     return _Message(
       icon: Icons.error_outline_rounded,
       title: tr('Connexion impossible'),
-      body: _error ?? tr('La connexion au téléviseur a échoué.'),
+      body: _error ?? tr('La connexion à l’appareil a échoué.'),
       action: FilledButton(
         onPressed: _retry,
         child: Text(tr('Réessayer')),
@@ -283,22 +297,27 @@ class PairingLink {
   }
 }
 
-/// A television's offer, as read out of its QR code.
-class _TvOffer {
-  final Uri endpoint;
+/// A direct-linking offer, as read out of the QR code of a television or of a
+/// computer's sign-in screen.
+class TvOffer {
+  /// Where to deliver, in the order to try them: the address the QR points at,
+  /// then the other addresses the device listed for itself.
+  final List<Uri> endpoints;
   final String code;
   final String? deviceName;
 
-  const _TvOffer({
-    required this.endpoint,
+  const TvOffer({
+    required this.endpoints,
     required this.code,
     this.deviceName,
   });
 
-  /// Reads `http://<tv>:<port>/link?c=<code>&n=<name>`, and rejects anything
-  /// else — this screen posts a live session to whatever it is given, so a QR
-  /// that is not one of ours must not be followed.
-  static _TvOffer? parse(String raw) {
+  static final RegExp _ipv4 = RegExp(r'^\d{1,3}(\.\d{1,3}){3}$');
+
+  /// Reads `http://<device>:<port>/link?c=<code>&n=<name>[&a=<ip>,<ip>]`, and
+  /// rejects anything else — this screen posts a live session to whatever it is
+  /// given, so a QR that is not one of ours must not be followed.
+  static TvOffer? parse(String raw) {
     final uri = Uri.tryParse(raw.trim());
     if (uri == null) return null;
     if (uri.scheme != 'http') return null;
@@ -309,8 +328,23 @@ class _TvOffer {
     if (code == null || code.isEmpty) return null;
 
     final name = uri.queryParameters['n'];
-    return _TvOffer(
-      endpoint: uri.replace(query: null, fragment: null),
+    final endpoint = Uri(
+      scheme: 'http',
+      host: uri.host,
+      port: uri.port,
+      path: '/link',
+    );
+    // Bare IPv4 literals only, on the same port and path: the list widens where
+    // the session may be sent, so it gets no room to name anything else.
+    final alternates = (uri.queryParameters['a'] ?? '')
+        .split(',')
+        .where((address) => _ipv4.hasMatch(address) && address != uri.host)
+        .take(3);
+    return TvOffer(
+      endpoints: [
+        endpoint,
+        for (final address in alternates) endpoint.replace(host: address),
+      ],
       code: code,
       deviceName: (name != null && name.trim().isNotEmpty) ? name.trim() : null,
     );

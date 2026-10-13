@@ -413,12 +413,18 @@ extension _PlayerChrome on _PlayerScreenState {
   /// The player hides the caption bar, which was the only handle the window
   /// had: without this, a film started on one screen could not be carried to
   /// another. Dragging the picture moves the window instead — a click that
-  /// does not move stays a tap, since the pan only claims a moving pointer.
+  /// barely moves stays a click, see [PointerClickZone.dragSlop].
   ///
-  /// Not in full screen, where the window covers a display and moving it
-  /// would only tear it off the edges.
-  Future<void> _startWindowDrag() async {
-    if (await WindowControls.isFullScreen()) return;
+  /// En plein écran, glisser l'image en sort d'abord : c'est le geste de qui
+  /// veut emmener le film ailleurs, et une fenêtre qui couvre l'écran n'a nulle
+  /// part où aller.
+  ///
+  /// [stillHeld] est relu après chaque attente — voir [PointerDragStart].
+  Future<void> _startWindowDrag(bool Function() stillHeld) async {
+    if (await WindowControls.isFullScreen()) {
+      await WindowControls.setFullScreen(false);
+    }
+    if (!stillHeld()) return;
     await WindowControls.startDragging();
   }
 

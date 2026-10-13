@@ -77,10 +77,21 @@ func Home(w http.ResponseWriter, r *http.Request, _ httprouter.Params, userID in
 	}
 	discoveryShows = indexer.DedupeShowMediaListForDisplay(discoveryShows)
 
+	libraryRows, err := buildHomeLibraryRows()
+	if err != nil {
+		log.Printf("Home error: failed to build library rows: %v", err)
+		writeJSONError(w, http.StatusInternalServerError, "Internal database error")
+		return
+	}
+
 	lang := languageOf(r)
 	lang.itemList(continueWatching)
 	var rows []*models.Media
-	for _, list := range [][]models.Media{recentMovies, recentShows, discoveryMovies, discoveryShows} {
+	lists := [][]models.Media{recentMovies, recentShows, discoveryMovies, discoveryShows}
+	for _, row := range libraryRows {
+		lists = append(lists, row.Items)
+	}
+	for _, list := range lists {
 		for i := range list {
 			rows = append(rows, &list[i])
 		}
@@ -94,6 +105,7 @@ func Home(w http.ResponseWriter, r *http.Request, _ httprouter.Params, userID in
 		RecentShows:      recentShows,
 		DiscoveryMovies:  discoveryMovies,
 		DiscoveryShows:   discoveryShows,
+		Libraries:        libraryRows,
 	})
 }
 

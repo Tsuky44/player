@@ -33,6 +33,7 @@ import 'hooks/use_episode_navigation.dart';
 import 'hooks/use_player_media_keys.dart';
 import 'hooks/use_player_popup.dart';
 import 'hooks/use_player_watch_party.dart';
+import 'hooks/use_window_focus.dart';
 import 'widgets/seek_feedback_overlay.dart';
 import 'widgets/video_zoom_hint.dart';
 import 'widgets/next_episode_overlay.dart';
@@ -107,6 +108,8 @@ class _PlayerScreenState extends State<PlayerScreen> {
   late final PlaybackHandoffWatch _handoff;
   late final PlayerWatchParty _party;
   final GestureHints _hints = GestureHints();
+  late final WindowFocusWatch _windowFocus =
+      WindowFocusWatch(onRegained: _handlePlayerFocusChanged);
   final PinchTracker _pinch = PinchTracker();
   bool _isInitialized = false;
   bool _showControls = true;
@@ -324,6 +327,7 @@ class _PlayerScreenState extends State<PlayerScreen> {
     PictureInPicture.active.addListener(_handlePictureInPictureChanged);
     PictureInPicture.closed.addListener(_handlePictureInPictureClosed);
     _keyboardFocusNode.addListener(_handlePlayerFocusChanged);
+    _windowFocus.attach();
     _hints.addListener(_rebuild);
     SleepTimer.instance.retain();
     StillWatching.instance.retain();
@@ -395,6 +399,7 @@ class _PlayerScreenState extends State<PlayerScreen> {
     PictureInPicture.closed.removeListener(_handlePictureInPictureClosed);
     unawaited(PictureInPicture.disarm());
     _keyboardFocusNode.removeListener(_handlePlayerFocusChanged);
+    _windowFocus.dispose();
     SleepTimer.instance.removeListener(_applySleepTimer);
     SleepTimer.instance.release();
     StillWatching.instance.release();
@@ -542,8 +547,7 @@ class _PlayerScreenState extends State<PlayerScreen> {
                     onDoubleTapSeek: _handleDoubleTapSeek,
                     onSideTap: _handleSideZoneTap,
                     onCenterTap: () => _handleVideoTap(togglePlayback: true),
-                    onWindowDrag:
-                        _windowDragEnabled ? () => _startWindowDrag() : null,
+                    onWindowDrag: _windowDragEnabled ? _startWindowDrag : null,
                   ),
                 ),
                 if (_hints.seekMounted)

@@ -45,6 +45,10 @@ android {
     ndkVersion = flutter.ndkVersion
 
     compileOptions {
+        // Exigé par flutter_local_notifications, même sans notification
+        // programmée : le plugin s'appuie sur java.time, absent d'Android 7
+        // et antérieurs sans ce rétro-portage. Voir l'ADR-0059.
+        isCoreLibraryDesugaringEnabled = true
         sourceCompatibility = JavaVersion.VERSION_17
         targetCompatibility = JavaVersion.VERSION_17
     }
@@ -106,4 +110,5 @@ flutter {
 
 dependencies {
     implementation("androidx.core:core-ktx:1.15.0")
+    coreLibraryDesugaring("com.android.tools:desugar_jdk_libs:2.1.4")
 }

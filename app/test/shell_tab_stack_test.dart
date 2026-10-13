@@ -16,15 +16,41 @@ class _TickerProbe extends StatelessWidget {
   }
 }
 
-Widget _stack(int selected, Map<String, bool> log) {
+Widget _stack(String selected, Map<String, bool> log) {
   return Directionality(
     textDirection: TextDirection.ltr,
     child: ShellTabStack(
-      selectedIndex: selected,
-      mounted: const {0, 1},
-      tabs: [_TickerProbe(log, 'home'), _TickerProbe(log, 'requests')],
+      selected: selected,
+      mounted: const {'home', 'requests'},
+      tabs: {
+        'home': _TickerProbe(log, 'home'),
+        'requests': _TickerProbe(log, 'requests'),
+      },
     ),
   );
+}
+
+/// Un onglet qui compte ses créations d'état : une de plus, et il a perdu sa
+/// position de défilement, son tri et ses requêtes en cours.
+class _Stateful extends StatefulWidget {
+  const _Stateful(this.created, this.name);
+
+  final List<String> created;
+  final String name;
+
+  @override
+  State<_Stateful> createState() => _StatefulState();
+}
+
+class _StatefulState extends State<_Stateful> {
+  @override
+  void initState() {
+    super.initState();
+    widget.created.add(widget.name);
+  }
+
+  @override
+  Widget build(BuildContext context) => const SizedBox.expand();
 }
 
 void main() {
@@ -33,10 +59,10 @@ void main() {
   testWidgets('les animations des onglets cachés sont suspendues',
       (tester) async {
     final log = <String, bool>{};
-    await tester.pumpWidget(_stack(0, log));
+    await tester.pumpWidget(_stack('home', log));
     expect(log, {'home': true, 'requests': false});
 
-    await tester.pumpWidget(_stack(1, log));
+    await tester.pumpWidget(_stack('requests', log));
     expect(log, {'home': false, 'requests': true});
   });
 
@@ -45,12 +71,12 @@ void main() {
     await tester.pumpWidget(const Directionality(
       textDirection: TextDirection.ltr,
       child: ShellTabStack(
-        selectedIndex: 0,
-        mounted: {0, 1},
-        tabs: [
-          SizedBox.expand(),
-          Center(child: CircularProgressIndicator()),
-        ],
+        selected: 'home',
+        mounted: {'home', 'requests'},
+        tabs: {
+          'home': SizedBox.expand(),
+          'requests': Center(child: CircularProgressIndicator()),
+        },
       ),
     ));
     expect(tester.binding.hasScheduledFrame, isFalse);
@@ -61,11 +87,46 @@ void main() {
     await tester.pumpWidget(Directionality(
       textDirection: TextDirection.ltr,
       child: ShellTabStack(
-        selectedIndex: 0,
-        mounted: const {0},
-        tabs: [_TickerProbe(log, 'home'), _TickerProbe(log, 'requests')],
+        selected: 'home',
+        mounted: const {'home'},
+        tabs: {
+          'home': _TickerProbe(log, 'home'),
+          'requests': _TickerProbe(log, 'requests'),
+        },
       ),
     ));
     expect(log.keys, ['home']);
+  });
+
+  // Les bibliothèques sont celles du serveur (ADR-0058) : en ajouter une
+  // glisse un onglet au milieu des autres.
+  testWidgets('une bibliothèque ajoutée ne remonte pas les onglets voisins',
+      (tester) async {
+    final created = <String>[];
+    Widget stack(List<String> ids) => Directionality(
+          textDirection: TextDirection.ltr,
+          child: ShellTabStack(
+            selected: 'requests',
+            mounted: ids.toSet(),
+            tabs: {for (final id in ids) id: _Stateful(created, id)},
+          ),
+        );
+
+    await tester.pumpWidget(stack(['home', 'library:1', 'requests']));
+    expect(created, ['home', 'library:1', 'requests']);
+
+    await tester
+        .pumpWidget(stack(['home', 'library:1', 'library:2', 'requests']));
+    expect(created, ['home', 'library:1', 'requests', 'library:2']);
+
+    await tester.pumpWidget(stack(['home', 'library:2', 'requests']));
+    expect(created, hasLength(4), reason: 'aucun onglet restant ne renaît');
+  });
+
+  testWidgets('un onglet sélectionné qui n’existe plus rend l’accueil',
+      (tester) async {
+    final log = <String, bool>{};
+    await tester.pumpWidget(_stack('library:9', log));
+    expect(log, {'home': true, 'requests': false});
   });
 }

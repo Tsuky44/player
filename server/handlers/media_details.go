@@ -102,7 +102,9 @@ func GetMediaDetails(w http.ResponseWriter, r *http.Request, ps httprouter.Param
 
 	// Make sure we have a TMDB id to query the live catalog.
 	// when missing (e.g. freshly indexed titles).
-	if !tmdbID.Valid || tmdbID.Int64 <= 0 {
+	// Sauf dans une bibliothèque « autre » : ouvrir la fiche d'une vidéo de
+	// famille ne doit pas lui coller l'affiche d'un film du même nom.
+	if (!tmdbID.Valid || tmdbID.Int64 <= 0) && !indexer.InPlainLibrary(filePath.String) {
 		if indexer.EnrichMediaByID(mediaID) {
 			var refreshed sql.NullInt64
 			_ = database.DB.QueryRow("SELECT tmdb_id FROM medias WHERE id = ?", mediaID).Scan(&refreshed)

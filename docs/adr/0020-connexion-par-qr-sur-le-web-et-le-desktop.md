@@ -49,6 +49,26 @@ l'adresse contenue dans le QR. Si le code est introuvable et que le lien vient d
 adresse, l'erreur le signale — sans conclure, un proxy et une IP locale pouvant désigner le même
 serveur.
 
+### 4. Amendement du 2026-10-12 — les applications passent au lien direct
+
+Le §1 supposait que le champ d'adresse « juste à côté » réglait la question. Il ne la règle pas :
+sur une application fraîchement installée, le QR restait vide tant que l'adresse n'était pas
+saisie, alors que le téléviseur, lui, n'en demande aucune. Deux écrans, deux gestes.
+
+Les applications natives (Windows, macOS, Linux, tablettes) affichent donc l'offre de l'ADR-0007 :
+elles écoutent sur le réseau local et le téléphone leur livre le serveur et la session. Le §1 ne
+vaut plus que pour le **navigateur**, qui ne peut pas écouter et connaît déjà son serveur, et comme
+repli d'une application sans adresse réseau utilisable.
+
+Un ordinateur a plusieurs interfaces (VPN, hyperviseur, conteneurs) là où un téléviseur n'en a
+qu'une : l'offre porte l'adresse la plus probable, puis jusqu'à trois autres (`&a=ip,ip`), que le
+téléphone essaie tour à tour quand la première ne répond pas. Seules des adresses IPv4 nues sont
+acceptées, sur le même port et le même chemin.
+
+Contrepartie : le téléphone doit être sur le même réseau que l'ordinateur, et le pare-feu de
+celui-ci doit laisser entrer la connexion (Windows le demande au premier affichage de l'écran).
+Le formulaire par mot de passe reste la voie quand ce n'est pas le cas.
+
 ## Conséquences
 
 - Comme tout login par QR, la méthode expose au hameçonnage « scannez ce code » : quelqu'un

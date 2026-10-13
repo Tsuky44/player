@@ -51,6 +51,13 @@ void main() {
     expect(item.outroStart, greaterThan(0));
 
     expect(home.recentMovies.single.title, 'title-value');
+
+    // La rangée d'une bibliothèque, sous le nom que le serveur lui donne.
+    final row = home.libraries.single;
+    expect(row.id, greaterThan(0));
+    expect(row.name, 'name-value');
+    expect(row.kind, LibraryKind.shows);
+    expect(row.items.single.title, 'title-value');
   });
 
   test('fiche détaillée', () {
@@ -132,6 +139,7 @@ void main() {
     expect(info.supports(ServerCapabilities.progressLongPoll), isTrue);
     expect(info.supports(ServerCapabilities.mediaLanguage), isTrue);
     expect(info.supports(ServerCapabilities.watchedByCredits), isTrue);
+    expect(info.supports(ServerCapabilities.libraries), isTrue);
     expect(info.supports('une_capacite_inconnue'), isFalse);
 
     // Un serveur d'avant cette annonce : il répond, sans rien promettre.

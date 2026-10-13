@@ -41,6 +41,7 @@ export 'api_types.dart';
 
 part 'api/account_admin.dart';
 part 'api/watch_party.dart';
+part 'api/libraries.dart';
 part 'api/library_admin.dart';
 part 'api/activity.dart';
 part 'api/playback_preferences.dart';
@@ -50,6 +51,7 @@ part 'api/shared_link_client.dart';
 part 'api/otp.dart';
 part 'api/playback.dart';
 part 'api/media.dart';
+part 'api/new_episodes.dart';
 
 class _PlaybackRequestScope {
   const _PlaybackRequestScope(this.origin, this.authorization);
@@ -61,6 +63,7 @@ class ApiClient
     with
         _AccountAdminEndpoints,
         _WatchPartyEndpoints,
+        _LibraryEndpoints,
         _LibraryAdminEndpoints,
         _ActivityEndpoints,
         _PlaybackPreferencesEndpoints,
@@ -68,7 +71,8 @@ class ApiClient
         _MediaShareEndpoints,
         _OtpEndpoints,
         _PlaybackEndpoints,
-        _MediaEndpoints {
+        _MediaEndpoints,
+        _NewEpisodeEndpoints {
   static String get _defaultBaseUrl {
     // On web the Go server serves this very bundle, so the page origin is
     // already the API root. Hardcoding a host here would turn every call into a
@@ -215,6 +219,7 @@ class ApiClient
   // liens pour les afficher et savoir vers qui se tourner en cas de panne.
 
   /// Un client lié à un compte du carnet, quel que soit le compte actif.
+  @override
   Future<Dio?> _accountClient(String id) async {
     final account = servers.accountById(id);
     final token = await servers.tokenFor(id);

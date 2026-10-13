@@ -2,12 +2,20 @@ import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:onyx/navigation/search_route_observer.dart';
+import 'package:onyx/models/models.dart';
 import 'package:onyx/screens/shell/mobile_bottom_nav.dart';
+import 'package:onyx/screens/shell/shell_tabs.dart';
 import 'package:onyx/screens/shell/mobile_top_bar.dart';
 import 'package:onyx/theme/app_icons.dart';
 import 'package:onyx/theme/app_page_transitions.dart';
 import 'package:onyx/widgets/global/glass_chrome.dart';
 import 'package:onyx/widgets/global/onyx_wordmark.dart';
+
+const _films =
+    MediaLibrary(id: 1, name: 'Vidéos de famille', kind: LibraryKind.movies);
+const _animes = MediaLibrary(id: 2, name: 'Animés', kind: LibraryKind.shows);
+const _concerts =
+    MediaLibrary(id: 3, name: 'Concerts', kind: LibraryKind.movies);
 
 Widget _app(Widget child, {Size size = const Size(1280, 800)}) {
   return MediaQuery(
@@ -122,8 +130,9 @@ void main() {
       await tester.pumpWidget(
         _app(
           MobileBottomNav(
-            selectedIndex: 1,
+            selected: ShellTabs.library(_films),
             onTabSelected: (_) {},
+            libraries: const [_films, _animes],
             canRequestMedia: true,
             canDownload: true,
           ),
@@ -133,6 +142,59 @@ void main() {
       expect(find.byIcon(AppIcons.movieSelected), findsOneWidget);
       expect(find.byIcon(AppIcons.movie), findsNothing);
       expect(find.byIcon(AppIcons.home), findsOneWidget);
+    });
+
+    // Les onglets sont les bibliothèques du serveur, sous le nom que leur
+    // administrateur a choisi (ADR-0058) : l'app n'en nomme aucune.
+    testWidgets('chaque bibliothèque a son onglet, sous son nom', (
+      tester,
+    ) async {
+      final selected = <String>[];
+      await tester.pumpWidget(
+        _app(
+          MobileBottomNav(
+            selected: ShellTabs.home,
+            onTabSelected: selected.add,
+            libraries: const [_films, _animes],
+            canRequestMedia: false,
+            canDownload: false,
+          ),
+          size: const Size(390, 844),
+        ),
+      );
+      expect(find.text('Vidéos de famille'), findsOneWidget);
+      expect(find.text('Animés'), findsOneWidget);
+      expect(find.text('Films'), findsNothing);
+      expect(find.text('Séries'), findsNothing);
+
+      await tester.tap(find.text('Animés'));
+      expect(selected, [ShellTabs.library(_animes)]);
+    });
+
+    testWidgets('au-delà de deux, les bibliothèques se choisissent dans une liste',
+        (tester) async {
+      final selected = <String>[];
+      await tester.pumpWidget(
+        _app(
+          MobileBottomNav(
+            selected: ShellTabs.home,
+            onTabSelected: selected.add,
+            libraries: const [_films, _animes, _concerts],
+            canRequestMedia: true,
+            canDownload: true,
+          ),
+          size: const Size(390, 844),
+        ),
+      );
+      expect(find.text('Concerts'), findsNothing);
+      expect(tester.takeException(), isNull);
+
+      await tester.tap(find.text('Bibliothèques'));
+      await tester.pumpAndSettle();
+      expect(find.text('Vidéos de famille'), findsOneWidget);
+      await tester.tap(find.text('Concerts'));
+      await tester.pumpAndSettle();
+      expect(selected, [ShellTabs.library(_concerts)]);
     });
   });
 

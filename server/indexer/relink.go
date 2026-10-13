@@ -7,7 +7,16 @@ import (
 	"strings"
 
 	"project-player/server/database"
+	"project-player/server/libraries"
 )
+
+// relinkShowLibraries runs RelinkEpisodesToShows over every library read as
+// shows.
+func relinkShowLibraries() {
+	for _, lib := range libraries.OfKind(libraries.Current(), libraries.KindShows) {
+		RelinkEpisodesToShows(lib.Path)
+	}
+}
 
 // RelinkEpisodesToShows re-attaches every episode to the show and season its
 // path says it belongs to.

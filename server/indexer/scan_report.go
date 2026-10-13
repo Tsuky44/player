@@ -4,12 +4,15 @@ import (
 	"fmt"
 	"sync"
 	"time"
+
+	"project-player/server/libraries"
 )
 
 // Reports keep at most this many entries so a huge library can't blow up memory.
 const maxReportEntries = 500
 
-// ScanSectionStats counts what happened for one library root during a scan.
+// ScanSectionStats counts what happened during a scan for the libraries of one
+// kind. Root lists their folders.
 type ScanSectionStats struct {
 	Root           string `json:"root"`
 	Directories    int    `json:"directories"`
@@ -95,6 +98,14 @@ const (
 	sectionMovies section = iota
 	sectionSeries
 )
+
+// sectionOf is the report section a library of this kind is counted in.
+func sectionOf(kind libraries.Kind) section {
+	if kind == libraries.KindShows {
+		return sectionSeries
+	}
+	return sectionMovies
+}
 
 func withSection(s section, fn func(*ScanSectionStats)) {
 	reportMu.Lock()

@@ -7,6 +7,12 @@ Pendant une tâche, travaille en silence : enchaîne lectures, modifications et 
 - **Vérifié** : les commandes lancées et leur résultat (vert/rouge).
 - **À savoir** : les échecs, les étapes sautées, les décisions prises et ce qui reste à faire. Omets cette partie si elle est vide.
 
+## Économie de tokens
+
+- Pour trouver une fonction, un handler, un symbole ou la structure d'un fichier, utilise le skill `smart-explore` (AST) au lieu de lire le fichier entier.
+- Pour une question d'architecture ou de relations entre fichiers, interroge d'abord le graphe `graphify-out/` (`/graphify query`) avant de relire le code.
+- Ne lis jamais `app/build/`, `app/macos/build_xcode/`, `app/windows/flutter/ephemeral/`, `.claude/worktrees/`, `server/downloads/`, `server/data/`. Ces dossiers sont refusés dans `.claude/settings.json`.
+
 ## Agent skills
 
 ### Standards de code

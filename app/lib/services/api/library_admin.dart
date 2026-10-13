@@ -126,8 +126,6 @@ mixin _LibraryAdminEndpoints {
     String? tmdbApiKey,
     bool clearTmdbApiKey = false,
     String? tmdbLanguage,
-    String? moviesDir,
-    String? seriesDir,
     bool? playbackLogsEnabled,
     bool? playbackStatsEnabled,
     OtpPolicy? otpPolicy,
@@ -139,8 +137,6 @@ mixin _LibraryAdminEndpoints {
       if (tmdbApiKey != null) 'tmdb_api_key': tmdbApiKey,
       if (clearTmdbApiKey) 'clear_tmdb_api_key': true,
       if (tmdbLanguage != null) 'tmdb_language': tmdbLanguage,
-      if (moviesDir != null) 'movies_dir': moviesDir,
-      if (seriesDir != null) 'series_dir': seriesDir,
       if (playbackLogsEnabled != null) 'playback_logs_enabled': playbackLogsEnabled,
       if (playbackStatsEnabled != null)
         'playback_stats_enabled': playbackStatsEnabled,

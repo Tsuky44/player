@@ -1,11 +1,14 @@
 import 'package:flutter/material.dart';
 
+import '../../models/models.dart';
 import '../../theme/app_colors.dart';
 import '../../theme/app_icons.dart';
 import '../../widgets/global/glass_chrome.dart';
 import '../../widgets/global/interface_tour/tour_anchor.dart';
 import '../../theme/app_type.dart';
 import '../../l10n/tr.dart';
+import '../library/library_screen.dart';
+import 'shell_tabs.dart';
 
 /// La barre d'onglets du téléphone.
 ///
@@ -14,22 +17,62 @@ import '../../l10n/tr.dart';
 /// quel menu, elle laissait passer les affiches en pleine couleur sous les
 /// libellés.
 class MobileBottomNav extends StatelessWidget {
-  final int selectedIndex;
-  final ValueChanged<int> onTabSelected;
+  /// L'identifiant de l'onglet affiché (voir [ShellTabs]).
+  final String selected;
+  final ValueChanged<String> onTabSelected;
+
+  /// Les bibliothèques du serveur (ADR-0058).
+  final List<MediaLibrary> libraries;
 
   final bool canRequestMedia;
   final bool canDownload;
 
+  /// Au-delà, les bibliothèques ne tiennent plus côte à côte entre l'accueil
+  /// et les deux derniers onglets : un seul onglet les réunit et ouvre leur
+  /// liste.
+  static const int maxInlineLibraries = 2;
+
   const MobileBottomNav({
     super.key,
-    required this.selectedIndex,
+    required this.selected,
     required this.onTabSelected,
+    required this.libraries,
     required this.canRequestMedia,
     required this.canDownload,
   });
 
+  Future<void> _pickLibrary(BuildContext context) async {
+    final picked = await showModalBottomSheet<MediaLibrary>(
+      context: context,
+      backgroundColor: AppColors.surface,
+      showDragHandle: true,
+      builder: (sheetContext) => SafeArea(
+        child: ListView(
+          shrinkWrap: true,
+          children: [
+            for (final library in libraries)
+              ListTile(
+                leading: Icon(
+                  libraryIcon(library.kind,
+                      selected: selected == ShellTabs.library(library)),
+                  color: AppColors.textPrimary,
+                ),
+                title: Text(ShellTabs.label(library)),
+                trailing: selected == ShellTabs.library(library)
+                    ? const Icon(AppIcons.check, color: AppColors.textPrimary)
+                    : null,
+                onTap: () => Navigator.of(sheetContext).pop(library),
+              ),
+          ],
+        ),
+      ),
+    );
+    if (picked != null) onTabSelected(ShellTabs.library(picked));
+  }
+
   @override
   Widget build(BuildContext context) {
+    final inline = libraries.length <= maxInlineLibraries;
     return GlassBarSurface(
       child: SafeArea(
         top: false,
@@ -37,10 +80,10 @@ class MobileBottomNav extends StatelessWidget {
           height: 56,
           child: Row(
             children: [
-              // Les trois onglets du catalogue d'un seul tenant : c'est
-              // ainsi que la présentation de l'interface les montre.
+              // L'accueil et les bibliothèques d'un seul tenant : c'est ainsi
+              // que la présentation de l'interface les montre.
               Expanded(
-                flex: 3,
+                flex: inline ? 1 + libraries.length : 2,
                 child: TourTarget(
                   anchor: TourAnchor.library,
                   child: Row(
@@ -50,28 +93,34 @@ class MobileBottomNav extends StatelessWidget {
                           icon: AppIcons.home,
                           selectedIcon: AppIcons.homeSelected,
                           label: tr('Accueil'),
-                          selected: selectedIndex == 0,
-                          onTap: () => onTabSelected(0),
+                          selected: selected == ShellTabs.home,
+                          onTap: () => onTabSelected(ShellTabs.home),
                         ),
                       ),
-                      Expanded(
-                        child: _BottomNavItem(
-                          icon: AppIcons.movie,
-                          selectedIcon: AppIcons.movieSelected,
-                          label: tr('Films'),
-                          selected: selectedIndex == 1,
-                          onTap: () => onTabSelected(1),
+                      if (inline)
+                        for (final library in libraries)
+                          Expanded(
+                            child: _BottomNavItem(
+                              icon: libraryIcon(library.kind),
+                              selectedIcon:
+                                  libraryIcon(library.kind, selected: true),
+                              label: ShellTabs.label(library),
+                              selected:
+                                  selected == ShellTabs.library(library),
+                              onTap: () =>
+                                  onTabSelected(ShellTabs.library(library)),
+                            ),
+                          )
+                      else
+                        Expanded(
+                          child: _BottomNavItem(
+                            icon: AppIcons.collection,
+                            selectedIcon: AppIcons.collection,
+                            label: tr('Bibliothèques'),
+                            selected: ShellTabs.isLibrary(selected),
+                            onTap: () => _pickLibrary(context),
+                          ),
                         ),
-                      ),
-                      Expanded(
-                        child: _BottomNavItem(
-                          icon: AppIcons.series,
-                          selectedIcon: AppIcons.seriesSelected,
-                          label: tr('Séries'),
-                          selected: selectedIndex == 2,
-                          onTap: () => onTabSelected(2),
-                        ),
-                      ),
                     ],
                   ),
                 ),
@@ -84,8 +133,8 @@ class MobileBottomNav extends StatelessWidget {
                       icon: AppIcons.request,
                       selectedIcon: AppIcons.requestSelected,
                       label: tr('Demandes'),
-                      selected: selectedIndex == 3,
-                      onTap: () => onTabSelected(3),
+                      selected: selected == ShellTabs.requests,
+                      onTap: () => onTabSelected(ShellTabs.requests),
                     ),
                   ),
                 ),
@@ -97,8 +146,8 @@ class MobileBottomNav extends StatelessWidget {
                       icon: AppIcons.offline,
                       selectedIcon: AppIcons.offlineSelected,
                       label: tr('Hors ligne'),
-                      selected: selectedIndex == 4,
-                      onTap: () => onTabSelected(4),
+                      selected: selected == ShellTabs.downloads,
+                      onTap: () => onTabSelected(ShellTabs.downloads),
                     ),
                   ),
                 ),
@@ -149,13 +198,20 @@ class _BottomNavItem extends StatelessWidget {
                 size: 24,
               ),
               const SizedBox(height: 4),
-              Text(
-                label,
-                style: TextStyle(
-                  color:
-                      selected ? AppColors.textPrimary : AppColors.textMuted,
-                  fontSize: AppType.caption,
-                  fontWeight: selected ? FontWeight.w600 : FontWeight.w400,
+              // Le nom d'une bibliothèque est libre : au-delà de la largeur
+              // de l'onglet il se coupe, il ne déborde pas sur le voisin.
+              Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 4),
+                child: Text(
+                  label,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: TextStyle(
+                    color:
+                        selected ? AppColors.textPrimary : AppColors.textMuted,
+                    fontSize: AppType.caption,
+                    fontWeight: selected ? FontWeight.w600 : FontWeight.w400,
+                  ),
                 ),
               ),
             ],

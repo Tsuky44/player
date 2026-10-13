@@ -1,6 +1,6 @@
 import 'dart:async';
 
-import 'package:flutter/material.dart';
+import 'package:flutter/foundation.dart';
 import '../models/models.dart';
 import '../services/api_client.dart';
 import '../services/download_manager.dart';
@@ -35,6 +35,20 @@ class LibraryProvider extends ChangeNotifier {
   /// The show [_seasons] belongs to.
   int? _seasonsShowId;
 
+  /// Les bibliothèques du serveur (ADR-0058) : ce sont les onglets de l'app.
+  /// Null tant que le serveur n'a pas répondu, pour qu'un serveur sans
+  /// bibliothèque ne se lise pas comme un chargement.
+  List<MediaLibrary>? _libraries;
+  int _librariesRequest = 0;
+
+  /// Le catalogue de chaque bibliothèque ouverte, par identifiant. Une
+  /// bibliothèque absente n'a pas encore été chargée.
+  final Map<int, List<HomeMediaItem>> _moviesByLibrary = {};
+  final Map<int, List<Media>> _showsByLibrary = {};
+  final Map<int, int> _libraryRequests = {};
+  final Set<int> _loadingLibraries = {};
+  final Map<int, String> _libraryErrors = {};
+
   LibraryProvider(this.apiClient);
 
   List<HomeMediaItem> get movies => _movies;
@@ -48,6 +62,33 @@ class LibraryProvider extends ChangeNotifier {
   bool get isLoadingEpisodes => _isLoadingEpisodes;
 
   String? get errorMessage => _errorMessage;
+
+  List<MediaLibrary> get libraries => _libraries ?? const [];
+
+  /// Faux tant que la liste des bibliothèques n'est pas arrivée.
+  bool get librariesLoaded => _libraries != null;
+
+  /// La première bibliothèque de ce type, ou null : là où mène « Tout voir »
+  /// depuis l'accueil.
+  MediaLibrary? firstLibraryOf(LibraryKind kind) {
+    for (final library in libraries) {
+      if (library.kind == kind) return library;
+    }
+    return null;
+  }
+
+  List<HomeMediaItem> moviesOf(MediaLibrary library) =>
+      _moviesByLibrary[library.id] ?? const [];
+  List<Media> showsOf(MediaLibrary library) =>
+      _showsByLibrary[library.id] ?? const [];
+
+  /// Vrai une fois le catalogue de [library] reçu au moins une fois.
+  bool hasLoadedLibrary(MediaLibrary library) =>
+      _moviesByLibrary.containsKey(library.id) ||
+      _showsByLibrary.containsKey(library.id);
+  bool isLoadingLibrary(MediaLibrary library) =>
+      _loadingLibraries.contains(library.id);
+  String? libraryError(MediaLibrary library) => _libraryErrors[library.id];
 
   /// Vide le catalogue du serveur précédent. Voir [HomeProvider.reset].
   void reset() {
@@ -63,12 +104,23 @@ class LibraryProvider extends ChangeNotifier {
     _episodesBySeason.clear();
     _resumeByShow.clear();
     _seasonsShowId = null;
+    _librariesRequest++;
+    _libraries = null;
+    for (final id in _libraryRequests.keys.toList()) {
+      _libraryRequests[id] = _libraryRequests[id]! + 1;
+    }
+    _moviesByLibrary.clear();
+    _showsByLibrary.clear();
+    _loadingLibraries.clear();
+    _libraryErrors.clear();
     _isLoadingMovies = false;
     _isLoadingShows = false;
     _isLoadingSeasons = false;
     _isLoadingEpisodes = false;
     _errorMessage = null;
-    // The shell keeps its tabs mounted: initState will not run again.
+    // The shell keeps its tabs mounted: initState will not run again. Each
+    // library tab reloads itself once it sees its catalog gone.
+    unawaited(loadLibraries());
     unawaited(loadMovies());
     unawaited(loadShows());
   }
@@ -79,7 +131,108 @@ class LibraryProvider extends ChangeNotifier {
     _showsRequest++;
     _seasonsRequest++;
     _episodesRequest++;
+    _librariesRequest++;
+    for (final id in _libraryRequests.keys.toList()) {
+      _libraryRequests[id] = _libraryRequests[id]! + 1;
+    }
     super.dispose();
+  }
+
+  /// Relit la liste des bibliothèques. Sur un échec, celle qu'on avait reste
+  /// affichée : des onglets qui disparaissent pour une requête perdue seraient
+  /// pires qu'une liste en retard d'un renommage.
+  Future<void> loadLibraries() async {
+    final request = ++_librariesRequest;
+    try {
+      final result = await apiClient.getLibraries();
+      if (request != _librariesRequest) return;
+      final changed = _libraries == null || !listEquals(_libraries, result);
+      _libraries = result;
+      final known = {for (final library in result) library.id};
+      _moviesByLibrary.removeWhere((id, _) => !known.contains(id));
+      _showsByLibrary.removeWhere((id, _) => !known.contains(id));
+      _libraryErrors.removeWhere((id, _) => !known.contains(id));
+      if (changed) notifyListeners();
+    } catch (e) {
+      if (request != _librariesRequest) return;
+      debugPrint('LibraryProvider: libraries unavailable: $e');
+      if (_libraries == null) {
+        _libraries = const [];
+        notifyListeners();
+      }
+    }
+  }
+
+  /// Charge le catalogue d'une bibliothèque. [silent] le relit sans rien
+  /// retirer de l'écran.
+  Future<void> loadLibrary(MediaLibrary library, {bool silent = false}) async {
+    final id = library.id;
+    final request = (_libraryRequests[id] ?? 0) + 1;
+    _libraryRequests[id] = request;
+    if (!silent) {
+      _loadingLibraries.add(id);
+      _libraryErrors.remove(id);
+      notifyListeners();
+    }
+
+    try {
+      if (library.kind == LibraryKind.shows) {
+        final shows = await apiClient.getLibraryShows(library);
+        if (request != _libraryRequests[id]) return;
+        _showsByLibrary[id] = shows;
+      } else {
+        final movies = await apiClient.getLibraryMovies(library);
+        if (request != _libraryRequests[id]) return;
+        _moviesByLibrary[id] = movies;
+      }
+      _libraryErrors.remove(id);
+    } catch (e) {
+      if (request != _libraryRequests[id]) return;
+      // Un rechargement discret qui échoue garde ce qui est à l'écran.
+      if (!silent) {
+        _libraryErrors[id] = tr('Erreur lors du chargement de « {0} » : {1}',
+            [library.name, e.toString()]);
+      }
+    } finally {
+      if (request == _libraryRequests[id]) {
+        _loadingLibraries.remove(id);
+        notifyListeners();
+      }
+    }
+  }
+
+  /// Relit, sans vider l'écran, les bibliothèques déjà ouvertes.
+  Future<void> reloadOpenLibraries() async {
+    await Future.wait([
+      for (final library in libraries)
+        if (hasLoadedLibrary(library)) loadLibrary(library, silent: true),
+    ]);
+  }
+
+  Future<void> createLibrary({
+    required String name,
+    required LibraryKind kind,
+    required String path,
+  }) async {
+    await apiClient.createLibrary(name: name, kind: kind, path: path);
+    await loadLibraries();
+  }
+
+  Future<void> updateLibrary(
+    MediaLibrary library, {
+    required String name,
+    required String path,
+  }) async {
+    await apiClient.updateLibrary(library.id, name: name, path: path);
+    await loadLibraries();
+  }
+
+  Future<void> deleteLibrary(MediaLibrary library) async {
+    await apiClient.deleteLibrary(library.id);
+    await loadLibraries();
+    // La recherche lit le catalogue entier : ce qui vient de partir ne doit
+    // plus s'y trouver.
+    unawaited(refreshCatalogSilently());
   }
 
   Future<void> ensureCatalogLoaded() async {
@@ -371,6 +524,7 @@ class LibraryProvider extends ChangeNotifier {
     await Future.wait([
       loadMovies(silent: true),
       loadShows(silent: true),
+      reloadOpenLibraries(),
     ]);
   }
 
@@ -448,6 +602,12 @@ class LibraryProvider extends ChangeNotifier {
               item,
         ];
     _episodes = patch(_episodes);
+    for (final id in _moviesByLibrary.keys.toList()) {
+      final listed = _moviesByLibrary[id]!;
+      if (listed.any((item) => item.media.id == mediaId)) {
+        _moviesByLibrary[id] = patch(listed);
+      }
+    }
     // The remembered seasons follow, or reopening the show would first paint
     // the episode as it was before the tick.
     for (final key in _episodesBySeason.keys.toList()) {

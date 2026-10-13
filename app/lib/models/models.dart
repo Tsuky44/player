@@ -10,6 +10,7 @@ export 'episode_navigation.dart';
 export 'home_response.dart';
 export 'media.dart';
 export 'media_details.dart';
+export 'media_library.dart';
 export 'media_subtitle_track.dart';
 export 'media_tracks.dart';
 export 'user.dart';

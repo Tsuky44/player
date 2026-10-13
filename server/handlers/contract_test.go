@@ -10,6 +10,7 @@ import (
 	"testing"
 	"time"
 
+	"project-player/server/libraries"
 	"project-player/server/models"
 )
 
@@ -37,6 +38,7 @@ var contractValues = map[string]string{
 	"air_date":       "2020-01-02",
 	"request_status": "unknown",
 	"status":         "Returning Series",
+	"kind":           "shows",
 }
 
 var contractTime = time.Date(2026, 1, 2, 3, 4, 5, 0, time.UTC)
@@ -139,6 +141,7 @@ func TestAPIContract(t *testing.T) {
 		"progress_revision":  filled[models.ProgressRevision](),
 		"scan_status":        filled[scanStatusResponse](),
 		"ping":               pingPayload(),
+		"libraries":          []libraries.Library{filled[libraries.Library]()},
 	}
 
 	update := os.Getenv("ONYX_UPDATE_CONTRACT") != ""

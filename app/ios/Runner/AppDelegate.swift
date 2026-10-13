@@ -1,6 +1,8 @@
 import AVFoundation
 import Flutter
 import UIKit
+import UserNotifications
+import workmanager_apple
 
 @main
 @objc class AppDelegate: FlutterAppDelegate, FlutterImplicitEngineDelegate {
@@ -9,6 +11,7 @@ import UIKit
     didFinishLaunchingWithOptions launchOptions: [UIApplication.LaunchOptionsKey: Any]?
   ) -> Bool {
     configureAudioSession()
+    configureNewEpisodeAlerts()
     return super.application(application, didFinishLaunchingWithOptions: launchOptions)
   }
 
@@ -17,6 +20,31 @@ import UIKit
     if let registrar = engineBridge.pluginRegistry.registrar(forPlugin: "OnyxDevice") {
       registerDeviceChannel(messenger: registrar.messenger())
     }
+  }
+
+  /// Ce qu'il faut à la veille des nouveaux épisodes (ADR-0059) pour tourner
+  /// app fermée.
+  ///
+  /// Tout se fait ici, avant le retour de `didFinishLaunching` : iOS ne remet
+  /// une tâche de fond à une app relancée que si son identifiant a été
+  /// enregistré à ce moment-là, et avec les scènes Flutter n'inscrit ses
+  /// plugins qu'après. L'identifiant est celui de `NewEpisodeAlerts.taskName`
+  /// côté Dart et de `BGTaskSchedulerPermittedIdentifiers` dans l'Info.plist.
+  private func configureNewEpisodeAlerts() {
+    // Sans délégué, une notification touchée ouvre l'app sans dire laquelle,
+    // et aucune ne s'affiche quand l'app est au premier plan.
+    UNUserNotificationCenter.current().delegate = self as? UNUserNotificationCenterDelegate
+    // Le moteur de la tâche de fond n'a aucun plugin tant qu'on ne les lui
+    // inscrit pas : ni préférences pour lire le carnet de serveurs, ni
+    // notifications à afficher.
+    WorkmanagerPlugin.setPluginRegistrantCallback { registry in
+      GeneratedPluginRegistrant.register(with: registry)
+    }
+    WorkmanagerPlugin.registerPeriodicTask(
+      withIdentifier: "com.tsuky.onyx.new-episodes",
+      earliestBeginInSeconds: NSNumber(value: 60 * 60)
+    )
+    WorkmanagerPlugin.registerLaunchHandlers()
   }
 
   /// Le pendant iOS du canal `onyx/device` d'Android, réduit à ce que

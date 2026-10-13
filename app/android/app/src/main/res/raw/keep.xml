@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- L'icône des notifications n'est nommée que depuis le Dart
+     (NewEpisodeNotifications) : le réducteur de ressources du build release
+     ne voit aucune référence et la retirerait, et la notification ne
+     s'afficherait plus du tout. Voir l'ADR-0059. -->
+<resources xmlns:tools="http://schemas.android.com/tools"
+    tools:keep="@drawable/ic_stat_onyx" />

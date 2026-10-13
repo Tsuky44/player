@@ -14,6 +14,9 @@ services:
       - /chemin/physique/sur/serveur/Films:/media/Films:ro
       - /chemin/physique/sur/serveur/Series:/media/Series:ro
     environment:
+      # Only read when upgrading an install that predates libraries, to turn
+      # its two folders into libraries. Libraries are created and named from
+      # the app (Settings > Library): add the container paths mounted above.
       - MOVIES_DIR=/media/Films
       - SERIES_DIR=/media/Series
       # --- OPTIONNEL : CLE API TMDB ---

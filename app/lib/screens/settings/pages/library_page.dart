@@ -3,15 +3,15 @@ import 'package:provider/provider.dart';
 
 import '../../../providers/auth_provider.dart';
 import '../../../providers/home_provider.dart';
-import '../../../services/api_client.dart';
 import '../../../theme/app_colors.dart';
-import '../../../tv/tv_deferred_keyboard.dart';
 import '../media_review_screen.dart';
+import '../widgets/libraries_group.dart';
 import '../widgets/settings_ui.dart';
 import '../../../l10n/tr.dart';
 
-/// Les dossiers analysés (manage_settings) et l'indexation (manage_library) :
-/// déléguer un scan est sans risque, repointer le dossier des films ne l'est pas.
+/// Les bibliothèques (manage_settings) et l'indexation (manage_library) :
+/// déléguer un scan est sans risque, faire lire un autre dossier au serveur ne
+/// l'est pas.
 class LibraryPage extends StatefulWidget {
   const LibraryPage({super.key});
 
@@ -20,69 +20,6 @@ class LibraryPage extends StatefulWidget {
 }
 
 class _LibraryPageState extends State<LibraryPage> {
-  final _moviesDir = TextEditingController();
-  final _seriesDir = TextEditingController();
-  bool _loaded = false;
-  bool _saving = false;
-  String? _error;
-
-  @override
-  void initState() {
-    super.initState();
-    if (context.read<AuthProvider>().permissions.manageSettings) {
-      _loadPaths();
-    }
-  }
-
-  @override
-  void dispose() {
-    _moviesDir.dispose();
-    _seriesDir.dispose();
-    super.dispose();
-  }
-
-  Future<void> _loadPaths() async {
-    try {
-      final settings = await context.read<ApiClient>().getServerSettings();
-      if (!mounted) return;
-      setState(() {
-        _moviesDir.text = settings.moviesDir;
-        _seriesDir.text = settings.seriesDir;
-        _loaded = true;
-        _error = null;
-      });
-    } catch (e) {
-      if (!mounted) return;
-      setState(() => _error =
-          settingsErrorText(e, tr('Impossible de lire les dossiers du serveur.')));
-    }
-  }
-
-  Future<void> _savePaths() async {
-    setState(() => _saving = true);
-    try {
-      final updated = await context.read<ApiClient>().updateServerSettings(
-            moviesDir: _moviesDir.text.trim(),
-            seriesDir: _seriesDir.text.trim(),
-          );
-      if (!mounted) return;
-      setState(() {
-        _moviesDir.text = updated.moviesDir;
-        _seriesDir.text = updated.seriesDir;
-      });
-      showSettingsSnack(context,
-          tr('Dossiers enregistrés. Lancez une synchronisation pour les '
-              'analyser.'));
-    } catch (e) {
-      if (mounted) {
-        showSettingsSnack(
-            context, settingsErrorText(e, tr('Échec de l’enregistrement.')),
-            error: true);
-      }
-    }
-    if (mounted) setState(() => _saving = false);
-  }
-
   Future<void> _run(String label, Future<void> Function() action) async {
     try {
       await action();
@@ -106,22 +43,6 @@ class _LibraryPageState extends State<LibraryPage> {
         )
       : TextButton(onPressed: onRun, child: Text(tr('Lancer')));
 
-  Widget _field(TextEditingController controller, String label, String hint,
-      IconData icon) {
-    return TvDeferredKeyboard(
-      builder: (context, focusNode, canRequestFocus) => TextField(
-        focusNode: focusNode,
-        canRequestFocus: canRequestFocus,
-        controller: controller,
-        decoration: InputDecoration(
-          labelText: label,
-          hintText: hint,
-          prefixIcon: Icon(icon),
-        ),
-      ),
-    );
-  }
-
   @override
   Widget build(BuildContext context) {
     final perms = context.watch<AuthProvider>().permissions;
@@ -130,42 +51,10 @@ class _LibraryPageState extends State<LibraryPage> {
     return SettingsPage(
       title: tr('Bibliothèque'),
       description:
-          tr('Où le serveur cherche vos films et séries, et les tâches qui '
-              'tiennent le catalogue à jour.'),
+          tr('Les dossiers que le serveur présente, sous le nom que vous leur '
+              'donnez, et les tâches qui tiennent le catalogue à jour.'),
       children: [
-        if (perms.manageSettings)
-          SettingsGroup(
-            title: tr('Dossiers'),
-            footer:
-                tr('Chemins tels que le serveur les voit (dans son conteneur).'),
-            padded: true,
-            children: [
-              if (_error != null)
-                SettingsBanner(_error!, tone: BannerTone.error)
-              else if (!_loaded)
-                const SettingsLoading()
-              else
-                Column(
-                  crossAxisAlignment: CrossAxisAlignment.stretch,
-                  children: [
-                    _field(_moviesDir, tr('Dossier des films'), '/media/Films',
-                        Icons.movie_outlined),
-                    const SizedBox(height: 12),
-                    _field(_seriesDir, tr('Dossier des séries'), '/media/Series',
-                        Icons.tv_rounded),
-                    const SizedBox(height: 14),
-                    Align(
-                      alignment: Alignment.centerRight,
-                      child: FilledButton(
-                        onPressed: _saving ? null : _savePaths,
-                        child:
-                            Text(_saving ? tr('Enregistrement…') : tr('Enregistrer')),
-                      ),
-                    ),
-                  ],
-                ),
-            ],
-          ),
+        if (perms.manageSettings) const LibrariesGroup(),
         if (perms.manageLibrary) ...[
           SettingsGroup(
             title: tr('Analyse'),

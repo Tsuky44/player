@@ -32,6 +32,10 @@ extension _PlayerRemote on _PlayerScreenState {
   /// reason for the focus to be somewhere else.
   void _handlePlayerFocusChanged() {
     if (_isDisposing || !mounted) return;
+    // Ni quand c'est la fenêtre entière qui a perdu le focus : le reprendre
+    // fait avaler le clic suivant par Windows — voir [WindowFocusWatch], qui
+    // rappelle cette méthode au retour.
+    if (!_windowFocus.focused) return;
     // Not while this screen is on its way out, either: the screen coming up
     // underneath is taking the focus, and it is right to let it. Asked of the
     // widget tree instead — `ModalRoute.of` from here is an ancestor lookup on

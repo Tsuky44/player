@@ -10,6 +10,7 @@ import (
 	"github.com/fsnotify/fsnotify"
 
 	"project-player/server/database"
+	"project-player/server/libraries"
 )
 
 // testMonitor builds a monitor over a series library without starting any of
@@ -18,7 +19,9 @@ import (
 func testMonitor(t *testing.T, seriesDir string) *libraryMonitor {
 	t.Helper()
 	m := newLibraryMonitor(MonitorOptions{
-		Roots: func() (string, string) { return "", seriesDir },
+		Roots: func() []libraries.Library {
+			return []libraries.Library{{Path: seriesDir, Kind: libraries.KindShows}}
+		},
 	})
 	m.settledAge = 0
 	return m

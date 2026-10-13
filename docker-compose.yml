@@ -15,6 +15,9 @@ services:
       - ./media/Films:/media/Films:ro
       - ./media/Series:/media/Series:ro
     environment:
+      # Only read when upgrading an install that predates libraries, to turn
+      # its two folders into libraries. Libraries are created and named from
+      # the app (Settings > Library): add the container paths mounted above.
       - MOVIES_DIR=/media/Films
       - SERIES_DIR=/media/Series
       # Clé API TMDB gratuite (obligatoire pour les affiches) :

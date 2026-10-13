@@ -271,5 +271,65 @@
       "outro_end": 118,
       "created_at": "2026-01-02T03:04:05Z"
     }
+  ],
+  "libraries": [
+    {
+      "id": 119,
+      "name": "name-value",
+      "kind": "shows",
+      "items": [
+        {
+          "versions": [
+            {
+              "id": 120,
+              "type": "episode",
+              "title": "title-value",
+              "file_path": "file_path-value",
+              "parent_id": 122,
+              "poster_url": "poster_url-value",
+              "overview": "overview-value",
+              "release_date": "2020-01-02",
+              "tmdb_id": 123,
+              "season_number": 124,
+              "episode_number": 125,
+              "imdb_id": "imdb_id-value",
+              "intro_start": 126,
+              "intro_end": 127,
+              "outro_start": 128,
+              "outro_end": 129,
+              "created_at": "2026-01-02T03:04:05Z",
+              "current_position_seconds": 130,
+              "duration": 131,
+              "is_finished": true,
+              "show_title": "show_title-value",
+              "show_poster_url": "show_poster_url-value",
+              "show_id": 132,
+              "episode_title": "episode_title-value",
+              "updated_at": "2026-01-02T03:04:05Z",
+              "has_new_episode": true,
+              "label": "label-value"
+            }
+          ],
+          "id": 133,
+          "type": "episode",
+          "title": "title-value",
+          "file_path": "file_path-value",
+          "duration": 134,
+          "parent_id": 135,
+          "poster_url": "poster_url-value",
+          "overview": "overview-value",
+          "release_date": "2020-01-02",
+          "tmdb_id": 136,
+          "season_number": 137,
+          "episode_number": 138,
+          "imdb_id": "imdb_id-value",
+          "intro_start": 139,
+          "intro_end": 140,
+          "outro_start": 141,
+          "outro_end": 142,
+          "created_at": "2026-01-02T03:04:05Z"
+        }
+      ]
+    }
   ]
 }

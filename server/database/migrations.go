@@ -690,6 +690,24 @@ var migrations = []migration{
 			`ALTER TABLE user_show_track_preferences ADD COLUMN await_audio_lang TEXT NOT NULL DEFAULT '';`,
 		},
 	},
+	{
+		id:   22,
+		name: "libraries",
+		// Voir ADR-0058. Une ligne par bibliothèque : un nom libre, un dossier
+		// et la façon de le lire. Les médias n'y sont pas rattachés par une
+		// clé : c'est leur chemin qui dit à quelle bibliothèque ils sont.
+		// path est unique — un dossier, une bibliothèque.
+		stmts: []string{
+			`CREATE TABLE IF NOT EXISTS libraries (
+				id INTEGER PRIMARY KEY AUTOINCREMENT,
+				name TEXT NOT NULL,
+				kind TEXT NOT NULL CHECK(kind IN ('movies', 'shows', 'other')),
+				path TEXT NOT NULL UNIQUE,
+				created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
+			);`,
+		},
+		run: seedLibrariesFromLegacyDirs,
+	},
 }
 
 // applyMigrations brings the database up to the latest schema version.

@@ -19,6 +19,7 @@ import (
 	"project-player/server/devline"
 	"project-player/server/handlers"
 	"project-player/server/indexer"
+	"project-player/server/libraries"
 	"project-player/server/logging"
 	"project-player/server/middleware"
 	"project-player/server/models"
@@ -158,12 +159,21 @@ func main() {
 	router.POST("/api/access-requests/:id/approve", handlers.RequireAnyPermission(invitePerms, handlers.ApproveAccessRequest))
 	router.POST("/api/access-requests/:id/deny", handlers.RequireAnyPermission(invitePerms, handlers.DenyAccessRequest))
 
-	// Settings (MediaHub, TMDB, library paths). Reading is fine for any account;
-	// writing rewrites API keys and library paths, so it needs manage_settings.
-	// GET is gated too: the snapshot exposes MoviesDir/SeriesDir, i.e. the
-	// server's disk layout, and no other screen consumes it.
+	// Settings (MediaHub, TMDB, OTP policy). Writing rewrites API keys, so it
+	// needs manage_settings; GET is gated too, since no other screen consumes
+	// the snapshot.
 	router.GET("/api/settings", handlers.RequirePermission(models.PermManageSettings, handlers.GetSettings))
 	router.PUT("/api/settings", handlers.RequirePermission(models.PermManageSettings, handlers.UpdateSettings))
+
+	// Bibliothèques (ADR-0058). La liste est lue par tout compte : ce sont les
+	// onglets de l'app, et elle n'y montre que des noms — le dossier n'est
+	// joint que pour manage_settings. Créer, repointer ou supprimer une
+	// bibliothèque fait lire un autre dossier du disque au serveur : c'est
+	// manage_settings, comme l'étaient les deux chemins de /api/settings.
+	router.GET("/api/libraries", handlers.RequireAuth(handlers.ListLibraries))
+	router.POST("/api/libraries", handlers.RequirePermission(models.PermManageSettings, handlers.CreateLibrary))
+	router.PUT("/api/libraries/:id", handlers.RequirePermission(models.PermManageSettings, handlers.UpdateLibrary))
+	router.DELETE("/api/libraries/:id", handlers.RequirePermission(models.PermManageSettings, handlers.DeleteLibrary))
 
 	// Réglages de lecture du compte (saut d'intro, langue audio), partagés par
 	// tous ses appareils. Chacun ne lit et n'écrit que les siens. Voir ADR-0043.
@@ -382,10 +392,8 @@ func main() {
 	indexer.StartLibraryMonitor(indexer.MonitorOptions{
 		Watch:        envBool("LIBRARY_WATCH", true),
 		PollInterval: envDuration("LIBRARY_POLL_INTERVAL", 5*time.Minute),
-		Roots: func() (string, string) {
-			return config.MoviesDir(), config.SeriesDir()
-		},
-		Bootstrap: !*scanOnStartup,
+		Roots:        libraries.Current,
+		Bootstrap:    !*scanOnStartup,
 	})
 
 	// Les langues audio des médias sondés avant que le serveur en tienne le
@@ -394,10 +402,9 @@ func main() {
 
 	// Trigger startup scan if configured
 	if *scanOnStartup {
-		moviesDir := config.MoviesDir()
-		seriesDir := config.SeriesDir()
-		log.Printf("Triggering startup scan on: Movies=%s, Series=%s", moviesDir, seriesDir)
-		indexer.ScanMedia(moviesDir, seriesDir)
+		libs := libraries.Current()
+		log.Printf("Triggering startup scan on %d library(ies): %s", len(libs), strings.Join(libraries.Paths(libs), ", "))
+		indexer.ScanMedia(libs)
 	} else if config.TMDBAPIKey() != "" {
 		indexer.BackfillMissingMetadataAsync()
 		indexer.BackfillMissingProbesAsync()

@@ -26,6 +26,10 @@ class ServerCapabilities {
   static const mediaLanguage = 'media_language';
   static const watchedByCredits = 'watched_by_credits';
 
+  /// Le serveur liste ses bibliothèques (ADR-0058). Sans elle, il n'a que
+  /// ses films et ses séries.
+  static const libraries = 'libraries';
+
   bool supports(String capability) => capabilities.contains(capability);
 
   /// Null quand la réponse n'est pas celle d'un serveur Onyx qui va bien.

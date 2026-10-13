@@ -1,0 +1,23 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- La lentille Onyx de ic_launcher_foreground.xml, réduite à sa silhouette :
+     l'anneau et le triangle, sans le faisceau ni le fond. Android ne garde
+     d'une icône de barre d'état que son canal alpha — l'icône de l'app y
+     deviendrait un carré blanc. Lue par les notifications de nouveaux
+     épisodes (ADR-0059). -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="24dp"
+    android:height="24dp"
+    android:viewportWidth="300"
+    android:viewportHeight="300">
+    <group
+        android:translateX="-12"
+        android:translateY="-106">
+        <path
+            android:pathData="M32,256a130,130 0 1,0 260,0a130,130 0 1,0 -260,0Z"
+            android:strokeColor="#FFFFFF"
+            android:strokeWidth="22"/>
+        <path
+            android:fillColor="#FFFFFF"
+            android:pathData="M122,191L122,321L227,256Z"/>
+    </group>
+</vector>

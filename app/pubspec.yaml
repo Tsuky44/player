@@ -129,6 +129,23 @@ dependencies:
   # avec le package_info_plus 9 épinglé plus haut : l'hôte tvOS donne la
   # version lui-même (voir ClientIdentity).
 
+  # --- Notifications de nouveaux épisodes (ADR-0059) -----------------------
+  # Réveille un bout de Dart de temps en temps, app fermée : WorkManager sur
+  # Android, BGTaskScheduler sur iPhone. C'est ce qui interroge les serveurs
+  # de l'appareil sans service central pour pousser quoi que ce soit. Le
+  # paquet déclare aussi macOS, le web et Linux ; seuls Android et iOS
+  # planifient (`NewEpisodeAlerts.supported`). Plancher 0.10 : l'API des
+  # tâches périodiques iOS (`registerPeriodicTask(withIdentifier:
+  # earliestBeginInSeconds:)`) qu'appelle ios/Runner/AppDelegate.swift.
+  workmanager: ^0.10.10
+  # Affiche la notification et dit laquelle on a touchée. Ne sert que sur
+  # Android et iOS ; ses implémentations Windows, Linux, macOS et web sont
+  # compilées sans être appelées. Plancher 22 : les paramètres nommés de
+  # `initialize` et `show`. Exige le désucrage côté Android
+  # (android/app/build.gradle.kts). Aucun des deux paquets ne déclare tvOS :
+  # l'Apple TV n'en embarque rien.
+  flutter_local_notifications: ^22.3.2
+
 # Les bibliothèques natives de media_kit, avec un FFmpeg complet. Les versions
 # publiées embarquent un FFmpeg réduit à une liste blanche de décodeurs sans
 # TrueHD : la piste Atmos d'un Blu-ray était muette en Direct Play sur mac,

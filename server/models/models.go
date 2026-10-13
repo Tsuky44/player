@@ -337,6 +337,18 @@ type HomeResponse struct {
 	RecentShows      []Media         `json:"recent_shows"`
 	DiscoveryMovies  []Media         `json:"discovery_movies"`
 	DiscoveryShows   []Media         `json:"discovery_shows"`
+	// Libraries : les derniers ajouts de chaque bibliothèque, sous son nom
+	// (ADR-0058). RecentMovies et RecentShows restent pour les apps qui ne
+	// connaissent pas les bibliothèques.
+	Libraries []HomeLibraryRow `json:"libraries"`
+}
+
+// HomeLibraryRow is the home row of one library: what was last added to it.
+type HomeLibraryRow struct {
+	ID    int     `json:"id"`
+	Name  string  `json:"name"`
+	Kind  string  `json:"kind"`
+	Items []Media `json:"items"`
 }
 
 // HomeMediaItem is a media item decorated with watch progression details

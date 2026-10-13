@@ -3,11 +3,11 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
-import '../../utils/app_platform.dart';
-import '../../utils/window_controls.dart';
 import '../../models/app_download.dart';
+import '../../models/models.dart';
 import '../../providers/auth_provider.dart';
 import '../../providers/home_provider.dart';
+import '../../providers/library_provider.dart';
 import '../../services/api_client.dart';
 import '../../services/auto_updater_service.dart';
 import '../../services/download_manager.dart';
@@ -17,10 +17,7 @@ import '../../services/update_checker.dart';
 import '../../theme/app_colors.dart';
 import '../../utils/responsive.dart';
 import '../../widgets/global/account_menu.dart';
-import '../../widgets/global/app_download_button.dart';
 import '../../widgets/global/app_update_dialog.dart';
-import '../../widgets/global/glass_catalog_search.dart';
-import '../../widgets/global/glass_chrome.dart';
 import '../../widgets/global/interface_tour/interface_tour.dart';
 import '../../widgets/global/interface_tour/tour_anchor.dart';
 import '../../desktop_window.dart';
@@ -30,15 +27,15 @@ import '../../tv/tv_pairing_link.dart';
 import '../settings/tv_pairing_screen.dart';
 import '../downloads/downloads_screen.dart';
 import '../home/home_screen.dart';
-import '../library/movies_screen.dart';
-import '../library/shows_screen.dart';
+import '../library/library_screen.dart';
 import '../requests/requests_screen.dart';
 import 'mobile_bottom_nav.dart';
 import 'mobile_top_bar.dart';
+import 'shell_desktop_header.dart';
 import 'shell_page_open_listener.dart';
 import 'shell_tab_stack.dart';
+import 'shell_tabs.dart';
 import '../../theme/app_icons.dart';
-import '../../theme/app_type.dart';
 import '../../l10n/tr.dart';
 
 class MainShell extends StatefulWidget {
@@ -49,14 +46,16 @@ class MainShell extends StatefulWidget {
 }
 
 class _MainShellState extends State<MainShell> {
-  int _selectedIndex = 0;
+  /// L'onglet affiché, par identifiant (voir [ShellTabs]) : les bibliothèques
+  /// sont celles du serveur, et leur nombre change.
+  String _selectedTab = ShellTabs.home;
 
   /// Un nœud par onglet de l'en-tête, pour que Retour puisse y ramener la
-  /// télécommande. Indexés comme les écrans de [ShellTabStack].
-  final List<FocusNode> _tabNodes = List<FocusNode>.generate(
-    5,
-    (index) => FocusNode(debugLabel: 'nav-tab-$index'),
-  );
+  /// télécommande. Créés à la demande, sous l'identifiant de l'onglet.
+  final Map<String, FocusNode> _tabNodes = {};
+
+  FocusNode _tabNode(String tab) => _tabNodes.putIfAbsent(
+      tab, () => FocusNode(debugLabel: 'nav-tab-$tab'));
 
   /// Observe l'en-tête entier — onglets, recherche, compte — sans jamais
   /// prendre le focus lui-même.
@@ -82,7 +81,11 @@ class _MainShellState extends State<MainShell> {
   /// ([_warmOtherTabs]), et une fois montés ils le restent : c'est ce qui rend
   /// le changement d'onglet instantané, et c'était la seule raison de les
   /// monter tôt.
-  final Set<int> _mountedTabs = {0};
+  final Set<String> _mountedTabs = {ShellTabs.home};
+
+  /// Vrai une fois l'accueil posé : tous les onglets se montent alors, y
+  /// compris ceux des bibliothèques ajoutées ensuite.
+  bool _allTabsWarm = false;
   Timer? _warmTimer;
 
   /// Checks the server for a newer build in the background and drives the
@@ -99,12 +102,8 @@ class _MainShellState extends State<MainShell> {
   static const Duration _warmDelay = Duration(seconds: 3);
 
   void _warmOtherTabs() {
-    if (_mountedTabs.length == _tabNodes.length) return;
-    setState(() {
-      for (var index = 0; index < _tabNodes.length; index++) {
-        _mountedTabs.add(index);
-      }
-    });
+    if (_allTabsWarm) return;
+    setState(() => _allTabsWarm = true);
   }
 
   /// Les zones du chrome que la présentation de l'interface montre.
@@ -136,7 +135,7 @@ class _MainShellState extends State<MainShell> {
   /// refermés, il reste à revenir sur l'accueil.
   void _onTourReplayRequested() {
     if (_auth.isOfflineSession) return;
-    _selectTab(0);
+    _selectTab(ShellTabs.home);
     unawaited(_playTour());
   }
 
@@ -149,7 +148,9 @@ class _MainShellState extends State<MainShell> {
       await _homeSettled();
       if (!mounted) return;
       if (onlyOnBareHome) {
-        if (_selectedIndex != 0 || _pageOpen || _updateDialogOpen) return;
+        if (_selectedTab != ShellTabs.home || _pageOpen || _updateDialogOpen) {
+          return;
+        }
         if (!(ModalRoute.of(context)?.isCurrent ?? true)) return;
       }
       final accountId = _auth.activeServer?.id;
@@ -193,7 +194,7 @@ class _MainShellState extends State<MainShell> {
     InterfaceTourReplay.requests.removeListener(_onTourReplayRequested);
     _warmTimer?.cancel();
     _autoUpdate?.dispose();
-    for (final node in _tabNodes) {
+    for (final node in _tabNodes.values) {
       node.dispose();
     }
     _headerNode.dispose();
@@ -208,6 +209,9 @@ class _MainShellState extends State<MainShell> {
     // a navigator, so it is where the approval screen opens.
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (!mounted) return;
+      // Les onglets sont les bibliothèques du serveur : sans cette liste la
+      // coquille n'a que l'accueil.
+      unawaited(context.read<LibraryProvider>().loadLibraries());
       _warmTimer = Timer(_warmDelay, () {
         if (mounted) _warmOtherTabs();
       });
@@ -243,18 +247,18 @@ class _MainShellState extends State<MainShell> {
   /// par-dessus les onglets, dans [shellNavigatorKey].
   bool _pageOpen = false;
 
-  void _selectTab(int index) {
+  void _selectTab(String tab) {
     // Un onglet choisi depuis une fiche ramène aux onglets, y compris celui
     // qui était déjà sélectionné : c'est le chemin du retour à la liste.
     if (_pageOpen) {
       shellNavigatorKey.currentState?.popUntil((route) => route.isFirst);
     }
-    if (_selectedIndex == index) return;
+    if (_selectedTab == tab) return;
     // Un onglet choisi avant son tour se monte maintenant : l'attente d'une
     // image vaut mieux que celle de la fin du délai.
     setState(() {
-      _mountedTabs.add(index);
-      _selectedIndex = index;
+      _mountedTabs.add(tab);
+      _selectedTab = tab;
     });
   }
 
@@ -315,12 +319,12 @@ class _MainShellState extends State<MainShell> {
   /// en remontant ne doit pas fermer l'app.
   void _handleTvBack() {
     if (!_headerNode.hasFocus) {
-      _focusTab(_selectedIndex);
+      _focusTab(_selectedTab);
       return;
     }
-    if (_selectedIndex != 0) {
-      _selectTab(0);
-      _focusTab(0);
+    if (_selectedTab != ShellTabs.home) {
+      _selectTab(ShellTabs.home);
+      _focusTab(ShellTabs.home);
       return;
     }
     final now = DateTime.now();
@@ -340,24 +344,23 @@ class _MainShellState extends State<MainShell> {
 
   /// Les onglets dont la liste a quitté son haut : la barre du haut mobile y
   /// prend son verre ([MobileTopBar]).
-  final Set<int> _scrolledTabs = {};
+  final Set<String> _scrolledTabs = {};
 
-  Widget _trackScroll(int index, Widget tab) {
+  Widget _trackScroll(String tab, Widget child) {
     return ScrollEdgeListener(
       onScrolledChanged: (scrolled) => setState(() {
-        scrolled ? _scrolledTabs.add(index) : _scrolledTabs.remove(index);
+        scrolled ? _scrolledTabs.add(tab) : _scrolledTabs.remove(tab);
       }),
-      child: tab,
+      child: child,
     );
   }
 
-  void _focusTab(int index) {
+  void _focusTab(String tab) {
     // Un onglet absent de l'en-tête (pas de droit de demande, pas de
-    // téléchargements sur cet appareil) n'a pas de nœud monté : l'accueil, lui,
-    // est toujours là.
-    final node =
-        _tabNodes[index].context != null ? _tabNodes[index] : _tabNodes[0];
-    node.requestFocus();
+    // téléchargements sur cet appareil, bibliothèque retirée) n'a pas de nœud
+    // monté : l'accueil, lui, est toujours là.
+    final node = _tabNode(tab);
+    (node.context != null ? node : _tabNode(ShellTabs.home)).requestFocus();
   }
 
   @override
@@ -391,20 +394,46 @@ class _MainShellState extends State<MainShell> {
     final isTv = TvScope.of(context);
     final isWide = AppLayout.isWide(context) || isTv;
 
-    final tabs = ShellTabStack(
-      selectedIndex: _selectedIndex,
-      mounted: _mountedTabs,
-      tabs: [
-        HomeScreen(
-          embedded: isWide,
-          onNavigateToMovies: () => _selectTab(1),
-          onNavigateToShows: () => _selectTab(2),
+    final libraryProvider = Provider.of<LibraryProvider>(context);
+    final libraries = libraryProvider.libraries;
+    VoidCallback? openFirst(LibraryKind kind) {
+      final library = libraryProvider.firstLibraryOf(kind);
+      return library == null
+          ? null
+          : () => _selectTab(ShellTabs.library(library));
+    }
+
+    final tabWidgets = <String, Widget>{
+      ShellTabs.home: HomeScreen(
+        embedded: isWide,
+        onNavigateToMovies: openFirst(LibraryKind.movies),
+        onNavigateToShows: openFirst(LibraryKind.shows),
+        onOpenLibrary: (libraryId) {
+          for (final library in libraries) {
+            if (library.id == libraryId) {
+              _selectTab(ShellTabs.library(library));
+            }
+          }
+        },
+      ),
+      for (final library in libraries)
+        ShellTabs.library(library): _trackScroll(
+          ShellTabs.library(library),
+          LibraryScreen(library: library, embedded: isWide),
         ),
-        _trackScroll(1, MoviesScreen(embedded: isWide)),
-        _trackScroll(2, ShowsScreen(embedded: isWide)),
-        _trackScroll(3, RequestsScreen(embedded: isWide)),
-        _trackScroll(4, DownloadsScreen(embedded: isWide)),
-      ],
+      ShellTabs.requests:
+          _trackScroll(ShellTabs.requests, RequestsScreen(embedded: isWide)),
+      ShellTabs.downloads:
+          _trackScroll(ShellTabs.downloads, DownloadsScreen(embedded: isWide)),
+    };
+    // Une bibliothèque retirée pendant qu'on la regardait (supprimée, ou
+    // serveur changé) rend la main à l'accueil.
+    final selectedTab =
+        tabWidgets.containsKey(_selectedTab) ? _selectedTab : ShellTabs.home;
+    final tabs = ShellTabStack(
+      selected: selectedTab,
+      mounted: _allTabsWarm ? tabWidgets.keys.toSet() : _mountedTabs,
+      tabs: tabWidgets,
     );
 
     final shell = Scaffold(
@@ -426,8 +455,9 @@ class _MainShellState extends State<MainShell> {
                 ),
                 if (!isWide)
                   MobileBottomNav(
-                    selectedIndex: _selectedIndex,
+                    selected: selectedTab,
                     onTabSelected: _selectTab,
+                    libraries: libraries,
                     canRequestMedia: authProvider.permissions.requestMedia,
                     canDownload: downloads.isSupported,
                   ),
@@ -443,24 +473,25 @@ class _MainShellState extends State<MainShell> {
                 focusNode: _headerNode,
                 canRequestFocus: false,
                 skipTraversal: true,
-                child: _DesktopGlassHeader(
-                  selectedIndex: _selectedIndex,
+                child: ShellDesktopHeader(
+                  selected: selectedTab,
                   onTabSelected: _selectTab,
+                  libraries: libraries,
                   homeProvider: homeProvider,
                   authProvider: authProvider,
                   canDownload: downloads.isSupported,
-                  tabNodes: _tabNodes,
+                  nodeFor: _tabNode,
                 ),
               ),
             ),
           // Hidden over an open page: it would sit on top of its back button.
-          if (!isWide && _selectedIndex != 0 && !_pageOpen)
+          if (!isWide && selectedTab != ShellTabs.home && !_pageOpen)
             Positioned(
               top: 0,
               left: 0,
               right: 0,
               child: MobileTopBar(
-                scrolled: _scrolledTabs.contains(_selectedIndex),
+                scrolled: _scrolledTabs.contains(selectedTab),
                 authProvider: authProvider,
               ),
             ),
@@ -480,200 +511,6 @@ class _MainShellState extends State<MainShell> {
         _handleTvBack();
       },
       child: shell,
-    );
-  }
-}
-
-class _DesktopGlassHeader extends StatelessWidget {
-  final int selectedIndex;
-  final ValueChanged<int> onTabSelected;
-  final HomeProvider homeProvider;
-  final AuthProvider authProvider;
-
-  /// Faux sur le web, où il n'y a pas d'espace de stockage applicatif : sans
-  /// destination possible, l'onglet n'existe pas.
-  final bool canDownload;
-
-  /// Un nœud par onglet, possédés par la coquille.
-  final List<FocusNode> tabNodes;
-
-  const _DesktopGlassHeader({
-    required this.selectedIndex,
-    required this.onTabSelected,
-    required this.homeProvider,
-    required this.authProvider,
-    required this.canDownload,
-    required this.tabNodes,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    final header = SafeArea(
-      bottom: false,
-      child: Padding(
-        padding: EdgeInsets.fromLTRB(
-          28,
-          6 + macOSWindowControlsTopInset,
-          28,
-          10,
-        ),
-        child: Row(
-          crossAxisAlignment: CrossAxisAlignment.center,
-          children: [
-            GlassBrand(onTap: () => onTabSelected(0)),
-            const SizedBox(width: 20),
-            TourTarget(
-              anchor: TourAnchor.library,
-              child: Row(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  GlassNavTab(
-                    label: tr('Accueil'),
-                    selected: selectedIndex == 0,
-                    focusNode: tabNodes[0],
-                    onTap: () => onTabSelected(0),
-                  ),
-                  GlassNavTab(
-                    label: tr('Films'),
-                    selected: selectedIndex == 1,
-                    focusNode: tabNodes[1],
-                    onTap: () => onTabSelected(1),
-                  ),
-                  GlassNavTab(
-                    label: tr('Séries'),
-                    selected: selectedIndex == 2,
-                    focusNode: tabNodes[2],
-                    onTap: () => onTabSelected(2),
-                  ),
-                ],
-              ),
-            ),
-            // The whole request catalog sits behind request_media server-side,
-            // so an account without it gets no entry point either.
-            if (authProvider.permissions.requestMedia)
-              TourTarget(
-                anchor: TourAnchor.requests,
-                child: GlassNavTab(
-                  label: tr('Demandes'),
-                  selected: selectedIndex == 3,
-                  focusNode: tabNodes[3],
-                  onTap: () => onTabSelected(3),
-                ),
-              ),
-            if (canDownload)
-              TourTarget(
-                anchor: TourAnchor.downloads,
-                child: GlassNavTab(
-                  label: tr('Téléchargements'),
-                  selected: selectedIndex == 4,
-                  focusNode: tabNodes[4],
-                  onTap: () => onTabSelected(4),
-                ),
-              ),
-            const Spacer(),
-            const TourTarget(
-              anchor: TourAnchor.search,
-              child: GlassCatalogSearch(
-                collapsedWidth: 200,
-                expandedWidth: 280,
-              ),
-            ),
-            const SizedBox(width: 12),
-            _IndexerActions(homeProvider: homeProvider),
-            const AppDownloadButton(),
-            AccountMenu(authProvider: authProvider),
-          ],
-        ),
-      ),
-    );
-
-    return GlassHeaderStrip(
-      child: AppPlatform.isMacOS
-          ? Stack(
-              children: [
-                // Empty zones (title bar / spacer) drag the window; buttons
-                // above still receive hits and don't block trackpad scroll.
-                const Positioned.fill(
-                  child: WindowDragArea(child: SizedBox.expand()),
-                ),
-                header,
-              ],
-            )
-          : header,
-    );
-  }
-}
-
-class _IndexerActions extends StatelessWidget {
-  final HomeProvider homeProvider;
-
-  const _IndexerActions({required this.homeProvider});
-
-  @override
-  Widget build(BuildContext context) {
-    if (homeProvider.isScanning) {
-      return _StatusBadge(label: tr('Scan…'));
-    }
-    if (homeProvider.isBackfillingMetadata) {
-      return _StatusBadge(label: tr('Affiches…'));
-    }
-    if (homeProvider.isRedetectingAll) {
-      final stats = homeProvider.redetectAllProgress;
-      final label = stats.total > 0
-          ? tr('Match {0}/{1}', [stats.processed, stats.total])
-          : tr('Match…');
-      return _StatusBadge(label: label);
-    }
-    if (homeProvider.isExtractingSubtitles) {
-      final stats = homeProvider.subtitleStats;
-      final label = stats.total > 0
-          ? tr('Sous-titres {0}/{1}', [stats.processed, stats.total])
-          : tr('Sous-titres…');
-      return _StatusBadge(label: label);
-    }
-    return const SizedBox.shrink();
-  }
-}
-
-class _StatusBadge extends StatelessWidget {
-  final String label;
-
-  const _StatusBadge({required this.label});
-
-  @override
-  Widget build(BuildContext context) {
-    return Padding(
-      padding: const EdgeInsets.only(right: 6),
-      child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
-        decoration: BoxDecoration(
-          color: Colors.white.withValues(alpha: 0.06),
-          borderRadius: BorderRadius.circular(14),
-          border: Border.all(color: Colors.white.withValues(alpha: 0.08)),
-        ),
-        child: Row(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            SizedBox(
-              width: 12,
-              height: 12,
-              child: CircularProgressIndicator(
-                strokeWidth: 2,
-                color: AppColors.accent.withValues(alpha: 0.85),
-              ),
-            ),
-            const SizedBox(width: 6),
-            Text(
-              label,
-              style: TextStyle(
-                color: AppColors.textMuted.withValues(alpha: 0.95),
-                fontSize: AppType.caption,
-                fontWeight: FontWeight.w500,
-              ),
-            ),
-          ],
-        ),
-      ),
     );
   }
 }

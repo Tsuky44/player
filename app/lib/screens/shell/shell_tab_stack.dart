@@ -15,38 +15,60 @@ import '../../tv/tv_focus_memory.dart';
 ///
 /// La même raison vaut pour le focus : le parcours au D-pad lit l'arbre, pas
 /// l'écran, et entrerait dans des affiches que personne ne voit.
-class ShellTabStack extends StatelessWidget {
+class ShellTabStack extends StatefulWidget {
   const ShellTabStack({
     super.key,
-    required this.selectedIndex,
+    required this.selected,
     required this.mounted,
     required this.tabs,
   });
 
-  /// L'onglet affiché.
-  final int selectedIndex;
+  /// L'identifiant de l'onglet affiché ; le premier si aucun ne le porte.
+  final String selected;
 
   /// Les onglets déjà construits. Les autres restent vides jusqu'à ce qu'on
   /// les ouvre, ou que l'accueil ait fini de se poser.
-  final Set<int> mounted;
+  final Set<String> mounted;
 
-  final List<Widget> tabs;
+  /// Les onglets par identifiant, dans leur ordre. Chacun garde son état sous
+  /// son identifiant : une bibliothèque ajoutée ou retirée ne déplace pas
+  /// celui des autres (voir [ShellTabs]).
+  final Map<String, Widget> tabs;
+
+  @override
+  State<ShellTabStack> createState() => _ShellTabStackState();
+}
+
+class _ShellTabStackState extends State<ShellTabStack> {
+  /// Une clé globale par onglet. [IndexedStack] enveloppe chacun de ses
+  /// enfants et les apparie par rang : une clé locale n'y survit pas, et une
+  /// bibliothèque insérée au milieu ferait renaître tous les onglets suivants.
+  final Map<String, GlobalKey> _keys = {};
 
   @override
   Widget build(BuildContext context) {
+    final tabs = widget.tabs;
+    final mounted = widget.mounted;
+    final ids = tabs.keys.toList();
+    _keys.removeWhere((id, _) => !tabs.containsKey(id));
+    final found = ids.indexOf(widget.selected);
+    final index = found < 0 ? 0 : found;
     return IndexedStack(
-      index: selectedIndex,
+      index: index,
       children: [
-        for (final (index, tab) in tabs.indexed)
-          TickerMode(
-            enabled: index == selectedIndex,
-            child: ExcludeFocus(
-              excluding: index != selectedIndex,
-              // Redescendre de l'en-tête ramène là où l'on était dans cet
-              // onglet — voir [TvFocusMemory].
-              child: mounted.contains(index)
-                  ? TvFocusMemory(child: tab)
-                  : const SizedBox.shrink(),
+        for (final (position, id) in ids.indexed)
+          KeyedSubtree(
+            key: _keys.putIfAbsent(id, () => GlobalKey(debugLabel: id)),
+            child: TickerMode(
+              enabled: position == index,
+              child: ExcludeFocus(
+                excluding: position != index,
+                // Redescendre de l'en-tête ramène là où l'on était dans cet
+                // onglet — voir [TvFocusMemory].
+                child: mounted.contains(id)
+                    ? TvFocusMemory(child: tabs[id]!)
+                    : const SizedBox.shrink(),
+              ),
             ),
           ),
       ],

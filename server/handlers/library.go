@@ -8,21 +8,32 @@ import (
 
 	"project-player/server/database"
 	"project-player/server/indexer"
+	"project-player/server/libraries"
 	"project-player/server/models"
 
 	"github.com/julienschmidt/httprouter"
 )
 
-// GetMovies returns all indexed movies (GET /api/movies)
+// GetMovies returns the indexed movies (GET /api/movies): every one of them,
+// or with ?library=ID those of one library.
 func GetMovies(w http.ResponseWriter, r *http.Request, _ httprouter.Params, userID int) {
+	lib, ok := libraryFilter(w, r)
+	if !ok {
+		return
+	}
 	w.Header().Set("Content-Type", "application/json")
 
+	within, args := "", []interface{}{userID}
+	if lib != nil {
+		lower, upper := libraries.PathRange(lib.Path)
+		within, args = ` AND m.file_path >= ? AND m.file_path < ?`, append(args, lower, upper)
+	}
 	rows, err := database.DB.Query(`
 		SELECT `+libraryItemColumns+`
 		FROM medias m
 		LEFT JOIN progressions p ON p.media_id = m.id AND p.user_id = ?
-		WHERE m.type = 'movie'
-		ORDER BY m.title ASC`, userID)
+		WHERE m.type = 'movie'`+within+`
+		ORDER BY m.title ASC`, args...)
 	if err != nil {
 		log.Printf("Movies error: failed to query: %v", err)
 		writeJSONError(w, http.StatusInternalServerError, "Internal database error")
@@ -74,15 +85,34 @@ func (s *showWatchStats) add(other showWatchStats) {
 	s.started += other.started
 }
 
-// GetShows returns all indexed TV Shows (GET /api/shows)
+// showsWithinLibrary keeps the shows holding at least one episode file beneath
+// a library's folder. A show has no path of its own: it belongs wherever its
+// episodes are, and to two libraries when they are split between both.
+const showsWithinLibrary = ` AND EXISTS (
+			SELECT 1 FROM medias season
+			JOIN medias ep ON ep.parent_id = season.id AND ep.type = 'episode'
+			WHERE season.parent_id = m.id AND season.type = 'season'
+			  AND ep.file_path >= ? AND ep.file_path < ?)`
+
+// GetShows returns the indexed TV shows (GET /api/shows): every one of them,
+// or with ?library=ID those of one library.
 func GetShows(w http.ResponseWriter, r *http.Request, _ httprouter.Params, userID int) {
+	lib, ok := libraryFilter(w, r)
+	if !ok {
+		return
+	}
 	w.Header().Set("Content-Type", "application/json")
 
+	within, args := "", []interface{}{}
+	if lib != nil {
+		lower, upper := libraries.PathRange(lib.Path)
+		within, args = showsWithinLibrary, append(args, lower, upper)
+	}
 	results, err := queryMediaList("Shows", `
 		SELECT `+mediaColumns+`
 		FROM medias m
-		WHERE m.type = 'show'
-		ORDER BY m.title ASC`)
+		WHERE m.type = 'show'`+within+`
+		ORDER BY m.title ASC`, args...)
 	if err != nil {
 		log.Printf("Shows error: failed to query: %v", err)
 		writeJSONError(w, http.StatusInternalServerError, "Internal database error")

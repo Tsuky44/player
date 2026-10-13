@@ -23,6 +23,9 @@ build/
 # tout checkout Windows sur la limite MAX_PATH (260).
 app/macos/build_xcode/
 
+# Worktrees créés par Claude Code : copies complètes du dépôt, à ignorer.
+.claude/worktrees/
+
 # IDE
 .vscode/
 .idea/

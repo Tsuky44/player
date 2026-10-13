@@ -13,6 +13,7 @@ import (
 	"time"
 
 	"project-player/server/database"
+	"project-player/server/libraries"
 	"project-player/server/models"
 	"project-player/server/safego"
 )
@@ -54,7 +55,11 @@ type TMDBResponse struct {
 // running. It reports whether this call is the one that started it, so a caller
 // answering an HTTP request can say "already running" without a check-then-act
 // race against another request.
-func ScanMedia(moviesDir, seriesDir string) bool {
+//
+// Every library is walked according to its kind, in the order given: the
+// indexer knows nothing of a "movies folder" or a "series folder" beyond that
+// (ADR-0058).
+func ScanMedia(libs []libraries.Library) bool {
 	if !scanning.CompareAndSwap(false, true) {
 		log.Println("Indexer: Scan is already in progress.")
 		return false
@@ -70,7 +75,10 @@ func ScanMedia(moviesDir, seriesDir string) bool {
 		startTime := time.Now()
 		ResetDirScanCache()
 		ResetSearchCache()
-		beginScanReport(moviesDir, seriesDir)
+		beginScanReport(
+			strings.Join(libraries.Paths(libraries.OfKind(libs, libraries.KindMovies)), ", "),
+			strings.Join(libraries.Paths(libraries.OfKind(libs, libraries.KindShows)), ", "),
+		)
 		defer finishScanReport()
 
 		// Fix existing duplicate shows immediately (don't wait for a long filesystem walk).
@@ -78,15 +86,21 @@ func ScanMedia(moviesDir, seriesDir string) bool {
 
 		// The monitor, when it runs, learns the library's folders from this
 		// walk instead of listing them a second time.
-		movieScope, seriesScope := fullScope(moviesDir), fullScope(seriesDir)
-		if m := activeMonitor(); m != nil {
+		m := activeMonitor()
+		if m != nil {
 			m.beginObserving()
-			movieScope.opts.onDir = m.recordDir
-			seriesScope.opts.onDir = m.recordDir
 			defer m.pruneUnseenDirs()
 		}
-		movies := scanMovieScope(movieScope)
-		series := scanSeriesScope(seriesScope)
+		seen := map[string]bool{}
+		for _, lib := range libs {
+			scope := fullScope(lib.Path)
+			if m != nil {
+				scope.opts.onDir = m.recordDir
+			}
+			for path := range scanLibraryScope(lib.Kind, scope).seen {
+				seen[path] = true
+			}
+		}
 
 		// Full identity repair belongs to explicit re-detection. Running it here
 		// re-fetches every series and can undo a user's manual match on refresh.
@@ -94,11 +108,7 @@ func ScanMedia(moviesDir, seriesDir string) bool {
 		dedupeDuplicateMovies()
 
 		// Clean up broken database entries whose physical files have been deleted
-		seen := movies.seen
-		for path := range series.seen {
-			seen[path] = true
-		}
-		if err := cleanMissingMediasSeen(seen, moviesDir, seriesDir); err != nil {
+		if err := cleanMissingMediasSeen(seen, libraries.Paths(libs)...); err != nil {
 			log.Printf("Indexer error cleaning up missing medias: %v", err)
 		}
 
@@ -143,6 +153,9 @@ type scanScope struct {
 	// being copied is left for later: indexing it would record the size and
 	// probe of a half-written file. nil means every file is ready.
 	ready func(path string, info os.FileInfo) bool
+	// plain indexes each video under its own file name, without looking it up
+	// anywhere: the folder is a library of kind "other" (plain_libraries.go).
+	plain bool
 }
 
 func fullScope(root string) scanScope {
@@ -188,6 +201,15 @@ func (o *scanOutcome) visitKnownFile(s section, known map[string]indexedFile, no
 	return true
 }
 
+// scanLibraryScope indexes one part of a library the way its kind is read.
+func scanLibraryScope(kind libraries.Kind, scope scanScope) *scanOutcome {
+	if kind == libraries.KindShows {
+		return scanSeriesScope(scope)
+	}
+	scope.plain = kind == libraries.KindOther
+	return scanMovieScope(scope)
+}
+
 // scanMovies indexes all video files in the movies directory
 func scanMovies(dir string) *scanOutcome {
 	return scanMovieScope(fullScope(dir))
@@ -229,8 +251,15 @@ func scanMovieScope(scope scanScope) *scanOutcome {
 		}
 
 		// Identity: folder/NFO/provider IDs first, then confident TMDB match.
-		identity := IdentifyMovie(path, dir)
-		displayTitle := identity.Title
+		// A plain library has none to find: the file's name is its title.
+		var identity IdentityMatch
+		displayTitle := ""
+		if scope.plain {
+			displayTitle = plainTitle(path)
+		} else {
+			identity = IdentifyMovie(path, dir)
+			displayTitle = identity.Title
+		}
 		if displayTitle == "" {
 			displayTitle = ReleaseDisplayTitle(ResolveMovieLookupName(path, dir), models.TypeMovie)
 		}
@@ -256,8 +285,12 @@ func scanMovieScope(scope scanScope) *scanOutcome {
 			outcome.added = append(outcome.added, int(id))
 		}
 
-		reportIndexed(sectionMovies, identity.Matched)
-		if identity.Matched {
+		// Rien à identifier dans une bibliothèque « autre » : ses vidéos ne
+		// comptent pas parmi les films restés sans correspondance.
+		reportIndexed(sectionMovies, identity.Matched || scope.plain)
+		if scope.plain {
+			log.Printf("Indexer: Indexed Video -> %s", displayTitle)
+		} else if identity.Matched {
 			log.Printf("Indexer: Indexed Movie -> %s (tmdb=%d via %s, conf=%.2f)", displayTitle, tmdbID, identity.Source, identity.Confidence)
 		} else {
 			log.Printf("Indexer: Indexed Movie -> %s (unmatched — needs review)", displayTitle)

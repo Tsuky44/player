@@ -625,59 +625,6 @@ func backfillEpisodePosters() {
 	}
 }
 
-func loadBackfillQueue() []struct {
-	id        int
-	mediaType models.MediaType
-	title     string
-	filePath  string
-	tmdbID    int
-} {
-	rows, err := database.DB.Query(`
-		SELECT id, type, title, COALESCE(file_path, ''), COALESCE(tmdb_id, 0)
-		FROM medias
-		WHERE type IN ('movie', 'show')
-		  AND (
-		    poster_url IS NULL OR poster_url = ''
-		    OR overview IS NULL OR overview = ''
-		    OR tmdb_id IS NULL OR tmdb_id = 0
-		    OR title LIKE '%WEBDL%'
-		    OR title LIKE '%webdl%'
-		    OR title LIKE '%.mkv%'
-		    OR title LIKE '%1080p%'
-		    OR title LIKE '%720p%'
-		  )
-		ORDER BY type, title
-	`)
-	if err != nil {
-		log.Printf("TMDB: backfill query failed: %v", err)
-		return nil
-	}
-	defer rows.Close()
-
-	var items []struct {
-		id        int
-		mediaType models.MediaType
-		title     string
-		filePath  string
-		tmdbID    int
-	}
-	for rows.Next() {
-		var id, tmdbID int
-		var mediaType, title, filePath string
-		if err := rows.Scan(&id, &mediaType, &title, &filePath, &tmdbID); err != nil {
-			continue
-		}
-		items = append(items, struct {
-			id        int
-			mediaType models.MediaType
-			title     string
-			filePath  string
-			tmdbID    int
-		}{id, models.MediaType(mediaType), title, filePath, tmdbID})
-	}
-	return items
-}
-
 // backfillMissingMetadata fetches TMDB posters for movies/shows missing
 // artwork. The run guard belongs to BackfillMissingMetadataAsync, its only
 // caller, so that a trigger can answer 409 without racing.
@@ -980,14 +927,15 @@ func RedetectAllMediaAsync() bool {
 func redetectAllMedia() {
 	ResetDirScanCache()
 	ResetSearchCache()
-	RelinkEpisodesToShows(config.SeriesDir())
+	relinkShowLibraries()
 	redetectAllMutex.Lock()
 	redetectAllProgress = RedetectAllProgress{}
 	redetectAllMutex.Unlock()
 
 	start := time.Now()
+	identifiable, args := OutsidePlainLibraries("file_path")
 	rows, err := database.DB.Query(`
-		SELECT id FROM medias WHERE type IN ('movie', 'show') ORDER BY type, id`)
+		SELECT id FROM medias WHERE type IN ('movie', 'show')`+identifiable+` ORDER BY type, id`, args...)
 	if err != nil {
 		log.Printf("Identify: bulk redetect query failed: %v", err)
 		return

@@ -3,12 +3,14 @@ import 'package:provider/provider.dart';
 
 import '../../../services/app_image_cache.dart';
 import '../../../services/download_manager.dart';
+import '../../../services/new_episodes/new_episode_alerts.dart';
 import '../../../theme/app_colors.dart';
 import '../../../tv/tv_mode.dart';
 import '../../../utils/app_platform.dart';
 import '../../../utils/format.dart';
 import '../tv_link_scanner_screen.dart';
 import '../widgets/about_group.dart';
+import '../widgets/new_episode_alerts_group.dart';
 import '../../../providers/auth_provider.dart';
 import '../../../widgets/global/interface_tour/interface_tour.dart';
 import '../widgets/settings_ui.dart';
@@ -117,6 +119,7 @@ class _DevicePageState extends State<DevicePage> {
             ),
           ],
         ),
+        if (NewEpisodeAlerts.supported) const NewEpisodeAlertsGroup(),
         // Hors ligne il n'y a que les téléchargements à l'écran : la
         // présentation n'aurait rien de ce qu'elle décrit à montrer.
         if (!context.watch<AuthProvider>().isOfflineSession)

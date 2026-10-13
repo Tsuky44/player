@@ -110,8 +110,12 @@ const Map<String, String> kEnglish = <String, String>{
       'Add or replace an installer',
   'Ajouter un serveur':
       'Add a server',
+  'Ajouter une bibliothèque':
+      'Add a library',
   'Ajoutez des dossiers de séries avec des épisodes SxxExx puis synchronisez la bibliothèque.':
       'Add show folders with SxxExx episodes, then sync the library.',
+  'Ajoutez des fichiers dans les dossiers de vos bibliothèques, puis lancez une synchronisation.':
+      'Add files to your libraries’ folders, then start a sync.',
   'Ajoutez des fichiers dans vos dossiers Films et Séries, puis lancez une synchronisation.':
       'Add files to your Movies and TV Shows folders, then start a sync.',
   'Ajoutez des fichiers vidéo dans votre dossier Films puis synchronisez la bibliothèque.':
@@ -228,6 +232,10 @@ const Map<String, String> kEnglish = <String, String>{
       'None',
   'Aucune application trouvée dans l’image disque.':
       'No application found in the disk image.',
+  'Aucune bibliothèque':
+      'No library',
+  'Aucune bibliothèque. Ajoutez un dossier du serveur pour commencer.':
+      'No library yet. Add a folder from the server to get started.',
   'Aucune correspondance sûre — choisissez une fiche TMDB.':
       'No safe match — choose a TMDB entry.',
   'Aucune demande en attente.':
@@ -282,6 +290,8 @@ const Map<String, String> kEnglish = <String, String>{
       'Allow Onyx to install apps in the screen that just opened, then try again.',
   'Autorisez l\'appareil photo pour Onyx dans les réglages du téléphone, puis revenez sur cet écran.':
       'Allow the camera for Onyx in the phone settings, then come back to this screen.',
+  'Autre':
+      'Other',
   'Autres appareils':
       'Other devices',
   'Avancer de 10 s':
@@ -300,8 +310,16 @@ const Map<String, String> kEnglish = <String, String>{
       'Belgium',
   'Bibliothèque':
       'Library',
+  'Bibliothèque ajoutée. Le serveur analyse son dossier.':
+      'Library added. The server is scanning its folder.',
+  'Bibliothèque enregistrée.':
+      'Library saved.',
+  'Bibliothèque supprimée.':
+      'Library deleted.',
   'Bibliothèque vide':
       'Empty library',
+  'Bibliothèques':
+      'Libraries',
   'Bienvenue sur Onyx':
       'Welcome to Onyx',
   'Biographie':
@@ -388,6 +406,8 @@ const Map<String, String> kEnglish = <String, String>{
       'Every device signed in to the server, for every account. Sign out any you do not recognise.',
   'Chaque compte l’active s’il le souhaite.':
       'Each account turns it on if it wishes.',
+  'Chaque fichier est un film : le serveur cherche son affiche et sa fiche.':
+      'Each file is a movie: the server looks up its poster and details.',
   'Chaque lecture de plus de 30 secondes : le titre, le compte, l’appareil et le temps réellement regardé, pauses exclues. Touchez une ligne pour lire le journal du lecteur — celles qui ont échoué y figurent aussi, quelle qu’ait été leur durée.':
       'Every playback longer than 30 seconds: the title, the account, the device and the time actually watched, pauses excluded. Tap a row to read the player log — failed ones are listed too, whatever their length.',
   'Chaque lecture envoie son journal et ses mesures en se terminant, et le serveur garde ceux des dix dernières. On les relit depuis l’Historique, en ouvrant une lecture — y compris celle d’un autre appareil, ce que le journal ci-dessous ne permet pas. Les mesures ont leur propre interrupteur : elles interrogent le lecteur toutes les cinq secondes, là où le journal ne coûte rien avant la fin.':
@@ -402,6 +422,8 @@ const Map<String, String> kEnglish = <String, String>{
       'Loading…',
   'Charger plus':
       'Load more',
+  'Chemin complet sur le serveur':
+      'Full path on the server',
   'Chemin non supporté pour la mise à jour : {0}':
       'Unsupported path for the update: {0}',
   'Chemins tels que le serveur les voit (dans son conteneur).':
@@ -420,6 +442,8 @@ const Map<String, String> kEnglish = <String, String>{
       'Choose the username and password you will have on this server. The account is only created once the request is accepted.',
   'Choisissez un autre de vos comptes. Les deux serveurs se transmettront votre progression, et chacun apparaîtra sur vos autres appareils. Les administrateurs des deux serveurs doivent accepter le lien une première fois.':
       'Choose another of your accounts. The two servers will send each other your progress, and each will appear on your other devices. The administrators of both servers must accept the link the first time.',
+  'Choisissez un dossier du serveur et donnez-lui le nom que vous voulez. Vous pouvez en créer autant que nécessaire.':
+      'Pick a folder on the server and give it any name you like. You can create as many as you need.',
   'Clé API MediaHub':
       'MediaHub API key',
   'Clé API TMDB':
@@ -516,14 +540,14 @@ const Map<String, String> kEnglish = <String, String>{
       'Cannot connect to the server. Check the IP address and that the server is on.',
   'Connexion avec un QR code':
       'Sign in with a QR code',
-  'Connexion du téléviseur…':
-      'Connecting the TV…',
+  'Connexion de l’appareil…':
+      'Connecting the device…',
   'Connexion impossible':
       'Could not connect',
   'Connexion impossible.':
       'Could not connect.',
-  'Connexion impossible. Vérifiez que le téléphone et le téléviseur sont sur le même réseau Wi-Fi.':
-      'Could not connect. Check that the phone and the TV are on the same Wi-Fi network.',
+  'Connexion impossible. Vérifiez que le téléphone et l’appareil sont sur le même réseau.':
+      'Could not connect. Check that the phone and the device are on the same network.',
   'Connexion à Emby':
       'Sign in to Emby',
   'Connexion à Emby impossible.':
@@ -536,6 +560,8 @@ const Map<String, String> kEnglish = <String, String>{
       'Keeps the aspect ratio',
   'Conserver les journaux des lectures':
       'Keep playback logs',
+  'Contenu du dossier':
+      'Folder contents',
   'Contenu protégé':
       'Protected content',
   'Continuer':
@@ -648,6 +674,8 @@ const Map<String, String> kEnglish = <String, String>{
       'Requested',
   'Depuis la fiche d\'un film ou d\'une série, le bouton de téléchargement garde le média sur cet appareil. Il reste lisible même sans serveur.':
       'From a movie or show page, the download button keeps the media on this device. It stays playable even without the server.',
+  'Derniers ajouts · {0}':
+      'Latest in {0}',
   'Dernière synchronisation {0}':
       'Last sync {0}',
   'Direct':
@@ -680,6 +708,10 @@ const Map<String, String> kEnglish = <String, String>{
       'Dolby TrueHD',
   'Dolby Vision':
       'Dolby Vision',
+  'Donnez un nom et un dossier à la bibliothèque.':
+      'Give the library a name and a folder.',
+  'Dossier':
+      'Folder',
   'Dossier des films':
       'Movies folder',
   'Dossier des séries':
@@ -828,8 +860,8 @@ const Map<String, String> kEnglish = <String, String>{
       'Enter the six-digit code from your authenticator app.',
   'Entrez les identifiants de votre compte sur ce serveur. Votre serveur actuel n’est pas touché.':
       'Enter the credentials of your account on this server. Your current server is not touched.',
-  'Envoi de la session au téléviseur.':
-      'Sending the session to the TV.',
+  'Envoi de la session à l’appareil.':
+      'Sending the session to the device.',
   'Envoi de la session à {0}.':
       'Sending the session to {0}.',
   'Envoi de {0}…':
@@ -848,6 +880,8 @@ const Map<String, String> kEnglish = <String, String>{
       'Error updating posters: {0}',
   'Erreur lors de la re-détection des matchs : {0}':
       'Error re-detecting matches: {0}',
+  'Erreur lors du chargement de « {0} » : {1}':
+      'Could not load “{0}”: {1}',
   'Erreur lors du chargement des films : {0}':
       'Error loading movies: {0}',
   'Erreur lors du chargement des saisons : {0}':
@@ -1144,8 +1178,8 @@ const Map<String, String> kEnglish = <String, String>{
       'The camera could not start on this phone.',
   'La confirmation a échoué. Le code a peut-être expiré.':
       'Confirmation failed. The code may have expired.',
-  'La connexion au téléviseur a échoué.':
-      'Connecting to the TV failed.',
+  'La connexion à l’appareil a échoué.':
+      'Connecting to the device failed.',
   'La connexion depuis le téléphone a échoué.':
       'Signing in from the phone failed.',
   'La lecture continue sur « {0} ». Reprenez-la ici, là où il en est.':
@@ -1198,6 +1232,10 @@ const Map<String, String> kEnglish = <String, String>{
       'The code is 8 characters long.',
   'Le compte et toutes ses données (progressions, sessions) seront supprimés définitivement.':
       'The account and all its data (progress, sessions) will be permanently deleted.',
+  'Le contenu ne se change pas : supprimez la bibliothèque et recréez-la.':
+      'The contents cannot be changed: delete the library and create it again.',
+  'Le dossier tel que le serveur le voit (dans son conteneur). Un dossier ne sert qu’à une bibliothèque.':
+      'The folder as the server sees it (inside its container). A folder serves one library only.',
   'Le fichier tel quel':
       'The file as is',
   'Le lecteur a renoncé sans que la cause soit claire. Réessayer suffit le plus souvent.':
@@ -1214,6 +1252,8 @@ const Map<String, String> kEnglish = <String, String>{
       'The password is only used to open a session on Emby: it is not stored.',
   'Le mot de passe suffira de nouveau pour vous connecter.':
       'The password alone will be enough again to sign in.',
+  'Le nom affiché dans l’app':
+      'The name shown in the app',
   'Le nom sous lequel cet appareil apparaît dans la liste des appareils connectés.':
       'The name under which this device appears in the list of connected devices.',
   'Le propriétaire ne peut pas être rétrogradé. Réinitialiser un mot de passe déconnecte tous les appareils du compte.':
@@ -1236,12 +1276,22 @@ const Map<String, String> kEnglish = <String, String>{
       'The main server',
   'Le téléchargement hors ligne demande un espace de stockage propre à l\'application. Utilisez l\'app installée sur votre appareil.':
       'Offline downloads need storage space that belongs to the app. Use the app installed on your device.',
-  'Le téléviseur a refusé la connexion. Affichez un nouveau code sur l\'écran et réessayez.':
-      'The TV refused the connection. Show a new code on the screen and try again.',
-  'Le téléviseur est connecté à votre compte.':
-      'The TV is connected to your account.',
-  'Le téléviseur n\'a pas répondu. Vérifiez que le téléphone et le téléviseur sont sur le même réseau Wi-Fi.':
-      'The TV did not respond. Check that the phone and the TV are on the same Wi-Fi network.',
+  'Les dossiers que le serveur présente, sous le nom que vous leur donnez, et les tâches qui tiennent le catalogue à jour.':
+      'The folders the server presents, under the names you give them, and the tasks that keep the catalog up to date.',
+  'Les fichiers ajoutés au dossier de cette bibliothèque apparaissent ici d’eux-mêmes.':
+      'Files added to this library’s folder show up here on their own.',
+  'Les fichiers sont des épisodes, regroupés par série et par saison.':
+      'Files are episodes, grouped by show and season.',
+  'L’administrateur de ce serveur n’a pas encore déclaré de bibliothèque.':
+      'This server’s administrator has not set up a library yet.',
+  'L’appareil a refusé la connexion. Affichez un nouveau code sur son écran et réessayez.':
+      'The device refused the connection. Show a new code on its screen and try again.',
+  'L’appareil est connecté à votre compte.':
+      'The device is signed in to your account.',
+  'L’appareil n’a pas répondu. Vérifiez que le téléphone et lui sont sur le même réseau.':
+      'The device did not answer. Check that the phone and the device are on the same network.',
+  'Le téléphone doit être sur le même réseau que cet appareil.':
+      'The phone must be on the same network as this device.',
   'Lecture':
       'Play',
   'Lecture / pause':
@@ -1422,6 +1472,8 @@ const Map<String, String> kEnglish = <String, String>{
       'MB',
   'Mode télécommande':
       'Remote control mode',
+  'Modifier la bibliothèque':
+      'Edit library',
   'Modifier les droits':
       'Edit rights',
   'Modifier l’adresse':
@@ -1468,6 +1520,8 @@ const Map<String, String> kEnglish = <String, String>{
       'Stop starting here',
   'Ne s’applique qu’aux séries dont vous avez déjà téléchargé un épisode. Le premier épisode reste toujours un geste.':
       'Only applies to shows of which you have already downloaded an episode. The first episode is always up to you.',
+  'Nom':
+      'Name',
   'Nom affiché':
       'Display name',
   'Nom d\'utilisateur':
@@ -1502,6 +1556,38 @@ const Map<String, String> kEnglish = <String, String>{
       'New backup codes',
   'Nouvel épisode':
       'New episode',
+  'Nouvel épisode · S{0} · Épisode {1}':
+      'New episode · S{0} · Episode {1}',
+  'Nouvel épisode disponible':
+      'New episode available',
+  'Nouvelle bibliothèque':
+      'New library',
+  'Rien sur ce serveur pour l’instant. Son administrateur peut en ajouter.':
+      'Nothing on this server yet. Its administrator can add some.',
+  'Ses titres quittent le catalogue, avec leur progression de lecture. Les fichiers restent sur le disque du serveur.':
+      'Its titles leave the catalog, along with their watch progress. The files stay on the server’s disk.',
+  'Supprimer « {0} »':
+      'Delete “{0}”',
+  'Supprimer « {0} » ?':
+      'Delete “{0}”?',
+  'Une bibliothèque, c’est un dossier du serveur et le nom que vous lui donnez. Ajoutez-en autant que vous voulez.':
+      'A library is a folder on the server and the name you give it. Add as many as you like.',
+  'Vidéos personnelles, concerts, cours… Chaque vidéo garde le nom de son fichier, sans recherche d’affiche ni de fiche.':
+      'Home videos, concerts, courses… Each video keeps its file name, with no poster or details lookup.',
+  '{0} titre{1}':
+      '{0} title{1}',
+  '{0} — sur {1}':
+      '{0} — on {1}',
+  'Nouveaux épisodes':
+      'New episodes',
+  'Un épisode vient de sortir pour une série que vous suivez.':
+      'An episode has just been released for a series you follow.',
+  'Notifications':
+      'Notifications',
+  'Une notification quand un épisode sort pour une série que vous suivez, sur tous vos serveurs. L’appareil les interroge de temps en temps, même app fermée.':
+      'A notification when an episode is released for a series you follow, on all your servers. The device checks them from time to time, even with the app closed.',
+  'Les notifications d’Onyx sont bloquées dans les réglages du système.':
+      'Onyx notifications are blocked in the system settings.',
   'Néerlandais':
       'Dutch',
   'Obligatoire pour ce compte sur ce serveur.':
@@ -2214,8 +2300,6 @@ const Map<String, String> kEnglish = <String, String>{
       'Downloaded',
   'Téléviseur':
       'TV',
-  'Téléviseur connecté':
-      'TV connected',
   'Têtes d\'affiche':
       'Top billed cast',
   'Ukrainien':

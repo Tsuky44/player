@@ -5,6 +5,7 @@ import (
 	"log"
 	"os"
 	"path/filepath"
+	"slices"
 	"sort"
 	"strings"
 	"sync"
@@ -14,6 +15,7 @@ import (
 	"github.com/fsnotify/fsnotify"
 
 	"project-player/server/database"
+	"project-player/server/libraries"
 	"project-player/server/models"
 	"project-player/server/safego"
 )
@@ -48,9 +50,9 @@ type MonitorOptions struct {
 	Watch bool
 	// PollInterval is the period of the folder poll; 0 turns it off.
 	PollInterval time.Duration
-	// Roots returns the library roots. It is read again every minute, so a
-	// library moved in the settings is followed without a restart.
-	Roots func() (moviesDir, seriesDir string)
+	// Roots returns the libraries. It is read again every minute, so a library
+	// added, moved or removed in the settings is followed without a restart.
+	Roots func() []libraries.Library
 	// Bootstrap maps the library's folders at start. Leave it off when a library
 	// scan runs at startup: the monitor learns the folders from that walk.
 	Bootstrap bool
@@ -106,9 +108,10 @@ type libraryMonitor struct {
 	settleTime    time.Duration
 	settledAge    time.Duration
 
-	mu        sync.Mutex
-	moviesDir string
-	seriesDir string
+	mu sync.Mutex
+	// roots: each library's folder and kind, nothing else — renaming a library
+	// does not change a root.
+	roots     []libraries.Library
 	dirs      map[string]dirState
 	observed  map[string]bool
 	targets   map[string]*scanTarget
@@ -175,18 +178,18 @@ func newLibraryMonitor(opts MonitorOptions) *libraryMonitor {
 		post:          newPostScanQueue(),
 		stop:          make(chan struct{}),
 	}
-	m.moviesDir, m.seriesDir = cleanRoots(opts.Roots())
+	m.roots = cleanRoots(opts.Roots())
 	return m
 }
 
-func cleanRoots(moviesDir, seriesDir string) (string, string) {
-	clean := func(dir string) string {
-		if strings.TrimSpace(dir) == "" {
-			return ""
+func cleanRoots(libs []libraries.Library) []libraries.Library {
+	roots := make([]libraries.Library, 0, len(libs))
+	for _, lib := range libs {
+		if strings.TrimSpace(lib.Path) != "" {
+			roots = append(roots, libraries.Library{Path: filepath.Clean(lib.Path), Kind: lib.Kind})
 		}
-		return filepath.Clean(dir)
 	}
-	return clean(moviesDir), clean(seriesDir)
+	return roots
 }
 
 // MonitorStatus is the monitor's state for GET /api/indexer/status.
@@ -323,28 +326,19 @@ func (m *libraryMonitor) isKnownDir(path string) bool {
 }
 
 // rootFor returns the library root holding path. The longer root wins, for
-// a series root nested in the movies root.
-func (m *libraryMonitor) rootFor(path string) (string, section, bool) {
+// a library nested in another one.
+func (m *libraryMonitor) rootFor(path string) (string, libraries.Kind, bool) {
 	m.mu.Lock()
-	movies, series := m.moviesDir, m.seriesDir
-	m.mu.Unlock()
+	defer m.mu.Unlock()
 
-	within := func(root string) bool {
-		return root != "" && (path == root || strings.HasPrefix(path, root+string(filepath.Separator)))
-	}
-	inMovies, inSeries := within(movies), within(series)
-	switch {
-	case inMovies && inSeries:
-		if len(series) >= len(movies) {
-			return series, sectionSeries, true
+	var owner libraries.Library
+	for _, root := range m.roots {
+		within := path == root.Path || strings.HasPrefix(path, root.Path+string(filepath.Separator))
+		if within && len(root.Path) > len(owner.Path) {
+			owner = root
 		}
-		return movies, sectionMovies, true
-	case inSeries:
-		return series, sectionSeries, true
-	case inMovies:
-		return movies, sectionMovies, true
 	}
-	return "", sectionMovies, false
+	return owner.Path, owner.Kind, owner.Path != ""
 }
 
 // --- Change detection --------------------------------------------------------
@@ -448,11 +442,10 @@ func (m *libraryMonitor) pollOnce() {
 	for path, state := range m.dirs {
 		snapshot = append(snapshot, polled{path, state.modTime})
 	}
-	roots := []string{m.moviesDir, m.seriesDir}
 	unmapped := []string{}
-	for _, root := range roots {
-		if _, ok := m.dirs[root]; root != "" && !ok {
-			unmapped = append(unmapped, root)
+	for _, root := range m.roots {
+		if _, ok := m.dirs[root.Path]; !ok {
+			unmapped = append(unmapped, root.Path)
 		}
 	}
 	// A file that vanished between two looks leaves its first look behind.
@@ -488,18 +481,18 @@ func (m *libraryMonitor) pollOnce() {
 	}
 }
 
-// checkRoots follows a library moved in the settings: the old map is dropped,
-// and the new roots are walked.
+// checkRoots follows the libraries added, moved or removed in the settings:
+// the old map is dropped, and the new roots are walked.
 func (m *libraryMonitor) checkRoots() {
-	movies, series := cleanRoots(m.opts.Roots())
+	roots := cleanRoots(m.opts.Roots())
 
 	m.mu.Lock()
-	if movies == m.moviesDir && series == m.seriesDir {
+	if slices.Equal(roots, m.roots) {
 		m.mu.Unlock()
 		return
 	}
-	log.Printf("Library monitor: library roots changed (movies=%s, series=%s)", movies, series)
-	m.moviesDir, m.seriesDir = movies, series
+	log.Printf("Library monitor: library roots changed (%s)", strings.Join(libraries.Paths(roots), ", "))
+	m.roots = roots
 	m.dirs = map[string]dirState{}
 	m.targets = map[string]*scanTarget{}
 	m.looks = map[string]fileLook{}
@@ -511,10 +504,8 @@ func (m *libraryMonitor) checkRoots() {
 	}
 	m.mu.Unlock()
 
-	for _, root := range []string{movies, series} {
-		if root != "" {
-			m.enqueue(root, true, 0)
-		}
+	for _, root := range roots {
+		m.enqueue(root.Path, true, 0)
 	}
 }
 
@@ -525,18 +516,12 @@ func (m *libraryMonitor) bootstrap() {
 	defer scanRun.Unlock()
 
 	m.mu.Lock()
-	roots := []struct {
-		dir string
-		s   section
-	}{{m.moviesDir, sectionMovies}, {m.seriesDir, sectionSeries}}
+	roots := m.roots
 	m.mu.Unlock()
 
 	start := time.Now()
 	for _, root := range roots {
-		if root.dir == "" {
-			continue
-		}
-		walkVideoFilesWith(root.dir, root.s, walkOptions{onDir: m.recordDir}, func(string, os.FileInfo) {})
+		walkVideoFilesWith(root.Path, sectionOf(root.Kind), walkOptions{onDir: m.recordDir}, func(string, os.FileInfo) {})
 	}
 	m.mu.Lock()
 	count := len(m.dirs)
@@ -675,7 +660,7 @@ func (m *libraryMonitor) runBatch(batch []dueTarget) {
 
 func (m *libraryMonitor) runTarget(target dueTarget, result *batchResult) {
 	path, deep := target.path, target.deep
-	root, s, ok := m.rootFor(path)
+	root, kind, ok := m.rootFor(path)
 	if !ok {
 		return
 	}
@@ -710,12 +695,7 @@ func (m *libraryMonitor) runTarget(target dueTarget, result *batchResult) {
 		scope.opts.onDir = m.observeShallowDir
 	}
 
-	var outcome *scanOutcome
-	if s == sectionSeries {
-		outcome = scanSeriesScope(scope)
-	} else {
-		outcome = scanMovieScope(scope)
-	}
+	outcome := scanLibraryScope(kind, scope)
 	result.added = append(result.added, outcome.added...)
 	result.refreshed = append(result.refreshed, outcome.refreshed...)
 	result.removed += removeMissingUnder(root, path, !deep, outcome.seen)

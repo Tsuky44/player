@@ -7,9 +7,9 @@ import (
 	"net/http"
 	"strconv"
 
-	"project-player/server/config"
 	"project-player/server/database"
 	"project-player/server/indexer"
+	"project-player/server/libraries"
 	"project-player/server/safego"
 	"project-player/server/subtitles"
 
@@ -94,12 +94,9 @@ func DetectShowIntroOutro(w http.ResponseWriter, r *http.Request, ps httprouter.
 func TriggerScan(w http.ResponseWriter, r *http.Request, _ httprouter.Params, _ int) {
 	w.Header().Set("Content-Type", "application/json")
 
-	moviesDir := config.MoviesDir()
-	seriesDir := config.SeriesDir()
-
 	// ScanMedia claims the run atomically, so two simultaneous triggers cannot
 	// both believe they started one.
-	if !indexer.ScanMedia(moviesDir, seriesDir) {
+	if !indexer.ScanMedia(libraries.Current()) {
 		writeJSONError(w, http.StatusConflict, "Scan is already in progress")
 		return
 	}
@@ -186,17 +183,20 @@ func GetScanReport(w http.ResponseWriter, r *http.Request, _ httprouter.Params, 
 func GetMediaReviewQueue(w http.ResponseWriter, r *http.Request, _ httprouter.Params, _ int) {
 	w.Header().Set("Content-Type", "application/json")
 
+	// Les vidéos d'une bibliothèque « autre » n'ont pas d'identité à trouver :
+	// elles ne sont pas « à vérifier ».
+	identifiable, args := indexer.OutsidePlainLibraries("m.file_path")
 	items, err := queryMediaList("Media review queue", `
 		SELECT `+mediaColumns+`
 		FROM medias m
-		WHERE m.type IN ('movie', 'show')
+		WHERE m.type IN ('movie', 'show')`+identifiable+`
 		  AND (
 			COALESCE(m.tmdb_id, 0) <= 0
 			OR TRIM(COALESCE(m.poster_url, '')) = ''
 			OR TRIM(COALESCE(m.overview, '')) = ''
 			OR TRIM(COALESCE(m.release_date, '')) = ''
 		  )
-		ORDER BY m.created_at DESC, m.title COLLATE NOCASE ASC`)
+		ORDER BY m.created_at DESC, m.title COLLATE NOCASE ASC`, args...)
 	if err != nil {
 		log.Printf("Media review queue: failed to query: %v", err)
 		writeJSONError(w, http.StatusInternalServerError, "Internal database error")

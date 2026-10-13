@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -11,6 +13,7 @@ import 'package:onyx/providers/auth_provider.dart';
 import 'package:onyx/screens/auth/phone_sign_in_panel.dart';
 import 'package:onyx/screens/settings/tv_link_scanner_screen.dart';
 import 'package:onyx/services/api_client.dart';
+import 'package:onyx/services/tv_link.dart';
 
 /// A server that hands out pairings and answers polls from a script.
 class _PairingServer extends ApiClient {
@@ -40,6 +43,33 @@ class _PairingServer extends ApiClient {
   }
 }
 
+/// A link listener with no socket behind it.
+class _FakeLinkSession implements TvLinkSession {
+  /// Null reproduces a device with no usable network address.
+  final TvLinkOffer? offer;
+
+  final Completer<TvLinkPayload> _completer = Completer<TvLinkPayload>();
+
+  _FakeLinkSession(this.offer);
+
+  @override
+  Future<TvLinkOffer?> start({required String deviceName}) async => offer;
+
+  @override
+  Future<TvLinkPayload> get linked => _completer.future;
+
+  @override
+  Future<void> stop() async {}
+
+  void deliver(TvLinkPayload payload) => _completer.complete(payload);
+}
+
+const _offer = TvLinkOffer(
+  url: 'http://192.168.1.42:41234/link?c=abcdef&n=Bureau&a=10.0.0.4',
+  host: '192.168.1.42',
+  port: 41234,
+);
+
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
 
@@ -56,6 +86,7 @@ void main() {
     WidgetTester tester,
     ApiClient apiClient, {
     String? serverUrl = 'http://192.168.1.50:8080',
+    TvLinkSession? linkSession,
   }) async {
     final auth = AuthProvider(apiClient);
     await tester.pumpWidget(
@@ -65,7 +96,15 @@ void main() {
           ChangeNotifierProvider.value(value: auth),
         ],
         child: MaterialApp(
-          home: Scaffold(body: PhoneSignInPanel(serverUrl: serverUrl)),
+          home: Scaffold(
+            body: PhoneSignInPanel(
+              serverUrl: serverUrl,
+              // Never the real listener: it binds a socket.
+              directLink: linkSession != null,
+              createLinkSession:
+                  linkSession == null ? null : () => linkSession,
+            ),
+          ),
         ),
       ),
     );
@@ -150,6 +189,74 @@ void main() {
     expect(find.textContaining('adresse du serveur'), findsOneWidget);
 
     await tester.pumpWidget(const SizedBox.shrink());
+  });
+
+  testWidgets('an app offers itself, with no server address at all',
+      (tester) async {
+    final server = _PairingServer([]);
+    await pumpPanel(tester, server,
+        serverUrl: null, linkSession: _FakeLinkSession(_offer));
+
+    // The regression this replaces: the QR used to wait for the address field.
+    expect(server.starts, 0);
+    expect(find.byType(QrImageView), findsOneWidget);
+    expect(find.textContaining('adresse du serveur'), findsNothing);
+    expect(find.textContaining('même réseau'), findsOneWidget);
+
+    await tester.pumpWidget(const SizedBox.shrink());
+  });
+
+  testWidgets('a delivery brings the server and signs this screen in',
+      (tester) async {
+    final server = _PairingServer([]);
+    final session = _FakeLinkSession(_offer);
+    final auth =
+        await pumpPanel(tester, server, serverUrl: null, linkSession: session);
+
+    session.deliver(TvLinkPayload(
+      serverUrl: 'http://192.168.1.50:8080',
+      token: 'session-token',
+      user: User(id: 7, username: 'mathis'),
+    ));
+    await settle(tester);
+
+    expect(server.baseUrl, 'http://192.168.1.50:8080');
+    expect(auth.isAuthenticated, isTrue);
+    expect(auth.currentUser?.username, 'mathis');
+
+    await tester.pumpWidget(const SizedBox.shrink());
+  });
+
+  testWidgets('an app with no network falls back to the server pairing',
+      (tester) async {
+    final server = _PairingServer([]);
+    await server.setConnection('http://192.168.1.50:8080');
+    await pumpPanel(tester, server, linkSession: _FakeLinkSession(null));
+    await settle(tester);
+
+    expect(server.starts, 1);
+    expect(find.text('Code : ABCD-EFG1'), findsOneWidget);
+
+    await tester.pumpWidget(const SizedBox.shrink());
+  });
+
+  group('TvOffer.parse', () {
+    test('lists the address in the QR first, then the alternates', () {
+      final offer = TvOffer.parse(_offer.url);
+      expect(offer?.code, 'abcdef');
+      expect(offer?.deviceName, 'Bureau');
+      expect(offer?.endpoints.map((uri) => uri.toString()), [
+        'http://192.168.1.42:41234/link',
+        'http://10.0.0.4:41234/link',
+      ]);
+    });
+
+    test('an alternate can only be a bare address', () {
+      final offer = TvOffer.parse(
+          'http://192.168.1.42:41234/link?c=abcdef&a=evil.example.com,10.0.0.4:80,10.0.0.5');
+      expect(offer?.endpoints.map((uri) => uri.host),
+          ['192.168.1.42', '10.0.0.5']);
+    });
   });
 
   group('PairingLink.parse', () {

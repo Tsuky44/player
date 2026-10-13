@@ -9,6 +9,9 @@ class EmptyStateView extends StatelessWidget {
   final String message;
   final String? actionLabel;
   final VoidCallback? onAction;
+
+  /// L'icône du bouton principal ; celle d'une synchronisation par défaut.
+  final IconData actionIcon;
   final String? secondaryActionLabel;
   final VoidCallback? onSecondaryAction;
 
@@ -19,6 +22,7 @@ class EmptyStateView extends StatelessWidget {
     required this.message,
     this.actionLabel,
     this.onAction,
+    this.actionIcon = AppIcons.sync,
     this.secondaryActionLabel,
     this.onSecondaryAction,
   });
@@ -55,7 +59,7 @@ class EmptyStateView extends StatelessWidget {
                 const SizedBox(height: 28),
                 ElevatedButton.icon(
                   onPressed: onAction,
-                  icon: const Icon(AppIcons.sync, size: 20),
+                  icon: Icon(actionIcon, size: 20),
                   label: Text(actionLabel!),
                 ),
               ],

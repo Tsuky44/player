@@ -40,8 +40,6 @@ class ServerSettings {
   final bool tmdbApiKeySet;
   final String? tmdbApiKeyHint;
   final String tmdbLanguage;
-  final String moviesDir;
-  final String seriesDir;
   final bool playbackLogsEnabled;
 
   /// Les mesures ont leur propre réglage : elles interrogent le moteur pendant
@@ -58,8 +56,6 @@ class ServerSettings {
     required this.tmdbApiKeySet,
     this.tmdbApiKeyHint,
     required this.tmdbLanguage,
-    required this.moviesDir,
-    required this.seriesDir,
     required this.playbackLogsEnabled,
     required this.playbackStatsEnabled,
     this.otpPolicy = OtpPolicy.optional,
@@ -73,8 +69,6 @@ class ServerSettings {
       tmdbApiKeySet: json['tmdb_api_key_set'] as bool? ?? false,
       tmdbApiKeyHint: json['tmdb_api_key_hint'] as String?,
       tmdbLanguage: json['tmdb_language'] as String? ?? 'fr-FR',
-      moviesDir: json['movies_dir'] as String? ?? '',
-      seriesDir: json['series_dir'] as String? ?? '',
       playbackLogsEnabled: json['playback_logs_enabled'] as bool? ?? true,
       playbackStatsEnabled: json['playback_stats_enabled'] as bool? ?? true,
       otpPolicy: OtpPolicy.parse(json['otp_policy'] as String?),

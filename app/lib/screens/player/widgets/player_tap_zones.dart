@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../pinch_zoom_fit.dart';
+import 'pointer_click_zone.dart';
 
 /// Les trois zones de l'image — recul, milieu, avance — et le pincement qui
 /// les enjambe.
@@ -35,21 +36,31 @@ class PlayerTapZones extends StatelessWidget {
   final VoidCallback onCenterTap;
 
   /// Null where there is no window to move.
-  final VoidCallback? onWindowDrag;
+  final PointerDragStart? onWindowDrag;
 
   Widget _zone({
     required int flex,
     required VoidCallback onTap,
     required VoidCallback? onDoubleTap,
   }) {
-    final drag = onWindowDrag;
+    // À la souris, le clic n'attend pas de savoir s'il sera double : voir
+    // [PointerClickZone].
+    if (doubleTapTogglesFullscreen) {
+      return Expanded(
+        flex: flex,
+        child: PointerClickZone(
+          onClick: onTap,
+          onDoubleClick: onDoubleTap,
+          onDrag: onWindowDrag,
+        ),
+      );
+    }
     return Expanded(
       flex: flex,
       child: GestureDetector(
         behavior: HitTestBehavior.opaque,
         onDoubleTap: onDoubleTap,
         onTap: onTap,
-        onPanStart: drag != null ? (_) => drag() : null,
         child: Container(color: Colors.transparent),
       ),
     );

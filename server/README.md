@@ -240,6 +240,7 @@ n'affecte que les liens futurs.
 
 #### ➡️ Page d'Accueil (Dashboard)
 * **Route :** `GET /api/home`
+* **Rangées par bibliothèque :** la réponse porte aussi `libraries`, une entrée par bibliothèque qui contient quelque chose : `{"id", "name", "kind", "items": [...]}`, `items` étant ses derniers ajouts. `recent_movies` et `recent_shows` restent pour les apps plus anciennes (ADR-0058).
 * **Réponse (JSON) :**
   ```json
   {
@@ -381,12 +382,26 @@ les listes de films, séries et épisodes, la reprise, l'épisode suivant, les f
 personnes, les sagas et le catalogue des demandes. Un texte que TMDB n'a pas dans la langue
 demandée reste dans celle du serveur.
 
+#### 📚 Bibliothèques
+Une bibliothèque est un dossier du serveur, le nom que son administrateur lui donne et la façon de
+le lire (`kind` : `movies`, un fichier est un film à identifier ; `shows`, des épisodes rangés par
+série ; `other`, des vidéos présentées sous le nom de leur fichier, jamais identifiées).
+Le serveur n'en impose aucune et n'en limite pas le nombre (ADR-0058). Il annonce la capacité
+`libraries` sur `GET /api/ping`.
+
+* **`GET /api/libraries`** (compte connecté) : `[{"id": 1, "name": "Animés", "kind": "shows", "path": "/media/Animes"}]`, par ordre de création. `path` n'est joint que pour `manage_settings`.
+* **`POST /api/libraries`** (`manage_settings`) : corps `{"name", "kind", "path"}`. `201` et la bibliothèque créée ; une analyse démarre. `400` si le nom est vide ou dépasse 40 caractères, si le type est inconnu, si le chemin n'est pas absolu ou n'est pas un dossier que le serveur voit ; `409` si le dossier est déjà celui d'une bibliothèque.
+* **`PUT /api/libraries/:id`** (`manage_settings`) : corps `{"name", "path"}`. Le type ne se change pas. Changer le dossier retire du catalogue ce qui était indexé sous l'ancien et analyse le nouveau.
+* **`DELETE /api/libraries/:id`** (`manage_settings`) : `204`. Retire la bibliothèque et ses titres du catalogue, avec leur progression. Les fichiers ne sont pas touchés.
+
 #### ➡️ Liste des Films
 * **Route :** `GET /api/movies`
-* **Réponse (JSON) :** Liste complète de tous les films avec la progression de l'utilisateur connecté sous chaque film (si commencée).
+* **Paramètre :** `library=ID` (optionnel) limite la liste à une bibliothèque ; sans lui, tout le serveur. `404` pour une bibliothèque inconnue.
+* **Réponse (JSON) :** Liste des films avec la progression de l'utilisateur connecté sous chaque film (si commencée).
 
 #### ➡️ Liste des Séries
 * **Route :** `GET /api/shows`
+* **Paramètre :** `library=ID` (optionnel) : les séries dont au moins un épisode se trouve dans cette bibliothèque.
 * **Réponse (JSON) :** Liste des séries TV indexées.
 
 #### ➡️ Liste des Saisons d'une Série
@@ -403,7 +418,7 @@ demandée reste dans celle du serveur.
 ### 🔄 4. Indexation & Scan
 
 #### ➡️ Surveillance automatique
-* **Comportement :** Le serveur surveille les dossiers Films et Séries. Un fichier déposé (nouveau film, nouvel épisode) est indexé en quelques secondes, et un fichier supprimé est retiré, sans scan manuel. Seul le dossier modifié est scanné.
+* **Comportement :** Le serveur surveille le dossier de chaque bibliothèque. Un fichier déposé (nouveau film, nouvel épisode) est indexé en quelques secondes, et un fichier supprimé est retiré, sans scan manuel. Seul le dossier modifié est scanné.
 * **Configuration :** `LIBRARY_WATCH` (`true` par défaut) active les notifications du système de fichiers ; `LIBRARY_POLL_INTERVAL` (`5m` par défaut, `0` pour désactiver) règle la vérification périodique des dossiers, qui rattrape ce que les notifications ne voient pas sur un partage réseau. Détails : `docs/adr/0018-surveillance-de-la-mediatheque.md`.
 
 #### ➡️ Lancer un scan de la bibliothèque

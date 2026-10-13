@@ -7,6 +7,8 @@ import 'package:qr_flutter/qr_flutter.dart';
 import '../../models/device_pairing.dart';
 import '../../providers/auth_provider.dart';
 import '../../services/api_client.dart';
+import '../../services/tv_link.dart';
+import '../../services/tv_link_host.dart';
 import '../../theme/app_colors.dart';
 import '../../utils/app_platform.dart';
 import '../../theme/app_type.dart';
@@ -15,24 +17,36 @@ import '../../l10n/tr.dart';
 /// Sign in by scanning a QR with the phone — the password form's neighbour on
 /// the web and desktop sign-in screen (ADR-0020).
 ///
-/// Unlike the television, this screen already knows its server: the browser was
-/// served by it, and a desktop has the address field right beside this panel. So
-/// it does not need direct linking — which a browser could not do anyway, a tab
-/// cannot listen on a socket. It opens an ordinary server pairing, shows the
-/// code as a QR, and polls; the phone scans it from inside the app and approves
-/// under its own account.
+/// An app does what the television does: it offers. It opens a listener on the
+/// local network, shows an address to itself as a QR, and the phone delivers
+/// the server and a session on it — so the address field beside this panel can
+/// stay empty, exactly as it does not exist on the television (ADR-0007).
+///
+/// A browser cannot: a tab has no socket to listen on. But it already knows its
+/// server, having been served by it, so it opens an ordinary server pairing,
+/// shows the code as a QR, and polls; the phone approves under its own account.
+/// An app with no usable network address falls back to the same thing.
 class PhoneSignInPanel extends StatefulWidget {
-  /// The server the pairing opens on. Null while no address is known to answer
-  /// — there is nothing to open a pairing on, and the panel says so.
+  /// The server a pairing opens on. Null while no address is known to answer.
+  /// Direct linking ignores it: the phone is what brings the address.
   final String? serverUrl;
 
   /// True while the address beside the panel is being checked.
   final bool probing;
 
+  /// Whether to offer direct linking rather than a server pairing. Null picks
+  /// by platform; tests pass it because the real listener binds a socket.
+  final bool? directLink;
+
+  /// Overrides the network listener. Only tests pass this.
+  final TvLinkSession Function()? createLinkSession;
+
   const PhoneSignInPanel({
     super.key,
     required this.serverUrl,
     this.probing = false,
+    this.directLink,
+    this.createLinkSession,
   });
 
   /// How this device is named on the phone that approves it.
@@ -55,6 +69,12 @@ class _PhoneSignInPanelState extends State<PhoneSignInPanel> {
   Timer? _renewTimer;
   bool _polling = false;
 
+  /// True while this panel offers itself to the phone instead of opening a
+  /// pairing on a server. Dropped for good once the offer cannot be opened.
+  late bool _direct = widget.directLink ?? TvLinkHost.isSupported;
+  TvLinkSession? _session;
+  TvLinkOffer? _offer;
+
   /// Bumped on every fresh pairing, so an answer about a code this panel has
   /// already replaced cannot sign anyone in.
   int _generation = 0;
@@ -62,7 +82,9 @@ class _PhoneSignInPanelState extends State<PhoneSignInPanel> {
   @override
   void initState() {
     super.initState();
-    if (widget.serverUrl != null) {
+    if (_direct) {
+      WidgetsBinding.instance.addPostFrameCallback((_) => _openDirect());
+    } else if (widget.serverUrl != null) {
       WidgetsBinding.instance.addPostFrameCallback((_) => _open());
     }
   }
@@ -70,6 +92,8 @@ class _PhoneSignInPanelState extends State<PhoneSignInPanel> {
   @override
   void didUpdateWidget(PhoneSignInPanel oldWidget) {
     super.didUpdateWidget(oldWidget);
+    // The offer points at this device, whatever the address field says.
+    if (_direct) return;
     if (oldWidget.serverUrl == widget.serverUrl) return;
     // A code only exists on the server that issued it: a new address means a
     // new pairing, and the old one is abandoned to its five-minute expiry.
@@ -88,6 +112,7 @@ class _PhoneSignInPanelState extends State<PhoneSignInPanel> {
   @override
   void dispose() {
     _cancelTimers();
+    unawaited(_session?.stop());
     super.dispose();
   }
 
@@ -96,6 +121,65 @@ class _PhoneSignInPanelState extends State<PhoneSignInPanel> {
     _pollTimer = null;
     _renewTimer?.cancel();
     _renewTimer = null;
+  }
+
+  Future<void> _openDirect() async {
+    if (!mounted) return;
+    final generation = ++_generation;
+    unawaited(_session?.stop());
+    setState(() {
+      _phase = _Phase.opening;
+      _offer = null;
+    });
+
+    final session = (widget.createLinkSession ?? TvLinkHost.new)();
+    _session = session;
+
+    TvLinkOffer? offer;
+    try {
+      offer = await session.start(deviceName: PhoneSignInPanel.deviceName);
+    } catch (error) {
+      offer = null;
+      debugPrint('PhoneSignInPanel: cannot open a link offer ($error)');
+    }
+    if (!mounted || generation != _generation) return;
+
+    if (offer == null) {
+      // No address to offer. The server pairing needs none of this device's,
+      // only the server's — which the field beside the panel may still give.
+      unawaited(session.stop());
+      _session = null;
+      _direct = false;
+      if (widget.serverUrl != null) {
+        await _open();
+      } else {
+        setState(() => _phase = _Phase.idle);
+      }
+      return;
+    }
+
+    setState(() {
+      _offer = offer;
+      _phase = _Phase.waiting;
+    });
+
+    final TvLinkPayload payload;
+    try {
+      payload = await session.linked;
+    } catch (_) {
+      if (!mounted || generation != _generation) return;
+      setState(() => _phase = _Phase.failed);
+      return;
+    }
+    if (!mounted || generation != _generation) return;
+
+    setState(() => _phase = _Phase.signingIn);
+
+    // The address first: the session is only good on the server it came from.
+    final apiClient = context.read<ApiClient>();
+    final auth = context.read<AuthProvider>();
+    await apiClient.setConnection(payload.serverUrl);
+    await auth.adoptPairedSession(token: payload.token, user: payload.user);
   }
 
   Future<void> _open() async {
@@ -207,13 +291,18 @@ class _PhoneSignInPanelState extends State<PhoneSignInPanel> {
             Padding(
               padding: EdgeInsets.symmetric(horizontal: 16),
               child: Text(
-                tr('Code indisponible sur ce serveur.'),
+                _direct
+                    ? tr('Connexion impossible.')
+                    : tr('Code indisponible sur ce serveur.'),
                 textAlign: TextAlign.center,
                 style: TextStyle(color: AppColors.textSecondary, fontSize: AppType.subhead),
               ),
             ),
             const SizedBox(height: 8),
-            TextButton(onPressed: _open, child: Text(tr('Réessayer'))),
+            TextButton(
+              onPressed: _direct ? _openDirect : _open,
+              child: Text(tr('Réessayer')),
+            ),
           ],
         ),
       );
@@ -227,6 +316,17 @@ class _PhoneSignInPanelState extends State<PhoneSignInPanel> {
               size: 56, color: AppColors.success),
         ),
       );
+    }
+
+    final offer = _offer;
+    if (_direct) {
+      if (offer == null) {
+        return _frame(
+          light: false,
+          child: const Center(child: CircularProgressIndicator(strokeWidth: 3)),
+        );
+      }
+      return _qr(offer.url);
     }
 
     final pairing = _pairing;
@@ -252,14 +352,18 @@ class _PhoneSignInPanelState extends State<PhoneSignInPanel> {
       );
     }
 
-    // Real black on real white, whatever the app palette does: a camera reads
-    // this, not a person.
+    return _qr(context.read<ApiClient>().devicePairingLink(pairing.userCode));
+  }
+
+  /// Real black on real white, whatever the app palette does: a camera reads
+  /// this, not a person.
+  Widget _qr(String data) {
     return _frame(
       light: true,
       child: Padding(
         padding: const EdgeInsets.all(12),
         child: QrImageView(
-          data: context.read<ApiClient>().devicePairingLink(pairing.userCode),
+          data: data,
           version: QrVersions.auto,
           backgroundColor: Colors.white,
           errorCorrectionLevel: QrErrorCorrectLevel.M,
@@ -281,6 +385,15 @@ class _PhoneSignInPanelState extends State<PhoneSignInPanel> {
     if (_phase == _Phase.signingIn) {
       return Text(
         tr('Connexion…'),
+        style: textTheme.bodySmall?.copyWith(color: AppColors.textMuted),
+      );
+    }
+    if (_direct && _phase == _Phase.waiting) {
+      // Nothing to type and nothing that expires: the one thing that can go
+      // wrong is the phone being on another network, so that is what is said.
+      return Text(
+        tr('Le téléphone doit être sur le même réseau que cet appareil.'),
+        textAlign: TextAlign.center,
         style: textTheme.bodySmall?.copyWith(color: AppColors.textMuted),
       );
     }

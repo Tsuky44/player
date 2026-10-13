@@ -171,7 +171,7 @@ export function forumGuides(channels) {
           SECRETS,
           '',
           '**Ensuite**',
-          '🔎 **Confirmé** : l’équipe a reproduit le bug, il est suivi sur GitHub.',
+          '🔎 **Confirmé** : l’équipe a reproduit le bug et travaille dessus.',
           '❓ **Besoin d’infos** : il manque de quoi le reproduire.',
           '✅ **Corrigé** : le correctif est dans une version publiée.',
         ].join('\n'),

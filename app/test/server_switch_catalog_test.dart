@@ -5,7 +5,7 @@ import 'package:provider/provider.dart';
 import 'package:onyx/models/models.dart';
 import 'package:onyx/providers/library_provider.dart';
 import 'package:onyx/providers/home_provider.dart';
-import 'package:onyx/screens/library/movies_screen.dart';
+import 'package:onyx/screens/library/library_screen.dart';
 import 'package:onyx/services/api_client.dart';
 import 'package:onyx/services/media_details_cache.dart';
 
@@ -22,6 +22,10 @@ class CatalogApi extends ApiClient {
   @override
   Future<List<HomeMediaItem>> getMovies() => movies;
   @override
+  Future<List<HomeMediaItem>> getLibraryMovies(MediaLibrary library) => movies;
+  @override
+  Future<List<MediaLibrary>> getLibraries() async => const [_library];
+  @override
   Future<List<Media>> getShows() async => [];
   Future<HomeResponse> home = Future.value(HomeResponse.fromJson({}));
   Future<MediaDetails> details = Future.value(MediaDetails.fromJson({'type': 'movie', 'id': 1}));
@@ -33,23 +37,27 @@ class CatalogApi extends ApiClient {
   Future<IndexerStatus> getIndexerStatus() => status.future;
 }
 
+const _library =
+    MediaLibrary(id: 1, name: 'Vidéothèque', kind: LibraryKind.movies);
+
 void main() {
-  testWidgets('mounted Films tab reloads after switching from an empty server',
+  testWidgets('mounted library tab reloads after switching from an empty server',
       (tester) async {
     final api = CatalogApi();
     final library = LibraryProvider(api);
     await tester.pumpWidget(MultiProvider(providers: [
       Provider<ApiClient>.value(value: api),
       ChangeNotifierProvider<LibraryProvider>.value(value: library),
-    ], child: const MaterialApp(home: MoviesScreen())));
+    ], child: const MaterialApp(home: LibraryScreen(library: _library))));
     await tester.pumpAndSettle();
-    expect(find.text('Aucun film'), findsOneWidget);
+    expect(find.text('Vidéothèque'), findsOneWidget);
+    expect(find.text('Bibliothèque vide'), findsOneWidget);
     api.movies = Future.value([movie('Film du serveur B')]);
     library
         .reset(); // The actual onServerChanged callback resets this provider.
     await tester.pumpAndSettle();
     expect(find.text('Film du serveur B'), findsOneWidget);
-    expect(find.text('Aucun film'), findsNothing);
+    expect(find.text('Bibliothèque vide'), findsNothing);
     await tester.pumpWidget(const SizedBox());
     library.dispose();
   });
@@ -66,6 +74,21 @@ void main() {
     old.complete([movie('A')]);
     await pending;
     expect(library.movies.single.media.title, 'B');
+    library.dispose();
+  });
+  test('late library response from old server cannot fill the new one',
+      () async {
+    final api = CatalogApi();
+    final library = LibraryProvider(api);
+    final old = Completer<List<HomeMediaItem>>();
+    api.movies = old.future;
+    final pending = library.loadLibrary(_library);
+    api.movies = Future.value([movie('B')]);
+    library.reset();
+    await library.loadLibrary(_library);
+    old.complete([movie('A')]);
+    await pending;
+    expect(library.moviesOf(_library).single.media.title, 'B');
     library.dispose();
   });
   test('home content is displayed without waiting for indexer status',

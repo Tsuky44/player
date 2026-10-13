@@ -8,54 +8,16 @@
 //
 //   node scripts/discord/provision.mjs
 //
-// Le jeton du bot se lit dans DISCORD_BOT_TOKEN, sinon dans
-// ~/.onyx/discord-bot-token.txt. Il ne doit jamais entrer dans le dépôt.
-// DISCORD_GUILD_ID choisit le serveur si le bot en a rejoint plusieurs.
+// Le jeton et le choix du serveur sont décrits dans api.mjs.
 
 import { readFileSync } from 'node:fs';
-import { homedir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
+import { api, bare, findGuild } from './api.mjs';
 import { announcement, betaFeedback, contributing, forumGuides, rulesEmbeds } from './content.mjs';
 
-const API = 'https://discord.com/api/v10';
 const REPO_ROOT = join(dirname(fileURLToPath(import.meta.url)), '..', '..');
-
-const token = (
-  process.env.DISCORD_BOT_TOKEN ??
-  readFileSync(join(homedir(), '.onyx', 'discord-bot-token.txt'), 'utf8')
-).trim();
-
-async function api(method, path, body) {
-  for (let attempt = 1; ; attempt++) {
-    let res;
-    try {
-      res = await fetch(API + path, {
-        method,
-        headers: {
-          Authorization: `Bot ${token}`,
-          ...(body === undefined ? {} : { 'Content-Type': 'application/json' }),
-        },
-        body: body === undefined ? undefined : JSON.stringify(body),
-      });
-    } catch (err) {
-      // La connexion à discord.com expire parfois sans raison ; chaque appel
-      // étant rejouable, on réessaie avant d'abandonner.
-      if (attempt >= 4) throw new Error(`${method} ${path} : ${err.cause?.message ?? err.message}`);
-      await new Promise((r) => setTimeout(r, 1500 * attempt));
-      continue;
-    }
-    if (res.status === 429) {
-      const { retry_after: retryAfter } = await res.json();
-      await new Promise((r) => setTimeout(r, retryAfter * 1000 + 100));
-      continue;
-    }
-    const text = await res.text();
-    if (!res.ok) throw new Error(`${method} ${path} -> ${res.status} ${text}`);
-    return text ? JSON.parse(text) : null;
-  }
-}
 
 // --- Permissions -----------------------------------------------------------
 
@@ -206,7 +168,7 @@ const CATEGORIES = [
       },
       {
         name: 'bugs', icon: '🐛', type: FORUM, flags: REQUIRE_TAG, reaction: '🐛',
-        topic: "Un bug par post. Donne la plateforme, la version d'Onyx, les étapes pour reproduire, ce que tu attendais et ce qui s'est passé. Ajoute les logs si tu les as, sans adresse de serveur ni jeton. Les bugs confirmés sont suivis sur GitHub.",
+        topic: "Un bug par post. Donne la plateforme, la version d'Onyx, les étapes pour reproduire, ce que tu attendais et ce qui s'est passé. Ajoute les logs si tu les as, sans adresse de serveur ni jeton.",
         tags: [guideTag, ...platformTags, staffTag('Confirmé', '🔎'), staffTag("Besoin d'infos", '❓'), staffTag('Corrigé', '✅')],
       },
       {
@@ -268,10 +230,6 @@ const DEFAULT_CHANNELS = [
 
 // --- Provisioning ------------------------------------------------------------
 
-// Le nom affiché porte une icône (« 💬・général », « 🔨 Modérateur ») ; c'est
-// le nom nu qui identifie l'objet, pour qu'un changement d'icône renomme au
-// lieu de créer un doublon.
-const bare = (name) => name.replace(/^[^\p{L}\p{N}]+/u, '').toLowerCase();
 const sameName = (a, b) => bare(a) === bare(b);
 const roleLabel = (spec) => `${spec.icon} ${spec.name}`;
 const channelLabel = (spec) =>
@@ -284,18 +242,6 @@ const kind = (type) => (type === NEWS ? TEXT : type);
 function logo() {
   const png = readFileSync(join(REPO_ROOT, 'app', 'web', 'icons', 'Icon-512.png'));
   return `data:image/png;base64,${png.toString('base64')}`;
-}
-
-async function findGuild() {
-  const guilds = await api('GET', '/users/@me/guilds');
-  const wanted = process.env.DISCORD_GUILD_ID;
-  const guild = wanted ? guilds.find((g) => g.id === wanted) : guilds[0];
-  if (!guild || (!wanted && guilds.length !== 1)) {
-    throw new Error(
-      `Le bot voit ${guilds.length} serveur(s) : précise DISCORD_GUILD_ID (${guilds.map((g) => `${g.id} ${g.name}`).join(', ')}).`,
-    );
-  }
-  return api('GET', `/guilds/${guild.id}`);
 }
 
 async function ensureRoles(bot, guild) {
@@ -617,5 +563,7 @@ async function main() {
 
 main().catch((err) => {
   console.error(`\n${err.message}`);
-  process.exit(1);
+  // `process.exit` coupe les connexions encore ouvertes et fait planter Node
+  // sous Windows (assertion libuv) : on laisse le processus finir seul.
+  process.exitCode = 1;
 });

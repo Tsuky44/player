@@ -25,6 +25,9 @@ const (
 	CapabilityMediaLanguage = "media_language"
 	// Un épisode quitté dans son générique compte comme vu, décidé ici.
 	CapabilityWatchedByCredits = "watched_by_credits"
+	// GET /api/libraries existe, et /api/movies comme /api/shows acceptent
+	// ?library= (ADR-0058).
+	CapabilityLibraries = "libraries"
 )
 
 type pingResponse struct {
@@ -48,6 +51,7 @@ func pingPayload() pingResponse {
 			CapabilityProgressLongPoll,
 			CapabilityMediaLanguage,
 			CapabilityWatchedByCredits,
+			CapabilityLibraries,
 		},
 	}
 }

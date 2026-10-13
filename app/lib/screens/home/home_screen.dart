@@ -25,7 +25,8 @@ import '../../widgets/global/hero_banner.dart' show HeroBanner;
 import '../library/movie_detail_screen.dart';
 import '../library/show_detail_screen.dart';
 import '../player/player_screen.dart';
-import '../../theme/app_icons.dart';
+import 'home_empty_view.dart';
+import 'home_recent_rows.dart';
 import '../../l10n/tr.dart';
 
 class HomeScreen extends StatefulWidget {
@@ -33,11 +34,15 @@ class HomeScreen extends StatefulWidget {
   final VoidCallback? onNavigateToMovies;
   final VoidCallback? onNavigateToShows;
 
+  /// « Tout voir » d'une rangée de bibliothèque : ouvre son onglet.
+  final void Function(int libraryId)? onOpenLibrary;
+
   const HomeScreen({
     super.key,
     this.embedded = false,
     this.onNavigateToMovies,
     this.onNavigateToShows,
+    this.onOpenLibrary,
   });
 
   @override
@@ -91,6 +96,9 @@ class _HomeScreenState extends State<HomeScreen>
         final library = Provider.of<LibraryProvider>(context, listen: false);
         library.loadShows();
         library.loadMovies();
+        // Une analyse suit souvent une bibliothèque ajoutée ou déplacée.
+        library.loadLibraries();
+        library.reloadOpenLibraries();
       }
     }
   }
@@ -247,10 +255,15 @@ class _HomeScreenState extends State<HomeScreen>
                               data.recentMovies.isEmpty &&
                               data.recentShows.isEmpty)
                             SliverFillRemaining(
-                              child: _EmptyLibraryView(
-                                canManageLibrary:
-                                    authProvider.permissions.manageLibrary,
-                                homeProvider: homeProvider,
+                              child: Consumer<LibraryProvider>(
+                                builder: (context, library, _) =>
+                                    HomeEmptyView(
+                                  libraries: library.librariesLoaded
+                                      ? library.libraries
+                                      : null,
+                                  permissions: authProvider.permissions,
+                                  homeProvider: homeProvider,
+                                ),
                               ),
                             )
                           else ...[
@@ -291,46 +304,16 @@ class _HomeScreenState extends State<HomeScreen>
                                   ),
                                 ),
                               ),
-                            if (data != null &&
-                                data.recentMovies.isNotEmpty) ...[
-                              const SliverToBoxAdapter(
-                                  child: SizedBox(height: 32)),
-                              SliverToBoxAdapter(
-                                child: _recentTarget(
-                                  // La présentation ne montre les nouveautés qu'à un compte
-                                  // qui n'a rien à reprendre : sinon c'est « Reprendre » qui
-                                  // dit ce qu'il y a à dire des rangées.
-                                  shown: data.continueWatching.isEmpty,
-                                  child: MediaRow(
-                                    title: tr('Films récents'),
-                                    items: data.recentMovies,
-                                    autofocusFirstItem: !isTv && data.continueWatching.isEmpty,
-                                    onSeeAll: widget.onNavigateToMovies,
-                                    onItemTap: (item) => _openMedia(context, item as Media),
-                                  ),
-                                ),
+                            if (data != null)
+                              ...homeRecentSlivers(
+                                data: data,
+                                isTv: isTv,
+                                onOpenLibrary: widget.onOpenLibrary,
+                                onSeeAllMovies: widget.onNavigateToMovies,
+                                onSeeAllShows: widget.onNavigateToShows,
+                                onOpenMedia: (media) =>
+                                    _openMedia(context, media),
                               ),
-                            ],
-                            if (data != null &&
-                                data.recentShows.isNotEmpty) ...[
-                              const SliverToBoxAdapter(
-                                  child: SizedBox(height: 32)),
-                              SliverToBoxAdapter(
-                                child: _recentTarget(
-                                  shown: data.continueWatching.isEmpty &&
-                                      data.recentMovies.isEmpty,
-                                  child: MediaRow(
-                                    title: tr('Séries récentes'),
-                                    items: data.recentShows,
-                                    autofocusFirstItem: !isTv &&
-                                        data.continueWatching.isEmpty &&
-                                        data.recentMovies.isEmpty,
-                                    onSeeAll: widget.onNavigateToShows,
-                                    onItemTap: (item) => _openMedia(context, item as Media),
-                                  ),
-                                ),
-                              ),
-                            ],
                             if (data != null && discovery.isNotEmpty) ...[
                               const SliverToBoxAdapter(
                                   child: SizedBox(height: 32)),
@@ -376,49 +359,6 @@ class _HomeScreenState extends State<HomeScreen>
                       ),
                   ],
                 ),
-    );
-  }
-}
-
-/// Désigne [child] comme la rangée de nouveautés de la présentation de
-/// l'interface, quand c'est elle qui doit être montrée.
-Widget _recentTarget({required bool shown, required Widget child}) =>
-    shown ? TourTarget(anchor: TourAnchor.recent, child: child) : child;
-
-/// L'accueil d'un serveur qui n'a encore rien indexé.
-///
-/// Synchroniser et extraire les sous-titres sont réservés à `manage_library`
-/// par le serveur (ADR-0001). Un compte sans ce droit n'a rien à presser : on
-/// lui dit qui peut remplir la bibliothèque, au lieu de lui tendre deux
-/// boutons qui échouent.
-class _EmptyLibraryView extends StatelessWidget {
-  final bool canManageLibrary;
-  final HomeProvider homeProvider;
-
-  const _EmptyLibraryView({
-    required this.canManageLibrary,
-    required this.homeProvider,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    if (!canManageLibrary) {
-      return EmptyStateView(
-        icon: AppIcons.movie,
-        title: tr('Bibliothèque vide'),
-        message: tr('Aucun film ni aucune série sur ce serveur pour l’instant. Son '
-            'administrateur peut en ajouter.'),
-      );
-    }
-    return EmptyStateView(
-      icon: AppIcons.movie,
-      title: tr('Bibliothèque vide'),
-      message: tr('Ajoutez des fichiers dans vos dossiers Films et Séries, puis '
-          'lancez une synchronisation.'),
-      actionLabel: tr('Synchroniser'),
-      onAction: homeProvider.triggerLibraryScan,
-      secondaryActionLabel: tr('Extraire les sous-titres'),
-      onSecondaryAction: homeProvider.triggerSubtitleExtract,
     );
   }
 }
