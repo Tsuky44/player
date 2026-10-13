@@ -55,3 +55,5 @@ validée.
 - L'image montrée est l'image clé *avant* la position ; sur un encodage à GOP très long, elle peut
   précéder le pointeur de quelques secondes.
 - Un Dolby Vision profil 5 garde les couleurs fausses du tone mapping zscale, comme en transcodage.
+  Levé par l'[ADR-0060](0060-dolby-vision-profil-5-sans-decodeur.md) dès que le serveur a un
+  périphérique Vulkan.

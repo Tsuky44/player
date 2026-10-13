@@ -142,9 +142,12 @@ func previewOrder(count int) []int {
 // tone mapper then works on a few hundred thousand pixels instead of eight
 // million. The final yuvj420p is what the MJPEG encoder accepts on every FFmpeg
 // the server may be deployed with.
-func previewArgs(filePath string, second int, tonemap bool, keyframeOnly bool, threads int) []string {
+func previewArgs(filePath string, second int, tonemap ToneMapper, keyframeOnly bool, threads int) []string {
 	args := []string{"-hide_banner", "-loglevel", "error", "-nostdin",
 		"-threads", strconv.Itoa(threads)}
+	if tonemap.Vulkan {
+		args = append(args, "-init_hw_device", "vulkan")
+	}
 	if keyframeOnly {
 		args = append(args, "-skip_frame", "nokey")
 	}
@@ -155,10 +158,8 @@ func previewArgs(filePath string, second int, tonemap bool, keyframeOnly bool, t
 		"-frames:v", "1",
 	)
 	filters := []string{fmt.Sprintf("scale=%d:-2:flags=bilinear", previewWidth)}
-	if tonemap {
-		if tm := hdrToSDRFilter(); tm != "" {
-			filters = append(filters, tm)
-		}
+	if tonemap.Filter != "" {
+		filters = append(filters, tonemap.Filter)
 	}
 	filters = append(filters, "format=yuvj420p")
 	args = append(args,
@@ -176,7 +177,7 @@ type previewSet struct {
 	size     int64
 	modTime  time.Time
 	dir      string
-	tonemap  bool
+	tonemap  ToneMapper
 	manifest PreviewManifest
 }
 
@@ -269,13 +270,22 @@ func runPreviewFFmpeg(ctx context.Context, args []string, background bool) ([]by
 func newPreviewSet(root string, mediaID int, filePath string, info os.FileInfo, probe *ProbeResult, duration float64) *previewSet {
 	interval := previewInterval(duration)
 	width, height := 0, 0
-	tonemap := false
+	var tonemap ToneMapper
 	if probe != nil && probe.Video != nil {
 		width, height = probe.Video.Width, probe.Video.Height
-		tonemap = probe.Video.IsHDR()
+		if probe.Video.IsHDR() {
+			tonemap = toneMapperFor(probe.Video)
+		}
 	}
-	sum := sha256.Sum256([]byte(fmt.Sprintf("%s|%d|%d|%d|%d|%d",
-		filePath, info.Size(), info.ModTime().UnixNano(), previewVersion, previewWidth, interval)))
+	key := fmt.Sprintf("%s|%d|%d|%d|%d|%d",
+		filePath, info.Size(), info.ModTime().UnixNano(), previewVersion, previewWidth, interval)
+	if tonemap.Vulkan {
+		// Les images d'un Dolby Vision profil 5 extraites avant l'ADR-0060
+		// sont roses et vertes : un autre dossier les laisse à l'éviction, sans
+		// refaire les aperçus de toute la médiathèque.
+		key += "|dovi"
+	}
+	sum := sha256.Sum256([]byte(key))
 	return &previewSet{
 		mediaID:  mediaID,
 		filePath: filePath,

@@ -184,12 +184,18 @@ class MediaVideoTrack {
   /// Bits per sample, resolved by the server (8 when nothing said so).
   final int bitDepth;
 
+  /// L'image n'est lisible qu'avec un décodeur Dolby Vision : un profil 5,
+  /// dont la couche de base sort rose et verte partout ailleurs. Décidé par le
+  /// serveur, comme [hdrFormat].
+  final bool needsDolbyVision;
+
   MediaVideoTrack({
     required this.codec,
     required this.width,
     required this.height,
     this.hdrFormat = '',
     this.bitDepth = 8,
+    this.needsDolbyVision = false,
   });
 
   factory MediaVideoTrack.fromJson(Map<String, dynamic> json) {
@@ -199,6 +205,7 @@ class MediaVideoTrack {
       height: json['height'] as int? ?? 0,
       hdrFormat: json['hdr_format'] as String? ?? '',
       bitDepth: json['bit_depth'] as int? ?? 8,
+      needsDolbyVision: json['needs_dolby_vision'] as bool? ?? false,
     );
   }
 

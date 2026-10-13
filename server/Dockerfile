@@ -33,7 +33,12 @@ FROM alpine:3.24
 
 # Install basic dependencies (ca-certificates, tzdata, ffmpeg)
 # su-exec : quitter root au démarrage quand PUID est réglé (docker-entrypoint.sh).
-RUN apk --no-cache add ca-certificates tzdata ffmpeg su-exec
+#
+# mesa-vulkan-swrast : le Vulkan logiciel dont le filtre libplacebo de FFmpeg a
+# besoin pour appliquer la couche RPU d'un Dolby Vision profil 5 sur un hôte
+# sans GPU (ADR-0060). Il pèse ~240 Mo — LLVM — et ne se charge que dans le
+# FFmpeg d'une telle session.
+RUN apk --no-cache add ca-certificates tzdata ffmpeg su-exec mesa-vulkan-swrast
 
 WORKDIR /app
 

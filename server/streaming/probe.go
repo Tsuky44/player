@@ -156,10 +156,14 @@ func (v VideoStreamInfo) MarshalJSON() ([]byte, error) {
 	return json.Marshal(struct {
 		alias
 		HDRFormat string `json:"hdr_format"`
-		BitDepth  int    `json:"bit_depth"`
+		// NeedsDolbyVision prévient le client avant qu'il ouvre le fichier
+		// lui-même : en Direct Play, aucun PlanVideo ne s'interpose.
+		NeedsDolbyVision bool `json:"needs_dolby_vision"`
+		BitDepth         int  `json:"bit_depth"`
 	}{
-		alias:     alias(v),
-		HDRFormat: v.HDRFormat(),
+		alias:            alias(v),
+		HDRFormat:        v.HDRFormat(),
+		NeedsDolbyVision: needsDolbyVisionDecoder(&v),
 		// Overrides the stored field with the resolved one, so a client never
 		// sees the 0 that means "the container did not say".
 		BitDepth: v.DepthOrDefault(),

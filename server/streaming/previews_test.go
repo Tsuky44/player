@@ -73,7 +73,7 @@ func TestPreviewOrderIsCoarseToFineAndComplete(t *testing.T) {
 
 func TestPreviewArgsSeekOnKeyframesAndToneMapAfterScaling(t *testing.T) {
 	setFilterSetForTest("zscale", "tonemap")
-	args := strings.Join(previewArgs("/m/film.mkv", 120, true, true, 1), " ")
+	args := strings.Join(previewArgs("/m/film.mkv", 120, ToneMapper{Filter: hdrToSDRFilter()}, true, 1), " ")
 	for _, part := range []string{"-skip_frame nokey -ss 120 -noaccurate_seek -i /m/film.mkv", "-map 0:V:0", "-frames:v 1"} {
 		if !strings.Contains(args, part) {
 			t.Errorf("args %q missing %q", args, part)
@@ -82,7 +82,7 @@ func TestPreviewArgsSeekOnKeyframesAndToneMapAfterScaling(t *testing.T) {
 	if scale, tm := strings.Index(args, "scale=480"), strings.Index(args, "tonemap="); scale < 0 || tm < scale {
 		t.Errorf("tone mapping must follow the scale: %q", args)
 	}
-	if strings.Contains(strings.Join(previewArgs("/m/film.mkv", 0, false, false, 1), " "), "skip_frame") {
+	if strings.Contains(strings.Join(previewArgs("/m/film.mkv", 0, ToneMapper{}, false, 1), " "), "skip_frame") {
 		t.Error("the fallback extraction must decode every frame")
 	}
 }

@@ -213,7 +213,16 @@ func BuildFFmpegArgs(opt TranscodeOptions) []string {
 	// NVDEC...). ffmpeg silently falls back to software when nothing is
 	// available, so this is free. On CPU-only hosts the decode of a 4K HEVC
 	// 10-bit source is the real time-to-first-segment bottleneck, not the encode.
-	args = append(args, "-hwaccel", "auto")
+	//
+	// Sauf quand le tone mapping passe par libplacebo : la commande ouvre alors
+	// un périphérique Vulkan, et `auto` tente d'abord de décoder avec lui. Sur
+	// le Vulkan logiciel d'un hôte sans GPU, c'est un échec journalisé et près
+	// d'une seconde perdue avant le premier segment (ADR-0060).
+	if sessionToneMapper(opt).Vulkan {
+		args = append(args, "-init_hw_device", "vulkan")
+	} else {
+		args = append(args, "-hwaccel", "auto")
+	}
 
 	// Single keyframe-accurate input seek; on the input (before -i) so the HLS
 	// timeline resets to ~0 at the requested start position.
@@ -491,12 +500,22 @@ func videoFilterChain(opt TranscodeOptions, preset qualityPreset) string {
 	if scale := buildScaleFilter(opt.Probe, preset); scale != "" {
 		parts = append(parts, scale)
 	}
-	if opt.Video.Tonemap {
-		if tm := hdrToSDRFilter(); tm != "" {
-			parts = append(parts, tm)
-		}
+	if tm := sessionToneMapper(opt).Filter; tm != "" {
+		parts = append(parts, tm)
 	}
 	return strings.Join(parts, ",")
+}
+
+// sessionToneMapper est le tone mapping de cette session, vide quand l'image
+// est recopiée ou que la source est déjà en SDR.
+func sessionToneMapper(opt TranscodeOptions) ToneMapper {
+	if opt.Video.Copy || !opt.Video.Tonemap {
+		return ToneMapper{}
+	}
+	if opt.Probe == nil {
+		return toneMapperFor(nil)
+	}
+	return toneMapperFor(opt.Probe.Video)
 }
 
 // buildScaleFilter returns the -vf value, or "" when no scaling is needed.

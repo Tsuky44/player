@@ -14,6 +14,7 @@
     "dovi_bl_compat_id": 7,
     "hdr10_plus": true,
     "hdr_format": "dolbyvision",
+    "needs_dolby_vision": false,
     "bit_depth": 5
   },
   "audio": [

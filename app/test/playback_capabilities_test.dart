@@ -29,12 +29,16 @@ void main() {
       // Le rendu par l'API libmpv ne traite pas la couche RPU : un profil 5 y
       // sortirait vert, donc le serveur doit continuer à le tone-mapper.
       expect(caps.dolbyVision, isFalse);
+      // Et en Direct Play non plus : ouvert tel quel, le fichier sortirait
+      // rose et vert sans erreur. Il doit partir en HLS (ADR-0060).
+      expect(caps.dolbyVisionInDirectPlay, isFalse);
     });
 
     test('mpv dans une vue native (gpu-next) déclare le Dolby Vision', () {
       // libplacebo applique la couche RPU : un profil 5 peut être recopié.
       const caps = PlaybackCapabilities.mpvGpuNext;
       expect(caps.dolbyVision, isTrue);
+      expect(caps.dolbyVisionInDirectPlay, isTrue);
       expect(caps.hdr, isTrue);
       expect(caps.videoCodecs, PlaybackCapabilities.mpv.videoCodecs);
       expect(caps.audioCodecs, PlaybackCapabilities.mpv.audioCodecs);
@@ -213,6 +217,12 @@ void main() {
       const caps = PlaybackCapabilities.aether;
       expect(caps.hdr, isTrue);
       expect(caps.dolbyVision, isFalse);
+    });
+
+    test('le Dolby Vision se lit en Direct Play, pas en segment recopié', () {
+      // AetherEngine lit la couche RPU du fichier : un profil 5 ne doit pas
+      // partir en transcodage sur un appareil Apple.
+      expect(PlaybackCapabilities.aether.dolbyVisionInDirectPlay, isTrue);
     });
 
     test('aucune piste audio n’est muette en Direct Play', () {

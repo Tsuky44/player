@@ -30,7 +30,8 @@ class PlaybackCapabilities {
     required this.dolbyVision,
     required this.label,
     this.missingDirectPlayAudio = const {},
-  });
+    bool? dolbyVisionInDirectPlay,
+  }) : dolbyVisionInDirectPlay = dolbyVisionInDirectPlay ?? dolbyVision;
 
   /// `fmp4` ou `ts`. Le format de segment décide autant que le décodeur : le
   /// MPEG-TS n'a pas de type de flux pour le VP9, l'AV1, le FLAC ou l'Opus, et
@@ -75,6 +76,14 @@ class PlaybackCapabilities {
   /// est de laisser le serveur la décoder — donc de passer en HLS.
   final Set<String> missingDirectPlayAudio;
 
+  /// Si le moteur **local** applique la couche RPU quand il lit le fichier
+  /// lui-même. Vaut [dolbyVision] presque partout ; les deux ne divergent que
+  /// sur les appareils Apple, où AetherEngine lit le Dolby Vision d'un fichier
+  /// mais pas celui d'un segment recopié par le serveur.
+  ///
+  /// Faux, un profil 5 ouvert en Direct Play sort rose et vert sans la moindre
+  /// erreur : il part en HLS, où le serveur applique la RPU (ADR-0060).
+  final bool dolbyVisionInDirectPlay;
 
   /// Si le moteur local sait décoder [codec] (nom ffprobe) en Direct Play.
   bool decodesInDirectPlay(String codec) {
@@ -155,6 +164,7 @@ class PlaybackCapabilities {
     maxVideoBitDepth: 10,
     hdr: true,
     dolbyVision: false,
+    dolbyVisionInDirectPlay: true,
     label: 'aetherengine',
   );
 
