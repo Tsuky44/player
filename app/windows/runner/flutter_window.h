@@ -22,6 +22,10 @@ class FlutterWindow : public Win32Window {
   LRESULT MessageHandler(HWND window, UINT const message, WPARAM const wparam,
                          LPARAM const lparam) noexcept override;
 
+  // Le traitement d'un message par Flutter, ses plugins puis la fenêtre.
+  LRESULT HandleMessage(HWND window, UINT const message, WPARAM const wparam,
+                        LPARAM const lparam) noexcept;
+
  private:
   // The project to run.
   flutter::DartProject project_;

@@ -3,6 +3,7 @@
 #include <optional>
 
 #include "flutter/generated_plugin_registrant.h"
+#include "video_backdrop.h"
 
 FlutterWindow::FlutterWindow(const flutter::DartProject& project)
     : project_(project) {}
@@ -51,6 +52,20 @@ LRESULT
 FlutterWindow::MessageHandler(HWND hwnd, UINT const message,
                               WPARAM const wparam,
                               LPARAM const lparam) noexcept {
+  // La fenêtre de mpv suit celle de l'app (ADR-0061). Après le traitement du
+  // message, qui redimensionne la vue Flutter, et quel que soit le plugin
+  // qui l'a consommé.
+  if (message == WM_WINDOWPOSCHANGED) {
+    const LRESULT result = HandleMessage(hwnd, message, wparam, lparam);
+    video_backdrop::Sync(hwnd);
+    return result;
+  }
+  return HandleMessage(hwnd, message, wparam, lparam);
+}
+
+LRESULT FlutterWindow::HandleMessage(HWND hwnd, UINT const message,
+                                     WPARAM const wparam,
+                                     LPARAM const lparam) noexcept {
   // Give Flutter, including plugins, an opportunity to handle window messages.
   if (flutter_controller_) {
     std::optional<LRESULT> result =

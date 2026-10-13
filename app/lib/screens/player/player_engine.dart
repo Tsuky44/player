@@ -24,7 +24,7 @@ class PlayerEngine {
   /// La sortie de mpv dans une vue native, en mode [MpvNativeView].
   late final Future<MpvNativeOutput> nativeOutput = player.handle.then(
     (handle) => MpvNativeOutput(
-      libmpvPath: MpvNativeView.libmpvPath!,
+      libmpvPath: MpvNativeView.outputLibraryPath,
       mpvHandle: handle,
     ),
   );
@@ -39,6 +39,12 @@ class PlayerEngine {
   /// anyone picks the next episode; not rare on a television, where the stop is
   /// slower and the next media is one press of OK away.
   Future<void>? pendingStop;
+
+  /// Faux dès que ce moteur a quitté sa texture pour une fenêtre mpv
+  /// (ADR-0061). Il n'est alors pas remis en commun : la lecture suivante en
+  /// construit un neuf, plutôt que d'hériter d'une sortie vidéo et de
+  /// réglages d'écran qui n'étaient que pour ce fichier-là.
+  bool reusable = true;
 
   PlayerEngine._(this.player, this.videoController);
 
@@ -116,6 +122,20 @@ class PlayerEnginePool {
 
   /// Gives an engine back after a playback ends.
   static void release(PlayerEngine engine) {
+    if (!engine.reusable) {
+      // La fenêtre d'abord, par la même file que la surface : détruire mpv
+      // pendant qu'une option de sortie est encore en route, c'est lui parler
+      // après sa mort.
+      unawaited(engine.nativeOutput
+          .then((output) => output.setProperty('vo', 'null'))
+          .catchError((Object e) {
+        debugPrint('PlayerEnginePool: sortie vidéo non rendue: $e');
+      }).whenComplete(() => engine.player.dispose().catchError((_) {
+                // Une instance déjà détruite refuse la commande : il n'y a
+                // plus rien à arrêter.
+              })));
+      return;
+    }
     if (_idle != null) {
       // Already holding one — a second idle engine is memory nobody asked for.
       // `dispose` stops the player on its way out, so this covers the unload

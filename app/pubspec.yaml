@@ -26,6 +26,11 @@ dependencies:
   path_provider: ^2.1.4
   path: ^1.9.0
 
+  # Les appels Win32 qui glissent la fenêtre de mpv sous celle de l'app
+  # (ADR-0061). Déjà tiré par media_kit et onyx_mpv_macos : le déclarer ne
+  # fait qu'autoriser l'import.
+  ffi: ^2.1.0
+
   # De quel réseau l'appareil dispose — Wi-Fi, Ethernet, données mobiles, rien.
   # Sert au seul arbitrage des téléchargements : un forfait ne paie pas un
   # épisode de 4 Go sans qu'on l'ait demandé. La joignabilité du serveur, elle,

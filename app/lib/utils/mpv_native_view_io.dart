@@ -18,11 +18,22 @@ abstract final class MpvNativeView {
       '${Platform.environment['HOME'] ?? ''}'
       '/Library/Application Support/Onyx/libmpv/libmpv.2.dylib';
 
+  /// Le libmpv que media_kit embarque sous Windows. Il n'a pas besoin de
+  /// patch : mpv y sait déjà ouvrir sa propre fenêtre (ADR-0061).
+  static const String _windowsLibmpv = 'libmpv-2.dll';
+
   static String? _libmpvPath;
 
   /// Le libmpv patché retenu, ou null quand media_kit garde le sien.
   static String? get libmpvPath => _libmpvPath;
 
+  /// Le libmpv à travers lequel piloter la sortie vidéo de mpv, hors du
+  /// thread de l'interface : le patché sur macOS, celui de media_kit sous
+  /// Windows, où seule la sortie d'un Dolby Vision profil 5 passe par là.
+  static String get outputLibraryPath => _libmpvPath ?? _windowsLibmpv;
+
+  /// Si mpv dessine **toutes** les lectures dans une vue native — macOS avec
+  /// un libmpv patché. Sous Windows, la fenêtre de mpv se décide par média.
   static bool get enabled => _libmpvPath != null;
 
   /// À appeler une fois, avant `MediaKit.ensureInitialized`.

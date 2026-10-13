@@ -3,8 +3,10 @@ import 'dart:async';
 import 'package:flutter/widgets.dart';
 import 'package:onyx_mpv_macos/onyx_mpv_macos.dart';
 
+import '../../../utils/app_platform.dart';
 import '../player_engine.dart';
 import 'mpv_subtitle_overlay.dart';
+import 'mpv_window_host.dart';
 
 /// Le cadrage demandé par l'écran, traduit en options mpv.
 ///
@@ -82,16 +84,26 @@ class _MpvNativeSurfaceState extends State<MpvNativeSurface> {
     return Stack(
       fit: StackFit.expand,
       children: [
-        MpvHostView(
-          onAttach: (view) async {
-            final output = await engine.nativeOutput;
-            await output.attach(view);
-          },
-          onDetach: (view) async {
-            final output = await engine.nativeOutput;
-            await output.detach(view);
-          },
-        ),
+        if (AppPlatform.isWindows)
+          // Pas de vue native sous Windows : une fenêtre mpv sous celle de
+          // l'app, vue à travers un trou (ADR-0061).
+          MpvWindowHost(
+            setProperty: (name, value) async {
+              final output = await engine.nativeOutput;
+              await output.setProperty(name, value);
+            },
+          )
+        else
+          MpvHostView(
+            onAttach: (view) async {
+              final output = await engine.nativeOutput;
+              await output.attach(view);
+            },
+            onDetach: (view) async {
+              final output = await engine.nativeOutput;
+              await output.detach(view);
+            },
+          ),
         MpvSubtitleOverlay(key: widget.subtitleKey, player: engine.player),
       ],
     );

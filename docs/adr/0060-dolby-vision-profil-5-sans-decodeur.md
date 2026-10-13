@@ -7,7 +7,8 @@
 - **Portée :** `server/streaming/tonemap_dovi.go`, `server/streaming/ffmpeg.go`,
   `server/streaming/previews.go`, `server/streaming/probe.go`, `server/Dockerfile`,
   `app/lib/services/playback_capabilities.dart`, `app/lib/models/media_tracks.dart`,
-  `app/lib/screens/player/hooks/player_controller_tracks.dart`.
+  `app/lib/screens/player/hooks/player_controller_dolby_vision.dart`,
+  `app/lib/screens/player/widgets/onyx/onyx_settings_menu.dart`.
 - **Complète** [ADR-0014](0014-capacites-de-lecture-declarees-par-le-client.md), dont le cas 3
   (« profil 5 sans décodeur → tone mapping ») était décidé mais ne donnait pas une image juste.
 - **Lève** la dernière conséquence de l'[ADR-0016](0016-apercus-de-la-barre-de-lecture.md) (aperçus
@@ -44,6 +45,11 @@ Vision d'un fichier mais pas celui d'un segment recopié (ADR-0038).
 À l'arrivée de la liste des pistes, un profil 5 que le moteur ne sait pas montrer part en HLS,
 **au plus en 1080p**, et l'Auto ne revient pas au Direct Play. La résolution d'origine ne sauverait
 rien : l'image est ré-encodée de toute façon.
+
+Le menu Qualité garde la ligne du fichier d'origine, sous-titrée « Couleurs incorrectes sur cet
+appareil » (`directPlayHasWrongColours`). Vu au premier essai sous Windows : la bascule en HLS se
+faisait, puis cette ligne, choisie sans le savoir, ramenait l'image rose et verte. Elle n'est pas
+retirée : sur un serveur trop petit pour ce transcodage, c'est la seule lecture possible.
 
 Un fichier téléchargé reste lu tel quel : hors ligne, il n'y a pas de serveur pour le convertir.
 

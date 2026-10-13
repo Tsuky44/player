@@ -132,6 +132,25 @@ class PlaybackCapabilities {
     label: 'mpv',
   );
 
+  /// mpv sous Windows.
+  ///
+  /// Un profil 5 y est lu tel quel : la session passe alors mpv de sa texture
+  /// à une fenêtre `gpu-next` glissée sous celle de l'app (ADR-0061).
+  /// `dolbyVision` reste faux, comme pour [aether] : rien ne dit encore qu'un
+  /// profil 5 recopié en segments fMP4 garde de quoi appliquer sa couche RPU,
+  /// donc une session à qualité réduite reste ré-encodée par le serveur.
+  static const mpvWindows = PlaybackCapabilities(
+    container: 'fmp4',
+    videoCodecs: {'h264', 'hevc', 'av1', 'vp9'},
+    audioCodecs: {'aac', 'ac3', 'eac3', 'flac', 'opus', 'alac'},
+    maxAudioChannels: 8,
+    maxVideoBitDepth: 12,
+    hdr: true,
+    dolbyVision: false,
+    dolbyVisionInDirectPlay: true,
+    label: 'mpv (gpu-next en fenêtre pour le Dolby Vision)',
+  );
+
   /// mpv sur macOS quand il dessine lui-même dans une vue native
   /// ([MpvNativeView], `vo=gpu-next`) : libplacebo y applique la couche RPU,
   /// donc un profil 5 peut être recopié tel quel. Le reste est [mpv].
@@ -363,6 +382,8 @@ abstract final class PlaybackCapabilitiesResolver {
       _current = PlaybackCapabilities.aether;
     } else if (MpvNativeView.enabled) {
       _current = PlaybackCapabilities.mpvGpuNext;
+    } else if (AppPlatform.isWindows) {
+      _current = PlaybackCapabilities.mpvWindows;
     } else {
       _current = PlaybackCapabilities.mpv;
     }

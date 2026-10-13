@@ -592,6 +592,8 @@ const Map<String, String> kEnglish = <String, String>{
       'Fix details',
   'Coréen':
       'Korean',
+  'Couleurs incorrectes sur cet appareil':
+      'Wrong colours on this device',
   'Couper':
       'Cut',
   'Couper ce lien ?':

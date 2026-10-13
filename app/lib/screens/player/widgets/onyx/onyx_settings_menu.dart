@@ -488,11 +488,14 @@ class _OnyxSettingsMenuState extends State<OnyxSettingsMenu> {
           },
         ),
       // Direct Play is native-only: it hands the player the file itself, which
-      // a browser cannot open.
+      // a browser cannot open. Un Dolby Vision profil 5 que ce moteur montre
+      // rose et vert reste proposé, en le disant (ADR-0060).
       if (!AppPlatform.isWeb)
         _OnyxMenuOption(
           label: direct.label,
-          subtitle: direct.subtitle,
+          subtitle: controller.directPlayHasWrongColours
+              ? tr('Couleurs incorrectes sur cet appareil')
+              : direct.subtitle,
           selected: !auto && controller.currentQuality == null,
           onTap: () {
             widget.onClose();

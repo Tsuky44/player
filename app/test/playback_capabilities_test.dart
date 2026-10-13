@@ -34,6 +34,17 @@ void main() {
       expect(caps.dolbyVisionInDirectPlay, isFalse);
     });
 
+    test('Windows lit le Dolby Vision profil 5 lui-même', () {
+      // La session passe mpv en fenêtre gpu-next (ADR-0061) : le fichier ne
+      // doit plus partir en transcodage. Une session à qualité réduite, elle,
+      // reste ré-encodée par le serveur.
+      const caps = PlaybackCapabilities.mpvWindows;
+      expect(caps.dolbyVisionInDirectPlay, isTrue);
+      expect(caps.dolbyVision, isFalse);
+      expect(caps.videoCodecs, PlaybackCapabilities.mpv.videoCodecs);
+      expect(caps.audioCodecs, PlaybackCapabilities.mpv.audioCodecs);
+    });
+
     test('mpv dans une vue native (gpu-next) déclare le Dolby Vision', () {
       // libplacebo applique la couche RPU : un profil 5 peut être recopié.
       const caps = PlaybackCapabilities.mpvGpuNext;

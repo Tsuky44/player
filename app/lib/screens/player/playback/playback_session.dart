@@ -342,4 +342,12 @@ abstract interface class PlaybackSession {
   /// pas pris : il se rabat sur le logiciel sans un mot, ce qui, sur un fichier
   /// 4K, donne deux images par seconde.
   Future<void> onPictureLive();
+
+  /// L'image de ce média n'est juste qu'avec la couche RPU du Dolby Vision —
+  /// un profil 5 (ADR-0060). Le moteur qui a deux façons de dessiner passe sur
+  /// celle qui l'applique ; les autres n'ont rien à faire.
+  ///
+  /// Appelé à l'arrivée des pistes, donc après l'ouverture : c'est le serveur
+  /// qui sait lire le profil, pas le moteur.
+  Future<void> useDolbyVisionOutput();
 }

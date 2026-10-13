@@ -12,6 +12,7 @@ import '../player_engine.dart';
 import '../playback_profile.dart';
 import 'cache_pause_policy.dart';
 import 'mpv_diagnostics.dart';
+import 'mpv_dolby_vision.dart';
 import 'mpv_native_surface.dart';
 import 'mpv_startup_trace.dart';
 import 'mpv_subtitle_overlay.dart';
@@ -50,6 +51,10 @@ class MpvPlaybackSession implements PlaybackSession {
   final GlobalKey<MpvSubtitleOverlayState> _subtitleKey =
       GlobalKey<MpvSubtitleOverlayState>();
 
+  /// La bascule de la texture vers une fenêtre mpv, pour un Dolby Vision
+  /// profil 5 sous Windows (ADR-0061).
+  late final MpvDolbyVisionOutput _dolbyVision = MpvDolbyVisionOutput(_engine);
+
   mk.Player get _player => _engine.player;
 
   /// Le moteur mpv sous-jacent.
@@ -83,14 +88,26 @@ class MpvPlaybackSession implements PlaybackSession {
         subtitleKey: _subtitleKey,
       );
     }
-    return TextureVideoSurface(
-      key: key,
-      controller: _engine.videoController!,
-      videoKey: _videoKey,
-      fit: fit,
-      aspectRatio: aspectRatio,
+    return _dolbyVision.surface(
+      texture: TextureVideoSurface(
+        key: key,
+        controller: _engine.videoController!,
+        videoKey: _videoKey,
+        fit: fit,
+        aspectRatio: aspectRatio,
+      ),
+      window: (context) => MpvNativeSurface(
+        key: key,
+        engine: _engine,
+        fit: fit,
+        aspectRatio: aspectRatio,
+        subtitleKey: _subtitleKey,
+      ),
     );
   }
+
+  @override
+  Future<void> useDolbyVisionOutput() async => _dolbyVision.enable();
 
   @override
   void setSubtitlePadding(EdgeInsets padding,
@@ -666,36 +683,6 @@ class MpvPlaybackSession implements PlaybackSession {
   /// Un seul échange de décodeur par lecture.
   bool _softwareDecodeHandled = false;
 
-  /// Dit dans le log si le Dolby Vision est réellement appliqué.
-  ///
-  /// Trois questions, trois réponses de mpv : le fichier en porte-t-il (profil
-  /// et niveau de la piste), la couche RPU est-elle appliquée à l'image (mpv
-  /// passe alors sa matrice en `dolbyvision`), et l'écran est-il piloté en HDR
-  /// (la courbe de sortie de gpu-next).
-  Future<void> _logDolbyVision() async {
-    final platform = _player.platform as dynamic;
-    Future<String?> read(String name) async {
-      final value = await _read(platform, name);
-      return (value == null || value.isEmpty) ? null : value;
-    }
-
-    final profile = await read('current-tracks/video/dolby-vision-profile');
-    final level = await read('current-tracks/video/dolby-vision-level');
-    final matrix = await read('video-params/colormatrix');
-    final source = '${await read('video-params/gamma')}/'
-        '${await read('video-params/primaries')}';
-    final target = '${await read('video-target-params/gamma')}/'
-        '${await read('video-target-params/primaries')}';
-    final peak = await read('video-target-params/max-luma');
-
-    final dolbyVision = profile == null
-        ? 'aucun (le fichier n\'en porte pas)'
-        : 'profil $profile niveau ${level ?? '?'} · RPU '
-            '${matrix == 'dolbyvision' ? 'appliqué' : 'NON appliqué (matrice $matrix)'}';
-    debugPrint('Dolby Vision: $dolbyVision · source $source → écran $target'
-        '${peak != null ? ' ($peak nits)' : ''}');
-  }
-
   /// Le moteur est mis en commun : un rognage posé pour la lecture précédente
   /// ne doit pas survivre à la suivante. `""` rend le rognage du conteneur.
   Future<void> _resetZeroCopyCrop(dynamic platform) async {
@@ -754,7 +741,10 @@ class MpvPlaybackSession implements PlaybackSession {
         await _set(_player.platform as dynamic, 'cache-pause-initial', 'yes');
       }
     }
-    if (MpvNativeView.enabled && !AppPlatform.isWeb) await _logDolbyVision();
+    if ((MpvNativeView.enabled || _dolbyVision.active) && !AppPlatform.isWeb) {
+      final platform = _player.platform as dynamic;
+      await MpvDolbyVisionOutput.log((name) => _read(platform, name));
+    }
     if (AppPlatform.isWeb) return;
     // La copie n'expose que l'image : ni rognage ni rattrapage à faire ensuite.
     if (await _leaveUnwantedZeroCopy()) return;

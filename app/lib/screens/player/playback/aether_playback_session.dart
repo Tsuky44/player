@@ -389,6 +389,12 @@ class AetherPlaybackSession implements PlaybackSession {
   Future<void> onPictureLive() async {}
 
   @override
+  Future<void> useDolbyVisionOutput() async {
+    // Une seule surface, et c'est le décodeur de l'appareil qui applique la
+    // couche RPU.
+  }
+
+  @override
   Future<PlaybackDiagnostics> readDiagnostics() async {
     final stats = await (await _ready).stats();
     return PlaybackDiagnostics(

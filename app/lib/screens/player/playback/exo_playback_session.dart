@@ -433,6 +433,12 @@ class ExoPlaybackSession implements PlaybackSession {
   }
 
   @override
+  Future<void> useDolbyVisionOutput() async {
+    // Une seule surface, et c'est le décodeur de l'appareil qui applique la
+    // couche RPU.
+  }
+
+  @override
   Future<void> prepare() async {
     // Rien à attendre : chaque session a son propre lecteur natif, il n'y a pas
     // d'instance recyclée qui pourrait être en train de décharger un film.

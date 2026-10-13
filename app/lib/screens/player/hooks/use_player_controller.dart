@@ -37,6 +37,7 @@ import '../player_playback_preferences.dart';
 // de première image, les préférences héritées, le rapport au serveur et le
 // démontage. Le reste est dans des extensions, une par sujet. Voir ADR-0052.
 part 'player_controller_auto.dart';
+part 'player_controller_dolby_vision.dart';
 part 'player_controller_hls.dart';
 part 'player_controller_language.dart';
 part 'player_controller_startup.dart';
