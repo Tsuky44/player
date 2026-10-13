@@ -23,6 +23,27 @@ func setupAuthDB(t *testing.T) {
 		t.Fatalf("InitDB: %v", err)
 	}
 	t.Cleanup(func() { database.DB.Close() })
+	recordLibraryJobs(t)
+}
+
+// libraryJobs note ce qu'un handler de bibliothèque aurait lancé en tâche de
+// fond, au lieu de le lancer.
+type libraryJobs struct {
+	scans     int
+	forgotten []string
+}
+
+// recordLibraryJobs remplace l'analyse et l'oubli d'un dossier le temps du
+// test. Aucun test de handler ne laisse ainsi de goroutine de l'indexeur
+// écrire dans la base du test suivant.
+func recordLibraryJobs(t *testing.T) *libraryJobs {
+	t.Helper()
+	jobs := &libraryJobs{}
+	scan, forget := scanLibraries, forgetLibraryFolder
+	scanLibraries = func() { jobs.scans++ }
+	forgetLibraryFolder = func(path string) { jobs.forgotten = append(jobs.forgotten, path) }
+	t.Cleanup(func() { scanLibraries, forgetLibraryFolder = scan, forget })
+	return jobs
 }
 
 func createTestUser(t *testing.T, username string, owner bool, perms models.Permissions) int {

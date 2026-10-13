@@ -165,6 +165,53 @@ func TestRenamingALibraryKeepsItsCatalog(t *testing.T) {
 	}
 }
 
+// Un dossier qui arrive est analysé, un dossier qui part est oublié, et un
+// simple changement de nom ne touche pas au catalogue.
+func TestLibraryFolderChangesStartTheirBackgroundJobs(t *testing.T) {
+	setupAuthDB(t)
+	jobs := recordLibraryJobs(t)
+	admin := createTestUser(t, "admin", true, models.AllPermissions())
+	first, second := t.TempDir(), t.TempDir()
+
+	rec := libraryCall(t, CreateLibrary, http.MethodPost, libraryBody(t, "Films", libraries.KindMovies, first), 0, admin)
+	if rec.Code != http.StatusCreated {
+		t.Fatalf("create: %d %s", rec.Code, rec.Body.String())
+	}
+	var lib libraries.Library
+	if err := json.Unmarshal(rec.Body.Bytes(), &lib); err != nil {
+		t.Fatal(err)
+	}
+	if jobs.scans != 1 || len(jobs.forgotten) != 0 {
+		t.Fatalf("after a creation: %+v, want one scan", jobs)
+	}
+
+	if rec := libraryCall(t, UpdateLibrary, http.MethodPut, libraryBody(t, "Cinéma", "", lib.Path), lib.ID, admin); rec.Code != http.StatusOK {
+		t.Fatalf("rename: %d %s", rec.Code, rec.Body.String())
+	}
+	if jobs.scans != 1 || len(jobs.forgotten) != 0 {
+		t.Fatalf("after a rename: %+v, want nothing more", jobs)
+	}
+
+	rec = libraryCall(t, UpdateLibrary, http.MethodPut, libraryBody(t, "Cinéma", "", second), lib.ID, admin)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("move: %d %s", rec.Code, rec.Body.String())
+	}
+	var moved libraries.Library
+	if err := json.Unmarshal(rec.Body.Bytes(), &moved); err != nil {
+		t.Fatal(err)
+	}
+	if jobs.scans != 2 || len(jobs.forgotten) != 1 || jobs.forgotten[0] != lib.Path {
+		t.Fatalf("after a move: %+v, want a second scan and %q forgotten", jobs, lib.Path)
+	}
+
+	if rec := libraryCall(t, DeleteLibrary, http.MethodDelete, "", lib.ID, admin); rec.Code != http.StatusNoContent {
+		t.Fatalf("delete: %d %s", rec.Code, rec.Body.String())
+	}
+	if jobs.scans != 2 || len(jobs.forgotten) != 2 || jobs.forgotten[1] != moved.Path {
+		t.Fatalf("after a deletion: %+v, want %q forgotten and no scan", jobs, moved.Path)
+	}
+}
+
 // Chaque liste du catalogue se lit par bibliothèque ; sans paramètre elle
 // couvre tout le serveur, comme pour la recherche et les apps plus anciennes.
 func TestCatalogListsAreScopedToALibrary(t *testing.T) {

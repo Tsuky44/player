@@ -28,6 +28,16 @@ type libraryRequest struct {
 
 const libraryBodyLimit = 4 << 10
 
+// Ce qu'un changement de bibliothèque lance en tâche de fond. Ce sont des
+// variables pour que les tests des handlers les remplacent : une vraie analyse
+// survit à la requête, donc au test, et ouvre des connexions sur la base du
+// test suivant pendant qu'il la crée (« database is locked » au passage en
+// WAL, vu en CI de façon intermittente).
+var (
+	scanLibraries       = func() { indexer.ScanMedia(libraries.Current()) }
+	forgetLibraryFolder = forgetLibraryFolderAsync
+)
+
 // ListLibraries returns the libraries in the order they were created
 // (GET /api/libraries). Their folder is the server's disk layout: it is only
 // sent to an account that could change it.
@@ -61,7 +71,7 @@ func CreateLibrary(w http.ResponseWriter, r *http.Request, _ httprouter.Params, 
 	}
 	// Une analyse déjà en cours ne la verra pas : le moniteur relit la liste
 	// chaque minute et parcourt alors le nouveau dossier.
-	indexer.ScanMedia(libraries.Current())
+	scanLibraries()
 
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusCreated)
@@ -87,8 +97,8 @@ func UpdateLibrary(w http.ResponseWriter, r *http.Request, ps httprouter.Params,
 		return
 	}
 	if updated.Path != previous.Path {
-		forgetLibraryFolderAsync(previous.Path)
-		indexer.ScanMedia(libraries.Current())
+		forgetLibraryFolder(previous.Path)
+		scanLibraries()
 	}
 
 	w.Header().Set("Content-Type", "application/json")
@@ -108,7 +118,7 @@ func DeleteLibrary(w http.ResponseWriter, r *http.Request, ps httprouter.Params,
 		writeLibraryError(w, "DeleteLibrary", err)
 		return
 	}
-	forgetLibraryFolderAsync(lib.Path)
+	forgetLibraryFolder(lib.Path)
 	w.WriteHeader(http.StatusNoContent)
 }
 
