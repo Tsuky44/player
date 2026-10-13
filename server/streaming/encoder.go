@@ -38,8 +38,14 @@ type VideoEncoder struct {
 	Name string
 	// Hardware says the encoding leaves the CPU.
 	Hardware bool
-	// PixelFormat is what the filter chain must hand it.
+	// PixelFormat is what the filter chain must hand it. Empty for an encoder
+	// that takes hardware frames: its uploadFilter sets the format instead.
 	PixelFormat string
+	// deviceArgs ouvre, avant l'entrée, le périphérique dont l'encodeur a besoin.
+	deviceArgs []string
+	// uploadFilter termine la chaîne de filtres en envoyant l'image au
+	// périphérique, pour un encodeur qui ne prend pas d'images logicielles.
+	uploadFilter string
 	// rateControl builds the flags that set quality and bitrate, which is where
 	// the encoders differ most: libx264 targets a quality and caps the result,
 	// while the hardware encoders take a bitrate and hold it.
@@ -71,10 +77,11 @@ var softwareEncoder = VideoEncoder{
 // them internally, so the filter chain — scaling, tone mapping, burned-in
 // subtitles — is the same as it has always been.
 //
-// VAAPI is deliberately absent. It is the one that cannot take software frames:
-// it needs a device opened up front and a `hwupload` appended to every filter
-// chain, which is a change to the filter graph rather than to a flag. Worth
-// doing, separately.
+// VAAPI vient en dernier. C'est le seul qui ne prend pas d'images logicielles :
+// il lui faut un périphérique ouvert avant l'entrée et un `hwupload` au bout de
+// la chaîne de filtres (deviceArgs, uploadFilter). C'est aussi le seul chemin
+// vers le circuit d'un processeur Intel ou AMD sans carte graphique sous Linux
+// quand Quick Sync n'a pas son runtime — le cas de l'image Docker.
 var hardwareEncoders = []VideoEncoder{
 	{
 		Name:        "h264_videotoolbox",
@@ -126,6 +133,31 @@ var hardwareEncoders = []VideoEncoder{
 			}
 		},
 	},
+	{
+		Name:         "h264_vaapi",
+		Hardware:     true,
+		deviceArgs:   []string{"-vaapi_device", vaapiDevice()},
+		uploadFilter: "format=nv12,hwupload",
+		rateControl: func(preset qualityPreset) []string {
+			return []string{
+				// Nommé : laissé à lui-même, FFmpeg lit un débit égal à son
+				// plafond comme une demande de débit constant.
+				"-rc_mode", "VBR",
+				"-b:v", preset.VideoBitrate,
+				"-maxrate", preset.VideoBitrate,
+				"-bufsize", doubleBitrate(preset.VideoBitrate),
+			}
+		},
+	},
+}
+
+// vaapiDevice est le nœud de rendu donné à VAAPI. VAAPI_DEVICE le change, pour
+// un hôte à plusieurs cartes où le circuit voulu n'est pas le premier.
+func vaapiDevice() string {
+	if device := strings.TrimSpace(os.Getenv("VAAPI_DEVICE")); device != "" {
+		return device
+	}
+	return "/dev/dri/renderD128"
 }
 
 // videoEncoderOnce caches the answer: detection runs FFmpeg, and the answer
@@ -193,13 +225,13 @@ func encoderWorks(name string) bool {
 	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
 	defer cancel()
 
-	cmd := exec.CommandContext(ctx, "ffmpeg",
-		"-hide_banner", "-loglevel", "error",
-		"-f", "lavfi", "-i", "testsrc2=size=320x240:rate=1",
-		"-frames:v", "1",
-		"-c:v", name,
-		"-f", "null", "-",
-	)
+	encoder := VideoEncoder{Name: name}
+	for _, candidate := range hardwareEncoders {
+		if candidate.Name == name {
+			encoder = candidate
+		}
+	}
+	cmd := exec.CommandContext(ctx, "ffmpeg", encoderProbeArgs(encoder)...)
 	if output, err := cmd.CombinedOutput(); err != nil {
 		log.Printf("Streaming: encoder %s unusable: %v %s", name, err, strings.TrimSpace(string(output)))
 		return false
@@ -207,9 +239,30 @@ func encoderWorks(name string) bool {
 	return true
 }
 
+// encoderProbeArgs est la commande d'essai d'un encodeur : une image, par le
+// même périphérique et le même envoi qu'une session.
+func encoderProbeArgs(encoder VideoEncoder) []string {
+	args := []string{"-hide_banner", "-loglevel", "error"}
+	args = append(args, encoder.deviceArgs...)
+	args = append(args,
+		"-f", "lavfi", "-i", "testsrc2=size=320x240:rate=1",
+		"-frames:v", "1",
+	)
+	if encoder.uploadFilter != "" {
+		args = append(args, "-vf", encoder.uploadFilter)
+	}
+	return append(args, "-c:v", encoder.Name, "-f", "null", "-")
+}
+
 // encoder resolves what the options asked for, defaulting to software.
 func (o TranscodeOptions) encoder() VideoEncoder {
 	if o.Encoder.Name == "" || o.Encoder.rateControl == nil {
+		return softwareEncoder
+	}
+	// Une commande FFmpeg n'a qu'un périphérique de filtres. libplacebo y veut
+	// Vulkan (ADR-0060), `hwupload` y veut celui de l'encodeur : un Dolby Vision
+	// profil 5 à tone mapper garde donc l'encodeur logiciel.
+	if o.Encoder.uploadFilter != "" && sessionToneMapper(o).Vulkan {
 		return softwareEncoder
 	}
 	return o.Encoder

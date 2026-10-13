@@ -30,6 +30,12 @@ services:
       # doivent lui être lisibles (`id -u` et `id -g` donnent vos numéros).
       # - PUID=1000
       # - PGID=1000
+      # --- OPTIONNEL : transcodage par le circuit vidéo (Intel, AMD) ---
+      # Décommentez cette ligne ET le bloc `devices` plus bas. Le serveur essaie
+      # le circuit au démarrage et retombe sur le processeur s'il ne répond pas ;
+      # son journal dit lequel il a pris (« Streaming: video encoder … »).
+      # Avec PUID, ce compte doit appartenir au groupe de /dev/dri/renderD128.
+      # - VIDEO_ENCODER=auto
       # Nombre maximal d'extractions FFmpeg de sous-titres simultanées
       - SUBTITLE_EXTRACTION_CONCURRENCY=${SUBTITLE_EXTRACTION_CONCURRENCY:-2}
       # Surveillance de la médiathèque : un fichier déposé est indexé en quelques
@@ -40,4 +46,6 @@ services:
       - LIBRARY_POLL_INTERVAL=${LIBRARY_POLL_INTERVAL:-5m}
       - MEDIAHUB_URL=${MEDIAHUB_URL:-http://mediahub-app:3008}
       - MEDIAHUB_API_KEY=${MEDIAHUB_API_KEY:-}
+    # devices:
+    #   - /dev/dri:/dev/dri
     restart: unless-stopped

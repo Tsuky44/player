@@ -441,6 +441,8 @@ Le serveur n'en impose aucune et n'en limite pas le nombre (ADR-0058). Il annonc
 #### ➡️ Transcodage (HLS)
 * **Configuration :**
   * `ONYX_DEV_LINE_KBPS` : **développement seulement.** Bride tous les flux vidéo (Direct Play et segments HLS) à ce débit, pour reproduire une ligne lente ; `0` démarre libre. Quand la variable est définie, `PUT /api/dev/line?kbps=N` (administrateur) change le débit pendant une lecture. Voir ADR-0056.
+  * `VIDEO_ENCODER` : l'encodeur H.264 des sessions. Non défini : `libx264`, sur le processeur. `auto` prend le premier encodeur matériel qui encode réellement une image au démarrage (`h264_videotoolbox`, `h264_nvenc`, `h264_qsv`, `h264_vaapi`) ; un nom précis le force. Tout échec retombe sur `libx264` et le journal le dit. Sous Docker, le circuit d'un processeur Intel ou AMD demande en plus `devices: - /dev/dri:/dev/dri`. Voir ADR-0023.
+  * `VAAPI_DEVICE` : le nœud de rendu donné à `h264_vaapi` (`/dev/dri/renderD128` par défaut).
   * `MAX_TRANSCODES` : nombre maximal de sessions simultanées (par défaut la moitié des cœurs, au moins 4 ; `0` retire la limite). Au-delà, `/start` répond 503 avec `Retry-After`.
   * `HLS_DIR` : dossier de travail des sessions (par défaut `onyx-hls` dans le dossier temporaire du système). Les sessions laissées par un arrêt brutal y sont effacées au démarrage.
   * `HLS_MIN_FREE_MB` : espace libre minimal sur ce dossier pour ouvrir une session (`2048` par défaut, `0` pour désactiver).

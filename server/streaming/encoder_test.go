@@ -185,6 +185,119 @@ func TestQuickSyncAsksForNV12(t *testing.T) {
 	}
 }
 
+func vaapiEncoder(t *testing.T) VideoEncoder {
+	t.Helper()
+	for _, encoder := range hardwareEncoders {
+		if encoder.Name == "h264_vaapi" {
+			return encoder
+		}
+	}
+	t.Fatal("h264_vaapi is not among the hardware encoders")
+	return VideoEncoder{}
+}
+
+// VAAPI ne prend pas d'images logicielles : le périphérique s'ouvre avant
+// l'entrée, et l'envoi termine la chaîne. Un -pix_fmt en plus ferait insérer
+// à FFmpeg une conversion qu'aucune image matérielle n'accepte.
+func TestVAAPIUploadsAtTheEndOfTheFilterChain(t *testing.T) {
+	args := argsFor(vaapiEncoder(t), "1080p")
+
+	device, input := -1, -1
+	for i, arg := range args {
+		switch arg {
+		case "-vaapi_device":
+			device = i
+		case "-i":
+			input = i
+		}
+	}
+	if device < 0 || device > input {
+		t.Errorf("-vaapi_device must come before -i, got %v", args)
+	}
+	chain, _ := argValue(args, "-vf")
+	if !strings.HasPrefix(chain, "scale=") || !strings.HasSuffix(chain, ",format=nv12,hwupload") {
+		t.Errorf("filter chain %q must scale first and upload last", chain)
+	}
+	if hasAnyFlag(args, "-pix_fmt") {
+		t.Error("h264_vaapi was given -pix_fmt on top of its upload filter")
+	}
+}
+
+// Une source qui tient déjà dans le barreau n'a aucun filtre logiciel : l'envoi
+// doit quand même être là, sans quoi l'encodeur reçoit des images qu'il refuse.
+func TestVAAPIUploadsEvenWithNothingElseToFilter(t *testing.T) {
+	args := BuildFFmpegArgs(TranscodeOptions{
+		InputPath: "in.mkv", Quality: "1080p", TmpDir: "/tmp/s",
+		Probe:           &ProbeResult{Video: &VideoStreamInfo{Width: 1920, Height: 1080, Codec: "hevc", FrameRate: 24}},
+		SegmentDuration: 4, AudioTypedIndexes: []int{0},
+		Encoder: vaapiEncoder(t),
+	})
+	if chain, _ := argValue(args, "-vf"); chain != "format=nv12,hwupload" {
+		t.Errorf("filter chain is %q, want the upload alone", chain)
+	}
+}
+
+// Un sous-titre incrusté se peint sur des images logicielles : l'envoi vient
+// après l'incrustation, dans le même graphe.
+func TestVAAPIUploadsAfterTheBurnedSubtitle(t *testing.T) {
+	args := BuildFFmpegArgs(TranscodeOptions{
+		InputPath: "in.mkv", Quality: "1080p", TmpDir: "/tmp/s",
+		Probe:           &ProbeResult{Video: &VideoStreamInfo{Width: 1920, Height: 1080, Codec: "hevc", FrameRate: 24}},
+		SegmentDuration: 4, AudioTypedIndexes: []int{0},
+		Encoder:      vaapiEncoder(t),
+		BurnSubtitle: true,
+	})
+	graph, _ := argValue(args, "-filter_complex")
+	if graph != "[0:v:0][0:s:0]overlay[ov];[ov]format=nv12,hwupload[vout]" {
+		t.Errorf("burn-in graph is %q", graph)
+	}
+}
+
+// libplacebo et hwupload se disputent le seul périphérique de filtres d'une
+// commande : le Dolby Vision profil 5 à tone mapper reste sur libx264.
+func TestVAAPIStepsAsideForLibplacebo(t *testing.T) {
+	setLibplaceboForTest(true)
+	t.Cleanup(func() { setLibplaceboForTest(false) })
+	setFilterSetForTest("libplacebo", "zscale", "tonemap")
+	args := BuildFFmpegArgs(TranscodeOptions{
+		InputPath: "in.mkv", Quality: "1080p", TmpDir: "/tmp/s",
+		Probe: &ProbeResult{Video: &VideoStreamInfo{
+			Width: 3840, Height: 2160, Codec: "hevc", FrameRate: 24, DoviProfile: 5,
+		}},
+		SegmentDuration: 4, AudioTypedIndexes: []int{0},
+		Encoder: vaapiEncoder(t),
+		Video:   VideoPlan{Tonemap: true},
+	})
+	if !hasFlag(args, "-c:v", "libx264") {
+		t.Error("a libplacebo session kept the VAAPI encoder")
+	}
+	if hasAnyFlag(args, "-vaapi_device") {
+		t.Error("a libplacebo session opened the VAAPI device")
+	}
+	if chain, _ := argValue(args, "-vf"); strings.Contains(chain, "hwupload") {
+		t.Errorf("a libplacebo session uploads its frames: %q", chain)
+	}
+}
+
+// L'essai au démarrage doit passer par le même périphérique et le même envoi
+// qu'une session : sans eux h264_vaapi échoue sur toute machine, circuit ou non.
+func TestEncoderProbeUsesTheSessionPipeline(t *testing.T) {
+	args := encoderProbeArgs(vaapiEncoder(t))
+	if !hasAnyFlag(args, "-vaapi_device") || !hasFlag(args, "-vf", "format=nv12,hwupload") {
+		t.Errorf("VAAPI probe lost its device or its upload: %v", args)
+	}
+	if plain := encoderProbeArgs(hardwareEncoders[0]); hasAnyFlag(plain, "-vf") {
+		t.Errorf("an encoder taking software frames was given a filter: %v", plain)
+	}
+}
+
+func TestVAAPIDeviceCanBeMoved(t *testing.T) {
+	t.Setenv("VAAPI_DEVICE", "/dev/dri/renderD129")
+	if got := vaapiDevice(); got != "/dev/dri/renderD129" {
+		t.Errorf("VAAPI_DEVICE ignored, got %q", got)
+	}
+}
+
 // The copy path takes no encoder settings at all, hardware or not.
 func TestCopyPathIgnoresTheEncoder(t *testing.T) {
 	for _, encoder := range append([]VideoEncoder{softwareEncoder}, hardwareEncoders...) {

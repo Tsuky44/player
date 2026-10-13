@@ -40,6 +40,17 @@ FROM alpine:3.24
 # FFmpeg d'une telle session.
 RUN apk --no-cache add ca-certificates tzdata ffmpeg su-exec mesa-vulkan-swrast
 
+# Les pilotes VAAPI : sans eux, FFmpeg ne voit pas le circuit vidéo d'un
+# processeur Intel ou AMD même quand /dev/dri est passé au conteneur, et tout
+# le décodage comme tout l'encodage restent sur les cœurs (ADR-0023).
+# intel-media-driver sert les Intel depuis la 5e génération, libva-intel-driver
+# ceux d'avant, mesa-va-gallium les AMD. Les deux premiers n'existent que pour
+# x86_64. ~47 Mo, chargés seulement par un FFmpeg qui ouvre le périphérique.
+RUN apk --no-cache add mesa-va-gallium \
+    && if [ "$(apk --print-arch)" = "x86_64" ]; then \
+         apk --no-cache add intel-media-driver libva-intel-driver; \
+       fi
+
 WORKDIR /app
 
 # Copy the compiled binary from the builder stage

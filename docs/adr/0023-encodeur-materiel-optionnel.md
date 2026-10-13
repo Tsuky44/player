@@ -1,7 +1,8 @@
 # ADR-0023 — L'encodeur matériel est proposé, pas supposé
 
-- **Statut :** accepté. La sélection, les trois encodeurs et le repli sont en place ; le défaut ne
-  change pas. VAAPI reste à faire.
+- **Statut :** accepté. La sélection, les quatre encodeurs et le repli sont en place ; le défaut ne
+  change pas. VAAPI ajouté le 2026-10-13 (voir « VAAPI ») : **ses commandes sont testées, mais
+  aucune session n'a tourné sur un vrai circuit Intel ou AMD.**
 - **Date :** 2026-09-16
 - **Portée :** le choix de l'encodeur H.264 des sessions HLS (`server/streaming/encoder.go`) et la
   construction de la commande FFmpeg. Le décodage, le graphe de filtres (redimensionnement, tone
@@ -80,6 +81,33 @@ libx264 vise un CRF et plafonne le résultat ; les encodeurs matériels prennent
 tiennent. Le flux se pose donc **sur** le chiffre du palier au lieu de rester en dessous — ce que le
 menu annonçait de toute façon depuis l'ADR-0022.
 
+## VAAPI (2026-10-13)
+
+Un bêta-testeur sur un i7-10700K sans carte graphique saturait sur les transcodages 4K, là où un
+autre serveur média lisait le même fichier sur la même machine. Ce processeur a un circuit vidéo ;
+l'image Docker n'en voyait rien. Trois choses manquaient, et les trois sont nécessaires :
+
+1. **Les pilotes dans l'image** (`intel-media-driver`, `libva-intel-driver`, `mesa-va-gallium`). Le
+   FFmpeg d'Alpine est compilé avec VAAPI, mais sans pilote il n'ouvre aucun périphérique. Avec eux,
+   le `-hwaccel auto` déjà présent dans chaque commande **décode** aussi sur le circuit, quel que
+   soit l'encodeur retenu.
+2. **`/dev/dri` passé au conteneur**, ce que seul l'opérateur peut faire (`devices:` du compose).
+3. **`h264_vaapi` parmi les encodeurs.** Il ne prend pas d'images logicielles : `-vaapi_device`
+   ouvre le périphérique avant l'entrée, et `format=nv12,hwupload` termine la chaîne de filtres.
+   L'essai du démarrage passe par le même périphérique et le même envoi.
+
+Quick Sync (`h264_qsv`) reste devant dans l'ordre d'essai mais ne répond pas dans l'image : Alpine
+ne fournit que le runtime oneVPL, qui commence à la 12e génération d'Intel. VAAPI sert les autres.
+
+Ce qui reste sur le processeur : la mise à l'échelle et le tone mapping. Les filtres restent
+logiciels, pour la raison du §3 — un seul graphe, quel que soit l'encodeur. Une sortie 4K d'une
+source HDR vers un écran SDR fait donc toujours son tone mapping en 4K sur les cœurs ; c'est le cas
+que `scale_vaapi` et `tonemap_vaapi` régleraient, et qui ne s'écrit pas sans la machine pour
+l'essayer.
+
+Un Dolby Vision profil 5 à tone mapper garde `libx264` : libplacebo veut Vulkan comme périphérique
+de filtres (ADR-0060), `hwupload` veut VAAPI, et une commande n'en a qu'un.
+
 ## Mesurer sur sa propre machine
 
 Le choix dépend de l'hôte, donc la mesure aussi. Le tableau ci-dessus se reproduit ainsi :
@@ -101,5 +129,5 @@ premier est confortablement au-dessus du temps réel.
 - Un encodeur nommé mais inutilisable retombe sur libx264 **en le disant dans le journal** : encoder
   silencieusement sur le CPU donnerait l'impression que le matériel est simplement lent.
 - L'encodeur retenu est résolu une fois et journalisé au démarrage.
-- Le décodage reste logiciel. Un décodage matériel épargnerait davantage encore sur une source HEVC
-  4K, mais il fait redescendre l'image en mémoire pour les filtres — c'est le même chantier que VAAPI.
+- Le décodage passe par le circuit dès que l'image a ses pilotes et que `/dev/dri` est là, puis
+  l'image redescend en mémoire pour les filtres.

@@ -208,6 +208,9 @@ func BuildFFmpegArgs(opt TranscodeOptions) []string {
 	}
 
 	args := []string{"-hide_banner", "-loglevel", "error"}
+	if !opt.Video.Copy {
+		args = append(args, opt.encoder().deviceArgs...)
+	}
 
 	// Hardware-assisted DECODING when the host offers any (VAAPI, VideoToolbox,
 	// NVDEC...). ffmpeg silently falls back to software when nothing is
@@ -286,9 +289,11 @@ func BuildFFmpegArgs(opt TranscodeOptions) []string {
 	// stream most clients can't decode. The pixel format comes from the encoder
 	// because Quick Sync wants NV12 and would otherwise convert every frame.
 	encoder := opt.encoder()
+	args = append(args, "-c:v", encoder.Name)
+	if encoder.PixelFormat != "" {
+		args = append(args, "-pix_fmt", encoder.PixelFormat)
+	}
 	args = append(args,
-		"-c:v", encoder.Name,
-		"-pix_fmt", encoder.PixelFormat,
 		"-profile:v", "high",
 		"-level", h264LevelFor(preset, opt.Probe),
 	)
@@ -502,6 +507,11 @@ func videoFilterChain(opt TranscodeOptions, preset qualityPreset) string {
 	}
 	if tm := sessionToneMapper(opt).Filter; tm != "" {
 		parts = append(parts, tm)
+	}
+	// Toujours en dernier : passé ce filtre l'image est sur le périphérique, et
+	// plus aucun filtre logiciel ne peut la toucher.
+	if upload := opt.encoder().uploadFilter; upload != "" {
+		parts = append(parts, upload)
 	}
 	return strings.Join(parts, ",")
 }
