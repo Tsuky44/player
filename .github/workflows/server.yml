@@ -7,10 +7,9 @@ name: Server
 # serveur (~6 min sur un seul runner ubuntu) quand release.yml en demande ~26
 # repartis sur trois OS. Il ne cree ni tag git ni GitHub Release.
 #
-# Les installateurs sont recuperes depuis l'image :latest deja publiee et
-# reinjectes tels quels. Sans cela le dossier /app/downloads de l'image serait
-# vide et les liens de Parametres -> Applications disparaitraient, alors que
-# seul le serveur a change.
+# L'image n'embarque pas les installateurs (ADR-0062) : le serveur les prend
+# dans la Release de sa version. Cette image porte un tag `main-<sha>`, qui n'a
+# pas de Release : elle propose celle de la plus recente.
 #
 # Publie par defaut sur :latest, le tag que suit docker-compose.prod.yml : le
 # serveur de test recupere le build par un simple `docker compose pull`.
@@ -82,32 +81,6 @@ jobs:
           registry: ghcr.io
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
-
-      # Flutter ne cross-compilant pas le desktop, ces binaires ne peuvent pas
-      # etre reconstruits ici : l'image publiee est leur seul entrepot.
-      - name: Reprendre les installateurs de l'image publiee
-        env:
-          IMAGE: ${{ steps.meta.outputs.image }}
-        run: |
-          set -euo pipefail
-          mkdir -p server/downloads
-
-          if ! docker pull --platform linux/amd64 -q "$IMAGE:latest" >/dev/null 2>&1; then
-            echo "::warning::Image :latest introuvable — l'image produite n'aura aucun installateur a proposer. Lancez le workflow Release au moins une fois."
-            exit 0
-          fi
-
-          CID="$(docker create --platform linux/amd64 "$IMAGE:latest")"
-          docker cp "$CID:/app/downloads/." server/downloads/ 2>/dev/null || true
-          docker rm "$CID" >/dev/null
-
-          COUNT="$(find server/downloads -maxdepth 1 -type f ! -name '.gitkeep' | wc -l | tr -d ' ')"
-          if [ "$COUNT" -eq 0 ]; then
-            echo "::warning::Aucun installateur dans l'image :latest."
-          else
-            echo "$COUNT installateur(s) repris :"
-            ls -lh server/downloads
-          fi
 
       # Embarque dans le binaire Go via go:embed : doit exister avant le build.
       - name: Build du client Web

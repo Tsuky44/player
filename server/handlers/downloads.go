@@ -2,14 +2,15 @@ package handlers
 
 // Client app downloads (APK / DMG / EXE).
 //
-// The binaries are baked into the Docker image at /app/downloads by
-// publish-image.sh, which stages whatever the publishing host was able to build
-// (macOS produces the DMG, Windows produces the EXE, both produce the APK) on
-// top of the artifacts recovered from the previously published image. The
-// directory is therefore the source of truth: no manifest file to keep in sync,
-// the handler simply describes what is actually there.
+// The installers are no longer baked into the Docker image (ADR-0062): they are
+// the assets of the GitHub Release that carries the server's own version, see
+// releasedl. A file dropped by hand in the downloads directory (the admin
+// upload below, a volume mount) still wins over the Release for its platform.
+// Either way no manifest file is kept: the handler describes what is actually
+// there.
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -38,9 +39,13 @@ type DownloadArtifact struct {
 	URL      string `json:"url"`
 	Version  string `json:"version"`
 	Size     int64  `json:"size"`
-	// BuiltAt is the file's modification time (RFC3339). Docker preserves it
-	// through COPY, so it really is the moment the artifact was produced.
+	// BuiltAt is the file's modification time (RFC3339), or the moment the
+	// Release asset was uploaded: when the artifact was produced.
 	BuiltAt string `json:"built_at"`
+
+	// fromRelease: the file is a Release asset, fetched on first download
+	// rather than sitting in the downloads directory.
+	fromRelease bool
 }
 
 // platformForExt maps an extension to the platform label shown in the UI, and
@@ -96,76 +101,110 @@ func DownloadsDir() string {
 	return "./downloads"
 }
 
-// listArtifacts scans the directory on every call. It is a handful of stat
-// calls on a directory holding at most a few files, and it means an artifact
-// dropped in through a volume mount shows up without a restart.
-//
-// Exactly one entry per platform: `.exe` and `.zip` both map "windows" to two
-// different extensions (installer vs portable), but nothing stops two files of
-// the *same* extension from sitting in the directory at once — a build staged
-// by hand, an interrupted publish, a leftover from before the staging script's
-// own cleanup ran. Silently listing both used to mean the client compared
-// itself against whichever sorted first alphabetically, which is not
-// necessarily the newest: "Onyx-0.9.0-windows.exe" comes before
-// "Onyx-1.0.0-windows.exe", so a stale lower-numbered leftover could shadow the
-// real update. Keeping the highest version per platform (or, when a name fails
-// to parse, the most recently written file) makes the listing agree with the
-// version compare a client does anyway.
-func listArtifacts() []DownloadArtifact {
-	dir := DownloadsDir()
-	entries, err := os.ReadDir(dir)
+// candidate is one file competing for its platform's slot in the listing.
+type candidate struct {
+	artifact DownloadArtifact
+	modTime  time.Time
+}
+
+// newCandidate describes a file by its name, or false when it is not an
+// installer (platformForExt is the whitelist).
+func newCandidate(name string, size int64, modTime time.Time) (candidate, bool) {
+	meta, known := artifactKindFor(name)
+	if !known {
+		return candidate{}, false
+	}
+	version := ""
+	if m := versionInName.FindStringSubmatch(name); m != nil {
+		version = m[1]
+	}
+	return candidate{
+		artifact: DownloadArtifact{
+			Platform: meta.platform,
+			Label:    meta.label,
+			File:     name,
+			URL:      "/api/downloads/" + name,
+			Version:  version,
+			Size:     size,
+			BuiltAt:  modTime.UTC().Format("2006-01-02T15:04:05Z"),
+		},
+		modTime: modTime,
+	}, true
+}
+
+// localCandidates scans the downloads directory on every call. It is a handful
+// of stat calls on a directory holding at most a few files, and it means an
+// artifact dropped in through a volume mount shows up without a restart.
+func localCandidates() []candidate {
+	entries, err := os.ReadDir(DownloadsDir())
 	if err != nil {
-		// No directory at all (dev checkout, image built before this feature):
-		// an empty list, never an error — the UI just hides the section.
-		return []DownloadArtifact{}
+		// No directory at all (dev checkout, nothing uploaded): no candidates,
+		// never an error.
+		return nil
 	}
-
-	type candidate struct {
-		artifact DownloadArtifact
-		modTime  time.Time
-	}
-	best := map[string]candidate{}
-
+	var found []candidate
 	for _, entry := range entries {
 		if entry.IsDir() {
-			continue
-		}
-		meta, known := artifactKindFor(entry.Name())
-		if !known {
 			continue
 		}
 		info, err := entry.Info()
 		if err != nil {
 			continue
 		}
-
-		version := ""
-		if m := versionInName.FindStringSubmatch(entry.Name()); m != nil {
-			version = m[1]
+		if c, ok := newCandidate(entry.Name(), info.Size(), info.ModTime()); ok {
+			found = append(found, c)
 		}
+	}
+	return found
+}
 
-		next := candidate{
-			artifact: DownloadArtifact{
-				Platform: meta.platform,
-				Label:    meta.label,
-				File:     entry.Name(),
-				URL:      "/api/downloads/" + entry.Name(),
-				Version:  version,
-				Size:     info.Size(),
-				BuiltAt:  info.ModTime().UTC().Format("2006-01-02T15:04:05Z"),
-			},
-			modTime: info.ModTime(),
+// listLocalArtifacts is what sits in the downloads directory, and only that:
+// the files the admin can replace or delete.
+func listLocalArtifacts() []DownloadArtifact {
+	return bestPerPlatform(localCandidates())
+}
+
+// listArtifacts is what the server offers: the files of the downloads
+// directory, completed by the Release of the server's own version for every
+// platform the directory leaves empty (ADR-0062).
+func listArtifacts(ctx context.Context) []DownloadArtifact {
+	all := localCandidates()
+	have := map[string]bool{}
+	for _, c := range all {
+		have[c.artifact.Platform] = true
+	}
+	for _, c := range releaseCandidates(ctx) {
+		if !have[c.artifact.Platform] {
+			all = append(all, c)
 		}
+	}
+	return bestPerPlatform(all)
+}
 
-		current, exists := best[meta.platform]
+// bestPerPlatform keeps exactly one entry per platform: `.exe` and `.zip` both
+// map "windows" to two different extensions (installer vs portable), but
+// nothing stops two files of the *same* extension from sitting in the directory
+// at once — a build staged by hand, an interrupted publish, a leftover.
+// Silently listing both used to mean the client compared itself against
+// whichever sorted first alphabetically, which is not necessarily the newest:
+// "Onyx-0.9.0-windows.exe" comes before "Onyx-1.0.0-windows.exe", so a stale
+// lower-numbered leftover could shadow the real update. Keeping the highest
+// version per platform (or, when a name fails to parse, the most recently
+// written file) makes the listing agree with the version compare a client does
+// anyway.
+func bestPerPlatform(candidates []candidate) []DownloadArtifact {
+	best := map[string]candidate{}
+	for _, next := range candidates {
+		platform := next.artifact.Platform
+		current, exists := best[platform]
 		if !exists {
-			best[meta.platform] = next
+			best[platform] = next
 			continue
 		}
 		if cmp := compareVersions(next.artifact.Version, current.artifact.Version); cmp > 0 {
-			best[meta.platform] = next
+			best[platform] = next
 		} else if cmp == 0 && next.modTime.After(current.modTime) {
-			best[meta.platform] = next
+			best[platform] = next
 		}
 	}
 
@@ -250,7 +289,7 @@ func ListDownloads(w http.ResponseWriter, r *http.Request, _ httprouter.Params) 
 	// The set changes only on a deploy, but a stale list would point at files
 	// that no longer exist, so keep it short-lived.
 	w.Header().Set("Cache-Control", "public, max-age=60")
-	json.NewEncoder(w).Encode(artifactsResponse{Artifacts: listArtifacts()})
+	json.NewEncoder(w).Encode(artifactsResponse{Artifacts: listArtifacts(r.Context())})
 }
 
 // ServeDownload streams one artifact. The browser downloads it directly, so
@@ -261,7 +300,7 @@ func ServeDownload(w http.ResponseWriter, r *http.Request, ps httprouter.Params)
 	name := filepath.Base(strings.TrimPrefix(ps.ByName("file"), "/"))
 
 	var match *DownloadArtifact
-	for _, a := range listArtifacts() {
+	for _, a := range listArtifacts(r.Context()) {
 		if a.File == name {
 			artifact := a
 			match = &artifact
@@ -273,7 +312,10 @@ func ServeDownload(w http.ResponseWriter, r *http.Request, ps httprouter.Params)
 		return
 	}
 
-	path := filepath.Join(DownloadsDir(), match.File)
+	path, ok := downloadPath(w, r, *match)
+	if !ok {
+		return
+	}
 	f, err := os.Open(path)
 	if err != nil {
 		http.Error(w, "download not found", http.StatusNotFound)
@@ -302,11 +344,11 @@ func ServeDownload(w http.ResponseWriter, r *http.Request, ps httprouter.Params)
 // ---------------------------------------------------------------------------
 // Administration: replacing the artifacts by hand.
 //
-// The normal path is a publish, which bakes the installers into the image. That
-// requires a build machine for every platform, so the admin account can also
-// drop a file in directly — a locally built EXE, a signed DMG rebuilt by hand —
-// and it takes effect immediately, listArtifacts() reading the directory on
-// every call.
+// The normal path is the Release of the server's version (ADR-0062), but the
+// admin account can also drop a file in directly — a locally built EXE, a signed
+// DMG rebuilt by hand — and it takes effect immediately, localCandidates()
+// reading the directory on every call. It wins over the Release for its
+// platform.
 // ---------------------------------------------------------------------------
 
 // maxUploadBytes caps an uploaded installer. Well above the ~150 MB artifacts
@@ -392,7 +434,7 @@ func UploadDownload(w http.ResponseWriter, r *http.Request, _ httprouter.Params,
 				return
 			}
 
-			// `.tmp`, never the real extension: listArtifacts() would otherwise
+			// `.tmp`, never the real extension: localCandidates() would otherwise
 			// pick the half-written file up as the platform's artifact — and the
 			// replace sweep below would delete it just before the rename.
 			tmp, err := os.CreateTemp(dir, ".upload-*.tmp")
@@ -451,7 +493,7 @@ func UploadDownload(w http.ResponseWriter, r *http.Request, _ httprouter.Params,
 
 	// One artifact per platform: drop the previous one whatever its version,
 	// exactly like the staging script does.
-	for _, existing := range listArtifacts() {
+	for _, existing := range listLocalArtifacts() {
 		if existing.Platform == meta.platform {
 			os.Remove(filepath.Join(dir, existing.File))
 		}
@@ -468,7 +510,7 @@ func UploadDownload(w http.ResponseWriter, r *http.Request, _ httprouter.Params,
 		log.Printf("UploadDownload: chmod %s: %v", finalPath, err)
 	}
 
-	json.NewEncoder(w).Encode(artifactsResponse{Artifacts: listArtifacts()})
+	json.NewEncoder(w).Encode(artifactsResponse{Artifacts: listArtifacts(r.Context())})
 }
 
 // DeleteDownload removes one published artifact (DELETE /api/downloads/:file).
@@ -480,7 +522,7 @@ func DeleteDownload(w http.ResponseWriter, r *http.Request, ps httprouter.Params
 	name := filepath.Base(strings.TrimPrefix(ps.ByName("file"), "/"))
 
 	found := false
-	for _, a := range listArtifacts() {
+	for _, a := range listLocalArtifacts() {
 		if a.File == name {
 			found = true
 			break
@@ -497,5 +539,5 @@ func DeleteDownload(w http.ResponseWriter, r *http.Request, ps httprouter.Params
 		return
 	}
 
-	json.NewEncoder(w).Encode(artifactsResponse{Artifacts: listArtifacts()})
+	json.NewEncoder(w).Encode(artifactsResponse{Artifacts: listArtifacts(r.Context())})
 }

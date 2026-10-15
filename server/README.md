@@ -504,17 +504,12 @@ aperçus). Un lien tient au plus quatre lectures simultanées.
 ### 📥 6. Téléchargement des applications clientes
 
 * **Routes :** `GET /api/downloads` · `GET /api/downloads/:fichier`
-* **Comportement :** Publie les applications installables (APK Android, DMG macOS, EXE Windows) embarquées dans l'image Docker sous `/app/downloads`. La liste est construite en scannant le dossier, il n'y a donc aucun manifeste à maintenir. Le fichier est servi en `attachment` avec support des Range Requests (une reprise après coupure ne repart pas de zéro). L'APK et les IPA sont servis avec l'adresse de téléchargement glissée dedans (`server/installorigin`, ADR-0042) : l'app installée s'ouvre avec l'adresse du serveur préremplie. Le fichier servi fait donc quelques dizaines d'octets de plus que le `size` annoncé par la liste.
+* **Comportement :** Publie les applications installables (APK Android, DMG macOS, EXE et ZIP Windows, IPA iOS et Apple TV) **de la version du serveur** : celles de la GitHub Release `v<version>` (`server/releasedl`, ADR-0062). Un serveur en 1.2.0 propose les installeurs de la 1.2.0, pas ceux d'une version plus récente ni plus ancienne. Une image de développement (`dev`, `main-<sha>`), qui n'a pas de Release, propose celle de la plus récente. L'image Docker n'embarque aucun installeur. Un installeur est téléchargé depuis GitHub à la première demande, puis resservi depuis `release-cache/` (à côté de la base) ; les installeurs de la version précédente sont supprimés à la mise à jour. Le fichier est servi en `attachment` avec support des Range Requests (une reprise après coupure ne repart pas de zéro). L'APK et les IPA sont servis avec l'adresse de téléchargement glissée dedans (`server/installorigin`, ADR-0042) : l'app installée s'ouvre avec l'adresse du serveur préremplie. Le fichier servi fait donc quelques dizaines d'octets de plus que le `size` annoncé par la liste.
+* **Réglages :** `RELEASE_REPO=off` coupe la source GitHub (serveur sans accès Internet) ; `RELEASE_REPO=<proprietaire>/<depot>` en désigne une autre. `DOWNLOADS_DIR` (par défaut `/app/downloads`) reste un dossier d'installeurs posés à la main (envoi par l'administrateur, volume) : un fichier qui s'y trouve l'emporte sur la Release pour sa plateforme.
 * **Publiques (sans authentification) :** c'est par là qu'un nouvel utilisateur récupère l'app avant d'avoir un compte, et un téléchargement navigateur ne peut pas porter d'en-tête `Authorization`.
 * **Réponse (JSON) :** `{"artifacts": [{"platform": "macos", "label": "macOS", "file": "Onyx-1.0.0-macos.dmg", "url": "/api/downloads/Onyx-1.0.0-macos.dmg", "version": "1.0.0", "size": 43374616, "built_at": "2026-08-12T10:08:14Z"}]}`
-* **Côté client :** la section « Applications » de l'écran Paramètres liste ce que le serveur propose. Elle disparaît d'elle-même si aucun artefact n'est embarqué.
+* **Côté client :** la section « Applications » de l'écran Paramètres liste ce que le serveur propose. Elle disparaît d'elle-même si le serveur n'a aucun installeur à proposer (Release introuvable et rien dans le cache).
 
-#### Comment les fichiers arrivent dans l'image
+#### D'où viennent les fichiers
 
-Flutter ne cross-compile pas les cibles desktop : **un Mac produit le DMG et l'APK, une machine Windows produit l'EXE et l'APK, aucune machine ne produit les trois**. `publish-image.sh` (et `publish-image.ps1`) contournent ça en trois temps :
-
-1. récupération des artefacts déjà publiés depuis l'image `:latest` (`docker create` + `docker cp`) — l'image précédente sert de stockage entre les machines de build ;
-2. build local optionnel (`scripts/build-releases.sh`, mode auto selon l'OS) puis staging via `scripts/stage-downloads.sh`, qui renomme en `Onyx-<version>-<plateforme>.<ext>` et remplace l'artefact précédent de cette plateforme ;
-3. `docker buildx build --push`, le `COPY downloads/` du Dockerfile embarquant le tout.
-
-Conséquence : publier depuis le Mac met à jour le DMG et l'APK **sans perdre** l'EXE publié depuis Windows, et inversement. Répondre `n` à la question du build conserve simplement les artefacts de la publication précédente.
+Le workflow `release.yml` construit les installeurs sur trois systèmes (Flutter ne cross-compile pas le desktop), les joint à la Release `v<version>` et publie l'image avec `--build-arg VERSION=<version>` : c'est cette version que le serveur annonce sur `/api/ping` et dont il cherche la Release. `publish-image.sh` / `.ps1` publient l'image seule ; elle n'aura d'installeurs à proposer que si la Release correspondante existe.

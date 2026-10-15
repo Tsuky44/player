@@ -14,6 +14,7 @@ import (
 	"syscall"
 	"time"
 
+	"project-player/server/buildinfo"
 	"project-player/server/config"
 	"project-player/server/database"
 	"project-player/server/devline"
@@ -23,6 +24,7 @@ import (
 	"project-player/server/logging"
 	"project-player/server/middleware"
 	"project-player/server/models"
+	"project-player/server/releasedl"
 	"project-player/server/safego"
 	"project-player/server/streaming"
 	"project-player/server/webui"
@@ -52,6 +54,17 @@ func main() {
 	}
 	defer db.Close()
 	config.LoadCache()
+
+	// Les installeurs de l'app viennent de la Release de la version du serveur
+	// (ADR-0062), gardés à côté de la base. RELEASE_REPO=off les coupe, pour un
+	// serveur sans accès à GitHub.
+	if repo := strings.TrimSpace(os.Getenv("RELEASE_REPO")); repo != "off" {
+		handlers.SetReleaseSource(releasedl.New(releasedl.Config{
+			Version:  buildinfo.Version,
+			Repo:     repo,
+			CacheDir: filepath.Join(filepath.Dir(absDbPath), "release-cache"),
+		}))
+	}
 
 	if err := handlers.InitStream(); err != nil {
 		log.Fatalf("Failed to initialize stream handler: %v", err)

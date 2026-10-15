@@ -56,20 +56,17 @@ WORKDIR /app
 # Copy the compiled binary from the builder stage
 COPY --from=builder /app/media-server .
 
-# Create the data directory (where the database lives)
-RUN mkdir -p /app/data
+# Create the data directory (where the database lives). /app/downloads starts
+# empty: the installers are no longer baked into the image but fetched from the
+# GitHub Release of the server's version (ADR-0062). The folder stays for an
+# installer the admin uploads by hand, which wins over the Release.
+RUN mkdir -p /app/data /app/downloads
 
 # Le `sed` retire les fins de ligne Windows : l'image se construit aussi depuis
 # un poste Windows (publish-image.ps1), où le script arrive en CRLF et ne
 # trouverait plus son interpréteur (« /bin/sh^M »).
 COPY docker-entrypoint.sh /app/docker-entrypoint.sh
 RUN sed -i 's/\r$//' /app/docker-entrypoint.sh && chmod +x /app/docker-entrypoint.sh
-
-# Installable client apps (APK / DMG / EXE) served on /api/downloads. Staged by
-# publish-image.sh, which mixes what this host could build with what it pulled
-# out of the previously published image — Flutter cannot cross-compile desktop
-# targets, so no single machine produces all three.
-COPY downloads/ /app/downloads/
 
 # Default port
 EXPOSE 8080

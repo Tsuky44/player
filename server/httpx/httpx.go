@@ -111,6 +111,12 @@ var (
 	// Long is for the MediaHub proxy, where the upstream does real work before
 	// answering.
 	Long = newClient(30 * time.Second)
+
+	// Download rapatrie un fichier de plusieurs dizaines de Mo (les installeurs
+	// d'une Release GitHub, ADR-0062). Pas d'échéance globale : elle couperait
+	// le transfert d'un hôte sur une liaison lente. L'appelant borne par le
+	// contexte de la requête qui attend le fichier.
+	Download = newClient(0)
 )
 
 // UserDirected sert les appels vers une adresse qu'un utilisateur a saisie

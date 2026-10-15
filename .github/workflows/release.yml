@@ -640,27 +640,26 @@ jobs:
           channel: stable
           cache: true
 
-      # Le Dockerfile fait `COPY downloads/ /app/downloads/`, et le handler Go
-      # scanne ce dossier au runtime pour construire /api/downloads. Deposer les
-      # fichiers ici suffit donc a faire apparaitre les liens dans l'UI : rien a
-      # declarer ailleurs.
+      # Les installateurs ne vont plus dans l'image (ADR-0062) : ils sont joints
+      # a la Release ci-dessous, et le serveur de cette version va les y chercher
+      # (server/releasedl).
       - name: Recuperer les installateurs
         uses: actions/download-artifact@v4
         with:
           pattern: installer-*
           merge-multiple: true
-          path: server/downloads
+          path: release-assets
 
       - name: Inventaire des installateurs
         run: |
           set -euo pipefail
-          ls -lh server/downloads
+          ls -lh release-assets
           {
-            echo "### Installateurs embarques"
+            echo "### Installateurs de la Release"
             echo ""
             echo "| Fichier | Taille |"
             echo "|---|---|"
-            for f in server/downloads/*; do
+            for f in release-assets/*; do
               [ -f "$f" ] || continue
               case "$f" in *.gitkeep) continue ;; esac
               echo "| $(basename "$f") | $(du -h "$f" | cut -f1) |"
@@ -690,6 +689,10 @@ jobs:
           context: ./server
           platforms: linux/amd64
           push: true
+          # La version que le serveur annonce sur /api/ping, et d'apres laquelle
+          # il choisit la Release dont il propose les installateurs.
+          build-args: |
+            VERSION=${{ needs.prepare.outputs.version }}
           tags: |
             ${{ needs.prepare.outputs.image }}:latest
             ${{ needs.prepare.outputs.image }}:${{ needs.prepare.outputs.version_tag }}
@@ -697,8 +700,8 @@ jobs:
           cache-from: type=gha
           cache-to: type=gha,mode=max
 
-      # Double distribution : l'image sert les installateurs sur /api/downloads
-      # pour qui a deja un serveur, la Release les sert a qui n'en a pas encore.
+      # La Release est l'unique entrepot des installateurs : elle les sert a qui
+      # n'a pas encore de serveur, et chaque serveur y prend ceux de sa version.
       - name: GitHub Release
         uses: softprops/action-gh-release@v2
         with:
@@ -709,11 +712,11 @@ jobs:
           name: Onyx ${{ needs.prepare.outputs.version }}
           generate_release_notes: true
           files: |
-            server/downloads/*.exe
-            server/downloads/*.zip
-            server/downloads/*.dmg
-            server/downloads/*.apk
-            server/downloads/*.ipa
+            release-assets/*.exe
+            release-assets/*.zip
+            release-assets/*.dmg
+            release-assets/*.apk
+            release-assets/*.ipa
           body: |
             ## Image Docker
 
@@ -723,5 +726,6 @@ jobs:
 
             Tags publies : `latest`, `${{ needs.prepare.outputs.version_tag }}`, `${{ needs.prepare.outputs.minor_tag }}`
 
-            Les installateurs ci-dessous sont aussi embarques dans l'image et
-            servis par le serveur sur `/api/downloads` (Parametres -> Applications).
+            Un serveur en version ${{ needs.prepare.outputs.version }} propose ces
+            installateurs sur `/api/downloads` (Parametres -> Applications) : il
+            les telecharge ici a la premiere demande.

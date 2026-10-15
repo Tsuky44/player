@@ -14,10 +14,11 @@
 - l'image `ghcr.io/tsuky44/playeur-server` taguée `latest`, `v<version>`, `v<majeur.mineur>`
 - une GitHub Release portant tous les installateurs
 
-Les installateurs sont copiés dans `server/downloads/` avant le build Docker.
-`server/handlers/downloads.go` scanne ce dossier au runtime : les liens
-apparaissent dans **Paramètres → Applications** sans aucune déclaration
-supplémentaire.
+Les installateurs ne sont plus embarqués dans l'image (ADR-0062) : ils ne vivent
+que dans la GitHub Release. Un serveur d'une version donnée (`--build-arg
+VERSION`, annoncée sur `/api/ping`) télécharge ceux de la Release `v<version>`
+à la première demande (`server/releasedl`) ; ils apparaissent dans
+**Paramètres → Applications** sans aucune déclaration supplémentaire.
 
 ## Déclencher
 
@@ -56,11 +57,9 @@ job depuis l'UI : les autres artefacts sont conservés le temps du run.
 
 ## Rapport avec `publish-image.sh`
 
-Le script local reste utilisable pour une publication depuis ce Mac. Il porte un
-contournement dont la CI n'a pas besoin : comme Flutter ne cross-compile pas le
-desktop, il récupère par `docker pull` les artefacts que l'hôte ne sait pas
-produire dans l'image précédente. Dans la CI, les trois plateformes ont chacune
-leur runner, donc chaque publication repart d'artefacts frais.
+Le script local ne publie plus que l'image : sans la Release `v<version>`, le
+serveur n'a aucun installeur à proposer. Pour une version complète, lancer le
+workflow.
 
 ## Secrets à configurer
 
