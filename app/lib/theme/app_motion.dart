@@ -33,6 +33,13 @@ abstract final class AppMotion {
   /// le focus court devant une rangée pas encore construite.
   static const Duration track = Duration(milliseconds: 90);
 
+  /// Une dérive lente qui anime une image fixe — le zoom de l'aperçu au survol
+  /// d'une carte « Reprendre ». Hors de la plage 180–280 ms parce que ce n'est
+  /// pas une transition : rien n'attend qu'elle finisse, elle donne seulement
+  /// de la vie à une suite d'images. Toujours passée par [move], donc nulle
+  /// sous « réduire les animations ».
+  static const Duration ambient = Duration(milliseconds: 2600);
+
   /// The app's only curve (`PROJECT_DESIGN.md` §10: "ease-out").
   static const Curve curve = Curves.easeOut;
 

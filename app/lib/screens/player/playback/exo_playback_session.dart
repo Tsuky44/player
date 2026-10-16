@@ -157,7 +157,13 @@ class ExoPlaybackSession implements PlaybackSession {
   }
 
   @override
-  Widget buildSurface({Key? key, required BoxFit fit, double? aspectRatio}) {
+  Widget buildSurface({
+    Key? key,
+    required BoxFit fit,
+    double? aspectRatio,
+    // Pas encore appliquée par ce moteur : voir ADR-0067.
+    Rect? activeArea,
+  }) {
     // Le cadrage ne peut pas être posé par un widget parent : une SurfaceView
     // est une couche du système, pas un pixel de la scène. Il descend donc au
     // natif, où la vue se redimensionne elle-même.

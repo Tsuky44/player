@@ -200,10 +200,15 @@ abstract interface class PlaybackSession {
   /// Elle appartient au moteur : mpv dessine dans une texture, ExoPlayer dans
   /// une `SurfaceView` composée par le plan vidéo de l'écran. Ce sont deux
   /// widgets différents, et l'appelant n'a pas à savoir lequel.
+  ///
+  /// [activeArea] est la part du cadre qui est l'image, sans ses bandes
+  /// incrustées : [fit] s'applique à elle, pas au cadre entier. Voir
+  /// `NativeVideoFraming.frameRect` et l'ADR-0067.
   Widget buildSurface({
     Key? key,
     required BoxFit fit,
     double? aspectRatio,
+    Rect? activeArea,
   });
 
   /// Remonte les sous-titres au-dessus de la barre de progression.

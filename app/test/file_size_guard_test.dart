@@ -29,10 +29,6 @@ const Map<String, (int ceiling, String why)> _grandfathered = {
     958,
     'deux écrans dans un fichier : la liste des serveurs et l’ajout',
   ),
-  'lib/screens/library/show_detail_screen.dart': (
-    868,
-    'la fiche série entière dans une seule classe d’état',
-  ),
   'lib/screens/settings/widgets/settings_ui.dart': (
     866,
     'quinze widgets de réglages ; à ranger par famille',

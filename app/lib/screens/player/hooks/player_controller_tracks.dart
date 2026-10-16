@@ -364,15 +364,19 @@ extension PlayerControllerTracks on PlayerController {
 
   /// Ce qu'on fait d'une panne du moteur.
   ///
-  /// Une panne après la première image ne se rattrape pas ici : la lecture a
-  /// démarré, et les chemins de reprise — relais, reconnexion, rechargement
-  /// HLS — ont déjà leurs propres déclencheurs. Ce qui manquait est l'autre
-  /// cas : une panne *pendant* le démarrage, qui sur Android ne laissait rien
+  /// Après la première image, seule une source perdue se rattrape ici (voir
+  /// [StreamCutRecovery]) : les autres chemins de reprise — relais,
+  /// rechargement HLS — ont leurs propres déclencheurs. Ce qui manquait est
+  /// l'autre cas : une panne *pendant* le démarrage, qui sur Android ne laissait rien
   /// voir avant le délai de vingt-cinq secondes, et qui pour un conteneur
   /// illisible ne laissait rien voir du tout — le repli en transcodage que
   /// [PlaybackFailureKind.unsupported] nomme n'était branché nulle part.
   Future<void> _handleFailure(PlaybackFailure failure) async {
     if (hasFirstFrame) {
+      // Une source perdue en route — le serveur qui redémarre — se rouvre à
+      // la seconde atteinte, comme la fin prématurée que mpv annonce à la
+      // place : ExoPlayer, lui, rapporte une panne.
+      if (failure.kind == PlaybackFailureKind.source && _absorbCut()) return;
       debugPrint('Player: panne en cours de lecture — $failure');
       return;
     }

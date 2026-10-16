@@ -14,6 +14,7 @@ import 'poster_card.dart';
 import 'poster_launch_route.dart';
 import 'pressable.dart';
 import 'progress_pill.dart';
+import 'resume_preview/resume_preview_anchor.dart';
 import '../../theme/app_icons.dart';
 import '../../theme/app_type.dart';
 import '../../l10n/tr.dart';
@@ -175,7 +176,15 @@ class _ContinueWatchingCardState extends State<ContinueWatchingCard> {
               crossAxisAlignment: CrossAxisAlignment.start,
               mainAxisSize: MainAxisSize.min,
               children: [
-                Pressable(
+                // La souris qui s'attarde sur l'affiche ouvre son aperçu.
+                ResumePreviewAnchor(
+                  item: widget.item,
+                  detail: detail,
+                  onPlay: _play,
+                  onDetails: widget.onTitleTap == null
+                      ? null
+                      : () => widget.onTitleTap!(_origin()),
+                  child: Pressable(
                   onTap: _play,
                   // L'affiche n'a pas de texte : sans ce nom, un lecteur
                   // d'écran n'annonce qu'un bouton.
@@ -238,6 +247,7 @@ class _ContinueWatchingCardState extends State<ContinueWatchingCard> {
                       ),
                     ),
                   )),
+                ),
                 ),
                 const SizedBox(height: 6),
                 MouseRegion(

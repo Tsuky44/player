@@ -497,6 +497,8 @@ class _PlayerScreenState extends State<PlayerScreen> {
                           child: _playerController.session.buildSurface(
                             fit: _displayMode.fit,
                             aspectRatio: _playerController.videoAspectRatio,
+                            activeArea: _playerController
+                                .mediaTracks?.activeArea,
                           ),
                         ),
                 ),

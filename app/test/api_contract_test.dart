@@ -129,6 +129,8 @@ void main() {
         reason: 'une marche sans `key` ni `label` est écartée par l\'app');
     expect(tracks.sourceBitrateBps, greaterThan(0),
         reason: 'la qualité automatique choisit ses barreaux contre ce débit');
+    expect(tracks.activeArea, isNotNull,
+        reason: 'les modes d\'affichage zooment sur la zone utile (ADR-0067)');
   });
 
   test('ce que le serveur annonce de lui-même', () {

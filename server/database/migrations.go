@@ -742,6 +742,19 @@ var migrations = []migration{
 			`CREATE INDEX IF NOT EXISTS idx_media_share_progress_media_id ON media_share_progress(media_id);`,
 		},
 	},
+	{
+		id:   25,
+		name: "active picture area",
+		// Voir ADR-0067. Les bandes noires incrustées dans le fichier, mesurées
+		// une fois par ffmpeg : active_area est la zone utile en JSON
+		// (fractions du cadre), NULL quand le cadre entier est l'image. La
+		// marque dit qu'on a regardé, pour ne pas redécoder à chaque passage ;
+		// les deux sont effacées quand le fichier change.
+		stmts: []string{
+			`ALTER TABLE medias ADD COLUMN active_area TEXT;`,
+			`ALTER TABLE medias ADD COLUMN active_area_checked_at TIMESTAMP;`,
+		},
+	},
 }
 
 // applyMigrations brings the database up to the latest schema version.

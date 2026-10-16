@@ -70,7 +70,8 @@ func (f indexedFile) refresh(info os.FileInfo) error {
 	// A new file also earns a new attempt at what failed on the old one.
 	_, err := database.DB.Exec(`UPDATE medias SET file_size=?, file_mod_time=?,
  tracks_json=NULL, probed_at=NULL, gop_seconds=NULL, duration=0, probe_failed_at=NULL,
- intro_start=0, intro_end=0, outro_start=0, outro_end=0, intro_checked_at=NULL WHERE id=?`, info.Size(), info.ModTime().Unix(), f.id)
+ intro_start=0, intro_end=0, outro_start=0, outro_end=0, intro_checked_at=NULL,
+ active_area=NULL, active_area_checked_at=NULL WHERE id=?`, info.Size(), info.ModTime().Unix(), f.id)
 	if err == nil {
 		streamcache.Global().Invalidate(f.id)
 	}

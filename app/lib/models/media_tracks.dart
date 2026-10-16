@@ -1,3 +1,5 @@
+import 'dart:ui' show Rect;
+
 import '../l10n/app_language.dart';
 import '../l10n/tr.dart';
 import 'media_subtitle_track.dart';
@@ -344,12 +346,20 @@ class MediaTracks {
   /// qualité automatique s'en sert pour choisir un barreau (ADR-0056).
   final int sourceBitrateBps;
 
+  /// L'image sans ses bandes noires incrustées dans le fichier, en fractions
+  /// du cadre ; null quand le cadre entier est l'image, qu'il n'a pas encore
+  /// été mesuré ou que le serveur est trop ancien pour le mesurer. Les modes
+  /// d'affichage zooment sur elle (ADR-0067). Lue telle quelle : c'est à
+  /// l'affichage de refuser une mesure absurde.
+  final Rect? activeArea;
+
   MediaTracks({
     this.video,
     required this.audio,
     required this.subtitles,
     this.qualities = const [],
     this.sourceBitrateBps = 0,
+    this.activeArea,
   });
 
   factory MediaTracks.fromJson(Map<String, dynamic> json) {
@@ -366,6 +376,7 @@ class MediaTracks {
               .toList() ??
           [],
       sourceBitrateBps: (json['source_bitrate_bps'] as num?)?.toInt() ?? 0,
+      activeArea: _activeAreaFromJson(json['active_area']),
       qualities: (json['qualities'] as List<dynamic>?)
               ?.whereType<Map<String, dynamic>>()
               .map(QualityTier.fromJson)
@@ -374,4 +385,14 @@ class MediaTracks {
           const [],
     );
   }
+}
+
+Rect? _activeAreaFromJson(Object? json) {
+  if (json is! Map<String, dynamic>) return null;
+  final x = (json['x'] as num?)?.toDouble();
+  final y = (json['y'] as num?)?.toDouble();
+  final width = (json['width'] as num?)?.toDouble();
+  final height = (json['height'] as num?)?.toDouble();
+  if (x == null || y == null || width == null || height == null) return null;
+  return Rect.fromLTWH(x, y, width, height);
 }

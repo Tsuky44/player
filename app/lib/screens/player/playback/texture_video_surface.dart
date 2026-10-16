@@ -31,12 +31,17 @@ class TextureVideoSurface extends StatefulWidget {
     required this.videoKey,
     required this.fit,
     this.aspectRatio,
+    this.activeArea,
   });
 
   final VideoController controller;
   final GlobalKey<VideoState> videoKey;
   final BoxFit fit;
   final double? aspectRatio;
+
+  /// La part du cadre qui est l'image, sans ses bandes incrustées. Voir
+  /// [NativeVideoFraming.frameRect].
+  final Rect? activeArea;
 
   /// Le temps de calme avant de retailler la texture.
   static const Duration settleDelay = Duration(milliseconds: 250);
@@ -143,7 +148,9 @@ class _TextureVideoSurfaceState extends State<TextureVideoSurface> {
     final aspect = widget.aspectRatio ??
         (videoHeight > 0 ? videoWidth / videoHeight : 0.0);
     final size = TextureVideoSurface.nextSize(
-      logical: NativeVideoFraming.framedSize(widget.fit, aspect, logical),
+      logical: NativeVideoFraming.frameRect(widget.fit, aspect, logical,
+              activeArea: widget.activeArea)
+          .size,
       pixelRatio: pixelRatio,
       videoWidth: videoWidth,
       videoHeight: videoHeight,
@@ -174,12 +181,44 @@ class _TextureVideoSurfaceState extends State<TextureVideoSurface> {
         WidgetsBinding.instance.addPostFrameCallback((_) {
           if (mounted) _requestSize(constraints.biggest, pixelRatio);
         });
-        return Video(
+        final video = Video(
           key: widget.videoKey,
           controller: widget.controller,
           controls: null,
           fit: widget.fit,
           aspectRatio: widget.aspectRatio,
+        );
+        final aspect = widget.aspectRatio;
+        if (NativeVideoFraming.usableArea(widget.activeArea) == null ||
+            aspect == null ||
+            aspect <= 0) {
+          return video;
+        }
+        // Bandes incrustées : le cadre entier est posé là où la zone utile
+        // se cadre, et « contain » le remplit exactement puisqu'il a la forme
+        // du cadre. Voir ADR-0067.
+        final rect = NativeVideoFraming.frameRect(
+          widget.fit,
+          aspect,
+          constraints.biggest,
+          activeArea: widget.activeArea,
+        );
+        return ClipRect(
+          child: Stack(
+            clipBehavior: Clip.none,
+            children: [
+              Positioned.fromRect(
+                rect: rect,
+                child: Video(
+                  key: widget.videoKey,
+                  controller: widget.controller,
+                  controls: null,
+                  fit: BoxFit.contain,
+                  aspectRatio: aspect,
+                ),
+              ),
+            ],
+          ),
         );
       },
     );

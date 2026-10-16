@@ -49,6 +49,9 @@ class DetailBackdropHeader extends StatelessWidget {
   /// « Synopsis indisponible… »).
   final String? emptyOverviewLabel;
 
+  /// Surtitre à la place du type (« SAISON ») : la série, sur la page d'une saison.
+  final String? eyebrow;
+
   const DetailBackdropHeader({
     super.key,
     required this.fallback,
@@ -59,6 +62,7 @@ class DetailBackdropHeader extends StatelessWidget {
     this.badges = const [],
     this.loading = false,
     this.emptyOverviewLabel,
+    this.eyebrow,
   });
 
   static const double heightDesktop = 540;
@@ -171,7 +175,7 @@ class DetailBackdropHeader extends StatelessWidget {
         // Même surtitre que le bandeau de l'accueil : en capitales espacées,
         // gris — l'accent bleu reste au focus et à la progression.
         Text(
-          mediaTypeLabel(fallback.type).toUpperCase(),
+          (eyebrow ?? mediaTypeLabel(fallback.type)).toUpperCase(),
           style: const TextStyle(
             color: AppColors.textSecondary,
             fontWeight: FontWeight.w600,

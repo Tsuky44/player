@@ -91,8 +91,12 @@ extension PlayerControllerStartup on PlayerController {
       onDurationChanged();
     });
 
+    _cuts = _newCutRecovery();
     _completedSubscription = session.completions.listen((_) {
       if (_disposed) return;
+      // Un serveur qui s'arrête fait annoncer au moteur la fin du fichier :
+      // loin du générique, ce n'en est pas une. Voir [StreamCutRecovery].
+      if (_absorbCut()) return;
       onCompleted();
     });
 

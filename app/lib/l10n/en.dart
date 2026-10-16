@@ -6,6 +6,8 @@
 const Map<String, String> kEnglish = <String, String>{
   ' supprimé':
       ' deleted',
+  '1 épisode':
+      '1 episode',
   '1 épisode restant':
       '1 episode left',
   '24 heures':
@@ -1566,6 +1568,8 @@ const Map<String, String> kEnglish = <String, String>{
       'New episode available',
   'Nouvelle bibliothèque':
       'New library',
+  'Pas de résumé pour cette saison.':
+      'No overview for this season.',
   'Rien sur ce serveur pour l’instant. Son administrateur peut en ajouter.':
       'Nothing on this server yet. Its administrator can add some.',
   'Sans aucune bande noire, bords rognés':
@@ -1582,6 +1586,12 @@ const Map<String, String> kEnglish = <String, String>{
       'A library is a folder on the server and the name you give it. Add as many as you like.',
   'Vidéos personnelles, concerts, cours… Chaque vidéo garde le nom de son fichier, sans recherche d’affiche ni de fiche.':
       'Home videos, concerts, courses… Each video keeps its file name, with no poster or details lookup.',
+  'Voir la saison':
+      'View season',
+  'demandée':
+      'requested',
+  'manquante':
+      'missing',
   '{0} titre{1}':
       '{0} title{1}',
   '{0} — sur {1}':
@@ -2680,6 +2690,8 @@ const Map<String, String> kEnglish = <String, String>{
       '{0} episode{1} · {2}',
   '{0}% visionné · {1}':
       '{0}% watched · {1}',
+  '{0}/{1} disponibles':
+      '{0}/{1} available',
   '{0}h {1}min':
       '{0}h {1}min',
   '{0}{1} téléchargés':
@@ -2834,4 +2846,10 @@ const Map<String, String> kEnglish = <String, String>{
       'watched',
   'à {0}':
       'at {0}',
+  'Aperçu au survol':
+      'Preview on hover',
+  'Laisser la souris sur une carte de « Reprendre » l’agrandit avec des images de là où vous vous êtes arrêté et le résumé.':
+      'Resting the mouse on a Continue watching card enlarges it with pictures from where you stopped and the synopsis.',
+  'Voir la fiche':
+      'View details',
 };

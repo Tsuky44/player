@@ -78,13 +78,19 @@ class MpvPlaybackSession implements PlaybackSession {
   }
 
   @override
-  Widget buildSurface({Key? key, required BoxFit fit, double? aspectRatio}) {
+  Widget buildSurface({
+    Key? key,
+    required BoxFit fit,
+    double? aspectRatio,
+    Rect? activeArea,
+  }) {
     if (MpvNativeView.enabled) {
       return MpvNativeSurface(
         key: key,
         engine: _engine,
         fit: fit,
         aspectRatio: aspectRatio,
+        activeArea: activeArea,
         subtitleKey: _subtitleKey,
       );
     }
@@ -95,12 +101,14 @@ class MpvPlaybackSession implements PlaybackSession {
         videoKey: _videoKey,
         fit: fit,
         aspectRatio: aspectRatio,
+        activeArea: activeArea,
       ),
       window: (context) => MpvNativeSurface(
         key: key,
         engine: _engine,
         fit: fit,
         aspectRatio: aspectRatio,
+        activeArea: activeArea,
         subtitleKey: _subtitleKey,
       ),
     );

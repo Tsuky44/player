@@ -619,6 +619,15 @@ func (h *Handler) previewSetFor(mediaID int) (*previewSet, error) {
 	return set, nil
 }
 
+// previewWantsWarm dit si la demande de manifeste doit lancer la passe de fond.
+// L'aperçu au survol d'une carte « Reprendre » ne veut que quelques images et
+// passe warm=0 : une passe lancée à chaque survol prendrait l'une des
+// previewMaxWarmJobs places, et chasserait celle d'un spectateur en pleine
+// lecture pour un film que personne ne regarde.
+func previewWantsWarm(r *http.Request) bool {
+	return r.URL.Query().Get("warm") != "0"
+}
+
 // PreviewManifest answers POST /api/v1/media/:id/previews with the spacing of
 // the stills, and starts filling them in behind the viewer.
 //
@@ -645,7 +654,7 @@ func (h *Handler) PreviewManifest(w http.ResponseWriter, r *http.Request, ps htt
 		http.Error(w, "previews unavailable", http.StatusNotFound)
 		return
 	}
-	if set.manifest.Count > 0 {
+	if set.manifest.Count > 0 && previewWantsWarm(r) {
 		h.previews.warm(set, playbackauth.Digest(r.URL.Query().Get("ticket")))
 	}
 	w.Header().Set("Content-Type", "application/json")

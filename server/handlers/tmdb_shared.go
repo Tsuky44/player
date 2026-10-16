@@ -45,6 +45,15 @@ type TMDBSeasonSummary struct {
 	AirDate      string
 }
 
+// PosterURL est l'affiche de la saison à la taille des fiches, vide quand
+// TMDB n'en a pas.
+func (s TMDBSeasonSummary) PosterURL() string {
+	if s.PosterPath == "" {
+		return ""
+	}
+	return "https://image.tmdb.org/t/p/w500" + s.PosterPath
+}
+
 // TMDBEpisodeSummary is one episode as TMDB describes it.
 type TMDBEpisodeSummary struct {
 	Number    int

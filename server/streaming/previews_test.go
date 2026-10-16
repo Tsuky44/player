@@ -3,6 +3,7 @@ package streaming
 import (
 	"bytes"
 	"context"
+	"net/http/httptest"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -253,6 +254,21 @@ func TestPreviewExtractionWithFFmpeg(t *testing.T) {
 		data, err := os.ReadFile(path)
 		if err != nil || len(data) < 1000 || !bytes.HasPrefix(data, []byte{0xFF, 0xD8}) {
 			t.Fatalf("still %d is not a JPEG (%d bytes, %v)", index, len(data), err)
+		}
+	}
+}
+
+// Le survol d'une carte « Reprendre » demande le manifeste avec warm=0 : il ne
+// doit pas lancer de passe de fond, qui chasserait celle d'une vraie lecture.
+func TestPreviewHoverManifestDoesNotStartWarmPass(t *testing.T) {
+	cases := map[string]bool{
+		"/api/v1/media/7/previews?ticket=x":        true,
+		"/api/v1/media/7/previews?ticket=x&warm=1": true,
+		"/api/v1/media/7/previews?ticket=x&warm=0": false,
+	}
+	for url, want := range cases {
+		if got := previewWantsWarm(httptest.NewRequest("POST", url, nil)); got != want {
+			t.Errorf("previewWantsWarm(%q) = %v, want %v", url, got, want)
 		}
 	}
 }

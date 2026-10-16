@@ -153,6 +153,9 @@ func BackfillMissingProbesAsync() bool {
 		wg.Wait()
 		log.Printf("Indexer: Probe backfill completed (%d files, %d workers, %s)",
 			count.Load(), workers, time.Since(started).Round(time.Millisecond))
+		// Les bandes incrustées se mesurent sur un fichier déjà sondé, et en
+		// décodant : après le sondage, jamais en même temps. Voir ADR-0067.
+		BackfillActiveAreasAsync()
 	}()
 
 	return true

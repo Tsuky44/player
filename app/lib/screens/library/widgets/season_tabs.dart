@@ -8,6 +8,7 @@ import '../../../tv/tv_focus_memory.dart';
 import '../../../theme/app_icons.dart';
 import '../../../theme/app_type.dart';
 import '../../../l10n/tr.dart';
+import 'season_preview.dart';
 
 /// « Saison 1 », « Saison 2 »… tel que la fiche l'écrit partout.
 String seasonLabel(Media season) {
@@ -22,16 +23,25 @@ String seasonLabel(Media season) {
 /// geste — et les saisons absentes du serveur le disent sur l'onglet même.
 /// Sur un téléviseur, la rangée se souvient de l'onglet où était la
 /// télécommande ([TvFocusMemory]).
+///
+/// Avec [onOpen], la souris laissée sur un onglet ouvre la fiche de la saison
+/// ([SeasonHoverPreview]), d'où un clic mène à sa page.
 class SeasonTabs extends StatelessWidget {
   final List<Media> seasons;
   final Media? selected;
   final ValueChanged<Media> onSelected;
+  final ValueChanged<Media>? onOpen;
+
+  /// Affiche de la série, pour la fiche d'une saison sans affiche propre.
+  final String? fallbackPosterUrl;
 
   const SeasonTabs({
     super.key,
     required this.seasons,
     required this.selected,
     required this.onSelected,
+    this.onOpen,
+    this.fallbackPosterUrl,
   });
 
   @override
@@ -43,16 +53,30 @@ class SeasonTabs extends StatelessWidget {
         child: Row(
           children: [
             for (final season in seasons) ...[
-              _SeasonTab(
-                season: season,
-                selected: identical(season, selected),
-                onTap: () => onSelected(season),
+              _withPreview(
+                season,
+                _SeasonTab(
+                  season: season,
+                  selected: identical(season, selected),
+                  onTap: () => onSelected(season),
+                ),
               ),
               const SizedBox(width: 8),
             ],
           ],
         ),
       ),
+    );
+  }
+
+  Widget _withPreview(Media season, Widget tab) {
+    final open = onOpen;
+    if (open == null) return tab;
+    return SeasonHoverPreview(
+      season: season,
+      fallbackPosterUrl: fallbackPosterUrl,
+      onOpen: () => open(season),
+      child: tab,
     );
   }
 }

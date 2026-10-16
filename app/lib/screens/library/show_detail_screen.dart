@@ -23,9 +23,9 @@ import '../../widgets/global/metadata_fix_sheet.dart';
 import '../../widgets/global/season_download_button.dart';
 import '../../widgets/global/season_watched_button.dart';
 import '../../widgets/global/share_media_button.dart';
-import '../player/player_screen.dart';
 import '../requests/widgets/season_selector_dialog.dart';
-import '../../navigation/search_route_observer.dart';
+import 'season_detail_screen.dart';
+import 'show_episode_actions.dart';
 import 'widgets/missing_season_banner.dart';
 import 'widgets/season_tabs.dart';
 import 'widgets/show_metadata_menu.dart';
@@ -275,69 +275,12 @@ class _ShowDetailScreenState extends State<ShowDetailScreen>
     return null;
   }
 
-  Future<void> _playEpisode(HomeMediaItem episode) async {
-    var versions = episode.media.versions;
-    if (versions.isEmpty) {
-      for (final item in context.read<LibraryProvider>().episodes) {
-        if (item.media.id == episode.media.id ||
-            item.media.versions
-                .any((v) => v.item.media.id == episode.media.id)) {
-          versions = item.media.versions;
-          break;
-        }
-      }
-    }
-    if (versions.length > 1) {
-      var selected = versions.first;
-      final chosen = await showDialog<MediaVersion>(
-        context: context,
-        builder: (context) => StatefulBuilder(
-            builder: (context, update) => AlertDialog(
-                  title: Text(tr('Choisir une version')),
-                  content: SizedBox(
-                    width: 480,
-                    child: DropdownButtonFormField<int>(
-                      initialValue: selected.item.media.id,
-                      isExpanded: true,
-                      decoration: InputDecoration(labelText: tr('Version')),
-                      items: versions
-                          .map((v) => DropdownMenuItem(
-                                value: v.item.media.id,
-                                child: Text(v.label,
-                                    overflow: TextOverflow.ellipsis),
-                              ))
-                          .toList(),
-                      onChanged: (id) => update(() {
-                        selected =
-                            versions.firstWhere((v) => v.item.media.id == id);
-                      }),
-                    ),
-                  ),
-                  actions: [
-                    TextButton(
-                        onPressed: () => Navigator.pop(context),
-                        child: Text(tr('Annuler'))),
-                    FilledButton(
-                        onPressed: () => Navigator.pop(context, selected),
-                        child: Text(tr('Lecture'))),
-                  ],
-                )),
+  Future<void> _playEpisode(HomeMediaItem episode) => playShowEpisode(
+        context,
+        episode,
+        siblings: context.read<LibraryProvider>().episodes,
+        seasonNumber: _playerSeasonNumber,
       );
-      if (chosen == null || !mounted) return;
-      episode = chosen.item;
-    }
-    Navigator.of(context, rootNavigator: true).push(
-      MaterialPageRoute(
-        settings: const RouteSettings(
-          name: SearchRouteObserver.playerRouteName,
-        ),
-        builder: (_) => PlayerScreen(
-          media: episode,
-          seasonNumber: _playerSeasonNumber,
-        ),
-      ),
-    );
-  }
 
   Future<void> _onSeasonChanged(Media season) async {
     _seasonPickedByUser = true;
@@ -346,70 +289,34 @@ class _ShowDetailScreenState extends State<ShowDetailScreen>
         .loadEpisodes(showId: _show.id, season: season);
   }
 
+  void _openSeason(Media season) {
+    Navigator.of(context).push(MaterialPageRoute(
+      builder: (_) => SeasonDetailScreen(show: _show, season: season),
+    ));
+  }
+
   Future<void> _toggleEpisodeWatched(
       HomeMediaItem episode, bool watched) async {
     if (!episode.isAvailable) return;
+    final ok = await setEpisodeWatched(context, episode, watched);
+    if (!ok || !mounted || episode.media.id != _resumeEpisode?.media.id) return;
     final library = Provider.of<LibraryProvider>(context, listen: false);
-    final home = Provider.of<HomeProvider>(context, listen: false);
-    try {
-      await library.setMediaWatched(episode.media.id, watched);
-      await home.loadHome(silent: true);
-      // La pastille de la grille des séries compte les épisodes vus côté
-      // serveur : elle ne bouge que si la liste est relue.
-      await library.loadShows(silent: true);
-      if (episode.media.id == _resumeEpisode?.media.id) {
-        setState(() => _resumeEpisode = library.episodes.firstWhere(
-              (e) => e.media.id == episode.media.id,
-              orElse: () => episode,
-            ));
-      }
-    } catch (_) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-              content: Text(tr('Impossible de mettre à jour le statut'))),
-        );
-      }
-    }
+    setState(() => _resumeEpisode = library.episodes.firstWhere(
+          (e) => e.media.id == episode.media.id,
+          orElse: () => episode,
+        ));
   }
 
-  /// Toute la saison d'un coup, dans un sens ou dans l'autre.
-  ///
-  /// Le serveur tranche en une requête, puis l'accueil et la grille des séries
-  /// sont relus une seule fois : vingt rafraîchissements pour un seul geste ne
-  /// montreraient rien de plus.
+  /// Toute la saison d'un coup : voir [setSeasonEpisodesWatched].
   Future<void> _setSeasonWatched(
       List<HomeMediaItem> episodes, bool watched) async {
     if (_updatingSeasonWatched || episodes.isEmpty) return;
-    final library = Provider.of<LibraryProvider>(context, listen: false);
-    final home = Provider.of<HomeProvider>(context, listen: false);
-    final messenger = ScaffoldMessenger.of(context);
     setState(() => _updatingSeasonWatched = true);
     try {
-      final changed = await library.setMediasWatched(
-        [for (final episode in episodes) episode.media.id],
-        watched,
-      );
-      await home.loadHome(silent: true);
-      // La pastille de la grille des séries compte les épisodes vus côté
-      // serveur : elle ne bouge que si la liste est relue.
-      await library.loadShows(silent: true);
+      final ok = await setSeasonEpisodesWatched(context, episodes, watched);
       // Une saison entière cochée déplace la reprise ailleurs — souvent dans
       // la saison suivante : c'est au serveur de dire où.
-      await _refreshResumeEpisode();
-      if (!mounted) return;
-      messenger.showSnackBar(SnackBar(
-        content: Text(watched
-            ? tr('{0} épisode{1} marqué{2} vu{3}', [changed, changed > 1 ? 's' : '', changed > 1 ? 's' : '', changed > 1 ? 's' : ''])
-            : tr('Saison marquée non vue')),
-      ));
-    } catch (_) {
-      if (mounted) {
-        messenger.showSnackBar(
-          SnackBar(
-              content: Text(tr('Impossible de mettre à jour la saison'))),
-        );
-      }
+      if (ok && mounted) await _refreshResumeEpisode();
     } finally {
       if (mounted) setState(() => _updatingSeasonWatched = false);
     }
@@ -718,6 +625,8 @@ class _ShowDetailScreenState extends State<ShowDetailScreen>
                       seasons: lp.seasons,
                       selected: selectedSeason,
                       onSelected: _onSeasonChanged,
+                      onOpen: _openSeason,
+                      fallbackPosterUrl: _show.posterUrl,
                     ),
                     const SizedBox(height: 12),
                     SeasonWatchedButton(

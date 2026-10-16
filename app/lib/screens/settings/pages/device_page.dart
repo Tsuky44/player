@@ -13,6 +13,7 @@ import '../widgets/about_group.dart';
 import '../widgets/new_episode_alerts_group.dart';
 import '../../../providers/auth_provider.dart';
 import '../../../widgets/global/interface_tour/interface_tour.dart';
+import '../../../widgets/global/resume_preview/hover_preview_preference.dart';
 import '../widgets/settings_ui.dart';
 import '../../../l10n/app_language.dart';
 import '../../../l10n/tr.dart';
@@ -137,6 +138,19 @@ class _DevicePageState extends State<DevicePage> {
                   InterfaceTourReplay.request();
                 },
               ),
+              if (HoverPreviewPreference.supported && !isTv)
+                SettingsSwitchTile(
+                  icon: Icons.slideshow_rounded,
+                  title: tr('Aperçu au survol'),
+                  subtitle: tr('Laisser la souris sur une carte de « Reprendre » '
+                      'l’agrandit avec des images de là où vous vous êtes '
+                      'arrêté et le résumé.'),
+                  value: HoverPreviewPreference.enabled,
+                  onChanged: (value) async {
+                    await HoverPreviewPreference.setEnabled(value);
+                    if (mounted) setState(() {});
+                  },
+                ),
             ],
           ),
         // Le lien se fait en scannant le code affiché par l'autre écran

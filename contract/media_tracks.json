@@ -52,5 +52,11 @@
       "bitrate_bps": 15
     }
   ],
-  "source_bitrate_bps": 16
+  "source_bitrate_bps": 16,
+  "active_area": {
+    "x": 17.5,
+    "y": 18.5,
+    "width": 19.5,
+    "height": 20.5
+  }
 }

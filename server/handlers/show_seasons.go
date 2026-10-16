@@ -179,6 +179,8 @@ func mergeMissingSeasons(showID int, local []showSeasonPayload, lang mediaLangua
 			statuses, number, heldEpisodes[local[i].ID], total)
 	}
 
+	fillHeldSeasonArtwork(local, tmdbSeasons)
+
 	seasons := local
 	for _, tmdbSeason := range tmdbSeasons {
 		if held[tmdbSeason.Number] {
@@ -197,10 +199,6 @@ func mergeMissingSeasons(showID int, local []showSeasonPayload, lang mediaLangua
 		if title == "" {
 			title = lang.seasonLabel(tmdbSeason.Number)
 		}
-		posterURL := ""
-		if tmdbSeason.PosterPath != "" {
-			posterURL = "https://image.tmdb.org/t/p/w500" + tmdbSeason.PosterPath
-		}
 		parentID := showID
 
 		seasons = append(seasons, showSeasonPayload{
@@ -209,7 +207,7 @@ func mergeMissingSeasons(showID int, local []showSeasonPayload, lang mediaLangua
 				Type:         models.TypeSeason,
 				Title:        title,
 				ParentID:     &parentID,
-				PosterURL:    posterURL,
+				PosterURL:    tmdbSeason.PosterURL(),
 				Overview:     tmdbSeason.Overview,
 				ReleaseDate:  tmdbSeason.AirDate,
 				SeasonNumber: tmdbSeason.Number,
@@ -224,6 +222,33 @@ func mergeMissingSeasons(showID int, local []showSeasonPayload, lang mediaLangua
 
 	sortSeasons(seasons)
 	return seasons
+}
+
+// fillHeldSeasonArtwork complète les saisons présentes avec ce que TMDB dit
+// d'elles. L'indexeur ne crée une saison qu'avec son titre et son numéro :
+// sans ça, l'aperçu et la page d'une saison n'avaient ni affiche ni synopsis,
+// alors qu'une saison absente du serveur, elle, les avait. Ce que la base
+// porte déjà reste prioritaire.
+func fillHeldSeasonArtwork(local []showSeasonPayload, tmdbSeasons []TMDBSeasonSummary) {
+	byNumber := make(map[int]TMDBSeasonSummary, len(tmdbSeasons))
+	for _, tmdbSeason := range tmdbSeasons {
+		byNumber[tmdbSeason.Number] = tmdbSeason
+	}
+	for i := range local {
+		tmdbSeason, ok := byNumber[local[i].SeasonNumber]
+		if local[i].SeasonNumber <= 0 || !ok {
+			continue
+		}
+		if local[i].PosterURL == "" {
+			local[i].PosterURL = tmdbSeason.PosterURL()
+		}
+		if local[i].Overview == "" {
+			local[i].Overview = tmdbSeason.Overview
+		}
+		if local[i].ReleaseDate == "" {
+			local[i].ReleaseDate = tmdbSeason.AirDate
+		}
+	}
 }
 
 // heldSeasonRequest décide ce qu'annonce une saison présente sur le serveur :

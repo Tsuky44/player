@@ -107,6 +107,10 @@ type mediaTracksResponse struct {
 	// savoir quel barreau est vraiment plus léger que le fichier, et quand la
 	// ligne peut le reprendre (ADR-0056). 0 : inconnu.
 	SourceBitrateBps int64 `json:"source_bitrate_bps"`
+	// ActiveArea est l'image sans ses bandes noires incrustées, en fractions
+	// du cadre ; null quand le cadre entier est l'image ou qu'il n'a pas
+	// encore été mesuré. Les modes d'affichage zooment sur elle (ADR-0067).
+	ActiveArea *streaming.ActiveArea `json:"active_area"`
 }
 
 type playbackTicketResponse struct {

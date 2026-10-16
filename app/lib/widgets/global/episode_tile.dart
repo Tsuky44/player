@@ -147,17 +147,13 @@ class _EpisodeTileState extends State<EpisodeTile> {
                           if (!_isAvailable)
                             const Icon(AppIcons.airDate,
                                 color: AppColors.textMuted, size: 22)
-                          else if (isFinished)
-                            // Discret : le bouton à droite dit déjà « vu », en
-                            // clair. Trois coches vertes par ligne (ici, à
-                            // droite, et un « Vu » sous le titre) faisaient de
-                            // la liste un tableau de validation.
-                            const Icon(AppIcons.check,
-                                color: AppColors.textMuted, size: 20)
                           else if (_active)
                             const Icon(AppIcons.playCircleFilled,
                                 color: AppColors.textPrimary, size: 28)
-                          else
+                          else ...[
+                            // Le numéro reste affiché une fois l'épisode vu :
+                            // le remplacer par une coche obligeait à compter
+                            // les lignes pour savoir où l'on en était.
                             Text(
                               '${widget.episodeNumber}',
                               style: TextStyle(
@@ -168,6 +164,16 @@ class _EpisodeTileState extends State<EpisodeTile> {
                                 fontWeight: FontWeight.w600,
                               ),
                             ),
+                            if (isFinished)
+                              // Discret : le bouton à droite dit déjà « vu »,
+                              // en clair. Trois coches vertes par ligne
+                              // faisaient de la liste un tableau de validation.
+                              const Padding(
+                                padding: EdgeInsets.only(top: 2),
+                                child: Icon(AppIcons.check,
+                                    color: AppColors.textMuted, size: 14),
+                              ),
+                          ],
                         ],
                       ),
                     ),

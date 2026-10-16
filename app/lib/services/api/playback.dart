@@ -103,11 +103,14 @@ mixin _PlaybackEndpoints {
 
   /// Spacing of the timeline stills for a media, as JSON. Also what starts the
   /// server filling them in, which is why the player only calls it once the
-  /// first frame is on screen.
+  /// first frame is on screen. [warm] à false n'en demande que l'espacement :
+  /// l'aperçu au survol d'une carte ne veut que quelques images, pas la passe
+  /// de fond sur tout le fichier.
   Future<Map<String, dynamic>> openTimelinePreviews(int mediaId,
-      {required PlaybackAccess access}) async {
+      {required PlaybackAccess access, bool warm = true}) async {
     final response = await _dio.post(
-      access.protect("${access.origin}/api/v1/media/$mediaId/previews"),
+      access.protect("${access.origin}/api/v1/media/$mediaId/previews"
+          "${warm ? '' : '?warm=0'}"),
       options: Options(extra: {'playbackMedia': true}),
     );
     return response.data as Map<String, dynamic>;

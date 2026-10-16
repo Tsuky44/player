@@ -444,20 +444,7 @@ class LibraryProvider extends ChangeNotifier {
     notifyListeners();
 
     try {
-      List<HomeMediaItem> result;
-      if (season.id > 0) {
-        result = await apiClient.getSeasonEpisodes(
-          season.id,
-          includeMissing: true,
-        );
-      } else {
-        final seasonNum = season.effectiveSeasonNumber ?? season.seasonNumber;
-        if (seasonNum == null || seasonNum <= 0) {
-          result = [];
-        } else {
-          result = await apiClient.getShowSeasonEpisodes(showId, seasonNum);
-        }
-      }
+      final result = await _requestEpisodes(showId, season);
       if (request != _episodesRequest) return;
       _episodes = result;
       _episodesBySeason[key] = result;
@@ -471,6 +458,33 @@ class LibraryProvider extends ChangeNotifier {
         notifyListeners();
       }
     }
+  }
+
+  /// Episodes remembered for [season] of [showId], without a network call.
+  List<HomeMediaItem>? cachedEpisodes(int showId, Media season) =>
+      _episodesBySeason[_seasonKey(showId, season)];
+
+  /// Relit les épisodes de [season] dans la mémoire, sans toucher à la saison
+  /// que la fiche série affiche : la page d'une saison tient sa propre liste
+  /// ([cachedEpisodes]) et ne doit pas changer l'onglet resté dessous.
+  Future<List<HomeMediaItem>> refreshEpisodes({
+    required int showId,
+    required Media season,
+  }) async {
+    final result = await _requestEpisodes(showId, season);
+    _episodesBySeason[_seasonKey(showId, season)] = result;
+    notifyListeners();
+    return result;
+  }
+
+  /// A local season is asked for by id; a TMDB-only one (id 0) by number.
+  Future<List<HomeMediaItem>> _requestEpisodes(int showId, Media season) {
+    if (season.id > 0) {
+      return apiClient.getSeasonEpisodes(season.id, includeMissing: true);
+    }
+    final seasonNum = season.effectiveSeasonNumber ?? season.seasonNumber;
+    if (seasonNum == null || seasonNum <= 0) return Future.value(<HomeMediaItem>[]);
+    return apiClient.getShowSeasonEpisodes(showId, seasonNum);
   }
 
   /// Sends a MediaHub request for seasons missing from the server.

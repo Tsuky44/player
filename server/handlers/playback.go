@@ -172,12 +172,20 @@ func GetMediaTracks(w http.ResponseWriter, r *http.Request, ps httprouter.Params
 		sourceHeight = probe.Video.Height
 	}
 
+	// Jamais attendue ici : la mesure décode des images. Un fichier pas
+	// encore regardé l'est en arrière-plan, pour la lecture suivante.
+	activeArea, checked := indexer.LoadActiveArea(mediaID)
+	if !checked {
+		indexer.RequestActiveArea(mediaID)
+	}
+
 	json.NewEncoder(w).Encode(mediaTracksResponse{
 		Video:            probe.Video,
 		Audio:            probe.Audio,
 		Subtitles:        subs,
 		Qualities:        streaming.QualityLadderFor(sourceHeight),
 		SourceBitrateBps: sourceBitrateBps(mediaID),
+		ActiveArea:       activeArea,
 	})
 }
 

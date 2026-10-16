@@ -337,8 +337,8 @@ func describeMissingSeason(showID, seasonNumber int, lang mediaLanguage) *nextSe
 		}
 		payload.Overview = season.Overview
 		payload.EpisodeCount = season.EpisodeCount
-		if season.PosterPath != "" {
-			payload.PosterURL = "https://image.tmdb.org/t/p/w500" + season.PosterPath
+		if poster := season.PosterURL(); poster != "" {
+			payload.PosterURL = poster
 		}
 		break
 	}

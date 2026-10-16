@@ -191,7 +191,13 @@ class AetherPlaybackSession implements PlaybackSession {
   // --- Surface -----------------------------------------------------------
 
   @override
-  Widget buildSurface({Key? key, required BoxFit fit, double? aspectRatio}) {
+  Widget buildSurface({
+    Key? key,
+    required BoxFit fit,
+    double? aspectRatio,
+    // Pas encore appliquée par ce moteur : voir ADR-0067.
+    Rect? activeArea,
+  }) {
     return _AetherSurface(
       key: key,
       ready: _ready,

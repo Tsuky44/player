@@ -57,6 +57,7 @@ import 'theme/app_colors.dart';
 import 'theme/app_theme.dart';
 import 'desktop_window.dart';
 import 'widgets/global/middle_click_autoscroll.dart';
+import 'widgets/global/resume_preview/hover_preview_preference.dart';
 import 'l10n/app_language.dart';
 import 'l10n/tr.dart';
 
@@ -189,6 +190,8 @@ void main() async {
     HardwareDecoding.initialize(),
     DisplayFrameRate.initialize(),
     AutoQualityPreference.initialize(),
+    // Si la souris qui s'attarde sur « Reprendre » en ouvre l'aperçu.
+    HoverPreviewPreference.initialize(),
     // Les réglages de lecture que le player consulte sans attendre — le saut
     // d'intro automatique — chargés une fois pour toutes.
     PlaybackPreferencesStorage.initialize(),

@@ -18,6 +18,7 @@ import '../playback/playback_session.dart';
 import '../playback/playback_stats.dart';
 import '../playback/series_track_memory.dart';
 import '../playback/startup_timeline.dart';
+import '../playback/stream_cut_recovery.dart';
 import 'playback_reporter.dart';
 import 'use_auto_quality.dart';
 import '../playback/timeline_previews.dart';
@@ -37,6 +38,7 @@ import '../player_playback_preferences.dart';
 // de première image, les préférences héritées, le rapport au serveur et le
 // démontage. Le reste est dans des extensions, une par sujet. Voir ADR-0052.
 part 'player_controller_auto.dart';
+part 'player_controller_cut.dart';
 part 'player_controller_dolby_vision.dart';
 part 'player_controller_hls.dart';
 part 'player_controller_language.dart';
@@ -548,6 +550,7 @@ class PlayerController {
   StreamSubscription? _bufferingSubscription;
   StreamSubscription? _reapplySubscription;
   StreamSubscription? _failureSubscription;
+  StreamCutRecovery? _cuts;
   bool _disposed = false;
 
   /// Aspect ratio of the current video (width / height).
