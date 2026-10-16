@@ -26,6 +26,7 @@ class MediaShare {
     this.views = 0,
     this.createdAt,
     this.code,
+    this.viewers = const [],
   });
 
   final int id;
@@ -58,6 +59,11 @@ class MediaShare {
   /// que l'empreinte, et ne pourra plus le redonner.
   final String? code;
 
+  /// Qui regarde par ce lien et où chacun en est, du plus récent au moins
+  /// récent (ADR-0066). Vide tant que personne n'a donné de prénom, et quand
+  /// le lien a expiré.
+  final List<MediaShareViewer> viewers;
+
   bool get isActive => status == 'active';
 
   factory MediaShare.fromJson(Map<String, dynamic> json) {
@@ -81,6 +87,57 @@ class MediaShare {
       status: json['status'] as String? ?? 'active',
       createdAt: parse(json['created_at']),
       code: code == null || code.isEmpty ? null : code,
+      viewers: (json['viewers'] as List<dynamic>? ?? const [])
+          .map((e) => MediaShareViewer.fromJson(e as Map<String, dynamic>))
+          .toList(),
+    );
+  }
+}
+
+/// Un spectateur d'un lien, vu par son créateur : le prénom qu'il a donné et
+/// le dernier média qu'il a regardé par ce lien. Miroir de
+/// `models.MediaShareViewer` côté serveur. Le prénom n'est pas une identité
+/// (ADR-0066) : l'app n'en déduit rien.
+class MediaShareViewer {
+  const MediaShareViewer({
+    required this.name,
+    required this.mediaId,
+    this.seasonNumber = 0,
+    this.episodeNumber = 0,
+    this.positionSeconds = 0,
+    this.duration = 0,
+    this.finished = false,
+    this.watchedAt,
+  });
+
+  final String name;
+  final int mediaId;
+
+  /// 0 pour un film.
+  final int seasonNumber;
+  final int episodeNumber;
+
+  /// 0 quand le média est vu ([finished]).
+  final int positionSeconds;
+  final int duration;
+  final bool finished;
+  final DateTime? watchedAt;
+
+  bool get isEpisode => episodeNumber > 0;
+
+  factory MediaShareViewer.fromJson(Map<String, dynamic> json) {
+    final watched = json['watched_at'];
+    return MediaShareViewer(
+      name: json['name'] as String? ?? '',
+      mediaId: json['media_id'] as int? ?? 0,
+      seasonNumber: json['season_number'] as int? ?? 0,
+      episodeNumber: json['episode_number'] as int? ?? 0,
+      positionSeconds: json['position_seconds'] as int? ?? 0,
+      duration: json['duration'] as int? ?? 0,
+      finished: json['finished'] == true,
+      watchedAt: watched is String && watched.isNotEmpty
+          ? DateTime.tryParse(watched)?.toLocal()
+          : null,
     );
   }
 }

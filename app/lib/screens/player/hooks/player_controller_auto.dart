@@ -122,7 +122,16 @@ extension PlayerControllerAuto on PlayerController {
   /// D'abord le serveur : si son encodeur n'a pas d'avance sur ce que le
   /// lecteur lui demande, c'est lui qu'on attend. Sinon la ligne, comptée sur
   /// ce que le moteur reçoit — il tire alors tout ce qu'elle porte.
-  Future<AutoSounding> _autoSound({required bool passive}) async {
+  ///
+  /// [sideMeasure] : le tampon fond sans être vide, et le moteur peut tenir un
+  /// cache plein qui ne reçoit que ce qu'il lit. `cache-speed` de mpv rend
+  /// alors le débit de la scène, pas celui de la ligne, et l'Auto quittait le
+  /// Direct Play sur une ligne qui portait le fichier : la ligne se mesure à
+  /// côté (ADR-0065).
+  Future<AutoSounding> _autoSound({
+    required bool passive,
+    bool sideMeasure = false,
+  }) async {
     final media = _media;
     final api = _apiClient;
     final access = _playbackAccess;
@@ -153,8 +162,10 @@ extension PlayerControllerAuto on PlayerController {
       }
     }
 
-    final received = await _receivingBps();
-    if (received != null) return AutoSounding(lineBps: received);
+    if (!sideMeasure) {
+      final received = await _receivingBps();
+      if (received != null) return AutoSounding(lineBps: received);
+    }
     if (passive) return const AutoSounding();
 
     // Le moteur ne dit pas ce qu'il reçoit : tirer un morceau du fichier à

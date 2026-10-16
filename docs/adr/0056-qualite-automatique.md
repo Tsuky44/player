@@ -13,6 +13,8 @@
   `server/devline/`, `server/handlers/playback.go` (`source_bitrate_bps`),
   `app/tool/auto_probe_main.dart` (le banc d'essai).
 - **Remplace :** [ADR-0053](0053-le-lecteur-descend-seul-quand-la-connexion-ne-suit-pas.md).
+- **Corrigé par :** [ADR-0065](0065-l-auto-ne-quitte-le-direct-play-que-sur-une-ligne-mesuree.md)
+  (quand une pente accuse la ligne, et quand le Direct Play se quitte).
 - **Prolonge :** [ADR-0022](0022-echelle-de-transcodage-avec-debits.md) (l'échelle de débits),
   [ADR-0033](0033-sessions-hls-bornees.md) (une session par ticket).
 

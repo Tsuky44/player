@@ -464,7 +464,10 @@ Côté créateur (`share_media`) :
   `code`, rendu **cette fois seulement** : le serveur n'en garde que l'empreinte SHA-256.
   `media_id` est un film, un épisode, une saison ou une série (`media_type` dans la réponse) ;
   `404` s'il n'y a rien à lire, `400` pour `single_use` sur une saison ou une série.
-* `GET /api/shares` — ses liens, avec leur `status` : `active`, `expired` ou `watched`.
+* `GET /api/shares` — ses liens, avec leur `status` : `active`, `expired` ou `watched`, et leurs
+  `viewers` (absent sans spectateur) : `[{"name", "media_id", "season_number", "episode_number",
+  "position_seconds", "duration", "finished", "watched_at"}]`, le dernier média que chaque prénom a
+  regardé par ce lien, du plus récent au moins récent (ADR-0066).
 * `DELETE /api/shares/:id` — supprime le lien et coupe aussitôt les lectures qu'il a ouvertes.
 
 Retirer `share_media` à un compte supprime ses liens.

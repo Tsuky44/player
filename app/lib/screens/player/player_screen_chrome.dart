@@ -596,6 +596,7 @@ extension _PlayerChrome on _PlayerScreenState {
       onSkipIntro:
           (nav?.showSkipIntro ?? false) ? _skipIntroFromControl : null,
       skipIntroCountdown: nav?.introAutoSkipCountdown,
+      skipSegment: nav?.skipSegment ?? SkipSegment.intro,
       chapterMarks: _chapterMarks,
       settingsButtonKey: _settingsButtonKey,
       subtitlesButtonKey: _subtitlesButtonKey,

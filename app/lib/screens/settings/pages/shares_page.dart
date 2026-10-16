@@ -9,11 +9,12 @@ import '../../../tv/tv_mode.dart';
 import '../../shared_link/shared_link_guest.dart';
 import '../widgets/media_thumb.dart';
 import '../widgets/settings_ui.dart';
+import '../widgets/share_viewers.dart';
 import '../../../l10n/tr.dart';
 
 /// Les liens de partage publics (ADR-0037) : ouvrir celui qu'on a reçu, et,
 /// pour un compte qui a le droit d'en créer, voir ce que les siens sont
-/// devenus et les couper.
+/// devenus, qui les regarde (ADR-0066), et les couper.
 ///
 /// Un lien ne se recopie pas d'ici : le serveur n'en garde que l'empreinte.
 class SharesPage extends StatefulWidget {
@@ -161,7 +162,7 @@ class _SharesPageState extends State<SharesPage> {
     final title = share.subtitle.isEmpty
         ? share.title
         : '${share.title} · ${share.subtitle}';
-    return SettingsTile(
+    final tile = SettingsTile(
       leading: MediaThumb(
         posterUrl: share.posterUrl ?? '',
         width: 36,
@@ -185,6 +186,11 @@ class _SharesPageState extends State<SharesPage> {
                 color: AppColors.textSecondary,
               ),
             ),
+    );
+    if (share.viewers.isEmpty) return tile;
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [tile, ShareViewersList(share.viewers)],
     );
   }
 }

@@ -27,6 +27,26 @@ type MediaShare struct {
 	// Code n'est rendu qu'à la création : le serveur n'en garde que
 	// l'empreinte, il ne pourra plus le redonner.
 	Code string `json:"code,omitempty"`
+	// Viewers : qui regarde par ce lien et où chacun en est, du plus récent
+	// au moins récent (ADR-0066). Absent tant que personne n'a donné de
+	// prénom, et vidé quand le lien expire.
+	Viewers []MediaShareViewer `json:"viewers,omitempty"`
+}
+
+// MediaShareViewer est un spectateur d'un lien, vu par son créateur : le
+// prénom qu'il a donné, et le dernier média qu'il a regardé par ce lien. Le
+// prénom n'est pas une identité (ADR-0066).
+type MediaShareViewer struct {
+	Name    string `json:"name"`
+	MediaID int    `json:"media_id"`
+	// SeasonNumber et EpisodeNumber sont absents pour un film.
+	SeasonNumber  int `json:"season_number,omitempty"`
+	EpisodeNumber int `json:"episode_number,omitempty"`
+	// PositionSeconds vaut 0 quand Finished : le média est vu.
+	PositionSeconds int       `json:"position_seconds"`
+	Duration        int       `json:"duration,omitempty"`
+	Finished        bool      `json:"finished"`
+	WatchedAt       time.Time `json:"watched_at"`
 }
 
 // SharedMedia est ce qu'un visiteur sans compte apprend d'un lien
@@ -81,6 +101,10 @@ type SharedMediaAccess struct {
 	ExpiresAt         time.Time   `json:"expires_at"`
 	RenewAfterSeconds int         `json:"renew_after_seconds"`
 	Viewer            string      `json:"viewer"`
+	// PositionSeconds est l'endroit où le spectateur qui a donné son prénom
+	// s'était arrêté dans ce média ; 0 sans prénom ou sans lecture entamée
+	// (ADR-0066).
+	PositionSeconds int `json:"position_seconds"`
 }
 
 // SharedMediaRenewal répond à POST /api/shared/renew.
@@ -92,4 +116,18 @@ type SharedMediaRenewal struct {
 // lien, à usage unique, est désormais détruit.
 type SharedMediaProgress struct {
 	Consumed bool `json:"consumed"`
+}
+
+// SharedViewerProgress répond à POST /api/shared/resume : où en est, dans ce
+// lien, le spectateur qui a donné ce prénom (ADR-0066).
+type SharedViewerProgress struct {
+	// Name est le prénom tel qu'il l'a écrit la dernière fois.
+	Name string `json:"name"`
+	// Positions donne, par id de média, la position en secondes de chaque
+	// média commencé et pas fini.
+	Positions map[int]int `json:"positions"`
+	// Finished liste les médias vus.
+	Finished []int `json:"finished"`
+	// LastMediaID est le dernier média regardé, absent si rien ne l'a été.
+	LastMediaID int `json:"last_media_id,omitempty"`
 }

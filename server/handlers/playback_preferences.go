@@ -21,6 +21,7 @@ const playbackPreferencesBodyLimit = 4 << 10
 // playbackPreferencesUpdate est partiel : un champ absent garde sa valeur.
 type playbackPreferencesUpdate struct {
 	AutoSkipIntro         *bool   `json:"auto_skip_intro"`
+	AutoSkipRecap         *bool   `json:"auto_skip_recap"`
 	DefaultAudioLang      *string `json:"default_audio_lang"`
 	StillWatchingEnabled  *bool   `json:"still_watching_enabled"`
 	StillWatchingEpisodes *int    `json:"still_watching_episodes"`
@@ -83,12 +84,12 @@ func normalizeAudioLang(raw string) (string, error) {
 func loadPlaybackPreferences(userID int) (models.PlaybackPreferences, error) {
 	var prefs models.PlaybackPreferences
 	err := database.DB.QueryRow(`
-		SELECT auto_skip_intro, default_audio_lang,
+		SELECT auto_skip_intro, auto_skip_recap, default_audio_lang,
 		       still_watching_enabled, still_watching_episodes,
 		       still_watching_from, still_watching_until, updated_at
 		FROM user_playback_preferences
 		WHERE user_id = ?
-	`, userID).Scan(&prefs.AutoSkipIntro, &prefs.DefaultAudioLang,
+	`, userID).Scan(&prefs.AutoSkipIntro, &prefs.AutoSkipRecap, &prefs.DefaultAudioLang,
 		&prefs.StillWatchingEnabled, &prefs.StillWatchingEpisodes,
 		&prefs.StillWatchingFrom, &prefs.StillWatchingUntil, &prefs.UpdatedAt)
 	if errors.Is(err, sql.ErrNoRows) {
@@ -107,6 +108,9 @@ func applyPlaybackPreferencesUpdate(
 ) (models.PlaybackPreferences, error) {
 	if update.AutoSkipIntro != nil {
 		current.AutoSkipIntro = *update.AutoSkipIntro
+	}
+	if update.AutoSkipRecap != nil {
+		current.AutoSkipRecap = *update.AutoSkipRecap
 	}
 	if update.DefaultAudioLang != nil {
 		lang, err := normalizeAudioLang(*update.DefaultAudioLang)
@@ -174,19 +178,20 @@ func UpdatePlaybackPreferences(w http.ResponseWriter, r *http.Request, _ httprou
 
 	if _, err := database.DB.Exec(`
 		INSERT INTO user_playback_preferences (
-			user_id, auto_skip_intro, default_audio_lang,
+			user_id, auto_skip_intro, auto_skip_recap, default_audio_lang,
 			still_watching_enabled, still_watching_episodes,
 			still_watching_from, still_watching_until, updated_at)
-		VALUES (?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
 		ON CONFLICT(user_id) DO UPDATE SET
 			auto_skip_intro = excluded.auto_skip_intro,
+			auto_skip_recap = excluded.auto_skip_recap,
 			default_audio_lang = excluded.default_audio_lang,
 			still_watching_enabled = excluded.still_watching_enabled,
 			still_watching_episodes = excluded.still_watching_episodes,
 			still_watching_from = excluded.still_watching_from,
 			still_watching_until = excluded.still_watching_until,
 			updated_at = CURRENT_TIMESTAMP
-	`, userID, next.AutoSkipIntro, next.DefaultAudioLang,
+	`, userID, next.AutoSkipIntro, next.AutoSkipRecap, next.DefaultAudioLang,
 		next.StillWatchingEnabled, next.StillWatchingEpisodes,
 		next.StillWatchingFrom, next.StillWatchingUntil); err != nil {
 		log.Printf("UpdatePlaybackPreferences: save: %v", err)

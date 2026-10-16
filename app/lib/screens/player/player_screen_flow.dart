@@ -9,6 +9,7 @@ extension _PlayerFlow on _PlayerScreenState {
     _episodeNav?.checkPosition(
       _playerController.position.inSeconds,
       mediaDurationSeconds: _playerController.duration.inSeconds,
+      pictureShown: _playerController.hasFirstFrame,
     );
     unawaited(_syncMediaSession());
     _refreshPositionUi();

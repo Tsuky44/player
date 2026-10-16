@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:onyx/models/media_share.dart';
+import 'package:onyx/models/shared_show.dart';
 import 'package:onyx/screens/shared_link/shared_link_guest.dart';
 import 'package:onyx/services/api_client.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -12,6 +13,10 @@ class _Api extends SharedLinkApiClient {
   @override
   Future<SharedMediaInfo> info() async =>
       const SharedMediaInfo(title: 'Lioness', subtitle: 'Série entière');
+
+  @override
+  Future<SharedLinkProgress> fetchProgress(String name) async =>
+      const SharedLinkProgress();
 }
 
 void main() {
@@ -53,7 +58,8 @@ void main() {
 
   testWidgets('la page invitée s’ouvre par-dessus l’app et se referme',
       (tester) async {
-    SharedPreferences.setMockInitialValues({});
+    SharedPreferences.setMockInitialValues(
+        {'onyx-share-name:AbCdEfGhIjKlMnOpQrStUv': 'Marie'});
     await tester.pumpWidget(MaterialApp(
       home: Builder(
         builder: (context) => Scaffold(

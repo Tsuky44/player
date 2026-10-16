@@ -5,7 +5,8 @@ part of '../api_client.dart';
 /// Il fait tourner le lecteur Onyx habituel sur les routes `/api/shared/*` :
 /// le ticket de lecture vient du lien et non d'un compte, et ce que le lecteur
 /// demande d'ordinaire à un compte est rendu vide (historique, journal) ou
-/// gardé sur l'appareil (progression). Pour une saison ou une série, les
+/// rangé sous le prénom du spectateur (progression, ADR-0066). Pour une
+/// saison ou une série, les
 /// saisons, les épisodes et l'épisode suivant sont répondus depuis ce que le
 /// lien a décrit ([SharedShow]), sans requête. Le reste (HLS, Direct Play,
 /// sous-titres, aperçus) passe déjà par le ticket seul.
@@ -47,9 +48,14 @@ class SharedLinkApiClient extends ApiClient {
   /// routes de la lecture nomment alors l'épisode.
   bool _isCollection = false;
 
-  /// La position, les épisodes vus et le dernier regardé, gardés sur
-  /// l'appareil.
-  late final SharedLinkProgressStore progress = SharedLinkProgressStore(code);
+  /// Le prénom du spectateur, sous lequel le serveur range son avancement
+  /// (ADR-0066) ; nul tant qu'il ne l'a pas donné sur cet appareil.
+  String? _viewerName;
+  bool _viewerNameLoaded = false;
+
+  /// L'avancement du spectateur, tel que le serveur l'a dit à la dernière
+  /// description du lien, avancé depuis par la lecture.
+  SharedLinkProgress _progress = const SharedLinkProgress();
 
   /// Passe à vrai quand le serveur annonce le lien détruit, vu.
   final ValueNotifier<bool> consumed = ValueNotifier(false);
@@ -60,6 +66,40 @@ class SharedLinkApiClient extends ApiClient {
   // Le code suffit comme clé : 128 bits d'aléa, il ne se répète pas d'un
   // serveur à l'autre.
   String get _viewerKey => 'onyx-share-viewer:$code';
+  String get _viewerNameKey => 'onyx-share-name:$code';
+
+  /// Le prénom donné sur cet appareil pour ce lien, ou nul : la page le
+  /// demande alors avant tout.
+  Future<String?> loadViewerName() async {
+    if (_viewerNameLoaded) return _viewerName;
+    final prefs = await SharedPreferences.getInstance();
+    _viewerNameLoaded = true;
+    return _viewerName = prefs.getString(_viewerNameKey);
+  }
+
+  /// Retient [name] comme le prénom du spectateur de ce lien. Les espaces en
+  /// trop tombent, comme sur le serveur.
+  Future<void> setViewerName(String name) async {
+    final clean = name.trim().split(RegExp(r'\s+')).join(' ');
+    _viewerName = clean;
+    _viewerNameLoaded = true;
+    _progress = const SharedLinkProgress();
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setString(_viewerNameKey, clean);
+  }
+
+  /// Oublie le prénom : quelqu'un d'autre regarde sur cet appareil.
+  Future<void> forgetViewerName() async {
+    _viewerName = null;
+    _viewerNameLoaded = true;
+    _progress = const SharedLinkProgress();
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.remove(_viewerNameKey);
+  }
+
+  /// Ce que les routes ajoutent pour nommer le spectateur.
+  Map<String, dynamic> get _named =>
+      {if (_viewerName != null) 'name': _viewerName};
 
   /// [mediaId] vu comme un épisode du lien ; nul pour un film ou un épisode,
   /// que le lien désigne seul.
@@ -75,20 +115,47 @@ class SharedLinkApiClient extends ApiClient {
     return SharedMediaInfo.fromJson(data);
   }
 
-  /// La saison ou la série [info] avec l'avancement gardé sur l'appareil,
-  /// telle que la page du lien la montre. Le client la retient : c'est d'elle
-  /// que le lecteur tient ses saisons, ses épisodes et l'épisode suivant.
+  /// La saison ou la série [info] avec l'avancement du spectateur, telle que
+  /// la page du lien la montre. Le client la retient : c'est d'elle que le
+  /// lecteur tient ses saisons, ses épisodes et l'épisode suivant.
   Future<SharedShow> describe(SharedMediaInfo info) async {
     _collection = info;
     _isCollection = true;
-    return SharedShow(
-        info, await progress.snapshot(info.episodes.map((e) => e.id)));
+    await refreshProgress();
+    return SharedShow(info, _progress);
   }
 
+  /// Le lien tel que le lecteur le connaît, sans redemander l'avancement au
+  /// serveur : la lecture le fait avancer de son côté.
   Future<SharedShow?> _show() async {
     final info = _collection;
-    return info == null ? null : describe(info);
+    return info == null ? null : SharedShow(info, _progress);
   }
+
+  /// Redemande au serveur où en est le spectateur. Sans prénom, il n'en est
+  /// nulle part. Un prénom que le serveur refuse est oublié : la page le
+  /// redemande.
+  Future<void> refreshProgress() async {
+    final name = await loadViewerName();
+    if (name == null) {
+      _progress = const SharedLinkProgress();
+      return;
+    }
+    try {
+      _progress = await fetchProgress(name);
+    } on SharedLinkException catch (e) {
+      if (e.status != 400) rethrow;
+      await forgetViewerName();
+    }
+  }
+
+  /// L'avancement de [name] dans ce lien, d'après le serveur.
+  Future<SharedLinkProgress> fetchProgress(String name) async =>
+      SharedLinkProgress.fromJson(await _shared('resume', {
+        'password': _password,
+        'viewer': await _loadViewer(),
+        'name': name,
+      }));
 
   /// Décrit un lien protégé une fois son [password] donné, sans rien ouvrir :
   /// pour une saison ou une série, la liste des épisodes à choisir.
@@ -104,7 +171,8 @@ class SharedLinkApiClient extends ApiClient {
   /// Ouvre le lien avec [password] : le serveur réserve un lien à usage
   /// unique à ce navigateur et délivre un premier ticket de lecture.
   /// [episodeId] désigne l'épisode voulu d'une saison ou d'une série.
-  Future<({SharedMediaInfo media, int mediaId})> open(String password,
+  Future<({SharedMediaInfo media, int mediaId, int positionSeconds})> open(
+      String password,
       {int? episodeId}) async {
     _password = password;
     if (episodeId != null) _isCollection = true;
@@ -112,6 +180,7 @@ class SharedLinkApiClient extends ApiClient {
       'password': password,
       'viewer': await _loadViewer(),
       if (episodeId != null) 'media_id': episodeId,
+      ..._named,
     });
     await _rememberViewer(data['viewer'] as String? ?? '');
     final ticket = _pending = _SharedTicket.fromJson(data);
@@ -119,13 +188,18 @@ class SharedLinkApiClient extends ApiClient {
     return (
       media: SharedMediaInfo.fromJson(data['media'] as Map<String, dynamic>),
       mediaId: ticket.mediaId,
+      positionSeconds: (data['position_seconds'] as num?)?.toInt() ?? 0,
     );
   }
 
-  /// Où ce navigateur s'était arrêté, en secondes : dans le média du lien, ou
-  /// dans l'épisode [episodeId] d'une saison ou d'une série.
-  Future<int> savedPosition({int? episodeId}) =>
-      progress.position(episodeId: episodeId);
+  /// Où le spectateur s'était arrêté dans le film ou l'épisode du lien, en
+  /// secondes, d'après le serveur. Le lien n'a qu'un média : le dernier
+  /// regardé, c'est lui.
+  Future<int> resumePosition() async {
+    await refreshProgress();
+    final last = _progress.lastEpisodeId;
+    return last == null ? 0 : _progress.positions[last] ?? 0;
+  }
 
   @override
   Future<PlaybackAccess> openPlaybackAccess(int mediaId,
@@ -168,13 +242,13 @@ class SharedLinkApiClient extends ApiClient {
 
   @override
   Future<Map<String, dynamic>> getProgress(int mediaId) async => {
-        'current_position_seconds':
-            await savedPosition(episodeId: _episodeOf(mediaId)),
-        'is_finished': false,
+        'current_position_seconds': _progress.positions[mediaId] ?? 0,
+        'is_finished': _progress.finished.contains(mediaId),
       };
 
-  /// La position reste sur l'appareil ; le serveur ne l'entend que pour
-  /// détruire un lien à usage unique au seuil « vu ».
+  /// Le serveur range la position sous le prénom du spectateur, et s'en sert
+  /// pour détruire un lien à usage unique au seuil « vu ». C'est lui qui dit
+  /// si le média est vu ; le client avance sans l'attendre.
   @override
   Future<bool> sendProgress({
     required int mediaId,
@@ -183,15 +257,13 @@ class SharedLinkApiClient extends ApiClient {
     required bool isFinished,
     DateTime? clientUpdatedAt,
   }) async {
-    await progress.record(
-      episodeId: _episodeOf(mediaId),
-      positionSeconds: currentPositionSeconds,
-      finished: isFinished,
-    );
+    _progress = _progress.recorded(mediaId,
+        positionSeconds: currentPositionSeconds, finished: isFinished);
     final data = await _shared('progress', {
       'viewer': _viewer,
       'ticket': _tickets[mediaId],
       ..._playing(mediaId),
+      ..._named,
       'position_seconds': currentPositionSeconds,
       'duration_seconds': duration,
     });
@@ -301,7 +373,8 @@ class SharedLinkApiClient extends ApiClient {
       final message = data is Map && data['error'] is String
           ? data['error'] as String
           : error.response == null
-              ? tr('Impossible de joindre le serveur. Vérifiez votre connexion.')
+              ? tr(
+                  'Impossible de joindre le serveur. Vérifiez votre connexion.')
               : tr('Le serveur n’a pas pu ouvrir ce lien. Réessayez.');
       throw SharedLinkException(error.response?.statusCode ?? 0, message);
     }

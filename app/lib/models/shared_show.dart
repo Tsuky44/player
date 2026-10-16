@@ -2,15 +2,53 @@ import 'media_share.dart';
 import 'models.dart';
 import '../l10n/tr.dart';
 
-/// Où le visiteur d'un lien de saison ou de série en est, d'après ce que
-/// l'appareil a retenu : le serveur ne garde la progression de personne sans
-/// compte (ADR-0037 §8).
+/// Où en est, dans un lien, le spectateur qui a donné son prénom : le serveur
+/// le garde sous ce prénom, le temps que le lien vit (ADR-0066).
 class SharedLinkProgress {
   const SharedLinkProgress({
     this.positions = const {},
     this.finished = const {},
     this.lastEpisodeId,
   });
+
+  /// La réponse de `/api/shared/resume`.
+  factory SharedLinkProgress.fromJson(Map<String, dynamic> json) {
+    final positions = json['positions'];
+    final finished = json['finished'];
+    return SharedLinkProgress(
+      positions: {
+        if (positions is Map)
+          for (final entry in positions.entries)
+            if (int.tryParse('${entry.key}') case final id?)
+              id: (entry.value as num).toInt(),
+      },
+      finished: {
+        if (finished is List)
+          for (final id in finished) (id as num).toInt(),
+      },
+      lastEpisodeId: (json['last_media_id'] as num?)?.toInt(),
+    );
+  }
+
+  /// Ce que la lecture de [mediaId] change, avant que le serveur le confirme
+  /// au prochain affichage de la page. Un média fini perd sa position ; un
+  /// média vu qu'on relance redevient « en cours ».
+  SharedLinkProgress recorded(int mediaId,
+          {required int positionSeconds, required bool finished}) =>
+      SharedLinkProgress(
+        positions: {
+          for (final entry in positions.entries)
+            if (entry.key != mediaId) entry.key: entry.value,
+          if (!finished && positionSeconds > 0) mediaId: positionSeconds,
+        },
+        finished: finished
+            ? {...this.finished, mediaId}
+            : {
+                for (final id in this.finished)
+                  if (id != mediaId) id
+              },
+        lastEpisodeId: mediaId,
+      );
 
   /// La position gardée de chaque épisode commencé, en secondes.
   final Map<int, int> positions;
@@ -26,8 +64,8 @@ class SharedLinkProgress {
 /// lecteur d'un compte connaissent déjà : des saisons, des épisodes avec leur
 /// avancement, l'épisode suivant, le point de reprise (ADR-0037 §10).
 ///
-/// Tout vient de ce que le lien a décrit ([SharedMediaInfo]) et de ce que
-/// l'appareil a retenu ([SharedLinkProgress]) : aucune requête.
+/// Tout vient de ce que le lien a décrit ([SharedMediaInfo]) et de
+/// l'avancement du spectateur ([SharedLinkProgress]) : aucune requête.
 class SharedShow {
   SharedShow(this.info, [this.progress = const SharedLinkProgress()]);
 
@@ -118,8 +156,10 @@ class SharedShow {
     );
   }
 
-  List<HomeMediaItem> episodesOf(int seasonId) =>
-      [for (final e in episodes) if (e.media.parentId == seasonId) e];
+  List<HomeMediaItem> episodesOf(int seasonId) => [
+        for (final e in episodes)
+          if (e.media.parentId == seasonId) e
+      ];
 
   HomeMediaItem? episode(int id) {
     for (final e in episodes) {

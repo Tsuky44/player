@@ -79,7 +79,9 @@ simultanées. **Supprimer un lien révoque tous ses tickets** : une réponse dé
 bloc suivant, comme pour un ticket de compte.
 
 La lecture d'un visiteur n'écrit rien dans la progression ni dans l'historique du créateur : le
-visiteur n'est pas lui. L'app invitée garde sa propre position dans le stockage du navigateur.
+visiteur n'est pas lui. ~~L'app invitée garde sa propre position dans le stockage du
+navigateur.~~ Remplacé par l'[ADR-0066](0066-reprise-d-un-lien-de-partage-par-prenom.md) : le
+serveur la garde par lien, sous le prénom du visiteur.
 
 ### 6. Le lecteur Onyx, en invité
 
@@ -131,7 +133,7 @@ fichier n'y figure pas (`server/handlers/share_scope.go`).
   `single_use` sur une saison ou une série, et l'app ne le propose pas. Reste l'échéance, et la
   suppression du lien. Écarté : détruire le lien quand tous les épisodes ont été vus — il aurait
   fallu garder côté serveur la progression d'un visiteur sans compte, épisode par épisode.
-- La position de reprise est gardée dans le navigateur, une par épisode.
+- ~~La position de reprise est gardée dans le navigateur, une par épisode.~~ Voir l'ADR-0066.
 - ~~Le lecteur invité n'enchaîne pas sur l'épisode suivant : le visiteur revient à la liste.~~
   Remplacé par le §10.
 
@@ -174,7 +176,8 @@ avec leur image et leur avancement, et le bouton « Reprendre S1 E3 ».
   (`loadSharedShowDetails`, `loadSharedEpisodes`). Rien du disque ni du reste de la médiathèque
   n'y figure : pas de nom de fichier, pas de titres similaires. Le mot de passe protège ces
   champs comme les autres.
-- **L'avancement reste sur l'appareil** (`services/shared_link_progress_store.dart`) : une
+- ~~**L'avancement reste sur l'appareil** (`services/shared_link_progress_store.dart`)~~ —
+  remplacé par l'ADR-0066, il est gardé par le serveur sous le prénom du visiteur : une
   position par épisode, les épisodes vus, le dernier regardé. La reprise s'en déduit comme pour
   un compte — l'épisode entamé, sinon le suivant, sinon le premier (`models/shared_show.dart`).
 - **Le lecteur enchaîne.** Le `SharedLinkApiClient` répond aux questions que le lecteur pose à
@@ -213,8 +216,8 @@ devinent mal.
 - **La page d'un lien de série appelle TMDB** par le serveur, pour la fiche. Le catalogue est en
   cache et la route limitée (§7), mais un serveur sans clé TMDB ne montre que ce que sa base
   sait : titre, affiche, synopsis.
-- **L'avancement d'un visiteur ne le suit pas** d'un appareil à l'autre, ni après un effacement
-  des données du navigateur : « Reprendre » redevient « Lecture ».
+- ~~**L'avancement d'un visiteur ne le suit pas** d'un appareil à l'autre, ni après un effacement
+  des données du navigateur : « Reprendre » redevient « Lecture ».~~ Levé par l'ADR-0066.
 
 - **Le lien d'une série ouvre beaucoup à la fois.** La borne de quatre lectures simultanées par
   lien (§5) tient toujours, mais rien ne limite le nombre d'épisodes vus d'ici l'échéance.

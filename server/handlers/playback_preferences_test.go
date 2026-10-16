@@ -69,6 +69,27 @@ func TestPlaybackPreferencesPartialUpdateKeepsOtherFields(t *testing.T) {
 	}
 }
 
+// Le saut du récap se règle à part de celui de l'intro : poser l'un ne touche
+// pas à l'autre.
+func TestPlaybackPreferencesAutoSkipRecapIsIndependentOfIntro(t *testing.T) {
+	setupAuthDB(t)
+	user := createTestUser(t, "alice", false, models.Permissions{})
+
+	if rec := putPlaybackPreferences(user, `{"auto_skip_recap":true}`); rec.Code != http.StatusOK {
+		t.Fatalf("put auto_skip_recap: status %d", rec.Code)
+	}
+	if prefs := getPlaybackPreferences(t, user); !prefs.AutoSkipRecap || prefs.AutoSkipIntro {
+		t.Fatalf("after setting the recap: got %+v", prefs)
+	}
+
+	if rec := putPlaybackPreferences(user, `{"auto_skip_intro":true}`); rec.Code != http.StatusOK {
+		t.Fatalf("put auto_skip_intro: status %d", rec.Code)
+	}
+	if prefs := getPlaybackPreferences(t, user); !prefs.AutoSkipRecap || !prefs.AutoSkipIntro {
+		t.Fatalf("after setting the intro: got %+v", prefs)
+	}
+}
+
 // Les réglages appartiennent à un compte : ceux d'un autre ne bougent pas.
 func TestPlaybackPreferencesAreScopedToTheAccount(t *testing.T) {
 	setupAuthDB(t)

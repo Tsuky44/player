@@ -2,10 +2,12 @@ import 'package:flutter/material.dart';
 
 import '../../../../l10n/tr.dart';
 import '../../../../tv/tv_focus.dart';
+import '../../../../tv/tv_focus_rows.dart';
+import '../../playback/skip_segments.dart';
 import 'onyx_chrome_theme.dart';
 
 /// Skip-intro affordance: a bordered pill above the controls, shown
-/// only while an intro chapter is playing.
+/// only while an intro — or the recap before it — is playing.
 ///
 /// While [autoSkipIn] is set the pill fills from the left over that time, the
 /// way the next-episode pill does: what is on screen says how long is left
@@ -19,11 +21,15 @@ class OnyxSkipIntroButton extends StatefulWidget {
   /// to ask for.
   final Duration? autoSkipIn;
 
+  /// Ce que la pastille saute : seul son libellé en dépend.
+  final SkipSegment segment;
+
   const OnyxSkipIntroButton({
     super.key,
     required this.onPressed,
     required this.metrics,
     this.autoSkipIn,
+    this.segment = SkipSegment.intro,
   });
 
   @override
@@ -103,7 +109,10 @@ class _OnyxSkipIntroButtonState extends State<OnyxSkipIntroButton>
                 padding:
                     const EdgeInsets.symmetric(horizontal: 18, vertical: 10),
                 child: Text(
-                  tr('Passer l’intro'),
+                  switch (widget.segment) {
+                    SkipSegment.recap => tr('Passer le récap'),
+                    SkipSegment.intro => tr('Passer l’intro'),
+                  },
                   style: TextStyle(
                     color: OnyxChromeTheme.iconActive,
                     fontSize: widget.metrics.skipIntroTextSize,
@@ -114,6 +123,45 @@ class _OnyxSkipIntroButtonState extends State<OnyxSkipIntroButton>
             ],
           ),
         ),
+      ),
+    );
+  }
+}
+
+/// La pastille à sa place : à droite, juste au-dessus de la barre du bas, la
+/// même sur tous les chromes.
+class OnyxSkipIntroSlot extends StatelessWidget {
+  final VoidCallback onPressed;
+  final OnyxChromeMetrics metrics;
+  final Duration? autoSkipIn;
+  final SkipSegment segment;
+
+  /// Vrai sur le chrome télé : la pastille forme alors sa propre rangée pour
+  /// le D-pad.
+  final bool focusRow;
+
+  const OnyxSkipIntroSlot({
+    super.key,
+    required this.onPressed,
+    required this.metrics,
+    this.autoSkipIn,
+    this.segment = SkipSegment.intro,
+    this.focusRow = false,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final Widget button = OnyxSkipIntroButton(
+      onPressed: onPressed,
+      metrics: metrics,
+      autoSkipIn: autoSkipIn,
+      segment: segment,
+    );
+    return Padding(
+      padding: EdgeInsets.fromLTRB(metrics.gutter, 0, metrics.gutter, 14),
+      child: Align(
+        alignment: Alignment.centerRight,
+        child: focusRow ? TvFocusRow(child: button) : button,
       ),
     );
   }

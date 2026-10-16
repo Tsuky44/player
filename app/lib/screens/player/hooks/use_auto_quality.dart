@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:flutter/foundation.dart';
 
 import '../playback/auto_quality.dart';
+import '../playback/auto_trust.dart';
 
 /// Ce que le pilote lit de la lecture à chaque seconde.
 @immutable
@@ -47,14 +48,17 @@ class AutoQualityPilot {
     required Future<AutoLineMeasure?> Function(int wantBps) measureLine,
     required Future<bool> Function(AutoTarget target, {required bool urgent})
         move,
-    Future<AutoSounding> Function({required bool passive})? sound,
+    Future<AutoSounding> Function({required bool passive, bool sideMeasure})?
+        sound,
     AutoQuality? rules,
+    AutoTrust? trust,
     DateTime Function() now = DateTime.now,
   })  : _read = read,
         _measureLine = measureLine,
         _move = move,
         _sound = sound,
         _rules = rules ?? AutoQuality(),
+        _trust = trust ?? AutoTrust(),
         _now = now;
 
   final AutoQualityReading Function() _read;
@@ -64,15 +68,18 @@ class AutoQualityPilot {
   /// Sonde la ligne et le serveur au moment de descendre. Sans elle, le
   /// barreau se choisit d'après la pente du tampon. `passive` : ne rien
   /// rendre qui coûte à la ligne ou qui ne vaille pas pour une session à
-  /// peine ouverte.
-  final Future<AutoSounding> Function({required bool passive})? _sound;
+  /// peine ouverte. `sideMeasure` : mesurer la ligne à côté de la lecture
+  /// plutôt que croire ce que le moteur reçoit — un moteur au cache plein ne
+  /// reçoit que ce qu'il lit.
+  final Future<AutoSounding> Function({required bool passive, bool sideMeasure})?
+      _sound;
   final AutoQuality _rules;
+  final AutoTrust _trust;
   final DateTime Function() _now;
 
   Timer? _timer;
   bool _enabled = false;
   bool _busy = false;
-  DateTime? _sparedAt;
   int _maxEncodeHeight = 0;
 
   /// La plus grande image que le serveur a su encoder assez vite pendant
@@ -92,6 +99,7 @@ class AutoQualityPilot {
     _enabled = value;
     if (value) {
       _rules.noteChosen(_now());
+      _trust.reset();
       // Qui redemande l'Auto veut qu'elle réessaie : le serveur a pu se
       // libérer depuis.
       _maxEncodeHeight = 0;
@@ -138,15 +146,16 @@ class AutoQualityPilot {
       final line = (await sound(passive: true)).lineBps;
       if (line == null) return;
       final ladder = _read().ladder;
-      if (!ladder.starves(line)) return;
+      final starved = ladder.currentKey == null
+          ? line < ladder.sendingBps * AutoTrust.directShortfall
+          : ladder.starves(line);
+      if (!starved) return;
       final target = ladder.downTo(line);
       if (target == null) return;
       debugPrint('Auto: ligne mesurée à ${(line / 1e6).toStringAsFixed(1)} '
           'Mbit/s — passage de ${ladder.currentKey ?? 'direct'} à $target '
           '(coupure, sans attendre)');
-      if (await _move(target, urgent: true)) {
-        _rules.noteMoved(_now(), up: false);
-      }
+      if (await _move(target, urgent: true)) _noteMoved(up: false);
     }, quietOnFailure: false);
   }
 
@@ -170,6 +179,9 @@ class AutoQualityPilot {
       case AutoVerdict.steady:
         return;
       case AutoVerdict.starving:
+        // Une mesure récente a disculpé la ligne : c'est le moteur qui laisse
+        // fondre son cache plein, pas elle qui manque.
+        if (!_trust.slopeCounts(_now())) return;
         await _descend(reading, urgent: false);
       case AutoVerdict.canClimb:
         await _climb(reading);
@@ -179,8 +191,13 @@ class AutoQualityPilot {
   Future<void> _descend(AutoQualityReading reading,
       {required bool urgent}) async {
     await _run(() async {
+      // Pendant une coupure le cache est vide, et le moteur tire tout ce que
+      // la ligne porte : ce qu'il reçoit la mesure. Sur une pente, il peut
+      // tenir un cache plein qui ne reçoit que ce qu'il lit — seule une mesure
+      // à côté dit alors ce que la ligne porterait.
       final sounding =
-          await _sound?.call(passive: false) ?? const AutoSounding();
+          await _sound?.call(passive: false, sideMeasure: !urgent) ??
+              const AutoSounding();
       // La sonde a pris une seconde ou deux : l'échelle se relit.
       final ladder = _sound == null ? reading.ladder : _read().ladder;
       if (sounding.encoderBehind && await _leaveTheEncoder(ladder)) return;
@@ -192,11 +209,20 @@ class AutoQualityPilot {
       }
       final moved = await _move(target, urgent: urgent);
       if (moved) {
-        _rules.noteMoved(_now(), up: false);
+        _noteMoved(up: false);
       } else {
         _rules.noteDisturbance(_now());
       }
     });
+  }
+
+  /// Un changement de source vient d'aboutir. [carried] : la mesure qui l'a
+  /// décidé dit déjà que la ligne porte la nouvelle source.
+  void _noteMoved({required bool up, bool carried = false}) {
+    final now = _now();
+    _rules.noteMoved(now, up: up);
+    _trust.reset();
+    if (carried) _trust.noteCarried(now);
   }
 
   /// Le serveur n'encode pas assez vite : si la ligne porte le fichier tel
@@ -212,7 +238,7 @@ class AutoQualityPilot {
         '${ladder.currentKey} assez vite, et la ligne porte '
         '${(capacity / 1e6).toStringAsFixed(1)} Mbit/s — retour au fichier');
     if (!await _move(const AutoTarget.direct(), urgent: true)) return false;
-    _rules.noteMoved(_now(), up: true);
+    _noteMoved(up: true, carried: true);
     return true;
   }
 
@@ -235,8 +261,18 @@ class AutoQualityPilot {
       return target;
     }
 
+    final now = _now();
+    final direct = ladder.currentKey == null;
     final line = sounding.lineBps;
     if (line == null) {
+      // Le Direct Play ne se quitte pas sur une supposition : une pente sans
+      // mesure ne prouve rien (voir [AutoTrust]), et quelques coupures se
+      // laissent passer avant de l'accuser à l'aveugle.
+      if (direct &&
+          (!urgent || _trust.stallTolerated(now, direct: true))) {
+        debugPrint('Auto: ligne non mesurée — on reste en direct$why');
+        return null;
+      }
       final target = ladder.down(_rules.fillRatio);
       if (target != null) {
         debugPrint('Auto: la ligne porte '
@@ -248,18 +284,16 @@ class AutoQualityPilot {
 
     final mbit = (line / 1e6).toStringAsFixed(1);
     if (ladder.carries(line)) {
-      // La ligne tient ce qui est lu : un accroc, ou une scène plus lourde
-      // que la moyenne du fichier. Une fois, on laisse passer ; si ça
-      // recommence, un cran de moins.
-      final spared = _sparedAt;
-      final now = _now();
-      if (spared == null || now.difference(spared) > _rules.relapseWindow) {
-        _sparedAt = now;
+      // La ligne tient ce qui est lu : sur une pente, c'est le cache du
+      // moteur qui fond, et elle n'est plus accusée de quelque temps. Sur une
+      // coupure, un accroc ou une scène plus lourde que la moyenne du
+      // fichier : on en laisse passer, puis un cran de moins.
+      _trust.noteCarried(now);
+      if (!urgent || _trust.stallTolerated(now, direct: direct)) {
         debugPrint('Auto: ligne mesurée à $mbit Mbit/s, assez pour $from — '
             'on ne change rien$why');
         return null;
       }
-      _sparedAt = null;
       final target = ladder.down(0.9);
       if (target != null) {
         debugPrint('Auto: ligne mesurée à $mbit Mbit/s mais $from coupe '
@@ -310,7 +344,9 @@ class AutoQualityPilot {
           'remontée à $target');
       final moved = await _move(target, urgent: false);
       if (moved) {
-        _rules.noteMoved(_now(), up: true);
+        // Une fois et demie ce que la nouvelle source demande : la ligne est
+        // déjà disculpée pour elle.
+        _noteMoved(up: true, carried: true);
       } else {
         _rules.noteClimbRefused(_now());
       }

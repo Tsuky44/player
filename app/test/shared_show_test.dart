@@ -5,7 +5,6 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:onyx/models/media_share.dart';
 import 'package:onyx/models/shared_show.dart';
 import 'package:onyx/services/api_client.dart';
-import 'package:onyx/services/shared_link_progress_store.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import 'test_doubles.dart';
@@ -104,34 +103,39 @@ void main() {
     expect(show.episodesOf(show.seasons.last.id).single.media.id, 21);
   });
 
-  test('l’appareil retient la position, les épisodes vus et le dernier regardé',
-      () async {
-    SharedPreferences.setMockInitialValues({});
-    final store = SharedLinkProgressStore('AbC');
-    await store.record(episodeId: 11, positionSeconds: 2900, finished: true);
-    await store.record(episodeId: 12, positionSeconds: 600, finished: false);
-
-    var progress = await store.snapshot([11, 12, 21]);
-    expect(progress.finished, {11});
+  test('l’avancement du serveur se lit, et la lecture le fait avancer', () {
+    var progress = SharedLinkProgress.fromJson({
+      'name': 'Marie',
+      'positions': {'12': 600},
+      'finished': [11],
+      'last_media_id': 12,
+    });
     expect(progress.positions, {12: 600});
+    expect(progress.finished, {11});
     expect(progress.lastEpisodeId, 12);
 
+    progress = progress.recorded(12, positionSeconds: 2950, finished: true);
+    expect(progress.positions, isEmpty,
+        reason: 'un épisode fini perd sa position');
+    expect(progress.finished, {11, 12});
+
     // Relancer un épisode vu le remet « en cours ».
-    await store.record(episodeId: 11, positionSeconds: 40, finished: false);
-    progress = await store.snapshot([11, 12, 21]);
-    expect(progress.finished, isEmpty);
+    progress = progress.recorded(11, positionSeconds: 40, finished: false);
+    expect(progress.finished, {12});
+    expect(progress.positions, {11: 40});
     expect(progress.lastEpisodeId, 11);
 
-    expect(await SharedLinkProgressStore('Autre').position(episodeId: 12), 0,
-        reason: 'un autre lien ne voit pas cette progression');
+    expect(SharedLinkProgress.fromJson(const {}).lastEpisodeId, isNull,
+        reason: 'un spectateur qui n’a rien regardé');
   });
 
   // Le lecteur demande l'épisode suivant et son ticket au client du lien comme
   // il les demanderait à un compte (ADR-0037 §10).
   test('le lecteur invité enchaîne sur l’épisode suivant du lien', () async {
-    SharedPreferences.setMockInitialValues({});
+    SharedPreferences.setMockInitialValues({'onyx-share-name:AbC': 'Marie'});
     final opened = <int?>[];
     final progressed = <Map<String, dynamic>>[];
+    final resumed = <String?>[];
     final dio = Dio()
       ..httpClientAdapter = Adapter((r) {
         final body = r.data as Map<String, dynamic>;
@@ -152,6 +156,9 @@ void main() {
           case '/api/shared/progress':
             progressed.add(body);
             return _json({'consumed': false});
+          case '/api/shared/resume':
+            resumed.add(body['name'] as String?);
+            return _json({'name': 'Marie', 'positions': {}, 'finished': []});
         }
         fail('route inattendue : ${r.uri.path}');
       });
@@ -188,11 +195,14 @@ void main() {
         currentPositionSeconds: 5,
         duration: 3000,
         isFinished: false);
-    expect(progressed.map((p) => (p['media_id'], p['ticket'])),
-        [(11, 'ticket-11'), (12, 'ticket-12')]);
+    expect(progressed.map((p) => (p['media_id'], p['ticket'], p['name'])),
+        [(11, 'ticket-11', 'Marie'), (12, 'ticket-12', 'Marie')],
+        reason: 'la position est rangée sous le prénom du spectateur');
+    expect(resumed, ['Marie']);
 
-    final show = await api.describe(_show);
-    expect(show.resumeEpisode?.media.id, 12);
-    expect(show.episode(11)?.isFinished, isTrue);
+    // Le lecteur suit la lecture sans redemander l'avancement au serveur.
+    expect((await api.getProgress(11))['is_finished'], isTrue);
+    expect((await api.getProgress(12))['current_position_seconds'], 5);
+    expect(resumed, ['Marie']);
   });
 }

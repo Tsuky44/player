@@ -72,6 +72,9 @@ extension _PlayerStartup on _PlayerScreenState {
         _party.party?.resync();
         // Lifts the start-up cover: the texture now holds this media.
         _safeSetState(() {});
+        // Les secondes rapportées sous le cache n'ont rien proposé : une intro
+        // qui ouvre l'épisode se propose maintenant, sans attendre le tic suivant.
+        _onPositionChanged();
         // Restart the auto-hide countdown here rather than leave the one armed
         // when play() was issued. On a slow open — a transcode taking several
         // seconds to produce a frame — that first countdown expired while the

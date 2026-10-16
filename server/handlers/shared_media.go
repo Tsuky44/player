@@ -33,6 +33,9 @@ type sharedMediaRequest struct {
 	// MediaID désigne l'épisode voulu dans le lien d'une saison ou d'une
 	// série ; absent pour un film ou un épisode, que le lien désigne seul.
 	MediaID int `json:"media_id"`
+	// Name est le prénom que le spectateur a donné : l'avancement est rangé
+	// sous lui (ADR-0066). Vide pour une page d'avant.
+	Name string `json:"name"`
 	// PositionSeconds et DurationSeconds ne servent qu'à /progress.
 	PositionSeconds int `json:"position_seconds"`
 	DurationSeconds int `json:"duration_seconds"`
@@ -177,6 +180,7 @@ func OpenSharedMedia(w http.ResponseWriter, r *http.Request, _ httprouter.Params
 		ExpiresAt:         ticket.ExpiresAt,
 		RenewAfterSeconds: ticketRenewAfterSeconds,
 		Viewer:            viewer,
+		PositionSeconds:   sharedViewerPosition(share, req.Name, mediaID),
 	})
 }
 
@@ -204,7 +208,8 @@ func RenewSharedMedia(w http.ResponseWriter, r *http.Request, _ httprouter.Param
 
 // ReportSharedMediaProgress reçoit la position d'une lecture
 // (POST /api/shared/progress). C'est elle qui détruit un lien à usage unique :
-// au seuil « vu », le même que pour la progression d'un compte.
+// au seuil « vu », le même que pour la progression d'un compte. Elle range
+// aussi la position sous le prénom du spectateur (ADR-0066).
 //
 // Rien n'est écrit dans la progression du créateur : le visiteur n'est pas lui.
 func ReportSharedMediaProgress(w http.ResponseWriter, r *http.Request, _ httprouter.Params) {
@@ -226,9 +231,11 @@ func ReportSharedMediaProgress(w http.ResponseWriter, r *http.Request, _ httprou
 		return
 	}
 
+	watched := reachedWatchedThreshold(req.PositionSeconds, sharedMediaDuration(mediaID, req.DurationSeconds))
+	recordSharedViewerProgress(share, req.Name, mediaID, req.PositionSeconds, watched)
+
 	consumed := !share.ConsumedAt.IsZero()
-	if share.SingleUse && !consumed &&
-		reachedWatchedThreshold(req.PositionSeconds, sharedMediaDuration(mediaID, req.DurationSeconds)) {
+	if share.SingleUse && !consumed && watched {
 		if _, err := store.Consume(share.ID); err != nil {
 			log.Printf("ReportSharedMediaProgress: %v", err)
 			writeJSONError(w, http.StatusInternalServerError, "Internal server error")

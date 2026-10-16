@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:onyx/models/media_share.dart';
+import 'package:onyx/models/shared_show.dart';
 import 'package:onyx/providers/auth_provider.dart';
 import 'package:onyx/screens/shared_link/shared_link_app.dart';
 import 'package:onyx/services/api_client.dart';
@@ -9,8 +10,15 @@ import 'package:shared_preferences/shared_preferences.dart';
 
 /// Un lien dont le serveur répond sans réseau.
 class _Api extends SharedLinkApiClient {
-  _Api(this._info, {this.refusal, this.unlocked})
+  _Api(this._info,
+      {this.refusal, this.unlocked, this.progress = const SharedLinkProgress()})
       : super('AbCdEfGhIjKlMnOpQrStUv');
+
+  /// Où le serveur dit que le spectateur en est, quel que soit son prénom.
+  final SharedLinkProgress progress;
+
+  /// Les prénoms dont l'avancement a été demandé.
+  final List<String> askedFor = [];
 
   final SharedMediaInfo _info;
   final SharedLinkException? refusal;
@@ -35,9 +43,16 @@ class _Api extends SharedLinkApiClient {
     return unlocked!;
   }
 
+  @override
+  Future<SharedLinkProgress> fetchProgress(String name) async {
+    askedFor.add(name);
+    return progress;
+  }
+
   // L'ouverture s'arrête ici : le lecteur lui-même n'est pas l'objet du test.
   @override
-  Future<({SharedMediaInfo media, int mediaId})> open(String password,
+  Future<({SharedMediaInfo media, int mediaId, int positionSeconds})> open(
+      String password,
       {int? episodeId}) async {
     opened.add(episodeId);
     throw const SharedLinkException(0, 'Serveur injoignable.');
@@ -66,8 +81,14 @@ const _season = SharedMediaInfo(
   ],
 );
 
+/// Le prénom donné sur cet appareil, pour les tests qui ne portent pas sur
+/// lui.
+const _named = <String, Object>{
+  'onyx-share-name:AbCdEfGhIjKlMnOpQrStUv': 'Marie'
+};
+
 Future<void> _pump(WidgetTester tester, _Api api,
-    {Map<String, Object> stored = const {}}) async {
+    {Map<String, Object> stored = _named}) async {
   SharedPreferences.setMockInitialValues(stored);
   // Assez haut pour que la liste des épisodes, sous l'en-tête de la fiche,
   // soit construite.
@@ -109,6 +130,55 @@ void main() {
     expect(find.text('S01E05 · Cinq cent enfants'), findsOneWidget);
     expect(find.text('Regarder'), findsOneWidget);
     expect(find.byType(TextField), findsNothing);
+    expect(find.text('Vous regardez en tant que Marie'), findsOneWidget);
+  });
+
+  // ADR-0066 : la reprise est rangée sous le prénom de qui regarde. Le même
+  // prénom sur le même lien la retrouve, depuis n'importe quel appareil.
+  testWidgets('un lien demande le prénom de qui regarde avant tout',
+      (tester) async {
+    final api = _Api(_season,
+        progress: const SharedLinkProgress(
+            positions: {15: 600}, finished: {11}, lastEpisodeId: 15));
+    await _pump(tester, api, stored: const {});
+    expect(find.text('Votre prénom'), findsOneWidget);
+    expect(find.text('Continuer'), findsOneWidget);
+    expect(find.text('Pilote'), findsNothing,
+        reason:
+            'pas de fiche sans prénom : elle montrerait l’avancement de personne');
+
+    await tester.tap(find.text('Continuer'));
+    await tester.pump(const Duration(milliseconds: 100));
+    expect(find.text('Indiquez votre prénom.'), findsOneWidget);
+
+    await tester.enterText(find.byType(TextField), '  Marie ');
+    await tester.tap(find.text('Continuer'));
+    await tester.pump(const Duration(milliseconds: 100));
+    expect(api.askedFor, ['Marie']);
+    expect(find.text('Reprendre S1 E5'), findsOneWidget);
+    expect(find.text('Vous regardez en tant que Marie'), findsOneWidget);
+
+    // Quelqu'un d'autre prend l'appareil : la page redemande un prénom.
+    await tester.tap(find.text('Changer'));
+    await tester.pump(const Duration(milliseconds: 100));
+    expect(find.text('Votre prénom'), findsOneWidget);
+    expect(find.text('Reprendre S1 E5'), findsNothing);
+  });
+
+  testWidgets('un lien protégé demande le prénom et le mot de passe ensemble',
+      (tester) async {
+    final api =
+        _Api(const SharedMediaInfo(needsPassword: true), unlocked: _season);
+    await _pump(tester, api, stored: const {});
+    expect(find.byType(TextField), findsNWidgets(2));
+
+    await tester.enterText(find.byType(TextField).first, 'Paul');
+    await tester.enterText(find.byType(TextField).last, 'popcorn');
+    await tester.tap(find.text('Ouvrir'));
+    await tester.pump(const Duration(milliseconds: 100));
+    expect(api.askedFor, ['Paul']);
+    expect(find.text('Pilote'), findsOneWidget);
+    expect(find.text('Vous regardez en tant que Paul'), findsOneWidget);
   });
 
   testWidgets('un lien protégé demande son mot de passe sans nommer le média',
@@ -141,16 +211,14 @@ void main() {
         reason: 'un échec laisse la liste : un autre épisode reste à choisir');
   });
 
-  // Ce que l'appareil a retenu du lien : le visiteur retrouve « Reprendre »
-  // sur l'épisode entamé, comme avec un compte.
+  // Ce que le serveur a gardé sous son prénom : le visiteur retrouve
+  // « Reprendre » sur l'épisode entamé, comme avec un compte.
   testWidgets('un visiteur revenu sur le lien reprend son épisode',
       (tester) async {
-    final api = _Api(_season);
-    await _pump(tester, api, stored: {
-      'onyx-share-last:AbCdEfGhIjKlMnOpQrStUv': 15,
-      'onyx-share-position:AbCdEfGhIjKlMnOpQrStUv:15': 600,
-      'onyx-share-finished:AbCdEfGhIjKlMnOpQrStUv': <String>['11'],
-    });
+    final api = _Api(_season,
+        progress: const SharedLinkProgress(
+            positions: {15: 600}, finished: {11}, lastEpisodeId: 15));
+    await _pump(tester, api);
     expect(find.text('Reprendre S1 E5'), findsOneWidget);
 
     await tester.tap(find.text('Reprendre S1 E5'));

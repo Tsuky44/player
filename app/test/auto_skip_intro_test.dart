@@ -125,6 +125,39 @@ void main() {
     nav.skipIntro();
   });
 
+  testWidgets('an intro that opens the episode waits for the picture',
+      (tester) async {
+    await PlaybackPreferencesStorage.setAutoSkipIntro(true);
+    var skipped = 0;
+    final nav = EpisodeNavigationController(
+      apiClient: ApiClient(),
+      episodeId: 1,
+      initialTimestamps: EpisodeTimestamps(
+        introStart: 0,
+        introEnd: 90,
+        outroStart: 0,
+        outroEnd: 0,
+      ),
+      onAutoSkipIntro: () => skipped++,
+    );
+    addTearDown(nav.dispose);
+
+    // The stream is still opening: the player already reads second 0.
+    nav.checkPosition(0, mediaDurationSeconds: 3000, pictureShown: false);
+    expect(nav.showSkipIntro, isFalse);
+    expect(nav.introAutoSkipActive, isFalse);
+    await tester.pump(const Duration(seconds: 10));
+    expect(skipped, 0, reason: 'a seek before the picture would be lost');
+
+    // The first frame is up: the offer and its countdown start from here.
+    nav.checkPosition(0, mediaDurationSeconds: 3000);
+    expect(nav.showSkipIntro, isTrue);
+    expect(nav.introAutoSkipActive, isTrue);
+    await tester.pump(const Duration(seconds: 5));
+    expect(skipped, 1);
+    expect(nav.introSkipTarget, 90);
+  });
+
   testWidgets('leaving the intro puts the countdown away', (tester) async {
     await PlaybackPreferencesStorage.setAutoSkipIntro(true);
     var skipped = 0;

@@ -11,6 +11,7 @@ import '../../widgets/global/detail_metadata.dart';
 import '../../widgets/global/episode_tile.dart';
 import '../../widgets/global/media_detail_widgets.dart';
 import '../library/widgets/season_tabs.dart';
+import 'shared_link_viewer.dart';
 import '../../l10n/tr.dart';
 
 /// La page du lien d'une saison ou d'une série : la fiche qu'un compte voit
@@ -18,14 +19,16 @@ import '../../l10n/tr.dart';
 /// synopsis, « Reprendre », les saisons en onglets, les épisodes avec leur
 /// image et leur avancement.
 ///
-/// Passive : [show] porte déjà l'avancement gardé sur l'appareil, et la page
-/// du lien ouvre l'épisode choisi. Ce qui suppose un compte n'y est pas —
+/// Passive : [show] porte déjà l'avancement du spectateur [viewerName]
+/// (ADR-0066), et la page du lien ouvre l'épisode choisi. Ce qui suppose un compte n'y est pas —
 /// marquer vu, télécharger, partager, demander une saison.
 class SharedLinkShowView extends StatefulWidget {
   const SharedLinkShowView({
     super.key,
     required this.show,
     required this.onPlay,
+    this.viewerName,
+    this.onChangeViewer,
     this.openingId,
     this.error,
     this.onClose,
@@ -35,6 +38,13 @@ class SharedLinkShowView extends StatefulWidget {
 
   /// Nul pendant qu'un épisode s'ouvre : un seul à la fois.
   final ValueChanged<HomeMediaItem>? onPlay;
+
+  /// Le prénom sous lequel l'avancement est rangé.
+  final String? viewerName;
+
+  /// Rend la main à quelqu'un d'autre sur cet appareil ; nul pendant une
+  /// ouverture.
+  final VoidCallback? onChangeViewer;
 
   /// L'épisode en train de s'ouvrir, qui montre l'attente.
   final int? openingId;
@@ -58,8 +68,7 @@ class _SharedLinkShowViewState extends State<SharedLinkShowView> {
 
   Media? _selectedSeason(List<Media> seasons) {
     if (seasons.isEmpty) return null;
-    final wanted =
-        _pickedSeasonId ?? widget.show.resumeEpisode?.media.parentId;
+    final wanted = _pickedSeasonId ?? widget.show.resumeEpisode?.media.parentId;
     return seasons.firstWhere((s) => s.id == wanted,
         orElse: () => seasons.first);
   }
@@ -70,9 +79,8 @@ class _SharedLinkShowViewState extends State<SharedLinkShowView> {
     final details = show.info.details;
     final seasons = show.seasons;
     final season = _selectedSeason(seasons);
-    final episodes = season == null
-        ? const <HomeMediaItem>[]
-        : show.episodesOf(season.id);
+    final episodes =
+        season == null ? const <HomeMediaItem>[] : show.episodesOf(season.id);
     final resume = show.resumeEpisode;
     final resuming = show.isResuming;
     final onPlay = widget.onPlay;
@@ -113,6 +121,16 @@ class _SharedLinkShowViewState extends State<SharedLinkShowView> {
               ),
             ),
           ),
+          if (widget.viewerName != null)
+            SliverToBoxAdapter(
+              child: Padding(
+                padding: AppLayout.pageInsets(context, top: 12),
+                child: SharedLinkViewerLine(
+                  name: widget.viewerName!,
+                  onChange: widget.onChangeViewer,
+                ),
+              ),
+            ),
           if (widget.error != null)
             SliverToBoxAdapter(
               child: Padding(

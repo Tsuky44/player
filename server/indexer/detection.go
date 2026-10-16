@@ -27,8 +27,13 @@ type ChapterItem struct {
 
 // Keywords for matching intro and outro chapters (multi-word only; short tokens
 // like "op"/"ed" use exact-token matching to avoid false positives).
+//
+// Un récap n'est pas une intro : rangé comme tel, un chapitre « Recap » qui
+// ouvre l'épisode prenait la place de la vraie intro, et le client sautait le
+// récap puis laissait passer l'intro. Le client propose le récap à part, d'après
+// les chapitres.
 var introKeywords = []string{
-	"intro", "opening", "recap", "previously on",
+	"intro", "opening",
 	"generique de debut", "generique debut",
 }
 var outroKeywords = []string{
@@ -98,7 +103,7 @@ func titleMatchesKeyword(normTitle, keyword string) bool {
 	return strings.Contains(normTitle, keyword)
 }
 
-// ChapterTitleMatchesIntro detects intro/recap chapter titles from MKV metadata.
+// ChapterTitleMatchesIntro detects intro chapter titles from MKV metadata.
 func ChapterTitleMatchesIntro(title string) bool {
 	normTitle := normalizeString(title)
 	if normTitle == "" {

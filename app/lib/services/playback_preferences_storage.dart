@@ -19,6 +19,7 @@ import 'api_client.dart';
 class PlaybackPreferencesStorage {
   static const String _defaultAudioLangKey = 'playback_default_audio_lang';
   static const String _autoSkipIntroKey = 'playback_auto_skip_intro';
+  static const String _autoSkipRecapKey = 'playback_auto_skip_recap';
   static const String _stillWatchingEnabledKey =
       'playback_still_watching_enabled';
   static const String _stillWatchingEpisodesKey =
@@ -32,6 +33,7 @@ class PlaybackPreferencesStorage {
 
   // Les noms des champs côté serveur.
   static const String _autoSkipIntroField = 'auto_skip_intro';
+  static const String _autoSkipRecapField = 'auto_skip_recap';
   static const String _defaultAudioLangField = 'default_audio_lang';
 
   /// Un seul nom pour les quatre champs `still_watching_*` : ils partent
@@ -48,6 +50,13 @@ class PlaybackPreferencesStorage {
   static bool _autoSkipIntro = false;
 
   static bool get autoSkipIntro => _autoSkipIntro;
+
+  /// Le même saut, pour le récap qui précède l'intro (« Previously on… »).
+  /// Un réglage à part : on peut connaître la série par cœur sans vouloir
+  /// manquer ce qu'elle rappelle de l'épisode d'avant.
+  static bool _autoSkipRecap = false;
+
+  static bool get autoSkipRecap => _autoSkipRecap;
 
   static StillWatchingSettings _stillWatching = StillWatchingSettings.defaults;
 
@@ -68,9 +77,11 @@ class PlaybackPreferencesStorage {
     try {
       final prefs = await SharedPreferences.getInstance();
       _autoSkipIntro = prefs.getBool(_autoSkipIntroKey) ?? false;
+      _autoSkipRecap = prefs.getBool(_autoSkipRecapKey) ?? false;
       _stillWatching = _readStillWatching(prefs);
     } catch (_) {
       _autoSkipIntro = false;
+      _autoSkipRecap = false;
       _stillWatching = StillWatchingSettings.defaults;
     }
   }
@@ -113,6 +124,7 @@ class PlaybackPreferencesStorage {
       if (!remote.isSaved) {
         fields = {
           _autoSkipIntroField,
+          _autoSkipRecapField,
           _defaultAudioLangField,
           _stillWatchingField,
         };
@@ -139,6 +151,17 @@ class PlaybackPreferencesStorage {
       // A preference that could not be stored still applies to this session.
     }
     unawaited(_pushPending(_autoSkipIntroField));
+  }
+
+  static Future<void> setAutoSkipRecap(bool value) async {
+    _autoSkipRecap = value;
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setBool(_autoSkipRecapKey, value);
+    } catch (_) {
+      // Comme le saut d'intro : faute de disque, le réglage vaut pour la séance.
+    }
+    unawaited(_pushPending(_autoSkipRecapField));
   }
 
   static Future<void> setStillWatching(StillWatchingSettings value) async {
@@ -237,6 +260,8 @@ class PlaybackPreferencesStorage {
     return {
       if (fields.contains(_autoSkipIntroField))
         _autoSkipIntroField: _autoSkipIntro,
+      if (fields.contains(_autoSkipRecapField))
+        _autoSkipRecapField: _autoSkipRecap,
       if (fields.contains(_defaultAudioLangField))
         _defaultAudioLangField: _readAudioLang(prefs) ?? '',
       if (fields.contains(_stillWatchingField)) ..._stillWatching.toJson(),
@@ -251,13 +276,18 @@ class PlaybackPreferencesStorage {
     // Un serveur qui ne connaît pas « Vous regardez encore ? » n'a rien à en
     // dire : le réglage de l'appareil reste.
     final stillWatching = remote.stillWatching ?? _stillWatching;
+    // Pareil pour le récap : un serveur plus ancien ne le connaît pas.
+    final autoSkipRecap = remote.autoSkipRecap ?? _autoSkipRecap;
     final changed = remote.autoSkipIntro != _autoSkipIntro ||
+        autoSkipRecap != _autoSkipRecap ||
         lang != _readAudioLang(prefs) ||
         stillWatching != _stillWatching;
     if (!changed) return;
     _autoSkipIntro = remote.autoSkipIntro;
+    _autoSkipRecap = autoSkipRecap;
     _stillWatching = stillWatching;
     await prefs.setBool(_autoSkipIntroKey, remote.autoSkipIntro);
+    await prefs.setBool(_autoSkipRecapKey, autoSkipRecap);
     await _writeAudioLang(prefs, lang);
     await _writeStillWatching(prefs, stillWatching);
     accountRevision.value++;
@@ -268,6 +298,7 @@ class PlaybackPreferencesStorage {
     _account = null;
     _accountKey = null;
     _autoSkipIntro = false;
+    _autoSkipRecap = false;
     _stillWatching = StillWatchingSettings.defaults;
     accountRevision.value = 0;
   }

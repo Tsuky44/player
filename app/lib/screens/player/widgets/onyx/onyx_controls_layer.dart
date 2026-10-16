@@ -6,11 +6,13 @@ import '../../../../tv/tv_focus_rows.dart';
 import '../../../../utils/format.dart';
 import '../../../../widgets/global/app_network_image.dart';
 import '../avoid_cutouts.dart';
+import '../../playback/skip_segments.dart';
 import '../../playback/timeline_previews.dart';
 import 'onyx_brightness_slider.dart';
 import 'onyx_chrome_buttons.dart';
 import 'onyx_chrome_theme.dart';
 import 'onyx_progress_bar.dart';
+import 'onyx_scrim.dart';
 import 'onyx_skip_intro_button.dart';
 import '../../../../l10n/tr.dart';
 
@@ -112,6 +114,9 @@ class OnyxControlsLayer extends StatelessWidget {
   /// Set while the intro counts down to skipping itself: the pill fills over
   /// that time.
   final Duration? skipIntroCountdown;
+
+  /// Le passage que [onSkipIntro] saute : le récap ou l'intro.
+  final SkipSegment skipSegment;
 
   /// Opens the « Regarder ensemble » panel. Null where no server can host a
   /// session (offline playback).
@@ -230,6 +235,7 @@ class OnyxControlsLayer extends StatelessWidget {
     this.onOpenEpisodes,
     this.onSkipIntro,
     this.skipIntroCountdown,
+    this.skipSegment = SkipSegment.intro,
     this.chapterMarks = const [],
     this.settingsButtonKey,
     this.subtitlesButtonKey,
@@ -345,21 +351,11 @@ class OnyxControlsLayer extends StatelessWidget {
                   // slot above the bottom bar, so revealing the chrome does not
                   // move it.
                   if (onSkipIntro != null)
-                    Padding(
-                      padding: EdgeInsets.fromLTRB(
-                        m.gutter,
-                        0,
-                        m.gutter,
-                        14,
-                      ),
-                      child: Align(
-                        alignment: Alignment.centerRight,
-                        child: OnyxSkipIntroButton(
-                          onPressed: onSkipIntro!,
-                          metrics: m,
-                          autoSkipIn: skipIntroCountdown,
-                        ),
-                      ),
+                    OnyxSkipIntroSlot(
+                      onPressed: onSkipIntro!,
+                      metrics: m,
+                      autoSkipIn: skipIntroCountdown,
+                      segment: skipSegment,
                     ),
                   _fadeWithChrome(_buildBottom(m)),
                 ],
@@ -429,18 +425,12 @@ class OnyxControlsLayer extends StatelessWidget {
                 // Outside the fade, as on the other chromes: the offer is
                 // time-limited and must not expire behind a hidden chrome.
                 if (onSkipIntro != null)
-                  Padding(
-                    padding: EdgeInsets.fromLTRB(m.gutter, 0, m.gutter, 14),
-                    child: Align(
-                      alignment: Alignment.centerRight,
-                      child: TvFocusRow(
-                        child: OnyxSkipIntroButton(
-                          onPressed: onSkipIntro!,
-                          metrics: m,
-                          autoSkipIn: skipIntroCountdown,
-                        ),
-                      ),
-                    ),
+                  OnyxSkipIntroSlot(
+                    onPressed: onSkipIntro!,
+                    metrics: m,
+                    autoSkipIn: skipIntroCountdown,
+                    segment: skipSegment,
+                    focusRow: true,
                   ),
                 _fadeWithChrome(_buildTvBottom(m)),
               ],
@@ -452,80 +442,75 @@ class OnyxControlsLayer extends StatelessWidget {
   }
 
   Widget _buildTvTop(OnyxChromeMetrics m) {
-    return Container(
-      padding: EdgeInsets.fromLTRB(m.gutter, m.topInset, m.gutter, _topBarTail),
-      decoration: const BoxDecoration(gradient: OnyxChromeTheme.topScrim),
-      child: TvFocusRow(
-        child: Row(
-          children: [
-            OnyxIconButton(
-              key: const ValueKey('onyx-back'),
-              icon: Icons.arrow_back_ios_new_rounded,
-              tooltip: tr('Retour'),
-              metrics: m,
-              isTv: true,
-              onPressed: onBack,
-            ),
-            const SizedBox(width: 8),
-            Flexible(child: _buildBrand(m)),
-            const SizedBox(width: 24),
-            _buildUtilities(m),
-          ],
+    return OnyxScrim(
+      gradient: OnyxChromeTheme.topScrim,
+      child: Padding(
+        padding:
+            EdgeInsets.fromLTRB(m.gutter, m.topInset, m.gutter, _topBarTail),
+        child: TvFocusRow(
+          child: Row(
+            children: [
+              OnyxIconButton(
+                key: const ValueKey('onyx-back'),
+                icon: Icons.arrow_back_ios_new_rounded,
+                tooltip: tr('Retour'),
+                metrics: m,
+                isTv: true,
+                onPressed: onBack,
+              ),
+              const SizedBox(width: 8),
+              Flexible(child: _buildBrand(m)),
+              const SizedBox(width: 24),
+              _buildUtilities(m),
+            ],
+          ),
         ),
       ),
     );
   }
 
   Widget _buildTvBottom(OnyxChromeMetrics m) {
-    return Stack(
-      children: [
-        const Positioned.fill(
-          child: IgnorePointer(
-            child: DecoratedBox(
-              decoration: BoxDecoration(gradient: OnyxChromeTheme.bottomScrim),
-            ),
-          ),
+    return OnyxScrim(
+      gradient: OnyxChromeTheme.bottomScrim,
+      child: Padding(
+        padding: EdgeInsets.fromLTRB(
+          m.gutter,
+          _bottomBarLead,
+          m.gutter,
+          m.bottomInset,
         ),
-        Padding(
-          padding: EdgeInsets.fromLTRB(
-            m.gutter,
-            _bottomBarLead,
-            m.gutter,
-            m.bottomInset,
-          ),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              _buildTitleBlock(m),
-              const SizedBox(height: 10),
-              TvFocusRow(
-                preferredFocus: progressFocusNode,
-                child: KeyedSubtree(
-                  key: timelineAnchorKey,
-                  child: OnyxProgressBar(
-                    progress: _progressFraction,
-                    buffered: buffered,
-                    duration: duration,
-                    chapterMarks: chapterMarks,
-                    metrics: m,
-                    onSeek: onSeekFraction,
-                    onScrubbingChanged: onScrubbingChanged,
-                    focusable: true,
-                    onStepBack: onScrubStepBack ?? onRewind,
-                    onStepForward: onScrubStepForward ?? onForward,
-                    onSelect: onPlayPause,
-                    focusNode: progressFocusNode,
-                    previews: previews,
-                    previewAtProgress: remoteSeekPending,
-                  ),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            _buildTitleBlock(m),
+            const SizedBox(height: 10),
+            TvFocusRow(
+              preferredFocus: progressFocusNode,
+              child: KeyedSubtree(
+                key: timelineAnchorKey,
+                child: OnyxProgressBar(
+                  progress: _progressFraction,
+                  buffered: buffered,
+                  duration: duration,
+                  chapterMarks: chapterMarks,
+                  metrics: m,
+                  onSeek: onSeekFraction,
+                  onScrubbingChanged: onScrubbingChanged,
+                  focusable: true,
+                  onStepBack: onScrubStepBack ?? onRewind,
+                  onStepForward: onScrubStepForward ?? onForward,
+                  onSelect: onPlayPause,
+                  focusNode: progressFocusNode,
+                  previews: previews,
+                  previewAtProgress: remoteSeekPending,
                 ),
               ),
-              _buildTimes(m),
-            ],
-          ),
+            ),
+            _buildTimes(m),
+          ],
         ),
-      ],
+      ),
     );
   }
 
@@ -537,55 +522,60 @@ class OnyxControlsLayer extends StatelessWidget {
   // --- Top ----------------------------------------------------------------
 
   Widget _buildTop(OnyxChromeMetrics m, double width) {
-    return Container(
-      // The macOS traffic lights live in this strip, so the row starts below
-      // them instead of underneath.
-      padding: EdgeInsets.fromLTRB(
-        m.gutter,
-        macOSWindowControlsTopInset + m.topInset,
-        m.gutter,
-        _topBarTail,
-      ),
-      decoration: const BoxDecoration(gradient: OnyxChromeTheme.topScrim),
-      child: _dodgeCutouts(
-        Row(
-          children: [
-            OnyxIconButton(
-              icon: Icons.arrow_back_ios_new_rounded,
-              tooltip: tr('Retour'),
-              metrics: m,
-              onPressed: onBack,
-            ),
-            const SizedBox(width: 8),
-            Flexible(child: _buildBrand(m)),
-            const Spacer(),
-            // Left out entirely on a television: the set and its remote own the
-            // volume, so the slider would do a job that is already done — and,
-            // being the one focusable widget up here, it would collect the
-            // remote's focus and hold it. Same conclusion on a phone, for the
-            // same reason with different hardware — see [showVolume].
-            if (!isTv && showVolume)
-              OnyxVolumeControl(
-                volume: volume,
-                onChanged: onVolumeChanged,
-                metrics: m,
-                // Below this the slider squeezes the title out of the top row.
-                // The mute button alone still leaves the volume reachable, and
-                // the settings sheet carries the fine control.
-                showSlider: width >= 560,
-              ),
-            // En haut à droite plutôt que dans la rangée d'utilitaires : sur
-            // un téléphone celle-ci est déjà pleine, et ce coin est libre
-            // puisque le volume n'y est pas.
-            if (!isTv && onLockScreen != null)
+    // Le dégradé ne prend pas les clics : voir [OnyxScrim].
+    return OnyxScrim(
+      gradient: OnyxChromeTheme.topScrim,
+      child: Padding(
+        // The macOS traffic lights live in this strip, so the row starts below
+        // them instead of underneath.
+        padding: EdgeInsets.fromLTRB(
+          m.gutter,
+          macOSWindowControlsTopInset + m.topInset,
+          m.gutter,
+          _topBarTail,
+        ),
+        child: _dodgeCutouts(
+          Row(
+            children: [
               OnyxIconButton(
-                key: const ValueKey('onyx-lock'),
-                icon: Icons.lock_open_rounded,
-                tooltip: tr('Verrouiller l’écran'),
+                icon: Icons.arrow_back_ios_new_rounded,
+                tooltip: tr('Retour'),
                 metrics: m,
-                onPressed: onLockScreen!,
+                onPressed: onBack,
               ),
-          ],
+              const SizedBox(width: 8),
+              // Un texte et une image répondent au test de clic : sans ça, le
+              // titre aussi empêchait de déplacer la fenêtre.
+              Flexible(child: IgnorePointer(child: _buildBrand(m))),
+              const Spacer(),
+              // Left out entirely on a television: the set and its remote own the
+              // volume, so the slider would do a job that is already done — and,
+              // being the one focusable widget up here, it would collect the
+              // remote's focus and hold it. Same conclusion on a phone, for the
+              // same reason with different hardware — see [showVolume].
+              if (!isTv && showVolume)
+                OnyxVolumeControl(
+                  volume: volume,
+                  onChanged: onVolumeChanged,
+                  metrics: m,
+                  // Below this the slider squeezes the title out of the top row.
+                  // The mute button alone still leaves the volume reachable, and
+                  // the settings sheet carries the fine control.
+                  showSlider: width >= 560,
+                ),
+              // En haut à droite plutôt que dans la rangée d'utilitaires : sur
+              // un téléphone celle-ci est déjà pleine, et ce coin est libre
+              // puisque le volume n'y est pas.
+              if (!isTv && onLockScreen != null)
+                OnyxIconButton(
+                  key: const ValueKey('onyx-lock'),
+                  icon: Icons.lock_open_rounded,
+                  tooltip: tr('Verrouiller l’écran'),
+                  metrics: m,
+                  onPressed: onLockScreen!,
+                ),
+            ],
+          ),
         ),
       ),
     );
@@ -639,35 +629,20 @@ class OnyxControlsLayer extends StatelessWidget {
   // --- Bottom -------------------------------------------------------------
 
   Widget _buildBottom(OnyxChromeMetrics m) {
-    // The scrim is painted *behind* the rows rather than around them, and it
-    // does not take touches.
-    //
-    // A `Container` with a decoration is a `DecoratedBox`, and that asks the
-    // decoration whether a point is inside it — which, for a rectangle, is
-    // always yes. So the gradient was swallowing every touch that landed
-    // anywhere in this bar's box, including the empty strip along its top;
-    // and this bar is two thirds of a phone's height held sideways. That is
-    // what stopped the brightness bar answering in its lower half: not the
-    // buttons, the scrim behind them.
-    return Stack(
-      children: [
-        const Positioned.fill(
-          child: IgnorePointer(
-            child: DecoratedBox(
-              decoration: BoxDecoration(gradient: OnyxChromeTheme.bottomScrim),
-            ),
-          ),
+    // The scrim does not take touches — see [OnyxScrim]. This bar is two
+    // thirds of a phone's height held sideways, and a scrim that swallowed
+    // touches is what stopped the brightness bar answering in its lower half.
+    return OnyxScrim(
+      gradient: OnyxChromeTheme.bottomScrim,
+      child: Padding(
+        padding: EdgeInsets.fromLTRB(
+          m.gutter,
+          _bottomBarLead,
+          m.gutter,
+          m.bottomInset,
         ),
-        Padding(
-          padding: EdgeInsets.fromLTRB(
-            m.gutter,
-            _bottomBarLead,
-            m.gutter,
-            m.bottomInset,
-          ),
-          child: _buildBottomRows(m),
-        ),
-      ],
+        child: _buildBottomRows(m),
+      ),
     );
   }
 
@@ -723,35 +698,38 @@ class OnyxControlsLayer extends StatelessWidget {
     );
   }
 
+  /// Transparent aux clics, comme le titre du haut : voir [_buildTop].
   Widget _buildTitleBlock(OnyxChromeMetrics m) {
-    return Column(
-      mainAxisSize: MainAxisSize.min,
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        if (overline != null && overline!.isNotEmpty)
+    return IgnorePointer(
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          if (overline != null && overline!.isNotEmpty)
+            Text(
+              overline!,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: TextStyle(
+                color: OnyxChromeTheme.meta,
+                fontSize: m.metaSize,
+                fontWeight: FontWeight.w500,
+              ),
+            ),
+          const SizedBox(height: 2),
           Text(
-            overline!,
+            title ?? '',
             maxLines: 1,
             overflow: TextOverflow.ellipsis,
             style: TextStyle(
-              color: OnyxChromeTheme.meta,
-              fontSize: m.metaSize,
-              fontWeight: FontWeight.w500,
+              color: OnyxChromeTheme.title,
+              fontSize: m.titleSize,
+              fontWeight: FontWeight.w600,
+              height: 1.15,
             ),
           ),
-        const SizedBox(height: 2),
-        Text(
-          title ?? '',
-          maxLines: 1,
-          overflow: TextOverflow.ellipsis,
-          style: TextStyle(
-            color: OnyxChromeTheme.title,
-            fontSize: m.titleSize,
-            fontWeight: FontWeight.w600,
-            height: 1.15,
-          ),
-        ),
-      ],
+        ],
+      ),
     );
   }
 
@@ -810,7 +788,9 @@ class OnyxControlsLayer extends StatelessWidget {
             icon: watchPartyActive
                 ? Icons.groups_rounded
                 : Icons.group_add_outlined,
-            tooltip: watchPartyActive ? tr('Séance en cours') : tr('Regarder ensemble'),
+            tooltip: watchPartyActive
+                ? tr('Séance en cours')
+                : tr('Regarder ensemble'),
             metrics: m,
             isTv: isTv,
             onPressed: onOpenWatchParty!,

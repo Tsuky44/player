@@ -394,6 +394,8 @@ const Map<String, String> kEnglish = <String, String>{
       'Each of these codes replaces your app’s code once, if you lose your phone. Keep them somewhere safe: they will not be shown again.',
   'Changer mon mot de passe':
       'Change my password',
+  'Changer':
+      'Change',
   'Chapitre {0}':
       'Chapter {0}',
   'Chapitres':
@@ -1104,6 +1106,8 @@ const Map<String, String> kEnglish = <String, String>{
       'Required for administrators, optional for other accounts.',
   'Imposée à tous les comptes.':
       'Required for all accounts.',
+  'Indiquez votre prénom.':
+      'Enter your first name.',
   'Indispo':
       'Unavail.',
   'Indisponible':
@@ -1676,6 +1680,10 @@ const Map<String, String> kEnglish = <String, String>{
       'Not synced yet',
   'Pas sur le serveur':
       'Not on the server',
+  'Passer le récap':
+      'Skip recap',
+  'Passer le récap automatiquement':
+      'Skip the recap automatically',
   'Passer l’intro':
       'Skip intro',
   'Passer l’intro automatiquement':
@@ -1728,6 +1736,8 @@ const Map<String, String> kEnglish = <String, String>{
       'Portuguese',
   'Post-production':
       'Post-production',
+  'Pour reprendre là où vous en êtes, même depuis un autre appareil.':
+      'So you can pick up where you left off, even from another device.',
   'Pour rejoindre : menu du compte › Rejoindre une séance.':
       'To join: account menu › Join a session.',
   'Premier lancement : créer le compte propriétaire':
@@ -1776,6 +1786,8 @@ const Map<String, String> kEnglish = <String, String>{
       'Automatic quality',
   'Quand la poser':
       'When to ask',
+  'Quand le bouton « Passer le récap » apparaît, le récap de l’épisode précédent est sauté au bout de 5 secondes. Le moindre mouvement de souris ou appui sur une touche annule le saut.':
+      'When the “Skip recap” button appears, the recap of the previous episode is skipped after 5 seconds. Any mouse movement or key press cancels the skip.',
   'Quand le bouton « Passer l’intro » apparaît, l’intro est sautée au bout de 5 secondes. Le moindre mouvement de souris ou appui sur une touche annule le saut.':
       'When the “Skip intro” button appears, the intro is skipped after 5 seconds. Any mouse movement or key press cancels the skip.',
   'Quand même':
@@ -2324,8 +2336,8 @@ const Map<String, String> kEnglish = <String, String>{
       'A link that has been watched or has expired no longer opens.',
   'Un téléchargement attend le Wi-Fi : le réseau actuel se paie à l’octet.':
       'One download is waiting for Wi-Fi: the current network is metered.',
-  'Un épisode enchaîne déjà sur le suivant au bout de 5 secondes. L’intro peut faire pareil.':
-      'An episode already moves on to the next one after 5 seconds. The intro can do the same.',
+  'Un épisode enchaîne déjà sur le suivant au bout de 5 secondes. Le récap et l’intro peuvent faire pareil.':
+      'An episode already moves on to the next one after 5 seconds. The recap and the intro can do the same.',
   'Un épisode est rapatrié dans sa qualité d’origine, sans compression : plusieurs gigaoctets, souvent. Un réseau limité, c’est la 4G comme le partage de connexion d’un autre téléphone. Ce qui attend un réseau libre repart tout seul dès qu’il y en a un, sans avoir à rouvrir l’app.':
       'An episode is fetched in its original quality, uncompressed: often several gigabytes. A metered network is 4G as well as another phone’s hotspot. Whatever is waiting for an unmetered network restarts by itself as soon as there is one, without reopening the app.',
   'Une demande d’accès a reçu une réponse.':
@@ -2412,6 +2424,8 @@ const Map<String, String> kEnglish = <String, String>{
       'Your account, your progress, your settings and your sessions are erased from this server, permanently. The library files are not touched.',
   'Votre profil sur {0}, votre activité et les appareils où vous êtes connecté.':
       'Your profile on {0}, your activity and the devices where you are signed in.',
+  'Votre prénom':
+      'Your first name',
   'Votre serveur':
       'Your server',
   'Vous':
@@ -2420,6 +2434,8 @@ const Map<String, String> kEnglish = <String, String>{
       'You left the session',
   'Vous ne serez plus propriétaire : ce compte pourra alors modifier vos droits, et vous ne pourrez plus modifier les siens.':
       'You will no longer be the owner: this account will then be able to change your rights, and you will no longer be able to change theirs.',
+  'Vous regardez en tant que {0}':
+      'Watching as {0}',
   'Vous regardez encore ?':
       'Are you still watching?',
   'Vous êtes en données mobiles.':
@@ -2812,4 +2828,10 @@ const Map<String, String> kEnglish = <String, String>{
       'Wait for the {0} version',
   'La série reviendra dans « Reprendre la lecture » dès qu’un épisode sera disponible en {0}.':
       'The series will come back to “Continue watching” as soon as an episode is available in {0}.',
+  'S{0} E{1}':
+      'S{0} E{1}',
+  'vu':
+      'watched',
+  'à {0}':
+      'at {0}',
 };

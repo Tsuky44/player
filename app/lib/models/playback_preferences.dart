@@ -5,6 +5,9 @@ import 'still_watching_settings.dart';
 class AccountPlaybackPreferences {
   final bool autoSkipIntro;
 
+  /// Null quand le serveur est trop ancien pour connaître ce réglage.
+  final bool? autoSkipRecap;
+
   /// Code ISO à deux lettres, ou null pour la piste par défaut du fichier.
   final String? defaultAudioLang;
 
@@ -17,6 +20,7 @@ class AccountPlaybackPreferences {
 
   const AccountPlaybackPreferences({
     required this.autoSkipIntro,
+    this.autoSkipRecap,
     required this.defaultAudioLang,
     this.stillWatching,
     required this.isSaved,
@@ -27,6 +31,10 @@ class AccountPlaybackPreferences {
     final updatedAt = (json['updated_at'] as String?) ?? '';
     return AccountPlaybackPreferences(
       autoSkipIntro: json['auto_skip_intro'] == true,
+      autoSkipRecap: switch (json['auto_skip_recap']) {
+        final bool value => value,
+        _ => null,
+      },
       defaultAudioLang: lang.isEmpty ? null : lang,
       stillWatching: StillWatchingSettings.fromJson(json),
       isSaved: updatedAt.isNotEmpty,

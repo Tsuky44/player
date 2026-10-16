@@ -11,6 +11,9 @@
 //   - l'usage unique : le premier navigateur qui ouvre le lien le réserve, et
 //     le lien est détruit quand ce navigateur a vu le média.
 //
+// Il garde aussi où en est chaque spectateur, sous le prénom qu'il a donné
+// (progress.go, ADR-0066), et rien de plus longtemps que le lien.
+//
 // Le package ne connaît ni HTTP ni les tickets de lecture : le handler traduit
 // ses erreurs en codes d'état et délivre les tickets qu'il autorise.
 package sharelinks

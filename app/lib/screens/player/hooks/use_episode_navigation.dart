@@ -2,6 +2,7 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import '../playback/audio_language_gap.dart';
 import '../playback/playback_session.dart';
+import '../playback/skip_segments.dart';
 import '../../../models/models.dart';
 import '../../../services/api_client.dart';
 import '../../../services/playback_preferences_storage.dart';
@@ -81,6 +82,12 @@ class EpisodeNavigationController extends ChangeNotifier {
   int _introSkipTarget = 0;
   int get introSkipTarget => _introSkipTarget;
 
+  /// Ce que le bouton propose de sauter tant que [showSkipIntro] est vrai.
+  /// Tout le reste de l'offre — cible, compte à rebours, gel — est commun au
+  /// récap et à l'intro.
+  SkipSegment _skipSegment = SkipSegment.intro;
+  SkipSegment get skipSegment => _skipSegment;
+
   List<VideoChapter> get chapters => List.unmodifiable(_chapters);
 
   /// Last-chapter outro heuristic: credits are often the final MKV chapter.
@@ -129,9 +136,9 @@ class EpisodeNavigationController extends ChangeNotifier {
     return tr('Aucune');
   }
 
-  bool isIntroChapter(VideoChapter chapter) => _isIntroTitle(chapter.title);
+  bool isIntroChapter(VideoChapter chapter) => ChapterTitles.isIntro(chapter.title);
   bool isOutroChapter(VideoChapter chapter, {int? mediaDurationSeconds}) {
-    if (_isOutroTitle(chapter.title)) return true;
+    if (ChapterTitles.isOutro(chapter.title)) return true;
     if (_chapters.isEmpty || chapter.id != _chapters.last.id) return false;
     return _chapterDurationSeconds(chapter, mediaDurationSeconds: mediaDurationSeconds) <=
         maxLastChapterOutroSeconds;
@@ -180,7 +187,7 @@ class EpisodeNavigationController extends ChangeNotifier {
   /// ticks keep reporting the intro meanwhile — several seconds of them when
   /// the seek rebuilds an HLS session — and each would bring the pill back
   /// with a fresh countdown.
-  bool _introAutoSkipped = false;
+  SkipSegment? _autoSkippedSegment;
 
   EpisodeNavigationController({
     required ApiClient apiClient,
@@ -275,77 +282,6 @@ class EpisodeNavigationController extends ChangeNotifier {
     }
   }
 
-  static String _normalizeChapterTitle(String title) {
-    const accents = {
-      'é': 'e', 'è': 'e', 'ê': 'e', 'ë': 'e',
-      'à': 'a', 'â': 'a', 'ä': 'a',
-      'î': 'i', 'ï': 'i',
-      'ô': 'o', 'ö': 'o',
-      'û': 'u', 'ü': 'u', 'ù': 'u',
-      'ç': 'c',
-    };
-    var t = title.toLowerCase().trim();
-    accents.forEach((from, to) {
-      t = t.replaceAll(from, to);
-    });
-    return t;
-  }
-
-  static bool _titleMatchesKeyword(String normTitle, String keyword) {
-    if (keyword == 'op' || keyword == 'ed') {
-      if (normTitle == keyword) return true;
-      return normTitle.startsWith('$keyword ') || normTitle.endsWith(' $keyword');
-    }
-    return normTitle.contains(keyword);
-  }
-
-  static bool _isOpeningCreditsTitle(String t) {
-    if (t.contains('opencreditstart') || t.contains('open_credit_start')) {
-      return true;
-    }
-    if (t.contains('open') && t.contains('credit') && t.contains('start')) {
-      return true;
-    }
-    if (t.contains('opening') && t.contains('credit')) return true;
-    return false;
-  }
-
-  static bool _isClosingCreditsTitle(String t) {
-    if (_isOpeningCreditsTitle(t)) return false;
-    if (t.contains('open') && t.contains('credit')) return false;
-    if (t == 'credits' || t == 'credit') return true;
-    if (t.contains('credits')) return true;
-    return false;
-  }
-
-  static bool _isIntroTitle(String title) {
-    final t = _normalizeChapterTitle(title);
-    if (t.isEmpty) return false;
-    if (_isOpeningCreditsTitle(t)) return true;
-    const keywords = [
-      'intro', 'opening', 'recap', 'previously on',
-      'generique de debut', 'generique debut',
-    ];
-    for (final kw in keywords) {
-      if (_titleMatchesKeyword(t, kw)) return true;
-    }
-    return _titleMatchesKeyword(t, 'op');
-  }
-
-  static bool _isOutroTitle(String title) {
-    final t = _normalizeChapterTitle(title);
-    if (t.isEmpty) return false;
-    if (_isClosingCreditsTitle(t)) return true;
-    const keywords = [
-      'outro', 'ending',
-      'generique de fin', 'generique fin',
-    ];
-    for (final kw in keywords) {
-      if (_titleMatchesKeyword(t, kw)) return true;
-    }
-    return _titleMatchesKeyword(t, 'ed');
-  }
-
   static bool _isPlausibleIntroRange(int start, int end, {int? mediaDurationSeconds}) {
     return EpisodeTimestamps(
       introStart: start,
@@ -355,10 +291,55 @@ class EpisodeNavigationController extends ChangeNotifier {
     ).isPlausibleIntro(mediaDurationSeconds: mediaDurationSeconds);
   }
 
-  ({int start, int end})? _bestIntroFromChapters({int? mediaDurationSeconds}) {
+  ({int start, int end})? _bestIntroFromChapters({int? mediaDurationSeconds}) =>
+      _firstPlausibleChapter(ChapterTitles.isIntro,
+          mediaDurationSeconds: mediaDurationSeconds);
+
+  ({int start, int end})? _recapFromChapters({int? mediaDurationSeconds}) =>
+      _firstPlausibleChapter(ChapterTitles.isRecap,
+          mediaDurationSeconds: mediaDurationSeconds);
+
+  /// Le passage à sauter sous [positionSeconds], et où il finit.
+  ///
+  /// Le récap vient des chapitres seulement : ni TheIntroDB ni la détection du
+  /// serveur ne le rangent à part. L'intro de la base ne compte que si elle
+  /// déborde du récap : une ligne qui ne couvre que lui — fusion TheIntroDB,
+  /// ou chapitre « Recap » rangé comme intro avant que le serveur ne les
+  /// distingue — n'a pas d'intro à offrir, et ce sont alors les chapitres qui
+  /// la donnent.
+  ({SkipSegment kind, int end})? _skipSegmentAt(
+    int positionSeconds, {
+    int? mediaDurationSeconds,
+  }) {
+    bool inside(({int start, int end}) r) =>
+        positionSeconds >= r.start && positionSeconds < r.end;
+
+    final recap = _recapFromChapters(mediaDurationSeconds: mediaDurationSeconds);
+    if (recap != null && inside(recap)) {
+      return (kind: SkipSegment.recap, end: recap.end);
+    }
+
+    final db = timestamps;
+    final dbIntro = db != null &&
+            db.isPlausibleIntro(mediaDurationSeconds: mediaDurationSeconds) &&
+            (recap == null || db.introEnd > recap.end)
+        ? (start: db.introStart, end: db.introEnd)
+        : null;
+    final intro = dbIntro ??
+        _bestIntroFromChapters(mediaDurationSeconds: mediaDurationSeconds);
+    if (intro != null && inside(intro)) {
+      return (kind: SkipSegment.intro, end: intro.end);
+    }
+    return null;
+  }
+
+  ({int start, int end})? _firstPlausibleChapter(
+    bool Function(String title) matches, {
+    int? mediaDurationSeconds,
+  }) {
     ({int start, int end})? best;
     for (final c in _chapters) {
-      if (!_isIntroTitle(c.title)) continue;
+      if (!matches(c.title)) continue;
       final start = c.startTime.floor();
       final end = c.endTime.ceil();
       if (!_isPlausibleIntroRange(start, end, mediaDurationSeconds: mediaDurationSeconds)) {
@@ -371,26 +352,22 @@ class EpisodeNavigationController extends ChangeNotifier {
     return best;
   }
 
-  void checkPosition(int positionSeconds, {int? mediaDurationSeconds}) {
-    bool inIntro = false;
+  /// [pictureShown] est faux tant que le flux s'ouvre derrière son cache : le
+  /// lecteur rapporte déjà la seconde 0 à ce moment-là. Une intro qui ouvre
+  /// l'épisode armait alors son compte à rebours pendant le chargement, et le
+  /// saut partait vers un flux pas encore prêt à le recevoir — perdu, et
+  /// l'intro marquée comme déjà passée. Rien ne se propose avant l'image.
+  void checkPosition(
+    int positionSeconds, {
+    int? mediaDurationSeconds,
+    bool pictureShown = true,
+  }) {
+    if (!pictureShown) return;
     bool inOutro = false;
-    int introTarget = 0;
-
-    final dbIntro = timestamps != null &&
-        timestamps!.isPlausibleIntro(mediaDurationSeconds: mediaDurationSeconds);
-
-    if (dbIntro) {
-      inIntro = positionSeconds >= timestamps!.introStart &&
-          positionSeconds < timestamps!.introEnd;
-      if (inIntro) introTarget = timestamps!.introEnd;
-    } else {
-      final chapterIntro = _bestIntroFromChapters(mediaDurationSeconds: mediaDurationSeconds);
-      if (chapterIntro != null) {
-        inIntro = positionSeconds >= chapterIntro.start &&
-            positionSeconds < chapterIntro.end;
-        if (inIntro) introTarget = chapterIntro.end;
-      }
-    }
+    final segment = _skipSegmentAt(
+      positionSeconds,
+      mediaDurationSeconds: mediaDurationSeconds,
+    );
 
     if (timestamps != null && timestamps!.hasOutro) {
       inOutro = positionSeconds >= timestamps!.outroStart &&
@@ -400,7 +377,7 @@ class EpisodeNavigationController extends ChangeNotifier {
         final within = positionSeconds >= c.startTime.floor() &&
             positionSeconds < _chapterEndSeconds(c, mediaDurationSeconds: mediaDurationSeconds);
         if (!within) continue;
-        if (_isOutroTitle(c.title)) {
+        if (ChapterTitles.isOutro(c.title)) {
           inOutro = true;
           break;
         }
@@ -413,27 +390,31 @@ class EpisodeNavigationController extends ChangeNotifier {
       }
     }
 
-    if (!inIntro) _introAutoSkipped = false;
+    if (segment?.kind != _autoSkippedSegment) _autoSkippedSegment = null;
 
-    if (inIntro && _introAutoSkipped) {
-      // Already skipped, still seeking: nothing to offer.
-    } else if (inIntro) {
-      if (!showSkipIntro) {
-        showSkipIntro = true;
-        _introSkipTarget = introTarget;
-        // The countdown starts with the button, not with the intro: the two
-        // appear together, so what is on screen always says how long is left.
-        _startIntroAutoSkip();
-        notifyListeners();
-      } else if (_introSkipTarget != introTarget) {
-        // A better target for the same intro — the countdown already running
-        // keeps running, it is the same offer.
-        _introSkipTarget = introTarget;
+    if (segment == null) {
+      if (showSkipIntro) {
+        showSkipIntro = false;
+        _cancelIntroAutoSkip();
         notifyListeners();
       }
-    } else if (showSkipIntro) {
-      showSkipIntro = false;
+    } else if (segment.kind == _autoSkippedSegment) {
+      // Already skipped, still seeking: nothing to offer.
+    } else if (!showSkipIntro || segment.kind != _skipSegment) {
+      // Un récap regardé jusqu'au bout débouche sur l'intro : c'est une autre
+      // proposition, avec son propre réglage et son propre compte à rebours.
       _cancelIntroAutoSkip();
+      showSkipIntro = true;
+      _skipSegment = segment.kind;
+      _introSkipTarget = segment.end;
+      // The countdown starts with the button, not with the intro: the two
+      // appear together, so what is on screen always says how long is left.
+      _startIntroAutoSkip();
+      notifyListeners();
+    } else if (_introSkipTarget != segment.end) {
+      // A better target for the same intro — the countdown already running
+      // keeps running, it is the same offer.
+      _introSkipTarget = segment.end;
       notifyListeners();
     }
 
@@ -486,10 +467,15 @@ class EpisodeNavigationController extends ChangeNotifier {
     notifyListeners();
   }
 
-  /// Arms the countdown that skips the intro by itself. Does nothing unless the
-  /// preference is on — the button then simply waits to be pressed.
+  /// Arms the countdown that skips the intro — or the recap — by itself. Does
+  /// nothing unless that segment's preference is on: the button then simply
+  /// waits to be pressed.
   void _startIntroAutoSkip() {
-    if (!PlaybackPreferencesStorage.autoSkipIntro) return;
+    final enabled = switch (_skipSegment) {
+      SkipSegment.recap => PlaybackPreferencesStorage.autoSkipRecap,
+      SkipSegment.intro => PlaybackPreferencesStorage.autoSkipIntro,
+    };
+    if (!enabled) return;
     introAutoSkipActive = true;
     introAutoSkipFrozen = false;
     _introCountdownSeconds = autoSkipIntroSeconds;
@@ -500,7 +486,7 @@ class EpisodeNavigationController extends ChangeNotifier {
         timer.cancel();
         introAutoSkipActive = false;
         showSkipIntro = false;
-        _introAutoSkipped = true;
+        _autoSkippedSegment = _skipSegment;
         onAutoSkipIntro?.call();
         notifyListeners();
         return;

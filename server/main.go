@@ -77,6 +77,8 @@ func main() {
 	// Unclaimed TV pairing codes are short-lived; sweep the dead rows.
 	handlers.StartDevicePairingReaper()
 	handlers.StartAccessRequestReaper()
+	// L'avancement des spectateurs d'un lien expiré ne servira plus.
+	handlers.StartShareProgressReaper()
 	playbackContext, stopPlaybackReaper := context.WithCancel(context.Background())
 	defer stopPlaybackReaper()
 	go safego.Forever("handlers.PlaybackTickets.RunReaper", func() { handlers.PlaybackTickets.RunReaper(playbackContext) })
@@ -265,6 +267,9 @@ func main() {
 	router.POST("/api/shared/contents", handlers.RateLimited(handlers.LoginLimiter, handlers.SharedMediaContents))
 	router.POST("/api/shared/renew", handlers.RateLimited(handlers.PollLimiter, handlers.RenewSharedMedia))
 	router.POST("/api/shared/progress", handlers.RateLimited(handlers.PollLimiter, handlers.ReportSharedMediaProgress))
+	// L'avancement d'un spectateur sous son prénom (ADR-0066) : vérifie le mot
+	// de passe comme /contents, même limite.
+	router.POST("/api/shared/resume", handlers.RateLimited(handlers.LoginLimiter, handlers.SharedMediaResume))
 	router.POST("/api/shared/close", handlers.RateLimited(handlers.PollLimiter, handlers.CloseSharedMedia))
 	router.POST("/api/shared/tracks", handlers.RateLimited(handlers.PollLimiter, handlers.SharedMediaTracks))
 	// La page du lien, /share#code, est l'app web elle-même (webui, plus bas) :

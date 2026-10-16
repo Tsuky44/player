@@ -53,6 +53,7 @@ import 'widgets/watch_party_overlay.dart';
 import 'playback/live_subtitles.dart';
 import 'playback/relay_trigger.dart';
 import 'playback/remote_seek.dart';
+import 'playback/skip_segments.dart';
 import 'playback/sleep_timer.dart';
 import 'playback/still_watching.dart';
 import 'pinch_zoom_fit.dart';

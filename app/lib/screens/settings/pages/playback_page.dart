@@ -185,8 +185,22 @@ class _PlaybackPageState extends State<PlaybackPage> {
           title: tr('Séries'),
           footer:
               tr('Un épisode enchaîne déjà sur le suivant au bout de 5 '
-                  'secondes. L’intro peut faire pareil.'),
+                  'secondes. Le récap et l’intro peuvent faire pareil.'),
           children: [
+            SettingsSwitchTile(
+              icon: Icons.history_rounded,
+              title: tr('Passer le récap automatiquement'),
+              subtitle:
+                  tr('Quand le bouton « Passer le récap » apparaît, le récap '
+                      'de l’épisode précédent est sauté au bout de 5 '
+                      'secondes. Le moindre mouvement de souris ou appui sur '
+                      'une touche annule le saut.'),
+              value: PlaybackPreferencesStorage.autoSkipRecap,
+              onChanged: (value) async {
+                await PlaybackPreferencesStorage.setAutoSkipRecap(value);
+                if (mounted) setState(() {});
+              },
+            ),
             SettingsSwitchTile(
               icon: Icons.fast_forward_rounded,
               title: tr('Passer l’intro automatiquement'),

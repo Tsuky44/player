@@ -13,11 +13,13 @@ import '../../utils/poster_url.dart';
 import '../../widgets/global/app_network_image.dart';
 import '../player/player_screen.dart';
 import 'shared_link_show.dart';
+import 'shared_link_viewer.dart';
 import '../../theme/app_type.dart';
 import '../../l10n/tr.dart';
 
-/// La page d'un lien de partage : ce qu'il ouvre, son mot de passe s'il en a
-/// un, et le bouton qui lance le lecteur Onyx (ADR-0037).
+/// La page d'un lien de partage : ce qu'il ouvre, le prénom de qui regarde
+/// (ADR-0066), son mot de passe s'il en a un, et le bouton qui lance le
+/// lecteur Onyx (ADR-0037).
 class SharedLinkScreen extends StatefulWidget {
   const SharedLinkScreen({super.key, required this.api, this.onClose});
 
@@ -33,11 +35,17 @@ class SharedLinkScreen extends StatefulWidget {
 
 class _SharedLinkScreenState extends State<SharedLinkScreen> {
   final TextEditingController _password = TextEditingController();
+  final TextEditingController _name = TextEditingController();
 
   SharedMediaInfo? _info;
 
-  /// La saison ou la série du lien, avec l'avancement gardé sur l'appareil ;
-  /// nulle pour un film ou un épisode.
+  /// Le prénom de qui regarde ; nul tant qu'il ne l'a pas donné sur cet
+  /// appareil, et la page le demande avant tout : c'est sous lui que le
+  /// serveur range où il en est.
+  String? _viewerName;
+
+  /// La saison ou la série du lien, avec l'avancement du spectateur ; nulle
+  /// pour un film ou un épisode, ou tant que le prénom manque.
   SharedShow? _show;
   bool _loading = true;
   bool _opening = false;
@@ -66,6 +74,7 @@ class _SharedLinkScreenState extends State<SharedLinkScreen> {
   @override
   void dispose() {
     _password.dispose();
+    _name.dispose();
     super.dispose();
   }
 
@@ -73,8 +82,9 @@ class _SharedLinkScreenState extends State<SharedLinkScreen> {
     if (widget.api.code.isEmpty) {
       setState(() {
         _loading = false;
-        _fatal = tr('Il manque la fin de l’adresse. Demandez à la personne qui vous '
-            'l’a envoyée de la copier à nouveau.');
+        _fatal =
+            tr('Il manque la fin de l’adresse. Demandez à la personne qui vous '
+                'l’a envoyée de la copier à nouveau.');
       });
       return;
     }
@@ -89,13 +99,22 @@ class _SharedLinkScreenState extends State<SharedLinkScreen> {
       final info = fresh.title.isEmpty && (_info?.title.isNotEmpty ?? false)
           ? _info!
           : fresh;
-      // Relu à chaque retour du lecteur : c'est là que la reprise avance.
-      final show = info.isCollection ? await widget.api.describe(info) : null;
-      final resumeAt = await widget.api.savedPosition();
+      // Relu à chaque retour du lecteur : c'est là que la reprise avance. Sans
+      // prénom, ni la fiche ni la reprise : la page le demande d'abord ; tant
+      // que le mot de passe manque, le serveur ne dirait rien.
+      final named = await widget.api.loadViewerName() != null;
+      final show =
+          named && info.isCollection ? await widget.api.describe(info) : null;
+      final resumeAt = named && !info.isCollection && !_locked(info)
+          ? await widget.api.resumePosition()
+          : 0;
+      // Un prénom refusé par le serveur vient d'être oublié.
+      final name = await widget.api.loadViewerName();
       if (!mounted) return;
       setState(() {
         _info = info;
-        _show = show;
+        _viewerName = name;
+        _show = name == null ? null : show;
         _resumeAt = resumeAt;
         _fatal = null;
         _loading = false;
@@ -111,6 +130,42 @@ class _SharedLinkScreenState extends State<SharedLinkScreen> {
         }
       });
     }
+  }
+
+  /// Retient le prénom tapé, puis montre où en est ce spectateur — ou, pour un
+  /// lien protégé, l'ouvre avec le mot de passe tapé en même temps.
+  Future<void> _submitName() async {
+    final name = _name.text.trim();
+    if (name.isEmpty) {
+      setState(() => _error = tr('Indiquez votre prénom.'));
+      return;
+    }
+    await widget.api.setViewerName(name);
+    if (!mounted) return;
+    setState(() {
+      _viewerName = name;
+      _error = null;
+    });
+    final info = _info;
+    if (info != null && _locked(info)) {
+      await _watch();
+    } else {
+      await _load();
+    }
+  }
+
+  /// Quelqu'un d'autre regarde sur cet appareil : la page redemande un
+  /// prénom, et l'avancement affiché part avec l'ancien.
+  Future<void> _changeViewer() async {
+    await widget.api.forgetViewerName();
+    if (!mounted) return;
+    _name.clear();
+    setState(() {
+      _viewerName = null;
+      _show = null;
+      _resumeAt = 0;
+      _error = null;
+    });
   }
 
   /// Ouvre le lecteur sur le média du lien, ou sur [episode] quand le lien est
@@ -175,7 +230,9 @@ class _SharedLinkScreenState extends State<SharedLinkScreen> {
                   posterUrl: opened.media.posterUrl,
                   createdAt: DateTime.now(),
                 ),
-                resumeAtSeconds: _resumeAt,
+                // Où ce spectateur s'était arrêté, dit par l'ouverture : la
+                // page ne le savait pas encore si le mot de passe manquait.
+                resumeAtSeconds: opened.positionSeconds,
               ),
       ));
       if (mounted) await _load();
@@ -202,6 +259,8 @@ class _SharedLinkScreenState extends State<SharedLinkScreen> {
     if (show != null && _fatal == null) {
       return SharedLinkShowView(
         show: show,
+        viewerName: _viewerName,
+        onChangeViewer: _opening ? null : _changeViewer,
         openingId: _openingEpisode,
         error: _error,
         onPlay: _opening ? null : (episode) => _watch(episode: episode),
@@ -281,6 +340,8 @@ class _SharedLinkScreenState extends State<SharedLinkScreen> {
       if (info != null && info.singleUse) tr('Lien à usage unique'),
     ];
     final needsPassword = info?.needsPassword ?? false;
+    final viewerName = _viewerName;
+    final submit = viewerName == null ? _submitName : _watch;
 
     return Column(
       crossAxisAlignment: align,
@@ -298,15 +359,16 @@ class _SharedLinkScreenState extends State<SharedLinkScreen> {
         Text(
           title,
           textAlign: textAlign,
-          style: const TextStyle(fontSize: AppType.display, fontWeight: FontWeight.w700),
+          style: const TextStyle(
+              fontSize: AppType.display, fontWeight: FontWeight.w700),
         ),
         if (info != null && info.subtitle.isNotEmpty && _fatal == null) ...[
           const SizedBox(height: 8),
           Text(
             info.subtitle,
             textAlign: textAlign,
-            style:
-                const TextStyle(color: AppColors.textSecondary, fontSize: AppType.headline),
+            style: const TextStyle(
+                color: AppColors.textSecondary, fontSize: AppType.headline),
           ),
         ],
         if (badges.isNotEmpty && _fatal == null) ...[
@@ -324,13 +386,29 @@ class _SharedLinkScreenState extends State<SharedLinkScreen> {
               textAlign: textAlign,
               style: const TextStyle(color: AppColors.textSecondary))
         else if (info != null) ...[
+          if (viewerName == null) ...[
+            SharedLinkNameField(
+              controller: _name,
+              enabled: !_opening,
+              // Avec un mot de passe à suivre, Entrée passe au champ suivant.
+              onSubmitted: needsPassword ? null : _submitName,
+            ),
+            const SizedBox(height: 16),
+          ] else ...[
+            SharedLinkViewerLine(
+              name: viewerName,
+              onChange: _opening ? null : _changeViewer,
+              centered: centered,
+            ),
+            const SizedBox(height: 12),
+          ],
           if (needsPassword) ...[
             TvDeferredKeyboard(
               builder: (context, focusNode, canRequestFocus) => TextField(
                 controller: _password,
                 focusNode: focusNode,
                 canRequestFocus: canRequestFocus,
-                autofocus: true,
+                autofocus: viewerName != null,
                 obscureText: true,
                 enabled: !_opening,
                 maxLength: 72,
@@ -339,7 +417,7 @@ class _SharedLinkScreenState extends State<SharedLinkScreen> {
                   helperText: tr('Ce lien est protégé par un mot de passe.'),
                   counterText: '',
                 ),
-                onSubmitted: (_) => _watch(),
+                onSubmitted: (_) => submit(),
               ),
             ),
             const SizedBox(height: 16),
@@ -348,8 +426,8 @@ class _SharedLinkScreenState extends State<SharedLinkScreen> {
             width: centered ? double.infinity : null,
             height: 48,
             child: FilledButton.icon(
-              autofocus: !needsPassword,
-              onPressed: _opening ? null : _watch,
+              autofocus: !needsPassword && viewerName != null,
+              onPressed: _opening ? null : submit,
               icon: _opening
                   ? const SizedBox(
                       width: 18,
@@ -361,9 +439,12 @@ class _SharedLinkScreenState extends State<SharedLinkScreen> {
               // ne promet pas une lecture.
               label: Text(_locked(info)
                   ? tr('Ouvrir')
-                  : _resumeAt > 30
-                      ? tr('Reprendre à {0}', [formatPlaybackTime(_resumeAt)])
-                      : tr('Regarder')),
+                  : viewerName == null
+                      ? tr('Continuer')
+                      : _resumeAt > 30
+                          ? tr('Reprendre à {0}',
+                              [formatPlaybackTime(_resumeAt)])
+                          : tr('Regarder')),
             ),
           ),
         ] else if (_loading)

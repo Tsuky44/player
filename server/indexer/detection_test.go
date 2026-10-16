@@ -277,3 +277,14 @@ func TestIsConfidentTMDBMatch_NoYearNeedsNearExactTitle(t *testing.T) {
 		t.Fatal("exact title without year should be accepted")
 	}
 }
+
+// Un chapitre « Recap » qui ouvre l'épisode ne doit pas prendre la place de
+// l'intro qui le suit : le client le propose à part.
+func TestChapterTitleMatchesIntroLeavesTheRecapOut(t *testing.T) {
+	for _, title := range []string{"Recap", "Previously On", "Intro", "Opening"} {
+		want := title == "Intro" || title == "Opening"
+		if got := ChapterTitleMatchesIntro(title); got != want {
+			t.Errorf("ChapterTitleMatchesIntro(%q) = %v, want %v", title, got, want)
+		}
+	}
+}

@@ -708,6 +708,40 @@ var migrations = []migration{
 		},
 		run: seedLibrariesFromLegacyDirs,
 	},
+	{
+		id:   23,
+		name: "auto skip recap preference",
+		// Voir ADR-0043. Le saut automatique du récap, réglé à part de celui de
+		// l'intro. Éteint par défaut, comme lui.
+		stmts: []string{
+			`ALTER TABLE user_playback_preferences ADD COLUMN auto_skip_recap BOOLEAN NOT NULL DEFAULT 0;`,
+		},
+	},
+	{
+		id:   24,
+		name: "share link viewer progress",
+		// Voir ADR-0066. Où en est chaque spectateur d'un lien de partage, sous
+		// le prénom qu'il a donné : une ligne par lien, prénom et média. Les
+		// clés étrangères la vident avec le lien (supprimé, ou son créateur)
+		// et avec l'épisode ; le ménage de StartShareProgressReaper la vide
+		// quand le lien expire. updated_at est en millisecondes Unix : deux
+		// épisodes enchaînés dans la même seconde doivent garder leur ordre.
+		stmts: []string{
+			`CREATE TABLE IF NOT EXISTS media_share_progress (
+				share_id INTEGER NOT NULL,
+				viewer_key TEXT NOT NULL,
+				viewer_name TEXT NOT NULL,
+				media_id INTEGER NOT NULL,
+				position_seconds INTEGER NOT NULL DEFAULT 0,
+				finished BOOLEAN NOT NULL DEFAULT 0,
+				updated_at INTEGER NOT NULL,
+				PRIMARY KEY (share_id, viewer_key, media_id),
+				FOREIGN KEY (share_id) REFERENCES media_shares(id) ON DELETE CASCADE,
+				FOREIGN KEY (media_id) REFERENCES medias(id) ON DELETE CASCADE
+			);`,
+			`CREATE INDEX IF NOT EXISTS idx_media_share_progress_media_id ON media_share_progress(media_id);`,
+		},
+	},
 }
 
 // applyMigrations brings the database up to the latest schema version.

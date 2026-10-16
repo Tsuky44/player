@@ -82,7 +82,7 @@ func CreateMediaShare(w http.ResponseWriter, r *http.Request, _ httprouter.Param
 
 // ListMediaShares renvoie les liens créés par l'appelant (GET /api/shares),
 // y compris ceux qui ont expiré ou ont été vus, pour qu'il sache ce qu'ils
-// sont devenus.
+// sont devenus, et qui les regarde (ADR-0066).
 func ListMediaShares(w http.ResponseWriter, r *http.Request, _ httprouter.Params, userID int) {
 	shares, err := shareLinks().ListByUser(userID)
 	if err != nil {
@@ -100,10 +100,18 @@ func ListMediaShares(w http.ResponseWriter, r *http.Request, _ httprouter.Params
 		writeJSONError(w, http.StatusInternalServerError, "Internal server error")
 		return
 	}
+	// Les spectateurs ne sont qu'un complément : sans eux, la liste reste
+	// utile pour voir et couper ses liens.
+	viewers, err := shareLinks().ViewersByCreator(userID)
+	if err != nil {
+		log.Printf("ListMediaShares: viewers: %v", err)
+	}
 	now := time.Now()
 	out := make([]models.MediaShare, 0, len(shares))
 	for _, share := range shares {
-		out = append(out, mediaShareResponse(share, displays[share.MediaID], now))
+		resp := mediaShareResponse(share, displays[share.MediaID], now)
+		resp.Viewers = mediaShareViewers(viewers[share.ID])
+		out = append(out, resp)
 	}
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(out)
@@ -170,6 +178,26 @@ func mediaShareResponse(share sharelinks.Share, display shareDisplay, now time.T
 		Status:      share.Status(now),
 		CreatedAt:   share.CreatedAt,
 	}
+}
+
+func mediaShareViewers(viewers []sharelinks.ViewerSummary) []models.MediaShareViewer {
+	if len(viewers) == 0 {
+		return nil
+	}
+	out := make([]models.MediaShareViewer, 0, len(viewers))
+	for _, v := range viewers {
+		out = append(out, models.MediaShareViewer{
+			Name:            v.Name,
+			MediaID:         v.MediaID,
+			SeasonNumber:    v.SeasonNumber,
+			EpisodeNumber:   v.EpisodeNumber,
+			PositionSeconds: v.PositionSeconds,
+			Duration:        v.Duration,
+			Finished:        v.Finished,
+			WatchedAt:       v.WatchedAt,
+		})
+	}
+	return out
 }
 
 func optionalTime(t time.Time) *time.Time {

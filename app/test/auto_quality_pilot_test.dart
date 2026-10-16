@@ -27,6 +27,7 @@ class _Playback {
   AutoSounding sounding = const AutoSounding();
   int soundings = 0;
   final passives = <bool>[];
+  final sideMeasures = <bool>[];
 
   /// Ce que le moteur dit recevoir pendant une mesure, null s'il ne dit rien.
   int? inUseBps;
@@ -52,9 +53,10 @@ class _Playback {
         maxEncodeHeight: pilot.maxEncodeHeight,
       ),
     ),
-    sound: ({required passive}) async {
+    sound: ({required passive, sideMeasure = false}) async {
       soundings++;
       passives.add(passive);
+      sideMeasures.add(sideMeasure);
       return sounding;
     },
     measureLine: (wantBps) async {
@@ -84,7 +86,10 @@ class _Playback {
 void main() {
   test('une ligne qui livre la moitié du fichier fait descendre, une fois, '
       'sans urgence', () async {
-    final playback = _Playback()..slope = -0.5;
+    // 10 Mbit/s mesurés pour un fichier à 20.
+    final playback = _Playback()
+      ..slope = -0.5
+      ..sounding = const AutoSounding(lineBps: 10000000);
     await playback.play(20);
 
     expect(playback.moves, ['1080p']);
@@ -102,16 +107,22 @@ void main() {
 
   test('si le premier barreau ne suffit pas, on redescend jusqu’à ce que '
       'ça tienne', () async {
-    final playback = _Playback()..slope = -0.5;
+    final playback = _Playback()
+      ..slope = -0.5
+      ..sounding = const AutoSounding(lineBps: 10000000);
     await playback.play(20);
     // Après la grâce du changement de source, le tampon fond encore.
+    playback.sounding = const AutoSounding();
     await playback.play(10);
 
     expect(playback.moves, ['1080p', '720p-2']);
   });
 
-  test('une coupure fait descendre tout de suite, dans l’urgence', () async {
-    final playback = _Playback()..buffered = 60;
+  test('une coupure sur un barreau fait descendre tout de suite, dans '
+      'l’urgence', () async {
+    final playback = _Playback()
+      ..quality = '1080p'
+      ..buffered = 60;
     await playback.play(30);
     await playback.pilot.noteStall();
 
@@ -203,6 +214,7 @@ void main() {
       () async {
     final playback = _Playback()
       ..slope = -0.5
+      ..sounding = const AutoSounding(lineBps: 10000000)
       ..moveSucceeds = false;
     await playback.play(20);
 
@@ -233,6 +245,9 @@ void main() {
 
       expect(playback.moves, ['360p']);
       expect(playback.soundings, 1);
+      expect(playback.sideMeasures, [true],
+          reason: 'un cache plein ne reçoit que ce qu’il lit : la ligne se '
+              'mesure à côté');
     });
 
     test('une ligne qui tient ce qui est lu : la première coupure passe, '
@@ -371,6 +386,110 @@ void main() {
         ..enabled = false
         ..enabled = true;
       expect(playback.pilot.maxEncodeHeight, 0);
+    });
+  });
+
+  group('le Direct Play d’abord (ADR-0065)', () {
+    test('un cache plein qui fond ne fait pas transcoder : la mesure disculpe '
+        'la ligne, et la pente n’est plus crue', () async {
+      // Le tampon d'un moteur plafonné fond le temps de se recharger : la
+      // pente d'une ligne à la moitié du fichier, sur une ligne qui en porte
+      // cinq fois le débit.
+      final playback = _Playback()
+        ..slope = -0.5
+        ..sounding = const AutoSounding(lineBps: 100000000);
+      await playback.play(20);
+      expect(playback.moves, isEmpty);
+      expect(playback.soundings, 1);
+
+      // Le cache se recharge et refond : rien n'est remesuré de trois
+      // minutes.
+      for (var cycle = 0; cycle < 4; cycle++) {
+        playback.buffered = 14;
+        await playback.play(30);
+      }
+      expect(playback.moves, isEmpty);
+      expect(playback.soundings, 1);
+    });
+
+    test('sans mesure, une pente ne quitte pas le Direct Play', () async {
+      final playback = _Playback()..slope = -0.5;
+      await playback.play(60);
+
+      expect(playback.moves, isEmpty);
+      expect(playback.quality, isNull);
+    });
+
+    test('deux coupures sur une ligne qui porte le fichier passent, la '
+        'troisième en trois minutes descend', () async {
+      final playback = _Playback()
+        ..buffered = 60
+        ..sounding = const AutoSounding(lineBps: 50000000);
+      await playback.play(30);
+      await playback.pilot.noteStall();
+      await playback.play(30);
+      await playback.pilot.noteStall();
+      expect(playback.moves, isEmpty);
+
+      await playback.play(30);
+      await playback.pilot.noteStall();
+      expect(playback.moves, ['1080p-10']);
+    });
+
+    test('des coupures espacées de plus de trois minutes ne s’additionnent '
+        'pas', () async {
+      final playback = _Playback()
+        ..buffered = 60
+        ..sounding = const AutoSounding(lineBps: 50000000);
+      for (var i = 0; i < 4; i++) {
+        await playback.play(100);
+        await playback.pilot.noteStall();
+      }
+
+      expect(playback.moves, isEmpty);
+    });
+
+    test('une coupure sans mesure ne quitte le Direct Play qu’à la troisième',
+        () async {
+      final playback = _Playback()..buffered = 60;
+      await playback.play(30);
+      await playback.pilot.noteStall();
+      await playback.play(30);
+      await playback.pilot.noteStall();
+      expect(playback.moves, isEmpty);
+
+      await playback.play(30);
+      await playback.pilot.noteStall();
+      expect(playback.moves, hasLength(1));
+    });
+
+    test('pendant un délai de grâce, une ligne à peine sous le fichier ne fait '
+        'pas quitter le Direct Play', () async {
+      // 18 Mbit/s reçus pour un fichier à 20 : un moteur qui vient d'ouvrir
+      // reçoit encore moins que ce que la ligne porte.
+      final playback = _Playback()
+        ..buffered = 1
+        ..sounding = const AutoSounding(lineBps: 18000000);
+      playback.pilot.noteDisturbance();
+      await playback.play(2);
+      await playback.pilot.noteStall();
+
+      expect(playback.moves, isEmpty);
+    });
+
+    test('sur un barreau aussi, une ligne disculpée ne se réaccuse pas sur '
+        'la pente', () async {
+      final playback = _Playback()
+        ..quality = '1080p'
+        ..slope = -0.5
+        ..sounding = const AutoSounding(lineBps: 50000000);
+      for (var cycle = 0; cycle < 4; cycle++) {
+        playback.buffered = 14;
+        await playback.play(30);
+      }
+
+      expect(playback.moves, isEmpty);
+      expect(playback.soundings, 1);
     });
   });
 
