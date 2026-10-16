@@ -62,8 +62,6 @@ const Map<String, String> kEnglish = <String, String>{
       'On',
   'Actualiser':
       'Refresh',
-  'Adaptatif':
-      'Fit',
   'Adapter l’écran au film':
       'Match the display to the movie',
   'Administrateur':
@@ -556,8 +554,6 @@ const Map<String, String> kEnglish = <String, String>{
       'Connecting to Onyx…',
   'Connexion…':
       'Connecting…',
-  'Conserve les proportions':
-      'Keeps the aspect ratio',
   'Conserver les journaux des lectures':
       'Keep playback logs',
   'Contenu du dossier':
@@ -1030,6 +1026,8 @@ const Map<String, String> kEnglish = <String, String>{
       'Camera',
   'Image disque illisible ({0}).':
       'Unreadable disk image ({0}).',
+  'Image entière, bandes noires si besoin':
+      'Whole picture, black bars if needed',
   'Images par seconde':
       'Frames per second',
   'Images perdues':
@@ -1566,6 +1564,10 @@ const Map<String, String> kEnglish = <String, String>{
       'New library',
   'Rien sur ce serveur pour l’instant. Son administrateur peut en ajouter.':
       'Nothing on this server yet. Its administrator can add some.',
+  'Sans aucune bande noire, bords rognés':
+      'No black bars at all, edges cropped',
+  'Sans bandes en haut ni en bas, côtés rognés':
+      'No bars above or below, sides cropped',
   'Ses titres quittent le catalogue, avec leur progression de lecture. Les fichiers restent sur le disque du serveur.':
       'Its titles leave the catalog, along with their watch progress. The files stay on the server’s disk.',
   'Supprimer « {0} »':
@@ -1842,8 +1844,10 @@ const Map<String, String> kEnglish = <String, String>{
       'Replaces the codes you wrote down.',
   'Remplacer':
       'Replace',
-  'Remplit l\'écran, coupe les bords':
-      'Fills the screen, crops the edges',
+  'Remplir l\'écran':
+      'Fill screen',
+  'Remplir la hauteur':
+      'Fill height',
   'Renommer':
       'Rename',
   'Renseignez l’adresse du serveur pour afficher le code.':

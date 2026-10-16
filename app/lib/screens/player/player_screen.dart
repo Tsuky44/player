@@ -20,7 +20,7 @@ import '../../services/screen_brightness_control.dart';
 import '../../services/watch_party.dart';
 import 'chrome_auto_hide.dart';
 import 'display_cutouts.dart';
-import 'video_fit.dart';
+import 'video_display_mode.dart';
 import '../../tv/tv_mode.dart';
 import '../../tv/touchpad_motion.dart';
 import '../../tv/tv_touchpad.dart';
@@ -77,7 +77,7 @@ class PlayerScreen extends StatefulWidget {
   final dynamic media; // Can be Media or HomeMediaItem
   final PlayerPlaybackPreferences? inheritedPreferences;
   final bool autoAdvance;
-  final BoxFit? initialVideoFit;
+  final VideoDisplayMode? initialDisplayMode;
   final int? seasonNumber;
   final int? resumeAtSeconds;
   final bool startPaused;
@@ -88,7 +88,7 @@ class PlayerScreen extends StatefulWidget {
     required this.media,
     this.inheritedPreferences,
     this.autoAdvance = false,
-    this.initialVideoFit,
+    this.initialDisplayMode,
     this.seasonNumber,
     this.resumeAtSeconds,
     this.startPaused = false,
@@ -148,10 +148,17 @@ class _PlayerScreenState extends State<PlayerScreen> {
   String? _sourceAccountId;
   int _resumePosition = 0;
 
-  /// How the video is fitted inside the player viewport.
-  /// [BoxFit.contain] = original (letterbox possible).
-  /// [BoxFit.cover]   = adaptive (fills screen, may crop edges).
-  BoxFit _videoFit = BoxFit.contain;
+  /// Le mode d'affichage choisi, ou null tant que l'appareil décide — voir
+  /// [VideoDisplayMode.defaultFor]. Null reste null d'un épisode au suivant :
+  /// le téléphone qu'on tourne d'un écran à l'autre garde le sien.
+  VideoDisplayMode? _chosenDisplayMode;
+
+  VideoDisplayMode get _displayMode =>
+      _chosenDisplayMode ??
+      VideoDisplayMode.defaultFor(
+        handheld: _handheld,
+        screen: MediaQuery.sizeOf(context),
+      );
 
   /// True while the film is playing in the system's little window, over
   /// whatever the phone is doing instead.
@@ -310,7 +317,7 @@ class _PlayerScreenState extends State<PlayerScreen> {
     TvTouchpad.addMoveListener(_handleTouchpadMove);
     _showControls = !widget.autoAdvance;
     _wantsPlayback = !widget.startPaused;
-    _videoFit = widget.initialVideoFit ?? BoxFit.contain;
+    _chosenDisplayMode = widget.initialDisplayMode;
     if (_ownsDeviceOrientation) {
       SystemChrome.setPreferredOrientations([
         DeviceOrientation.landscapeLeft,
@@ -487,13 +494,7 @@ class _PlayerScreenState extends State<PlayerScreen> {
                       : LiveSubtitleLayer(
                           feed: _playerController.liveSubtitles,
                           child: _playerController.session.buildSurface(
-                            // The chosen framing, drawn the way this
-                            // screen wants it — see [VideoFitRendering].
-                            fit: VideoFitRendering.resolve(
-                              _videoFit,
-                              handheld: _handheld,
-                              screen: MediaQuery.sizeOf(context),
-                            ),
+                            fit: _displayMode.fit,
                             aspectRatio: _playerController.videoAspectRatio,
                           ),
                         ),
@@ -541,7 +542,7 @@ class _PlayerScreenState extends State<PlayerScreen> {
                     // television is driven by a remote and a desktop by a
                     // mouse, and neither can produce this gesture.
                     pinch: _handheld ? _pinch : null,
-                    onPinchFit: _applyPinchFit,
+                    onPinchZoom: _applyPinchZoom,
                     doubleTapTogglesFullscreen: _doubleTapTogglesFullscreen,
                     onDoubleTapFullscreen: _handleDoubleTapFullscreen,
                     onDoubleTapSeek: _handleDoubleTapSeek,
@@ -562,7 +563,7 @@ class _PlayerScreenState extends State<PlayerScreen> {
                 if (_hints.zoomMounted)
                   Positioned.fill(
                     child: VideoZoomHint(
-                      fit: _hints.zoomFit,
+                      mode: _hints.zoomMode,
                       visible: _hints.zoomVisible,
                     ),
                   ),

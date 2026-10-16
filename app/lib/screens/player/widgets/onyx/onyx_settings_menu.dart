@@ -11,6 +11,7 @@ import '../../../../tv/tv_mode.dart';
 import '../../../../utils/app_platform.dart';
 import '../../hooks/use_episode_navigation.dart';
 import '../../hooks/use_player_controller.dart';
+import '../../video_display_mode.dart';
 import '../direct_source_label.dart';
 import '../track_label.dart';
 import 'onyx_chrome_theme.dart';
@@ -46,8 +47,8 @@ class OnyxSettingsMenu extends StatefulWidget {
   final PlayerController? playerController;
   final EpisodeNavigationController? episodeNav;
 
-  final BoxFit currentFit;
-  final ValueChanged<BoxFit> onFitChanged;
+  final VideoDisplayMode currentMode;
+  final ValueChanged<VideoDisplayMode> onModeChanged;
 
   final double playbackRate;
   final List<double> playbackRates;
@@ -64,8 +65,8 @@ class OnyxSettingsMenu extends StatefulWidget {
   const OnyxSettingsMenu({
     super.key,
     required this.session,
-    required this.currentFit,
-    required this.onFitChanged,
+    required this.currentMode,
+    required this.onModeChanged,
     required this.playbackRate,
     required this.playbackRates,
     required this.onRateChanged,
@@ -85,7 +86,7 @@ class OnyxSettingsMenu extends StatefulWidget {
 
 class _OnyxSettingsMenuState extends State<OnyxSettingsMenu> {
   late OnyxMenuSection _section;
-  late BoxFit _fit;
+  late VideoDisplayMode _mode;
   StreamSubscription<void>? _tracksSubscription;
 
   /// Fait avancer le « reste 23 min » tant que la minuterie de veille court.
@@ -109,7 +110,7 @@ class _OnyxSettingsMenuState extends State<OnyxSettingsMenu> {
   void initState() {
     super.initState();
     _section = widget.initialSection;
-    _fit = widget.currentFit;
+    _mode = widget.currentMode;
     _tracksSubscription = _controller?.tracksStream.listen((_) {
       if (mounted) setState(() {});
     });
@@ -280,7 +281,7 @@ class _OnyxSettingsMenuState extends State<OnyxSettingsMenu> {
   String get _speedValue =>
       widget.playbackRate == 1.0 ? tr('Normale') : '${_trimRate(widget.playbackRate)}×';
 
-  String get _displayValue => _fit == BoxFit.cover ? tr('Adaptatif') : tr('Original');
+  String get _displayValue => _mode.label;
 
   String get _sleepValue {
     final episodes = SleepTimer.instance.episodesLeft;
@@ -640,27 +641,22 @@ class _OnyxSettingsMenuState extends State<OnyxSettingsMenu> {
 
   Widget _buildDisplay() {
     return _sectionList([
-      _OnyxMenuOption(
-        label: tr('Original'),
-        subtitle: tr('Conserve les proportions'),
-        selected: _fit == BoxFit.contain,
-        onTap: () => _setFit(BoxFit.contain),
-      ),
-      _OnyxMenuOption(
-        label: tr('Adaptatif'),
-        subtitle: tr('Remplit l\'écran, coupe les bords'),
-        selected: _fit == BoxFit.cover,
-        onTap: () => _setFit(BoxFit.cover),
-      ),
+      for (final mode in VideoDisplayMode.values)
+        _OnyxMenuOption(
+          label: mode.label,
+          subtitle: mode.description,
+          selected: mode == _mode,
+          onTap: () => _setMode(mode),
+        ),
     ]);
   }
 
   /// The one section that stays open after a choice, so the ring has to follow
   /// it: the entry node has just moved to the other row, and without this the
   /// focus would be left on a row that no longer holds it.
-  void _setFit(BoxFit fit) {
-    setState(() => _fit = fit);
-    widget.onFitChanged(fit);
+  void _setMode(VideoDisplayMode mode) {
+    setState(() => _mode = mode);
+    widget.onModeChanged(mode);
     _focusEntryAfterBuild();
   }
 

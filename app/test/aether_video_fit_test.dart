@@ -12,7 +12,8 @@ void main() {
   const scope = 2.39;
   const episode = 16 / 9;
 
-  test('« Adaptatif » remplit la vue dès que l\'image n\'a pas sa forme', () {
+  test('« Remplir l\'écran » remplit la vue dès que l\'image n\'a pas sa forme',
+      () {
     expect(
       AetherVideoFit.resolve(BoxFit.cover, episode, phone),
       OnyxAppleVideoFit.cover,

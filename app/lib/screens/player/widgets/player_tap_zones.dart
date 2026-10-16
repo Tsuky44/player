@@ -14,7 +14,7 @@ class PlayerTapZones extends StatelessWidget {
   const PlayerTapZones({
     super.key,
     required this.pinch,
-    required this.onPinchFit,
+    required this.onPinchZoom,
     required this.doubleTapTogglesFullscreen,
     required this.onDoubleTapFullscreen,
     required this.onDoubleTapSeek,
@@ -26,7 +26,7 @@ class PlayerTapZones extends StatelessWidget {
   /// Null off a touchscreen: nothing there can produce a second finger, and
   /// tracking would only be bookkeeping.
   final PinchTracker? pinch;
-  final ValueChanged<BoxFit> onPinchFit;
+  final ValueChanged<PinchZoom> onPinchZoom;
 
   /// A double-click opens and closes full screen instead of seeking.
   final bool doubleTapTogglesFullscreen;
@@ -75,8 +75,8 @@ class PlayerTapZones extends StatelessWidget {
       onPointerMove: tracker == null
           ? null
           : (event) {
-              final fit = tracker.move(event);
-              if (fit != null) onPinchFit(fit);
+              final zoom = tracker.move(event);
+              if (zoom != null) onPinchZoom(zoom);
             },
       onPointerUp: tracker?.end,
       onPointerCancel: tracker?.end,

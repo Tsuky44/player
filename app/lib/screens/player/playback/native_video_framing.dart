@@ -48,6 +48,23 @@ class NativeVideoFraming extends StatelessWidget {
     return height == null ? box : Size(height * aspectRatio, height);
   }
 
+  /// En dessous, un dépassement n'est qu'un arrondi de mise en page.
+  static const double _cropTolerance = 0.5;
+
+  /// Si l'image, cadrée par [fit] dans [box], en sort — c'est-à-dire si le
+  /// cadrage rogne.
+  ///
+  /// Les couches vidéo qui cadrent elles-mêmes (AetherEngine, mpv) n'ont que
+  /// deux gestes qui gardent le rapport : l'image entière, ou la vue remplie.
+  /// Tout [BoxFit] s'y ramène par cette question : « Remplir la hauteur » d'un
+  /// film plus large que l'écran le remplit, d'un 4:3 il laisse les côtés.
+  static bool crops(BoxFit fit, double aspectRatio, Size box) {
+    if (box.isEmpty || aspectRatio <= 0) return false;
+    final framed = framedSize(fit, aspectRatio, box);
+    return framed.width > box.width + _cropTolerance ||
+        framed.height > box.height + _cropTolerance;
+  }
+
   @override
   Widget build(BuildContext context) {
     return LayoutBuilder(

@@ -1,29 +1,41 @@
 import 'package:flutter/widgets.dart';
 
-/// Reads a pinch as a choice between the player's two display fits.
+import 'video_display_mode.dart';
+
+/// Which way a pinch went: fingers spread apart, or squeezed together.
+enum PinchZoom {
+  spread,
+  squeeze;
+
+  /// Le mode d'affichage où ce pincement mène depuis [from] : un cran de zoom,
+  /// dans l'ordre de [VideoDisplayMode].
+  VideoDisplayMode apply(VideoDisplayMode from) =>
+      this == spread ? from.zoomedIn : from.zoomedOut;
+}
+
+/// Reads a pinch as one step between the player's display modes.
 ///
 /// There is nothing to zoom *to* in a video surface — no detail waiting at 3x,
-/// no pan afterwards. A pinch here means one of exactly two things: fill the
-/// screen and crop the edges, or give the picture back its own proportions.
-/// So the gesture is not tracked continuously; it is read for its direction and
-/// resolved once, which is what makes it feel instant instead of asking the
-/// user to spread their fingers all the way for a change that has no
-/// in-between.
+/// no pan afterwards. A pinch here means one step along [VideoDisplayMode]:
+/// one more band of black gone, or one given back. So the gesture is not
+/// tracked continuously; it is read for its direction and resolved once, which
+/// is what makes it feel instant instead of asking the user to spread their
+/// fingers all the way for a change that has no in-between.
 abstract final class PinchZoomFit {
   /// Deliberately short of a full spread, for the reason above: the smallest
   /// movement that says which of the two the user meant.
-  static const double coverThreshold = 1.12;
-  static const double containThreshold = 0.88;
+  static const double spreadThreshold = 1.12;
+  static const double squeezeThreshold = 0.88;
 
-  /// The fit this pinch is asking for, or null while it says nothing yet.
+  /// The direction this pinch is asking for, or null while it says nothing yet.
   ///
   /// [pointerCount] matters because a scale recognizer also reports one-finger
   /// drags, with [scale] pinned at 1.0. Those belong to the tap zones over the
   /// video, not here.
-  static BoxFit? resolve({required double scale, required int pointerCount}) {
+  static PinchZoom? resolve({required double scale, required int pointerCount}) {
     if (pointerCount < 2) return null;
-    if (scale >= coverThreshold) return BoxFit.cover;
-    if (scale <= containThreshold) return BoxFit.contain;
+    if (scale >= spreadThreshold) return PinchZoom.spread;
+    if (scale <= squeezeThreshold) return PinchZoom.squeeze;
     return null;
   }
 }
@@ -45,7 +57,7 @@ class PinchTracker {
   final Map<int, Offset> _pointers = <int, Offset>{};
   double? _startSpan;
 
-  /// One fit decision per pinch. Without it, fingers drifting back across the
+  /// One step per pinch. Without it, fingers drifting back across the
   /// threshold mid-gesture would keep flipping the picture.
   bool _resolved = false;
 
@@ -63,8 +75,9 @@ class PinchTracker {
     _startSpan = _span();
   }
 
-  /// The fit the pinch has just decided on, once per gesture; null otherwise.
-  BoxFit? move(PointerMoveEvent event) {
+  /// The direction the pinch has just decided on, once per gesture; null
+  /// otherwise.
+  PinchZoom? move(PointerMoveEvent event) {
     if (!_pointers.containsKey(event.pointer)) return null;
     _pointers[event.pointer] = event.position;
     if (_resolved) return null;

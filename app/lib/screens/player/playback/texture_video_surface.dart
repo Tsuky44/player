@@ -4,6 +4,8 @@ import 'package:flutter/widgets.dart';
 import 'package:media_kit/media_kit.dart' show VideoParams;
 import 'package:media_kit_video/media_kit_video.dart';
 
+import 'native_video_framing.dart';
+
 /// La surface du lecteur quand mpv dessine dans une texture Flutter, avec la
 /// texture taillée à l'écran plutôt qu'au fichier.
 ///
@@ -133,11 +135,18 @@ class _TextureVideoSurfaceState extends State<TextureVideoSurface> {
     _logical = logical;
     _pixelRatio = pixelRatio;
     final params = widget.controller.player.state.videoParams;
+    final videoWidth = params.dw ?? params.w ?? 0;
+    final videoHeight = params.dh ?? params.h ?? 0;
+    // La taille de l'image cadrée, pas celle de la place : un mode qui zoome
+    // agrandit l'image au-delà de l'écran, et une texture taillée à l'image
+    // entière y était étirée par Flutter, donc floue.
+    final aspect = widget.aspectRatio ??
+        (videoHeight > 0 ? videoWidth / videoHeight : 0.0);
     final size = TextureVideoSurface.nextSize(
-      logical: logical,
+      logical: NativeVideoFraming.framedSize(widget.fit, aspect, logical),
       pixelRatio: pixelRatio,
-      videoWidth: params.dw ?? params.w ?? 0,
-      videoHeight: params.dh ?? params.h ?? 0,
+      videoWidth: videoWidth,
+      videoHeight: videoHeight,
       current: _applied,
     );
     if (size == null) return;

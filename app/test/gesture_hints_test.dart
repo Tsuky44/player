@@ -1,7 +1,7 @@
-import 'package:flutter/widgets.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 import 'package:onyx/screens/player/hooks/use_gesture_hints.dart';
+import 'package:onyx/screens/player/video_display_mode.dart';
 
 // `testWidgets` pour son horloge : `pump` fait avancer les minuteries, et un
 // test qui en laisse une en attente échoue de lui-même.
@@ -29,7 +29,7 @@ void main() {
     var notified = 0;
     hints.addListener(() => notified++);
 
-    hints.showZoom(BoxFit.cover);
+    hints.showZoom(VideoDisplayMode.fill);
     expect(hints.zoomMounted, isTrue);
     expect(hints.zoomVisible, isTrue);
 
@@ -58,7 +58,7 @@ void main() {
   testWidgets('rien ne reste en attente après la destruction', (tester) async {
     GestureHints()
       ..showSeek(10)
-      ..showZoom(BoxFit.contain)
+      ..showZoom(VideoDisplayMode.original)
       ..dispose();
   });
 }

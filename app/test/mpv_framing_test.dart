@@ -22,11 +22,26 @@ void main() {
     expect(MpvFraming.properties(BoxFit.fill, null)['keepaspect'], 'no');
   });
 
-  test('les autres cadrages retombent sur contain', () {
+  // mpv n'a que l'image entière ou la vue remplie : « Remplir la hauteur »
+  // devient l'un ou l'autre selon la forme du film et de la vue.
+  test('remplir la hauteur rogne un film large, pas un film étroit', () {
+    const tv = Size(1920, 1080);
     expect(
-      MpvFraming.properties(BoxFit.fitHeight, null),
-      MpvFraming.properties(BoxFit.contain, null),
+      MpvFraming.properties(BoxFit.fitHeight, 2.39, box: tv)['panscan'],
+      '1.0',
     );
+    expect(
+      MpvFraming.properties(BoxFit.fitHeight, 4 / 3, box: tv)['panscan'],
+      '0.0',
+    );
+  });
+
+  test('sans place connue, seul cover rogne', () {
+    expect(
+      MpvFraming.properties(BoxFit.fitHeight, 2.39)['panscan'],
+      '0.0',
+    );
+    expect(MpvFraming.properties(BoxFit.cover, 2.39)['panscan'], '1.0');
   });
 
   test('un rapport imposé passe à mpv, un rapport nul non', () {

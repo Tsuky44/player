@@ -375,7 +375,7 @@ extension _PlayerFlow on _PlayerScreenState {
       resumeAtSeconds ??= 0;
     }
     final inheritedPreferences = _playerController.exportPreferences();
-    final videoFit = _videoFit;
+    final displayMode = _chosenDisplayMode;
 
     // Cancel all streams BEFORE navigation
     _playerController.cancelStreams();
@@ -415,7 +415,7 @@ extension _PlayerFlow on _PlayerScreenState {
             media: next,
             inheritedPreferences: inheritedPreferences,
             autoAdvance: true,
-            initialVideoFit: videoFit,
+            initialDisplayMode: displayMode,
             seasonNumber: _info.seasonNumberFor(next),
             resumeAtSeconds: resumeAtSeconds,
             startPaused: startPaused,

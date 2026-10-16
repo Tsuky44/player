@@ -2,13 +2,15 @@ import 'dart:async';
 
 import 'package:flutter/widgets.dart';
 
+import '../video_display_mode.dart';
+
 /// Les deux indications brèves qui répondent à un geste sur l'image : la
-/// recherche d'un double tap (« −30 s ») et le cadrage d'un pincement.
+/// recherche d'un double tap (« −30 s ») et le mode d'affichage d'un pincement.
 ///
 /// Chacune apparaît, s'efface, puis quitte l'arbre une fois effacée : son
 /// flou ou son animation ne se paient pas pendant le reste du film.
 class GestureHints extends ChangeNotifier {
-  BoxFit zoomFit = BoxFit.contain;
+  VideoDisplayMode zoomMode = VideoDisplayMode.original;
   bool zoomVisible = false;
   bool zoomMounted = false;
   Timer? _zoomTimer;
@@ -27,9 +29,9 @@ class GestureHints extends ChangeNotifier {
 
   bool _disposed = false;
 
-  void showZoom(BoxFit fit) {
+  void showZoom(VideoDisplayMode mode) {
     _zoomTimer?.cancel();
-    zoomFit = fit;
+    zoomMode = mode;
     zoomVisible = true;
     zoomMounted = true;
     notifyListeners();

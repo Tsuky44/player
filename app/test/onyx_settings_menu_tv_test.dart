@@ -4,6 +4,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:onyx/screens/player/playback/playback_session.dart';
 import 'package:onyx/screens/player/playback/sleep_timer.dart';
 import 'package:onyx/screens/player/widgets/onyx/onyx_settings_menu.dart';
+import 'package:onyx/screens/player/video_display_mode.dart';
 import 'package:onyx/tv/tv_focus.dart';
 import 'package:onyx/tv/tv_mode.dart';
 
@@ -159,8 +160,8 @@ Future<void> _pumpMenu(WidgetTester tester, {_FakeSession? session}) async {
               node: scope,
               child: OnyxSettingsMenu(
                 session: session ?? _FakeSession(),
-                currentFit: BoxFit.contain,
-                onFitChanged: (_) {},
+                currentMode: VideoDisplayMode.original,
+                onModeChanged: (_) {},
                 playbackRate: 1.0,
                 playbackRates: const [0.5, 1.0, 1.5, 2.0],
                 onRateChanged: (_) {},

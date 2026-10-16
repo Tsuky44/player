@@ -347,18 +347,19 @@ extension _PlayerChrome on _PlayerScreenState {
     _hideControlsWithDelay();
   }
 
-  void _updateVideoFit(BoxFit fit) {
+  void _updateDisplayMode(VideoDisplayMode mode) {
     // La surface est reconstruite avec le nouveau cadrage ; chaque moteur
     // l'applique à sa façon — Flutter met une texture à l'échelle, la vue
     // native se redimensionne elle-même.
-    _update(() => _videoFit = fit);
+    _update(() => _chosenDisplayMode = mode);
   }
 
   /// Pinch-to-zoom, the gesture people expect on a phone: spreading two
-  /// fingers fills the screen ([BoxFit.cover]), pinching them back gives the
-  /// original framing ([BoxFit.contain]).
-  void _applyPinchFit(BoxFit next) {
-    if (next != _videoFit) _updateVideoFit(next);
+  /// fingers takes one more band of black away, pinching them back gives one
+  /// back — a step along [VideoDisplayMode].
+  void _applyPinchZoom(PinchZoom zoom) {
+    final next = zoom.apply(_displayMode);
+    if (next != _displayMode) _updateDisplayMode(next);
     // Shown even when the fit does not change, so pinching a picture that
     // already fills the screen answers instead of doing nothing at all.
     _hints.showZoom(next);
@@ -451,8 +452,8 @@ extension _PlayerChrome on _PlayerScreenState {
           session: _playerController.session,
           playerController: _playerController,
           episodeNav: _episodeNav,
-          currentFit: _videoFit,
-          onFitChanged: _updateVideoFit,
+          currentMode: _displayMode,
+          onModeChanged: _updateDisplayMode,
           playbackRate: _playbackRate,
           playbackRates: _PlayerScreenState._playbackRates,
           onRateChanged: _setPlaybackRate,

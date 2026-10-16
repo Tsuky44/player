@@ -2,27 +2,43 @@ import 'package:flutter/widgets.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 import 'package:onyx/screens/player/pinch_zoom_fit.dart';
+import 'package:onyx/screens/player/video_display_mode.dart';
 
 void main() {
   pinchTrackerTests();
 
-  BoxFit? pinch(double scale, {int fingers = 2}) =>
+  PinchZoom? pinch(double scale, {int fingers = 2}) =>
       PinchZoomFit.resolve(scale: scale, pointerCount: fingers);
 
-  test('spreading two fingers fills the screen', () {
-    expect(pinch(1.4), BoxFit.cover);
+  test('spreading two fingers zooms in', () {
+    expect(pinch(1.4), PinchZoom.spread);
   });
 
-  test('pinching two fingers back restores the original framing', () {
-    expect(pinch(0.6), BoxFit.contain);
+  test('pinching two fingers back zooms out', () {
+    expect(pinch(0.6), PinchZoom.squeeze);
+  });
+
+  // One band of black per pinch: spreading takes the bars above and below
+  // away, then the ones at the sides; squeezing gives them back in order.
+  test('a pinch moves one display mode at a time', () {
+    expect(PinchZoom.spread.apply(VideoDisplayMode.original),
+        VideoDisplayMode.fillHeight);
+    expect(PinchZoom.spread.apply(VideoDisplayMode.fillHeight),
+        VideoDisplayMode.fill);
+    expect(PinchZoom.spread.apply(VideoDisplayMode.fill),
+        VideoDisplayMode.fill);
+    expect(PinchZoom.squeeze.apply(VideoDisplayMode.fill),
+        VideoDisplayMode.fillHeight);
+    expect(PinchZoom.squeeze.apply(VideoDisplayMode.original),
+        VideoDisplayMode.original);
   });
 
   // The gesture has to answer well before a full spread: there is no zoom
   // level to aim at, only a direction, so waiting for 2x would read as the
   // pinch being ignored.
   test('a small but unambiguous spread is already enough', () {
-    expect(pinch(1.15), BoxFit.cover);
-    expect(pinch(0.85), BoxFit.contain);
+    expect(pinch(1.15), PinchZoom.spread);
+    expect(pinch(0.85), PinchZoom.squeeze);
   });
 
   test('a hand that has barely moved decides nothing', () {
@@ -57,7 +73,7 @@ void pinchTrackerTests() {
         ..down(_fingerDown(2, const Offset(200, 100)));
 
       expect(tracker.move(_fingerMove(2, const Offset(205, 100))), isNull);
-      expect(tracker.move(_fingerMove(2, const Offset(260, 100))), BoxFit.cover);
+      expect(tracker.move(_fingerMove(2, const Offset(260, 100))), PinchZoom.spread);
       // Les doigts qui reviennent en arrière ne rebasculent pas l'image.
       expect(tracker.move(_fingerMove(2, const Offset(150, 100))), isNull);
     });
@@ -66,7 +82,7 @@ void pinchTrackerTests() {
       final tracker = PinchTracker()
         ..down(_fingerDown(1, const Offset(100, 100)))
         ..down(_fingerDown(2, const Offset(200, 100)));
-      expect(tracker.move(_fingerMove(2, const Offset(260, 100))), BoxFit.cover);
+      expect(tracker.move(_fingerMove(2, const Offset(260, 100))), PinchZoom.spread);
 
       // Un doigt levé puis reposé : c'est le même geste.
       tracker
@@ -79,8 +95,8 @@ void pinchTrackerTests() {
         ..end(const PointerUpEvent(pointer: 2))
         ..down(_fingerDown(1, const Offset(100, 100)))
         ..down(_fingerDown(2, const Offset(300, 100)));
-      expect(
-          tracker.move(_fingerMove(2, const Offset(150, 100))), BoxFit.contain);
+      expect(tracker.move(_fingerMove(2, const Offset(150, 100))),
+          PinchZoom.squeeze);
     });
 
     test('un seul doigt ne pince rien', () {

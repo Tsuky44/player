@@ -4,7 +4,7 @@ import 'package:flutter/material.dart';
 
 import '../../../theme/app_colors.dart';
 import '../../../theme/app_type.dart';
-import '../../../l10n/tr.dart';
+import '../video_display_mode.dart';
 
 /// Transient label naming the display mode a pinch just landed on.
 ///
@@ -15,14 +15,12 @@ import '../../../l10n/tr.dart';
 /// Placed above the middle rather than on it: the centre belongs to the
 /// transport button, which may be up at the same time.
 class VideoZoomHint extends StatelessWidget {
-  /// The fit the picture has just been put into.
-  final BoxFit fit;
+  /// The mode the picture has just been put into.
+  final VideoDisplayMode mode;
 
   final bool visible;
 
-  const VideoZoomHint({super.key, required this.fit, required this.visible});
-
-  bool get _isCover => fit == BoxFit.cover;
+  const VideoZoomHint({super.key, required this.mode, required this.visible});
 
   @override
   Widget build(BuildContext context) {
@@ -51,15 +49,13 @@ class VideoZoomHint extends StatelessWidget {
                   mainAxisSize: MainAxisSize.min,
                   children: [
                     Icon(
-                      _isCover
-                          ? Icons.crop_free_rounded
-                          : Icons.fit_screen_rounded,
+                      mode.icon,
                       color: AppColors.textPrimary,
                       size: 20,
                     ),
                     const SizedBox(width: 8),
                     Text(
-                      _isCover ? tr('Adaptatif') : tr('Original'),
+                      mode.label,
                       style: const TextStyle(
                         color: AppColors.textPrimary,
                         fontSize: AppType.body,

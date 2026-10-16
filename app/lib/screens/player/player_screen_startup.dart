@@ -311,7 +311,7 @@ extension _PlayerStartup on _PlayerScreenState {
       Navigator.of(context).pushReplacement(MaterialPageRoute(
         settings: const RouteSettings(name: SearchRouteObserver.playerRouteName),
         builder: (_) => PlayerScreen(media: relay.media,
-          inheritedPreferences: preferences, initialVideoFit: _videoFit,
+          inheritedPreferences: preferences, initialDisplayMode: _chosenDisplayMode,
           seasonNumber: widget.seasonNumber, resumeAtSeconds: position,
           startPaused: paused, relayAttempts: {...widget.relayAttempts, source: DateTime.now()}),
       ));
@@ -341,7 +341,7 @@ extension _PlayerStartup on _PlayerScreenState {
     _party.handOver = true;
     _playerController.cancelStreams();
     final inheritedPreferences = _playerController.exportPreferences();
-    final videoFit = _videoFit;
+    final displayMode = _chosenDisplayMode;
 
     Navigator.of(context).pushReplacement(
       MaterialPageRoute(
@@ -349,7 +349,7 @@ extension _PlayerStartup on _PlayerScreenState {
         builder: (_) => PlayerScreen(
           media: widget.media,
           inheritedPreferences: inheritedPreferences,
-          initialVideoFit: videoFit,
+          initialDisplayMode: displayMode,
           seasonNumber: widget.seasonNumber,
         ),
       ),
