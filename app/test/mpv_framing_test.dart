@@ -10,6 +10,9 @@ void main() {
       'keepaspect': 'yes',
       'panscan': '0.0',
       'video-aspect-override': 'no',
+      'video-zoom': '0.0000',
+      'video-pan-x': '0.0000',
+      'video-pan-y': '0.0000',
     });
   });
 
@@ -22,17 +25,18 @@ void main() {
     expect(MpvFraming.properties(BoxFit.fill, null)['keepaspect'], 'no');
   });
 
-  // mpv n'a que l'image entière ou la vue remplie : « Remplir la hauteur »
-  // devient l'un ou l'autre selon la forme du film et de la vue.
-  test('remplir la hauteur rogne un film large, pas un film étroit', () {
+  // Avec la place connue, le cadre se dit à mpv en zoom (log₂) depuis
+  // l'image entière, pas en panscan (ADR-0067).
+  test('remplir la hauteur zoome un film large, pas un film étroit', () {
     const tv = Size(1920, 1080);
+    final wide = MpvFraming.properties(BoxFit.fitHeight, 2.39, box: tv);
+    expect(wide['panscan'], '0.0');
+    expect(wide['video-zoom'], '0.4269');
+    expect(wide['video-pan-x'], '0.0000');
+    expect(wide['video-pan-y'], '0.0000');
     expect(
-      MpvFraming.properties(BoxFit.fitHeight, 2.39, box: tv)['panscan'],
-      '1.0',
-    );
-    expect(
-      MpvFraming.properties(BoxFit.fitHeight, 4 / 3, box: tv)['panscan'],
-      '0.0',
+      MpvFraming.properties(BoxFit.fitHeight, 4 / 3, box: tv)['video-zoom'],
+      '0.0000',
     );
   });
 
