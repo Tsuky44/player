@@ -135,7 +135,8 @@ void main() {
     });
 
     testWidgets('fiche série : menu « Métadonnées série »', (tester) async {
-      Widget menu() => ShowMetadataMenu(onRedetect: () {}, onPickOnTmdb: () {});
+      Widget menu() => ShowMetadataMenu(
+          onRedetect: () {}, onPickOnTmdb: () {}, onChangePoster: () {});
 
       await pump(tester, _member, menu());
       expect(find.byTooltip('Métadonnées série'), findsNothing);
