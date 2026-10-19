@@ -1,0 +1,42 @@
+{
+  "mine": [
+    {
+      "id": 1,
+      "kind": "watch_later",
+      "name": "name-value",
+      "description": "description-value",
+      "is_shared": true,
+      "is_mine": true,
+      "owner": {
+        "id": 2,
+        "username": "username-value"
+      },
+      "item_count": 3,
+      "posters": [
+        "posters-value"
+      ],
+      "updated_at": "2026-01-02T03:04:05Z",
+      "contains_item_id": 4
+    }
+  ],
+  "shared": [
+    {
+      "id": 5,
+      "kind": "custom",
+      "name": "name-value",
+      "description": "description-value",
+      "is_shared": true,
+      "is_mine": true,
+      "owner": {
+        "id": 6,
+        "username": "username-value"
+      },
+      "item_count": 7,
+      "posters": [
+        "posters-value"
+      ],
+      "updated_at": "2026-01-02T03:04:05Z",
+      "contains_item_id": 8
+    }
+  ]
+}

@@ -4,6 +4,8 @@ import 'dart:convert';
 import 'package:dio/dio.dart';
 import 'package:flutter/foundation.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import '../models/announcement.dart';
+import '../models/watch_list.dart';
 import '../models/app_download.dart';
 import '../models/device_pairing.dart';
 import '../models/server_account.dart';
@@ -51,6 +53,9 @@ part 'api/otp.dart';
 part 'api/playback.dart';
 part 'api/media.dart';
 part 'api/new_episodes.dart';
+part 'api/announcements.dart';
+part 'api/artwork.dart';
+part 'api/watch_lists.dart';
 
 class _PlaybackRequestScope {
   const _PlaybackRequestScope(this.origin, this.authorization);
@@ -71,7 +76,10 @@ class ApiClient
         _OtpEndpoints,
         _PlaybackEndpoints,
         _MediaEndpoints,
-        _NewEpisodeEndpoints {
+        _NewEpisodeEndpoints,
+        _AnnouncementEndpoints,
+        _ArtworkEndpoints,
+        _WatchListEndpoints {
   static String get _defaultBaseUrl {
     // On web the Go server serves this very bundle, so the page origin is
     // already the API root. Hardcoding a host here would turn every call into a

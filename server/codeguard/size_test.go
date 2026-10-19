@@ -20,7 +20,6 @@ var tolerated = map[string]struct {
 	ceiling int
 	why     string
 }{
-	"indexer/metadata.go":  {985, "le score des résultats TMDB, l'enrichissement des fiches et le rattrapage"},
 	"indexer/monitor.go":   {826, "la surveillance des dossiers et la file d'après-scan"},
 	"handlers/activity.go": {807, "au seuil : le prochain ajout commence par une extraction"},
 }

@@ -1,0 +1,17 @@
+{
+  "current": "current-value",
+  "locked": true,
+  "fanart_enabled": true,
+  "images": [
+    {
+      "url": "url-value",
+      "thumb_url": "thumb_url-value",
+      "source": "source-value",
+      "language": "language-value",
+      "width": 1,
+      "height": 2,
+      "rating": 3.5,
+      "votes": 4
+    }
+  ]
+}

@@ -3,6 +3,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:provider/provider.dart';
 import 'package:onyx/models/models.dart';
 import 'package:onyx/providers/auth_provider.dart';
+import 'package:onyx/providers/watch_lists_provider.dart';
 import 'package:onyx/screens/library/movie_detail_screen.dart';
 import 'package:onyx/services/api_client.dart';
 import 'package:onyx/services/download_manager.dart';
@@ -66,6 +67,7 @@ void main() {
       providers: [
         ChangeNotifierProvider<AuthProvider>.value(value: auth),
         Provider<ApiClient>.value(value: api),
+        ChangeNotifierProvider(create: (_) => WatchListsProvider(api)),
         ChangeNotifierProvider<DownloadManager>.value(
             value: DownloadManager.instance),
       ],

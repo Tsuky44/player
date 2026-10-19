@@ -6,9 +6,13 @@ import 'package:shared_preferences/shared_preferences.dart';
 
 import 'package:onyx/models/device_pairing.dart';
 import 'package:onyx/models/models.dart';
+import 'package:onyx/models/watch_list.dart';
 import 'package:onyx/providers/auth_provider.dart';
+import 'package:onyx/providers/watch_lists_provider.dart';
 import 'package:onyx/screens/auth/login_screen.dart';
 import 'package:onyx/screens/library/movie_detail_screen.dart';
+import 'package:onyx/screens/lists/list_detail_screen.dart';
+import 'package:onyx/screens/lists/lists_screen.dart';
 import 'package:onyx/services/api_client.dart';
 import 'package:onyx/services/download_manager.dart';
 import 'package:onyx/services/media_details_cache.dart';
@@ -37,6 +41,45 @@ class _Api extends ApiClient {
   @override
   Future<Map<String, dynamic>> getProgress(int mediaId) async =>
       {'current_position_seconds': 600, 'is_finished': false};
+
+  static Map<String, dynamic> _list(int id, String kind, {bool mine = true}) => {
+        'id': id,
+        'kind': kind,
+        'name': 'Recos',
+        'description': 'Pour le week-end',
+        'is_shared': !mine,
+        'is_mine': mine,
+        'owner': {'id': mine ? 1 : 2, 'username': mine ? 'mathis' : 'bob'},
+        'item_count': 1,
+        'posters': const <String>[],
+      };
+
+  @override
+  Future<bool> supportsWatchLists() async => true;
+
+  @override
+  Future<WatchListsOverview> getWatchLists({ListableTitle? containing}) async =>
+      WatchListsOverview.fromJson({
+        'mine': [_list(1, 'watch_later'), _list(2, 'custom')],
+        'shared': [_list(3, 'custom', mine: false)],
+      });
+
+  @override
+  Future<WatchListDetail> getWatchList(int id) async =>
+      WatchListDetail.fromJson({
+        ..._list(id, 'custom'),
+        'items': [
+          {
+            'id': 7,
+            'media_type': 'movie',
+            'tmdb_id': 603,
+            'title': 'The Matrix',
+            'poster_url': '',
+            'release_date': '1999-03-31',
+            'media_id': 0,
+          },
+        ],
+      });
 }
 
 class _Auth extends AuthProvider {
@@ -207,6 +250,10 @@ void main() {
         providers: [
           ChangeNotifierProvider<AuthProvider>.value(value: auth),
           Provider<ApiClient>.value(value: api),
+          // Le serveur tient des listes : le signet de la fiche est dessiné,
+          // et doit porter son nom.
+          ChangeNotifierProvider(
+              create: (_) => WatchListsProvider(api)..debugMarkSupported()),
           ChangeNotifierProvider<DownloadManager>.value(
               value: DownloadManager.instance),
         ],
@@ -221,6 +268,35 @@ void main() {
             ),
           ),
         ),
+      ));
+      await tester.pumpAndSettle();
+
+      await expectEveryTargetNamed(tester);
+      handle.dispose();
+    });
+  }
+  // Les listes (ADR-0070) : l'onglet, puis une liste ouverte par son
+  // propriétaire, avec ses boutons de modification.
+  for (final (name, screen) in [
+    ('l’onglet des listes nomme chaque vignette', const ListsScreen()),
+    ('une liste nomme chacune de ses actions', const ListDetailScreen(listId: 2)),
+  ]) {
+    testWidgets(name, (tester) async {
+      final handle = tester.ensureSemantics();
+      phone(tester);
+      final api = _Api();
+      final auth = _Auth(api);
+      addTearDown(auth.dispose);
+      final lists = WatchListsProvider(api);
+      addTearDown(lists.dispose);
+      await lists.load();
+      await tester.pumpWidget(MultiProvider(
+        providers: [
+          ChangeNotifierProvider<AuthProvider>.value(value: auth),
+          Provider<ApiClient>.value(value: api),
+          ChangeNotifierProvider<WatchListsProvider>.value(value: lists),
+        ],
+        child: MaterialApp(home: screen),
       ));
       await tester.pumpAndSettle();
 

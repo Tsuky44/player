@@ -56,6 +56,8 @@ const Map<String, String> kEnglish = <String, String>{
       'Turn on',
   'Activer la validation en deux étapes':
       'Turn on two-step verification',
+  'Activité':
+      'Activity',
   'Activité récente':
       'Recent activity',
   'Activé':
@@ -102,6 +104,8 @@ const Map<String, String> kEnglish = <String, String>{
       'Posters…',
   'Agrandir':
       'Maximize',
+  'Aide':
+      'Help',
   'Ajouter':
       'Add',
   'Ajouter les nouveaux fichiers et retirer ceux qui ont disparu':
@@ -136,6 +140,8 @@ const Map<String, String> kEnglish = <String, String>{
       'Scan in progress',
   'Analyse en cours…':
       'Scanning…',
+  'Analyse, maintenance':
+      'Scanning, maintenance',
   'Anglais':
       'English',
   'Annuler':
@@ -518,6 +524,8 @@ const Map<String, String> kEnglish = <String, String>{
       'Accounts linked. The servers now send each other your progress.',
   'Comptes, droits, invitations, demandes':
       'Accounts, rights, invitations, requests',
+  'Comptes, invitations, appareils, message à tous':
+      'Accounts, invitations, devices, message to everyone',
   'Conditions d’utilisation':
       'Terms of use',
   'Configurer la validation en deux étapes':
@@ -586,8 +594,8 @@ const Map<String, String> kEnglish = <String, String>{
       'Copy it now: it will not be shown again. You can follow or delete it in Settings › Share links. In the Onyx app, paste it on the sign-in screen, under “Open a share link”.',
   'Copié':
       'Copied',
-  'Correction manuelle de l’affiche':
-      'Fix the poster manually',
+  'Correction manuelle de la fiche':
+      'Fix the match manually',
   'Corriger la fiche':
       'Fix details',
   'Coréen':
@@ -726,6 +734,8 @@ const Map<String, String> kEnglish = <String, String>{
       'Folders saved. Start a sync to scan them.',
   'Dossiers, analyse, maintenance':
       'Folders, scan, maintenance',
+  'Dossiers, analyse, métadonnées':
+      'Folders, scanning, metadata',
   'Droits accordés par ses invitations':
       'Rights granted by their invitations',
   'Droits de {0}':
@@ -978,6 +988,8 @@ const Map<String, String> kEnglish = <String, String>{
       'GB',
   'Go {0}':
       'Go {0}',
+  'Général':
+      'General',
   'Générer une invitation':
       'Generate an invitation',
   'Gérer cet installeur':
@@ -1188,6 +1200,8 @@ const Map<String, String> kEnglish = <String, String>{
       'Connecting to the device failed.',
   'La connexion depuis le téléphone a échoué.':
       'Signing in from the phone failed.',
+  'La langue, l’affichage et les notifications de cet appareil, les autres appareils à connecter, et de l’aide si quelque chose ne va pas.':
+      'This device’s language, display and notifications, other devices to connect, and help if something goes wrong.',
   'La lecture continue sur « {0} ». Reprenez-la ici, là où il en est.':
       'Playback continues on “{0}”. Pick it up here, right where it is.',
   'La lecture ne démarre pas':
@@ -1230,6 +1244,8 @@ const Map<String, String> kEnglish = <String, String>{
       'Metadata language',
   'Langue originale':
       'Original language',
+  'Langue, affichage, notifications, aide':
+      'Language, display, notifications, help',
   'Langue, mode télécommande, téléviseur, stockage':
       'Language, remote control mode, TV, storage',
   'Le code a été annulé. Rien n\'a été connecté.':
@@ -1282,12 +1298,18 @@ const Map<String, String> kEnglish = <String, String>{
       'The main server',
   'Le téléchargement hors ligne demande un espace de stockage propre à l\'application. Utilisez l\'app installée sur votre appareil.':
       'Offline downloads need storage space that belongs to the app. Use the app installed on your device.',
+  'Lectures en cours, historique, statistiques':
+      'Now playing, history, statistics',
   'Les dossiers que le serveur présente, sous le nom que vous leur donnez, et les tâches qui tiennent le catalogue à jour.':
       'The folders the server presents, under the names you give them, and the tasks that keep the catalog up to date.',
   'Les fichiers ajoutés au dossier de cette bibliothèque apparaissent ici d’eux-mêmes.':
       'Files added to this library’s folder show up here on their own.',
   'Les fichiers sont des épisodes, regroupés par série et par saison.':
       'Files are episodes, grouped by show and season.',
+  'Les installeurs servis par votre serveur.':
+      'The installers your server provides.',
+  'Les films et épisodes téléchargés se gèrent dans Téléchargements.':
+      'Downloaded movies and episodes are managed in Downloads.',
   'L’administrateur de ce serveur n’a pas encore déclaré de bibliothèque.':
       'This server’s administrator has not set up a library yet.',
   'L’appareil a refusé la connexion. Affichez un nouveau code sur son écran et réessayez.':
@@ -1438,6 +1460,8 @@ const Map<String, String> kEnglish = <String, String>{
       'My servers',
   'Message (facultatif)':
       'Message (optional)',
+  'Message à tous':
+      'Message to everyone',
   'Mesurer la lecture':
       'Measure playback',
   'Mesures de la lecture':
@@ -1576,6 +1600,8 @@ const Map<String, String> kEnglish = <String, String>{
       'No black bars at all, edges cropped',
   'Sans bandes en haut ni en bas, côtés rognés':
       'No bars above or below, sides cropped',
+  'Serveurs et partage':
+      'Servers and sharing',
   'Ses titres quittent le catalogue, avec leur progression de lecture. Les fichiers restent sur le disque du serveur.':
       'Its titles leave the catalog, along with their watch progress. The files stay on the server’s disk.',
   'Supprimer « {0} »':
@@ -1588,6 +1614,12 @@ const Map<String, String> kEnglish = <String, String>{
       'Home videos, concerts, courses… Each video keeps its file name, with no poster or details lookup.',
   'Voir la saison':
       'View season',
+  'Vos serveurs, synchro Emby, liens de partage':
+      'Your servers, Emby sync, share links',
+  'Vos serveurs et la synchro Emby':
+      'Your servers and Emby sync',
+  'Vue d’ensemble':
+      'Overview',
   'demandée':
       'requested',
   'manquante':
@@ -2852,4 +2884,170 @@ const Map<String, String> kEnglish = <String, String>{
       'Resting the mouse on a Continue watching card enlarges it with pictures from where you stopped and the synopsis.',
   'Voir la fiche':
       'View details',
+  'Un message de votre serveur':
+      'A message from your server',
+  'J’ai compris':
+      'Got it',
+  'Message aux utilisateurs':
+      'Message to users',
+  'Un message affiché en grand à tous, une fois':
+      'A message shown large to everyone, once',
+  'Impossible de charger le message.':
+      'Could not load the message.',
+  'Publier le message ?':
+      'Publish the message?',
+  'Chaque compte le verra en grand à sa prochaine ouverture de l’app, même ceux qui avaient fermé le précédent.':
+      'Every account will see it, large, the next time it opens the app, even those that closed the previous one.',
+  'Message publié.':
+      'Message published.',
+  'Retirer le message ?':
+      'Remove the message?',
+  'Ceux qui ne l’ont pas encore vu ne le verront pas.':
+      'Those who have not seen it yet will not see it.',
+  'Message retiré.':
+      'Message removed.',
+  'Un message affiché en grand à chaque compte, une seule fois, la prochaine fois qu’il ouvre l’app : une maintenance, une nouveauté, un changement à connaître.':
+      'A message shown large to every account, only once, the next time it opens the app: maintenance, something new, a change worth knowing.',
+  'Un message est en ligne.':
+      'A message is live.',
+  'Message en ligne, publié {0}.':
+      'Message live, published {0}.',
+  'Message':
+      'Message',
+  'Publier remplace le message en cours. Vous ne le verrez pas vous-même : vous venez de l’écrire.':
+      'Publishing replaces the current message. You will not see it yourself: you just wrote it.',
+  'Titre (facultatif)':
+      'Title (optional)',
+  'Ce que vous voulez dire à tout le monde':
+      'What you want to tell everyone',
+  'Retirer le message':
+      'Remove the message',
+  'Aperçu':
+      'Preview',
+  'Affiche par défaut rétablie':
+      'Default poster restored',
+  'Affiche mise à jour':
+      'Poster updated',
+  'Impossible d’enregistrer l’affiche. Réessayez.':
+      'Couldn’t save the poster. Try again.',
+  'Votre compte ne peut pas modifier la médiathèque.':
+      'Your account can’t edit the library.',
+  'Les sites d’affiches ne répondent pas. Réessayez.':
+      'The poster sites aren’t responding. Try again.',
+  'Toutes':
+      'All',
+  'Serveur à mettre à jour':
+      'Server needs an update',
+  'Ce serveur ne sait pas encore proposer d’affiches. Mettez-le à jour pour en choisir une.':
+      'This server can’t offer posters yet. Update it to choose one.',
+  'Aucune affiche trouvée':
+      'No posters found',
+  'Si la fiche n’est pas la bonne œuvre, corrigez-la d’abord : les affiches suivent son identification.':
+      'If this is the wrong title, fix the match first: posters follow it.',
+  'Ajoutez une clé Fanart.tv dans Réglages › Métadonnées pour voir aussi ses affiches.':
+      'Add a Fanart.tv key in Settings › Metadata to see its posters too.',
+  'Changer l’affiche':
+      'Change poster',
+  'Affiche par défaut':
+      'Default poster',
+  '{0} · sans texte':
+      '{0} · textless',
+  'Affiche actuelle, {0}':
+      'Current poster, {0}',
+  'Choisir cette affiche, {0}':
+      'Choose this poster, {0}',
+  'Parmi celles de TMDB et Fanart.tv':
+      'From TMDB and Fanart.tv',
+  'Fanart.tv':
+      'Fanart.tv',
+  'Clé Fanart.tv effacée.':
+      'Fanart.tv key cleared.',
+  'Fanart.tv enregistré.':
+      'Fanart.tv saved.',
+  'Facultatif. Ajoute les affiches de Fanart.tv à celles de TMDB quand on change l’affiche d’un film ou d’une série. Clé personnelle gratuite sur fanart.tv.':
+      'Optional. Adds Fanart.tv posters to TMDB’s when changing a movie or show poster. Free personal key at fanart.tv.',
+  'Clé API Fanart.tv':
+      'Fanart.tv API key',
+  'À regarder plus tard':
+      'Watch later',
+  'Impossible de charger les listes. Vérifiez la connexion au serveur.':
+      'Could not load the lists. Check the connection to the server.',
+  'Impossible de charger cette liste.':
+      'Could not load this list.',
+  'La liste n’a pas pu être créée. Réessayez.':
+      'The list could not be created. Try again.',
+  'Listes':
+      'Lists',
+  'Ce que vous voulez regarder, et ce que vous recommandez aux autres':
+      'What you want to watch, and what you recommend to others',
+  'Nouvelle liste':
+      'New list',
+  'Mes listes':
+      'My lists',
+  'Partagées par les autres':
+      'Shared by others',
+  'Personne n’a encore partagé de liste sur ce serveur.':
+      'Nobody has shared a list on this server yet.',
+  '« {0} » n’est pas encore sur le serveur':
+      '“{0}” is not on the server yet',
+  'Le titre n’a pas pu être retiré.':
+      'The title could not be removed.',
+  'La liste n’a pas pu être modifiée.':
+      'The list could not be changed.',
+  'La liste disparaîtra aussi pour les comptes avec qui vous la partagez. Les films et séries restent sur le serveur.':
+      'The list will also disappear for the accounts you share it with. The movies and shows stay on the server.',
+  'Les films et séries restent sur le serveur.':
+      'The movies and shows stay on the server.',
+  'La liste n’a pas pu être supprimée.':
+      'The list could not be deleted.',
+  'Cette liste est vide':
+      'This list is empty',
+  'Ajoutez un film ou une série depuis sa fiche, avec le signet. Les titres du catalogue des demandes aussi.':
+      'Add a movie or a show from its page, with the bookmark. Titles from the request catalog too.',
+  'Son propriétaire n’y a encore rien mis.':
+      'Its owner has not added anything yet.',
+  'Partage':
+      'Sharing',
+  'Modifier':
+      'Edit',
+  'Retirer des titres':
+      'Remove titles',
+  'Touchez un titre pour le retirer de la liste.':
+      'Tap a title to remove it from the list.',
+  'Retirer {0} de la liste':
+      'Remove {0} from the list',
+  '1 titre':
+      '1 title',
+  '{0} titres':
+      '{0} titles',
+  '{0} · par {1}':
+      '{0} · by {1}',
+  'Partagée':
+      'Shared',
+  'Privée':
+      'Private',
+  'Ouvrir la liste {0}':
+      'Open the list {0}',
+  'Dans vos listes':
+      'In your lists',
+  'Ajouter à une liste':
+      'Add to a list',
+  'Impossible de charger vos listes.':
+      'Could not load your lists.',
+  'La liste n’a pas pu être modifiée. Réessayez.':
+      'The list could not be changed. Try again.',
+  'Modifier la liste':
+      'Edit the list',
+  'Mes recommandations':
+      'My recommendations',
+  'Description (facultative)':
+      'Description (optional)',
+  'Partager avec les autres comptes':
+      'Share with the other accounts',
+  'Tous les comptes de ce serveur peuvent voir la liste. Vous seul la modifiez.':
+      'Every account on this server can see the list. Only you can change it.',
+  'Vous seul voyez cette liste.':
+      'Only you can see this list.',
+  'Créer':
+      'Create',
 };

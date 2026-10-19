@@ -19,12 +19,15 @@ import '../../widgets/global/media_detail_widgets.dart';
 import '../../widgets/global/media_download_button.dart';
 import '../../widgets/global/media_technical_section.dart';
 import '../../widgets/global/metadata_fix_sheet.dart';
+import '../../widgets/global/poster_picker_sheet.dart';
 import '../../widgets/global/share_media_button.dart';
 import '../../widgets/global/watched_action_button.dart';
 import '../../navigation/search_route_observer.dart';
 import '../player/player_screen.dart';
 import '../../theme/app_icons.dart';
 import '../../l10n/tr.dart';
+import '../../models/watch_list.dart';
+import '../../widgets/global/add_to_list_button.dart';
 
 class MovieDetailScreen extends StatefulWidget {
   final HomeMediaItem? movieItem;
@@ -295,6 +298,18 @@ class _MovieDetailScreenState extends State<MovieDetailScreen>
     }
   }
 
+  Future<void> _changePoster() async {
+    final api = Provider.of<AuthProvider>(context, listen: false).apiClient;
+    final home = Provider.of<HomeProvider>(context, listen: false);
+    final updated =
+        await PosterPickerSheet.pickAndApply(context, api: api, media: _media);
+    if (updated == null || !mounted) return;
+    MediaDetailsCache.invalidate(_media.id);
+    setState(() => _media = updated);
+    await _loadDetails(forceRefresh: true);
+    await home.loadHome(silent: true);
+  }
+
   /// Le film tel que le lecteur et le téléchargement le voient, progression
   /// locale comprise. Un seul point de construction, pour que les deux boutons
   /// ne divergent pas.
@@ -385,6 +400,7 @@ class _MovieDetailScreenState extends State<MovieDetailScreen>
                     onPressed: _toggleWatched,
                     compact: true,
                   ),
+                  AddToListButton(title: ListableTitle.server(_media)),
                   MediaDownloadButton(item: _playbackItem),
                   ShareMediaButton(item: _playbackItem),
                   if (canFixMetadata)
@@ -392,6 +408,13 @@ class _MovieDetailScreenState extends State<MovieDetailScreen>
                       onPressed: _rematch,
                       tooltip: tr('Corriger la fiche'),
                       icon: const Icon(AppIcons.edit),
+                      color: AppColors.textSecondary,
+                    ),
+                  if (canFixMetadata)
+                    IconButton(
+                      onPressed: _changePoster,
+                      tooltip: tr('Changer l’affiche'),
+                      icon: const Icon(AppIcons.poster),
                       color: AppColors.textSecondary,
                     ),
                 ],

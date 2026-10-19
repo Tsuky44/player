@@ -20,6 +20,7 @@ import '../../widgets/global/episode_tile.dart';
 import '../../widgets/global/live_progress_state.dart';
 import '../../widgets/global/media_detail_widgets.dart';
 import '../../widgets/global/metadata_fix_sheet.dart';
+import '../../widgets/global/poster_picker_sheet.dart';
 import '../../widgets/global/season_download_button.dart';
 import '../../widgets/global/season_watched_button.dart';
 import '../../widgets/global/share_media_button.dart';
@@ -30,6 +31,8 @@ import 'widgets/missing_season_banner.dart';
 import 'widgets/season_tabs.dart';
 import 'widgets/show_metadata_menu.dart';
 import '../../l10n/tr.dart';
+import '../../models/watch_list.dart';
+import '../../widgets/global/add_to_list_button.dart';
 
 class ShowDetailScreen extends StatefulWidget {
   final Media show;
@@ -457,6 +460,15 @@ class _ShowDetailScreenState extends State<ShowDetailScreen>
     }
   }
 
+  Future<void> _changePoster() async {
+    final api = Provider.of<AuthProvider>(context, listen: false).apiClient;
+    final updated =
+        await PosterPickerSheet.pickAndApply(context, api: api, media: _show);
+    if (updated == null || !mounted) return;
+    setState(() => _show = updated);
+    await _reloadShowAfterMetadataChange();
+  }
+
   Future<void> _rematch() async {
     final api = Provider.of<AuthProvider>(context, listen: false).apiClient;
     final lp = Provider.of<LibraryProvider>(context, listen: false);
@@ -589,6 +601,7 @@ class _ShowDetailScreenState extends State<ShowDetailScreen>
                         resumeEp.currentPositionSeconds)
                     : null,
                 secondary: [
+                  AddToListButton(title: ListableTitle.server(_show)),
                   ShareCollectionButton(
                     mediaId: _show.id,
                     title: _show.title,
@@ -598,6 +611,7 @@ class _ShowDetailScreenState extends State<ShowDetailScreen>
                   ShowMetadataMenu(
                     onRedetect: _autoRedetect,
                     onPickOnTmdb: _rematch,
+                    onChangePoster: _changePoster,
                   ),
                 ],
               ),

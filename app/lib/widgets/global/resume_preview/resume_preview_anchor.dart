@@ -27,6 +27,7 @@ class ResumePreviewAnchor extends StatefulWidget {
     required this.detail,
     required this.onPlay,
     this.onDetails,
+    this.onMenu,
     required this.child,
   });
 
@@ -34,16 +35,26 @@ class ResumePreviewAnchor extends StatefulWidget {
   final String? detail;
   final VoidCallback onPlay;
   final VoidCallback? onDetails;
+
+  /// Ouvre le menu de la carte à ce point de l'écran, et se termine quand il
+  /// est refermé. Null : pas de « ⋯ » dans l'aperçu non plus.
+  final Future<void> Function(Offset globalPosition)? onMenu;
   final Widget child;
 
-  /// Le temps pendant lequel la souris doit rester sur la carte. Plus court,
-  /// traverser la rangée pour aller ailleurs ouvrait un aperçu à chaque
-  /// affiche croisée ; plus long, on croit que rien ne se passe.
-  static const Duration dwell = Duration(milliseconds: 700);
+  /// Le temps pendant lequel la souris doit rester sur la carte. À 700 ms,
+  /// l'aperçu s'ouvrait pendant qu'on allait cliquer « ⋯ » ou le titre ; plus
+  /// court encore, traverser la rangée en ouvrait un à chaque affiche croisée.
+  static const Duration dwell = Duration(milliseconds: 1200);
 
   /// Le battement laissé à la souris pour passer de la carte au panneau, qui
   /// la recouvre : sans lui, la sortie de la carte fermerait tout.
   static const Duration leaveGrace = Duration(milliseconds: 120);
+
+  /// Le battement laissé après la fermeture du menu de l'aperçu : la souris
+  /// n'est « revenue » sur le panneau qu'une fois le menu retiré de l'écran,
+  /// au cadre suivant. Sans lui, l'aperçu se fermerait sous une souris qui ne
+  /// l'a jamais quitté.
+  static const Duration menuGrace = Duration(milliseconds: 300);
 
   @override
   State<ResumePreviewAnchor> createState() => _ResumePreviewAnchorState();
@@ -69,6 +80,14 @@ class _ResumePreviewAnchorState extends State<ResumePreviewAnchor>
 
   /// Le panneau est en train de s'effacer ; une souris qui revient le rouvre.
   bool _closing = false;
+
+  /// La souris est sur la carte, et vise un élément qui suspend le délai.
+  bool _inside = false;
+  bool _held = false;
+
+  /// Le menu ouvert depuis l'aperçu le recouvre : la souris « sort » alors du
+  /// panneau sans l'avoir quitté, et cette sortie-là ne le ferme pas.
+  bool _menuOpen = false;
   ResumePreviewStills? _stills;
   Offset _shift = Offset.zero;
   double _startScale = 1;
@@ -108,13 +127,41 @@ class _ResumePreviewAnchorState extends State<ResumePreviewAnchor>
 
   void _pointerEntered(PointerEnterEvent event) {
     if (event.kind != PointerDeviceKind.mouse || !_allowed) return;
+    _inside = true;
     _stay();
-    if (_portal.isShowing) return;
+    _arm();
+  }
+
+  void _pointerLeft(PointerExitEvent _) {
+    _inside = false;
+    _leave();
+  }
+
+  /// (Re)part de zéro pour le délai d'ouverture, sauf si la souris vise un
+  /// élément qui le suspend ([ResumePreviewHold]).
+  void _arm() {
     _openTimer?.cancel();
+    _openTimer = null;
+    if (_held || _portal.isShowing) return;
     _openTimer = Timer(ResumePreviewAnchor.dwell, _open);
   }
 
-  void _pointerLeft(PointerExitEvent _) => _leave();
+  void _setHeld(bool held) {
+    _held = held;
+    if (held) {
+      _openTimer?.cancel();
+      _openTimer = null;
+    } else if (_inside) {
+      _arm();
+    }
+  }
+
+  /// Un clic sur la carte (lecture, « ⋯ », clic droit) dit ce que l'on
+  /// voulait : l'aperçu ne s'ouvre plus par-dessus.
+  void _pointerDown(PointerDownEvent _) {
+    _openTimer?.cancel();
+    _openTimer = null;
+  }
 
   void _stay() {
     _closeTimer?.cancel();
@@ -128,7 +175,7 @@ class _ResumePreviewAnchorState extends State<ResumePreviewAnchor>
   void _leave() {
     _openTimer?.cancel();
     _openTimer = null;
-    if (!_portal.isShowing) return;
+    if (!_portal.isShowing || _menuOpen) return;
     _closeTimer?.cancel();
     _closeTimer = Timer(ResumePreviewAnchor.leaveGrace, _close);
   }
@@ -197,6 +244,23 @@ class _ResumePreviewAnchorState extends State<ResumePreviewAnchor>
     widget.onDetails?.call();
   }
 
+  /// Le menu s'ouvre sous le « ⋯ » de l'aperçu, qui reste derrière lui. Une
+  /// fois le menu refermé, l'aperçu suit de nouveau la souris : il reste si
+  /// elle est dessus, se ferme sinon.
+  Future<void> _menu(Offset globalPosition) async {
+    _closeTimer?.cancel();
+    _closeTimer = null;
+    _menuOpen = true;
+    try {
+      await widget.onMenu?.call(globalPosition);
+    } finally {
+      _menuOpen = false;
+      if (mounted && _portal.isShowing) {
+        _closeTimer = Timer(ResumePreviewAnchor.menuGrace, _close);
+      }
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     return CompositedTransformTarget(
@@ -204,10 +268,13 @@ class _ResumePreviewAnchorState extends State<ResumePreviewAnchor>
       child: OverlayPortal(
         controller: _portal,
         overlayChildBuilder: _buildPanel,
-        child: MouseRegion(
-          onEnter: _pointerEntered,
-          onExit: _pointerLeft,
-          child: widget.child,
+        child: Listener(
+          onPointerDown: _pointerDown,
+          child: MouseRegion(
+            onEnter: _pointerEntered,
+            onExit: _pointerLeft,
+            child: widget.child,
+          ),
         ),
       ),
     );
@@ -243,10 +310,31 @@ class _ResumePreviewAnchorState extends State<ResumePreviewAnchor>
               detail: widget.detail,
               onPlay: _play,
               onDetails: widget.onDetails == null ? null : _details,
+              onMenu: widget.onMenu == null ? null : _menu,
             ),
           ),
         ),
       ),
+    );
+  }
+}
+
+/// Suspend l'ouverture de l'aperçu tant que la souris est sur [child] — le
+/// « ⋯ » de la carte, qu'on vise pour cliquer et non pour voir l'aperçu. En
+/// le quittant pour le reste de l'affiche, le délai repart de zéro.
+class ResumePreviewHold extends StatelessWidget {
+  const ResumePreviewHold({super.key, required this.child});
+
+  final Widget child;
+
+  @override
+  Widget build(BuildContext context) {
+    final anchor = context.findAncestorStateOfType<_ResumePreviewAnchorState>();
+    if (anchor == null) return child;
+    return MouseRegion(
+      onEnter: (_) => anchor._setHeld(true),
+      onExit: (_) => anchor._setHeld(false),
+      child: child,
     );
   }
 }

@@ -13,6 +13,8 @@ import '../../../theme/app_type.dart';
 import '../../../utils/on_screen.dart';
 import '../../../utils/poster_url.dart';
 import '../app_network_image.dart';
+import '../poster_card.dart';
+import '../poster_more_button.dart';
 import '../progress_pill.dart';
 import 'resume_preview_stills.dart';
 
@@ -26,6 +28,7 @@ class ResumePreviewPanel extends StatelessWidget {
     required this.detail,
     required this.onPlay,
     this.onDetails,
+    this.onMenu,
   });
 
   static const double width = 340;
@@ -38,6 +41,11 @@ class ResumePreviewPanel extends StatelessWidget {
   final String? detail;
   final VoidCallback onPlay;
   final VoidCallback? onDetails;
+
+  /// Le menu de la carte (fiche, marquer comme vu, retirer), ouvert à ce
+  /// point de l'écran. L'aperçu recouvre le « ⋯ » de la carte : il porte le
+  /// sien au même coin.
+  final Future<void> Function(Offset globalPosition)? onMenu;
 
   @override
   Widget build(BuildContext context) {
@@ -84,6 +92,18 @@ class ResumePreviewPanel extends StatelessWidget {
                         bottom: 8,
                         child: ProgressPill(value: item.percentWatched),
                       ),
+                      if (onMenu != null)
+                        Positioned(
+                          top: PosterCard.overlayInset - 4,
+                          right: PosterCard.overlayInset - 4,
+                          child: PosterMoreButton(
+                            onPressed: (buttonContext) {
+                              final anchor =
+                                  PosterMoreButton.menuAnchor(buttonContext);
+                              if (anchor != null) onMenu!(anchor);
+                            },
+                          ),
+                        ),
                     ],
                   ),
                 ),

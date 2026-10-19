@@ -29,6 +29,7 @@ import 'providers/auth_provider.dart';
 import 'providers/home_provider.dart';
 import 'providers/library_provider.dart';
 import 'providers/media_requests_provider.dart';
+import 'providers/watch_lists_provider.dart';
 import 'providers/search_provider.dart';
 import 'navigation/new_episode_opener.dart';
 import 'navigation/search_route_observer.dart';
@@ -324,12 +325,14 @@ void main() async {
   final homeProvider = HomeProvider(apiClient);
   final libraryProvider = LibraryProvider(apiClient);
   final mediaRequestsProvider = MediaRequestsProvider(apiClient);
+  final watchListsProvider = WatchListsProvider(apiClient);
   authProvider.onServerChanged = () {
     MediaDetailsCache.clear();
     MediaTracksCache.clear();
     homeProvider.reset();
     libraryProvider.reset();
     mediaRequestsProvider.reset();
+    watchListsProvider.reset();
     unawaited(downloads.onServerChanged());
     // Les plans de réserve sont indexés par identifiant de série, et un
     // identifiant ne veut rien dire sur un autre serveur : on repart de zéro.
@@ -346,6 +349,7 @@ void main() async {
     homeProvider.reset();
     libraryProvider.reset();
     mediaRequestsProvider.reset();
+    watchListsProvider.reset();
   });
 
   // Le retour du serveur est le seul moment qui compte pour les deux : la
@@ -406,6 +410,8 @@ void main() async {
         ChangeNotifierProvider<LibraryProvider>.value(value: libraryProvider),
         ChangeNotifierProvider<MediaRequestsProvider>.value(
             value: mediaRequestsProvider),
+        ChangeNotifierProvider<WatchListsProvider>.value(
+            value: watchListsProvider),
         ChangeNotifierProvider(create: (_) => SearchProvider()),
       ],
       // Changer de langue reconstruit l'app entière : les textes sont lus par

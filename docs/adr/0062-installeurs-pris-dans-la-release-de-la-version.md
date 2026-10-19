@@ -31,7 +31,10 @@ version, et seulement celle-là.**
    `main-<sha>` des images de `server.yml`) n'a pas de Release : le serveur prend `releases/latest`.
    Une version `X.Y.Z` sans Release n'emprunte pas celle d'une autre : la liste est vide.
 3. **Téléchargement paresseux, cache disque.** La liste est tenue 15 minutes en mémoire et écrite
-   dans `release-cache/` (à côté de la base) ; un installeur est téléchargé à la première requête
+   dans `release-cache/` (à côté de la base). Elle est lue en fond dès le démarrage, et une liste
+   connue (mémoire ou disque) se sert toujours tout de suite : périmée, elle est rafraîchie
+   derrière, sans faire attendre la requête (2026-10-16 : chaque fin de TTL et chaque redémarrage
+   faisaient attendre GitHub jusqu'à 10 s avant la recherche de mise à jour). Un installeur est téléchargé à la première requête
    `GET` puis resservi depuis le disque, avec l'annotation de l'ADR-0042 et les `Range`. Un `HEAD`
    ne déclenche pas le téléchargement. À la mise à jour du serveur, les dossiers des versions
    précédentes sont supprimés.

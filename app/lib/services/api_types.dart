@@ -40,6 +40,11 @@ class ServerSettings {
   final bool tmdbApiKeySet;
   final String? tmdbApiKeyHint;
   final String tmdbLanguage;
+
+  /// Fanart.tv est facultatif : sa clé ajoute ses affiches au choix d'une
+  /// affiche (ADR-0068).
+  final bool fanartApiKeySet;
+  final String? fanartApiKeyHint;
   final bool playbackLogsEnabled;
 
   /// Les mesures ont leur propre réglage : elles interrogent le moteur pendant
@@ -56,6 +61,8 @@ class ServerSettings {
     required this.tmdbApiKeySet,
     this.tmdbApiKeyHint,
     required this.tmdbLanguage,
+    this.fanartApiKeySet = false,
+    this.fanartApiKeyHint,
     required this.playbackLogsEnabled,
     required this.playbackStatsEnabled,
     this.otpPolicy = OtpPolicy.optional,
@@ -69,6 +76,8 @@ class ServerSettings {
       tmdbApiKeySet: json['tmdb_api_key_set'] as bool? ?? false,
       tmdbApiKeyHint: json['tmdb_api_key_hint'] as String?,
       tmdbLanguage: json['tmdb_language'] as String? ?? 'fr-FR',
+      fanartApiKeySet: json['fanart_api_key_set'] as bool? ?? false,
+      fanartApiKeyHint: json['fanart_api_key_hint'] as String?,
       playbackLogsEnabled: json['playback_logs_enabled'] as bool? ?? true,
       playbackStatsEnabled: json['playback_stats_enabled'] as bool? ?? true,
       otpPolicy: OtpPolicy.parse(json['otp_policy'] as String?),

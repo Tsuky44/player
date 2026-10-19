@@ -29,6 +29,7 @@ import (
 	"time"
 
 	"project-player/server/httpx"
+	"project-player/server/safego"
 )
 
 // DefaultRepo est le dépôt dont les Releases portent les installeurs.
@@ -86,6 +87,10 @@ type Source struct {
 	current    *release
 	freshUntil time.Time
 	retryAt    time.Time
+	// loaded : la liste du disque a été lue. refreshing : la lecture de GitHub
+	// en cours, nil sinon.
+	loaded     bool
+	refreshing chan struct{}
 	locks      map[string]*sync.Mutex
 }
 
@@ -148,38 +153,112 @@ func (s *Source) Find(ctx context.Context, name string) (Asset, bool) {
 	return Asset{}, false
 }
 
-func (s *Source) release(ctx context.Context) (*release, error) {
+// Warm lance la lecture de la liste dès le démarrage, en fond : la première
+// ouverture de « Applications » ou la première recherche de mise à jour la
+// trouve prête au lieu d'attendre GitHub.
+func (s *Source) Warm() {
+	if s == nil {
+		return
+	}
 	s.mu.Lock()
 	defer s.mu.Unlock()
+	s.loadListingLocked()
+	s.refreshLocked()
+}
 
+// release rend la liste sans jamais attendre GitHub quand une liste est déjà
+// connue (mémoire ou disque) : une liste périmée est servie telle quelle et
+// rafraîchie en fond. Une requête attendait jusqu'à 10 s la réponse de l'API à
+// chaque fin de TTL, et après chaque redémarrage — c'était le long temps mort
+// avant la mise à jour. Seul un serveur qui n'a jamais vu la liste attend.
+func (s *Source) release(ctx context.Context) (*release, error) {
+	s.mu.Lock()
+	s.loadListingLocked()
 	now := time.Now()
-	if s.current != nil && now.Before(s.freshUntil) {
-		return s.current, nil
-	}
-	if s.current == nil && now.Before(s.retryAt) {
-		return nil, errUnavailable
-	}
-
-	rel, err := s.fetch(ctx)
-	if err == nil {
-		s.current = rel
-		s.freshUntil = now.Add(listingTTL)
-		s.writeListing(rel)
-		s.prune(rel.Tag)
+	if s.current != nil {
+		rel := s.current
+		if !now.Before(s.freshUntil) {
+			s.refreshLocked()
+		}
+		s.mu.Unlock()
 		return rel, nil
 	}
+	if now.Before(s.retryAt) {
+		s.mu.Unlock()
+		return nil, errUnavailable
+	}
+	done := s.refreshLocked()
+	s.mu.Unlock()
 
-	log.Printf("releasedl: liste de la Release %s indisponible: %v", s.version, err)
+	select {
+	case <-done:
+	case <-ctx.Done():
+		return nil, ctx.Err()
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.current == nil {
+		return nil, errUnavailable
+	}
+	return s.current, nil
+}
+
+// loadListingLocked reprend la liste gardée sur le disque, une fois. Elle est
+// marquée périmée : elle sert tout de suite, et la première demande la fait
+// relire.
+func (s *Source) loadListingLocked() {
+	if s.loaded {
+		return
+	}
+	s.loaded = true
 	if s.current == nil {
 		s.current = s.readListing()
 	}
-	if s.current == nil {
-		s.retryAt = now.Add(retryDelay)
-		return nil, err
+}
+
+// refreshLocked démarre une lecture de la liste si aucune n'est en cours, et
+// rend le canal fermé à sa fin. Deux demandes simultanées n'en font qu'une.
+func (s *Source) refreshLocked() <-chan struct{} {
+	if s.refreshing != nil {
+		return s.refreshing
 	}
-	// On resert la dernière liste connue, et on réessaie dans une minute.
-	s.freshUntil = now.Add(retryDelay)
-	return s.current, nil
+	done := make(chan struct{})
+	s.refreshing = done
+	go safego.Run("releasedl.refresh", func() { s.refresh(done) })
+	return done
+}
+
+func (s *Source) refresh(done chan struct{}) {
+	defer close(done)
+	// Même après une panique (rattrapée par safego.Run) : sinon plus aucune
+	// lecture ne repartirait.
+	defer func() {
+		s.mu.Lock()
+		s.refreshing = nil
+		s.mu.Unlock()
+	}()
+
+	// Détachée de la requête : un client qui raccroche n'annule pas la lecture
+	// dont les suivants profiteront.
+	rel, err := s.fetch(context.Background())
+
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	now := time.Now()
+	if err != nil {
+		log.Printf("releasedl: liste de la Release %s indisponible: %v", s.version, err)
+		if s.current == nil {
+			s.retryAt = now.Add(retryDelay)
+		} else {
+			// On resert la dernière liste connue, et on réessaie dans une minute.
+			s.freshUntil = now.Add(retryDelay)
+		}
+		return
+	}
+	s.current = rel
+	s.freshUntil = now.Add(listingTTL)
+	s.writeListing(rel)
+	s.prune(rel.Tag)
 }
 
 func (s *Source) fetch(ctx context.Context) (*release, error) {

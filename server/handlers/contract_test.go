@@ -128,6 +128,17 @@ func TestAPIContract(t *testing.T) {
 		"index": 2, "codec": "subrip", "language": "fre", "title": "Français", "forced": false,
 	}}
 
+	// Les énumérations des listes (ADR-0070) prennent une valeur que l'app
+	// connaît : celles de contractValues sont celles d'autres réponses.
+	watchLists := filled[models.WatchListsResponse]()
+	watchLists.Mine[0].Kind = models.WatchListKindWatchLater
+	watchLists.Shared[0].Kind = models.WatchListKindCustom
+	watchList := filled[models.WatchListDetail]()
+	watchList.Kind = models.WatchListKindCustom
+	watchList.Items[0].MediaType = string(models.TypeShow)
+	watchListItem := filled[models.WatchListItem]()
+	watchListItem.MediaType = string(models.TypeMovie)
+
 	contract := map[string]interface{}{
 		"home":               filled[models.HomeResponse](),
 		"media_details":      filled[models.MediaDetails](),
@@ -142,6 +153,12 @@ func TestAPIContract(t *testing.T) {
 		"scan_status":        filled[scanStatusResponse](),
 		"ping":               pingPayload(),
 		"libraries":          []libraries.Library{filled[libraries.Library]()},
+		"remote_posters":     filled[models.RemotePosters](),
+		"announcement":       filled[announcementResponse](),
+		"announcement_none":  announcementResponse{},
+		"watch_lists":        watchLists,
+		"watch_list":         watchList,
+		"watch_list_item":    watchListItem,
 	}
 
 	update := os.Getenv("ONYX_UPDATE_CONTRACT") != ""

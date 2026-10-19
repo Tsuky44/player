@@ -1,0 +1,8 @@
+{
+  "announcement": {
+    "id": 1,
+    "title": "title-value",
+    "message": "message-value",
+    "created_at": "2026-01-02T03:04:05Z"
+  }
+}

@@ -755,6 +755,81 @@ var migrations = []migration{
 			`ALTER TABLE medias ADD COLUMN active_area_checked_at TIMESTAMP;`,
 		},
 	},
+	{
+		id:   26,
+		name: "chosen poster",
+		// Voir ADR-0068. L'affiche choisie à la main parmi celles de TMDB ou
+		// de Fanart.tv : tant que la marque est posée, l'enrichissement
+		// automatique ne la remplace plus. Une ré-identification vers une
+		// autre fiche TMDB la lève.
+		stmts: []string{
+			`ALTER TABLE medias ADD COLUMN poster_locked BOOLEAN NOT NULL DEFAULT 0;`,
+		},
+	},
+	{
+		id:   27,
+		name: "server announcements",
+		// Voir ADR-0069. Le message de l'administrateur à tous les comptes. Seule
+		// la ligne la plus récente compte ; AUTOINCREMENT garantit qu'un
+		// identifiant n'est jamais réutilisé, si bien qu'un message publié après
+		// une suppression dépasse toujours celui qu'un compte a déjà fermé.
+		// seen_announcement_id est le dernier message que le compte a fermé.
+		stmts: []string{
+			`CREATE TABLE IF NOT EXISTS announcements (
+				id INTEGER PRIMARY KEY AUTOINCREMENT,
+				title TEXT NOT NULL DEFAULT '',
+				message TEXT NOT NULL,
+				author_id INTEGER NOT NULL DEFAULT 0,
+				created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
+			);`,
+			`ALTER TABLE users ADD COLUMN seen_announcement_id INTEGER NOT NULL DEFAULT 0;`,
+		},
+	},
+	{
+		id:   28,
+		name: "watch lists",
+		// Voir ADR-0070. Les listes d'un compte : « à regarder plus tard »,
+		// une seule par compte (index unique partiel), et les siennes,
+		// partagées ou non. Un élément est un film ou une série : tmdb_id le
+		// rattache à la fiche du serveur qui porte le même, même arrivée après
+		// l'ajout ; media_id le rattache quand la fiche n'a pas d'identité
+		// TMDB. Titre, affiche et date sont l'instantané de l'ajout, pour ce
+		// qui n'est pas ou plus sur le serveur. added_at est en millisecondes
+		// Unix : deux ajouts dans la même seconde gardent leur ordre.
+		stmts: []string{
+			`CREATE TABLE IF NOT EXISTS watch_lists (
+				id INTEGER PRIMARY KEY AUTOINCREMENT,
+				owner_id INTEGER NOT NULL,
+				kind TEXT NOT NULL DEFAULT 'custom' CHECK(kind IN ('watch_later', 'custom')),
+				name TEXT NOT NULL,
+				description TEXT NOT NULL DEFAULT '',
+				is_shared BOOLEAN NOT NULL DEFAULT 0,
+				created_at INTEGER NOT NULL,
+				updated_at INTEGER NOT NULL,
+				FOREIGN KEY (owner_id) REFERENCES users(id) ON DELETE CASCADE
+			);`,
+			`CREATE INDEX IF NOT EXISTS idx_watch_lists_owner ON watch_lists(owner_id);`,
+			`CREATE UNIQUE INDEX IF NOT EXISTS ux_watch_lists_watch_later ON watch_lists(owner_id) WHERE kind = 'watch_later';`,
+			`CREATE INDEX IF NOT EXISTS idx_watch_lists_shared ON watch_lists(is_shared) WHERE is_shared = 1;`,
+			`CREATE TABLE IF NOT EXISTS watch_list_items (
+				id INTEGER PRIMARY KEY AUTOINCREMENT,
+				list_id INTEGER NOT NULL,
+				media_type TEXT NOT NULL CHECK(media_type IN ('movie', 'show')),
+				media_id INTEGER,
+				tmdb_id INTEGER NOT NULL DEFAULT 0,
+				title TEXT NOT NULL DEFAULT '',
+				poster_url TEXT NOT NULL DEFAULT '',
+				release_date TEXT NOT NULL DEFAULT '',
+				added_at INTEGER NOT NULL,
+				FOREIGN KEY (list_id) REFERENCES watch_lists(id) ON DELETE CASCADE,
+				FOREIGN KEY (media_id) REFERENCES medias(id) ON DELETE SET NULL
+			);`,
+			`CREATE INDEX IF NOT EXISTS idx_watch_list_items_list ON watch_list_items(list_id, added_at DESC);`,
+			`CREATE INDEX IF NOT EXISTS idx_watch_list_items_media ON watch_list_items(media_id);`,
+			`CREATE UNIQUE INDEX IF NOT EXISTS ux_watch_list_items_tmdb ON watch_list_items(list_id, media_type, tmdb_id) WHERE tmdb_id > 0;`,
+			`CREATE UNIQUE INDEX IF NOT EXISTS ux_watch_list_items_media ON watch_list_items(list_id, media_id) WHERE tmdb_id = 0 AND media_id IS NOT NULL;`,
+		},
+	},
 }
 
 // applyMigrations brings the database up to the latest schema version.

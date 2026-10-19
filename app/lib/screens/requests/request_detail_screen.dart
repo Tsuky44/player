@@ -17,6 +17,9 @@ import 'widgets/season_selector_dialog.dart';
 import '../../theme/app_icons.dart';
 import '../../theme/app_type.dart';
 import '../../l10n/tr.dart';
+import '../../widgets/global/detail_actions.dart';
+import '../../models/watch_list.dart';
+import '../../widgets/global/add_to_list_button.dart';
 
 class RequestDetailScreen extends StatefulWidget {
   final RequestMediaItem item;
@@ -348,6 +351,12 @@ class _RequestDetailScreenState extends State<RequestDetailScreen> {
                   enabled: true,
                   onPressed: () => _openTrailer(details.trailerKey!),
                 ),
+              // Un titre que le serveur n'a pas peut déjà aller dans « À
+              // regarder plus tard » (ADR-0070).
+              IconButtonTheme(
+                data: IconButtonThemeData(style: DetailActions.secondaryStyle),
+                child: AddToListButton(title: ListableTitle.catalog(widget.item)),
+              ),
             ],
           ),
         ],

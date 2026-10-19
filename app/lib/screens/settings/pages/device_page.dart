@@ -2,13 +2,14 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
 import '../../../services/app_image_cache.dart';
-import '../../../services/download_manager.dart';
 import '../../../services/new_episodes/new_episode_alerts.dart';
 import '../../../theme/app_colors.dart';
 import '../../../tv/tv_mode.dart';
 import '../../../utils/app_platform.dart';
-import '../../../utils/format.dart';
+import '../../../utils/store_build.dart';
 import '../tv_link_scanner_screen.dart';
+import 'apps_page.dart';
+import 'logs_page.dart';
 import '../widgets/about_group.dart';
 import '../widgets/new_episode_alerts_group.dart';
 import '../../../providers/auth_provider.dart';
@@ -45,38 +46,25 @@ class _DevicePageState extends State<DevicePage> {
     if (mounted) setState(() => _clearingCache = false);
   }
 
-  Future<void> _deleteWatchedDownloads() async {
-    final confirmed = await confirmSettingsAction(
-      context,
-      title: tr('Supprimer les téléchargements vus ?'),
-      message:
-          tr('Les films et épisodes déjà regardés jusqu’au bout sont '
-              'retirés de cet appareil.'),
-      confirmLabel: tr('Supprimer'),
-    );
-    if (!confirmed || !mounted) return;
-    final removed = await DownloadManager.instance.deleteWatched();
-    if (!mounted) return;
-    setState(() {});
-    showSettingsSnack(
-      context,
-      removed == 0
-          ? tr('Aucun téléchargement vu à supprimer.')
-          : tr('{0} téléchargement{1} supprimé{2}.', [removed, removed > 1 ? 's' : '', removed > 1 ? 's' : '']),
-    );
-  }
-
   @override
   Widget build(BuildContext context) {
     final isTv = TvScope.of(context);
-    final downloads = DownloadManager.instance;
     final detected = TvMode.detected ? tr('un téléviseur') : tr('un appareil tactile');
+    // Le lien se fait en scannant le code affiché par l'autre écran
+    // (téléviseur, navigateur, ordinateur) : il faut une caméra, donc un
+    // téléphone.
+    final canLinkDevice = AppPlatform.isMobile && !isTv;
+    // Une Apple TV n'ouvre pas de lien et ne choisit pas de fichier : ni
+    // installer ailleurs, ni publier un installeur n'y a de sens. Un build
+    // store ne propose pas d'installeurs non plus (ADR-0046).
+    final canInstallElsewhere = !AppPlatform.isTvOS && !StoreBuild.enabled;
 
     return SettingsPage(
-      title: tr('Cet appareil'),
+      title: tr('Général'),
       description:
-          tr('Ce qui ne concerne que cet appareil : son mode d’affichage, '
-              'le téléviseur à connecter, et ce qu’il garde en mémoire.'),
+          tr('La langue, l’affichage et les notifications de cet appareil, '
+              'les autres appareils à connecter, et de l’aide si quelque '
+              'chose ne va pas.'),
       children: [
         // Sur une Apple TV le mode télécommande est le seul possible : rien à
         // régler (voir [TvMode]).
@@ -153,45 +141,46 @@ class _DevicePageState extends State<DevicePage> {
                 ),
             ],
           ),
-        // Le lien se fait en scannant le code affiché par l'autre écran
-        // (téléviseur, navigateur, ordinateur) : il faut une caméra, donc un
-        // téléphone.
-        if (AppPlatform.isMobile && !isTv)
+        if (canLinkDevice || canInstallElsewhere)
           SettingsGroup(
             title: tr('Autres appareils'),
             children: [
-              SettingsTile(
-                icon: Icons.qr_code_scanner_rounded,
-                iconColor: AppColors.primary,
-                title: tr('Connecter un appareil'),
-                subtitle:
-                    tr('Scannez le code QR affiché par Onyx sur un '
-                        'téléviseur, un ordinateur ou un navigateur : il se '
-                        'connecte à votre compte, sans mot de passe.'),
-                onTap: () => Navigator.of(context).push(
-                  MaterialPageRoute(
-                      builder: (_) => const TvLinkScannerScreen()),
+              if (canLinkDevice)
+                SettingsTile(
+                  icon: Icons.qr_code_scanner_rounded,
+                  iconColor: AppColors.primary,
+                  title: tr('Connecter un appareil'),
+                  subtitle:
+                      tr('Scannez le code QR affiché par Onyx sur un '
+                          'téléviseur, un ordinateur ou un navigateur : il se '
+                          'connecte à votre compte, sans mot de passe.'),
+                  onTap: () => Navigator.of(context).push(
+                    MaterialPageRoute(
+                        builder: (_) => const TvLinkScannerScreen()),
+                  ),
                 ),
-              ),
+              if (canInstallElsewhere)
+                SettingsTile(
+                  icon: Icons.download_for_offline_rounded,
+                  title: tr('Installer Onyx sur un autre appareil'),
+                  subtitle: tr('Les installeurs servis par votre serveur.'),
+                  onTap: () => pushSettingsSubpage(
+                    context,
+                    title: tr('Applications'),
+                    builder: (_) => const AppsPage(),
+                  ),
+                ),
             ],
           ),
-        if (!AppPlatform.isWeb && downloads.isSupported)
+        if (!AppPlatform.isWeb)
           SettingsGroup(
             title: tr('Stockage'),
+            // Une Apple TV n'a pas de catégorie Téléchargements où renvoyer.
+            footer: AppPlatform.isTvOS
+                ? null
+                : tr('Les films et épisodes téléchargés se gèrent dans '
+                    'Téléchargements.'),
             children: [
-              SettingsTile(
-                icon: Icons.download_done_rounded,
-                title: tr('Téléchargements hors ligne'),
-                subtitle:
-                    tr('{0} média{1} · {2}', [downloads.downloads.length, downloads.downloads.length > 1 ? 's' : '', formatBytes(downloads.totalBytesOnDisk)]),
-                showChevron: false,
-                trailing: downloads.downloads.isEmpty
-                    ? null
-                    : TextButton(
-                        onPressed: _deleteWatchedDownloads,
-                        child: Text(tr('Retirer les vus')),
-                      ),
-              ),
               SettingsTile(
                 icon: Icons.image_outlined,
                 title: tr('Cache des images'),
@@ -212,6 +201,22 @@ class _DevicePageState extends State<DevicePage> {
               ),
             ],
           ),
+        SettingsGroup(
+          title: tr('Aide'),
+          children: [
+            SettingsTile(
+              icon: Icons.receipt_long_rounded,
+              title: tr('Journal'),
+              subtitle: tr('Journaux de l’app et des lectures, pour comprendre '
+                  'une erreur'),
+              onTap: () => pushSettingsSubpage(
+                context,
+                title: tr('Journal'),
+                builder: (_) => const LogsPage(),
+              ),
+            ),
+          ],
+        ),
         const AboutGroup(),
       ],
     );

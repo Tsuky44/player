@@ -29,10 +29,6 @@ const Map<String, (int ceiling, String why)> _grandfathered = {
     958,
     'deux écrans dans un fichier : la liste des serveurs et l’ajout',
   ),
-  'lib/screens/settings/widgets/settings_ui.dart': (
-    866,
-    'quinze widgets de réglages ; à ranger par famille',
-  ),
 };
 
 /// Fichiers que la limite ne concerne pas, et pourquoi.

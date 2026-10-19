@@ -7,8 +7,10 @@ import (
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"sync"
 	"sync/atomic"
 	"testing"
+	"time"
 )
 
 // fakeGitHub répond comme l'API des Releases : les Releases connues par leur
@@ -20,14 +22,24 @@ type fakeGitHub struct {
 	apiHits   atomic.Int32
 	fileHits  atomic.Int32
 	truncated bool
+
+	// stalled fait attendre l'API jusqu'à resume : un GitHub lent ou muet.
+	stalled    atomic.Bool
+	unstall    chan struct{}
+	resumeOnce sync.Once
 }
+
+func (f *fakeGitHub) resume() { f.resumeOnce.Do(func() { close(f.unstall) }) }
 
 func newFakeGitHub(t *testing.T, releases map[string][]string, latest string) *fakeGitHub {
 	t.Helper()
-	f := &fakeGitHub{releases: releases, latest: latest}
+	f := &fakeGitHub{releases: releases, latest: latest, unstall: make(chan struct{})}
 	mux := http.NewServeMux()
 	mux.HandleFunc("/repos/Tsuky44/player/releases/", func(w http.ResponseWriter, r *http.Request) {
 		f.apiHits.Add(1)
+		if f.stalled.Load() {
+			<-f.unstall
+		}
 		tag := filepath.Base(r.URL.Path)
 		if tag == "latest" {
 			tag = f.latest
@@ -62,7 +74,18 @@ func newFakeGitHub(t *testing.T, releases map[string][]string, latest string) *f
 	})
 	f.server = httptest.NewServer(mux)
 	t.Cleanup(f.server.Close)
+	t.Cleanup(f.resume) // avant Close, qui attend les requêtes en cours
 	return f
+}
+
+// waitRefresh attend la fin de la lecture de fond en cours, s'il y en a une.
+func waitRefresh(s *Source) {
+	s.mu.Lock()
+	done := s.refreshing
+	s.mu.Unlock()
+	if done != nil {
+		<-done
+	}
 }
 
 func payload(name string) string { return "contenu-de-" + name }
@@ -174,9 +197,56 @@ func TestListingSurvivesLosingTheNetwork(t *testing.T) {
 
 	f.server.Close()
 	// Un redémarrage hors ligne : une Source neuve, le même cache.
-	got := names(newSource(t, f, "1.2.0", cache).Assets(context.Background()))
+	offline := newSource(t, f, "1.2.0", cache)
+	got := names(offline.Assets(context.Background()))
+	waitRefresh(offline)
 	if len(got) != 1 || got[0] != "Onyx-1.2.0-android.apk" {
 		t.Fatalf("offline listing = %v, want the one kept on disk", got)
+	}
+}
+
+// La liste précédait chaque recherche de mise à jour d'une attente de GitHub
+// (jusqu'à 10 s) : au redémarrage et à chaque fin de TTL. Une liste connue se
+// sert tout de suite, et se rafraîchit derrière.
+func TestKnownListingIsServedWithoutWaitingForGitHub(t *testing.T) {
+	f := newFakeGitHub(t, map[string][]string{"v1.2.0": {"Onyx-1.2.0-android.apk"}}, "v1.2.0")
+	cache := t.TempDir()
+	newSource(t, f, "1.2.0", cache).Assets(context.Background())
+
+	f.stalled.Store(true)
+	src := newSource(t, f, "1.2.0", cache)
+	result := make(chan []string, 1)
+	go func() { result <- names(src.Assets(context.Background())) }()
+	select {
+	case got := <-result:
+		if len(got) != 1 || got[0] != "Onyx-1.2.0-android.apk" {
+			t.Fatalf("listing = %v, want the one kept on disk", got)
+		}
+	case <-time.After(2 * time.Second):
+		t.Fatal("the listing waited for GitHub although one was kept on disk")
+	}
+
+	f.resume()
+	waitRefresh(src)
+	if hits := f.apiHits.Load(); hits != 2 {
+		t.Errorf("GitHub was asked %d times, want 2 (first start, background refresh)", hits)
+	}
+}
+
+func TestWarmFetchesTheListingBeforeAnyoneAsks(t *testing.T) {
+	f := newFakeGitHub(t, map[string][]string{"v1.2.0": {"Onyx-1.2.0-android.apk"}}, "v1.2.0")
+	src := newSource(t, f, "1.2.0", t.TempDir())
+
+	src.Warm()
+	waitRefresh(src)
+	if hits := f.apiHits.Load(); hits != 1 {
+		t.Fatalf("Warm asked GitHub %d times, want 1", hits)
+	}
+	if got := src.Assets(context.Background()); len(got) != 1 {
+		t.Fatalf("listing after Warm = %v", names(got))
+	}
+	if hits := f.apiHits.Load(); hits != 1 {
+		t.Errorf("the first request asked GitHub again (%d calls) instead of using the warm listing", hits)
 	}
 }
 

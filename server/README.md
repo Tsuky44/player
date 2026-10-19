@@ -234,6 +234,49 @@ le droit d'inviter de devenir un chemin vers l'administration.
 Retirer `invite_users` à un compte révoque en cascade ses liens en attente ; modifier son gabarit
 n'affecte que les liens futurs.
 
+#### 📣 Message aux utilisateurs (ADR-0069)
+
+Un administrateur écrit un message ; chaque compte le voit en grand à sa prochaine ouverture de
+l'app, une seule fois. Le serveur annonce la capacité `announcements` sur `/api/ping`.
+
+* `GET /api/me/announcement` — `{ "announcement": { "id", "title", "message", "created_at" } }`
+  si le compte ne l'a pas encore fermé, sinon `{ "announcement": null }`.
+* `POST /api/me/announcement/seen` — corps `{ "id": 3 }` ; la marque ne recule jamais.
+* `GET /api/announcement` (`manage_settings`) — le message en cours, lu ou non.
+* `PUT /api/announcement` (`manage_settings`) — corps `{ "title": "…", "message": "…" }`
+  (titre facultatif, 120 caractères ; message obligatoire, 4 000 caractères). Remplace le
+  précédent et le remontre à tous, sauf à son auteur.
+* `DELETE /api/announcement` (`manage_settings`) — retire le message.
+
+#### 🔖 Listes : « À regarder plus tard » et listes partagées (ADR-0070)
+
+Chaque compte a une liste `watch_later`, créée à la première lecture, et peut en composer
+d'autres (`custom`). Une liste partagée (`is_shared`) se lit par tous les comptes du serveur ;
+seul son propriétaire la modifie, et une liste privée répond 404 aux autres. Un élément est un
+film ou une série, sur le serveur (`media_id`) ou seulement dans le catalogue TMDB : ce dernier
+se rattache tout seul à la fiche qui arrive avec le même `tmdb_id`. Le serveur annonce la
+capacité `watch_lists` sur `/api/ping`.
+
+* `GET /api/lists` — `{ "mine": [liste…], "shared": [liste…] }`, « à regarder plus tard » en
+  tête. Une liste : `{ "id", "kind", "name", "description", "is_shared", "is_mine",
+  "owner": { "id", "username" }, "item_count", "posters": [4 au plus], "updated_at" }`.
+  Avec `?media_id=12` ou `?tmdb_id=603&media_type=movie`, chacune de `mine` porte
+  `contains_item_id` (0 si le titre n'y est pas).
+* `POST /api/lists` — corps `{ "name": "Mes recos", "description": "", "is_shared": true }`
+  (nom de 80 caractères, description de 500, 200 listes par compte) → la liste, `201`.
+* `GET /api/lists/:id` — la liste et `items`, du plus récent ajout au plus ancien :
+  `{ "id", "media_type": "movie"|"show", "tmdb_id", "title", "poster_url", "release_date",
+  "added_at", "media_id", "media" }`. `media_id` vaut 0 quand le serveur n'a pas le titre ;
+  sinon `media` est sa fiche, avec la progression du compte qui lit.
+* `PUT /api/lists/:id` — même corps que la création. « À regarder plus tard » ne garde que
+  `is_shared`.
+* `DELETE /api/lists/:id` — supprime la liste ; `409` pour « à regarder plus tard ».
+* `POST /api/lists/:id/items` — `{ "media_id": 12 }` pour une fiche du serveur, ou
+  `{ "tmdb_id": 603, "media_type": "movie"|"show", "title": "…", "poster_path": "/abc.jpg",
+  "release_date": "1999-03-31" }` pour un titre du catalogue. Un titre déjà présent revient tel
+  quel. 1 000 titres par liste.
+* `DELETE /api/lists/:id/items/:item` — retire un titre.
+
 ---
 
 ### 🏠 2. Accueil & Progression
@@ -429,6 +472,12 @@ Le serveur n'en impose aucune et n'en limite pas le nombre (ADR-0058). Il annonc
 #### ➡️ Récupérer l'état du scan
 * **Route :** `GET /api/indexer/status`
 * **Réponse (JSON) :** `{"is_scanning": true/false, …, "library_monitor": {"running": true, "notifications": true, "folders": 1234, "pending_folders": 0, "pending_files": 0, …}}`
+
+#### 🖼 Choisir l'affiche d'un film ou d'une série
+Exige `manage_library`. Détails : `docs/adr/0068-affiche-choisie-parmi-tmdb-et-fanart.md`.
+* **Proposer :** `GET /api/media/:id/images/posters` → `{"current": "…", "locked": false, "fanart_enabled": true, "images": [{"url", "thumb_url", "source": "tmdb"|"fanart", "language", "width", "height", "rating", "votes"}]}`. Les affiches dans la langue de l'interface d'abord, puis sans texte, puis en anglais. Fanart.tv n'est interrogé que si une clé est réglée (`fanart_api_key` dans `PUT /api/settings`, ou `FANART_API_KEY`). Liste vide pour une fiche que TMDB n'a pas identifiée.
+* **Choisir :** `PUT /api/media/:id/poster` avec `{"url": "…"}` (une adresse de `image.tmdb.org` ou `assets.fanart.tv`, sinon `400`) → la fiche à jour. L'affiche est protégée de l'enrichissement automatique ; les saisons et épisodes qui portaient l'ancienne affiche de la série suivent.
+* **Revenir à l'affiche par défaut :** `DELETE /api/media/:id/poster` → la fiche à jour.
 
 ---
 

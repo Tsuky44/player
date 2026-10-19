@@ -2,7 +2,9 @@ import 'dart:convert';
 import 'dart:io';
 
 import 'package:flutter_test/flutter_test.dart';
+import 'package:onyx/models/announcement.dart';
 import 'package:onyx/models/models.dart';
+import 'package:onyx/models/watch_list.dart';
 import 'package:onyx/models/server_capabilities.dart';
 
 /// Le contrat entre le serveur et l'app, vu de l'app.
@@ -142,6 +144,7 @@ void main() {
     expect(info.supports(ServerCapabilities.mediaLanguage), isTrue);
     expect(info.supports(ServerCapabilities.watchedByCredits), isTrue);
     expect(info.supports(ServerCapabilities.libraries), isTrue);
+    expect(info.supports(ServerCapabilities.announcements), isTrue);
     expect(info.supports('une_capacite_inconnue'), isFalse);
 
     // Un serveur d'avant cette annonce : il répond, sans rien promettre.
@@ -152,6 +155,82 @@ void main() {
 
     expect(ServerCapabilities.tryParse('<html>'), isNull);
     expect(ServerCapabilities.tryParse({'status': 'down'}), isNull);
+  });
+
+  test('message de l’administrateur, et son absence', () {
+    final announcement =
+        ServerAnnouncement.fromEnvelope(_contract('announcement'));
+    expect(announcement, isNotNull);
+    expect(announcement!.id, isPositive);
+    expect(announcement.title, 'title-value');
+    expect(announcement.message, 'message-value');
+    expect(announcement.createdAt, isNotNull);
+
+    expect(ServerAnnouncement.fromEnvelope(_contract('announcement_none')),
+        isNull);
+  });
+
+  test('affiches proposées pour une fiche', () {
+    expect(
+      ServerCapabilities.tryParse(_contract('ping'))!
+          .supports(ServerCapabilities.posterPicker),
+      isTrue,
+    );
+
+    final posters = RemotePosters.fromJson(_contract('remote_posters'));
+    expect(posters.current, 'current-value');
+    expect(posters.locked, isTrue);
+    expect(posters.fanartEnabled, isTrue);
+    final poster = posters.images.single;
+    expect(poster.url, 'url-value');
+    expect(poster.thumbUrl, 'thumb_url-value');
+    expect(poster.source, 'source-value');
+    expect(poster.language, 'language-value');
+    expect(poster.width, isPositive);
+    expect(poster.height, isPositive);
+    expect(poster.rating, isPositive);
+    expect(poster.votes, isPositive);
+  });
+
+  test('listes : les miennes, celles des autres, et leur contenu', () {
+    expect(
+      ServerCapabilities.tryParse(_contract('ping'))!
+          .supports(ServerCapabilities.watchLists),
+      isTrue,
+    );
+
+    final overview = WatchListsOverview.fromJson(_contract('watch_lists'));
+    final later = overview.mine.single;
+    expect(later.kind, WatchListKind.watchLater);
+    expect(later.name, 'name-value');
+    expect(later.description, 'description-value');
+    expect(later.isShared, isTrue);
+    expect(later.isMine, isTrue);
+    expect(later.owner.id, isPositive);
+    expect(later.owner.username, 'username-value');
+    expect(later.itemCount, isPositive);
+    expect(later.posters, ['posters-value']);
+    expect(later.updatedAt, isNotNull);
+    expect(later.containsItemId, isPositive);
+    expect(overview.shared.single.kind, WatchListKind.custom);
+
+    final detail = WatchListDetail.fromJson(_contract('watch_list'));
+    expect(detail.list.kind, WatchListKind.custom);
+    final item = detail.items.single;
+    expect(item.id, isPositive);
+    expect(item.mediaType, WatchListMediaType.show);
+    expect(item.tmdbId, isPositive);
+    expect(item.title, 'title-value');
+    expect(item.posterUrl, 'poster_url-value');
+    expect(item.releaseDate, '2020-01-02');
+    expect(item.addedAt, isNotNull);
+    expect(item.mediaId, isPositive);
+    expect(item.media, isNotNull);
+    expect(item.media!.media.id, isPositive);
+
+    final added = WatchListItem.fromJson(_contract('watch_list_item'));
+    expect(added.mediaType, WatchListMediaType.movie);
+    expect(added.isOnServer, isTrue);
   });
 
   // Ces deux réponses sont lues à la main, sans modèle : la clé est tout le

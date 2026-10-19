@@ -8,6 +8,9 @@
     "progress_long_poll",
     "media_language",
     "watched_by_credits",
-    "libraries"
+    "libraries",
+    "announcements",
+    "poster_picker",
+    "watch_lists"
   ]
 }

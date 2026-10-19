@@ -1,248 +1,25 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
-import '../../models/models.dart';
 import '../../providers/auth_provider.dart';
 import '../../services/client_identity.dart';
 import '../../theme/app_colors.dart';
 import '../../theme/app_motion.dart';
 import '../../tv/tv_focus_panes.dart';
 import '../../tv/tv_mode.dart';
-import '../../utils/app_platform.dart';
-import '../../utils/store_build.dart';
-import 'pages/account_page.dart';
-import 'pages/activity_page.dart';
-import 'pages/admin_devices_page.dart';
-import 'pages/apps_page.dart';
-import 'pages/dashboard_page.dart';
-import 'pages/device_page.dart';
-import 'pages/downloads_page.dart';
-import 'pages/emby_sync_page.dart';
-import 'pages/integrations_page.dart';
-import 'pages/library_page.dart';
-import 'pages/linked_servers_page.dart';
-import 'pages/logs_page.dart';
-import 'pages/playback_page.dart';
-import 'pages/servers_page.dart';
-import 'pages/shares_page.dart';
-import 'pages/stats_page.dart';
-import 'pages/users_page.dart';
+import 'settings_categories.dart';
+import 'settings_sections.dart';
 import 'widgets/settings_ui.dart';
 import '../../theme/app_type.dart';
 import '../../l10n/tr.dart';
 
-/// Les catégories des paramètres, dans l'ordre de la navigation.
-abstract final class SettingsSections {
-  static const account = 'account';
-  static const playback = 'playback';
-  static const downloads = 'downloads';
-  static const servers = 'servers';
-  static const shares = 'shares';
-  static const emby = 'emby';
-  static const device = 'device';
-  static const apps = 'apps';
-  static const dashboard = 'dashboard';
-  static const activity = 'activity';
-  static const stats = 'stats';
-  static const users = 'users';
-  static const devices = 'devices';
-  static const library = 'library';
-  static const integrations = 'integrations';
-  static const linkedServers = 'linked-servers';
-  static const logs = 'logs';
-}
-
-class _Category {
-  const _Category({
-    required this.id,
-    required this.label,
-    required this.icon,
-    required this.hint,
-    required this.admin,
-    required this.builder,
-  });
-
-  final String id;
-  final String label;
-  final IconData icon;
-
-  /// La ligne sous le libellé dans la liste mobile.
-  final String hint;
-  final bool admin;
-  final WidgetBuilder builder;
-}
-
-/// Ce qu'un compte voit dépend de ses droits : une catégorie qu'il ne peut pas
-/// utiliser n'est pas grisée, elle est absente. Ce qui n'est pas dessiné ne
-/// produit pas de 403.
-List<_Category> _categoriesFor(Permissions p) {
-  final anyAdmin = p.manageSettings || p.manageLibrary || p.manageUsers;
-  return [
-    _Category(
-      id: SettingsSections.account,
-      label: tr('Mon compte'),
-      icon: Icons.person_rounded,
-      hint: tr('Profil, mot de passe, appareils connectés'),
-      admin: false,
-      builder: (_) => const AccountPage(),
-    ),
-    _Category(
-      id: SettingsSections.playback,
-      label: tr('Lecture'),
-      icon: Icons.play_circle_outline_rounded,
-      hint: tr('Langue audio, décodage, interface du lecteur'),
-      admin: false,
-      builder: (_) => const PlaybackPage(),
-    ),
-    // Un navigateur n'a pas de dossier privé où garder un film, une Apple TV
-    // n'en a qu'un que le système vide à sa guise : la catégorie n'aurait que
-    // des réglages sans effet à proposer.
-    if (!AppPlatform.isWeb && !AppPlatform.isTvOS)
-      _Category(
-        id: SettingsSections.downloads,
-        label: tr('Téléchargements'),
-        icon: Icons.download_rounded,
-        hint: tr('Épisodes d’avance, réseau autorisé, place occupée'),
-        admin: false,
-        builder: (_) => const DownloadsPage(),
-      ),
-    _Category(
-      id: SettingsSections.servers,
-      label: tr('Serveurs'),
-      icon: Icons.dns_rounded,
-      hint: tr('Serveur actif, comptes et comptes liés'),
-      admin: false,
-      builder: (_) => const ServersPage(),
-    ),
-    // Ouvrir un lien reçu ne demande aucun droit (ADR-0037 §11) ; seul un
-    // téléviseur, sans presse-papiers où le recevoir, n'a rien à y faire tant
-    // que le compte n'a pas de liens à lui.
-    if (p.shareMedia || !TvMode.isTv)
-      _Category(
-        id: SettingsSections.shares,
-        label: tr('Liens de partage'),
-        icon: Icons.link_rounded,
-        hint: p.shareMedia
-            ? tr('Ouvrir un lien reçu, suivre et couper les vôtres')
-            : tr('Ouvrir un lien qu’on vous a envoyé'),
-        admin: false,
-        builder: (_) => const SharesPage(),
-      ),
-    _Category(
-      id: SettingsSections.emby,
-      label: tr('Synchro Emby'),
-      icon: Icons.sync_rounded,
-      hint: tr('Reprendre là où vous en êtes sur Emby'),
-      admin: false,
-      builder: (_) => const EmbySyncPage(),
-    ),
-    _Category(
-      id: SettingsSections.device,
-      label: tr('Cet appareil'),
-      icon: Icons.devices_rounded,
-      hint: tr('Langue, mode télécommande, téléviseur, stockage'),
-      admin: false,
-      builder: (_) => const DevicePage(),
-    ),
-    // Une Apple TV n'ouvre pas de lien et ne choisit pas de fichier : ni
-    // installer ailleurs, ni publier un installeur n'y a de sens. Un build
-    // store ne propose pas d'installeurs non plus (ADR-0046).
-    if (!AppPlatform.isTvOS && !StoreBuild.enabled)
-      _Category(
-        id: SettingsSections.apps,
-        label: tr('Applications'),
-        icon: Icons.download_for_offline_rounded,
-        hint: tr('Installer Onyx sur un autre appareil'),
-        admin: false,
-        builder: (_) => const AppsPage(),
-      ),
-    _Category(
-      id: SettingsSections.logs,
-      label: tr('Journal'),
-      icon: Icons.receipt_long_rounded,
-      hint: tr('Journaux de l’app et des lectures, pour comprendre une erreur'),
-      admin: false,
-      builder: (_) => const LogsPage(),
-    ),
-    if (anyAdmin)
-      _Category(
-        id: SettingsSections.dashboard,
-        label: tr('Tableau de bord'),
-        icon: Icons.space_dashboard_rounded,
-        hint: tr('Lectures en cours, état du serveur'),
-        admin: true,
-        builder: (_) => const DashboardPage(),
-      ),
-    if (p.manageUsers)
-      _Category(
-        id: SettingsSections.activity,
-        label: tr('Historique'),
-        icon: Icons.history_rounded,
-        hint: tr('Qui a regardé quoi, et où'),
-        admin: true,
-        builder: (_) => const ActivityPage(),
-      ),
-    if (p.manageUsers)
-      _Category(
-        id: SettingsSections.stats,
-        label: tr('Statistiques'),
-        icon: Icons.insights_rounded,
-        hint: tr('Temps de visionnage, tops, applications'),
-        admin: true,
-        builder: (_) => const StatsPage(),
-      ),
-    if (p.manageUsers || p.inviteUsers)
-      _Category(
-        id: SettingsSections.users,
-        label: tr('Utilisateurs'),
-        icon: Icons.group_rounded,
-        hint: tr('Comptes, droits, invitations, demandes'),
-        admin: true,
-        builder: (_) => const UsersPage(),
-      ),
-    if (p.manageUsers)
-      _Category(
-        id: SettingsSections.devices,
-        label: tr('Appareils'),
-        icon: Icons.important_devices_rounded,
-        hint: tr('Toutes les sessions ouvertes sur le serveur'),
-        admin: true,
-        builder: (_) => const AdminDevicesPage(),
-      ),
-    if (p.manageSettings || p.manageLibrary)
-      _Category(
-        id: SettingsSections.library,
-        label: tr('Bibliothèque'),
-        icon: Icons.video_library_rounded,
-        hint: tr('Dossiers, analyse, maintenance'),
-        admin: true,
-        builder: (_) => const LibraryPage(),
-      ),
-    if (p.manageSettings)
-      _Category(
-        id: SettingsSections.integrations,
-        label: tr('Métadonnées'),
-        icon: Icons.extension_rounded,
-        hint: tr('TMDB et MediaHub'),
-        admin: true,
-        builder: (_) => const IntegrationsPage(),
-      ),
-    if (p.manageSettings)
-      _Category(
-        id: SettingsSections.linkedServers,
-        label: tr('Serveurs liés'),
-        icon: Icons.hub_rounded,
-        hint: tr('Progression partagée entre serveurs'),
-        admin: true,
-        builder: (_) => const LinkedServersPage(),
-      ),
-  ];
-}
+export 'settings_sections.dart';
 
 class SettingsScreen extends StatefulWidget {
   const SettingsScreen({super.key, this.initialSection});
 
-  /// La catégorie ouverte d'emblée (une entrée du menu du compte, par exemple).
+  /// La page ouverte d'emblée (une entrée du menu du compte, par exemple) :
+  /// sa catégorie s'ouvre, à l'onglet de cette page s'il y en a.
   final String? initialSection;
 
   @override
@@ -252,12 +29,15 @@ class SettingsScreen extends StatefulWidget {
 class _SettingsScreenState extends State<SettingsScreen> {
   static const _wideBreakpoint = 840.0;
 
+  /// La page demandée : une catégorie, ou une page à l'intérieur d'une
+  /// catégorie (voir [SettingsCategory.opens]).
   late String _selected = widget.initialSection ?? SettingsSections.account;
   bool _pushedInitial = false;
 
-  void _open(BuildContext context, List<_Category> categories, String id,
+  void _open(BuildContext context, List<SettingsCategory> categories,
+      String id,
       {required bool wide}) {
-    final category = categories.where((c) => c.id == id).firstOrNull;
+    final category = categories.where((c) => c.opens(id)).firstOrNull;
     if (category == null) return;
     if (wide) {
       setState(() => _selected = id);
@@ -266,6 +46,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
     Navigator.of(context).push(MaterialPageRoute(
       builder: (_) => _SectionRoute(
         category: category,
+        section: id,
         openSection: (next) => _open(context, categories, next, wide: false),
       ),
     ));
@@ -274,11 +55,11 @@ class _SettingsScreenState extends State<SettingsScreen> {
   @override
   Widget build(BuildContext context) {
     final auth = context.watch<AuthProvider>();
-    final categories = _categoriesFor(auth.permissions);
+    final categories = settingsCategoriesFor(auth.permissions);
 
     return LayoutBuilder(builder: (context, constraints) {
       final wide = constraints.maxWidth >= _wideBreakpoint;
-      if (!categories.any((c) => c.id == _selected)) {
+      if (!categories.any((c) => c.opens(_selected))) {
         _selected = categories.first.id;
       }
 
@@ -312,13 +93,13 @@ class _WideSettings extends StatelessWidget {
     required this.onSelect,
   });
 
-  final List<_Category> categories;
+  final List<SettingsCategory> categories;
   final String selected;
   final ValueChanged<String> onSelect;
 
   @override
   Widget build(BuildContext context) {
-    final category = categories.firstWhere((c) => c.id == selected);
+    final category = categories.firstWhere((c) => c.opens(selected));
     return Scaffold(
       backgroundColor: AppColors.background,
       body: SafeArea(
@@ -331,7 +112,7 @@ class _WideSettings extends StatelessWidget {
               TvFocusPane(
                 child: _Sidebar(
                   categories: categories,
-                  selected: selected,
+                  selected: category.id,
                   onSelect: onSelect,
                 ),
               ),
@@ -377,8 +158,8 @@ class _WideSettings extends StatelessWidget {
                           ),
                         ),
                         child: KeyedSubtree(
-                          key: ValueKey(category.id),
-                          child: category.builder(context),
+                          key: ValueKey(selected),
+                          child: category.build(context, section: selected),
                         ),
                       ),
                     ),
@@ -400,7 +181,7 @@ class _Sidebar extends StatelessWidget {
     required this.onSelect,
   });
 
-  final List<_Category> categories;
+  final List<SettingsCategory> categories;
   final String selected;
   final ValueChanged<String> onSelect;
 
@@ -513,7 +294,7 @@ class _NavItem extends StatefulWidget {
     this.autofocus = false,
   });
 
-  final _Category category;
+  final SettingsCategory category;
   final bool selected;
   final bool autofocus;
   final VoidCallback onTap;
@@ -663,7 +444,7 @@ class _AccountCard extends StatelessWidget {
 class _CompactSettings extends StatelessWidget {
   const _CompactSettings({required this.categories, required this.onSelect});
 
-  final List<_Category> categories;
+  final List<SettingsCategory> categories;
   final ValueChanged<String> onSelect;
 
   @override
@@ -671,7 +452,7 @@ class _CompactSettings extends StatelessWidget {
     final user = categories.where((c) => !c.admin).toList();
     final admin = categories.where((c) => c.admin).toList();
 
-    SettingsTile tile(_Category c) => SettingsTile(
+    SettingsTile tile(SettingsCategory c) => SettingsTile(
           icon: c.icon,
           title: c.label,
           subtitle: c.hint,
@@ -708,9 +489,14 @@ class _CompactSettings extends StatelessWidget {
 }
 
 class _SectionRoute extends StatelessWidget {
-  const _SectionRoute({required this.category, required this.openSection});
+  const _SectionRoute({
+    required this.category,
+    required this.section,
+    required this.openSection,
+  });
 
-  final _Category category;
+  final SettingsCategory category;
+  final String section;
   final ValueChanged<String> openSection;
 
   @override
@@ -721,7 +507,7 @@ class _SectionRoute extends StatelessWidget {
       body: SettingsLayout(
         isWide: false,
         openSection: openSection,
-        child: category.builder(context),
+        child: category.build(context, section: section),
       ),
     );
   }

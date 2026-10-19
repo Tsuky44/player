@@ -59,11 +59,13 @@ func main() {
 	// (ADR-0062), gardés à côté de la base. RELEASE_REPO=off les coupe, pour un
 	// serveur sans accès à GitHub.
 	if repo := strings.TrimSpace(os.Getenv("RELEASE_REPO")); repo != "off" {
-		handlers.SetReleaseSource(releasedl.New(releasedl.Config{
+		source := releasedl.New(releasedl.Config{
 			Version:  buildinfo.Version,
 			Repo:     repo,
 			CacheDir: filepath.Join(filepath.Dir(absDbPath), "release-cache"),
-		}))
+		})
+		source.Warm()
+		handlers.SetReleaseSource(source)
 	}
 
 	if err := handlers.InitStream(); err != nil {
@@ -180,6 +182,15 @@ func main() {
 	router.GET("/api/settings", handlers.RequirePermission(models.PermManageSettings, handlers.GetSettings))
 	router.PUT("/api/settings", handlers.RequirePermission(models.PermManageSettings, handlers.UpdateSettings))
 
+	// Le message aux utilisateurs (ADR-0069). L'écrire parle à tous les comptes
+	// du serveur : c'est manage_settings, comme le reste des réglages. Chaque
+	// compte ne lit et ne ferme que ce qui lui reste à voir.
+	router.GET("/api/announcement", handlers.RequirePermission(models.PermManageSettings, handlers.GetAnnouncement))
+	router.PUT("/api/announcement", handlers.RequirePermission(models.PermManageSettings, handlers.PublishAnnouncement))
+	router.DELETE("/api/announcement", handlers.RequirePermission(models.PermManageSettings, handlers.ClearAnnouncement))
+	router.GET("/api/me/announcement", handlers.RequireAuth(handlers.GetPendingAnnouncement))
+	router.POST("/api/me/announcement/seen", handlers.RequireAuth(handlers.MarkAnnouncementSeen))
+
 	// Bibliothèques (ADR-0058). La liste est lue par tout compte : ce sont les
 	// onglets de l'app, et elle n'y montre que des noms — le dossier n'est
 	// joint que pour manage_settings. Créer, repointer ou supprimer une
@@ -189,6 +200,17 @@ func main() {
 	router.POST("/api/libraries", handlers.RequirePermission(models.PermManageSettings, handlers.CreateLibrary))
 	router.PUT("/api/libraries/:id", handlers.RequirePermission(models.PermManageSettings, handlers.UpdateLibrary))
 	router.DELETE("/api/libraries/:id", handlers.RequirePermission(models.PermManageSettings, handlers.DeleteLibrary))
+
+	// Listes du compte (ADR-0070) : « à regarder plus tard » et les siennes.
+	// Tout compte en a ; chacun n'écrit que dans les siennes, et ne lit d'un
+	// autre que ce qu'il a choisi de partager — le package watchlists tranche.
+	router.GET("/api/lists", handlers.RequireAuth(handlers.ListWatchLists))
+	router.POST("/api/lists", handlers.RequireAuth(handlers.CreateWatchList))
+	router.GET("/api/lists/:id", handlers.RequireAuth(handlers.GetWatchList))
+	router.PUT("/api/lists/:id", handlers.RequireAuth(handlers.UpdateWatchList))
+	router.DELETE("/api/lists/:id", handlers.RequireAuth(handlers.DeleteWatchList))
+	router.POST("/api/lists/:id/items", handlers.RequireAuth(handlers.AddWatchListItem))
+	router.DELETE("/api/lists/:id/items/:item", handlers.RequireAuth(handlers.RemoveWatchListItem))
 
 	// Réglages de lecture du compte (saut d'intro, langue audio), partagés par
 	// tous ses appareils. Chacun ne lit et n'écrit que les siens. Voir ADR-0043.
@@ -330,6 +352,12 @@ func main() {
 	router.POST("/api/media/:id/metadata/redetect", handlers.RequirePermission(models.PermManageLibrary, handlers.RedetectMediaMetadata))
 	router.POST("/api/media/:id/metadata/rematch", handlers.RequirePermission(models.PermManageLibrary, handlers.RematchMediaMetadata))
 	router.GET("/api/tmdb/search", handlers.RequirePermission(models.PermManageLibrary, handlers.SearchTMDBMetadata))
+	// Choisir l'affiche d'une fiche parmi celles de TMDB et Fanart.tv (ADR-0068) :
+	// c'est réécrire la médiathèque de toute la maison, donc manage_library,
+	// que les administrateurs ont toujours.
+	router.GET("/api/media/:id/images/posters", handlers.RequirePermission(models.PermManageLibrary, handlers.GetRemotePosters))
+	router.PUT("/api/media/:id/poster", handlers.RequirePermission(models.PermManageLibrary, handlers.SetMediaPoster))
+	router.DELETE("/api/media/:id/poster", handlers.RequirePermission(models.PermManageLibrary, handlers.ResetMediaPoster))
 	router.POST("/api/indexer/subtitles/extract", handlers.RequirePermission(models.PermManageLibrary, handlers.TriggerSubtitleExtract))
 	// Scan status is read-only progress, shown wherever a scan can be watched.
 	router.GET("/api/indexer/status", handlers.RequireAuth(handlers.GetScanStatus))

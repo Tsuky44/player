@@ -32,6 +32,9 @@ class ShellDesktopHeader extends StatelessWidget {
   /// destination possible, l'onglet n'existe pas.
   final bool canDownload;
 
+  /// Le serveur tient des listes (ADR-0070).
+  final bool canUseLists;
+
   /// Le nœud de focus d'un onglet, possédé par la coquille.
   final FocusNode Function(String tab) nodeFor;
 
@@ -44,6 +47,7 @@ class ShellDesktopHeader extends StatelessWidget {
     required this.authProvider,
     required this.canDownload,
     required this.nodeFor,
+    this.canUseLists = false,
   });
 
   Widget _tab(String tab, String label) => GlassNavTab(
@@ -100,6 +104,7 @@ class ShellDesktopHeader extends StatelessWidget {
                         anchor: TourAnchor.requests,
                         child: _tab(ShellTabs.requests, tr('Demandes')),
                       ),
+                    if (canUseLists) _tab(ShellTabs.lists, tr('Listes')),
                     if (canDownload)
                       TourTarget(
                         anchor: TourAnchor.downloads,

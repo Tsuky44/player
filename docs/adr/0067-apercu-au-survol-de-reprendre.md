@@ -31,9 +31,11 @@ média. Le serveur, lui, sait déjà extraire une image clé à la demande pour 
    logos). Le ticket est rendu à la fermeture.
 2. **`warm=0`.** La demande de manifeste de l'aperçu ne lance pas la passe de fond : elle
    prendrait l'une des deux places et chasserait celle d'un spectateur en pleine lecture.
-3. **Souris seulement, sur ordinateur et navigateur**, après 700 ms d'attente. Un téléphone n'a
-   pas de survol ; un téléviseur garde son focus pour naviguer. Réglage « Aperçu au survol »
-   dans « Cet appareil », activé d'office.
+3. **Souris seulement, sur ordinateur et navigateur**, après 1,2 s d'attente (700 ms ouvraient
+   l'aperçu pendant qu'on allait cliquer). Viser le « ⋯ » de la carte suspend le délai, et un
+   clic sur la carte l'annule. L'aperçu porte son propre « ⋯ », au même coin, puisqu'il recouvre
+   celui de la carte. Un téléphone n'a pas de survol ; un téléviseur garde son focus pour
+   naviguer. Réglage « Aperçu au survol » dans « Cet appareil », activé d'office.
 4. **Le panneau vit dans l'Overlay de la route** (`OverlayPortal` + `CompositedTransformFollower`),
    centré sur l'affiche et ramené dans l'écran : il ne pousse pas la rangée, n'est pas coupé par
    la liste, et une page poussée par-dessus le recouvre.

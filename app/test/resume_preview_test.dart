@@ -1,7 +1,6 @@
-import 'dart:typed_data';
-
 import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:onyx/models/models.dart';
 import 'package:onyx/services/api_client.dart';
@@ -204,6 +203,85 @@ void main() {
 
       await mouse.moveTo(const Offset(1, 1));
       await tester.pump(ResumePreviewAnchor.leaveGrace);
+      await tester.pumpAndSettle();
+      expect(find.byType(ResumePreviewPanel), findsNothing);
+    });
+
+    testWidgets('the preview keeps the ⋯ menu of the card it covers',
+        (tester) async {
+      await pumpCard(tester, onPlay: () {});
+      await hoverPoster(tester);
+      await tester.pump(ResumePreviewAnchor.dwell);
+      await tester.pumpAndSettle();
+
+      final panelMenu = find.descendant(
+        of: find.byType(ResumePreviewPanel),
+        matching: find.byTooltip('Plus d’actions'),
+      );
+      expect(panelMenu, findsOneWidget);
+      await tester.tap(panelMenu);
+      await tester.pumpAndSettle();
+      await tester.pump(ResumePreviewAnchor.menuGrace * 2);
+      await tester.pumpAndSettle();
+
+      expect(find.text("Aller à l'affiche"), findsOneWidget);
+      expect(find.byType(ResumePreviewPanel), findsOneWidget,
+          reason: 'the menu covering the panel is not the mouse leaving it');
+
+      await tester.sendKeyEvent(LogicalKeyboardKey.escape);
+      await tester.pumpAndSettle();
+      await tester.pump(ResumePreviewAnchor.menuGrace * 2);
+      await tester.pumpAndSettle();
+      expect(find.text("Aller à l'affiche"), findsNothing);
+      expect(find.byType(ResumePreviewPanel), findsOneWidget,
+          reason: 'the mouse never left the panel');
+    });
+
+    testWidgets('closing the menu away from the panel closes the preview',
+        (tester) async {
+      await pumpCard(tester, onPlay: () {});
+      final mouse = await hoverPoster(tester);
+      await tester.pump(ResumePreviewAnchor.dwell);
+      await tester.pumpAndSettle();
+      await tester.tap(find.descendant(
+        of: find.byType(ResumePreviewPanel),
+        matching: find.byTooltip('Plus d’actions'),
+      ));
+      await tester.pumpAndSettle();
+
+      await mouse.moveTo(const Offset(1, 1));
+      await tester.sendKeyEvent(LogicalKeyboardKey.escape);
+      await tester.pumpAndSettle();
+      await tester.pump(ResumePreviewAnchor.menuGrace);
+      await tester.pumpAndSettle();
+      expect(find.byType(ResumePreviewPanel), findsNothing);
+    });
+
+    testWidgets('aiming at the card ⋯ does not open the preview over it',
+        (tester) async {
+      await pumpCard(tester, onPlay: () {});
+      final mouse = await hoverPoster(tester);
+      await mouse.moveTo(tester.getCenter(find.byTooltip('Plus d’actions')));
+      await tester.pump();
+      await tester.pump(ResumePreviewAnchor.dwell * 2);
+      await tester.pumpAndSettle();
+      expect(find.byType(ResumePreviewPanel), findsNothing);
+
+      // De retour sur l'affiche, le délai repart de zéro.
+      await mouse.moveTo(tester.getCenter(find.byType(ResumePreviewAnchor)));
+      await tester.pump();
+      await tester.pump(ResumePreviewAnchor.dwell);
+      await tester.pumpAndSettle();
+      expect(find.byType(ResumePreviewPanel), findsOneWidget);
+    });
+
+    testWidgets('a click on the card cancels the pending preview',
+        (tester) async {
+      await pumpCard(tester, onPlay: () {});
+      final mouse = await hoverPoster(tester);
+      await mouse.down(tester.getCenter(find.byType(ResumePreviewAnchor)));
+      await mouse.up();
+      await tester.pump(ResumePreviewAnchor.dwell);
       await tester.pumpAndSettle();
       expect(find.byType(ResumePreviewPanel), findsNothing);
     });

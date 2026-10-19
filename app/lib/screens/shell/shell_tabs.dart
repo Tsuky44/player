@@ -11,6 +11,7 @@ import '../../models/models.dart';
 abstract final class ShellTabs {
   static const String home = 'home';
   static const String requests = 'requests';
+  static const String lists = 'lists';
   static const String downloads = 'downloads';
 
   static String library(MediaLibrary library) => 'library:${library.id}';

@@ -27,6 +27,9 @@ class MobileBottomNav extends StatelessWidget {
   final bool canRequestMedia;
   final bool canDownload;
 
+  /// Le serveur tient des listes (ADR-0070).
+  final bool canUseLists;
+
   /// Au-delà, les bibliothèques ne tiennent plus côte à côte entre l'accueil
   /// et les deux derniers onglets : un seul onglet les réunit et ouvre leur
   /// liste.
@@ -39,6 +42,7 @@ class MobileBottomNav extends StatelessWidget {
     required this.libraries,
     required this.canRequestMedia,
     required this.canDownload,
+    this.canUseLists = false,
   });
 
   Future<void> _pickLibrary(BuildContext context) async {
@@ -136,6 +140,16 @@ class MobileBottomNav extends StatelessWidget {
                       selected: selected == ShellTabs.requests,
                       onTap: () => onTabSelected(ShellTabs.requests),
                     ),
+                  ),
+                ),
+              if (canUseLists)
+                Expanded(
+                  child: _BottomNavItem(
+                    icon: AppIcons.lists,
+                    selectedIcon: AppIcons.listsSelected,
+                    label: tr('Listes'),
+                    selected: selected == ShellTabs.lists,
+                    onTap: () => onTabSelected(ShellTabs.lists),
                   ),
                 ),
               if (canDownload)

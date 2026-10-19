@@ -28,6 +28,15 @@ const (
 	// GET /api/libraries existe, et /api/movies comme /api/shows acceptent
 	// ?library= (ADR-0058).
 	CapabilityLibraries = "libraries"
+	// GET /api/me/announcement existe : le message de l'administrateur à tous
+	// les comptes (ADR-0069).
+	CapabilityAnnouncements = "announcements"
+	// GET /api/media/:id/images/posters et PUT|DELETE /api/media/:id/poster
+	// existent (ADR-0068).
+	CapabilityPosterPicker = "poster_picker"
+	// /api/lists existe : « à regarder plus tard » et les listes du compte,
+	// partagées ou non (ADR-0070).
+	CapabilityWatchLists = "watch_lists"
 )
 
 type pingResponse struct {
@@ -52,6 +61,9 @@ func pingPayload() pingResponse {
 			CapabilityMediaLanguage,
 			CapabilityWatchedByCredits,
 			CapabilityLibraries,
+			CapabilityAnnouncements,
+			CapabilityPosterPicker,
+			CapabilityWatchLists,
 		},
 	}
 }

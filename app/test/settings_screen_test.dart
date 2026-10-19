@@ -7,6 +7,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'package:onyx/models/models.dart';
 import 'package:onyx/models/server_activity.dart';
 import 'package:onyx/providers/auth_provider.dart';
+import 'package:onyx/screens/settings/settings_categories.dart';
 import 'package:onyx/screens/settings/settings_screen.dart';
 import 'package:onyx/services/api_client.dart';
 import 'package:onyx/utils/store_build.dart';
@@ -129,7 +130,9 @@ void main() {
   });
 
   Future<_FakeApi> pump(WidgetTester tester,
-      {required double width, required Permissions permissions}) async {
+      {required double width,
+      required Permissions permissions,
+      String? initialSection}) async {
     tester.view.devicePixelRatio = 1;
     tester.view.physicalSize = Size(width, 900);
     addTearDown(tester.view.resetPhysicalSize);
@@ -143,7 +146,7 @@ void main() {
         Provider<ApiClient>.value(value: api),
         ChangeNotifierProvider<AuthProvider>.value(value: auth),
       ],
-      child: const MaterialApp(home: SettingsScreen()),
+      child: MaterialApp(home: SettingsScreen(initialSection: initialSection)),
     ));
     await tester.pumpAndSettle();
     return api;
@@ -164,15 +167,19 @@ void main() {
   });
 
   testWidgets(
-      'un administrateur ouvre les statistiques depuis la barre latérale',
+      'un administrateur ouvre les statistiques dans un onglet d’Activité',
       (tester) async {
     final api = await pump(tester, width: 1100, permissions: Permissions.all);
 
     expect(find.text('Administration'), findsOneWidget);
-    // La barre latérale défile : avec « Liens de partage », les catégories
-    // d'administration passent sous la ligne de flottaison à 900 px.
-    await tester.ensureVisible(find.text('Statistiques'));
+    await tester.ensureVisible(find.text('Activité'));
     await tester.pumpAndSettle();
+    await tester.tap(find.text('Activité'));
+    // La vue d'ensemble se rafraîchit seule : elle ne « se pose » jamais.
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 500));
+    expect(find.text('Vue d’ensemble'), findsOneWidget);
+    expect(api.statsCalls, 0);
     await tester.tap(find.text('Statistiques'));
     await tester.pumpAndSettle();
 
@@ -190,11 +197,13 @@ void main() {
       (tester) async {
     await pump(tester, width: 1100, permissions: const Permissions());
 
-    await tester.tap(find.text('Liens de partage'));
+    await tester.tap(find.text('Serveurs et partage'));
     await tester.pumpAndSettle();
     expect(find.text('Actifs'), findsNothing);
     expect(find.byTooltip('Actualiser'), findsNothing);
 
+    await tester.ensureVisible(find.text('Ouvrir un lien de partage'));
+    await tester.pumpAndSettle();
     await tester.tap(find.text('Ouvrir un lien de partage'));
     await tester.pumpAndSettle();
     expect(find.text('Collez le lien qu’on vous a envoyé. Il se regarde ici, '
@@ -204,15 +213,59 @@ void main() {
 
   // Un magasin interdit à une app de proposer ses propres installeurs
   // (ADR-0046).
-  testWidgets('un build store ne propose pas la page Applications',
+  testWidgets('un build store ne propose pas d’installer Onyx ailleurs',
       (tester) async {
-    await pump(tester, width: 1100, permissions: const Permissions());
-    expect(find.text('Applications'), findsOneWidget);
+    const install = 'Installer Onyx sur un autre appareil';
+    await pump(tester,
+        width: 1100,
+        permissions: const Permissions(),
+        initialSection: SettingsSections.device);
+    expect(find.text(install), findsOneWidget);
 
     StoreBuild.overrideForTest(true);
     addTearDown(() => StoreBuild.overrideForTest(null));
-    await pump(tester, width: 1100, permissions: const Permissions());
-    expect(find.text('Applications'), findsNothing);
+    await pump(tester,
+        width: 1100,
+        permissions: const Permissions(),
+        initialSection: SettingsSections.device);
+    expect(find.text(install), findsNothing);
+    expect(tester.takeException(), isNull);
+  });
+
+  // Dix-huit entrées faisaient chercher un réglage dans trois catégories :
+  // les pages voisines partagent une entrée, empilées ou en onglets.
+  test('la navigation d’un administrateur tient en neuf entrées', () {
+    final categories = settingsCategoriesFor(Permissions.all);
+    expect(categories.length, lessThanOrEqualTo(9));
+    expect(categories.where((c) => !c.admin).length, lessThanOrEqualTo(5));
+  });
+
+  // L'adresse d'une page survit au regroupement : « l'historique » ouvre la
+  // catégorie Activité sur son onglet, pas sur la vue d'ensemble.
+  testWidgets('ouvrir une page regroupée ouvre sa catégorie à son onglet',
+      (tester) async {
+    final api = await pump(tester,
+        width: 1100,
+        permissions: Permissions.all,
+        initialSection: SettingsSections.stats);
+
+    expect(api.statsCalls, 1);
+    expect(find.text('Titres les plus regardés'), findsOneWidget);
+    expect(find.text('Vue d’ensemble'), findsOneWidget);
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('les pages empilées se lisent sur un seul défilement',
+      (tester) async {
+    await pump(tester,
+        width: 1100,
+        permissions: const Permissions(),
+        initialSection: SettingsSections.emby);
+
+    expect(find.text('Serveurs et partage'), findsWidgets);
+    expect(find.text('Serveur actif'), findsOneWidget);
+    await tester.ensureVisible(find.text('Synchro Emby').last);
+    await tester.pumpAndSettle();
     expect(tester.takeException(), isNull);
   });
 

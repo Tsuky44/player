@@ -41,6 +41,10 @@ abstract final class AppIcons {
       IconData(0xe20c, fontFamily: _regular); // downloadSimple
   static const IconData offlineSelected =
       IconData(0xe20c, fontFamily: _fill); // downloadSimple
+  static const IconData lists =
+      IconData(0xe5f0, fontFamily: _regular); // bookmarksSimple
+  static const IconData listsSelected =
+      IconData(0xe5f0, fontFamily: _fill); // bookmarksSimple
 
   // Lecture : toujours pleines, c'est ce qui se lance.
   static const IconData play = IconData(0xe3d0, fontFamily: _fill); // play
@@ -79,6 +83,9 @@ abstract final class AppIcons {
   static const IconData moreVertical =
       IconData(0xe208, fontFamily: _regular); // dotsThreeVertical
   static const IconData info = IconData(0xe2ce, fontFamily: _regular); // info
+  // Le message de l'administrateur à tous les comptes (ADR-0069).
+  static const IconData announcement =
+      IconData(0xe324, fontFamily: _regular); // megaphone
   static const IconData add = IconData(0xe3d4, fontFamily: _regular); // plus
   static const IconData refresh =
       IconData(0xe036, fontFamily: _regular); // arrowClockwise
@@ -127,6 +134,7 @@ abstract final class AppIcons {
       IconData(0xe1a8, fontFamily: _regular); // subtitles
   static const IconData imageBroken =
       IconData(0xe7a8, fontFamily: _regular); // imageBroken
+  static const IconData poster = IconData(0xe2ca, fontFamily: _regular); // image
   static const IconData folder =
       IconData(0xe24a, fontFamily: _regular); // folder
   static const IconData file = IconData(0xe230, fontFamily: _regular); // file
@@ -163,4 +171,15 @@ abstract final class AppIcons {
   static const IconData scan = IconData(0xebb6, fontFamily: _regular); // scan
   static const IconData link = IconData(0xe2e2, fontFamily: _regular); // link
   static const IconData copy = IconData(0xe1ca, fontFamily: _regular); // copy
+
+  // Listes (ADR-0070) : le signet creux propose d'ajouter, plein il dit que
+  // le titre est déjà dans une liste.
+  static const IconData addToList =
+      IconData(0xe0ea, fontFamily: _regular); // bookmarkSimple
+  static const IconData inList =
+      IconData(0xe0ea, fontFamily: _fill); // bookmarkSimple
+  static const IconData sharedList =
+      IconData(0xe4d6, fontFamily: _regular); // users
+  static const IconData privateList =
+      IconData(0xe308, fontFamily: _regular); // lockSimple
 }

@@ -7,8 +7,8 @@ import '../../../tv/tv_deferred_keyboard.dart';
 import '../widgets/settings_ui.dart';
 import '../../../l10n/tr.dart';
 
-/// TMDB (métadonnées, affiches, catalogue de demandes) et MediaHub (envoi des
-/// demandes). Les clés ne sont jamais renvoyées en clair par le serveur.
+/// TMDB (métadonnées, affiches, catalogue de demandes), Fanart.tv (affiches
+/// en plus, ADR-0068) et MediaHub (envoi des demandes). Les clés ne sont jamais renvoyées en clair par le serveur.
 class IntegrationsPage extends StatefulWidget {
   const IntegrationsPage({super.key});
 
@@ -26,6 +26,7 @@ class _IntegrationsPageState extends State<IntegrationsPage> {
   ];
 
   final _tmdbKey = TextEditingController();
+  final _fanartKey = TextEditingController();
   final _mediaHubUrl = TextEditingController();
   final _mediaHubKey = TextEditingController();
 
@@ -33,6 +34,7 @@ class _IntegrationsPageState extends State<IntegrationsPage> {
   String _language = 'fr-FR';
   String? _error;
   bool _savingTmdb = false;
+  bool _savingFanart = false;
   bool _savingMediaHub = false;
 
   @override
@@ -44,6 +46,7 @@ class _IntegrationsPageState extends State<IntegrationsPage> {
   @override
   void dispose() {
     _tmdbKey.dispose();
+    _fanartKey.dispose();
     _mediaHubUrl.dispose();
     _mediaHubKey.dispose();
     super.dispose();
@@ -56,6 +59,7 @@ class _IntegrationsPageState extends State<IntegrationsPage> {
         : 'fr-FR';
     _mediaHubUrl.text = settings.mediaHubUrl;
     _tmdbKey.clear();
+    _fanartKey.clear();
     _mediaHubKey.clear();
   }
 
@@ -95,6 +99,28 @@ class _IntegrationsPageState extends State<IntegrationsPage> {
       }
     }
     if (mounted) setState(() => _savingTmdb = false);
+  }
+
+  Future<void> _saveFanart({bool clearKey = false}) async {
+    setState(() => _savingFanart = true);
+    final key = _fanartKey.text.trim();
+    try {
+      final updated = await context.read<ApiClient>().updateServerSettings(
+            fanartApiKey: key.isEmpty ? null : key,
+            clearFanartApiKey: clearKey,
+          );
+      if (!mounted) return;
+      setState(() => _apply(updated));
+      showSettingsSnack(context,
+          clearKey ? tr('Clé Fanart.tv effacée.') : tr('Fanart.tv enregistré.'));
+    } catch (e) {
+      if (mounted) {
+        showSettingsSnack(
+            context, settingsErrorText(e, tr('Échec de l’enregistrement.')),
+            error: true);
+      }
+    }
+    if (mounted) setState(() => _savingFanart = false);
   }
 
   Future<void> _saveMediaHub({bool clearKey = false}) async {
@@ -177,6 +203,35 @@ class _IntegrationsPageState extends State<IntegrationsPage> {
                     onSave: () => _saveTmdb(),
                     onClear: settings.tmdbApiKeySet
                         ? () => _saveTmdb(clearKey: true)
+                        : null,
+                  ),
+                ],
+              ),
+            ],
+          ),
+          SettingsGroup(
+            title: tr('Fanart.tv'),
+            trailing: _status(settings.fanartApiKeySet),
+            footer: tr('Facultatif. Ajoute les affiches de Fanart.tv à celles '
+                'de TMDB quand on change l’affiche d’un film ou d’une série. '
+                'Clé personnelle gratuite sur fanart.tv.'),
+            padded: true,
+            children: [
+              Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  _KeyField(
+                    controller: _fanartKey,
+                    label: tr('Clé API Fanart.tv'),
+                    configured: settings.fanartApiKeySet,
+                    hint: settings.fanartApiKeyHint,
+                  ),
+                  const SizedBox(height: 14),
+                  _Actions(
+                    saving: _savingFanart,
+                    onSave: () => _saveFanart(),
+                    onClear: settings.fanartApiKeySet
+                        ? () => _saveFanart(clearKey: true)
                         : null,
                   ),
                 ],

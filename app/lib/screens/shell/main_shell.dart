@@ -8,6 +8,7 @@ import '../../models/models.dart';
 import '../../providers/auth_provider.dart';
 import '../../providers/home_provider.dart';
 import '../../providers/library_provider.dart';
+import '../../providers/watch_lists_provider.dart';
 import '../../services/api_client.dart';
 import '../../services/auto_updater_service.dart';
 import '../../services/download_manager.dart';
@@ -17,6 +18,7 @@ import '../../services/update_checker.dart';
 import '../../theme/app_colors.dart';
 import '../../utils/responsive.dart';
 import '../../widgets/global/account_menu.dart';
+import '../../widgets/global/announcement_dialog.dart';
 import '../../widgets/global/app_update_dialog.dart';
 import '../../widgets/global/interface_tour/interface_tour.dart';
 import '../../widgets/global/interface_tour/tour_anchor.dart';
@@ -29,8 +31,10 @@ import '../downloads/downloads_screen.dart';
 import '../home/home_screen.dart';
 import '../library/library_screen.dart';
 import '../requests/requests_screen.dart';
+import '../lists/lists_screen.dart';
 import 'mobile_bottom_nav.dart';
 import 'mobile_top_bar.dart';
+import 'pending_announcement.dart';
 import 'shell_desktop_header.dart';
 import 'shell_page_open_listener.dart';
 import 'shell_tab_stack.dart';
@@ -161,6 +165,28 @@ class _MainShellState extends State<MainShell> {
     }
   }
 
+  /// Le message de l'administrateur (ADR-0069), posé sur l'accueil une fois
+  /// chargé, comme la présentation.
+  late final PendingAnnouncementCheck _announcement = PendingAnnouncementCheck(
+    fetch: () => context.read<ApiClient>().getPendingAnnouncement(),
+    markSeen: (id) => context.read<ApiClient>().markAnnouncementSeen(id),
+    show: (announcement) async {
+      await _homeSettled();
+      if (!mounted) return false;
+      await showAnnouncementDialog(context, announcement);
+      return true;
+    },
+  );
+
+  /// Un compte vient de s'ouvrir : la présentation d'abord s'il ne l'a jamais
+  /// vue, puis le message de l'administrateur — l'un après l'autre, jamais
+  /// l'un sur l'autre.
+  Future<void> _afterSessionOpened() async {
+    await _maybeStartTour();
+    if (!mounted || _auth.isOfflineSession) return;
+    await _announcement.run(_auth.activeServer?.id);
+  }
+
   /// Rend la main quand l'accueil a fini de charger — sur ses données ou sur
   /// une erreur — et que son contenu est posé à l'écran.
   Future<void> _homeSettled() async {
@@ -184,7 +210,7 @@ class _MainShellState extends State<MainShell> {
   /// une bascule de serveur : c'est une première session comme une autre.
   void _onAuthChanged() {
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (mounted) _maybeStartTour();
+      if (mounted) unawaited(_afterSessionOpened());
     });
   }
 
@@ -212,12 +238,14 @@ class _MainShellState extends State<MainShell> {
       // Les onglets sont les bibliothèques du serveur : sans cette liste la
       // coquille n'a que l'accueil.
       unawaited(context.read<LibraryProvider>().loadLibraries());
+      // L'onglet des listes n'existe que si le serveur sait en tenir.
+      unawaited(context.read<WatchListsProvider>().load());
       _warmTimer = Timer(_warmDelay, () {
         if (mounted) _warmOtherTabs();
       });
       final code = TvPairingLink.take();
       if (code == null) {
-        _maybeStartTour();
+        unawaited(_afterSessionOpened());
         return;
       }
       Navigator.of(context).push(
@@ -380,6 +408,7 @@ class _MainShellState extends State<MainShell> {
     final homeProvider = Provider.of<HomeProvider>(context);
     final authProvider = Provider.of<AuthProvider>(context);
     final downloads = Provider.of<DownloadManager>(context);
+    final canUseLists = Provider.of<WatchListsProvider>(context).isSupported;
 
     // Une session ouverte sur un profil en cache n'a rien à montrer d'autre que
     // le disque : chaque autre onglet ne saurait afficher qu'une erreur. On les
@@ -423,6 +452,9 @@ class _MainShellState extends State<MainShell> {
         ),
       ShellTabs.requests:
           _trackScroll(ShellTabs.requests, RequestsScreen(embedded: isWide)),
+      if (canUseLists)
+        ShellTabs.lists:
+            _trackScroll(ShellTabs.lists, ListsScreen(embedded: isWide)),
       ShellTabs.downloads:
           _trackScroll(ShellTabs.downloads, DownloadsScreen(embedded: isWide)),
     };
@@ -460,6 +492,7 @@ class _MainShellState extends State<MainShell> {
                     libraries: libraries,
                     canRequestMedia: authProvider.permissions.requestMedia,
                     canDownload: downloads.isSupported,
+                    canUseLists: canUseLists,
                   ),
               ],
             ),
@@ -480,6 +513,7 @@ class _MainShellState extends State<MainShell> {
                   homeProvider: homeProvider,
                   authProvider: authProvider,
                   canDownload: downloads.isSupported,
+                  canUseLists: canUseLists,
                   nodeFor: _tabNode,
                 ),
               ),

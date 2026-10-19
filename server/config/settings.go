@@ -17,6 +17,7 @@ const (
 	KeyMediaHubAPIKey       = "mediahub_api_key"
 	KeyTMDBAPIKey           = "tmdb_api_key"
 	KeyTMDBLanguage         = "tmdb_language"
+	KeyFanartAPIKey         = "fanart_api_key"
 	KeyPlaybackLogsEnabled  = "playback_logs_enabled"
 	KeyPlaybackStatsEnabled = "playback_stats_enabled"
 	KeyOTPPolicy            = "otp_policy"
@@ -145,6 +146,15 @@ func TMDBLanguage() string {
 	return lang
 }
 
+// FanartAPIKey returns persisted key, then FANART_API_KEY env. Facultative :
+// sans elle, le choix d'affiche ne propose que celles de TMDB.
+func FanartAPIKey() string {
+	if v, ok := getStored(KeyFanartAPIKey); ok {
+		return v
+	}
+	return strings.TrimSpace(os.Getenv("FANART_API_KEY"))
+}
+
 // PlaybackLogsEnabled returns whether playback logs are enabled (db → env → true).
 func PlaybackLogsEnabled() bool {
 	if v, ok := getStored(KeyPlaybackLogsEnabled); ok {
@@ -199,6 +209,8 @@ type PublicSettings struct {
 	TMDBAPIKeySet        bool   `json:"tmdb_api_key_set"`
 	TMDBAPIKeyHint       string `json:"tmdb_api_key_hint,omitempty"`
 	TMDBLanguage         string `json:"tmdb_language"`
+	FanartAPIKeySet      bool   `json:"fanart_api_key_set"`
+	FanartAPIKeyHint     string `json:"fanart_api_key_hint,omitempty"`
 	PlaybackLogsEnabled  bool   `json:"playback_logs_enabled"`
 	PlaybackStatsEnabled bool   `json:"playback_stats_enabled"`
 	OTPPolicy            string `json:"otp_policy"`
@@ -219,6 +231,7 @@ func maskSecret(secret string) string {
 func Snapshot() PublicSettings {
 	mhKey := MediaHubAPIKey()
 	tmdbKey := TMDBAPIKey()
+	fanartKey := FanartAPIKey()
 	return PublicSettings{
 		MediaHubURL:          MediaHubURL(),
 		MediaHubAPIKeySet:    mhKey != "",
@@ -226,6 +239,8 @@ func Snapshot() PublicSettings {
 		TMDBAPIKeySet:        tmdbKey != "",
 		TMDBAPIKeyHint:       maskSecret(tmdbKey),
 		TMDBLanguage:         TMDBLanguage(),
+		FanartAPIKeySet:      fanartKey != "",
+		FanartAPIKeyHint:     maskSecret(fanartKey),
 		PlaybackLogsEnabled:  PlaybackLogsEnabled(),
 		PlaybackStatsEnabled: PlaybackStatsEnabled(),
 		OTPPolicy:            string(OTPPolicy()),
@@ -240,6 +255,8 @@ type UpdateRequest struct {
 	TMDBAPIKey           *string `json:"tmdb_api_key"`
 	ClearTMDBAPIKey      bool    `json:"clear_tmdb_api_key"`
 	TMDBLanguage         *string `json:"tmdb_language"`
+	FanartAPIKey         *string `json:"fanart_api_key"`
+	ClearFanartAPIKey    bool    `json:"clear_fanart_api_key"`
 	PlaybackLogsEnabled  *bool   `json:"playback_logs_enabled"`
 	PlaybackStatsEnabled *bool   `json:"playback_stats_enabled"`
 	// OTPPolicy : une des valeurs d'otp.Policy. Le handler refuse les autres
@@ -290,6 +307,15 @@ func ApplyUpdate(req UpdateRequest) (PublicSettings, error) {
 			lang = "fr-FR"
 		}
 		if err := setStored(KeyTMDBLanguage, lang); err != nil {
+			return PublicSettings{}, err
+		}
+	}
+	if req.ClearFanartAPIKey {
+		if err := setStored(KeyFanartAPIKey, ""); err != nil {
+			return PublicSettings{}, err
+		}
+	} else if req.FanartAPIKey != nil && strings.TrimSpace(*req.FanartAPIKey) != "" {
+		if err := setStored(KeyFanartAPIKey, *req.FanartAPIKey); err != nil {
 			return PublicSettings{}, err
 		}
 	}

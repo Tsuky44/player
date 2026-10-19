@@ -1,0 +1,89 @@
+{
+  "id": 1,
+  "kind": "custom",
+  "name": "name-value",
+  "description": "description-value",
+  "is_shared": true,
+  "is_mine": true,
+  "owner": {
+    "id": 2,
+    "username": "username-value"
+  },
+  "item_count": 3,
+  "posters": [
+    "posters-value"
+  ],
+  "updated_at": "2026-01-02T03:04:05Z",
+  "contains_item_id": 4,
+  "items": [
+    {
+      "id": 5,
+      "media_type": "show",
+      "tmdb_id": 6,
+      "title": "title-value",
+      "poster_url": "poster_url-value",
+      "release_date": "2020-01-02",
+      "added_at": "2026-01-02T03:04:05Z",
+      "media_id": 7,
+      "media": {
+        "versions": [
+          {
+            "id": 8,
+            "type": "episode",
+            "title": "title-value",
+            "file_path": "file_path-value",
+            "parent_id": 10,
+            "poster_url": "poster_url-value",
+            "overview": "overview-value",
+            "release_date": "2020-01-02",
+            "tmdb_id": 11,
+            "season_number": 12,
+            "episode_number": 13,
+            "imdb_id": "imdb_id-value",
+            "intro_start": 14,
+            "intro_end": 15,
+            "outro_start": 16,
+            "outro_end": 17,
+            "created_at": "2026-01-02T03:04:05Z",
+            "current_position_seconds": 18,
+            "duration": 19,
+            "is_finished": true,
+            "show_title": "show_title-value",
+            "show_poster_url": "show_poster_url-value",
+            "show_id": 20,
+            "episode_title": "episode_title-value",
+            "updated_at": "2026-01-02T03:04:05Z",
+            "has_new_episode": true,
+            "label": "label-value"
+          }
+        ],
+        "id": 21,
+        "type": "episode",
+        "title": "title-value",
+        "file_path": "file_path-value",
+        "parent_id": 23,
+        "poster_url": "poster_url-value",
+        "overview": "overview-value",
+        "release_date": "2020-01-02",
+        "tmdb_id": 24,
+        "season_number": 25,
+        "episode_number": 26,
+        "imdb_id": "imdb_id-value",
+        "intro_start": 27,
+        "intro_end": 28,
+        "outro_start": 29,
+        "outro_end": 30,
+        "created_at": "2026-01-02T03:04:05Z",
+        "current_position_seconds": 31,
+        "duration": 32,
+        "is_finished": true,
+        "show_title": "show_title-value",
+        "show_poster_url": "show_poster_url-value",
+        "show_id": 33,
+        "episode_title": "episode_title-value",
+        "updated_at": "2026-01-02T03:04:05Z",
+        "has_new_episode": true
+      }
+    }
+  ]
+}

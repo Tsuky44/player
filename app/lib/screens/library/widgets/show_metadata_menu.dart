@@ -9,7 +9,7 @@ import '../../../l10n/tr.dart';
 
 /// Le menu « Métadonnées série » de la fiche d'une série.
 ///
-/// Ses deux entrées appellent des routes que le serveur réserve à
+/// Ses entrées appellent des routes que le serveur réserve à
 /// `manage_library` (ADR-0001) : un compte sans ce droit n'a pas de menu du
 /// tout, plutôt qu'un crayon qui mène à un refus.
 class ShowMetadataMenu extends StatelessWidget {
@@ -19,10 +19,14 @@ class ShowMetadataMenu extends StatelessWidget {
   /// Choisir soi-même la fiche TMDB.
   final VoidCallback onPickOnTmdb;
 
+  /// Choisir l'affiche parmi celles de TMDB et Fanart.tv (ADR-0068).
+  final VoidCallback onChangePoster;
+
   const ShowMetadataMenu({
     super.key,
     required this.onRedetect,
     required this.onPickOnTmdb,
+    required this.onChangePoster,
   });
 
   @override
@@ -58,7 +62,19 @@ class ShowMetadataMenu extends StatelessWidget {
             leading: Icon(AppIcons.search),
             title: Text(tr('Choisir sur TMDB')),
             subtitle: Text(
-              tr('Correction manuelle de l’affiche'),
+              tr('Correction manuelle de la fiche'),
+              style: TextStyle(fontSize: AppType.footnote),
+            ),
+          ),
+        ),
+        PopupMenuItem(
+          value: onChangePoster,
+          child: ListTile(
+            contentPadding: EdgeInsets.zero,
+            leading: Icon(AppIcons.poster),
+            title: Text(tr('Changer l’affiche')),
+            subtitle: Text(
+              tr('Parmi celles de TMDB et Fanart.tv'),
               style: TextStyle(fontSize: AppType.footnote),
             ),
           ),

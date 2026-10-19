@@ -6,116 +6,13 @@ import '../../../theme/app_colors.dart';
 import '../../../theme/app_type.dart';
 import '../../../l10n/tr.dart';
 
+export 'settings_page.dart';
+
 /// Les briques des paramètres : une page, des groupes en carte, des lignes.
 ///
 /// Toutes les catégories sont faites des mêmes pièces, pour qu'aucune ne
 /// ressemble à un formulaire posé là : un titre, une phrase qui dit à quoi sert
 /// la page, puis des groupes nommés dont les lignes se lisent d'un coup d'œil.
-
-/// Ce que la coquille dit aux pages : sont-elles affichées à côté de la
-/// navigation (titre dans la page) ou poussées seules (titre dans la barre).
-class SettingsLayout extends InheritedWidget {
-  const SettingsLayout({
-    super.key,
-    required this.isWide,
-    required this.openSection,
-    required super.child,
-  });
-
-  final bool isWide;
-
-  /// Ouvre une autre catégorie — « Tout voir » du tableau de bord vers
-  /// l'historique, par exemple.
-  final void Function(String sectionId) openSection;
-
-  static SettingsLayout? maybeOf(BuildContext context) =>
-      context.dependOnInheritedWidgetOfExactType<SettingsLayout>();
-
-  @override
-  bool updateShouldNotify(SettingsLayout oldWidget) =>
-      isWide != oldWidget.isWide;
-}
-
-class SettingsPage extends StatelessWidget {
-  const SettingsPage({
-    super.key,
-    required this.title,
-    required this.description,
-    required this.children,
-    this.actions = const [],
-    this.onRefresh,
-  });
-
-  final String title;
-  final String description;
-  final List<Widget> children;
-  final List<Widget> actions;
-  final Future<void> Function()? onRefresh;
-
-  @override
-  Widget build(BuildContext context) {
-    final isWide = SettingsLayout.maybeOf(context)?.isWide ?? false;
-    final textTheme = Theme.of(context).textTheme;
-    final horizontal = isWide ? 48.0 : 20.0;
-
-    final header = Padding(
-      padding: EdgeInsets.only(bottom: isWide ? 40 : 28),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              if (isWide) ...[
-                Text(
-                  title,
-                  style: textTheme.headlineSmall?.copyWith(
-                    fontSize: AppType.largeTitle,
-                    fontWeight: FontWeight.w600,
-                    letterSpacing: -0.8,
-                  ),
-                ),
-                const SizedBox(height: 10),
-              ],
-              Text(
-                description,
-                style: textTheme.bodyMedium?.copyWith(
-                  color: AppColors.textSecondary,
-                  height: 1.45,
-                ),
-              ),
-            ],
-          ),
-          if (actions.isNotEmpty) ...[
-            const SizedBox(height: 16),
-            Wrap(spacing: 8, runSpacing: 8, children: actions),
-          ],
-        ],
-      ),
-    );
-
-    Widget scroll = ListView(
-      physics: const AlwaysScrollableScrollPhysics(),
-      padding:
-          EdgeInsets.fromLTRB(horizontal, isWide ? 52 : 16, horizontal, 64),
-      children: [
-        Center(
-          child: ConstrainedBox(
-            constraints: const BoxConstraints(maxWidth: 820),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.stretch,
-              children: [header, ...children],
-            ),
-          ),
-        ),
-      ],
-    );
-    if (onRefresh != null) {
-      scroll = RefreshIndicator(onRefresh: onRefresh!, child: scroll);
-    }
-    return scroll;
-  }
-}
 
 /// Un groupe nommé de lignes, dans une carte.
 class SettingsGroup extends StatelessWidget {
