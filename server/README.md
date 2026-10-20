@@ -142,6 +142,12 @@ Toutes les routes API (sauf l'inscription/connexion et le stream) requièrent l'
   (`POST {url}/api/media/availability`, `{ "items": [{ "tmdbId", "mediaType" }] }`) ; sur `404`/`405`
   (MediaHub, OnyxHub ancien), il retombe sur `GET {url}/api/media/availability/:id` par carte
   et ne retente le lot qu'au bout de 10 minutes.
+* `GET /api/requests/mine` (`request_media`, ADR-0073) — relaie `GET {url}/api/request` au nom du
+  compte : `{ "requests": [{ "tmdbId", "mediaType", "title", "posterPath", "seasons", "status",
+  "requestedAt", "progress" }] }`, tel qu'OnyxHub le rend. Capacité `my_requests`.
+* `GET /api/library/tmdb-index` (`RequireAuth`, ADR-0073) — `{ "movies": { "<tmdb>": id },
+  "shows": { "<tmdb>": id } }`, la plus ancienne fiche de chaque titre. L'app web ouvre une fiche
+  depuis `?movie=ID` ou `?show=ID`. Capacité `library_tmdb_index`.
 
 #### ➡️ Profil connecté
 * **Route :** `GET /api/auth/me` — même charge utile que `user` ci-dessus.

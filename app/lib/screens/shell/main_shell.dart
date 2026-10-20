@@ -23,6 +23,7 @@ import '../../widgets/global/app_update_dialog.dart';
 import '../../widgets/global/interface_tour/interface_tour.dart';
 import '../../widgets/global/interface_tour/tour_anchor.dart';
 import '../../desktop_window.dart';
+import '../../navigation/media_link.dart';
 import '../../navigation/shell_navigator.dart';
 import '../../tv/tv_mode.dart';
 import '../../tv/tv_pairing_link.dart';
@@ -246,6 +247,9 @@ class _MainShellState extends State<MainShell> {
       final code = TvPairingLink.take();
       if (code == null) {
         unawaited(_afterSessionOpened());
+        // « Lire dans Onyx » depuis OnyxHub : la fiche s'ouvre par-dessus les onglets.
+        final linked = MediaLink.takeRoute();
+        if (linked != null) unawaited(shellNavigatorKey.currentState?.push(linked));
         return;
       }
       Navigator.of(context).push(

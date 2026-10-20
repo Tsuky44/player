@@ -43,6 +43,7 @@ import 'tv/tv_focus_scroll.dart';
 import 'tv/tv_key_repeat.dart';
 import 'tv/tv_mode.dart';
 import 'tv/tv_pairing_link.dart';
+import 'navigation/media_link.dart';
 import 'tv/tv_touchpad.dart';
 import 'tv/tv_ui_scale.dart';
 import 'screens/player/display_frame_rate.dart';
@@ -163,6 +164,8 @@ void main() async {
   // A QR scanned on the TV opens this app with ?tv=CODE. Read it now, act on it
   // once the shell is up and there is a session to approve with.
   TvPairingLink.capture();
+  // « Lire dans Onyx » depuis OnyxHub arrive en ?movie=ID ou ?show=ID (ADR-0073).
+  MediaLink.capture();
   // Observe les flèches maintenues, pour que le focus ne coure pas plus vite
   // que les rangées ne défilent. Voir [TvKeyRepeat].
   TvKeyRepeat.install();

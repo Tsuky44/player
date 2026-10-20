@@ -224,6 +224,9 @@ func main() {
 	router.GET("/api/home", handlers.RequireAuth(handlers.Home))
 	router.GET("/api/media-identities", handlers.RequireAuth(handlers.GetMediaIdentities))
 	router.POST("/api/media-resolve", handlers.RequireAuth(handlers.ResolveMedia))
+	// Ce que la bibliothèque a, par identifiant TMDB, pour OnyxHub (ADR-0073) :
+	// tout compte voit déjà toute la bibliothèque, RequireAuth suffit.
+	router.GET("/api/library/tmdb-index", handlers.RequireAuth(handlers.GetLibraryTMDBIndex))
 	router.GET("/api/progress/sync", handlers.RequireAuth(handlers.ExportProgress))
 	router.POST("/api/progress/sync", handlers.RequireAuth(handlers.NotifiesProgress(handlers.ImportProgress)))
 
@@ -336,6 +339,8 @@ func main() {
 	router.GET("/api/requests/media/:id/seasons/:num/episodes", handlers.RequirePermission(models.PermRequestMedia, handlers.TmdbRequestSeasonEpisodes))
 	router.GET("/api/requests/media/:id", handlers.RequirePermission(models.PermRequestMedia, handlers.TmdbRequestDetails))
 	router.POST("/api/requests", handlers.RequirePermission(models.PermRequestMedia, handlers.MediaHubRequest))
+	// Les demandes du compte, lues chez OnyxHub (ADR-0073) : même droit que les envoyer.
+	router.GET("/api/requests/mine", handlers.RequirePermission(models.PermRequestMedia, handlers.MediaHubMyRequests))
 
 	// External subtitles (sidecar files or OpenSubtitles downloads), served as
 	// WebVTT. Unauthenticated so media_kit/mpv can fetch the track directly.

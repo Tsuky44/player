@@ -44,6 +44,9 @@ class ServerCapabilities {
   /// Le serveur vérifie lui-même qu'il joint OnyxHub (ADR-0072).
   static const mediaHubLinkTest = 'mediahub_link_test';
 
+  /// Le serveur relaie les demandes du compte chez OnyxHub (ADR-0073).
+  static const myRequests = 'my_requests';
+
   bool supports(String capability) => capabilities.contains(capability);
 
   /// Null quand la réponse n'est pas celle d'un serveur Onyx qui va bien.

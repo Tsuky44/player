@@ -3056,4 +3056,18 @@ const Map<String, String> kEnglish = <String, String>{
       'Testing…',
   'Le test n’a pas pu se faire.':
       'The test could not run.',
+  'Mes demandes':
+      'My requests',
+  'Aucune demande':
+      'No requests',
+  'Ce que vous demandez depuis l’onglet Demander apparaît ici, avec son avancement.':
+      'What you request from the Request tab shows up here, with its progress.',
+  'Impossible de charger vos demandes.':
+      'Could not load your requests.',
+  'Saisons {0}':
+      'Seasons {0}',
+  'Approuvée':
+      'Approved',
+  'Téléchargement':
+      'Download',
 };

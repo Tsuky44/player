@@ -40,6 +40,11 @@ const (
 	// POST /api/settings/mediahub/test existe : le serveur vérifie lui-même
 	// qu'il joint OnyxHub (ADR-0072).
 	CapabilityMediaHubLinkTest = "mediahub_link_test"
+	// GET /api/library/tmdb-index existe, et l'app web ouvre une fiche depuis
+	// ?movie=ID ou ?show=ID (ADR-0073).
+	CapabilityLibraryTMDBIndex = "library_tmdb_index"
+	// GET /api/requests/mine relaie les demandes du compte chez OnyxHub (ADR-0073).
+	CapabilityMyRequests = "my_requests"
 )
 
 type pingResponse struct {
@@ -68,6 +73,8 @@ func pingPayload() pingResponse {
 			CapabilityPosterPicker,
 			CapabilityWatchLists,
 			CapabilityMediaHubLinkTest,
+			CapabilityLibraryTMDBIndex,
+			CapabilityMyRequests,
 		},
 	}
 }

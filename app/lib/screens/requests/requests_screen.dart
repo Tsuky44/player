@@ -9,6 +9,8 @@ import '../../theme/app_colors.dart';
 import '../../tv/tv_deferred_keyboard.dart';
 import '../../utils/responsive.dart';
 import '../../widgets/global/empty_state.dart';
+import '../../services/api_client.dart';
+import 'my_requests_screen.dart';
 import 'request_detail_screen.dart';
 import 'widgets/request_filters_sheet.dart';
 import 'widgets/request_media_card.dart';
@@ -34,6 +36,9 @@ class _RequestsScreenState extends State<RequestsScreen> {
   RequestCatalogFilters _draftFilters = RequestCatalogFilters.defaults;
   Timer? _searchDebounce;
 
+  /// Le serveur relaie les demandes du compte chez OnyxHub (ADR-0073).
+  bool _hasMyRequests = false;
+
   static const _searchDebounceDuration = Duration(milliseconds: 400);
 
   @override
@@ -44,7 +49,17 @@ class _RequestsScreenState extends State<RequestsScreen> {
       final provider = context.read<MediaRequestsProvider>();
       _syncDraftFromProvider(provider);
       provider.load();
+      _checkMyRequests();
     });
+  }
+
+  Future<void> _checkMyRequests() async {
+    try {
+      final supported = await context.read<ApiClient>().supportsMyRequests();
+      if (mounted && supported) setState(() => _hasMyRequests = true);
+    } catch (_) {
+      // Serveur muet : l'entrée « Mes demandes » reste cachée, l'onglet marche.
+    }
   }
 
   void _syncDraftFromProvider(MediaRequestsProvider provider) {
@@ -153,13 +168,29 @@ class _RequestsScreenState extends State<RequestsScreen> {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Text(tr('Demander'),
-                      style: Theme.of(context).textTheme.displaySmall?.copyWith(
-                          fontWeight: FontWeight.w800,
-                          fontSize: compact ? 26 : 32)),
+                  Row(
+                    children: [
+                      Expanded(
+                        child: Text(tr('Demander'),
+                            style: Theme.of(context)
+                                .textTheme
+                                .displaySmall
+                                ?.copyWith(
+                                    fontWeight: FontWeight.w800,
+                                    fontSize: compact ? 26 : 32)),
+                      ),
+                      if (_hasMyRequests)
+                        TextButton.icon(
+                          onPressed: () => Navigator.of(context).push(
+                              MaterialPageRoute(
+                                  builder: (_) => const MyRequestsScreen())),
+                          icon: const Icon(AppIcons.request),
+                          label: Text(tr('Mes demandes')),
+                        ),
+                    ],
+                  ),
                   const SizedBox(height: 6),
-                  Text(
-                      tr('Recherchez et demandez de nouveaux films et séries'),
+                  Text(tr('Recherchez et demandez de nouveaux films et séries'),
                       style: TextStyle(color: AppColors.textSecondary)),
                   const SizedBox(height: 22),
                   TvDeferredKeyboard(

@@ -25,8 +25,8 @@ ApiClient _server(List<RequestOptions> requests,
       requests.add(options);
       return switch (options.uri.path) {
         '/api/ping' => _json({'status': 'ok', 'capabilities': capabilities}),
-        '/api/settings/mediahub/test' =>
-          _json({'ok': false, 'message': 'OnyxHub répond, mais refuse cette clé.'}),
+        '/api/settings/mediahub/test' => _json(
+            {'ok': false, 'message': 'OnyxHub répond, mais refuse cette clé.'}),
         _ => _json(const <String, Object>{}),
       };
     });
@@ -46,7 +46,8 @@ void main() {
     expect(requests.map((r) => r.uri.path), ['/api/ping']);
   });
 
-  test('le test porte sur les valeurs du formulaire, et son échec reste lisible',
+  test(
+      'le test porte sur les valeurs du formulaire, et son échec reste lisible',
       () async {
     final requests = <RequestOptions>[];
     final api = _server(requests, capabilities: const ['mediahub_link_test']);

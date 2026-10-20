@@ -54,6 +54,15 @@ func MediaHubRequest(w http.ResponseWriter, r *http.Request, _ httprouter.Params
 	proxyMediaHub(w, r, userID, http.MethodPost, "/api/request", nil, body)
 }
 
+// MediaHubMyRequests relaie les demandes du compte et leur progression
+// (GET /api/requests/mine → GET {OnyxHub}/api/request, ADR-0073). La réponse
+// passe telle quelle : c'est le format d'OnyxHub que l'app lit. MediaHub n'a
+// pas cette route ; son 404 ou son 405 arrive à l'app, qui n'affiche alors pas
+// l'écran.
+func MediaHubMyRequests(w http.ResponseWriter, r *http.Request, _ httprouter.Params, userID int) {
+	proxyMediaHub(w, r, userID, http.MethodGet, "/api/request", nil, nil)
+}
+
 // mediaHubAvailability mirrors MediaHub's getMediaAvailability response.
 type mediaHubAvailability struct {
 	Status  string `json:"status"`

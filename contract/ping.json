@@ -12,6 +12,8 @@
     "announcements",
     "poster_picker",
     "watch_lists",
-    "mediahub_link_test"
+    "mediahub_link_test",
+    "library_tmdb_index",
+    "my_requests"
   ]
 }
