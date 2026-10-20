@@ -3050,4 +3050,10 @@ const Map<String, String> kEnglish = <String, String>{
       'Only you can see this list.',
   'Créer':
       'Create',
+  'Tester':
+      'Test',
+  'Test…':
+      'Testing…',
+  'Le test n’a pas pu se faire.':
+      'The test could not run.',
 };

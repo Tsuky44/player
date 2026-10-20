@@ -36,6 +36,7 @@ class _IntegrationsPageState extends State<IntegrationsPage> {
   bool _savingTmdb = false;
   bool _savingFanart = false;
   bool _savingMediaHub = false;
+  bool _testingMediaHub = false;
 
   @override
   void initState() {
@@ -144,6 +145,34 @@ class _IntegrationsPageState extends State<IntegrationsPage> {
       }
     }
     if (mounted) setState(() => _savingMediaHub = false);
+  }
+
+  /// Les valeurs du formulaire, pas encore enregistrées, sont celles qu'on
+  /// teste : on vérifie avant d'enregistrer, pas après.
+  Future<void> _testMediaHub() async {
+    setState(() => _testingMediaHub = true);
+    try {
+      final result = await context.read<ApiClient>().testMediaHubLink(
+            url: _mediaHubUrl.text.trim(),
+            apiKey: _mediaHubKey.text.trim(),
+          );
+      if (!mounted) return;
+      if (result == null) {
+        showSettingsSnack(
+            context,
+            tr('Ce serveur est trop ancien pour cette fonction. Mettez-le à jour.'),
+            error: true);
+      } else {
+        showSettingsSnack(context, result.message, error: !result.ok);
+      }
+    } catch (e) {
+      if (mounted) {
+        showSettingsSnack(
+            context, settingsErrorText(e, tr('Le test n’a pas pu se faire.')),
+            error: true);
+      }
+    }
+    if (mounted) setState(() => _testingMediaHub = false);
   }
 
   Widget _status(bool configured) => SettingsPill(
@@ -272,7 +301,9 @@ class _IntegrationsPageState extends State<IntegrationsPage> {
                   ),
                   const SizedBox(height: 14),
                   _Actions(
-                    saving: _savingMediaHub,
+                    saving: _savingMediaHub || _testingMediaHub,
+                    onTest: _testMediaHub,
+                    testing: _testingMediaHub,
                     onSave: () => _saveMediaHub(),
                     onClear: settings.mediaHubApiKeySet
                         ? () => _saveMediaHub(clearKey: true)
@@ -340,11 +371,17 @@ class _Actions extends StatelessWidget {
     required this.saving,
     required this.onSave,
     required this.onClear,
+    this.onTest,
+    this.testing = false,
   });
 
   final bool saving;
   final VoidCallback onSave;
   final VoidCallback? onClear;
+
+  /// Seul MediaHub/OnyxHub se teste : c'est le serveur qui doit le joindre.
+  final VoidCallback? onTest;
+  final bool testing;
 
   @override
   Widget build(BuildContext context) {
@@ -359,9 +396,16 @@ class _Actions extends StatelessWidget {
             style: TextButton.styleFrom(foregroundColor: AppColors.error),
             child: Text(tr('Effacer la clé')),
           ),
+        if (onTest != null)
+          OutlinedButton(
+            onPressed: saving ? null : onTest,
+            child: Text(testing ? tr('Test…') : tr('Tester')),
+          ),
         FilledButton(
           onPressed: saving ? null : onSave,
-          child: Text(saving ? tr('Enregistrement…') : tr('Enregistrer')),
+          child: Text(saving && !testing
+              ? tr('Enregistrement…')
+              : tr('Enregistrer')),
         ),
       ],
     );

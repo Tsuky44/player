@@ -37,6 +37,9 @@ const (
 	// /api/lists existe : « à regarder plus tard » et les listes du compte,
 	// partagées ou non (ADR-0070).
 	CapabilityWatchLists = "watch_lists"
+	// POST /api/settings/mediahub/test existe : le serveur vérifie lui-même
+	// qu'il joint OnyxHub (ADR-0072).
+	CapabilityMediaHubLinkTest = "mediahub_link_test"
 )
 
 type pingResponse struct {
@@ -64,6 +67,7 @@ func pingPayload() pingResponse {
 			CapabilityAnnouncements,
 			CapabilityPosterPicker,
 			CapabilityWatchLists,
+			CapabilityMediaHubLinkTest,
 		},
 	}
 }

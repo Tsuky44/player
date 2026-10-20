@@ -11,6 +11,7 @@
     "libraries",
     "announcements",
     "poster_picker",
-    "watch_lists"
+    "watch_lists",
+    "mediahub_link_test"
   ]
 }

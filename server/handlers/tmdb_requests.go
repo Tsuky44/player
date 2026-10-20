@@ -201,7 +201,8 @@ func TmdbRequestCatalog(w http.ResponseWriter, r *http.Request, _ httprouter.Par
 }
 
 // enrichCatalogAvailability fills MediaHub availability status on catalog items
-// (same green/purple/yellow dots as MediaHub MediaCardStatus).
+// (same green/purple/yellow dots as MediaHub MediaCardStatus). Une page entière
+// en un appel quand OnyxHub le permet (ADR-0072), sinon un appel par carte.
 func enrichCatalogAvailability(items []catalogItem) {
 	if len(items) == 0 {
 		return
@@ -212,12 +213,25 @@ func enrichCatalogAvailability(items []catalogItem) {
 		return
 	}
 
+	batch := make([]availabilityBatchItem, len(items))
+	for i, item := range items {
+		batch[i] = availabilityBatchItem{TMDBID: item.ID, MediaType: item.MediaType}
+	}
+	if statuses, supported := fetchMediaHubAvailabilityBatch(batch, mediaHubHTTPClient); supported {
+		for i := range items {
+			if status, ok := statuses[availabilityKey(items[i].MediaType, items[i].ID)]; ok {
+				items[i].Status = status
+			}
+		}
+		return
+	}
+
 	var wg sync.WaitGroup
 	sem := make(chan struct{}, 8)
 	for i := range items {
 		wg.Add(1)
 		go func(i int) {
-			defer safego.Recover("handlers/tmdb_requests.go:218")
+			defer safego.Recover("handlers/tmdb_requests.go:234")
 			defer wg.Done()
 			sem <- struct{}{}
 			defer func() { <-sem }()

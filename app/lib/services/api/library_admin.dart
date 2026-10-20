@@ -119,6 +119,22 @@ mixin _LibraryAdminEndpoints {
     return ServerSettings.fromJson(response.data as Map<String, dynamic>);
   }
 
+  /// Le serveur tente de joindre OnyxHub avec l'adresse et la clé données, ou
+  /// celles enregistrées quand elles sont vides (ADR-0072). Null pour un
+  /// serveur qui ne sait pas encore le faire.
+  Future<MediaHubLinkTest?> testMediaHubLink({String? url, String? apiKey}) async {
+    final ping = await _dio.get('/api/ping');
+    final info = ServerCapabilities.tryParse(ping.data);
+    if (info == null || !info.supports(ServerCapabilities.mediaHubLinkTest)) {
+      return null;
+    }
+    final response = await _dio.post('/api/settings/mediahub/test', data: {
+      if (url != null && url.isNotEmpty) 'mediahub_url': url,
+      if (apiKey != null && apiKey.isNotEmpty) 'mediahub_api_key': apiKey,
+    });
+    return MediaHubLinkTest.fromJson(response.data as Map<String, dynamic>);
+  }
+
   Future<ServerSettings> updateServerSettings({
     String? mediaHubUrl,
     String? mediaHubApiKey,

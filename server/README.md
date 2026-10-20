@@ -130,6 +130,19 @@ Toutes les routes API (sauf l'inscription/connexion et le stream) requièrent l'
   `disabled`, `optional` (défaut), `admins`, `everyone`. Variable d'environnement de repli :
   `OTP_POLICY`.
 
+#### ➡️ Liaison avec OnyxHub (ADR-0072)
+* Réglée par `mediahub_url` et `mediahub_api_key` dans `PUT /api/settings` (`manage_settings`) ;
+  OnyxHub peut les écrire lui-même avec le jeton de son admin (« Connecter Onyx »).
+* `POST /api/settings/mediahub/test` (`manage_settings`) — body facultatif
+  `{ "mediahub_url", "mediahub_api_key" }` (vides : les valeurs enregistrées). Le serveur appelle
+  `GET {url}/api/integration/ping` avec la clé et rend toujours `200`
+  `{ "ok", "message", "service"?: "onyxhub"|"mediahub", "version"? }`. Un MediaHub (sans ping) est
+  reconnu à sa route de disponibilité. Capacité `mediahub_link_test` sur `/api/ping`.
+* Le catalogue de demandes lit les disponibilités d'une page en un appel
+  (`POST {url}/api/media/availability`, `{ "items": [{ "tmdbId", "mediaType" }] }`) ; sur `404`/`405`
+  (MediaHub, OnyxHub ancien), il retombe sur `GET {url}/api/media/availability/:id` par carte
+  et ne retente le lot qu'au bout de 10 minutes.
+
 #### ➡️ Profil connecté
 * **Route :** `GET /api/auth/me` — même charge utile que `user` ci-dessus.
 

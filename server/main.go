@@ -181,6 +181,9 @@ func main() {
 	// the snapshot.
 	router.GET("/api/settings", handlers.RequirePermission(models.PermManageSettings, handlers.GetSettings))
 	router.PUT("/api/settings", handlers.RequirePermission(models.PermManageSettings, handlers.UpdateSettings))
+	// Le test de la liaison avec OnyxHub (ADR-0072) fait appeler au serveur une
+	// adresse saisie et y présente la clé : manage_settings, comme l'écriture.
+	router.POST("/api/settings/mediahub/test", handlers.RequirePermission(models.PermManageSettings, handlers.TestMediaHubLink))
 
 	// Le message aux utilisateurs (ADR-0069). L'écrire parle à tous les comptes
 	// du serveur : c'est manage_settings, comme le reste des réglages. Chaque

@@ -32,6 +32,22 @@ class EmbyLinkStatus {
   }
 }
 
+/// Le résultat de POST /api/settings/mediahub/test (ADR-0072) : un échec du
+/// test n'est pas une erreur HTTP, il arrive ici avec [ok] à false et le
+/// message à montrer.
+class MediaHubLinkTest {
+  const MediaHubLinkTest({required this.ok, required this.message});
+
+  final bool ok;
+  final String message;
+
+  factory MediaHubLinkTest.fromJson(Map<String, dynamic> json) =>
+      MediaHubLinkTest(
+        ok: json['ok'] as bool? ?? false,
+        message: json['message'] as String? ?? '',
+      );
+}
+
 /// Public server settings from GET/PUT /api/settings (secrets are never cleartext).
 class ServerSettings {
   final String mediaHubUrl;
