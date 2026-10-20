@@ -1,0 +1,12 @@
+{
+  "results": [
+    { "tmdbId": 603, "mediaType": "movie", "status": "available", "available": true, "seasons": [] },
+    {
+      "tmdbId": 1399,
+      "mediaType": "tv",
+      "status": "partial",
+      "available": true,
+      "seasons": [{ "seasonNumber": 1, "status": "available", "available": true, "totalEpisodes": 10 }]
+    }
+  ]
+}

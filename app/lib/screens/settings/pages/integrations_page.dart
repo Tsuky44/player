@@ -8,7 +8,7 @@ import '../widgets/settings_ui.dart';
 import '../../../l10n/tr.dart';
 
 /// TMDB (métadonnées, affiches, catalogue de demandes), Fanart.tv (affiches
-/// en plus, ADR-0068) et MediaHub (envoi des demandes). Les clés ne sont jamais renvoyées en clair par le serveur.
+/// en plus, ADR-0068) et OnyxHub, ou un ancien MediaHub (envoi des demandes, ADR-0075). Les clés ne sont jamais renvoyées en clair par le serveur.
 class IntegrationsPage extends StatefulWidget {
   const IntegrationsPage({super.key});
 
@@ -136,7 +136,7 @@ class _IntegrationsPageState extends State<IntegrationsPage> {
       if (!mounted) return;
       setState(() => _apply(updated));
       showSettingsSnack(
-          context, clearKey ? tr('Clé MediaHub effacée.') : tr('MediaHub enregistré.'));
+          context, clearKey ? tr('Clé OnyxHub effacée.') : tr('OnyxHub enregistré.'));
     } catch (e) {
       if (mounted) {
         showSettingsSnack(
@@ -268,12 +268,14 @@ class _IntegrationsPageState extends State<IntegrationsPage> {
             ],
           ),
           SettingsGroup(
-            title: tr('MediaHub'),
+            title: tr('OnyxHub'),
             trailing: _status(
                 settings.mediaHubUrl.isNotEmpty && settings.mediaHubApiKeySet),
             footer:
                 tr('Les demandes faites depuis l’onglet Demandes y sont '
-                    'transmises pour être téléchargées.'),
+                    'transmises pour être téléchargées. Dans OnyxHub, « Connecter '
+                    'Onyx » remplit ces deux champs ; un ancien MediaHub marche '
+                    'aussi.'),
             padded: true,
             children: [
               Column(
@@ -286,8 +288,8 @@ class _IntegrationsPageState extends State<IntegrationsPage> {
                       controller: _mediaHubUrl,
                       keyboardType: TextInputType.url,
                       decoration: InputDecoration(
-                        labelText: tr('Adresse MediaHub'),
-                        hintText: 'https://mediahub.example.com',
+                        labelText: tr('Adresse d’OnyxHub'),
+                        hintText: 'http://192.168.1.10:4400',
                         prefixIcon: Icon(Icons.link_rounded),
                       ),
                     ),
@@ -295,7 +297,7 @@ class _IntegrationsPageState extends State<IntegrationsPage> {
                   const SizedBox(height: 12),
                   _KeyField(
                     controller: _mediaHubKey,
-                    label: tr('Clé API MediaHub'),
+                    label: tr('Clé d’intégration OnyxHub'),
                     configured: settings.mediaHubApiKeySet,
                     hint: settings.mediaHubApiKeyHint,
                   ),

@@ -6,6 +6,9 @@ import 'package:onyx/models/announcement.dart';
 import 'package:onyx/models/models.dart';
 import 'package:onyx/models/watch_list.dart';
 import 'package:onyx/models/server_capabilities.dart';
+import 'package:onyx/models/media_request.dart';
+import 'package:onyx/models/my_request.dart';
+import 'package:onyx/services/api_types.dart';
 
 /// Le contrat entre le serveur et l'app, vu de l'app.
 ///
@@ -148,7 +151,8 @@ void main() {
     expect(info.supports('une_capacite_inconnue'), isFalse);
 
     // Un serveur d'avant cette annonce : il répond, sans rien promettre.
-    final legacy = ServerCapabilities.tryParse({'status': 'ok', 'message': 'x'});
+    final legacy =
+        ServerCapabilities.tryParse({'status': 'ok', 'message': 'x'});
     expect(legacy!.version, isNull);
     expect(legacy.playbackTicketVersion, isNull);
     expect(legacy.capabilities, isEmpty);
@@ -241,5 +245,27 @@ void main() {
     expect(progress['is_finished'], isA<bool>());
 
     expect(_contract('progress_revision')['revision'], isA<String>());
+  });
+
+  // Les réponses d'OnyxHub que l'app lit, relayées par le serveur (ADR-0075).
+  // OnyxHub relit les mêmes fichiers : un format qui change d'un côté casse
+  // l'autre test.
+  test('OnyxHub : mes demandes et le test de liaison', () {
+    final requests = (_contract('onyxhub/my_requests')['requests'] as List)
+        .map((e) => MyRequest.fromJson(e as Map<String, dynamic>))
+        .toList();
+    expect(requests, hasLength(2));
+    expect(requests.first.mediaType, RequestMediaType.tv);
+    expect(requests.first.seasons, [1, 2]);
+    expect(requests.first.status, MyRequestStatus.processing);
+    expect(requests.first.progress, 42.5);
+    expect(requests.first.requestedAt, isNotNull);
+    expect(requests.last.status, MyRequestStatus.available);
+    expect(requests.last.progress, isNull);
+
+    final link =
+        MediaHubLinkTest.fromJson(_contract('onyxhub/mediahub_link_test'));
+    expect(link.ok, isTrue);
+    expect(link.message, contains('OnyxHub'));
   });
 }

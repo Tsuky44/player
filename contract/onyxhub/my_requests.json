@@ -1,0 +1,24 @@
+{
+  "requests": [
+    {
+      "mediaType": "tv",
+      "tmdbId": 1399,
+      "title": "Game of Thrones",
+      "posterPath": "/got.jpg",
+      "seasons": [1, 2],
+      "status": "processing",
+      "requestedAt": "2026-10-20T10:00:00.000Z",
+      "progress": 42.5
+    },
+    {
+      "mediaType": "movie",
+      "tmdbId": 603,
+      "title": "Matrix",
+      "posterPath": null,
+      "seasons": [],
+      "status": "available",
+      "requestedAt": "2026-10-19T08:00:00.000Z",
+      "progress": null
+    }
+  ]
+}

@@ -1,0 +1,6 @@
+{
+  "status": "ok",
+  "service": "onyxhub",
+  "version": "0.1.0",
+  "features": ["availability-batch", "my-requests"]
+}

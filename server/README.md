@@ -133,6 +133,9 @@ Toutes les routes API (sauf l'inscription/connexion et le stream) requièrent l'
 #### ➡️ Liaison avec OnyxHub (ADR-0072)
 * Réglée par `mediahub_url` et `mediahub_api_key` dans `PUT /api/settings` (`manage_settings`) ;
   OnyxHub peut les écrire lui-même avec le jeton de son admin (« Connecter Onyx »).
+* Chaque appel relayé vers OnyxHub porte `Authorization: Bearer <mediahub_api_key>`,
+  `X-Player-Username` et `X-Player-Id` (ADR-0075). Les formats échangés sont dans
+  `contract/onyxhub/`, relus par les tests d'Onyx et d'OnyxHub.
 * `POST /api/settings/mediahub/test` (`manage_settings`) — body facultatif
   `{ "mediahub_url", "mediahub_api_key" }` (vides : les valeurs enregistrées). Le serveur appelle
   `GET {url}/api/integration/ping` avec la clé et rend toujours `200`

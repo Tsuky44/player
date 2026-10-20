@@ -66,7 +66,7 @@ class _RequestDetailScreenState extends State<RequestDetailScreen> {
           );
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text(tr('Demande envoyée à MediaHub.'))));
+          SnackBar(content: Text(tr('Demande envoyée à OnyxHub.'))));
       Navigator.of(context).pop();
     } catch (_) {
       if (mounted) {

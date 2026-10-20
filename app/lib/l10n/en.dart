@@ -72,8 +72,8 @@ const Map<String, String> kEnglish = <String, String>{
       'Administrator',
   'Administration':
       'Administration',
-  'Adresse MediaHub':
-      'MediaHub address',
+  'Adresse d’OnyxHub':
+      'OnyxHub address',
   'Adresse du serveur':
       'Server address',
   'Adresse du serveur Emby':
@@ -452,12 +452,12 @@ const Map<String, String> kEnglish = <String, String>{
       'Choose another of your accounts. The two servers will send each other your progress, and each will appear on your other devices. The administrators of both servers must accept the link the first time.',
   'Choisissez un dossier du serveur et donnez-lui le nom que vous voulez. Vous pouvez en créer autant que nécessaire.':
       'Pick a folder on the server and give it any name you like. You can create as many as you need.',
-  'Clé API MediaHub':
-      'MediaHub API key',
+  'Clé d’intégration OnyxHub':
+      'OnyxHub integration key',
   'Clé API TMDB':
       'TMDB API key',
-  'Clé MediaHub effacée.':
-      'MediaHub key cleared.',
+  'Clé OnyxHub effacée.':
+      'OnyxHub key cleared.',
   'Clé TMDB effacée.':
       'TMDB key cleared.',
   'Clé active {0} — laisser vide pour la garder':
@@ -642,8 +642,8 @@ const Map<String, String> kEnglish = <String, String>{
       'Link request · {0}',
   'Demande envoyée pour la saison {0}.':
       'Request sent for season {0}.',
-  'Demande envoyée à MediaHub.':
-      'Request sent to MediaHub.',
+  'Demande envoyée à OnyxHub.':
+      'Request sent to OnyxHub.',
   'Demande envoyée à {0} pour « {1} ». La connexion se fera toute seule dès qu’un administrateur aura accepté.':
       'Request sent to {0} for “{1}”. You will be signed in automatically as soon as an administrator accepts.',
   'Demande envoyée. Le téléchargement se lance pendant que tu termines l’épisode en cours.':
@@ -1342,8 +1342,8 @@ const Map<String, String> kEnglish = <String, String>{
       'The other devices have been signed out.',
   'Les comptes du serveur et leurs droits, les personnes qui demandent un accès et les liens d’invitation.':
       'The server accounts and their rights, the people requesting access and the invitation links.',
-  'Les demandes faites depuis l’onglet Demandes y sont transmises pour être téléchargées.':
-      'Requests made from the Requests tab are sent there to be downloaded.',
+  'Les demandes faites depuis l’onglet Demandes y sont transmises pour être téléchargées. Dans OnyxHub, « Connecter Onyx » remplit ces deux champs ; un ancien MediaHub marche aussi.':
+      'Requests made from the Requests tab are sent there to be downloaded. In OnyxHub, “Connect Onyx” fills in both fields; an older MediaHub works too.',
   'Les deux serveurs cessent de se transmettre la progression et les comptes liés entre eux sont dissociés. L’historique déjà partagé reste sur chaque serveur.':
       'The two servers stop sending each other progress, and the accounts linked between them are unlinked. The history already shared stays on each server.',
   'Les dix dernières lectures gardent leur journal.':
@@ -1446,10 +1446,10 @@ const Map<String, String> kEnglish = <String, String>{
       'Match…',
   'Max':
       'Max',
-  'MediaHub':
-      'MediaHub',
-  'MediaHub enregistré.':
-      'MediaHub saved.',
+  'OnyxHub':
+      'OnyxHub',
+  'OnyxHub enregistré.':
+      'OnyxHub saved.',
   'Membre':
       'Member',
   'Menu':
@@ -2234,8 +2234,8 @@ const Map<String, String> kEnglish = <String, String>{
       'TMDB',
   'TMDB enregistré.':
       'TMDB saved.',
-  'TMDB et MediaHub':
-      'TMDB and MediaHub',
+  'TMDB et OnyxHub':
+      'TMDB and OnyxHub',
   'TMDB nest pas configuré. Vérifiez TMDB_API_KEY.':
       'TMDB is not configured. Check TMDB_API_KEY.',
   'TMDB sera recherché à partir du dossier local :\n\n{0}\n\nL’affiche et les métadonnées de cette série seront remplacées.':

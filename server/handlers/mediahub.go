@@ -21,19 +21,12 @@ const maxMediaHubResponseSize = 8 << 20
 
 var mediaHubHTTPClient = httpx.Long
 
-func MediaHubCatalog(w http.ResponseWriter, r *http.Request, _ httprouter.Params, userID int) {
-	proxyMediaHub(w, r, userID, http.MethodGet, "/api/integrations/player/catalog", r.URL.Query(), nil)
-}
+// Le compagnon de demandes : OnyxHub, ou un ancien MediaHub, réglé par
+// mediahub_url et mediahub_api_key (les noms d'origine, gardés pour les
+// installations existantes). Les formats échangés sont épinglés par
+// contract/onyxhub/ (ADR-0075).
 
-func MediaHubDetails(w http.ResponseWriter, r *http.Request, ps httprouter.Params, userID int) {
-	mediaID := strings.TrimSpace(ps.ByName("id"))
-	if mediaID == "" {
-		writeMediaHubError(w, http.StatusBadRequest, "Invalid media ID")
-		return
-	}
-	proxyMediaHub(w, r, userID, http.MethodGet, "/api/integrations/player/media/"+url.PathEscape(mediaID), r.URL.Query(), nil)
-}
-
+// MediaHubRequest relaie une demande (POST /api/requests → POST {OnyxHub}/api/request).
 func MediaHubRequest(w http.ResponseWriter, r *http.Request, _ httprouter.Params, userID int) {
 	body, err := io.ReadAll(io.LimitReader(r.Body, 1<<20))
 	if err != nil || !json.Valid(body) {
@@ -119,7 +112,7 @@ func proxyMediaHub(w http.ResponseWriter, r *http.Request, userID int, method, p
 	baseURL := strings.TrimRight(strings.TrimSpace(config.MediaHubURL()), "/")
 	apiKey := strings.TrimSpace(config.MediaHubAPIKey())
 	if baseURL == "" || apiKey == "" {
-		writeMediaHubError(w, http.StatusServiceUnavailable, "MediaHub integration is not configured")
+		writeMediaHubError(w, http.StatusServiceUnavailable, "OnyxHub n'est pas configuré sur ce serveur")
 		return
 	}
 
@@ -136,25 +129,28 @@ func proxyMediaHub(w http.ResponseWriter, r *http.Request, userID int, method, p
 
 	request, err := http.NewRequestWithContext(r.Context(), method, target, bytes.NewReader(body))
 	if err != nil {
-		writeMediaHubError(w, http.StatusBadGateway, "Unable to contact MediaHub")
+		writeMediaHubError(w, http.StatusBadGateway, "OnyxHub est injoignable")
 		return
 	}
 	request.Header.Set("Authorization", "Bearer "+apiKey)
 	request.Header.Set("X-Player-Username", username)
+	// L'identifiant survit à un renommage du compte : OnyxHub y rattache ses
+	// demandes (ADR-0075). MediaHub l'ignore.
+	request.Header.Set("X-Player-Id", strconv.Itoa(userID))
 	if len(body) > 0 {
 		request.Header.Set("Content-Type", "application/json")
 	}
 
 	response, err := mediaHubHTTPClient.Do(request)
 	if err != nil {
-		writeMediaHubError(w, http.StatusBadGateway, "MediaHub is unavailable")
+		writeMediaHubError(w, http.StatusBadGateway, "OnyxHub ne répond pas")
 		return
 	}
 	defer response.Body.Close()
 
 	responseBody, err := io.ReadAll(io.LimitReader(response.Body, maxMediaHubResponseSize))
 	if err != nil {
-		writeMediaHubError(w, http.StatusBadGateway, "Invalid MediaHub response")
+		writeMediaHubError(w, http.StatusBadGateway, "Réponse illisible d'OnyxHub")
 		return
 	}
 
