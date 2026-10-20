@@ -47,8 +47,9 @@ class _MyRequestsScreenState extends State<MyRequestsScreen> {
   String _errorText(Object? error) {
     if (error is DioException) {
       final data = error.response?.data;
-      if (data is Map && data['error'] is String)
+      if (data is Map && data['error'] is String) {
         return data['error'] as String;
+      }
     }
     return tr('Impossible de charger vos demandes.');
   }
