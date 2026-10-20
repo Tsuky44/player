@@ -1,7 +1,7 @@
 name: Release
 
 # Publie une version complete d'Onyx : les installateurs clients (Windows,
-# macOS, Android, iOS, Apple TV), le bundle web, et l'image Docker qui embarque
+# macOS, Android, iOS, Apple TV, lanceur LG webOS), le bundle web, et l'image Docker qui embarque
 # le tout.
 #
 # Ce workflow remplace publish-image.sh. Le script local doit recuperer les
@@ -622,6 +622,39 @@ jobs:
   # ---------------------------------------------------------------------------
   # Tests : en parallele des builds, mais rien n'est publie s'ils sont rouges.
   # ---------------------------------------------------------------------------
+  # ---------------------------------------------------------------------------
+  # Televiseurs LG — lanceur webOS (.ipk)
+  # ---------------------------------------------------------------------------
+  # Le paquet ne contient que app/webos/, la page qui ouvre l'app web du serveur
+  # (ADR-0076) : ni Flutter ni secret ici, quelques secondes de build. Il n'est
+  # pas signe — LG ne signe que ce qui passe par son Content Store, et une
+  # installation en mode developpeur accepte un paquet non signe.
+  build-webos:
+    needs: prepare
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+
+      # Epinglee, comme Flutter : ares-package decide du format du paquet.
+      - name: Installer les outils webOS
+        run: npm install -g @webos-tools/cli@3.2.6
+
+      - name: Build du .ipk
+        env:
+          ONYX_VERSION: ${{ needs.prepare.outputs.version }}
+        run: bash scripts/build-webos.sh
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: installer-webos
+          path: app/build/webos/*.ipk
+          retention-days: 7
+          if-no-files-found: error
+
   test:
     uses: ./.github/workflows/ci.yml
 
@@ -629,7 +662,7 @@ jobs:
   # Bundle web + image Docker + GitHub Release
   # ---------------------------------------------------------------------------
   publish:
-    needs: [prepare, test, build-android, build-macos, build-ios, build-tvos, build-windows]
+    needs: [prepare, test, build-android, build-macos, build-ios, build-tvos, build-windows, build-webos]
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -717,6 +750,7 @@ jobs:
             release-assets/*.dmg
             release-assets/*.apk
             release-assets/*.ipa
+            release-assets/*.ipk
           body: |
             ## Image Docker
 

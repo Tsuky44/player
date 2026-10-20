@@ -22,13 +22,19 @@ if (-not (Get-Command ares-package -ErrorAction SilentlyContinue)) {
     throw "ares-package introuvable : npm install -g @webos-tools/cli"
 }
 
-# La version du paquet suit celle de l'app (pubspec.yaml, sans le numéro de
-# build) : le téléviseur refuse d'installer par-dessus une version égale.
-$pubspec = Get-Content (Join-Path $RootDir "app\pubspec.yaml") -Raw
-if ($pubspec -notmatch '(?m)^version:\s*(\d+\.\d+\.\d+)') {
-    throw "version introuvable dans app\pubspec.yaml"
+# La version du paquet : $env:ONYX_VERSION quand on la donne (celle de la
+# Release), sinon celle de pubspec.yaml sans le numéro de build.
+$version = $env:ONYX_VERSION
+if (-not $version) {
+    $pubspec = Get-Content (Join-Path $RootDir "app\pubspec.yaml") -Raw
+    if ($pubspec -notmatch '(?m)^version:\s*(\d+\.\d+\.\d+)') {
+        throw "version introuvable dans app\pubspec.yaml"
+    }
+    $version = $Matches[1]
 }
-$version = $Matches[1]
+if ($version -notmatch '^\d+\.\d+\.\d+$') {
+    throw "version invalide : '$version' (format attendu : X.Y.Z)"
+}
 
 Write-Host "1. Préparation du lanceur $version..." -ForegroundColor Yellow
 if (Test-Path $StageDir) { Remove-Item $StageDir -Recurse -Force }
@@ -47,5 +53,9 @@ ares-package $StageDir --outdir $OutDir
 if ($LASTEXITCODE -ne 0) { throw "ares-package a échoué" }
 Remove-Item $StageDir -Recurse -Force
 
-Write-Host "Paquet dans $OutDir. Pour l'installer :" -ForegroundColor Green
-Write-Host "  ares-install --device <téléviseur> $OutDir\com.tsuky.onyx_${version}_all.ipk"
+# Le nom des autres installateurs de la Release (Onyx-<version>-<plateforme>).
+$ipk = Join-Path $OutDir "Onyx-$version-webos.ipk"
+Move-Item -Force (Join-Path $OutDir "com.tsuky.onyx_${version}_all.ipk") $ipk
+
+Write-Host "Paquet : $ipk. Pour l'installer :" -ForegroundColor Green
+Write-Host "  ares-install --device <téléviseur> $ipk"

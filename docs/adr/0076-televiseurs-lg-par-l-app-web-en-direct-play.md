@@ -80,7 +80,9 @@ les annonce pas. Le Dolby Vision n'est jamais supposé : un profil 5 part en HLS
 - Un téléviseur LG lit en Direct Play ce que son lecteur USB lit, sans charge serveur, HDR10 et
   5.1 compris. Ce qu'il refuse retombe en HLS sans geste de l'utilisateur.
 - Un changement de l'app web n'atteint les téléviseurs qu'une fois le serveur reconstruit avec
-  le nouveau bundle (`scripts/build-web.*`). Le lanceur se publie à part (`scripts/build-webos.*`).
+  le nouveau bundle (`scripts/build-web.*`). Le lanceur se publie à part : chaque Release porte
+  `Onyx-<version>-webos.ipk` (job `build-webos`), installé en mode développeur
+  ([`docs/webos.md`](../webos.md)).
 - hls.js vient de cdnjs, comme partout où media_kit le charge : un téléviseur sans accès à
   Internet a le Direct Play mais pas le repli HLS.
 - Retour à l'accueil de l'app ne quitte pas : c'est la touche Accueil du téléviseur qui le fait.

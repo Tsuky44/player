@@ -22,10 +22,14 @@ command -v ares-package >/dev/null || {
   exit 1
 }
 
-# La version du paquet suit celle de l'app (pubspec.yaml, sans le numéro de
-# build) : le téléviseur refuse d'installer par-dessus une version égale.
-VERSION="$(sed -n 's/^version:[[:space:]]*\([0-9]*\.[0-9]*\.[0-9]*\).*/\1/p' "$ROOT_DIR/app/pubspec.yaml")"
-[ -n "$VERSION" ] || { echo "version introuvable dans app/pubspec.yaml" >&2; exit 1; }
+# La version du paquet : celle de la Release quand la CI la donne (ONYX_VERSION),
+# sinon celle de pubspec.yaml sans le numéro de build. La CI ne réécrit pas
+# pubspec.yaml — elle passe --build-name aux autres builds —, d'où la variable.
+VERSION="${ONYX_VERSION:-$(sed -n 's/^version:[[:space:]]*\([0-9]*\.[0-9]*\.[0-9]*\).*/\1/p' "$ROOT_DIR/app/pubspec.yaml")}"
+printf '%s' "$VERSION" | grep -Eq '^[0-9]+\.[0-9]+\.[0-9]+$' || {
+  echo "version invalide : '$VERSION' (format attendu : X.Y.Z)" >&2
+  exit 1
+}
 
 echo "1. Préparation du lanceur $VERSION..."
 rm -rf "$STAGE_DIR"
@@ -38,5 +42,9 @@ echo "2. Paquet .ipk..."
 ares-package "$STAGE_DIR" --outdir "$OUT_DIR"
 rm -rf "$STAGE_DIR"
 
-echo "Paquet dans $OUT_DIR. Pour l'installer :"
-echo "  ares-install --device <téléviseur> $OUT_DIR/com.tsuky.onyx_${VERSION}_all.ipk"
+# Le nom des autres installateurs de la Release (Onyx-<version>-<plateforme>).
+IPK="$OUT_DIR/Onyx-${VERSION}-webos.ipk"
+mv -f "$OUT_DIR/com.tsuky.onyx_${VERSION}_all.ipk" "$IPK"
+
+echo "Paquet : $IPK. Pour l'installer :"
+echo "  ares-install --device <téléviseur> $IPK"

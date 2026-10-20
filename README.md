@@ -72,7 +72,7 @@ Onyx est un serveur multimédia auto-hébergé et son application, pensés pour 
 | 📱 iOS | ✅ |
 | 📺 Apple TV (tvOS) | ✅ |
 | 🌐 Web | ✅ |
-| 📺 Téléviseurs LG (webOS) | 🧪 Direct Play par le décodeur du téléviseur, à essayer sur un appareil |
+| 📺 Téléviseurs LG (webOS) | 🧪 Direct Play par le décodeur du téléviseur, à essayer sur un appareil — [installation](docs/webos.md) |
 
 ---
 

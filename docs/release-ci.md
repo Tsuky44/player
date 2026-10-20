@@ -10,6 +10,9 @@
 - `Onyx-<version>-ios.ipa` (non signé, pour sideloading)
 - `Onyx-<version>-tvos.ipa` (Apple TV, non signé — voir l'ADR-0028 ; job en
   `continue-on-error`, une Release peut partir sans lui)
+- `Onyx-<version>-webos.ipk` (lanceur des téléviseurs LG, non signé, pour le mode
+  développeur — voir l'ADR-0076 et [`docs/webos.md`](webos.md) ; il est joint à la Release
+  mais n'apparaît pas sur `/api/downloads`, qui ne connaît pas l'extension `.ipk`)
 - le bundle Flutter Web, embarqué dans le binaire Go
 - l'image `ghcr.io/tsuky44/playeur-server` taguée `latest`, `v<version>`, `v<majeur.mineur>`
 - une GitHub Release portant tous les installateurs
