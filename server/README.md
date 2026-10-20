@@ -148,6 +148,11 @@ Toutes les routes API (sauf l'inscription/connexion et le stream) requièrent l'
 * `GET /api/library/tmdb-index` (`RequireAuth`, ADR-0073) — `{ "movies": { "<tmdb>": id },
   "shows": { "<tmdb>": id } }`, la plus ancienne fiche de chaque titre. L'app web ouvre une fiche
   depuis `?movie=ID` ou `?show=ID`. Capacité `library_tmdb_index`.
+* `POST /api/integrations/onyxhub/imported` (sans compte, `Authorization: Bearer <mediahub_api_key>`,
+  ADR-0074) — `{ "tmdbId", "mediaType", "paths": [...] }` (100 au plus) → `202 { "status": "queued" }`.
+  Oublie le statut en cache du titre, parcourt le dossier de chaque chemin qui tombe dans une
+  bibliothèque, et avance le poll du moniteur (au plus une fois toutes les 30 s). `401` sans la
+  bonne clé. Capacité `onyxhub_import_signal`.
 
 #### ➡️ Profil connecté
 * **Route :** `GET /api/auth/me` — même charge utile que `user` ci-dessus.

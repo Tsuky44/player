@@ -230,6 +230,12 @@ func main() {
 	router.GET("/api/progress/sync", handlers.RequireAuth(handlers.ExportProgress))
 	router.POST("/api/progress/sync", handlers.RequireAuth(handlers.NotifiesProgress(handlers.ImportProgress)))
 
+	// Un import annoncé par OnyxHub (ADR-0074). Publique côté comptes : OnyxHub
+	// présente la clé d'intégration, et la route ne fait qu'avancer un parcours
+	// que le moniteur ferait de toute façon. Limitée comme un sondage : les
+	// webhooks d'une saison entière passent, un balayage de clés non.
+	router.POST("/api/integrations/onyxhub/imported", handlers.RateLimited(handlers.PollLimiter, handlers.OnyxHubImported))
+
 	// Serveurs liés (ADR-0017) : la progression passe d'un serveur à l'autre
 	// sans dépendre d'une app ouverte.
 	router.GET("/api/federation/info", handlers.GetFederationInfo)

@@ -14,6 +14,7 @@
     "watch_lists",
     "mediahub_link_test",
     "library_tmdb_index",
-    "my_requests"
+    "my_requests",
+    "onyxhub_import_signal"
   ]
 }

@@ -45,6 +45,9 @@ const (
 	CapabilityLibraryTMDBIndex = "library_tmdb_index"
 	// GET /api/requests/mine relaie les demandes du compte chez OnyxHub (ADR-0073).
 	CapabilityMyRequests = "my_requests"
+	// POST /api/integrations/onyxhub/imported avance l'indexation d'un import
+	// annoncé par OnyxHub (ADR-0074).
+	CapabilityOnyxHubImportSignal = "onyxhub_import_signal"
 )
 
 type pingResponse struct {
@@ -75,6 +78,7 @@ func pingPayload() pingResponse {
 			CapabilityMediaHubLinkTest,
 			CapabilityLibraryTMDBIndex,
 			CapabilityMyRequests,
+			CapabilityOnyxHubImportSignal,
 		},
 	}
 }
