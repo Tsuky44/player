@@ -209,13 +209,10 @@ class PlayerController {
     debugPrint('Playback: dropped frames — display=$display decoder=$decoder');
   }
 
-  /// Whether this playback only ever goes through an HLS session.
-  ///
-  /// A browser cannot open the containers and codecs a private library is made
-  /// of: the web skips Direct Play and starts a session as soon as the track
-  /// list says which tier to ask for. Every native engine opens the file
-  /// itself — AetherEngine included on Apple devices (ADR-0038).
-  bool get _hlsOnly => AppPlatform.isWeb;
+  /// Whether this playback only ever goes through an HLS session, and whether
+  /// the engine sees the file's own subtitles. See `playback_engine_mpv.dart`.
+  bool get _hlsOnly => !engineOpensFiles;
+  bool get _readsEmbeddedSubtitles => engineReadsEmbeddedSubtitles;
 
   /// In HLS mode the stream timeline resets to 0 at this offset (seconds) into
   /// the original media. Used to display the absolute position and to compute

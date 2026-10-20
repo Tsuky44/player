@@ -10,6 +10,7 @@ import '../../services/api_client.dart';
 import '../../services/tv_link.dart';
 import '../../services/tv_link_host.dart';
 import '../../theme/app_colors.dart';
+import '../../tv/tv_mode.dart';
 import '../../utils/app_platform.dart';
 import '../../theme/app_type.dart';
 import '../../l10n/tr.dart';
@@ -51,6 +52,7 @@ class PhoneSignInPanel extends StatefulWidget {
 
   /// How this device is named on the phone that approves it.
   static String get deviceName {
+    if (AppPlatform.isWebOS) return TvMode.deviceName;
     if (AppPlatform.isWeb) return tr('Navigateur web');
     final host = AppPlatform.hostName;
     return host.isEmpty ? AppPlatform.label : '${AppPlatform.label} · $host';

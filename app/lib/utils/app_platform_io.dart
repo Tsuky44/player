@@ -5,6 +5,9 @@ import '../l10n/tr.dart';
 abstract final class AppPlatform {
   static const bool isWeb = false;
 
+  /// Un téléviseur LG n'ouvre que l'app web — voir `app_platform_web.dart`.
+  static const bool isWebOS = false;
+
   static bool get isMacOS => io.Platform.isMacOS;
   static bool get isWindows => io.Platform.isWindows;
   static bool get isLinux => io.Platform.isLinux;

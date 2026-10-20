@@ -272,6 +272,52 @@ class PlaybackCapabilities {
     );
   }
 
+  /// Un téléviseur LG (webOS), qui ouvre l'app web servie par le serveur
+  /// (ADR-0076).
+  ///
+  /// Le Direct Play y est la règle : l'élément `<video>` reçoit le fichier
+  /// lui-même et le confie au pipeline matériel du téléviseur, qui lit le
+  /// Matroska, le HEVC 10 bits et le HDR10 comme le lecteur USB intégré. Ces
+  /// capacités servent au repli HLS — qualité réduite, ou fichier que ce
+  /// modèle refuse — et à ce que le Direct Play laisse muet.
+  factory PlaybackCapabilities.webOS() => PlaybackCapabilities.webOSFrom(
+        mseVideo: supportedMseVideoCodecs(),
+        mseAudio: supportedMseAudioCodecs(),
+        fileAudio: supportedFileAudioCodecs(),
+      );
+
+  /// [webOS], à partir des réponses du navigateur.
+  ///
+  /// Ce qui le distingue de [PlaybackCapabilities.browser] tient à l'écran :
+  /// la vidéo d'un téléviseur passe par son plan vidéo, pas par la surface 8
+  /// bits d'un onglet, et le son par sa sortie, qui transmet le 5.1 à une
+  /// barre de son. Le HDR suit le HEVC Main 10 — la sonde HEVC est celle-là.
+  @visibleForTesting
+  factory PlaybackCapabilities.webOSFrom({
+    required Set<String> mseVideo,
+    required Set<String> mseAudio,
+    required Set<String> fileAudio,
+  }) {
+    final main10 = mseVideo.contains('hevc');
+    return PlaybackCapabilities(
+      container: 'fmp4',
+      videoCodecs: {'h264', ...mseVideo},
+      audioCodecs: {'aac', ...mseAudio},
+      maxAudioChannels: 6,
+      maxVideoBitDepth: main10 ? 10 : 8,
+      hdr: main10,
+      // Rien ne dit que le pipeline applique la RPU d'un fichier ouvert par
+      // une page : un profil 5 part en HLS, où le serveur l'applique
+      // (ADR-0060). Un profil 8 se lit comme le HDR10 qu'il contient.
+      dolbyVision: false,
+      dolbyVisionInDirectPlay: false,
+      missingDirectPlayAudio:
+          _needsDeviceSupport.difference({...mseAudio, ...fileAudio}),
+      label: 'webOS (${{'h264', ...mseVideo}.join('+')}, '
+          'fichier: ${fileAudio.isEmpty ? 'aac' : fileAudio.join('+')})',
+    );
+  }
+
   /// Les paramètres à ajouter à `/start`.
   ///
   /// Les noms sont ceux que `ParseCapabilities` lit côté serveur. Chacun est
@@ -321,7 +367,8 @@ String? _canonicalFromMime(String mime, Map<String, String> table) =>
     table[mime.toLowerCase().trim()];
 
 /// Les formats qu'ExoPlayer ne lit qu'avec de l'aide : un décodeur MediaCodec,
-/// un passthrough HDMI, ou le décodeur FFmpeg de NextLib.
+/// un passthrough HDMI, ou le décodeur FFmpeg de NextLib. Les mêmes manquent
+/// ou non au pipeline d'un téléviseur LG selon le modèle.
 const _needsDeviceSupport = <String>{'truehd', 'dts', 'ac3', 'eac3', 'ac4'};
 
 /// Ce que le FFmpeg de NextLib décode quel que soit l'appareil (sa build active
@@ -365,7 +412,9 @@ abstract final class PlaybackCapabilitiesResolver {
   static Future<void> initialize() async {
     if (_current != null) return;
 
-    if (AppPlatform.isWeb) {
+    if (AppPlatform.isWebOS) {
+      _current = PlaybackCapabilities.webOS();
+    } else if (AppPlatform.isWeb) {
       _current = PlaybackCapabilities.browser();
     } else if (AppPlatform.isAndroid) {
       try {

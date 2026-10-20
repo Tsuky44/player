@@ -4,6 +4,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 
 import '../utils/app_platform.dart';
 import '../l10n/tr.dart';
+import 'webos_remote.dart';
 
 /// What the user asked for, which is not always what the hardware says.
 ///
@@ -55,6 +56,12 @@ abstract final class TvMode {
     // what turns TV mode on for one plugged into a television. The Apple TV
     // needs no question — see [_resolve] — but still gives its name.
     if (AppPlatform.isTvOS) _detected = true;
+    // Un téléviseur LG ouvre l'app web (ADR-0076) : l'agent utilisateur l'a
+    // déjà dit, et sa télécommande a besoin qu'on nomme ses touches.
+    if (AppPlatform.isWebOS) {
+      _detected = true;
+      WebOSRemote.install();
+    }
     if (AppPlatform.isAndroid || AppPlatform.isIOS || AppPlatform.isTvOS) {
       try {
         _detected = AppPlatform.isTvOS ||

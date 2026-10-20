@@ -7,3 +7,6 @@ Set<String> supportedMseVideoCodecs() => const {};
 
 /// Toujours vide, pour la même raison.
 Set<String> supportedMseAudioCodecs() => const {};
+
+/// Toujours vide : seul un téléviseur LG pose la question (ADR-0076).
+Set<String> supportedFileAudioCodecs() => const {};

@@ -1,0 +1,226 @@
+<!DOCTYPE html>
+<!--
+  Le lanceur de l'app LG webOS (ADR-0076).
+
+  Il ne contient pas Onyx : il retient l'adresse du serveur et ouvre l'app web
+  que ce serveur sert déjà (server/webui). L'app est donc toujours celle du
+  serveur, sans paquet à republier à chaque version, et elle parle à son
+  propre domaine — ni CORS, ni CanvasKit à charger depuis file://.
+
+  Écrit en ES5 : les téléviseurs de 2018 ont un Chromium 53.
+-->
+<html lang="fr">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=1920, height=1080">
+  <title>Onyx</title>
+  <style>
+    :root {
+      --bg: #121414;
+      --surface: #1c1f1f;
+      --ink: #e8e6e4;
+      --muted: #9a9894;
+      --focus: #e8e6e4;
+      --error: #ff8a80;
+    }
+    html, body {
+      margin: 0;
+      height: 100%;
+      background: var(--bg);
+      color: var(--ink);
+      font-family: "LG Smart UI", "Segoe UI", Roboto, sans-serif;
+    }
+    main {
+      height: 100%;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+    }
+    h1 { font-size: 72px; font-weight: 600; letter-spacing: 2px; margin: 0 0 48px; }
+    p { font-size: 32px; margin: 0 0 32px; color: var(--muted); }
+    form { display: flex; flex-direction: column; align-items: center; width: 900px; }
+    label { font-size: 32px; margin-bottom: 20px; }
+    input {
+      width: 100%;
+      box-sizing: border-box;
+      font-size: 40px;
+      padding: 20px 28px;
+      border-radius: 16px;
+      border: 4px solid transparent;
+      background: var(--surface);
+      color: var(--ink);
+      outline: none;
+    }
+    button {
+      margin-top: 32px;
+      font-size: 34px;
+      padding: 18px 56px;
+      border-radius: 40px;
+      border: 4px solid transparent;
+      background: var(--surface);
+      color: var(--ink);
+      outline: none;
+    }
+    input:focus, button:focus { border-color: var(--focus); }
+    #error { color: var(--error); min-height: 40px; margin-top: 24px; }
+    [hidden] { display: none !important; }
+  </style>
+</head>
+<body>
+  <main>
+    <h1>Onyx</h1>
+    <p id="status" role="status"></p>
+    <button id="change" type="button" hidden></button>
+    <form id="form" hidden>
+      <label id="label" for="address"></label>
+      <input id="address" type="text" autocomplete="off" autocapitalize="off"
+             spellcheck="false" placeholder="192.168.1.20:8080">
+      <button id="connect" type="submit"></button>
+      <p id="error" role="alert"></p>
+    </form>
+  </main>
+  <script>
+    (function () {
+      var STORAGE_KEY = 'onyx.server';
+      // Le port du serveur quand l'adresse n'en donne pas (server/main.go).
+      var DEFAULT_PORT = '8080';
+      // Le temps laissé pour appuyer sur « Changer de serveur » avant
+      // d'ouvrir celui qu'on connaît : sans lui, un serveur qui répond vite ne
+      // laisserait jamais la main.
+      var CHANGE_WINDOW_MS = 1500;
+      var KEY_UP = 38, KEY_DOWN = 40, KEY_BACK = 461;
+
+      var fr = (navigator.language || 'fr').toLowerCase().indexOf('fr') === 0;
+      var T = fr ? {
+        connecting: 'Connexion à ',
+        change: 'Changer de serveur',
+        label: 'Adresse du serveur Onyx',
+        connect: 'Se connecter',
+        checking: 'Vérification…',
+        empty: 'Saisissez l’adresse du serveur.',
+        unreachable: 'Ce serveur ne répond pas, ou ce n’est pas un serveur Onyx.'
+      } : {
+        connecting: 'Connecting to ',
+        change: 'Change server',
+        label: 'Onyx server address',
+        connect: 'Connect',
+        checking: 'Checking…',
+        empty: 'Enter the server address.',
+        unreachable: 'This server does not answer, or it is not an Onyx server.'
+      };
+
+      var $ = function (id) { return document.getElementById(id); };
+      var status = $('status'), change = $('change'), form = $('form');
+      var input = $('address'), connect = $('connect'), error = $('error');
+      change.textContent = T.change;
+      $('label').textContent = T.label;
+      connect.textContent = T.connect;
+
+      function read() {
+        try { return localStorage.getItem(STORAGE_KEY) || ''; } catch (e) { return ''; }
+      }
+      function save(base) {
+        try { localStorage.setItem(STORAGE_KEY, base); } catch (e) {
+          // Sans stockage, l'adresse sera redemandée au prochain lancement.
+        }
+      }
+
+      // « 192.168.1.20 » → « http://192.168.1.20:8080 ». Le port par défaut
+      // ne s'ajoute qu'en http : un https sans port est derrière un proxy.
+      function normalize(raw) {
+        var value = (raw || '').replace(/^\s+|\s+$/g, '').replace(/\/+$/, '');
+        if (!value) return '';
+        if (!/^https?:\/\//i.test(value)) value = 'http://' + value;
+        var m = value.match(/^(https?:\/\/)([^\/:]+)(:\d+)?(\/.*)?$/i);
+        if (!m) return '';
+        var scheme = m[1].toLowerCase();
+        var port = m[3] || (scheme === 'http://' ? ':' + DEFAULT_PORT : '');
+        return scheme + m[2] + port + (m[4] || '');
+      }
+
+      // Un serveur Onyx répond `status: ok` et sa liste de capacités.
+      function ping(base, done) {
+        var xhr = new XMLHttpRequest();
+        xhr.open('GET', base + '/api/ping');
+        xhr.timeout = 5000;
+        xhr.onload = function () {
+          var ok = false;
+          try {
+            var body = JSON.parse(xhr.responseText);
+            ok = xhr.status === 200 && body.status === 'ok' &&
+              Object.prototype.toString.call(body.capabilities) === '[object Array]';
+          } catch (e) { ok = false; }
+          done(ok);
+        };
+        xhr.onerror = xhr.ontimeout = function () { done(false); };
+        xhr.send();
+      }
+
+      // `replace` : le lanceur ne reste pas dans l'historique, Retour ne
+      // peut pas y ramener.
+      function open(base) { location.replace(base + '/'); }
+
+      function showForm(prefill, message) {
+        status.hidden = true;
+        change.hidden = true;
+        form.hidden = false;
+        input.value = prefill || '';
+        error.textContent = message || '';
+        input.focus();
+      }
+
+      var cancelled = false;
+      change.onclick = function () {
+        cancelled = true;
+        showForm(read().replace(/^http:\/\//, ''));
+      };
+
+      form.onsubmit = function (event) {
+        event.preventDefault();
+        var base = normalize(input.value);
+        if (!base) { error.textContent = T.empty; return; }
+        error.textContent = T.checking;
+        ping(base, function (ok) {
+          if (!ok) { error.textContent = T.unreachable; return; }
+          save(base);
+          open(base);
+        });
+      };
+
+      // Pas de navigation spatiale automatique dans une page webOS : haut et
+      // bas passent d'un champ à l'autre, OK active ce qui a le focus.
+      document.addEventListener('keydown', function (event) {
+        var code = event.keyCode;
+        if (code === KEY_BACK) {
+          event.preventDefault();
+          window.close();
+          return;
+        }
+        if (code !== KEY_UP && code !== KEY_DOWN) return;
+        var order = [change, input, connect].filter(function (el) {
+          return !el.hidden && !(el.parentNode && el.parentNode.hidden);
+        });
+        var index = order.indexOf(document.activeElement);
+        var next = order[index + (code === KEY_DOWN ? 1 : -1)];
+        if (next) { event.preventDefault(); next.focus(); }
+      });
+
+      var known = read();
+      if (!known) { showForm(''); return; }
+
+      status.textContent = T.connecting + known.replace(/^https?:\/\//, '');
+      change.hidden = false;
+      change.focus();
+      var started = Date.now();
+      ping(known, function (ok) {
+        if (cancelled) return;
+        if (!ok) { showForm(known.replace(/^http:\/\//, ''), T.unreachable); return; }
+        setTimeout(function () {
+          if (!cancelled) open(known);
+        }, Math.max(0, CHANGE_WINDOW_MS - (Date.now() - started)));
+      });
+    })();
+  </script>
+</body>
+</html>

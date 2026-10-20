@@ -153,7 +153,7 @@ extension PlayerControllerTracks on PlayerController {
     // relisait le fichier entier sur le disque du serveur — des minutes pour
     // un remux — et une reprise lancée pendant ce temps démarrait en quinze
     // secondes au lieu de deux.
-    if (currentQuality == null && !_hlsOnly) return;
+    if (currentQuality == null && _readsEmbeddedSubtitles) return;
     if (!_hasPendingSubtitles()) return;
 
     _deferredSubtitleExtractTimer?.cancel();
@@ -328,7 +328,9 @@ extension PlayerControllerTracks on PlayerController {
     // on desktop simply does nothing here. The server already takes the wanted
     // track as `?audio=N` at session start, so the switch is a new session:
     // ~2s of spinner instead of instant, but it actually changes the language.
-    if (AppPlatform.isWeb) {
+    // An LG television is the exception: its `<video>` lists the file's own
+    // tracks, so Direct Play switches in place like a native engine.
+    if (_hlsOnly) {
       if (currentQuality == null) {
         await _startWebTranscode();
       } else {
@@ -561,7 +563,7 @@ extension PlayerControllerTracks on PlayerController {
     // Except in a browser, which cannot see a file's embedded subtitle tracks at
     // all — a <video> knows only <track> elements. There the external WebVTT is
     // the only source there has ever been, Direct Play included.
-    if (currentQuality == null && !_hlsOnly) {
+    if (currentQuality == null && _readsEmbeddedSubtitles) {
       liveSubtitles.stop();
       _applyInternalSubtitleSelection();
       return;

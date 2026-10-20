@@ -18,6 +18,7 @@ import '../../widgets/global/otp_code_dialog.dart';
 import 'login_password_field.dart';
 import '../shared_link/shared_link_guest.dart';
 import 'phone_sign_in_panel.dart';
+import '../../services/tv_link_host.dart';
 import '../../theme/app_type.dart';
 import '../../l10n/tr.dart';
 
@@ -176,11 +177,15 @@ class _LoginScreenState extends State<LoginScreen> {
   /// Whether this screen offers the QR sign-in at all.
   ///
   /// Not on a phone: the phone is what scans. Not on a television either, which
-  /// has its own linking screen and reaches this form only as the fallback.
+  /// has its own linking screen and reaches this form only as the fallback —
+  /// except the LG television, whose page cannot run that screen and gets the
+  /// server pairing here instead (ADR-0076).
   bool _offersPhoneSignIn(BuildContext context) {
-    if (TvScope.of(context)) return false;
+    final tv = TvScope.of(context);
+    if (tv && TvLinkHost.isSupported) return false;
     if (_mode != _LoginMode.signIn) return false;
-    return AppPlatform.isDesktop ||
+    return tv ||
+        AppPlatform.isDesktop ||
         MediaQuery.sizeOf(context).shortestSide >= 600;
   }
 

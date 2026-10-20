@@ -1,3 +1,6 @@
+import 'package:web/web.dart' as web;
+
+import 'webos_user_agent.dart';
 
 /// Web implementation of the platform predicates — see `app_platform.dart`.
 ///
@@ -6,6 +9,11 @@
 /// not exist here. Code that needs a browser-specific branch tests [isWeb].
 abstract final class AppPlatform {
   static const bool isWeb = true;
+
+  /// Le navigateur d'un téléviseur LG, où l'app web lit le fichier tel quel
+  /// par le décodeur du téléviseur (ADR-0076). Lu une fois : l'agent
+  /// utilisateur ne change pas en cours de route.
+  static final bool isWebOS = isWebOSUserAgent(web.window.navigator.userAgent);
 
   static const bool isMacOS = false;
   static const bool isWindows = false;

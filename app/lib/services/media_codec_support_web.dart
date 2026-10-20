@@ -31,6 +31,31 @@ const _audioProbes = <String, String>{
   'flac': 'audio/mp4; codecs="flac"',
 };
 
+/// Les pistes audio qu'un fichier ouvert tel quel par l'élément `<video>` peut
+/// porter, au-delà de ce que dit `MediaSource` — la question d'un téléviseur
+/// LG, qui lit le fichier par son propre pipeline (ADR-0076).
+///
+/// `canPlayType` et non `isTypeSupported` : ce pipeline-là n'est pas celui des
+/// segments, et le DTS en est l'exemple — LG l'a retiré de ses modèles 2020 à
+/// 2022 puis rétabli, et seul l'élément sait lequel est branché.
+const _fileAudioProbes = <String, String>{
+  'ac3': 'audio/mp4; codecs="ac-3"',
+  'eac3': 'audio/mp4; codecs="ec-3"',
+  'ac4': 'audio/mp4; codecs="ac-4"',
+  'dts': 'audio/mp4; codecs="dtsc"',
+  'truehd': 'audio/mp4; codecs="mlpa"',
+};
+
+Set<String> supportedFileAudioCodecs() {
+  final out = <String>{};
+  final probe = web.HTMLVideoElement();
+  for (final entry in _fileAudioProbes.entries) {
+    // « maybe » et « probably » valent oui : la chaîne vide est le seul non.
+    if (probe.canPlayType(entry.value).isNotEmpty) out.add(entry.key);
+  }
+  return out;
+}
+
 Set<String> supportedMseVideoCodecs() => _supported(_videoProbes);
 
 Set<String> supportedMseAudioCodecs() => _supported(_audioProbes);

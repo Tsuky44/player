@@ -14,6 +14,7 @@ import 'utils/window_controls.dart';
 import 'services/api_client.dart';
 import 'services/app_image_cache.dart';
 import 'services/app_updater.dart';
+import 'services/tv_link_host.dart';
 import 'services/client_identity.dart';
 import 'services/client_log.dart';
 import 'services/auto_download.dart';
@@ -557,7 +558,13 @@ class OnyxApp extends StatelessWidget {
                       // A television gets the QR pairing instead of a password
                       // form. The form is still reachable from it, for the first
                       // account on a server and for anyone without a phone.
-                      return isTv ? const TvLoginScreen() : const LoginScreen();
+                      //
+                      // Unless the TV cannot listen for the phone — the page
+                      // an LG television opens (ADR-0076): its login screen
+                      // offers the server pairing QR instead (ADR-0020).
+                      return isTv && TvLinkHost.isSupported
+                          ? const TvLoginScreen()
+                          : const LoginScreen();
                     }
                     return const MainShell();
                   },

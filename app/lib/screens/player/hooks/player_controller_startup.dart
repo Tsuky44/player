@@ -200,8 +200,10 @@ extension PlayerControllerStartup on PlayerController {
       _selectedInternalSubId = null;
     }
 
-    // Direct Play is a native-only path. A browser cannot open the containers
-    // and audio codecs a private library is actually made of, and the failure is
+    // Direct Play is a native-only path, plus the LG television (ADR-0076),
+    // whose `<video>` opens the file with the TV's decoders. A desktop browser
+    // cannot open the containers and audio codecs a private library is
+    // actually made of, and the failure is
     // silent — picture, no sound, no message. Rather than open the file and back
     // out of it a moment later, the web waits for the track list and starts
     // straight in HLS, at the source's own resolution.

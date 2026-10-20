@@ -245,4 +245,66 @@ void main() {
       }
     });
   });
+
+  group('téléviseur LG (ADR-0076)', () {
+    test("le fichier garde son HDR et son 5.1, au-delà d'un onglet", () {
+      final caps = PlaybackCapabilities.webOSFrom(
+        mseVideo: {'hevc'},
+        mseAudio: {'ac3', 'eac3'},
+        fileAudio: {'ac3', 'eac3'},
+      );
+      // Le plan vidéo du téléviseur n'est pas la surface 8 bits d'un onglet :
+      // le repli HLS peut recopier le HEVC 10 bits HDR au lieu de l'écraser.
+      expect(caps.videoCodecs, containsAll(['h264', 'hevc']));
+      expect(caps.maxVideoBitDepth, 10);
+      expect(caps.hdr, isTrue);
+      expect(caps.maxAudioChannels, 6);
+      expect(caps.decodesInDirectPlay('eac3'), isTrue);
+    });
+
+    test("le DTS qu'un modèle ne lit pas part en HLS, pas en silence", () {
+      final caps = PlaybackCapabilities.webOSFrom(
+        mseVideo: {'hevc'},
+        mseAudio: {'ac3', 'eac3'},
+        fileAudio: {'ac3', 'eac3'},
+      );
+      // Les modèles 2020 à 2022 n'ont pas de DTS : l'image défilerait muette.
+      expect(caps.decodesInDirectPlay('dts'), isFalse);
+      expect(caps.decodesInDirectPlay('truehd'), isFalse);
+      // Un codec dont rien n'est dit reste en Direct Play.
+      expect(caps.decodesInDirectPlay('aac'), isTrue);
+    });
+
+    test("le DTS qu'un modèle annonce reste en Direct Play", () {
+      final caps = PlaybackCapabilities.webOSFrom(
+        mseVideo: {'hevc'},
+        mseAudio: const {},
+        fileAudio: {'ac3', 'eac3', 'dts'},
+      );
+      expect(caps.decodesInDirectPlay('dts'), isTrue);
+    });
+
+    test("un profil 5 n'est jamais ouvert tel quel", () {
+      final caps = PlaybackCapabilities.webOSFrom(
+        mseVideo: {'hevc'},
+        mseAudio: const {},
+        fileAudio: const {},
+      );
+      // Rien ne prouve que le pipeline applique la RPU d'un fichier ouvert
+      // par une page : il sortirait rose et vert (ADR-0060).
+      expect(caps.dolbyVisionInDirectPlay, isFalse);
+      expect(caps.dolbyVision, isFalse);
+    });
+
+    test('sans HEVC, ni 10 bits ni HDR', () {
+      final caps = PlaybackCapabilities.webOSFrom(
+        mseVideo: const {},
+        mseAudio: const {},
+        fileAudio: const {},
+      );
+      expect(caps.videoCodecs, {'h264'});
+      expect(caps.maxVideoBitDepth, 8);
+      expect(caps.hdr, isFalse);
+    });
+  });
 }
