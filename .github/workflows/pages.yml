@@ -1,0 +1,48 @@
+name: Pages
+
+# Publie les textes legaux (politique de confidentialite, conditions) sur
+# GitHub Pages : les consoles Google Play et App Store demandent une URL
+# publique (ADR-0046). La source reste app/assets/legal/, que l'app embarque ;
+# scripts/ci/build-legal-site.py n'en fait que la version web.
+#
+# URL : https://tsuky44.github.io/player/confidentialite.html
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "app/assets/legal/**"
+      - "scripts/ci/build-legal-site.py"
+      - ".github/workflows/pages.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+# Deux publications rapprochees : la seconde attend, la premiere va au bout.
+concurrency:
+  group: pages
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Construire le site
+        run: python3 scripts/ci/build-legal-site.py _site
+
+      - uses: actions/configure-pages@v5
+
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: _site
+
+      - id: deployment
+        uses: actions/deploy-pages@v4

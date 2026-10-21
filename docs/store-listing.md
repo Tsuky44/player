@@ -78,8 +78,9 @@ Fait dans le code (ADR-0046) :
 
 Reste à faire :
 
-- [ ] Politique de confidentialité en ligne (URL obligatoire) : publier
-      `app/assets/legal/confidentialite.txt`, relu par un juriste
+- [x] Politique de confidentialité en ligne : https://tsuky44.github.io/player/confidentialite.html,
+      générée depuis `app/assets/legal/` par le workflow Pages
+- [ ] Textes légaux relus par un juriste
 - [ ] Interface en anglais : traduite (ADR-0047), à relire écran par écran ; restent les messages
       du serveur, les textes légaux et les descriptions d'autorisations iOS
 - [ ] Logo TMDB à côté de l'attribution, et accord commercial TMDB avant de vendre
