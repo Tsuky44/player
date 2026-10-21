@@ -5,11 +5,22 @@ import 'package:flutter/material.dart';
 import '../../theme/app_colors.dart';
 import '../../theme/app_motion.dart';
 import '../../tv/tv_mode.dart';
+import '../../utils/app_platform.dart';
 import '../../utils/responsive.dart';
 import 'onyx_mark.dart';
 import 'onyx_wordmark.dart';
 import '../../theme/app_icons.dart';
 import '../../theme/app_type.dart';
+
+/// Si le verre floute ce qu'il recouvre.
+///
+/// Pas sur un téléviseur LG (ADR-0076). CanvasKit y floute en WebGL, sur le
+/// processeur graphique du téléviseur, et l'en-tête de l'accueil couvre toute
+/// la largeur d'un bandeau et d'affiches qui bougent : le flou est refait à
+/// chaque image. C'est le premier suspect de l'accueil qui ne suivait plus la
+/// télécommande. Le verre y devient un voile plus dense, qui garde le texte
+/// lisible sans rien relire de dessous.
+bool get glassBlurs => !AppPlatform.isWebOS;
 
 /// Full-width frosted strip — must float above scrolling content to blur it.
 ///
@@ -22,25 +33,28 @@ class GlassHeaderStrip extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final blurs = glassBlurs;
+    final veil = DecoratedBox(
+      decoration: BoxDecoration(
+        gradient: LinearGradient(
+          begin: Alignment.topCenter,
+          end: Alignment.bottomCenter,
+          colors: [
+            Colors.black.withValues(alpha: blurs ? 0.35 : 0.85),
+            Colors.black.withValues(alpha: blurs ? 0.12 : 0.55),
+          ],
+        ),
+        border: Border(
+          bottom: BorderSide(color: Colors.white.withValues(alpha: 0.08)),
+        ),
+      ),
+      child: child,
+    );
+    if (!blurs) return veil;
     return ClipRect(
       child: BackdropFilter.grouped(
         filter: ImageFilter.blur(sigmaX: 30, sigmaY: 30),
-        child: DecoratedBox(
-          decoration: BoxDecoration(
-            gradient: LinearGradient(
-              begin: Alignment.topCenter,
-              end: Alignment.bottomCenter,
-              colors: [
-                Colors.black.withValues(alpha: 0.35),
-                Colors.black.withValues(alpha: 0.12),
-              ],
-            ),
-            border: Border(
-              bottom: BorderSide(color: Colors.white.withValues(alpha: 0.08)),
-            ),
-          ),
-          child: child,
-        ),
+        child: veil,
       ),
     );
   }
@@ -65,19 +79,22 @@ class GlassBarSurface extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final blurs = glassBlurs;
     final hairline = BorderSide(color: Colors.white.withValues(alpha: 0.08));
+    final veil = DecoratedBox(
+      decoration: BoxDecoration(
+        color: AppColors.background.withValues(alpha: blurs ? 0.72 : 0.94),
+        border: edge == AxisDirection.up
+            ? Border(top: hairline)
+            : Border(bottom: hairline),
+      ),
+      child: child,
+    );
+    if (!blurs) return veil;
     return ClipRect(
       child: BackdropFilter.grouped(
         filter: ImageFilter.blur(sigmaX: 28, sigmaY: 28),
-        child: DecoratedBox(
-          decoration: BoxDecoration(
-            color: AppColors.background.withValues(alpha: 0.72),
-            border: edge == AxisDirection.up
-                ? Border(top: hairline)
-                : Border(bottom: hairline),
-          ),
-          child: child,
-        ),
+        child: veil,
       ),
     );
   }
@@ -98,19 +115,22 @@ class GlassSurface extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final blurs = glassBlurs;
+    final veil = Container(
+      padding: padding,
+      decoration: BoxDecoration(
+        color: Colors.black.withValues(alpha: blurs ? 0.45 : 0.88),
+        borderRadius: borderRadius,
+        border: Border.all(color: Colors.white.withValues(alpha: 0.1)),
+      ),
+      child: child,
+    );
+    if (!blurs) return veil;
     return ClipRRect(
       borderRadius: borderRadius,
       child: BackdropFilter(
         filter: ImageFilter.blur(sigmaX: 24, sigmaY: 24),
-        child: Container(
-          padding: padding,
-          decoration: BoxDecoration(
-            color: Colors.black.withValues(alpha: 0.45),
-            borderRadius: borderRadius,
-            border: Border.all(color: Colors.white.withValues(alpha: 0.1)),
-          ),
-          child: child,
-        ),
+        child: veil,
       ),
     );
   }

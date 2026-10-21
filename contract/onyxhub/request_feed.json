@@ -1,0 +1,25 @@
+{
+  "cursor": 42,
+  "requests": [
+    {
+      "id": 38,
+      "mediaType": "movie",
+      "tmdbId": 603,
+      "title": "Matrix",
+      "posterPath": "/matrix.jpg",
+      "seasons": [],
+      "requester": "lea",
+      "requestedAt": "2026-10-21T08:00:00.000Z"
+    },
+    {
+      "id": 40,
+      "mediaType": "tv",
+      "tmdbId": 1399,
+      "title": "Game of Thrones",
+      "posterPath": null,
+      "seasons": [1, 2],
+      "requester": "hugo",
+      "requestedAt": "2026-10-21T09:30:00.000Z"
+    }
+  ]
+}

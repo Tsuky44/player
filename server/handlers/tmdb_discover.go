@@ -8,8 +8,10 @@ import (
 	"sort"
 	"strconv"
 	"strings"
+	"sync"
 
 	"project-player/server/httpx"
+	"project-player/server/safego"
 
 	"github.com/julienschmidt/httprouter"
 )
@@ -210,12 +212,24 @@ func fetchTMDBDiscoverMixed(client *http.Client, lang string, page int, f discov
 	tvF := f
 	tvF.Genres = expandGenresForTV(f.Genres)
 
+	// Films et séries en parallèle : deux appels TMDB l'un après l'autre
+	// doublaient l'attente de chaque page de l'onglet « Tout » filtré.
 	var movies, series tmdbCatalogResponse
-	if err := fetchTMDBCatalogPage(client, discoverURL("movie", lang, page, movieF), &movies); err != nil {
-		return tmdbCatalogResponse{}, err
+	var movieErr, seriesErr error
+	var wg sync.WaitGroup
+	wg.Add(1)
+	go func() {
+		defer safego.Recover("handlers/tmdb_discover.go:fetchTMDBDiscoverMixed")
+		defer wg.Done()
+		movies, movieErr = cachedTMDBCatalogPage(client, discoverURL("movie", lang, page, movieF))
+	}()
+	series, seriesErr = cachedTMDBCatalogPage(client, discoverURL("tv", lang, page, tvF))
+	wg.Wait()
+	if movieErr != nil {
+		return tmdbCatalogResponse{}, movieErr
 	}
-	if err := fetchTMDBCatalogPage(client, discoverURL("tv", lang, page, tvF), &series); err != nil {
-		return tmdbCatalogResponse{}, err
+	if seriesErr != nil {
+		return tmdbCatalogResponse{}, seriesErr
 	}
 
 	combined := make([]tmdbCatalogRow, 0, len(movies.Results)+len(series.Results))

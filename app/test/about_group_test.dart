@@ -30,7 +30,7 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(find.byType(LegalDocumentScreen), findsOneWidget);
-    expect(find.textContaining('ne reçoit, ne stocke et ne vend aucune donnée'),
+    expect(find.textContaining('ne vend aucune donnée vous concernant'),
         findsOneWidget);
   });
 

@@ -21,6 +21,7 @@ import 'server_registry.dart';
 import 'media_failover.dart';
 import '../models/media_request.dart';
 import '../models/my_request.dart';
+import '../models/request_feed.dart';
 import '../models/media_share.dart';
 import '../models/shared_show.dart';
 import '../models/server_activity.dart';
@@ -58,6 +59,7 @@ part 'api/announcements.dart';
 part 'api/artwork.dart';
 part 'api/watch_lists.dart';
 part 'api/my_requests.dart';
+part 'api/request_feed.dart';
 
 class _PlaybackRequestScope {
   const _PlaybackRequestScope(this.origin, this.authorization);
@@ -82,7 +84,8 @@ class ApiClient
         _AnnouncementEndpoints,
         _ArtworkEndpoints,
         _WatchListEndpoints,
-        _MyRequestEndpoints {
+        _MyRequestEndpoints,
+        _RequestFeedEndpoints {
   static String get _defaultBaseUrl {
     // On web the Go server serves this very bundle, so the page origin is
     // already the API root. Hardcoding a host here would turn every call into a

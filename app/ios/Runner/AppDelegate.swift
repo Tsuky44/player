@@ -42,7 +42,7 @@ import workmanager_apple
     }
     WorkmanagerPlugin.registerPeriodicTask(
       withIdentifier: "com.tsuky.onyx.new-episodes",
-      earliestBeginInSeconds: NSNumber(value: 60 * 60)
+      earliestBeginInSeconds: NSNumber(value: 15 * 60)
     )
     WorkmanagerPlugin.registerLaunchHandlers()
   }

@@ -1,0 +1,4 @@
+src/node_modules/
+src/package*.json
+out/frames/
+out/musique.wav

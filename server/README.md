@@ -148,6 +148,11 @@ Toutes les routes API (sauf l'inscription/connexion et le stream) requièrent l'
 * `GET /api/requests/mine` (`request_media`, ADR-0073) — relaie `GET {url}/api/request` au nom du
   compte : `{ "requests": [{ "tmdbId", "mediaType", "title", "posterPath", "seasons", "status",
   "requestedAt", "progress" }] }`, tel qu'OnyxHub le rend. Capacité `my_requests`.
+* `GET /api/requests/feed?after=<curseur>` (`manage_settings`, ADR-0077) — relaie
+  `GET {url}/api/request/feed` : les demandes de tous les comptes faites depuis le curseur, sauf
+  celles de l'appelant, `{ "cursor", "requests": [{ "id", "mediaType", "tmdbId", "title",
+  "posterPath", "seasons", "requester", "requestedAt" }] }`. Sans `after`, `requests` est vide et
+  `cursor` pointe sur la dernière demande. Sert à la notification « Nouvelle demande » de l'app.
 * `GET /api/library/tmdb-index` (`RequireAuth`, ADR-0073) — `{ "movies": { "<tmdb>": id },
   "shows": { "<tmdb>": id } }`, la plus ancienne fiche de chaque titre. L'app web ouvre une fiche
   depuis `?movie=ID` ou `?show=ID`. Capacité `library_tmdb_index`.

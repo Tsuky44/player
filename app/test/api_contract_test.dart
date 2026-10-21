@@ -8,6 +8,7 @@ import 'package:onyx/models/watch_list.dart';
 import 'package:onyx/models/server_capabilities.dart';
 import 'package:onyx/models/media_request.dart';
 import 'package:onyx/models/my_request.dart';
+import 'package:onyx/models/request_feed.dart';
 import 'package:onyx/services/api_types.dart';
 
 /// Le contrat entre le serveur et l'app, vu de l'app.
@@ -267,5 +268,13 @@ void main() {
         MediaHubLinkTest.fromJson(_contract('onyxhub/mediahub_link_test'));
     expect(link.ok, isTrue);
     expect(link.message, contains('OnyxHub'));
+
+    final feed = RequestFeed.fromJson(_contract('onyxhub/request_feed'));
+    expect(feed.cursor, 42);
+    expect(feed.requests.map((e) => e.mediaType),
+        [RequestMediaType.movie, RequestMediaType.tv]);
+    expect(feed.requests.last.seasons, [1, 2]);
+    expect(feed.requests.last.requester, 'hugo');
+    expect(feed.requests.first.requestedAt, isNotNull);
   });
 }

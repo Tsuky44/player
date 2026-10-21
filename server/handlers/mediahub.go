@@ -56,6 +56,24 @@ func MediaHubMyRequests(w http.ResponseWriter, r *http.Request, _ httprouter.Par
 	proxyMediaHub(w, r, userID, http.MethodGet, "/api/request", nil, nil)
 }
 
+// MediaHubRequestFeed relaie le flux des nouvelles demandes de tous les
+// comptes (GET /api/requests/feed?after= → GET {OnyxHub}/api/request/feed),
+// que l'app d'un administrateur relève en tâche de fond pour notifier
+// (ADR-0077). Le curseur est un entier rendu par OnyxHub : on ne transmet que
+// lui, pas la requête brute de l'app.
+func MediaHubRequestFeed(w http.ResponseWriter, r *http.Request, _ httprouter.Params, userID int) {
+	query := url.Values{}
+	if raw := r.URL.Query().Get("after"); raw != "" {
+		after, err := strconv.Atoi(raw)
+		if err != nil || after < 0 {
+			writeMediaHubError(w, http.StatusBadRequest, "Curseur invalide")
+			return
+		}
+		query.Set("after", strconv.Itoa(after))
+	}
+	proxyMediaHub(w, r, userID, http.MethodGet, "/api/request/feed", query, nil)
+}
+
 // mediaHubAvailability mirrors MediaHub's getMediaAvailability response.
 type mediaHubAvailability struct {
 	Status  string `json:"status"`

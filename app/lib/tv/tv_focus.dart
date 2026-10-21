@@ -43,14 +43,38 @@ final Set<LogicalKeyboardKey> kTvBackKeys = <LogicalKeyboardKey>{
 /// The back keys first try [DismissIntent], like Escape always has: whatever
 /// can close itself (a dialog, a menu) does. Anything left over becomes a
 /// [TvBackIntent].
+///
+/// A television driven through a browser (an LG set, ADR-0076) also gets
+/// [webTvShortcuts]: see there.
 Map<ShortcutActivator, Intent> get tvSelectShortcuts =>
-    const <ShortcutActivator, Intent>{
-      SingleActivator(LogicalKeyboardKey.select): ActivateIntent(),
-      SingleActivator(LogicalKeyboardKey.gameButtonA): ActivateIntent(),
-      SingleActivator(LogicalKeyboardKey.escape): _dismissThenBack,
-      SingleActivator(LogicalKeyboardKey.goBack): _dismissThenBack,
-      SingleActivator(LogicalKeyboardKey.gameButtonB): _dismissThenBack,
+    <ShortcutActivator, Intent>{
+      const SingleActivator(LogicalKeyboardKey.select): const ActivateIntent(),
+      const SingleActivator(LogicalKeyboardKey.gameButtonA):
+          const ActivateIntent(),
+      const SingleActivator(LogicalKeyboardKey.escape): _dismissThenBack,
+      const SingleActivator(LogicalKeyboardKey.goBack): _dismissThenBack,
+      const SingleActivator(LogicalKeyboardKey.gameButtonB): _dismissThenBack,
+      if (AppPlatform.isWeb && TvMode.isTv) ...webTvShortcuts,
     };
+
+/// What the D-pad means on a television, put back over the browser defaults.
+///
+/// `WidgetsApp.defaultShortcuts` on the web is a page's: the arrows scroll the
+/// nearest scrollable, and Enter only activates buttons. On an LG television
+/// that is the whole remote: the D-pad could not move between the posters of
+/// the home screen. These are the native platforms' bindings for the same keys.
+const webTvShortcuts = <ShortcutActivator, Intent>{
+  SingleActivator(LogicalKeyboardKey.arrowUp):
+      DirectionalFocusIntent(TraversalDirection.up),
+  SingleActivator(LogicalKeyboardKey.arrowDown):
+      DirectionalFocusIntent(TraversalDirection.down),
+  SingleActivator(LogicalKeyboardKey.arrowLeft):
+      DirectionalFocusIntent(TraversalDirection.left),
+  SingleActivator(LogicalKeyboardKey.arrowRight):
+      DirectionalFocusIntent(TraversalDirection.right),
+  SingleActivator(LogicalKeyboardKey.enter): ActivateIntent(),
+  SingleActivator(LogicalKeyboardKey.numpadEnter): ActivateIntent(),
+};
 
 const Intent _dismissThenBack = PrioritizedIntents(
   orderedIntents: <Intent>[DismissIntent(), TvBackIntent()],

@@ -2,12 +2,15 @@ import 'dart:async';
 
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
+import '../../models/media_request.dart';
 import '../../models/request_catalog_filters.dart';
 import '../../providers/media_requests_provider.dart';
 import '../../desktop_window.dart';
 import '../../theme/app_colors.dart';
 import '../../tv/tv_deferred_keyboard.dart';
 import '../../utils/responsive.dart';
+import '../../utils/poster_url.dart';
+import '../../widgets/global/app_network_image.dart';
 import '../../widgets/global/empty_state.dart';
 import '../../services/api_client.dart';
 import 'my_requests_screen.dart';
@@ -41,14 +44,24 @@ class _RequestsScreenState extends State<RequestsScreen> {
 
   static const _searchDebounceDuration = Duration(milliseconds: 400);
 
+  /// Largeur d'une cellule de la grille et densité de l'écran, relevées au
+  /// dernier rendu : les affiches préchargées doivent être décodées à la
+  /// taille où les cartes les dessinent, sinon elles tombent dans une autre
+  /// entrée du cache mémoire.
+  double? _cellWidth;
+  double _devicePixelRatio = 1;
+
+  late final MediaRequestsProvider _provider;
+
   @override
   void initState() {
     super.initState();
     _scrollController.addListener(_onScroll);
+    _provider = context.read<MediaRequestsProvider>();
+    _provider.onPagePrefetched = _warmPosters;
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      final provider = context.read<MediaRequestsProvider>();
-      _syncDraftFromProvider(provider);
-      provider.load();
+      _syncDraftFromProvider(_provider);
+      _provider.load();
       _checkMyRequests();
     });
   }
@@ -68,8 +81,26 @@ class _RequestsScreenState extends State<RequestsScreen> {
     _searchController.text = provider.query;
   }
 
+  /// Les affiches d'une page préchargée, téléchargées et décodées avant
+  /// qu'on l'atteigne : le lot s'affiche complet au lieu de se remplir carte
+  /// par carte.
+  void _warmPosters(List<RequestMediaItem> items) {
+    final width = _cellWidth;
+    if (!mounted || width == null) return;
+    for (final item in items) {
+      unawaited(AppNetworkImage.precache(
+        cardPosterUrl(item.posterUrl),
+        devicePixelRatio: _devicePixelRatio,
+        decodeWidth: width,
+      ));
+    }
+  }
+
   @override
   void dispose() {
+    if (_provider.onPagePrefetched == _warmPosters) {
+      _provider.onPagePrefetched = null;
+    }
     _searchDebounce?.cancel();
     _searchController.dispose();
     _scrollController.dispose();
@@ -274,26 +305,35 @@ class _RequestsScreenState extends State<RequestsScreen> {
               padding: EdgeInsets.fromLTRB(
                   horizontalPadding, 8, horizontalPadding, 36),
               sliver: SliverLayoutBuilder(
-                builder: (context, constraints) => SliverGrid(
-                  gridDelegate: AppLayout.posterGridDelegate(
+                builder: (context, constraints) {
+                  final grid = AppLayout.posterGridDelegate(
                     constraints.crossAxisExtent,
                     compact: AppLayout.isCompact(context),
-                  ),
-                  delegate: SliverChildBuilderDelegate(
-                    (context, index) {
-                      final item = provider.items[index];
-                      return RequestMediaCard(
-                        item: item,
-                        showTypeBadge: provider.type == 'all',
-                        onTap: () => Navigator.of(context).push(
-                          MaterialPageRoute(
-                              builder: (_) => RequestDetailScreen(item: item)),
-                        ),
-                      );
-                    },
-                    childCount: provider.items.length,
-                  ),
-                ),
+                  ) as SliverGridDelegateWithFixedCrossAxisCount;
+                  final columns = grid.crossAxisCount;
+                  _cellWidth = (constraints.crossAxisExtent -
+                          grid.crossAxisSpacing * (columns - 1)) /
+                      columns;
+                  _devicePixelRatio = MediaQuery.devicePixelRatioOf(context);
+                  return SliverGrid(
+                    gridDelegate: grid,
+                    delegate: SliverChildBuilderDelegate(
+                      (context, index) {
+                        final item = provider.items[index];
+                        return RequestMediaCard(
+                          item: item,
+                          showTypeBadge: provider.type == 'all',
+                          onTap: () => Navigator.of(context).push(
+                            MaterialPageRoute(
+                                builder: (_) =>
+                                    RequestDetailScreen(item: item)),
+                          ),
+                        );
+                      },
+                      childCount: provider.items.length,
+                    ),
+                  );
+                },
               ),
             ),
           if (provider.isLoadingMore)

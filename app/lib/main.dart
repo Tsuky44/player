@@ -24,7 +24,7 @@ import 'services/dns_warmup.dart';
 import 'services/download_preferences.dart';
 import 'services/network_status.dart';
 import 'services/new_episodes/new_episode_alerts.dart';
-import 'services/new_episodes/new_episode_notifications.dart';
+import 'services/notifications/onyx_notifications.dart';
 import 'services/server_reachability.dart';
 import 'providers/auth_provider.dart';
 import 'providers/home_provider.dart';
@@ -387,7 +387,7 @@ void main() async {
   final newEpisodeOpener =
       NewEpisodeOpener(auth: authProvider, navigatorKey: rootNavigatorKey);
   if (NewEpisodeAlerts.supported) {
-    NewEpisodeNotifications.onOpen = newEpisodeOpener.open;
+    OnyxNotifications.onOpen = newEpisodeOpener.open;
     unawaited(NewEpisodeAlerts.start());
     void lookForNewEpisodes() {
       if (!authProvider.isAuthenticated) return;
@@ -444,7 +444,7 @@ void main() async {
     // L'app a peut-être été lancée en touchant une notification : la fiche de
     // la série s'ouvre dès que la session est là.
     if (NewEpisodeAlerts.supported) {
-      unawaited(NewEpisodeNotifications.launchAlert().then((alert) {
+      unawaited(OnyxNotifications.launchAlert().then((alert) {
         if (alert != null) newEpisodeOpener.open(alert);
       }));
     }

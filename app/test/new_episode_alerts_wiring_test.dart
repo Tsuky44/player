@@ -14,7 +14,8 @@ import 'package:onyx/services/new_episodes/new_episode_alerts.dart';
 void main() {
   String read(String path) => File(path).readAsStringSync();
 
-  test('l’identifiant de la tâche est le même en Dart, dans l’Info.plist et '
+  test(
+      'l’identifiant de la tâche est le même en Dart, dans l’Info.plist et '
       'dans l’AppDelegate', () {
     final quoted = '"${NewEpisodeAlerts.taskName}"';
 
@@ -41,9 +42,16 @@ void main() {
     );
   });
 
+  test('iOS demande le même intervalle que WorkManager', () {
+    final minutes = NewEpisodeAlerts.interval.inMinutes;
+    expect(read('ios/Runner/AppDelegate.swift'),
+        contains('earliestBeginInSeconds: NSNumber(value: $minutes * 60)'),
+        reason: 'une nouvelle demande doit arriver dans le même délai sur '
+            'iPhone et sur Android (ADR-0077)');
+  });
+
   test('l’icône des notifications existe et survit au build release', () {
-    final source =
-        read('lib/services/new_episodes/new_episode_notifications.dart');
+    final source = read('lib/services/notifications/onyx_notifications.dart');
     final icon =
         RegExp(r"_androidIcon = '(\w+)'").firstMatch(source)!.group(1)!;
 

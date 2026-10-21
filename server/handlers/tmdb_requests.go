@@ -133,10 +133,10 @@ func TmdbRequestCatalog(w http.ResponseWriter, r *http.Request, _ httprouter.Par
 		} else {
 			tmdbURL = fmt.Sprintf("/search/multi?language=%s&page=%d&query=%s", lang, page, url.QueryEscape(query))
 		}
-		err = fetchTMDBCatalogPage(client, tmdbURL, &raw)
+		raw, err = cachedTMDBCatalogPage(client, tmdbURL)
 	} else if discover.active() {
 		if mediaType == "movie" || mediaType == "tv" {
-			err = fetchTMDBCatalogPage(client, discoverURL(mediaType, lang, page, discover), &raw)
+			raw, err = cachedTMDBCatalogPage(client, discoverURL(mediaType, lang, page, discover))
 		} else {
 			raw, err = fetchTMDBDiscoverMixed(client, lang, page, discover)
 		}
@@ -149,7 +149,7 @@ func TmdbRequestCatalog(w http.ResponseWriter, r *http.Request, _ httprouter.Par
 		} else {
 			tmdbURL = fmt.Sprintf("/trending/all/week?language=%s&page=%d", lang, page)
 		}
-		err = fetchTMDBCatalogPage(client, tmdbURL, &raw)
+		raw, err = cachedTMDBCatalogPage(client, tmdbURL)
 	}
 
 	if err != nil {

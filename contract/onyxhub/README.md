@@ -12,6 +12,7 @@ fait échouer l'autre.
 | `availability_batch.json` | OnyxHub → Onyx | réponse de la précédente |
 | `integration_ping.json` | OnyxHub → Onyx | `GET {OnyxHub}/api/integration/ping` |
 | `my_requests.json` | OnyxHub → app Onyx (relayé par Onyx) | `GET {OnyxHub}/api/request` |
+| `request_feed.json` | OnyxHub → app Onyx (relayé par Onyx) | `GET {OnyxHub}/api/request/feed` |
 | `imported.json` | OnyxHub → Onyx | `POST {Onyx}/api/integrations/onyxhub/imported` |
 | `library_tmdb_index.json` | Onyx → OnyxHub | `GET {Onyx}/api/library/tmdb-index` |
 | `mediahub_link_test.json` | Onyx → OnyxHub et app Onyx | `POST {Onyx}/api/settings/mediahub/test` |

@@ -126,3 +126,36 @@ func TestOnyxHubContractRequestIsRelayedAsSentWithTheAccount(t *testing.T) {
 		t.Fatalf("HTTP %d : %s", recorder.Code, recorder.Body.String())
 	}
 }
+
+func TestOnyxHubContractRequestFeedPassesTheCursorAndTheAnswerThrough(t *testing.T) {
+	if _, err := database.InitDB(filepath.Join(t.TempDir(), "contract.db")); err != nil {
+		t.Fatalf("InitDB: %v", err)
+	}
+	if _, err := database.DB.Exec(`INSERT INTO users (id, username, password_hash) VALUES (1, 'admin', 'x')`); err != nil {
+		t.Fatalf("insert user: %v", err)
+	}
+	hubStub(t, func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/api/request/feed" || r.URL.RawQuery != "after=41" {
+			t.Errorf("appel relayé : %s?%s", r.URL.Path, r.URL.RawQuery)
+		}
+		if r.Header.Get("X-Player-Id") != "1" {
+			t.Errorf("compte transmis : %q", r.Header.Get("X-Player-Id"))
+		}
+		_, _ = w.Write(onyxHubContract(t, "request_feed.json"))
+	})
+
+	recorder := httptest.NewRecorder()
+	MediaHubRequestFeed(recorder, httptest.NewRequest(http.MethodGet, "/api/requests/feed?after=41&x=1", nil), nil, 1)
+	if recorder.Code != http.StatusOK {
+		t.Fatalf("HTTP %d : %s", recorder.Code, recorder.Body.String())
+	}
+	sameJSON(t, "request_feed.json", recorder.Body.Bytes())
+}
+
+func TestRequestFeedRefusesACursorThatIsNotOneOnyxHubGave(t *testing.T) {
+	recorder := httptest.NewRecorder()
+	MediaHubRequestFeed(recorder, httptest.NewRequest(http.MethodGet, "/api/requests/feed?after=-3", nil), nil, 1)
+	if recorder.Code != http.StatusBadRequest {
+		t.Fatalf("HTTP %d, attendu 400", recorder.Code)
+	}
+}

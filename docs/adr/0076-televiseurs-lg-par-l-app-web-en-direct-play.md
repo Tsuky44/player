@@ -71,6 +71,12 @@ les annonce pas. Le Dolby Vision n'est jamais supposé : un profil 5 part en HLS
   Flutter : Retour (461) en Échap, que l'habillage TV traite déjà comme un retour, et les
   touches de lecture en `Media*`. `disableBackHistoryAPI` empêche webOS de reculer dans
   l'historique.
+- Les raccourcis par défaut de Flutter Web sont ceux d'une page : les flèches font défiler, et
+  Entrée n'active que les boutons. En mode TV sur le web, `webTvShortcuts` (`tv_focus.dart`)
+  rend aux flèches leur sens de D-pad (`DirectionalFocusIntent`) et à OK l'activation.
+- Le verre du chrome n'y floute pas (`glassBlurs`, `glass_chrome.dart`) : sur le GPU d'un
+  téléviseur, le flou plein écran de l'en-tête, refait à chaque image, faisait ramer l'accueil.
+  Il devient un voile plus opaque.
 - La connexion TV par lien local (ADR-0007) demande d'écouter sur une socket, ce qu'une page ne
   peut pas faire. Sur webOS, l'écran de connexion propose donc l'appairage serveur de
   l'ADR-0020, à côté du formulaire.

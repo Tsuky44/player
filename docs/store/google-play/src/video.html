@@ -1,0 +1,52 @@
+<!doctype html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<title>Onyx · scènes de la vidéo</title>
+<link rel="stylesheet" href="store.css">
+<style>
+  .scene { position: relative; width: 1920px; height: 1080px; overflow: hidden; background: linear-gradient(180deg, #1a1a1d 0%, #0c0c0e 60%, #09090b 100%); }
+  .scene.clear { background: transparent; }
+  .cap { position: absolute; font-weight: 700; letter-spacing: -0.03em; line-height: 1.1; color: #f5f5f7; }
+  .side .cap { left: 150px; top: 50%; transform: translateY(-50%); width: 760px; font-size: 76px; }
+  .side .shot { left: auto; right: 220px; transform: none; top: 110px; width: 600px; border-radius: 40px 40px 0 0; }
+  .wide .cap { left: 0; right: 0; top: 70px; text-align: center; font-size: 56px; }
+  .wide .shot { top: 200px; width: 1440px; border-radius: 18px; }
+  .logo { position: absolute; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; }
+  .logo .row { display: flex; align-items: center; gap: 6px; }
+  .logo .row img { height: 190px; }
+  .logo .row img.word { height: 70px; }
+  .logo p { margin-top: 28px; font-size: 40px; font-weight: 600; color: #d1d1d6; letter-spacing: -0.01em; }
+  .logo small { position: absolute; bottom: 70px; font-size: 22px; font-weight: 600; color: #8e8e93; }
+</style>
+</head>
+<body>
+<div id="root"></div>
+<script>
+  // Images fixes de la vidéo, assemblées et animées par render-video.cjs.
+  const CAP = '../captures/';
+  const BRAND = '../../../../brand/';
+
+  const side = (caption, file) => `<div class="scene side"><div class="cap">${caption}</div><img class="shot" src="${CAP}${file}"></div>`;
+  const wide = (caption, file) => `<div class="scene wide"><div class="cap">${caption}</div><img class="shot" src="${CAP}${file}"></div>`;
+  const logo = (extra = '', cls = '') => `<div class="scene ${cls}"><div class="logo">
+      <div class="row"><img src="${BRAND}onyx-mark.svg"><img class="word" src="${BRAND}onyx-wordmark.svg"></div>
+      <p>Ton cinéma privé.</p>${extra}</div></div>`;
+
+  const SCENES = {
+    intro: () => logo('', 'clear'),
+    home: () => side('Ton cinéma<br>privé.', 'phone-home.png'),
+    detail: () => side('Chaque film,<br>en détail.', 'phone-detail.png'),
+    player: () => wide("Lu tel quel, en qualité d'origine.", 'phone-player.png'),
+    tracks: () => wide('Tes langues, tes sous-titres.', 'phone-tracks.png'),
+    party: () => wide('Regardez ensemble, même à distance.', 'phone-party.png'),
+    offline: () => side('Tes films,<br>même hors ligne.', 'phone-offline.png'),
+    outro: () => logo('<small>Nécessite un serveur Onyx auto-hébergé. Onyx ne fournit aucun contenu.</small>'),
+  };
+
+  window.SCENES = Object.keys(SCENES);
+  const id = location.hash.slice(1);
+  if (SCENES[id]) document.getElementById('root').innerHTML = SCENES[id]();
+</script>
+</body>
+</html>

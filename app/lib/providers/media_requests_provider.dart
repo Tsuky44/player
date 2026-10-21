@@ -1,4 +1,4 @@
-﻿import 'package:dio/dio.dart';
+import 'package:dio/dio.dart';
 import 'package:flutter/foundation.dart';
 import '../models/media_request.dart';
 import '../models/request_catalog_filters.dart';
@@ -21,6 +21,19 @@ class MediaRequestsProvider extends ChangeNotifier {
   bool _isLoadingMore = false;
   String? _errorMessage;
 
+  /// Les pages suivantes, demandées dès que la précédente est là.
+  ///
+  /// [loadMore] attendait d'être à 900 px du bas pour demander la page, puis
+  /// les affiches se téléchargeaient à l'affichage : chaque lot arrivait avec
+  /// un trou de cartes vides. Deux pages d'avance, parce qu'une grille de
+  /// bureau (6 à 8 colonnes) n'en fait que trois rangées.
+  final Map<int, Future<RequestCatalogPage>> _ahead = {};
+  static const _pagesAhead = 2;
+
+  /// Appelé avec les cartes de chaque page préchargée : l'écran y chauffe
+  /// les affiches à la taille où il les dessine.
+  void Function(List<RequestMediaItem> items)? onPagePrefetched;
+
   List<RequestMediaItem> get items => _items;
   String get type => _type;
   String get query => _query;
@@ -35,6 +48,7 @@ class MediaRequestsProvider extends ChangeNotifier {
   /// la réponse partie avant la bascule. Voir [HomeProvider.reset].
   void reset() {
     _loadGeneration++;
+    _ahead.clear();
     _items = const [];
     _type = 'all';
     _query = '';
@@ -62,20 +76,17 @@ class MediaRequestsProvider extends ChangeNotifier {
     _items = const [];
     _errorMessage = null;
     _isLoading = true;
+    _ahead.clear();
     final generation = ++_loadGeneration;
     notifyListeners();
 
     try {
-      final result = await apiClient.getRequestCatalog(
-        page: 1,
-        type: _type,
-        query: _query,
-        filters: _filters,
-      );
+      final result = await _fetch(1);
       if (generation != _loadGeneration) return;
       _items = result.results;
       _page = result.page;
       _totalPages = result.totalPages;
+      _prefetch(_page + 1, _totalPages);
     } catch (error) {
       if (generation != _loadGeneration) return;
       _errorMessage = _messageFor(error);
@@ -94,12 +105,14 @@ class MediaRequestsProvider extends ChangeNotifier {
     notifyListeners();
 
     try {
-      final result = await apiClient.getRequestCatalog(
-        page: _page + 1,
-        type: _type,
-        query: _query,
-        filters: _filters,
-      );
+      final next = _page + 1;
+      final ahead = _ahead.remove(next);
+      // Une page préchargée en échec est redemandée : l'erreur ne s'affiche
+      // que si ce second essai échoue aussi.
+      final result = ahead == null
+          ? await _fetch(next)
+          : await ahead.then((page) => page,
+              onError: (Object _) => _fetch(next));
       if (generation != _loadGeneration) return;
       final known =
           _items.map((item) => '${item.mediaType.name}:${item.id}').toSet();
@@ -110,6 +123,7 @@ class MediaRequestsProvider extends ChangeNotifier {
       ];
       _page = result.page;
       _totalPages = result.totalPages;
+      _prefetch(_page + 1, _totalPages);
     } catch (error) {
       if (generation == _loadGeneration) _errorMessage = _messageFor(error);
     } finally {
@@ -118,6 +132,43 @@ class MediaRequestsProvider extends ChangeNotifier {
         notifyListeners();
       }
     }
+  }
+
+  Future<RequestCatalogPage> _fetch(int page) => apiClient.getRequestCatalog(
+        page: page,
+        type: _type,
+        query: _query,
+        filters: _filters,
+      );
+
+  /// Précharge [page] s'il reste une place dans [_ahead], puis la suivante
+  /// quand elle arrive. Une page déjà en route prolonge seulement la chaîne.
+  void _prefetch(int page, int totalPages) {
+    if (page > totalPages) return;
+    final generation = _loadGeneration;
+    final known = _ahead[page];
+    if (known != null) {
+      known.then((value) {
+        if (generation == _loadGeneration && identical(_ahead[page], known)) {
+          _prefetch(page + 1, value.totalPages);
+        }
+      }, onError: (Object _) {
+        // loadMore redemandera cette page et affichera l'erreur s'il le faut.
+      });
+      return;
+    }
+    if (_ahead.length >= _pagesAhead) return;
+    final pending = _fetch(page);
+    _ahead[page] = pending;
+    pending.then((value) {
+      if (generation != _loadGeneration || !identical(_ahead[page], pending)) {
+        return;
+      }
+      onPagePrefetched?.call(value.results);
+      _prefetch(page + 1, value.totalPages);
+    }, onError: (Object _) {
+      // Rien à montrer tant qu'on n'est pas en bas : loadMore la redemandera.
+    });
   }
 
   Future<RequestMediaDetails> loadDetails(RequestMediaItem item) {

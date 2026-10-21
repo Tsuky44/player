@@ -347,6 +347,10 @@ func main() {
 	router.POST("/api/requests", handlers.RequirePermission(models.PermRequestMedia, handlers.MediaHubRequest))
 	// Les demandes du compte, lues chez OnyxHub (ADR-0073) : même droit que les envoyer.
 	router.GET("/api/requests/mine", handlers.RequirePermission(models.PermRequestMedia, handlers.MediaHubMyRequests))
+	// Les demandes de tous les comptes, pour la notification « Nouvelle
+	// demande » (ADR-0077) : réservé à qui administre les réglages, comme
+	// OnyxHub, qui fait de manage_settings son administrateur.
+	router.GET("/api/requests/feed", handlers.RequirePermission(models.PermManageSettings, handlers.MediaHubRequestFeed))
 
 	// External subtitles (sidecar files or OpenSubtitles downloads), served as
 	// WebVTT. Unauthenticated so media_kit/mpv can fetch the track directly.

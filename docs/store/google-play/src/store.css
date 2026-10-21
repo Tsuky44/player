@@ -1,0 +1,27 @@
+@font-face { font-family: Manrope; font-weight: 600; src: url(../../../../app/assets/fonts/Manrope-600.ttf); }
+@font-face { font-family: Manrope; font-weight: 700; src: url(../../../../app/assets/fonts/Manrope-700.ttf); }
+
+* { box-sizing: border-box; margin: 0; padding: 0; }
+html, body { background: #000; overflow: hidden; }
+body { font-family: Manrope, sans-serif; color: #f5f5f7; -webkit-font-smoothing: antialiased; }
+
+/* Fond neutre, à peine plus clair en haut : la capture reste la seule couleur. */
+.canvas { position: relative; overflow: hidden; background: linear-gradient(180deg, #1a1a1d 0%, #0c0c0e 60%, #09090b 100%); }
+.canvas h1 { position: absolute; left: 0; right: 0; text-align: center; font-weight: 700; letter-spacing: -0.025em; line-height: 1.15; }
+.shot { position: absolute; left: 50%; transform: translateX(-50%); box-shadow: 0 0 0 2px rgba(255, 255, 255, 0.07), 0 40px 100px rgba(0, 0, 0, 0.6); }
+
+/* Portrait : la capture déborde en bas, coins arrondis en haut seulement. */
+.portrait h1 { top: 6.2%; font-size: 3.4vh; }
+.portrait .shot { top: 17%; width: 83%; border-radius: 3.4vw 3.4vw 0 0; }
+
+/* Paysage : légende courte au-dessus, capture centrée. */
+.landscape h1 { top: 6.5%; font-size: 4.6vh; }
+.landscape .shot { top: 19%; width: 78%; border-radius: 1.4vh; }
+
+.feature { width: 1024px; height: 500px; background: #09090b; }
+.feature .still { position: absolute; right: 0; top: 0; height: 100%; width: 74%; object-fit: cover;
+  -webkit-mask-image: linear-gradient(90deg, transparent 0%, #000 50%); mask-image: linear-gradient(90deg, transparent 0%, #000 50%); }
+.feature .brand { position: absolute; left: 72px; top: 182px; display: flex; align-items: center; gap: 4px; }
+.feature .brand img { height: 92px; }
+.feature .brand img.word { height: 34px; }
+.feature p { position: absolute; left: 80px; top: 292px; font-size: 24px; font-weight: 600; color: #c7c7cc; letter-spacing: -0.01em; }

@@ -1638,6 +1638,14 @@ const Map<String, String> kEnglish = <String, String>{
       'A notification when an episode is released for a series you follow, on all your servers. The device checks them from time to time, even with the app closed.',
   'Les notifications d’Onyx sont bloquées dans les réglages du système.':
       'Onyx notifications are blocked in the system settings.',
+  'Nouvelle demande de {0}':
+      'New request from {0}',
+  'Nouvelles demandes':
+      'New requests',
+  'Un compte de votre serveur vient de demander un film ou une série.':
+      'An account on your server has just requested a movie or a series.',
+  'Une notification quand un compte demande un film ou une série, avec son nom et les saisons voulues. Réservé aux administrateurs.':
+      'A notification when an account requests a movie or a series, with its name and the seasons wanted. For administrators only.',
   'Néerlandais':
       'Dutch',
   'Obligatoire pour ce compte sur ce serveur.':
