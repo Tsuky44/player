@@ -25,7 +25,9 @@ PAGES = {
     "conditions.txt": "conditions.html",
 }
 
-URL = re.compile(r"https?://[^\s)]+")
+# Une adresse, web ou e-mail, ne garde pas la ponctuation qui termine sa
+# phrase : le texte de l'app finit chaque paragraphe par un point.
+URL = re.compile(r"https?://[^\s)]+[^\s).,;]|[\w.+-]+@[\w-]+(?:\.[\w-]+)+")
 
 STYLE = """
 :root { color-scheme: dark; }
@@ -43,12 +45,13 @@ a { color: #e8e6e4; }
 
 
 def inline(text: str) -> str:
-    """Echappe une ligne et rend ses adresses cliquables."""
+    """Echappe une ligne et rend ses adresses web et e-mail cliquables."""
     out, last = [], 0
     for match in URL.finditer(text):
         out.append(html.escape(text[last:match.start()]))
         url = html.escape(match.group())
-        out.append(f'<a href="{url}">{url}</a>')
+        href = url if url.startswith("http") else f"mailto:{url}"
+        out.append(f'<a href="{href}">{url}</a>')
         last = match.end()
     out.append(html.escape(text[last:]))
     return "".join(out)

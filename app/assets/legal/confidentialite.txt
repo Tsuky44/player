@@ -1,33 +1,52 @@
 Politique de confidentialité d'Onyx
 
-Dernière mise à jour : 6 octobre 2026
+Dernière mise à jour : 21 octobre 2026
+
+Qui sommes-nous
+Onyx est une application éditée par Tsuky, développeur indépendant. Pour toute question sur cette politique ou sur vos données, écrivez à tsuky.4400@gmail.com.
 
 En bref
-Onyx est le lecteur d'une médiathèque hébergée sur un serveur que vous installez et administrez vous-même, ou que quelqu'un de votre entourage administre. L'éditeur d'Onyx n'exploite aucun serveur central : il ne reçoit, ne stocke et ne vend aucune donnée vous concernant. L'app ne contient ni publicité, ni outil de mesure d'audience, ni traceur.
+Onyx est le lecteur d'une médiathèque hébergée sur un serveur que vous installez et administrez vous-même, ou que quelqu'un de votre entourage administre. L'éditeur n'exploite aucun serveur central : il ne reçoit, ne stocke, ne partage et ne vend aucune donnée vous concernant. L'app ne contient ni publicité, ni outil de mesure d'audience, ni traceur, ni outil de rapport de plantage.
 
-Ce que l'app échange, et avec qui
-Avec le serveur Onyx auquel vous vous connectez, et seulement lui : votre nom d'utilisateur, votre mot de passe au moment de la connexion, le nom et le type de votre appareil, votre progression de lecture, vos réglages de lecture, vos demandes de médias, et le journal technique d'une lecture quand elle échoue. Ces données restent sur ce serveur. Son administrateur en est le responsable : c'est à lui qu'il faut s'adresser pour y accéder, les corriger ou les faire effacer.
+Qui est responsable de vos données
+Vos données ne sont envoyées qu'au serveur Onyx auquel vous vous connectez. Son administrateur, et non l'éditeur, est le responsable de leur traitement au sens du Règlement général sur la protection des données (RGPD). L'éditeur fournit le logiciel, mais n'a aucun accès aux serveurs ni aux données qu'ils contiennent.
 
-Avec TMDB (The Movie Database) : quand vous parcourez le catalogue des demandes, les affiches sont chargées directement depuis les serveurs d'images de TMDB, qui voient alors l'adresse IP de votre appareil, comme n'importe quel site web. Aucun identifiant de compte ne leur est transmis.
+Données traitées par le serveur auquel vous vous connectez
+Compte : nom d'utilisateur et mot de passe. Le mot de passe n'est envoyé qu'au moment de la connexion ; le serveur n'en conserve qu'une empreinte chiffrée.
+Appareil : nom et type de l'appareil, pour vous permettre de voir et de déconnecter vos sessions.
+Utilisation : progression de lecture, titres vus, réglages de lecture et demandes de médias.
+Technique : l'adresse IP de l'appareil, visible par le serveur comme pour tout site web, et le journal technique d'une lecture quand elle échoue, pour aider l'administrateur à corriger le problème.
+Ces données servent uniquement à faire fonctionner le service que vous avez demandé : vous connecter, lire vos médias et reprendre là où vous vous êtes arrêté. C'est la base légale de leur traitement (exécution du service). Elles sont conservées tant que votre compte existe et sont effacées avec lui.
 
-Avec les services que l'administrateur a lui-même reliés au serveur (par exemple une synchronisation Emby) : ces échanges partent du serveur, pas de l'app, et dépendent de sa configuration.
+Données qui restent sur votre appareil
+Le jeton de session, gardé dans le stockage sécurisé du système, l'adresse de vos serveurs, vos réglages, le cache des affiches, les fichiers téléchargés pour une lecture hors ligne et un journal technique local. Rien de tout cela n'est envoyé à l'éditeur. Désinstaller l'app efface le tout.
 
-Ce qui reste sur votre appareil
-Le jeton de session (dans le stockage sécurisé du système), l'adresse de vos serveurs, vos réglages, le cache des affiches, les fichiers que vous avez téléchargés pour les regarder hors ligne et un journal technique local. Désinstaller l'app efface le tout.
+Services tiers
+TMDB (The Movie Database, États-Unis) : quand vous parcourez le catalogue des demandes, les affiches sont chargées directement depuis les serveurs d'images de TMDB, qui voient alors l'adresse IP de votre appareil. Aucun identifiant de compte ne leur est transmis. Ce transfert hors de l'Union européenne se limite à cette adresse IP, et TMDB applique sa propre politique de confidentialité (https://www.themoviedb.org/privacy-policy).
+Services reliés par l'administrateur, par exemple un gestionnaire de demandes ou une synchronisation Emby : ces échanges partent du serveur, pas de l'app, et relèvent de l'administrateur.
+Magasin d'applications : Google Play ou l'App Store traitent vos données d'installation et d'achat selon leurs propres politiques. L'éditeur n'en reçoit que des statistiques anonymes et agrégées.
+
+Notifications
+Si vous activez les alertes de nouveaux épisodes, l'app interroge de temps en temps vos propres serveurs depuis votre appareil et affiche une notification locale. Aucun service de notification de l'éditeur n'intervient.
 
 Autorisations demandées
 Caméra : uniquement pour scanner le QR code affiché par un téléviseur à appairer. Aucune image n'est enregistrée ni envoyée.
 Réseau local : pour trouver votre serveur sur le réseau de votre maison et lire vos fichiers depuis celui-ci.
+Notifications : uniquement pour les alertes de nouveaux épisodes, si vous les activez.
 Sélecteur de fichiers : uniquement quand un administrateur choisit un fichier à envoyer à son propre serveur.
 
-Supprimer votre compte
-Paramètres > Mon compte > Supprimer mon compte. Le compte, votre progression, vos réglages et vos sessions sont effacés du serveur immédiatement et définitivement. Le propriétaire d'un serveur transfère d'abord la propriété, ou supprime simplement son serveur.
+Sécurité
+Le jeton de session est stocké dans le coffre sécurisé du système (Keystore sur Android, Trousseau sur Apple). Les échanges avec le serveur sont chiffrés en HTTPS dès que le serveur le propose. La sécurité du serveur lui-même relève de son administrateur.
+
+Vos droits
+Conformément au RGPD, vous pouvez accéder à vos données, les rectifier, les effacer, en obtenir une copie, ou vous opposer à leur traitement. Comme elles sont stockées sur le serveur auquel vous vous connectez, adressez ces demandes à son administrateur. Vous pouvez à tout moment supprimer vous-même votre compte : Paramètres > Mon compte > Supprimer mon compte. Le compte, votre progression, vos réglages et vos sessions sont alors effacés immédiatement et définitivement. Le propriétaire d'un serveur transfère d'abord la propriété, ou supprime simplement son serveur.
+Pour toute question sur l'app elle-même, écrivez à tsuky.4400@gmail.com. Si vous estimez que vos droits ne sont pas respectés, vous pouvez adresser une réclamation à la CNIL (https://www.cnil.fr).
 
 Enfants
-Onyx ne s'adresse pas spécifiquement aux enfants et ne collecte aucune donnée auprès d'eux.
+Onyx ne s'adresse pas spécifiquement aux enfants de moins de 13 ans, et l'éditeur ne collecte aucune donnée auprès d'eux.
 
 Modifications
-Une nouvelle version de cette politique est publiée avec l'app ; la date en tête de page change alors.
+Cette politique peut évoluer avec l'app. La version en vigueur est toujours consultable dans l'app (Paramètres > Cet appareil > À propos) et en ligne, et la date en tête de page indique sa dernière mise à jour.
 
 Contact
-L'éditeur d'Onyx se contacte à l'adresse indiquée sur la fiche de l'application dans le magasin où vous l'avez obtenue.
+Tsuky, éditeur d'Onyx : tsuky.4400@gmail.com.
