@@ -1,0 +1,28 @@
+Supprimer son compte Onyx
+
+Dernière mise à jour : 21 octobre 2026
+
+Avant de commencer
+Onyx est une application éditée par Tsuky. C'est le lecteur d'une médiathèque hébergée sur un serveur que vous, ou quelqu'un de votre entourage, installez et administrez. Votre compte n'existe que sur ce serveur : l'éditeur n'a aucun compte à votre nom et ne détient aucune donnée vous concernant. La suppression se fait donc sur le serveur auquel vous vous connectez.
+
+Depuis l'app (recommandé)
+1. Ouvrez Onyx et connectez-vous au serveur concerné.
+2. Allez dans Paramètres, puis Mon compte.
+3. Touchez Supprimer mon compte.
+4. Confirmez avec votre mot de passe.
+La suppression est immédiate et définitive. Si vous avez un compte sur plusieurs serveurs, répétez l'opération sur chacun.
+
+Sans l'app
+Demandez la suppression à l'administrateur du serveur : il peut supprimer votre compte depuis la gestion des utilisateurs de son serveur. Si vous ne parvenez pas à le joindre, écrivez à tsuky.4400@gmail.com en indiquant l'adresse du serveur et votre nom d'utilisateur : l'éditeur n'a pas accès aux serveurs, mais vous aidera à trouver la marche à suivre.
+
+Si vous êtes le propriétaire du serveur
+Le compte propriétaire ne peut pas être supprimé tant qu'il possède le serveur. Transférez d'abord la propriété à un autre compte, ou supprimez simplement votre serveur : toutes les données disparaissent avec lui.
+
+Données supprimées
+Dès la confirmation, le serveur efface votre compte et tout ce qui y est rattaché : nom d'utilisateur et mot de passe, sessions et appareils connectés, progression et historique de lecture, titres masqués et listes, réglages de lecture et de pistes, partages, invitations, appairages de téléviseurs et liaisons avec d'autres services.
+
+Données conservées
+Sauvegardes : le serveur garde ses trois dernières sauvegardes automatiques, faites avant chaque mise à jour qui modifie sa base de données. Elles peuvent contenir votre compte jusqu'à ce que des mises à jour suivantes les remplacent.
+Services reliés par l'administrateur : les demandes de médias envoyées à un gestionnaire de demandes, ou les données d'une synchronisation Emby, restent dans ces services. Leur suppression se demande à l'administrateur.
+Votre appareil : les réglages, le cache et les fichiers téléchargés restent sur l'appareil jusqu'à la désinstallation de l'app.
+Aucune autre copie n'est conservée, et l'éditeur n'en détient aucune.

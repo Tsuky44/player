@@ -5,13 +5,16 @@ name: Pages
 # publique (ADR-0046). La source reste app/assets/legal/, que l'app embarque ;
 # scripts/ci/build-legal-site.py n'en fait que la version web.
 #
-# URL : https://tsuky44.github.io/player/confidentialite.html
+# URL : https://tsuky44.github.io/player/confidentialite.html, et
+# suppression-compte.html pour le champ « URL de suppression de compte » de
+# Google Play (source : docs/legal/).
 
 on:
   push:
     branches: [main]
     paths:
       - "app/assets/legal/**"
+      - "docs/legal/**"
       - "scripts/ci/build-legal-site.py"
       - ".github/workflows/pages.yml"
   workflow_dispatch:

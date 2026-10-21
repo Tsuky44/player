@@ -16,13 +16,15 @@ import re
 import sys
 
 ROOT = pathlib.Path(__file__).resolve().parents[2]
-LEGAL = ROOT / "app" / "assets" / "legal"
 
 # Fichier source -> page publiee. Le nom de la page fait partie de l'URL
 # declaree dans les consoles des magasins : le changer casse la fiche.
+# La procedure de suppression de compte n'a rien a faire dans l'app (elle y
+# est un bouton) : Google Play veut seulement une page web qui la decrit.
 PAGES = {
-    "confidentialite.txt": "confidentialite.html",
-    "conditions.txt": "conditions.html",
+    "app/assets/legal/confidentialite.txt": "confidentialite.html",
+    "app/assets/legal/conditions.txt": "conditions.html",
+    "docs/legal/suppression-compte.txt": "suppression-compte.html",
 }
 
 # Une adresse, web ou e-mail, ne garde pas la ponctuation qui termine sa
@@ -109,7 +111,7 @@ def main() -> None:
 
     links = []
     for source, target in PAGES.items():
-        title, body = render((LEGAL / source).read_text(encoding="utf-8"))
+        title, body = render((ROOT / source).read_text(encoding="utf-8"))
         (out / target).write_text(page(title, body), encoding="utf-8")
         links.append(f'<p><a href="{target}">{html.escape(title)}</a></p>')
 
