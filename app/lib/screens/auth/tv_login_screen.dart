@@ -12,6 +12,7 @@ import '../../theme/app_colors.dart';
 import '../../tv/tv_mode.dart';
 import '../../widgets/global/onyx_mark.dart';
 import '../../widgets/global/onyx_wordmark.dart';
+import '../settings/servers_screen.dart';
 import 'login_screen.dart';
 import '../../theme/app_type.dart';
 import '../../l10n/tr.dart';
@@ -38,7 +39,15 @@ class TvLoginScreen extends StatefulWidget {
   /// socket, which a widget test has no business doing.
   final TvLinkSession Function()? createLinkSession;
 
-  const TvLoginScreen({super.key, this.createLinkSession});
+  /// Ouvert depuis « Qui regarde ? » pour ajouter quelqu'un : une session est
+  /// peut-être déjà ouverte, et l'écran se referme une fois la nouvelle reçue.
+  final bool addingUser;
+
+  const TvLoginScreen({
+    super.key,
+    this.createLinkSession,
+    this.addingUser = false,
+  });
 
   @override
   State<TvLoginScreen> createState() => _TvLoginScreenState();
@@ -133,12 +142,21 @@ class _TvLoginScreenState extends State<TvLoginScreen> {
           token: payload.token,
           user: payload.user,
         );
+    if (widget.addingUser && mounted) Navigator.of(context).pop(true);
   }
 
-  void _openPasswordForm() {
-    Navigator.of(context).push(
-      MaterialPageRoute(builder: (_) => const LoginScreen()),
-    );
+  /// Pour ajouter quelqu'un, le formulaire du carnet : celui de connexion
+  /// remplacerait la session ouverte sans vider ce qu'elle a chargé.
+  Future<void> _openPasswordForm() async {
+    final serverUrl = context.read<AuthProvider>().activeServer?.url;
+    final added = await Navigator.of(context).push<bool>(MaterialPageRoute(
+      builder: (_) => widget.addingUser
+          ? AddServerScreen(initialUrl: serverUrl, signIn: true)
+          : const LoginScreen(),
+    ));
+    if (widget.addingUser && added == true && mounted) {
+      Navigator.of(context).pop(true);
+    }
   }
 
   @override

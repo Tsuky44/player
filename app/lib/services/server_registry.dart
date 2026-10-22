@@ -86,6 +86,22 @@ class ServerRegistry extends ChangeNotifier {
   /// sélecteur : un seul serveur n'a pas besoin d'un menu pour en changer.
   bool get hasMultipleServers => _accounts.length > 1;
 
+  /// Vrai quand [a] et [b] sont deux comptes du même serveur : reconnu à son
+  /// identité quand les deux la connaissent, sinon à son adresse. Ce sont des
+  /// personnes différentes sur une même médiathèque, pas deux serveurs.
+  static bool sameServer(ServerAccount a, ServerAccount b) =>
+      a.serverId != null && b.serverId != null
+          ? a.serverId == b.serverId
+          : a.url == b.url;
+
+  /// Les utilisateurs de cet appareil sur le serveur de [id], lui compris,
+  /// dans l'ordre du carnet. C'est la liste de « Qui regarde ? ».
+  List<ServerAccount> usersOf(String id) {
+    final account = accountById(id);
+    if (account == null) return const [];
+    return accounts.where((other) => sameServer(account, other)).toList();
+  }
+
   /// Les comptes de cet appareil liés à [id], lui compris, de proche en
   /// proche : A lié à B et B lié à C mettent les trois dans le même groupe.
   /// Les noms d'utilisateur n'ont pas à correspondre.
@@ -187,6 +203,9 @@ class ServerRegistry extends ChangeNotifier {
     return null;
   }
 
+  /// Le premier compte de cette adresse. Plusieurs utilisateurs peuvent la
+  /// partager : quand on sait de qui il s'agit, [accountById] avec
+  /// [ServerAccount.idFor] désigne le bon.
   ServerAccount? accountForUrl(String url) {
     final normalized = ServerAccount.normalizeUrl(url);
     for (final account in _accounts) {

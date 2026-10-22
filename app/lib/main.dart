@@ -38,6 +38,7 @@ import 'screens/shared_link/shared_link_app.dart';
 import 'screens/auth/login_screen.dart';
 import 'screens/auth/server_choice_screen.dart';
 import 'screens/auth/tv_login_screen.dart';
+import 'screens/auth/user_choice_screen.dart';
 import 'tv/tv_focus.dart';
 import 'tv/tv_focus_guard.dart';
 import 'tv/tv_focus_scroll.dart';
@@ -553,6 +554,11 @@ class OnyxApp extends StatelessWidget {
                     // rabattre en silence sur le cache.
                     if (authProvider.needsServerChoice) {
                       return const ServerChoiceScreen();
+                    }
+                    // Plusieurs personnes sur ce serveur : la session attend
+                    // de savoir laquelle ouvrir (ADR-0078).
+                    if (authProvider.needsUserChoice) {
+                      return const UserChoiceScreen(atStartup: true);
                     }
                     if (!authProvider.isAuthenticated) {
                       // A television gets the QR pairing instead of a password

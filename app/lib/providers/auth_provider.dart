@@ -6,6 +6,7 @@ import '../models/server_account.dart';
 import '../services/api_client.dart';
 import '../utils/app_platform.dart';
 import '../l10n/tr.dart';
+import 'auth_error_text.dart';
 
 /// Ce que donne une tentative d'ouverture de session sur le compte actif.
 ///
@@ -102,11 +103,23 @@ class AuthProvider extends ChangeNotifier {
     // c'est tout ce qu'on lui demande d'être.
     await _applyPrimaryServer();
 
-    if (!apiClient.hasSavedToken) {
+    // Plusieurs personnes sur ce serveur : c'est à elles de dire qui regarde,
+    // avant qu'une session s'ouvre et charge l'accueil de quelqu'un d'autre.
+    if (usersOnActiveServer.length > 1) {
+      _needsUserChoice = true;
       _isInitializing = false;
       notifyListeners();
       return;
     }
+
+    await _openStartupSession();
+    _isInitializing = false;
+    notifyListeners();
+  }
+
+  /// Ouvre la session du compte actif au lancement, ou après « Qui regarde ? ».
+  Future<void> _openStartupSession() async {
+    if (!apiClient.hasSavedToken) return;
 
     // Un 401 est un verdict : la session n'existe plus, on nettoie et on
     // renvoie vers l'écran de connexion. Une absence de réponse n'est un
@@ -129,7 +142,47 @@ class AuthProvider extends ChangeNotifier {
           _isAuthenticated = false;
         }
     }
+  }
 
+  // ==================== QUI REGARDE ? ====================
+  //
+  // Un appareil partagé — la télévision du salon — peut tenir les comptes de
+  // plusieurs personnes du même serveur. Chacun garde son jeton (ADR-0013) :
+  // changer d'utilisateur ne redemande pas de mot de passe. Voir ADR-0078.
+
+  /// Le lancement attend qu'on dise qui regarde.
+  bool _needsUserChoice = false;
+
+  bool get needsUserChoice => _needsUserChoice;
+
+  /// Une session ouverte par un autre chemin que [chooseUser] — un compte
+  /// ajouté depuis « Qui regarde ? » — a répondu à la question. Chaque
+  /// ouverture se termine par ici, d'où le fait de le retenir à cet endroit.
+  @override
+  void notifyListeners() {
+    if (_isAuthenticated) _needsUserChoice = false;
+    super.notifyListeners();
+  }
+
+  /// Les utilisateurs de cet appareil sur le serveur actif, l'actif compris.
+  List<ServerAccount> get usersOnActiveServer {
+    final active = activeServer;
+    return active == null ? const [] : apiClient.servers.usersOf(active.id);
+  }
+
+  /// Répond à « Qui regarde ? » au lancement : la session s'ouvre sur ce
+  /// compte, avec les mêmes replis qu'un démarrage ordinaire.
+  Future<void> chooseUser(String accountId) async {
+    if (!_needsUserChoice) return;
+    _needsUserChoice = false;
+    _isInitializing = true;
+    notifyListeners();
+
+    if (activeServer?.id != accountId &&
+        await apiClient.activateAccount(accountId)) {
+      _onServerChanged?.call();
+    }
+    await _openStartupSession();
     _isInitializing = false;
     notifyListeners();
   }
@@ -275,7 +328,7 @@ class AuthProvider extends ChangeNotifier {
     } catch (e) {
       _currentUser = null;
       _isAuthenticated = false;
-      _errorMessage = _parseError(e);
+      _errorMessage = authErrorText(e);
       _isLoading = false;
       notifyListeners();
       return false;
@@ -303,7 +356,7 @@ class AuthProvider extends ChangeNotifier {
       notifyListeners();
       return true;
     } catch (e) {
-      _errorMessage = _parseError(e);
+      _errorMessage = authErrorText(e);
       _isLoading = false;
       notifyListeners();
       return false;
@@ -324,6 +377,9 @@ class AuthProvider extends ChangeNotifier {
       username: user.username,
       userId: user.id,
     );
+    // Depuis « Qui regarde ? », une session était peut-être déjà ouverte : ce
+    // qu'elle a mis en mémoire appartient à quelqu'un d'autre.
+    if (_isAuthenticated) _onServerChanged?.call();
 
     await apiClient.cacheProfile(user);
     _currentUser = user;
@@ -596,7 +652,10 @@ class AuthProvider extends ChangeNotifier {
       await apiClient.cacheProfile(user);
     }
     notifyListeners();
-    return apiClient.servers.accountForUrl(serverUrl)!;
+    // Par l'identifiant et pas par l'adresse : ce serveur peut déjà tenir le
+    // compte de quelqu'un d'autre sur cet appareil.
+    return apiClient.servers
+        .accountById(ServerAccount.idFor(serverUrl, user.username))!;
   }
 
   /// Range au carnet une session ouverte par un code (ADR-0041).
@@ -729,29 +788,5 @@ class AuthProvider extends ChangeNotifier {
   Future<void> abandonAccessRequest(PendingAccessRequest request) async {
     await apiClient.servers.dropPendingRequest(request.requestCode);
     notifyListeners();
-  }
-
-  String _parseError(dynamic error) {
-    if (error is DioException) {
-      if (error.response != null && error.response?.data is Map) {
-        final data = error.response?.data as Map;
-        if (data.containsKey("error")) {
-          return data["error"].toString();
-        }
-      }
-      if (error.type == DioExceptionType.connectionTimeout || error.type == DioExceptionType.receiveTimeout) {
-        return tr('Connexion au serveur expirée (Timeout).');
-      }
-      if (error.type == DioExceptionType.connectionError) {
-        return tr('Connexion au serveur impossible. Vérifiez l\'adresse IP et que '
-            'le serveur est allumé.');
-      }
-    }
-    
-    final errorStr = error.toString();
-    if (errorStr.contains("SocketException") || errorStr.contains("Failed host lookup")) {
-      return tr('Adresse serveur introuvable ou réseau inaccessible.');
-    }
-    return tr('Une erreur est survenue : {0}', [errorStr]);
   }
 }

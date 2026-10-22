@@ -1,6 +1,6 @@
 // Monte la vidéo de présentation (1920 x 1080, 30 i/s) :
 //   1. ouverture sur des plans de Meridian et Tears of Steel (CC BY) avec le logo,
-//   2. les vraies captures de l'app, en fondus et léger zoom,
+//   2. le téléphone 3D (../renders) sur chaque écran, un titre court, fondus et léger zoom,
 //   3. carton de fin.
 //
 //   python music.py 31
@@ -18,7 +18,7 @@ const BROWSERS = [
   '/usr/bin/google-chrome',
 ];
 
-const SCENE_LEN = 3.8;
+const SCENE_LEN = 3.6;
 const OUTRO_LEN = 4.5;
 const FADE = 0.5;
 // [film, début en secondes, durée]
@@ -28,7 +28,7 @@ const OPENING = [
   ['Meridian (2016)', 200, 1.7],
   ['Tears of Steel (2012)', 348, 1.7],
 ];
-const SCENES = ['home', 'detail', 'player', 'tracks', 'party', 'offline'];
+const SCENES = ['home', 'films', 'detail', 'party', 'offline'];
 
 async function renderStills(dir) {
   const executablePath = process.env.BROWSER || BROWSERS.find((b) => fs.existsSync(b));
@@ -69,7 +69,7 @@ async function main() {
   filters.push(`[${n}:v]format=rgba,fade=in:st=2.2:d=0.9:alpha=1[logo]`);
   filters.push(`[mont][logo]overlay=0:0:shortest=1,format=yuv420p,settb=1/30,setpts=N/30/TB,fps=30[v0]`);
   const zoom = (i, label, frames) =>
-    filters.push(`[${i}:v]scale=2880:1620,zoompan=z='1+0.04*on/${frames}':d=1:x='iw/2-(iw/zoom/2)':y='ih/2-(ih/zoom/2)':s=1920x1080:fps=30,setsar=1,format=yuv420p,settb=1/30,setpts=N/30/TB,fps=30[${label}]`);
+    filters.push(`[${i}:v]scale=3840:2160,zoompan=z='1+0.03*on/${frames}':d=1:x='iw/2-(iw/zoom/2)':y='ih/2-(ih/zoom/2)':s=1920x1080:fps=30,setsar=1,format=yuv420p,settb=1/30,setpts=N/30/TB,fps=30[${label}]`);
   SCENES.forEach((_, k) => zoom(n + 1 + k, `s${k}`, Math.round(SCENE_LEN * 30)));
   zoom(n + 1 + SCENES.length, 'out', Math.round(OUTRO_LEN * 30));
 

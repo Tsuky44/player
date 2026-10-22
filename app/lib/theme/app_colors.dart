@@ -32,6 +32,18 @@ abstract final class AppColors {
 
   static const navBackground = Color(0xE6141414);
 
+  /// Les pastilles de « Qui regarde ? » : une teinte par personne, pour la
+  /// reconnaître de loin avant d'avoir lu son nom. Assourdies, pour que le
+  /// focus bleu reste la seule chose qui ressorte.
+  static const profileTints = [
+    Color(0xFF3A6EA5),
+    Color(0xFF3F8F5E),
+    Color(0xFFB07A2E),
+    Color(0xFF8A5AAE),
+    Color(0xFFA8485E),
+    Color(0xFF3E8C96),
+  ];
+
   /// Hairline glass edge highlight.
   static Color get glassBorder => Colors.white.withValues(alpha: 0.08);
   static Color get glassFill => Colors.white.withValues(alpha: 0.06);

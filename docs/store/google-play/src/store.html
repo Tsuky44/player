@@ -8,39 +8,37 @@
 <body>
 <div id="root"></div>
 <script>
-  // Chaque visuel est une vraie capture de l'app (../captures) posée sur un
-  // fond sombre neutre, avec une seule ligne de texte. Les captures viennent de
-  // l'app Android en release, branchée sur un serveur de démo qui ne contient
-  // que des films sous licence libre (voir ../fiche.md).
-  const CAP = '../captures/';
+  // Chaque visuel : un titre, une ligne, et un téléphone rendu dans Blender
+  // (../renders, fond transparent) qui affiche les écrans d'Onyx
+  // (screens.html). Les affiches qui sortent de l'écran sont celles des films
+  // libres de la démo.
+  const R = '../renders/';
+  const BRAND = '../../../../brand/';
 
-  const frame = (cls, w, h, caption, file) => `<div class="canvas ${cls}" style="width:${w}px;height:${h}px">
-      <h1>${caption}</h1><img class="shot" src="${CAP}${file}"></div>`;
+  const logo = `<div class="logo"><img src="${BRAND}onyx-mark.svg"><img class="word" src="${BRAND}onyx-wordmark.svg"></div>`;
 
-  const phone = (caption, file) => frame('portrait', 1080, 1920, caption, file);
-  const phoneLandscape = (caption, file) => frame('landscape', 1920, 1080, caption, file);
-  const tabletPortrait = (caption, file) => frame('portrait tablet', 1440, 2560, caption, file);
-  const tabletLandscape = (caption, file) => frame('landscape', 2560, 1440, caption, file);
+  const phone = (title, sub, render, withLogo = false) => `<div class="canvas portrait">
+      <div class="copy">${withLogo ? logo : ''}<h1>${title}</h1>${sub ? `<p>${sub}</p>` : ''}</div><img class="render" src="${R}${render}.png"></div>`;
+
+  // Un seul rendu par visuel : deux rendus superposés doubleraient leurs ombres.
+  const tablet = (title, sub, render, withLogo = false) => `<div class="canvas tablet">
+      <div class="copy">${withLogo ? logo : ''}<h1>${title}</h1>${sub ? `<p>${sub}</p>` : ''}</div><img class="render" src="${R}${render}.png"></div>`;
 
   const SHOTS = {
-    icon: { w: 512, h: 512, file: 'icone-512', html: () => `<img src="../../../../brand/onyx-icon-square.svg" width="512" height="512">` },
+    icon: { w: 512, h: 512, file: 'icone-512', html: () => `<img src="${BRAND}onyx-icon-square.svg" width="512" height="512">` },
 
     feature: { w: 1024, h: 500, file: 'image-presentation-1024x500', html: () => `<div class="canvas feature">
-        <img class="still" src="${CAP}feature-still.jpg">
-        <div class="brand"><img src="../../../../brand/onyx-mark.svg"><img class="word" src="../../../../brand/onyx-wordmark.svg"></div>
-        <p>Ton cinéma privé.</p></div>` },
+        <div class="copy">${logo}<h1>Ton cinéma privé.</h1><p>Tous tes médias, sur ton propre serveur.</p></div>
+        <img class="render" src="${R}feature.png"></div>` },
 
-    'phone-1': { w: 1080, h: 1920, file: 'telephone-1-accueil', html: () => phone('Ton cinéma privé.', 'phone-home.png') },
-    'phone-2': { w: 1080, h: 1920, file: 'telephone-2-fiche', html: () => phone('Chaque film, en détail.', 'phone-detail.png') },
-    'phone-3': { w: 1920, h: 1080, file: 'telephone-3-lecteur', html: () => phoneLandscape("Lu tel quel, en qualité d'origine.", 'phone-player.png') },
-    'phone-4': { w: 1920, h: 1080, file: 'telephone-4-sous-titres', html: () => phoneLandscape('Tes langues, tes sous-titres.', 'phone-tracks.png') },
-    'phone-5': { w: 1080, h: 1920, file: 'telephone-5-bibliotheque', html: () => phone('Toute ta collection,<br>au même endroit.', 'phone-films.png') },
-    'phone-6': { w: 1920, h: 1080, file: 'telephone-6-regarder-ensemble', html: () => phoneLandscape('Regardez ensemble, même à distance.', 'phone-party.png') },
-    'phone-7': { w: 1080, h: 1920, file: 'telephone-7-hors-ligne', html: () => phone('Tes films, même hors ligne.', 'phone-offline.png') },
+    'phone-1': { w: 1080, h: 1920, file: 'telephone-1-accueil', html: () => phone('Ton cinéma privé.', 'Tous tes médias, sur ton propre serveur.', 'home', true) },
+    'phone-2': { w: 1080, h: 1920, file: 'telephone-2-bibliotheque', html: () => phone('Toute ta collection,<br>à portée de main,<br>tout le temps.', '', 'films') },
+    'phone-3': { w: 1080, h: 1920, file: 'telephone-3-fiche', html: () => phone('Chaque média,<br>en détail.', 'Résumé, casting, et la reprise là où tu t\'es arrêté.', 'detail') },
+    'phone-4': { w: 1080, h: 1920, file: 'telephone-4-regarder-ensemble', html: () => phone('Le même média,<br>pas le même canapé.', 'Lecture et pause synchronisées pour tout le monde.', 'party') },
+    'phone-5': { w: 1080, h: 1920, file: 'telephone-5-hors-ligne', html: () => phone('Tes médias hors ligne,<br>même sans connexion.', '', 'offline') },
 
-    'tablet-1': { w: 1440, h: 2560, file: 'tablette-1-accueil', html: () => tabletPortrait('Ton cinéma privé, en grand.', 'tablet-home.png') },
-    'tablet-2': { w: 2560, h: 1440, file: 'tablette-2-fiche', html: () => tabletLandscape('Chaque film, en détail.', 'tablet-detail.png') },
-    'tablet-3': { w: 2560, h: 1440, file: 'tablette-3-lecteur', html: () => tabletLandscape("Lu tel quel, en qualité d'origine.", 'tablet-player.png') },
+    'tablet-1': { w: 2560, h: 1440, file: 'tablette-1-accueil', html: () => tablet('Ton cinéma privé.', 'Tous tes médias, sur ton propre serveur.', 'tablet-home', true) },
+    'tablet-2': { w: 2560, h: 1440, file: 'tablette-2-fiche', html: () => tablet('Chaque média,<br>en détail.', 'Et la reprise là où tu t\'es arrêté.', 'tablet-detail') },
   };
 
   window.SHOTS = Object.fromEntries(Object.entries(SHOTS).map(([k, v]) => [k, { w: v.w, h: v.h, file: v.file }]));

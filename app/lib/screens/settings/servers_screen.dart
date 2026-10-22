@@ -9,6 +9,7 @@ import '../../models/server_account.dart';
 import '../../providers/auth_provider.dart';
 import '../../services/api_client.dart';
 import '../../services/server_discovery.dart';
+import '../../services/server_registry.dart';
 import '../../theme/app_colors.dart';
 import '../../tv/tv_deferred_keyboard.dart';
 import '../../utils/on_screen.dart';
@@ -639,7 +640,7 @@ class _AddServerScreenState extends State<AddServerScreen> {
           return;
         }
         _snack(tr('{0} ajouté.', [account.displayName]));
-        if (previous != null && previous.id != account.id) {
+        if (previous != null && !ServerRegistry.sameServer(previous, account)) {
           await _offerLink(previous, account);
         }
       } else {
@@ -894,9 +895,7 @@ List<ServerAccount> _linkCandidates(ApiClient api, ServerAccount account) {
       api.servers.linkedAccounts(account.id).map((a) => a.id).toSet();
   return api.servers.accounts
       .where((a) =>
-          !linked.contains(a.id) &&
-          a.url != account.url &&
-          (a.serverId == null || a.serverId != account.serverId))
+          !linked.contains(a.id) && !ServerRegistry.sameServer(a, account))
       .toList();
 }
 

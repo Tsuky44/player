@@ -1,27 +1,42 @@
+@font-face { font-family: Manrope; font-weight: 500; src: url(../../../../app/assets/fonts/Manrope-500.ttf); }
 @font-face { font-family: Manrope; font-weight: 600; src: url(../../../../app/assets/fonts/Manrope-600.ttf); }
 @font-face { font-family: Manrope; font-weight: 700; src: url(../../../../app/assets/fonts/Manrope-700.ttf); }
 
 * { box-sizing: border-box; margin: 0; padding: 0; }
 html, body { background: #000; overflow: hidden; }
-body { font-family: Manrope, sans-serif; color: #f5f5f7; -webkit-font-smoothing: antialiased; }
+body { font-family: Manrope, sans-serif; -webkit-font-smoothing: antialiased; }
 
-/* Fond neutre, à peine plus clair en haut : la capture reste la seule couleur. */
-.canvas { position: relative; overflow: hidden; background: linear-gradient(180deg, #1a1a1d 0%, #0c0c0e 60%, #09090b 100%); }
-.canvas h1 { position: absolute; left: 0; right: 0; text-align: center; font-weight: 700; letter-spacing: -0.025em; line-height: 1.15; }
-.shot { position: absolute; left: 50%; transform: translateX(-50%); box-shadow: 0 0 0 2px rgba(255, 255, 255, 0.07), 0 40px 100px rgba(0, 0, 0, 0.6); }
+/* Fond clair et doux, à peine teinté du bleu d'Onyx : le téléphone sombre ressort. */
+.canvas { position: relative; overflow: hidden; color: #121414;
+  background: radial-gradient(120% 70% at 50% 100%, #dfe6f3 0%, rgba(223, 230, 243, 0) 60%), linear-gradient(180deg, #f6f5f3 0%, #eceae7 100%); }
+.canvas h1 { font-weight: 700; letter-spacing: -0.03em; line-height: 1.08; }
+.canvas p { font-weight: 500; color: #5c5f66; line-height: 1.35; }
+.render { position: absolute; }
 
-/* Portrait : la capture déborde en bas, coins arrondis en haut seulement. */
-.portrait h1 { top: 6.2%; font-size: 3.4vh; }
-.portrait .shot { top: 17%; width: 83%; border-radius: 3.4vw 3.4vw 0 0; }
+.portrait { width: 1080px; height: 1920px; text-align: center; }
+.portrait .copy { position: absolute; top: 140px; left: 60px; right: 60px; display: flex; flex-direction: column; align-items: center; }
+.portrait h1 { font-size: 82px; }
+.portrait p { font-size: 34px; margin-top: 26px; padding: 0 30px; }
+.portrait .logo { margin: -40px 0 34px; }
+.portrait .render { left: 0; top: 0; width: 1080px; height: 1920px; }
 
-/* Paysage : légende courte au-dessus, capture centrée. */
-.landscape h1 { top: 6.5%; font-size: 4.6vh; }
-.landscape .shot { top: 19%; width: 78%; border-radius: 1.4vh; }
+.tablet { width: 2560px; height: 1440px; }
+.tablet .copy { position: absolute; left: 150px; top: 50%; transform: translateY(-50%); width: 760px; }
+.tablet h1 { font-size: 104px; }
+.tablet p { font-size: 40px; margin-top: 34px; }
+.tablet .logo { margin-bottom: 48px; }
 
-.feature { width: 1024px; height: 500px; background: #09090b; }
-.feature .still { position: absolute; right: 0; top: 0; height: 100%; width: 74%; object-fit: cover;
-  -webkit-mask-image: linear-gradient(90deg, transparent 0%, #000 50%); mask-image: linear-gradient(90deg, transparent 0%, #000 50%); }
-.feature .brand { position: absolute; left: 72px; top: 182px; display: flex; align-items: center; gap: 4px; }
-.feature .brand img { height: 92px; }
-.feature .brand img.word { height: 34px; }
-.feature p { position: absolute; left: 80px; top: 292px; font-size: 24px; font-weight: 600; color: #c7c7cc; letter-spacing: -0.01em; }
+/* Marque : la lentille garde ses couleurs, le mot-symbole (clair) passe au charbon. */
+.logo { display: flex; align-items: center; gap: 4px; }
+.logo img { height: 190px; margin: -40px -60px -40px -40px; }
+.logo img.word { height: 58px; margin: 0; filter: brightness(0.08); }
+.tablet .render { left: 0; top: 0; width: 2560px; height: 1440px; }
+
+.feature { width: 1024px; height: 500px; }
+.feature .copy { position: absolute; left: 64px; top: 50%; transform: translateY(-50%); width: 420px; }
+.feature .logo { margin-bottom: 22px; }
+.feature .logo img { height: 76px; margin: -16px -24px -16px -16px; }
+.feature .logo img.word { height: 23px; margin: 0; }
+.feature h1 { font-size: 46px; }
+.feature p { font-size: 18px; margin-top: 14px; }
+.feature .render { left: 0; top: 0; width: 1024px; height: 500px; }

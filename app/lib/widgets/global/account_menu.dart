@@ -1,8 +1,10 @@
 import 'package:flutter/material.dart';
 
 import '../../providers/auth_provider.dart';
+import '../../screens/auth/user_choice_screen.dart';
 import '../../screens/settings/settings_screen.dart';
 import '../../screens/settings/tv_link_scanner_screen.dart';
+import '../../services/server_registry.dart';
 import '../../theme/app_colors.dart';
 import '../../tv/tv_mode.dart';
 import '../../utils/app_platform.dart';
@@ -30,9 +32,16 @@ class AccountMenu extends StatelessWidget {
     // Un seul serveur n'a pas besoin d'un sélecteur ; à partir de deux, c'est
     // le geste le plus fréquent du menu, donc il est là et pas dans les
     // réglages. Voir ADR-0013.
-    final servers = authProvider.servers;
-    final activeId = authProvider.activeServer?.id;
-    final canSwitch = servers.length > 1;
+    //
+    // Les autres personnes du même serveur passent par « Changer
+    // d'utilisateur » (ADR-0078) : ce menu ne liste que les autres serveurs.
+    final active = authProvider.activeServer;
+    final otherServers = [
+      for (final account in authProvider.servers)
+        if (active == null || !ServerRegistry.sameServer(account, active))
+          account,
+    ];
+    final canSwitch = otherServers.isNotEmpty;
 
     return TourTarget(
       anchor: TourAnchor.account,
@@ -68,25 +77,40 @@ class AccountMenu extends StatelessWidget {
         ),
         const PopupMenuDivider(),
         if (canSwitch) ...[
-          for (final account in servers)
-            if (account.id != activeId)
-              PopupMenuItem(
-                value: 'switch:${account.id}',
-                child: Row(
-                  children: [
-                    const Icon(AppIcons.switchServer, size: 16),
-                    const SizedBox(width: 8),
-                    Flexible(
-                      child: Text(
-                        tr('Passer sur {0}', [account.displayName]),
-                        overflow: TextOverflow.ellipsis,
-                      ),
+          for (final account in otherServers)
+            PopupMenuItem(
+              value: 'switch:${account.id}',
+              child: Row(
+                children: [
+                  const Icon(AppIcons.switchServer, size: 16),
+                  const SizedBox(width: 8),
+                  Flexible(
+                    child: Text(
+                      // Deux personnes de ce serveur sur l'appareil : le nom
+                      // du serveur seul ne dit plus laquelle on rejoint.
+                      tr('Passer sur {0}', [
+                        authProvider.apiClient.servers
+                                    .usersOf(account.id)
+                                    .length >
+                                1
+                            ? '${account.displayName} · ${account.username}'
+                            : account.displayName,
+                      ]),
+                      overflow: TextOverflow.ellipsis,
                     ),
-                  ],
-                ),
+                  ),
+                ],
               ),
+            ),
           const PopupMenuDivider(),
         ],
+        PopupMenuItem(
+          value: 'users',
+          child: _MenuRow(
+            icon: AppIcons.person,
+            label: tr('Changer d’utilisateur'),
+          ),
+        ),
         PopupMenuItem(
           value: 'watch-party',
           child: Row(
@@ -124,6 +148,10 @@ class AccountMenu extends StatelessWidget {
           return;
         }
         switch (value) {
+          case 'users':
+            Navigator.of(context, rootNavigator: true).push(
+              MaterialPageRoute(builder: (_) => const UserChoiceScreen()),
+            );
           case 'watch-party':
             await showJoinWatchPartyDialog(context, authProvider: authProvider);
           case 'settings':

@@ -158,16 +158,17 @@ Onyx is in beta: everything is free today. Metadata and artwork come from TMDB. 
 
 ## Éléments visuels
 
-Les captures sont de **vraies captures de l'app Android** (build release), branchée sur un serveur
-de démo qui ne contient que des films sous licence libre. Sources brutes dans [`captures/`](captures/).
+Les écrans d'Onyx sont redessinés à l'identique de l'app ([`src/screens.html`](src/screens.html),
+rendus dans [`screens/`](screens/)) puis posés sur un téléphone modélisé dans Blender
+([`renders/`](renders/)), avec les affiches des films libres qui sortent de l'écran.
 
 | Champ Play Console | Fichier | Format |
 |---|---|---|
 | Icône | `out/icone-512.png` | 512 x 512 |
 | Image de présentation | `out/image-presentation-1024x500.png` | 1024 x 500 |
-| Vidéo | `out/video-presentation-1920x1080.mp4` | 30 s, à mettre sur YouTube |
-| Captures téléphone (7) | `out/telephone-1-…` à `out/telephone-7-…` | 1080 x 1920 ou 1920 x 1080 |
-| Captures tablette 7" et 10" (3) | `out/tablette-1-…` à `out/tablette-3-…` | 1440 x 2560 ou 2560 x 1440 |
+| Vidéo | `out/video-presentation-1920x1080.mp4` | 26 s, à mettre sur YouTube |
+| Captures téléphone (5) | `out/telephone-1-…` à `out/telephone-5-…` | 1080 x 1920 |
+| Captures tablette 7" et 10" (2) | `out/tablette-1-…`, `out/tablette-2-…` | 2560 x 1440 |
 
 ### Crédits des médias (à garder dans la description ou la fiche)
 
@@ -199,11 +200,15 @@ Affiches et résumés : TMDB. Musique de la vidéo : composée pour Onyx (géné
 
 ```bash
 cd docs/store/google-play/src
-npm i puppeteer-core      # une fois ; Edge ou Chrome doit être installé
-node render.cjs           # images dans ../out
-python music.py           # musique de la vidéo
-node render-video.cjs     # vidéo, demande ffmpeg (variable FFMPEG si absent du PATH)
+npm i puppeteer-core          # une fois ; Edge ou Chrome doit être installé
+node render-screens.cjs       # écrans d'Onyx -> ../screens
 ```
 
-Les textes des visuels sont dans `src/store.html` et `src/video.html`, les écrans de
-l'app dans `src/ui.js`, le catalogue fictif dans `src/catalog.js`.
+Ensuite, dans Blender (via le MCP) : le téléphone prend `screens/*.png` comme texture d'écran et
+rend chaque mise en scène dans `renders/` (fond transparent, ombre portée seule).
+
+```bash
+node render.cjs               # visuels finaux -> ../out
+python music.py 28            # musique de la vidéo
+node render-video.cjs         # vidéo ; MEDIA_DIR = dossier des films libres, FFMPEG si absent du PATH
+```

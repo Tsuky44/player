@@ -114,6 +114,8 @@ const Map<String, String> kEnglish = <String, String>{
       'Add or replace an installer',
   'Ajouter un serveur':
       'Add a server',
+  'Ajouter un utilisateur':
+      'Add a user',
   'Ajouter une bibliothèque':
       'Add a library',
   'Ajoutez des dossiers de séries avec des épisodes SxxExx puis synchronisez la bibliothèque.':
@@ -400,6 +402,8 @@ const Map<String, String> kEnglish = <String, String>{
       'This session is full.',
   'Chacun de ces codes remplace une fois le code de votre application, si vous perdez votre téléphone. Gardez-les en lieu sûr : ils ne seront plus affichés.':
       'Each of these codes replaces your app’s code once, if you lose your phone. Keep them somewhere safe: they will not be shown again.',
+  'Changer d’utilisateur':
+      'Switch user',
   'Changer mon mot de passe':
       'Change my password',
   'Changer':
@@ -1594,6 +1598,10 @@ const Map<String, String> kEnglish = <String, String>{
       'New library',
   'Pas de résumé pour cette saison.':
       'No overview for this season.',
+  'Qui regarde ?':
+      'Who’s watching?',
+  'Regarder en tant que {0}':
+      'Watch as {0}',
   'Rien sur ce serveur pour l’instant. Son administrateur peut en ajouter.':
       'Nothing on this server yet. Its administrator can add some.',
   'Sans aucune bande noire, bords rognés':
