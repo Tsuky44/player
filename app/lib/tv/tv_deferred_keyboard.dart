@@ -127,6 +127,18 @@ class TvDeferredKeyboardState extends State<TvDeferredKeyboard> {
     });
   }
 
+  /// Referme la saisie et rend le focus au champ-bouton, tout de suite.
+  ///
+  /// Pour une plateforme où le champ garde le focus quand le clavier se ferme
+  /// (webOS, voir [WebTvFieldExit]). Lâcher simplement le focus le laissait
+  /// sans propriétaire le temps d'une frame : [TvFocusGuard] le donnait alors à
+  /// l'élément suivant, quelle que soit la flèche.
+  void releaseKeyboard() {
+    if (!mounted || !_keyboardRequested) return;
+    setState(() => _keyboardRequested = false);
+    _remoteNode.requestFocus();
+  }
+
   @override
   Widget build(BuildContext context) {
     if (!TvScope.of(context)) {

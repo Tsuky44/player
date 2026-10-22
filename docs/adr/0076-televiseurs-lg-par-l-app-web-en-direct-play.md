@@ -5,7 +5,8 @@
 - **Portée :** `app/webos/` (le lanceur), `scripts/build-webos.*`,
   `app/lib/screens/player/playback/webos_playback_session*.dart`,
   `PlaybackCapabilities.webOS` (`app/lib/services/playback_capabilities.dart`),
-  `AppPlatform.isWebOS`, `app/lib/tv/webos_remote*.dart`, la connexion TV dans `main.dart` et
+  `AppPlatform.isWebOS`, `app/web/webos_remote.js`, `app/lib/tv/web_tv_field_exit.dart`, la
+  connexion TV dans `main.dart` et
   `login_screen.dart`.
 - **Complète** l'ADR-0014 (capacités déclarées) et l'ADR-0020 (appairage serveur sur le web).
 
@@ -67,10 +68,24 @@ les annonce pas. Le Dolby Vision n'est jamais supposé : un profil 5 part en HLS
 
 ### 5. Télécommande et connexion
 
-- Les touches propres à LG n'arrivent qu'avec leur `keyCode`. `WebOSRemote` les réécrit avant
-  Flutter : Retour (461) en Échap, que l'habillage TV traite déjà comme un retour, et les
+- Les touches propres à LG n'arrivent qu'avec leur `keyCode`. `web/webos_remote.js` les réécrit
+  avant Flutter : Retour (461) en Échap, que l'habillage TV traite déjà comme un retour, et les
   touches de lecture en `Media*`. `disableBackHistoryAPI` empêche webOS de reculer dans
-  l'historique.
+  l'historique. Le script est en JavaScript, chargé avant `flutter_bootstrap.js` : Flutter écoute
+  les touches sur la fenêtre en phase de capture dès le démarrage du moteur, et une réécriture
+  posée depuis Dart passait après lui, qui voyait alors chaque touche deux fois.
+- Un champ texte focalisé ouvre le clavier virtuel de webOS, qui prend alors flèches et OK.
+  Rien ne doit donc focaliser un champ d'office : le lanceur s'arrête sur le cadre du champ
+  d'adresse, et OK ouvre la saisie. Dans l'app, `TvDeferredKeyboard` fait déjà de chaque champ
+  un bouton ; comme le champ garde le focus quand le clavier se referme, haut et bas l'en font
+  sortir (`WebTvFieldExit`), au lieu de rester au curseur que Flutter Web leur confie.
+- Quand la page perd le focus du navigateur (un clic du pointeur hors de l'app, un panneau du
+  système ; dans le simulateur, un clic sur sa télécommande à l'écran), Flutter « gare » le
+  focus à la racine, où aucune touche n'agit, et seul un clic dans la page l'en sortait. Les
+  touches, elles, arrivent toujours : `TvFocusGuard` rend à la première le focus à l'élément
+  qui l'avait, et la vue reprend le focus du navigateur. Avant cela, le garde-fou appelait
+  `nextFocus` sur cette racine, qui n'est dans aucun arbre de widgets, et levait une exception
+  à chaque flèche.
 - Les raccourcis par défaut de Flutter Web sont ceux d'une page : les flèches font défiler, et
   Entrée n'active que les boutons. En mode TV sur le web, `webTvShortcuts` (`tv_focus.dart`)
   rend aux flèches leur sens de D-pad (`DirectionalFocusIntent`) et à OK l'activation.
@@ -94,4 +109,6 @@ les annonce pas. Le Dolby Vision n'est jamais supposé : un profil 5 part en HLS
 - Retour à l'accueil de l'app ne quitte pas : c'est la touche Accueil du téléviseur qui le fait.
 - Cible : webOS 6 (2021) et après, dont le Chromium fait tourner CanvasKit. Rien de ceci n'a
   encore été vu sur un téléviseur : les capacités, le Direct Play du Matroska par `src` et le
-  nom des touches sont à confirmer sur un appareil, d'où le statut.
+  nom des touches sont à confirmer sur un appareil, d'où le statut. Le simulateur webOS TV 26
+  a montré le piège du clavier virtuel ; il émet Retour et les touches de lecture en événements
+  synthétiques, que la réécriture traite comme les vrais.

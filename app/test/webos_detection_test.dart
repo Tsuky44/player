@@ -1,5 +1,6 @@
+import 'dart:io';
+
 import 'package:flutter_test/flutter_test.dart';
-import 'package:onyx/tv/webos_remote_keys.dart';
 import 'package:onyx/utils/webos_user_agent.dart';
 
 /// Un téléviseur LG n'est reconnu qu'à son agent utilisateur, et sa
@@ -38,27 +39,15 @@ void main() {
     });
   });
 
-  group('télécommande', () {
-    test('Retour devient Échap, que l\'habillage TV traite comme un retour',
-        () {
-      expect(webOSRemoteKeyName(keyCode: 461, key: 'Unidentified'), 'Escape');
-    });
-
-    test('les touches de lecture prennent leur nom média', () {
-      expect(
-          webOSRemoteKeyName(keyCode: 415, key: 'Unidentified'), 'MediaPlay');
-      // 19 est nommé comme la touche Pause d'un clavier de PC.
-      expect(webOSRemoteKeyName(keyCode: 19, key: 'Pause'), 'MediaPause');
-      expect(webOSRemoteKeyName(keyCode: 417, key: 'Unidentified'),
-          'MediaFastForward');
-      expect(
-          webOSRemoteKeyName(keyCode: 412, key: 'Unidentified'), 'MediaRewind');
-    });
-
-    test('une touche déjà bien nommée ou ordinaire passe telle quelle', () {
-      expect(webOSRemoteKeyName(keyCode: 415, key: 'MediaPlay'), isNull);
-      expect(webOSRemoteKeyName(keyCode: 13, key: 'Enter'), isNull);
-      expect(webOSRemoteKeyName(keyCode: 38, key: 'ArrowUp'), isNull);
-    });
+  // Flutter écoute les touches sur la fenêtre, en capture : seul un écouteur
+  // posé avant lui peut lui cacher l'événement d'origine. Chargé après, le
+  // script laisserait passer chaque touche LG deux fois (ADR-0076).
+  test('la réécriture des touches LG se charge avant Flutter', () {
+    final html = File('web/index.html').readAsStringSync();
+    final remote = html.indexOf('<script src="webos_remote.js"></script>');
+    final flutter = html.indexOf('src="flutter_bootstrap.js"');
+    expect(remote, isNonNegative,
+        reason: 'webos_remote.js doit être chargé, sans async ni defer');
+    expect(remote, lessThan(flutter));
   });
 }

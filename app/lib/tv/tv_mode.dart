@@ -4,7 +4,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 
 import '../utils/app_platform.dart';
 import '../l10n/tr.dart';
-import 'webos_remote.dart';
+import 'web_tv_field_exit.dart';
 
 /// What the user asked for, which is not always what the hardware says.
 ///
@@ -57,10 +57,11 @@ abstract final class TvMode {
     // needs no question — see [_resolve] — but still gives its name.
     if (AppPlatform.isTvOS) _detected = true;
     // Un téléviseur LG ouvre l'app web (ADR-0076) : l'agent utilisateur l'a
-    // déjà dit, et sa télécommande a besoin qu'on nomme ses touches.
+    // déjà dit. Ses touches sont nommées avant Flutter, par
+    // `web/webos_remote.js` ; reste à ne pas la laisser prisonnière d'un champ.
     if (AppPlatform.isWebOS) {
       _detected = true;
-      WebOSRemote.install();
+      WebTvFieldExit.install();
     }
     if (AppPlatform.isAndroid || AppPlatform.isIOS || AppPlatform.isTvOS) {
       try {

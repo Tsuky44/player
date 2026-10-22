@@ -41,14 +41,24 @@
     p { font-size: 32px; margin: 0 0 32px; color: var(--muted); }
     form { display: flex; flex-direction: column; align-items: center; width: 900px; }
     label { font-size: 32px; margin-bottom: 20px; }
+    /* Le cadre du champ porte le focus de la télécommande ; le champ
+       lui-même ne le prend qu'à l'appui sur OK — voir le script. */
+    #field {
+      width: 100%;
+      box-sizing: border-box;
+      border-radius: 16px;
+      border: 4px solid transparent;
+      background: var(--surface);
+      outline: none;
+    }
     input {
       width: 100%;
       box-sizing: border-box;
       font-size: 40px;
       padding: 20px 28px;
-      border-radius: 16px;
-      border: 4px solid transparent;
-      background: var(--surface);
+      border: 0;
+      border-radius: 12px;
+      background: transparent;
       color: var(--ink);
       outline: none;
     }
@@ -62,7 +72,7 @@
       color: var(--ink);
       outline: none;
     }
-    input:focus, button:focus { border-color: var(--focus); }
+    #field:focus, #field.editing, button:focus { border-color: var(--focus); }
     #error { color: var(--error); min-height: 40px; margin-top: 24px; }
     [hidden] { display: none !important; }
   </style>
@@ -74,8 +84,10 @@
     <button id="change" type="button" hidden></button>
     <form id="form" hidden>
       <label id="label" for="address"></label>
-      <input id="address" type="text" autocomplete="off" autocapitalize="off"
-             spellcheck="false" placeholder="192.168.1.20:8080">
+      <div id="field" tabindex="-1">
+        <input id="address" type="text" autocomplete="off" autocapitalize="off"
+               spellcheck="false" placeholder="192.168.1.20:8080" tabindex="-1">
+      </div>
       <button id="connect" type="submit"></button>
       <p id="error" role="alert"></p>
     </form>
@@ -89,7 +101,7 @@
       // d'ouvrir celui qu'on connaît : sans lui, un serveur qui répond vite ne
       // laisserait jamais la main.
       var CHANGE_WINDOW_MS = 1500;
-      var KEY_UP = 38, KEY_DOWN = 40, KEY_BACK = 461;
+      var KEY_UP = 38, KEY_DOWN = 40, KEY_OK = 13, KEY_BACK = 461;
 
       var fr = (navigator.language || 'fr').toLowerCase().indexOf('fr') === 0;
       var T = fr ? {
@@ -112,7 +124,8 @@
 
       var $ = function (id) { return document.getElementById(id); };
       var status = $('status'), change = $('change'), form = $('form');
-      var input = $('address'), connect = $('connect'), error = $('error');
+      var field = $('field'), input = $('address');
+      var connect = $('connect'), error = $('error');
       change.textContent = T.change;
       $('label').textContent = T.label;
       connect.textContent = T.connect;
@@ -167,8 +180,23 @@
         form.hidden = false;
         input.value = prefill || '';
         error.textContent = message || '';
-        input.focus();
+        field.focus();
       }
+
+      // Un champ texte qui prend le focus ouvre le clavier virtuel de webOS,
+      // et tant qu'il est ouvert, flèches et OK vont au clavier et plus à la
+      // page. Focalisé d'office, le champ prenait donc la télécommande dès le
+      // premier lancement. Il se comporte comme un bouton : la télécommande
+      // s'arrête sur son cadre, OK (ou un clic du pointeur) ouvre la saisie,
+      // et le cadre reprend le focus quand le clavier se referme.
+      function edit() { input.focus(); }
+      field.onclick = edit;
+      input.onfocus = function () { field.className = 'editing'; };
+      input.onblur = function () { field.className = ''; };
+      document.addEventListener('keyboardStateChange', function (event) {
+        var visible = event.detail && event.detail.visibility;
+        if (!visible && document.activeElement === input) field.focus();
+      });
 
       var cancelled = false;
       change.onclick = function () {
@@ -197,11 +225,19 @@
           window.close();
           return;
         }
+        if (code === KEY_OK && document.activeElement === field) {
+          event.preventDefault();
+          edit();
+          return;
+        }
         if (code !== KEY_UP && code !== KEY_DOWN) return;
-        var order = [change, input, connect].filter(function (el) {
+        var order = [change, field, connect].filter(function (el) {
           return !el.hidden && !(el.parentNode && el.parentNode.hidden);
         });
-        var index = order.indexOf(document.activeElement);
+        // Clavier refermé, le champ peut encore avoir le focus : haut et bas
+        // en partent comme de son cadre.
+        var current = document.activeElement === input ? field : document.activeElement;
+        var index = order.indexOf(current);
         var next = order[index + (code === KEY_DOWN ? 1 : -1)];
         if (next) { event.preventDefault(); next.focus(); }
       });

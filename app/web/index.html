@@ -41,6 +41,11 @@
     For more details:
     * https://docs.flutter.dev/platform-integration/web/initialization
   -->
+  <!--
+    La télécommande LG : doit s'installer avant Flutter, d'où le script
+    synchrone placé avant le chargeur. Voir webos_remote.js et ADR-0076.
+  -->
+  <script src="webos_remote.js"></script>
   <script src="flutter_bootstrap.js" async></script>
 </body>
 </html>
