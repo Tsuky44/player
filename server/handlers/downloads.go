@@ -154,12 +154,6 @@ func localCandidates() []candidate {
 	return found
 }
 
-// listLocalArtifacts is what sits in the downloads directory, and only that:
-// the files the admin can replace or delete.
-func listLocalArtifacts() []DownloadArtifact {
-	return bestPerPlatform(localCandidates())
-}
-
 // listArtifacts is what the server offers: the files of the downloads
 // directory, completed by the Release of the server's own version for every
 // platform the directory leaves empty (ADR-0062).
