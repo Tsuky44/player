@@ -3,6 +3,7 @@ import 'dart:io';
 import 'package:path_provider/path_provider.dart';
 
 import 'android_apk_installer.dart';
+import 'macos_update_signature_io.dart';
 import '../l10n/tr.dart';
 
 /// Native in-place updater — see `app_updater.dart`.
@@ -139,12 +140,15 @@ abstract final class AppUpdater {
   /// Throws [UpdateException] with a user-facing message when the update cannot
   /// be applied — a bundle we do not own, a DMG without an app inside, a
   /// truncated download.
+  /// [version] is the one the server announced: on macOS the signature must
+  /// cover exactly that version.
   static Future<PreparedUpdate> prepare({
     required String archivePath,
     required String workDir,
+    required String version,
   }) async {
     if (Platform.isAndroid) return _prepareAndroid(archivePath, workDir);
-    if (Platform.isMacOS) return _prepareMacOS(archivePath, workDir);
+    if (Platform.isMacOS) return _prepareMacOS(archivePath, workDir, version);
     if (Platform.isWindows) return _prepareWindows(archivePath, workDir);
     throw UpdateException(
       tr('La mise à jour automatique n’est pas disponible sur cette plateforme.'),
@@ -218,7 +222,12 @@ Future<PreparedUpdate> _prepareAndroid(String apkPath, String workDir) async {
 
 /// Mounts the DMG, copies the bundle out of it, and unmounts it right away so
 /// nothing is left attached if the user postpones the restart for hours.
-Future<PreparedUpdate> _prepareMacOS(String dmgPath, String workDir) async {
+///
+/// Nothing is swapped unless the bundle carries the release signature for
+/// [version] (see `macos_update_signature_io.dart`): the DMG comes from whatever
+/// server the app is connected to, possibly over plain HTTP.
+Future<PreparedUpdate> _prepareMacOS(
+    String dmgPath, String workDir, String version) async {
   final target = _currentMacOSBundle();
   await _assertSwappable(Directory(target).parent);
 
@@ -239,11 +248,14 @@ Future<PreparedUpdate> _prepareMacOS(String dmgPath, String workDir) async {
   }
 
   final staged = '$workDir/staged/Onyx.app';
+  final signature = '$workDir/$signatureFileName';
   try {
     final source = await _findAppBundle(Directory(mountPoint));
     if (source == null) {
       throw UpdateException(tr('Aucune application trouvée dans l’image disque.'));
     }
+    final signed = File('$mountPoint/$signatureFileName');
+    if (signed.existsSync()) await signed.copy(signature);
     await Directory('$workDir/staged').create(recursive: true);
     final copy = await Process.run('ditto', [source, staged]);
     if (copy.exitCode != 0) {
@@ -252,6 +264,20 @@ Future<PreparedUpdate> _prepareMacOS(String dmgPath, String workDir) async {
   } finally {
     // -force: the copy may have left the volume busy for a moment.
     await Process.run('hdiutil', ['detach', mountPoint, '-force', '-quiet']);
+  }
+
+  // La copie, pas le volume : c'est elle qui sera installée.
+  final verified = await verifyBundleSignature(
+    bundlePath: staged,
+    signaturePath: signature,
+    version: version,
+    workDir: workDir,
+  );
+  if (!verified) {
+    throw UpdateException(
+      tr('Cette mise à jour n’est pas signée par Onyx : elle n’a pas été '
+          'installée. Téléchargez Onyx depuis sa page officielle.'),
+    );
   }
 
   final script = File('$workDir/apply-update.sh');

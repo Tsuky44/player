@@ -63,7 +63,7 @@ func TestForeverRestartsAPanickingLoopAndStopsWhenItReturns(t *testing.T) {
 func TestEveryGoroutineIsGuarded(t *testing.T) {
 	// Justifiées une à une : elles ne font qu'attendre ou rendre une valeur.
 	allowed := map[string]string{
-		"main.go: go func() { served <- server.ListenAndServe() }()": "rend l'erreur d'écoute au main, qui s'arrête dessus",
+		"main.go: go func() { served <- listen() }()": "rend l'erreur d'écoute au main, qui s'arrête dessus",
 	}
 	launch := regexp.MustCompile(`^\s*go\s+\S`)
 

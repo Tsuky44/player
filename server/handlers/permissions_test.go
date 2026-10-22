@@ -161,9 +161,12 @@ func TestRequireAnyPermission_AcceptsEither(t *testing.T) {
 func TestRegister_FirstAccountBecomesOwner(t *testing.T) {
 	setupAuthDB(t)
 
+	// Depuis le réseau local : aucun code d'installation n'est demandé.
+	req := httptest.NewRequest(http.MethodPost, "/api/auth/register",
+		strings.NewReader(`{"username":"mathis","password":"secret-pass"}`))
+	req.RemoteAddr = "192.168.1.20:4242"
 	rec := httptest.NewRecorder()
-	Register(rec, httptest.NewRequest(http.MethodPost, "/api/auth/register",
-		strings.NewReader(`{"username":"mathis","password":"secret"}`)), nil)
+	Register(rec, req, nil)
 
 	if rec.Code != http.StatusOK {
 		t.Fatalf("expected the first account to be accepted, got %d: %s", rec.Code, rec.Body)
@@ -188,7 +191,7 @@ func TestRegister_ClosedWithoutInvitation(t *testing.T) {
 
 	rec := httptest.NewRecorder()
 	Register(rec, httptest.NewRequest(http.MethodPost, "/api/auth/register",
-		strings.NewReader(`{"username":"intruder","password":"secret"}`)), nil)
+		strings.NewReader(`{"username":"intruder","password":"secret-pass"}`)), nil)
 
 	if rec.Code != http.StatusForbidden {
 		t.Fatalf("expected 403 without invitation, got %d: %s", rec.Code, rec.Body)

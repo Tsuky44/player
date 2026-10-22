@@ -11,6 +11,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"project-player/server/clientip"
 	"project-player/server/devline"
 	"project-player/server/playbackauth"
 	"strconv"
@@ -684,13 +685,20 @@ func atoiDefault(s string, def int) int {
 }
 
 // BaseURL derives scheme://host from the request, honoring a reverse proxy.
+//
+// X-Forwarded-Proto n'est cru que d'un proxy de confiance, et seulement pour
+// http ou https : n'importe quel client glissait sinon le schéma de son choix
+// dans les playlists et dans l'adresse gravée dans l'APK (ADR-0042).
 func BaseURL(r *http.Request) string {
 	scheme := "http"
 	if r.TLS != nil {
 		scheme = "https"
 	}
-	if fwd := r.Header.Get("X-Forwarded-Proto"); fwd != "" {
-		scheme = fwd
+	if clientip.TrustedRemote(r) {
+		switch fwd := strings.ToLower(strings.TrimSpace(r.Header.Get("X-Forwarded-Proto"))); fwd {
+		case "http", "https":
+			scheme = fwd
+		}
 	}
 	return scheme + "://" + r.Host
 }

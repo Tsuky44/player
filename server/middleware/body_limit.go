@@ -1,9 +1,6 @@
 package middleware
 
-import (
-	"net/http"
-	"strings"
-)
+import "net/http"
 
 // maxRequestBody borne le corps de toute requête qui ne dit pas le contraire.
 //
@@ -14,18 +11,13 @@ import (
 // — et les routes qui attendent moins gardent leur propre borne, plus serrée.
 const maxRequestBody = 8 << 20
 
-// LimitBodies applique maxRequestBody à chaque requête, sauf aux envois
-// d'installateurs, qui font des centaines de mégaoctets et que leur route borne
-// elle-même (maxUploadBytes).
+// LimitBodies applique maxRequestBody à chaque requête. L'envoi d'installeurs,
+// seule exception, a disparu avec sa route : plus aucun corps n'y échappe.
 func LimitBodies(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if r.Body != nil && !isInstallerUpload(r) {
+		if r.Body != nil {
 			r.Body = http.MaxBytesReader(w, r.Body, maxRequestBody)
 		}
 		next.ServeHTTP(w, r)
 	})
-}
-
-func isInstallerUpload(r *http.Request) bool {
-	return r.Method == http.MethodPost && strings.TrimSuffix(r.URL.Path, "/") == "/api/downloads"
 }

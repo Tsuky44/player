@@ -117,6 +117,12 @@ jour signée par elle : il faudra les réinstaller une fois. Pour signer un buil
 local, poser la même valeur dans la variable d'environnement
 `ONYX_UPDATE_SIGNING_KEY` avant `scripts/build-releases.ps1`.
 
+La même clé signe le DMG macOS (`scripts/sign-macos-update.sh`, ADR-0079) : la
+signature est rangée dans le DMG, à côté de l'app, et l'app installée la
+vérifie avant de se remplacer. Une rotation de la clé change aussi la clé
+publique de `app/lib/services/macos_update_signature_io.dart` ; un test vérifie
+que les deux restent la même.
+
 ### Signature Android (recommandé)
 
 Sans ces secrets le workflow n'échoue pas : il émet un avertissement et signe

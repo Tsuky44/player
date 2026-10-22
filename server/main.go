@@ -72,6 +72,10 @@ func main() {
 		log.Fatalf("Failed to initialize stream handler: %v", err)
 	}
 
+	// Un serveur sans compte annonce son code d'installation : l'inscription
+	// du propriétaire depuis Internet le demande.
+	handlers.AnnounceSetupCode()
+
 	// Expired login tokens used to live forever. Sweep them in the background;
 	// RequireAuth rejects them on read either way.
 	handlers.StartSessionReaper()
@@ -404,9 +408,11 @@ func main() {
 	router.GET("/api/downloads/:file", handlers.ServeDownload)
 	// Download managers probe with HEAD before starting a 100 MB transfer.
 	router.HEAD("/api/downloads/:file", handlers.ServeDownload)
-	// Publishing the installers this server hands out is server administration.
-	router.POST("/api/downloads", handlers.RequirePermission(models.PermManageSettings, handlers.UploadDownload))
-	router.DELETE("/api/downloads/:file", handlers.RequirePermission(models.PermManageSettings, handlers.DeleteDownload))
+	// Plus d'envoi ni de suppression d'installeur par l'API : déposer un
+	// exécutable que tous les appareils proposent ensuite d'installer était le
+	// plus court chemin d'un compte administrateur vers chaque client. Les
+	// installeurs viennent de la Release (ADR-0062) ou du dossier, posés à la
+	// main sur la machine.
 
 	// Développement seulement : régler en cours de route le débit de la ligne
 	// que devline simule. La route n'existe pas sans ONYX_DEV_LINE_KBPS.
@@ -502,7 +508,16 @@ func main() {
 	signals, stopSignals := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stopSignals()
 	served := make(chan error, 1)
-	go func() { served <- server.ListenAndServe() }()
+	// HTTPS sans proxy inverse : TLS_CERT_FILE et TLS_KEY_FILE désignent le
+	// certificat. Sans eux, le serveur parle HTTP comme avant, et mots de
+	// passe comme jetons circulent en clair hors d'un réseau de confiance.
+	listen := server.ListenAndServe
+	certFile, keyFile := os.Getenv("TLS_CERT_FILE"), os.Getenv("TLS_KEY_FILE")
+	if certFile != "" && keyFile != "" {
+		log.Printf("TLS: serving HTTPS with %s", certFile)
+		listen = func() error { return server.ListenAndServeTLS(certFile, keyFile) }
+	}
+	go func() { served <- listen() }()
 
 	select {
 	case err := <-served:

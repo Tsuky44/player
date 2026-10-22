@@ -5,6 +5,7 @@ import '../../theme/app_colors.dart';
 import '../../tv/tv_deferred_keyboard.dart';
 import '../../tv/tv_mode.dart';
 import '../../l10n/tr.dart';
+import '../../utils/password_policy.dart';
 
 /// Le mot de passe du formulaire de connexion : un œil pour le lire, et Entrée
 /// pour valider.
@@ -92,6 +93,9 @@ class _LoginPasswordFieldState extends State<LoginPasswordField> {
           ),
           validator: (v) {
             if (v == null || v.isEmpty) return tr('Requis');
+            if (widget.creatingAccount && v.length < minNewPasswordLength) {
+              return tr('Au moins {0} caractères', ['$minNewPasswordLength']);
+            }
             if (v.length < 4) return tr('Minimum 4 caractères');
             return null;
           },

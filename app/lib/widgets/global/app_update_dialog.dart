@@ -94,7 +94,7 @@ class _AppUpdateDialogState extends State<_AppUpdateDialog> {
       _discardWorkDir();
       final workDir = await AppUpdater.createWorkDir();
       _workDir = workDir;
-      final archive = '$workDir/${widget.download.file}';
+      final archive = '$workDir/${widget.download.localFileName}';
       final cancel = CancelToken();
       _cancel = cancel;
 
@@ -117,6 +117,7 @@ class _AppUpdateDialogState extends State<_AppUpdateDialog> {
       final prepared = await AppUpdater.prepare(
         archivePath: archive,
         workDir: workDir,
+        version: widget.download.version,
       );
       if (!mounted) {
         await prepared.discard();

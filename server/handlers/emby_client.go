@@ -69,7 +69,10 @@ func embyRequest(ctx context.Context, base, token, deviceID, method, path string
 		return nil
 	}
 	if err := json.NewDecoder(resp.Body).Decode(out); err != nil {
-		return fmt.Errorf("Réponse Emby illisible : %w", err)
+		// Comme pour la connexion : l'erreur du décodeur citait le début de
+		// la réponse, de quoi reconnaître le service interne qui l'a donnée.
+		log.Printf("Emby: %s %s%s: decode: %v", method, base, path, err)
+		return errors.New("Réponse Emby illisible")
 	}
 	return nil
 }

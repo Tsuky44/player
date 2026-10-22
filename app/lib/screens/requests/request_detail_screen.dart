@@ -78,7 +78,8 @@ class _RequestDetailScreenState extends State<RequestDetailScreen> {
   }
 
   Future<void> _openTrailer(String key) async {
-    final url = 'https://www.youtube.com/watch?v=$key';
+    final url =
+        'https://www.youtube.com/watch?v=${Uri.encodeQueryComponent(key)}';
     if (await openExternalUrl(url)) return;
     if (mounted) {
       ScaffoldMessenger.of(context).showSnackBar(

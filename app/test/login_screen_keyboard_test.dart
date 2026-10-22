@@ -15,7 +15,8 @@ class _FakeApiClient extends ApiClient {
   final List<String> logins = [];
 
   @override
-  Future<bool> getSetupRequired() async => false;
+  Future<({bool required, bool codeRequired})> getSetupState() async =>
+      (required: false, codeRequired: false);
 
   /// The QR sign-in beside the form opens a pairing; refused here, it shows its
   /// failure state and stays off the network.

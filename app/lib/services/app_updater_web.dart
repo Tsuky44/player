@@ -35,6 +35,7 @@ abstract final class AppUpdater {
   static Future<PreparedUpdate> prepare({
     required String archivePath,
     required String workDir,
+    required String version,
   }) =>
       _unsupported();
 

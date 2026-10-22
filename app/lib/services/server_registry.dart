@@ -509,44 +509,55 @@ class ServerRegistry extends ChangeNotifier {
 
   // ==================== JETONS ====================
   //
-  // Écrits dans les préférences **et** dans le coffre : le coffre est le bon
-  // endroit, mais il échoue sur certaines plateformes, et une session perdue à
-  // chaque lancement est pire qu'un jeton en clair dans le bac à sable de l'app.
-  // C'est le compromis que faisait déjà la version mono-serveur.
+  // Le coffre du système d'abord (trousseau, Keystore, DPAPI) : un jeton de
+  // session vaut un mot de passe pendant 90 jours, et les préférences sont un
+  // fichier en clair (%APPDATA% sous Windows, localStorage sur le web). Elles
+  // ne servent plus que de repli quand le coffre refuse d'écrire, sur les
+  // plateformes où il échoue : une session perdue à chaque lancement serait
+  // pire. Un jeton trouvé dans les préférences y est repris au passage pour
+  // rejoindre le coffre.
 
   Future<String?> tokenFor(String id) async {
-    final prefs = await SharedPreferences.getInstance();
-    final fromPrefs = prefs.getString('$_tokenPrefix$id');
-    if (fromPrefs != null && fromPrefs.isNotEmpty) return fromPrefs;
+    final key = '$_tokenPrefix$id';
     try {
-      final fromSecure = await _secureStorage.read(key: '$_tokenPrefix$id');
-      if (fromSecure != null && fromSecure.isNotEmpty) {
-        await prefs.setString('$_tokenPrefix$id', fromSecure);
-        return fromSecure;
-      }
+      final fromSecure = await _secureStorage.read(key: key);
+      if (fromSecure != null && fromSecure.isNotEmpty) return fromSecure;
     } catch (_) {
-      // Trousseau illisible : pas de jeton, l'app redemandera la connexion.
+      // Coffre illisible : le repli des préférences, plus bas, prend le relais.
     }
-    return null;
+    final prefs = await SharedPreferences.getInstance();
+    final fromPrefs = prefs.getString(key);
+    if (fromPrefs == null || fromPrefs.isEmpty) return null;
+    await _writeToken(id, fromPrefs);
+    return fromPrefs;
   }
 
   Future<void> _writeToken(String id, String token) async {
+    final key = '$_tokenPrefix$id';
     final prefs = await SharedPreferences.getInstance();
-    await prefs.setString('$_tokenPrefix$id', token);
     try {
-      await _secureStorage.write(key: '$_tokenPrefix$id', value: token);
+      await _secureStorage.write(key: key, value: token);
+      // Relu avant de quitter les préférences : un coffre qui accepte
+      // l'écriture sans rien garder ne doit pas coûter la session.
+      if (await _secureStorage.read(key: key) == token) {
+        await prefs.remove(key);
+        return;
+      }
     } catch (_) {
-      // Le trousseau n'est qu'une copie : le jeton est déjà dans les préférences.
+      // Coffre indisponible sur cette plateforme : le repli ci-dessous garde
+      // la session.
     }
+    await prefs.setString(key, token);
   }
 
   Future<void> _deleteToken(String id) async {
+    final key = '$_tokenPrefix$id';
     final prefs = await SharedPreferences.getInstance();
-    await prefs.remove('$_tokenPrefix$id');
+    await prefs.remove(key);
     try {
-      await _secureStorage.delete(key: '$_tokenPrefix$id');
+      await _secureStorage.delete(key: key);
     } catch (_) {
-      // Le trousseau n'est qu'une copie : le jeton est déjà retiré des préférences.
+      // Coffre indisponible : rien n'a pu y être écrit, rien à y effacer.
     }
   }
 

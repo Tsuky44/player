@@ -90,10 +90,19 @@ func UpdateUserPermissions(w http.ResponseWriter, r *http.Request, ps httprouter
 		writeJSONError(w, http.StatusForbidden, "Les droits du propriétaire ne peuvent pas être modifiés")
 		return
 	}
+	if !mayManage(caller, target) {
+		writeJSONError(w, http.StatusForbidden, errOutranked)
+		return
+	}
 
 	var req UpdateUserPermissionsRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		writeJSONError(w, http.StatusBadRequest, "Invalid request body")
+		return
+	}
+	if changesBeyond(caller, target.Permissions, req.Permissions) ||
+		(req.InviteGrants != nil && changesBeyond(caller, target.InviteGrants, *req.InviteGrants)) {
+		writeJSONError(w, http.StatusForbidden, errBeyondOwnRights)
 		return
 	}
 
@@ -189,14 +198,18 @@ func ResetUserPassword(w http.ResponseWriter, r *http.Request, ps httprouter.Par
 		writeJSONError(w, http.StatusForbidden, "Le mot de passe du propriétaire ne peut pas être réinitialisé")
 		return
 	}
+	if !mayManage(caller, target) {
+		writeJSONError(w, http.StatusForbidden, errOutranked)
+		return
+	}
 
 	var req ResetUserPasswordRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		writeJSONError(w, http.StatusBadRequest, "Invalid request body")
 		return
 	}
-	if len(req.NewPassword) < 4 {
-		writeJSONError(w, http.StatusBadRequest, "Le mot de passe doit faire au moins 4 caractères")
+	if len(req.NewPassword) < minPasswordLength {
+		writeJSONError(w, http.StatusBadRequest, errPasswordTooShort)
 		return
 	}
 
@@ -235,6 +248,16 @@ func DeleteUser(w http.ResponseWriter, r *http.Request, ps httprouter.Params, us
 	if target.ID == userID {
 		// Guard against the fatal click, not against malice.
 		writeJSONError(w, http.StatusBadRequest, "Vous ne pouvez pas supprimer votre propre compte")
+		return
+	}
+	caller, err := LoadUser(userID)
+	if err != nil {
+		log.Printf("DeleteUser: failed to load caller %d: %v", userID, err)
+		writeJSONError(w, http.StatusInternalServerError, "Internal server error")
+		return
+	}
+	if !mayManage(caller, target) {
+		writeJSONError(w, http.StatusForbidden, errOutranked)
 		return
 	}
 	if target.Permissions.ManageUsers {

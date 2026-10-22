@@ -45,6 +45,23 @@ class AppDownload {
     );
   }
 
+  /// Le nom sous lequel enregistrer le fichier : son dernier segment seulement.
+  /// Il vient du serveur, et un `../` le ferait écrire hors du dossier prévu.
+  String get localFileName {
+    final last = file.split(RegExp(r'[\\/]')).last;
+    return last.isEmpty || last == '.' || last == '..' ? 'onyx-update' : last;
+  }
+
+  /// Le chemin à joindre à l'adresse du serveur. Celui du serveur n'est gardé
+  /// que s'il est bien un fichier de /api/downloads : sans cette borne, un
+  /// `@autre-hôte/…` ou un `&commande` collé à l'adresse partait vers un autre
+  /// serveur ou jusqu'au shell qui ouvre le lien.
+  String get safePath {
+    final valid = RegExp(r'^/api/downloads/[A-Za-z0-9._-]+$');
+    if (valid.hasMatch(url)) return url;
+    return '/api/downloads/${Uri.encodeComponent(localFileName)}';
+  }
+
   /// Size as `142 Mo`, or an empty string when the server reported none.
   String get formattedSize {
     if (size <= 0) return '';

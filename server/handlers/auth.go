@@ -63,6 +63,15 @@ func RequireAuth(next AuthenticatedHandle) httprouter.Handle {
 	}
 }
 
+// minPasswordLength est la longueur minimale d'un mot de passe choisi
+// (création, demande d'accès, changement, réinitialisation). Quatre
+// caractères se devinaient malgré les limites de débit. La connexion n'y est
+// pas soumise : les comptes créés avec l'ancienne limite gardent leur accès.
+const minPasswordLength = 8
+
+// errPasswordTooShort est le refus d'un mot de passe trop court.
+const errPasswordTooShort = "Le mot de passe doit faire au moins 8 caractères"
+
 // RegisterRequest represents the JSON payload for registration
 type RegisterRequest struct {
 	Username string `json:"username"`
@@ -72,10 +81,13 @@ type RegisterRequest struct {
 }
 
 // AuthState is the public payload the login screen reads to decide whether to
-// offer the sign-up form (GET /api/auth/state). It exposes a single boolean and
+// offer the sign-up form (GET /api/auth/state). It exposes two booleans and
 // nothing else.
 type AuthState struct {
 	SetupRequired bool `json:"setup_required"`
+	// SetupCodeRequired : l'inscription du propriétaire, depuis l'adresse qui
+	// demande, devra présenter le code d'installation (setup_code.go).
+	SetupCodeRequired bool `json:"setup_code_required"`
 }
 
 // GetAuthState reports whether the server is still pristine (no account yet).
@@ -89,7 +101,10 @@ func GetAuthState(w http.ResponseWriter, r *http.Request, _ httprouter.Params) {
 		return
 	}
 
-	json.NewEncoder(w).Encode(AuthState{SetupRequired: empty})
+	json.NewEncoder(w).Encode(AuthState{
+		SetupRequired:     empty,
+		SetupCodeRequired: empty && setupCodeRequired(r),
+	})
 }
 
 func usersTableEmpty() (bool, error) {
@@ -116,8 +131,12 @@ func Register(w http.ResponseWriter, r *http.Request, _ httprouter.Params) {
 	}
 
 	req.Username = strings.TrimSpace(req.Username)
-	if req.Username == "" || len(req.Password) < 4 {
-		writeJSONError(w, http.StatusBadRequest, "Username must not be empty, and password must be at least 4 characters")
+	if req.Username == "" {
+		writeJSONError(w, http.StatusBadRequest, "Username must not be empty")
+		return
+	}
+	if len(req.Password) < minPasswordLength {
+		writeJSONError(w, http.StatusBadRequest, errPasswordTooShort)
 		return
 	}
 
@@ -134,7 +153,13 @@ func Register(w http.ResponseWriter, r *http.Request, _ httprouter.Params) {
 	switch {
 	case firstAccount:
 		// Bootstrap: nobody exists to invite anyone, so the first account takes
-		// everything and becomes the owner.
+		// everything and becomes the owner — from outside the house, only with
+		// the setup code from the server log.
+		if setupCodeRequired(r) && !setupCodeMatches(req.InviteToken) {
+			writeJSONError(w, http.StatusForbidden,
+				"Code d'installation requis : il est affiché dans le journal du serveur")
+			return
+		}
 		permissions = models.AllPermissions()
 	case strings.TrimSpace(req.InviteToken) == "":
 		writeJSONError(w, http.StatusForbidden, "Une invitation est requise pour créer un compte")
@@ -417,8 +442,8 @@ func ChangePassword(w http.ResponseWriter, r *http.Request, _ httprouter.Params,
 		writeJSONError(w, http.StatusBadRequest, "Invalid request body")
 		return
 	}
-	if len(req.NewPassword) < 4 {
-		writeJSONError(w, http.StatusBadRequest, "Le nouveau mot de passe doit faire au moins 4 caractères")
+	if len(req.NewPassword) < minPasswordLength {
+		writeJSONError(w, http.StatusBadRequest, errPasswordTooShort)
 		return
 	}
 

@@ -82,6 +82,10 @@ class _LoginScreenState extends State<LoginScreen> {
   /// an account can be created without an invitation, and it produces the owner.
   bool _setupRequired = false;
 
+  /// True when that first sign-up comes from outside the server's network:
+  /// the code from the server log goes in the invitation field.
+  bool _setupCodeRequired = false;
+
   /// The address the QR sign-in opens its pairing on: set once that server has
   /// answered, and only when it has accounts — a pristine server has nobody
   /// with a phone to approve anything.
@@ -155,10 +159,12 @@ class _LoginScreenState extends State<LoginScreen> {
     _probing = true;
     try {
       await apiClient.setConnection(_serverController.text.trim());
-      final required = await apiClient.getSetupRequired();
+      final state = await apiClient.getSetupState();
+      final required = state.required;
       if (mounted) {
         setState(() {
           _setupRequired = required;
+          _setupCodeRequired = state.codeRequired;
           _pairingServer = required ? null : apiClient.baseUrl;
           _probing = false;
         });
@@ -167,6 +173,7 @@ class _LoginScreenState extends State<LoginScreen> {
       if (mounted) {
         setState(() {
           _setupRequired = false;
+          _setupCodeRequired = false;
           _pairingServer = null;
           _probing = false;
         });
@@ -266,7 +273,7 @@ class _LoginScreenState extends State<LoginScreen> {
   /// Whether the invitation field is on screen — it is what follows the server
   /// address when an account is being created against an established server.
   bool get _invitingShown =>
-      _mode == _LoginMode.register && !_setupRequired;
+      _mode == _LoginMode.register && (!_setupRequired || _setupCodeRequired);
 
   /// La demande en attente pour l'adresse affichée, s'il y en a une.
   PendingAccessRequest? _pendingFor(AuthProvider auth) {
@@ -348,6 +355,7 @@ class _LoginScreenState extends State<LoginScreen> {
             _mode = _LoginMode.signIn;
             _inviteController.clear();
             _setupRequired = false;
+            _setupCodeRequired = false;
           });
         }
 
@@ -550,13 +558,19 @@ class _LoginScreenState extends State<LoginScreen> {
                             style:
                                 const TextStyle(color: AppColors.textPrimary),
                             decoration: InputDecoration(
-                              labelText: tr('Code d\'invitation'),
-                              hintText: tr('Collez le lien reçu ou son code'),
+                              labelText: _setupRequired
+                                  ? tr('Code d’installation')
+                                  : tr('Code d\'invitation'),
+                              hintText: _setupRequired
+                                  ? tr('Affiché dans le journal du serveur')
+                                  : tr('Collez le lien reçu ou son code'),
                               prefixIcon: Icon(Icons.mail_outline_rounded,
                                   color: AppColors.textMuted),
                             ),
                             validator: (v) => v == null || v.trim().isEmpty
-                                ? tr('Une invitation est requise')
+                                ? (_setupRequired
+                                    ? tr('Le code d’installation est requis')
+                                    : tr('Une invitation est requise'))
                                 : null,
                                                   ),
                         ),

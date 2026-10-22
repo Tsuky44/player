@@ -15,6 +15,7 @@ import (
 	"sync"
 	"time"
 
+	"project-player/server/clientip"
 	"project-player/server/database"
 
 	"github.com/julienschmidt/httprouter"
@@ -87,19 +88,12 @@ func cleanClientLabel(raw string) string {
 	return label
 }
 
-// clientAddress is the caller's IP, honouring a reverse proxy in front.
+// clientAddress is the caller's IP, honouring a reverse proxy in front. It
+// read the first X-Forwarded-For entry, which the client writes itself: anyone
+// could pass for a device in the house. Voir clientip.
 func clientAddress(r *http.Request) string {
-	if forwarded := r.Header.Get("X-Forwarded-For"); forwarded != "" {
-		return strings.TrimSpace(strings.Split(forwarded, ",")[0])
-	}
-	if real := r.Header.Get("X-Real-IP"); real != "" {
-		return strings.TrimSpace(real)
-	}
-	host, _, err := net.SplitHostPort(r.RemoteAddr)
-	if err != nil {
-		return r.RemoteAddr
-	}
-	return host
+	address, _ := clientip.Client(r)
+	return address
 }
 
 // isLocalAddress tells a device in the house from one reaching in over the
@@ -356,7 +350,7 @@ func RevokeAnyDevice(w http.ResponseWriter, _ *http.Request, ps httprouter.Param
 			return true
 		}
 		owner, loadErr := LoadUser(ownerID)
-		if loadErr != nil || owner.IsOwner {
+		if loadErr != nil || !mayManage(caller, owner) {
 			forbidden = loadErr == nil
 			return false
 		}
@@ -368,7 +362,7 @@ func RevokeAnyDevice(w http.ResponseWriter, _ *http.Request, ps httprouter.Param
 		return
 	}
 	if forbidden {
-		writeJSONError(w, http.StatusForbidden, "Seul le propriétaire peut déconnecter ses appareils")
+		writeJSONError(w, http.StatusForbidden, errOutranked)
 		return
 	}
 	if !ok {

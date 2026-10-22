@@ -24,7 +24,8 @@ import 'onyx_controls_layer_test.dart' show pumpChrome;
 
 class _Api extends ApiClient {
   @override
-  Future<bool> getSetupRequired() async => false;
+  Future<({bool required, bool codeRequired})> getSetupState() async =>
+      (required: false, codeRequired: false);
 
   @override
   Future<DevicePairing> startDevicePairing({required String deviceName}) async =>

@@ -314,9 +314,13 @@ jobs:
       # Meme empaquetage que scripts/build-releases.sh : le .app renomme, plus
       # un lien vers /Applications pour que le glisser-deposer soit evident a
       # l'ouverture du volume.
+      # La signature (.onyx-update.sig, a cote de l'app) est ce que l'app
+      # installee exige avant de se remplacer : sans elle, les Mac deja
+      # installes refusent la mise a jour automatique. Meme cle que Windows.
       - name: Packager le DMG
         env:
           VERSION: ${{ needs.prepare.outputs.version }}
+          ONYX_UPDATE_SIGNING_KEY: ${{ secrets.ONYX_UPDATE_SIGNING_KEY }}
         run: |
           set -euo pipefail
           APP_BUNDLE="$(find app/build/macos -maxdepth 5 -name '*.app' -type d | head -1)"
@@ -327,6 +331,11 @@ jobs:
 
           STAGE="$(mktemp -d)"
           cp -R "$APP_BUNDLE" "$STAGE/Onyx.app"
+          if [ -n "$ONYX_UPDATE_SIGNING_KEY" ]; then
+            sh scripts/sign-macos-update.sh "$STAGE/Onyx.app" "$VERSION" "$STAGE/.onyx-update.sig"
+          else
+            echo "::warning::ONYX_UPDATE_SIGNING_KEY absent — DMG non signe : les Mac deja installes refuseront cette mise a jour."
+          fi
           ln -sf /Applications "$STAGE/Applications"
 
           mkdir -p out

@@ -54,6 +54,12 @@ Le serveur démarrera sur le port **8080** (http://localhost:8080) et créera la
 
 Les sous-titres extraits et les aperçus de la barre de lecture sont rangés à côté de la base. Avant toute migration du schéma, la base est copiée à côté d'elle (`player.db.pre-<migration>-<date>.bak`, les trois dernières sont gardées) ; `DB_SKIP_MIGRATION_BACKUP=true` s'en passe quand le disque n'a pas la place. Le conteneur tourne sous root par défaut ; `PUID` (et `PGID`) le font tourner sous un compte sans privilèges, à qui `./data` est rendu au démarrage — les dossiers de médias doivent alors lui être lisibles. Le journal s'écrit en texte sur la sortie d'erreur ; `LOG_FORMAT=json` donne une ligne JSON par entrée, et `LOG_LEVEL` (`debug`, `info`, `warn`, `error`) règle ce qui est écrit.
 
+**Sécurité réseau.**
+* `TLS_CERT_FILE` et `TLS_KEY_FILE` font parler le serveur en HTTPS sans proxy inverse. Sans eux, il parle HTTP : mots de passe et jetons circulent en clair hors d'un réseau de confiance, mettez alors un proxy TLS devant.
+* `TRUSTED_PROXIES` nomme les proxys dont `X-Forwarded-For` et `X-Forwarded-Proto` sont crus (`172.18.0.2, 10.0.0.0/8`, ou `none`). Par défaut, toute adresse de la machine ou du réseau local l'est : un Caddy ou un Traefik dans le réseau Docker marche sans réglage, mais un client qui se connecte lui-même depuis une adresse privée (Docker Desktop, VPN) peut alors déclarer l'adresse de son choix. Chaque proxy reste borné à dix fois la limite de débit d'un client.
+* Tant qu'aucun compte n'existe, le serveur écrit un **code d'installation** dans son journal au démarrage. Créer le compte propriétaire depuis la machine ou le réseau local ne le demande pas ; depuis Internet, l'app le demande dans le champ de l'invitation.
+* Les mots de passe choisis (création, demande d'accès, changement, réinitialisation) font au moins 8 caractères. Les comptes créés avant gardent leur mot de passe.
+
 ---
 
 ## 📡 Documentation de l'API REST
@@ -82,8 +88,8 @@ Toutes les routes API (sauf l'inscription/connexion et le stream) requièrent l'
   ```
 
 #### ➡️ État du serveur
-* **Route :** `GET /api/auth/state` — publique, n'expose qu'un booléen.
-* **Réponse (JSON) :** `{ "setup_required": true }` tant qu'aucun compte n'existe.
+* **Route :** `GET /api/auth/state` — publique, n'expose que deux booléens.
+* **Réponse (JSON) :** `{ "setup_required": true, "setup_code_required": false }`. `setup_required` tant qu'aucun compte n'existe ; `setup_code_required` quand, en plus, la requête vient d'ailleurs que de la machine ou du réseau local : l'inscription du propriétaire doit alors porter dans `invite_token` le code d'installation écrit dans le journal du serveur.
 
 #### ➡️ Connexion
 * **Route :** `POST /api/auth/login`
@@ -598,7 +604,7 @@ aperçus). Un lien tient au plus quatre lectures simultanées.
 
 * **Routes :** `GET /api/downloads` · `GET /api/downloads/:fichier`
 * **Comportement :** Publie les applications installables (APK Android, DMG macOS, EXE et ZIP Windows, IPA iOS et Apple TV) **de la version du serveur** : celles de la GitHub Release `v<version>` (`server/releasedl`, ADR-0062). Un serveur en 1.2.0 propose les installeurs de la 1.2.0, pas ceux d'une version plus récente ni plus ancienne. Une image de développement (`dev`, `main-<sha>`), qui n'a pas de Release, propose celle de la plus récente. L'image Docker n'embarque aucun installeur. Un installeur est téléchargé depuis GitHub à la première demande, puis resservi depuis `release-cache/` (à côté de la base) ; les installeurs de la version précédente sont supprimés à la mise à jour. Le fichier est servi en `attachment` avec support des Range Requests (une reprise après coupure ne repart pas de zéro). L'APK et les IPA sont servis avec l'adresse de téléchargement glissée dedans (`server/installorigin`, ADR-0042) : l'app installée s'ouvre avec l'adresse du serveur préremplie. Le fichier servi fait donc quelques dizaines d'octets de plus que le `size` annoncé par la liste.
-* **Réglages :** `RELEASE_REPO=off` coupe la source GitHub (serveur sans accès Internet) ; `RELEASE_REPO=<proprietaire>/<depot>` en désigne une autre. `DOWNLOADS_DIR` (par défaut `/app/downloads`) reste un dossier d'installeurs posés à la main (envoi par l'administrateur, volume) : un fichier qui s'y trouve l'emporte sur la Release pour sa plateforme.
+* **Réglages :** `RELEASE_REPO=off` coupe la source GitHub (serveur sans accès Internet) ; `RELEASE_REPO=<proprietaire>/<depot>` en désigne une autre. `DOWNLOADS_DIR` (par défaut `/app/downloads`) reste un dossier d'installeurs posés à la main sur la machine (volume) : un fichier qui s'y trouve l'emporte sur la Release pour sa plateforme. Aucune route ne permet d'y envoyer ni d'y supprimer un fichier : l'API n'expose plus que la lecture.
 * **Publiques (sans authentification) :** c'est par là qu'un nouvel utilisateur récupère l'app avant d'avoir un compte, et un téléchargement navigateur ne peut pas porter d'en-tête `Authorization`.
 * **Réponse (JSON) :** `{"artifacts": [{"platform": "macos", "label": "macOS", "file": "Onyx-1.0.0-macos.dmg", "url": "/api/downloads/Onyx-1.0.0-macos.dmg", "version": "1.0.0", "size": 43374616, "built_at": "2026-08-12T10:08:14Z"}]}`
 * **Côté client :** la section « Applications » de l'écran Paramètres liste ce que le serveur propose. Elle disparaît d'elle-même si le serveur n'a aucun installeur à proposer (Release introuvable et rien dans le cache).

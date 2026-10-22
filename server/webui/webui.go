@@ -148,6 +148,12 @@ func (h *Handler) serveFile(w http.ResponseWriter, r *http.Request, name string)
 	// (affiches TMDB, polices).
 	w.Header().Set("X-Content-Type-Options", "nosniff")
 	w.Header().Set("Referrer-Policy", "no-referrer")
+	// Aucune page d'un autre site ne peut afficher l'app dans un cadre et y
+	// faire cliquer à l'aveugle (le lanceur LG la charge en pleine page). La
+	// politique s'arrête là : borner les scripts casserait CanvasKit, que
+	// Flutter charge et compile à l'exécution.
+	w.Header().Set("Content-Security-Policy", "frame-ancestors 'none'; base-uri 'self'; object-src 'none'")
+	w.Header().Set("X-Frame-Options", "DENY")
 	w.Header().Set("ETag", etag)
 	w.Header().Set("Cache-Control", cacheControl)
 

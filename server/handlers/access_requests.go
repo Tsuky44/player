@@ -133,9 +133,9 @@ func RequestAccess(w http.ResponseWriter, r *http.Request, _ httprouter.Params) 
 	}
 
 	username := strings.TrimSpace(body.Username)
-	if username == "" || len(body.Password) < 4 {
+	if username == "" || len(body.Password) < minPasswordLength {
 		writeJSONError(w, http.StatusBadRequest,
-			"Un nom d'utilisateur et un mot de passe d'au moins 4 caractères sont requis")
+			"Un nom d'utilisateur et un mot de passe d'au moins 8 caractères sont requis")
 		return
 	}
 	if len(username) > 64 {

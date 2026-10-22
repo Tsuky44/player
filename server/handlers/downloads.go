@@ -4,18 +4,14 @@ package handlers
 //
 // The installers are no longer baked into the Docker image (ADR-0062): they are
 // the assets of the GitHub Release that carries the server's own version, see
-// releasedl. A file dropped by hand in the downloads directory (the admin
-// upload below, a volume mount) still wins over the Release for its platform.
+// releasedl. A file dropped by hand in the downloads directory (a volume
+// mount; there is no upload route any more) still wins over the Release for its platform.
 // Either way no manifest file is kept: the handler describes what is actually
 // there.
 
 import (
 	"context"
 	"encoding/json"
-	"errors"
-	"fmt"
-	"io"
-	"log"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -73,7 +69,7 @@ type artifactKind struct {
 var tvosArtifact = artifactKind{"tvos", "Apple TV (IPA)", 5}
 
 // artifactKindFor classifies a file by name: its extension, and for an .ipa
-// the `-tvos` suffix that artifactName gives the Apple TV build.
+// the `-tvos` suffix that the release names give the Apple TV build.
 func artifactKindFor(name string) (artifactKind, bool) {
 	ext := strings.ToLower(filepath.Ext(name))
 	kind, known := platformForExt[ext]
@@ -339,205 +335,4 @@ func ServeDownload(w http.ResponseWriter, r *http.Request, ps httprouter.Params)
 	// ServeContent handles Range and If-Modified-Since, so an interrupted
 	// download of a 100 MB APK resumes instead of restarting.
 	http.ServeContent(w, r, match.File, info.ModTime(), content)
-}
-
-// ---------------------------------------------------------------------------
-// Administration: replacing the artifacts by hand.
-//
-// The normal path is the Release of the server's version (ADR-0062), but the
-// admin account can also drop a file in directly — a locally built EXE, a signed
-// DMG rebuilt by hand — and it takes effect immediately, localCandidates()
-// reading the directory on every call. It wins over the Release for its
-// platform.
-// ---------------------------------------------------------------------------
-
-// maxUploadBytes caps an uploaded installer. Well above the ~150 MB artifacts
-// the project produces, low enough that a mistake cannot fill the disk.
-const maxUploadBytes = 2 << 30 // 2 GiB
-
-// errUploadTooLarge is what the size guard reports through the copy.
-var errUploadTooLarge = errors.New("upload too large")
-
-// artifactName builds the published name for a platform, matching what
-// scripts/stage-downloads.ps1 produces so both paths stay interchangeable.
-func artifactName(version, platform, ext string) string {
-	return fmt.Sprintf("Onyx-%s-%s%s", version, platform, ext)
-}
-
-// UploadDownload replaces (or adds) the installer for one platform.
-//
-// multipart/form-data with a `file` part; an optional `version` part overrides
-// the version read from the uploaded file name. The platform is deduced from
-// the extension, which is also the whitelist: the same map that decides what
-// may be served decides what may be uploaded.
-func UploadDownload(w http.ResponseWriter, r *http.Request, _ httprouter.Params, _ int) {
-	w.Header().Set("Content-Type", "application/json")
-
-	// The server's ReadTimeout covers the whole request body, and 150 MB over a
-	// home upstream takes far longer than 30 s. Drop the read deadline for this
-	// request only; the transfer stays bounded by maxUploadBytes.
-	if err := http.NewResponseController(w).SetReadDeadline(time.Time{}); err != nil {
-		log.Printf("UploadDownload: cannot lift read deadline: %v", err)
-	}
-
-	reader, err := r.MultipartReader()
-	if err != nil {
-		writeJSONError(w, http.StatusBadRequest, "Envoi multipart attendu")
-		return
-	}
-
-	dir := DownloadsDir()
-	if err := os.MkdirAll(dir, 0o755); err != nil {
-		log.Printf("UploadDownload: cannot create %s: %v", dir, err)
-		writeJSONError(w, http.StatusInternalServerError, "Dossier de téléchargements inaccessible")
-		return
-	}
-
-	var (
-		tmpPath      string
-		ext          string
-		originalName string
-		version      string
-	)
-	// The temp file is written next to the artifacts so the final rename stays
-	// on one filesystem, and is removed on every failure path below.
-	defer func() {
-		if tmpPath != "" {
-			os.Remove(tmpPath)
-		}
-	}()
-
-	for {
-		part, err := reader.NextPart()
-		if err == io.EOF {
-			break
-		}
-		if err != nil {
-			writeJSONError(w, http.StatusBadRequest, "Envoi interrompu")
-			return
-		}
-
-		switch part.FormName() {
-		case "version":
-			// Small text field: a bounded read, never the whole body.
-			raw, _ := io.ReadAll(io.LimitReader(part, 64))
-			version = strings.TrimSpace(string(raw))
-		case "file":
-			if tmpPath != "" {
-				writeJSONError(w, http.StatusBadRequest, "Un seul fichier à la fois")
-				return
-			}
-			originalName = filepath.Base(part.FileName())
-			ext = strings.ToLower(filepath.Ext(originalName))
-			if _, known := platformForExt[ext]; !known {
-				writeJSONError(w, http.StatusBadRequest, "Extension non prise en charge (.exe, .zip, .dmg, .apk, .ipa)")
-				return
-			}
-
-			// `.tmp`, never the real extension: localCandidates() would otherwise
-			// pick the half-written file up as the platform's artifact — and the
-			// replace sweep below would delete it just before the rename.
-			tmp, err := os.CreateTemp(dir, ".upload-*.tmp")
-			if err != nil {
-				log.Printf("UploadDownload: temp file failed: %v", err)
-				writeJSONError(w, http.StatusInternalServerError, "Écriture impossible")
-				return
-			}
-			tmpPath = tmp.Name()
-
-			// LimitReader + one extra byte: a file exactly at the cap passes,
-			// anything beyond is refused without ever landing on disk whole.
-			written, copyErr := io.Copy(tmp, io.LimitReader(part, maxUploadBytes+1))
-			closeErr := tmp.Close()
-			if copyErr == nil && written > maxUploadBytes {
-				copyErr = errUploadTooLarge
-			}
-			if copyErr == nil {
-				copyErr = closeErr
-			}
-			if copyErr != nil {
-				if errors.Is(copyErr, errUploadTooLarge) {
-					writeJSONError(w, http.StatusRequestEntityTooLarge, "Fichier trop volumineux (2 Go maximum)")
-					return
-				}
-				log.Printf("UploadDownload: copy failed: %v", copyErr)
-				writeJSONError(w, http.StatusInternalServerError, "Écriture impossible")
-				return
-			}
-			if written == 0 {
-				writeJSONError(w, http.StatusBadRequest, "Fichier vide")
-				return
-			}
-		}
-		part.Close()
-	}
-
-	if tmpPath == "" {
-		writeJSONError(w, http.StatusBadRequest, "Aucun fichier reçu")
-		return
-	}
-
-	meta, _ := artifactKindFor(originalName)
-	if version == "" {
-		if m := versionInName.FindStringSubmatch(originalName); m != nil {
-			version = m[1]
-		}
-	}
-	if version == "" {
-		version = "1.0.0"
-	}
-	if !versionInName.MatchString(version) {
-		writeJSONError(w, http.StatusBadRequest, "Version invalide (ex. 1.2.0)")
-		return
-	}
-
-	// One artifact per platform: drop the previous one whatever its version,
-	// exactly like the staging script does.
-	for _, existing := range listLocalArtifacts() {
-		if existing.Platform == meta.platform {
-			os.Remove(filepath.Join(dir, existing.File))
-		}
-	}
-
-	finalPath := filepath.Join(dir, artifactName(version, meta.platform, ext))
-	if err := os.Rename(tmpPath, finalPath); err != nil {
-		log.Printf("UploadDownload: rename failed: %v", err)
-		writeJSONError(w, http.StatusInternalServerError, "Publication impossible")
-		return
-	}
-	tmpPath = "" // renamed: nothing left to clean up
-	if err := os.Chmod(finalPath, 0o644); err != nil {
-		log.Printf("UploadDownload: chmod %s: %v", finalPath, err)
-	}
-
-	json.NewEncoder(w).Encode(artifactsResponse{Artifacts: listArtifacts(r.Context())})
-}
-
-// DeleteDownload removes one published artifact (DELETE /api/downloads/:file).
-func DeleteDownload(w http.ResponseWriter, r *http.Request, ps httprouter.Params, _ int) {
-	w.Header().Set("Content-Type", "application/json")
-
-	// Same guard as ServeDownload: a bare name, and only one the listing
-	// already vouched for.
-	name := filepath.Base(strings.TrimPrefix(ps.ByName("file"), "/"))
-
-	found := false
-	for _, a := range listLocalArtifacts() {
-		if a.File == name {
-			found = true
-			break
-		}
-	}
-	if !found {
-		writeJSONError(w, http.StatusNotFound, "Installeur introuvable")
-		return
-	}
-
-	if err := os.Remove(filepath.Join(DownloadsDir(), name)); err != nil {
-		log.Printf("DeleteDownload: %v", err)
-		writeJSONError(w, http.StatusInternalServerError, "Suppression impossible")
-		return
-	}
-
-	json.NewEncoder(w).Encode(artifactsResponse{Artifacts: listArtifacts(r.Context())})
 }

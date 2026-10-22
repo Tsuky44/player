@@ -73,7 +73,9 @@ EXPOSE 8080
 
 # /api/ping ne touche ni la base ni le disque des médias : il dit seulement que
 # le processus répond. Le démarrage laisse le temps d'ouvrir la base.
-HEALTHCHECK --interval=30s --timeout=5s --start-period=20s --retries=3     CMD wget -q -O /dev/null http://127.0.0.1:8080/api/ping || exit 1
+# Avec TLS_CERT_FILE, le serveur ne parle plus que HTTPS : la sonde suit, sans
+# vérifier un certificat émis pour un autre nom que 127.0.0.1.
+HEALTHCHECK --interval=30s --timeout=5s --start-period=20s --retries=3     CMD if [ -n "$TLS_CERT_FILE" ]; then           wget -q --no-check-certificate -O /dev/null https://127.0.0.1:8080/api/ping;         else           wget -q -O /dev/null http://127.0.0.1:8080/api/ping;         fi || exit 1
 
 # Configure default paths inside container
 ENV MOVIES_DIR=/media/Films \

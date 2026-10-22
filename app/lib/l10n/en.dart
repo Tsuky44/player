@@ -110,8 +110,6 @@ const Map<String, String> kEnglish = <String, String>{
       'Add',
   'Ajouter les nouveaux fichiers et retirer ceux qui ont disparu':
       'Add new files and remove those that are gone',
-  'Ajouter ou remplacer un installeur':
-      'Add or replace an installer',
   'Ajouter un serveur':
       'Add a server',
   'Ajouter un utilisateur':
@@ -892,12 +890,6 @@ const Map<String, String> kEnglish = <String, String>{
       'Sending the session to the device.',
   'Envoi de la session à {0}.':
       'Sending the session to {0}.',
-  'Envoi de {0}…':
-      'Uploading {0}…',
-  'Envoi en cours…':
-      'Uploading…',
-  'Envoi {0} %':
-      'Uploading {0}%',
   'Envoyer la demande':
       'Send request',
   'Erreur':
@@ -960,8 +952,6 @@ const Map<String, String> kEnglish = <String, String>{
       'Details updated',
   'Fiche série mise à jour':
       'Show details updated',
-  'Fichier .exe, .zip, .dmg, .apk ou .ipa':
-      '.exe, .zip, .dmg, .apk or .ipa file',
   'Fichier local':
       'Local file',
   'Fichier téléchargé':
@@ -1008,8 +998,6 @@ const Map<String, String> kEnglish = <String, String>{
       'General',
   'Générer une invitation':
       'Generate an invitation',
-  'Gérer cet installeur':
-      'Manage this installer',
   'Gérer la bibliothèque (scans, métadonnées)':
       'Manage the library (scans, metadata)',
   'Gérer les paramètres du serveur':
@@ -1164,10 +1152,6 @@ const Map<String, String> kEnglish = <String, String>{
       'Install Onyx on another device. The files are served directly by your server.',
   'Installer maintenant':
       'Install now',
-  'Installeur publié : {0}':
-      'Installer published: {0}',
-  'Installeur supprimé.':
-      'Installer deleted.',
   'Interface pensée pour un téléviseur et une télécommande. Cet appareil est détecté comme {0}.':
       'Interface designed for a TV and a remote control. This device is detected as {0}.',
   'Interprétation':
@@ -1500,10 +1484,10 @@ const Map<String, String> kEnglish = <String, String>{
       'Update',
   'Min':
       'Min',
+  'Au moins {0} caractères':
+      'At least {0} characters',
   'Minimum 4 caractères':
       'At least 4 characters',
-  'Minimum 4 caractères.':
-      'At least 4 characters.',
   'Minuterie de veille':
       'Sleep timer',
   'Minuterie de veille : lecture en pause':
@@ -1852,12 +1836,8 @@ const Map<String, String> kEnglish = <String, String>{
       'Prepare embedded tracks for instant playback',
   'Prêt à installer la version {0}. Android va demander une confirmation.':
       'Ready to install version {0}. Android will ask for confirmation.',
-  'Publication':
-      'Publishing',
   'Publier':
       'Publish',
-  'Publier l’installeur':
-      'Publish the installer',
   'Période':
       'Period',
   'Qualité':
@@ -1934,8 +1914,6 @@ const Map<String, String> kEnglish = <String, String>{
       'Run auto-detection again',
   'Remplace les codes que vous avez notés.':
       'Replaces the codes you wrote down.',
-  'Remplacer':
-      'Replace',
   'Remplir l\'écran':
       'Fill screen',
   'Remplir la hauteur':
@@ -2210,8 +2188,6 @@ const Map<String, String> kEnglish = <String, String>{
       'Delete watched downloads?',
   'Supprimer les vus ({0})':
       'Delete watched ({0})',
-  'Supprimer l’installeur ?':
-      'Delete the installer?',
   'Supprimer mon code':
       'Delete my code',
   'Supprimer mon compte':
@@ -2408,8 +2384,6 @@ const Map<String, String> kEnglish = <String, String>{
       'An administrator has turned it off on this server.',
   'Un code de votre téléphone s’ajoute au mot de passe à chaque connexion.':
       'A code from your phone is added to the password at every sign-in.',
-  'Un installeur par plateforme : en publier un nouveau remplace le précédent.':
-      'One installer per platform: publishing a new one replaces the previous one.',
   'Un lien de partage se regarde sans compte sur le serveur qui l’a créé.':
       'A share link is watched without an account on the server that created it.',
   'Un lien vu ou expiré ne s’ouvre plus.':
@@ -2424,8 +2398,16 @@ const Map<String, String> kEnglish = <String, String>{
       'An access request has received an answer.',
   'Une erreur est survenue : {0}':
       'An error occurred: {0}',
+  'Cette mise à jour n’est pas signée par Onyx : elle n’a pas été installée. Téléchargez Onyx depuis sa page officielle.':
+      'This update is not signed by Onyx and was not installed. Download Onyx from its official page.',
   'Une invitation est requise':
       'An invitation is required',
+  'Code d’installation':
+      'Setup code',
+  'Affiché dans le journal du serveur':
+      'Shown in the server log',
+  'Le code d’installation est requis':
+      'The setup code is required',
   'Une obligation s’applique à la connexion suivante de chaque compte concerné : il configure alors son code avant d’entrer. Les appareils déjà connectés le restent. Les administrateurs sont les comptes qui gèrent les paramètres, la bibliothèque ou les utilisateurs.':
       'A requirement applies at the next sign-in of each account concerned: it then sets up its code before getting in. Devices already signed in stay signed in. Administrators are the accounts that manage settings, the library or users.',
   'Une session inutilisée pendant 90 jours est fermée automatiquement.':
@@ -2710,8 +2692,6 @@ const Map<String, String> kEnglish = <String, String>{
       '{0} is not responding. Do you want to switch to another of your servers?',
   '{0} ne répond toujours pas.':
       '{0} is still not responding.',
-  '{0} ne sera plus proposé au téléchargement.':
-      '{0} will no longer be offered for download.',
   '{0} n’est plus le serveur principal.':
       '{0} is no longer the main server.',
   '{0} reçue(s) d’Emby, {1} envoyée(s) à Emby.':
@@ -2808,8 +2788,6 @@ const Map<String, String> kEnglish = <String, String>{
       'Could not save the address.',
   'Échec de l’enregistrement.':
       'Could not save.',
-  'Échec de l’envoi de l’installeur.':
-      'Could not upload the installer.',
   'Échec du téléchargement':
       'Download failed',
   'Échec.':

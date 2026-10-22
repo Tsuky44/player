@@ -10,6 +10,7 @@ import '../widgets/device_tile.dart';
 import '../widgets/otp_security_group.dart';
 import '../widgets/settings_ui.dart';
 import '../../../l10n/tr.dart';
+import '../../../utils/password_policy.dart';
 
 class AccountPage extends StatefulWidget {
   const AccountPage({super.key});
@@ -64,7 +65,7 @@ class _AccountPageState extends State<AccountPage> {
     final next = await promptPassword(
       context,
       title: tr('Nouveau mot de passe'),
-      hint: tr('Minimum 4 caractères.'),
+      minLength: minNewPasswordLength,
     );
     if (next == null || !mounted) return;
     try {

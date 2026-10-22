@@ -400,6 +400,10 @@ func ResetUserOTP(w http.ResponseWriter, r *http.Request, ps httprouter.Params, 
 		writeJSONError(w, http.StatusForbidden, "La validation en deux étapes du propriétaire ne peut pas être réinitialisée")
 		return
 	}
+	if !mayManage(caller, target) {
+		writeJSONError(w, http.StatusForbidden, errOutranked)
+		return
+	}
 	if err := otp.Disable(database.DB, target.ID); err != nil {
 		log.Printf("ResetUserOTP: %v", err)
 		writeJSONError(w, http.StatusInternalServerError, "Internal server error")

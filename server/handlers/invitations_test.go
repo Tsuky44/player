@@ -39,7 +39,7 @@ func createInvitation(t *testing.T, inviterID int) Invitation {
 
 func registerWithToken(t *testing.T, username, token string) *httptest.ResponseRecorder {
 	t.Helper()
-	body := `{"username":"` + username + `","password":"secret","invite_token":"` + token + `"}`
+	body := `{"username":"` + username + `","password":"secret-pass","invite_token":"` + token + `"}`
 	rec := httptest.NewRecorder()
 	Register(rec, httptest.NewRequest(http.MethodPost, "/api/auth/register", strings.NewReader(body)), nil)
 	return rec

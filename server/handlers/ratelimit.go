@@ -2,12 +2,12 @@ package handlers
 
 import (
 	"math"
-	"net"
 	"net/http"
 	"strconv"
-	"strings"
 	"sync"
 	"time"
+
+	"project-player/server/clientip"
 
 	"github.com/julienschmidt/httprouter"
 )
@@ -34,7 +34,16 @@ type rateLimiter struct {
 	burst float64
 	every time.Duration
 	now   func() time.Time
+	// relay borne ce qui passe par un même proxy, toutes adresses déclarées
+	// confondues : derrière un proxy cru par défaut, un client qui se connecte
+	// lui-même depuis le réseau local choisit l'adresse qu'il déclare, et
+	// changeait de seau à chaque requête. Voir clientip.
+	relay *rateLimiter
 }
+
+// relayFactor est la marge d'un proxy sur un client seul : de quoi laisser
+// passer tout un foyer, pas un dictionnaire.
+const relayFactor = 10
 
 type tokenBucket struct {
 	tokens float64
@@ -47,6 +56,12 @@ type tokenBucket struct {
 const maxRateLimitKeys = 10_000
 
 func newRateLimiter(burst int, every time.Duration) *rateLimiter {
+	l := newBucketSet(burst, every)
+	l.relay = newBucketSet(burst*relayFactor, every/relayFactor)
+	return l
+}
+
+func newBucketSet(burst int, every time.Duration) *rateLimiter {
 	return &rateLimiter{
 		buckets: make(map[string]*tokenBucket),
 		burst:   float64(burst),
@@ -117,10 +132,16 @@ var (
 )
 
 // RateLimited refuse la requête avec 429 quand l'adresse qui l'envoie a épuisé
-// son seau.
+// son seau, ou le proxy par lequel elle passe le sien.
 func RateLimited(limiter *rateLimiter, next httprouter.Handle) httprouter.Handle {
 	return func(w http.ResponseWriter, r *http.Request, ps httprouter.Params) {
-		if ok, wait := limiter.allow(rateLimitKey(r)); !ok {
+		ok, wait := limiter.allow(rateLimitKey(r))
+		if ok && limiter.relay != nil {
+			if _, viaProxy := clientip.Client(r); viaProxy {
+				ok, wait = limiter.relay.allow(clientip.Remote(r))
+			}
+		}
+		if !ok {
 			seconds := int(math.Ceil(wait.Seconds()))
 			if seconds < 1 {
 				seconds = 1
@@ -133,30 +154,9 @@ func RateLimited(limiter *rateLimiter, next httprouter.Handle) httprouter.Handle
 	}
 }
 
-// rateLimitKey est l'adresse à qui imputer une requête.
-//
-// L'adresse de la connexion, sauf quand elle vient du réseau local ou de la
-// machine elle-même : c'est alors, le plus souvent, le proxy inverse devant le
-// serveur, et le client est la dernière adresse qu'il a ajoutée à
-// X-Forwarded-For. Pas la première : celle-là, le client l'écrit lui-même et
-// peut en changer à chaque requête. Un client connecté directement depuis le
-// réseau local peut encore se forger une adresse ; il est déjà dans la maison.
+// rateLimitKey est l'adresse à qui imputer une requête : celle du client, en
+// ne croyant X-Forwarded-For que des proxys de confiance (clientip).
 func rateLimitKey(r *http.Request) string {
-	host, _, err := net.SplitHostPort(r.RemoteAddr)
-	if err != nil {
-		host = r.RemoteAddr
-	}
-	if !isLocalAddress(host) {
-		return host
-	}
-	if forwarded := r.Header.Get("X-Forwarded-For"); forwarded != "" {
-		parts := strings.Split(forwarded, ",")
-		if last := strings.TrimSpace(parts[len(parts)-1]); last != "" {
-			return last
-		}
-	}
-	if real := strings.TrimSpace(r.Header.Get("X-Real-IP")); real != "" {
-		return real
-	}
-	return host
+	address, _ := clientip.Client(r)
+	return address
 }

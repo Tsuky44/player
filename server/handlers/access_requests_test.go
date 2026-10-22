@@ -26,7 +26,7 @@ func requestAccess(t *testing.T, username, password string) *httptest.ResponseRe
 
 func openAccessRequest(t *testing.T, username string) AccessRequestTicket {
 	t.Helper()
-	rec := requestAccess(t, username, "secret")
+	rec := requestAccess(t, username, "secret-pass")
 	if rec.Code != http.StatusOK {
 		t.Fatalf("RequestAccess: got %d: %s", rec.Code, rec.Body)
 	}
@@ -132,7 +132,7 @@ func TestAccessRequest_ProposedPasswordOpensTheAccount(t *testing.T) {
 
 	rec := httptest.NewRecorder()
 	Login(rec, httptest.NewRequest(http.MethodPost, "/api/auth/login",
-		strings.NewReader(`{"username":"mathis","password":"secret"}`)), nil)
+		strings.NewReader(`{"username":"mathis","password":"secret-pass"}`)), nil)
 	if rec.Code != http.StatusOK {
 		t.Fatalf("Login après approbation: got %d: %s", rec.Code, rec.Body)
 	}
@@ -262,7 +262,7 @@ func TestRequestAccess_RejectsTakenUsername(t *testing.T) {
 	setupAuthDB(t)
 	createTestUser(t, "mathis", true, models.AllPermissions())
 
-	if rec := requestAccess(t, "mathis", "secret"); rec.Code != http.StatusConflict {
+	if rec := requestAccess(t, "mathis", "secret-pass"); rec.Code != http.StatusConflict {
 		t.Fatalf("got %d, want 409: %s", rec.Code, rec.Body)
 	}
 }
@@ -273,7 +273,7 @@ func TestRequestAccess_CollapsesDuplicates(t *testing.T) {
 	createTestUser(t, "owner", true, models.AllPermissions())
 
 	openAccessRequest(t, "mathis")
-	if rec := requestAccess(t, "mathis", "secret"); rec.Code != http.StatusConflict {
+	if rec := requestAccess(t, "mathis", "secret-pass"); rec.Code != http.StatusConflict {
 		t.Fatalf("doublon: got %d, want 409: %s", rec.Code, rec.Body)
 	}
 }
@@ -283,7 +283,7 @@ func TestRequestAccess_CollapsesDuplicates(t *testing.T) {
 func TestRequestAccess_RefusedOnPristineServer(t *testing.T) {
 	setupAuthDB(t)
 
-	if rec := requestAccess(t, "mathis", "secret"); rec.Code != http.StatusForbidden {
+	if rec := requestAccess(t, "mathis", "secret-pass"); rec.Code != http.StatusForbidden {
 		t.Fatalf("got %d, want 403: %s", rec.Code, rec.Body)
 	}
 }

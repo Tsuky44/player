@@ -27,14 +27,16 @@ func TestLimitBodies_StopsAnOversizedBody(t *testing.T) {
 	}
 }
 
-func TestLimitBodies_LeavesInstallerUploadsToTheirRoute(t *testing.T) {
+// L'ancienne route d'envoi d'installeurs échappait à la borne ; elle n'existe
+// plus, et son chemin ne doit plus rien ouvrir.
+func TestLimitBodies_NoPathEscapesTheLimit(t *testing.T) {
 	var readErr error
 	handler := LimitBodies(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		_, readErr = io.ReadAll(r.Body)
 	}))
 	body := strings.NewReader(strings.Repeat("x", maxRequestBody+1))
 	handler.ServeHTTP(httptest.NewRecorder(), httptest.NewRequest(http.MethodPost, "/api/downloads", body))
-	if readErr != nil {
-		t.Fatalf("an installer upload is bounded by its own route: %v", readErr)
+	if readErr == nil {
+		t.Fatal("/api/downloads must be bounded like every other route")
 	}
 }

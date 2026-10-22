@@ -619,6 +619,8 @@ class ApiClient
 
   /// Sign-up is closed unless the server has no account yet, in which case that
   /// first account becomes the owner. Otherwise [inviteToken] is required.
+  /// It also carries the setup code a pristine server asks for when the owner
+  /// signs up from outside its network (see [getSetupState]).
   Future<Map<String, dynamic>> register(
     String username,
     String password, {
@@ -634,13 +636,19 @@ class ApiClient
     return response.data as Map<String, dynamic>;
   }
 
-  /// True while the server has no account at all: the login screen offers the
-  /// sign-up form only then, or when an invitation token is in hand.
-  /// Unauthenticated, and exposes nothing but that boolean.
-  Future<bool> getSetupRequired() async {
+  /// `required` while the server has no account at all: the login screen
+  /// offers the sign-up form only then, or when an invitation token is in
+  /// hand. `codeRequired` when that first sign-up comes from outside the
+  /// server's network: the code printed in the server log is then asked for,
+  /// so a stranger cannot claim a freshly exposed server. Unauthenticated.
+  Future<({bool required, bool codeRequired})> getSetupState() async {
     final response = await _dio.get("/api/auth/state");
     final data = response.data as Map<String, dynamic>;
-    return data['setup_required'] == true;
+    final required = data['setup_required'] == true;
+    return (
+      required: required,
+      codeRequired: required && data['setup_code_required'] == true,
+    );
   }
 
   // ==================== TV DEVICE PAIRING ====================

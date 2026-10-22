@@ -77,6 +77,24 @@ const (
 	PermShareMedia     Permission = "share_media"
 )
 
+// PermissionList rend chaque droit, dans l'ordre de leur encodage.
+func PermissionList() []Permission {
+	return []Permission{
+		PermManageSettings, PermManageLibrary, PermManageUsers,
+		PermDeleteMedia, PermInviteUsers, PermRequestMedia, PermShareMedia,
+	}
+}
+
+// Covers dit si p accorde au moins chaque droit de other.
+func (p Permissions) Covers(other Permissions) bool {
+	for _, perm := range PermissionList() {
+		if other.Has(perm) && !p.Has(perm) {
+			return false
+		}
+	}
+	return true
+}
+
 // Has reports whether the set grants perm. An unknown name is never granted.
 func (p Permissions) Has(perm Permission) bool {
 	switch perm {
@@ -103,10 +121,7 @@ func (p Permissions) Has(perm Permission) bool {
 // format for a frozen invitation template.
 func EncodePermissions(p Permissions) string {
 	var granted []string
-	for _, perm := range []Permission{
-		PermManageSettings, PermManageLibrary, PermManageUsers,
-		PermDeleteMedia, PermInviteUsers, PermRequestMedia, PermShareMedia,
-	} {
+	for _, perm := range PermissionList() {
 		if p.Has(perm) {
 			granted = append(granted, string(perm))
 		}

@@ -303,8 +303,12 @@ func CreateAccountLink(w http.ResponseWriter, r *http.Request, _ httprouter.Para
 	defer cancel()
 	info, err := fetchFederationInfo(ctx, peerURL)
 	if err != nil {
+		// Le détail reste dans le journal : renvoyé, il disait si une adresse
+		// du réseau interne refuse la connexion, ne répond pas ou répond
+		// autre chose, depuis n'importe quel compte.
+		log.Printf("CreateAccountLink: fetch %s: %v", peerURL, err)
 		writeJSONError(w, http.StatusBadGateway,
-			"Ce serveur ne parvient pas à joindre "+peerURL+" ("+err.Error()+"). Les deux serveurs doivent pouvoir se joindre.")
+			"Ce serveur ne parvient pas à joindre "+peerURL+" comme serveur Onyx. Les deux serveurs doivent pouvoir se joindre.")
 		return
 	}
 	if info.ServerID == config.ServerID() {

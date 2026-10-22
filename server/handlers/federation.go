@@ -13,6 +13,7 @@ import (
 	"time"
 
 	"project-player/server/config"
+	"project-player/server/httpx"
 )
 
 // Serveurs liés — ADR-0017.
@@ -38,8 +39,12 @@ const (
 	peerHeader        = "X-Onyx-Server"
 )
 
+// federationClient compose avec le garde de httpx.UserDirected : l'adresse
+// d'un serveur lié est saisie par n'importe quel compte (POST /api/links), et
+// c'est ce serveur-ci qui s'y connecte.
 var federationClient = &http.Client{
-	Timeout: 15 * time.Second,
+	Timeout:   15 * time.Second,
+	Transport: httpx.UserDirected.Transport,
 	// Un serveur lié qui redirige ailleurs n'est plus celui qu'on a accepté.
 	CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse },
 }

@@ -1,16 +1,11 @@
-import 'package:file_picker/file_picker.dart';
-import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
 import '../../../models/app_download.dart';
-import '../../../providers/auth_provider.dart';
 import '../../../services/api_client.dart';
 import '../../../theme/app_colors.dart';
-import '../../../tv/tv_deferred_keyboard.dart';
 import '../../../utils/external_url.dart';
 import '../widgets/settings_ui.dart';
-import '../../../theme/app_type.dart';
 import '../../../l10n/tr.dart';
 
 class AppsPage extends StatefulWidget {
@@ -22,11 +17,6 @@ class AppsPage extends StatefulWidget {
 
 class _AppsPageState extends State<AppsPage> {
   List<AppDownload>? _downloads;
-
-  /// Set while an installer is being sent, so the page can show progress and
-  /// refuse a second upload at the same time.
-  String? _uploadingLabel;
-  double? _uploadProgress;
 
   @override
   void initState() {
@@ -52,146 +42,6 @@ class _AppsPageState extends State<AppsPage> {
     showSettingsSnack(context, tr('Téléchargement disponible ici : {0}', [url]));
   }
 
-  /// Picks an installer and publishes it, replacing whatever the server had for
-  /// that platform. [replacing] restricts the picker to that artifact's
-  /// extension, so "remplacer le DMG" cannot silently overwrite the APK — the
-  /// platform is deduced from the extension server-side.
-  Future<void> _upload({AppDownload? replacing}) async {
-    if (_uploadingLabel != null) return;
-    final extensions = replacing != null
-        ? [_extensionOf(replacing.file)]
-        : const ['exe', 'zip', 'dmg', 'apk', 'ipa'];
-
-    PlatformFile? picked;
-    try {
-      picked = await FilePicker.pickFile(
-        type: FileType.custom,
-        allowedExtensions: extensions,
-      );
-    } catch (_) {
-      if (mounted) {
-        showSettingsSnack(context, tr('Sélecteur de fichiers indisponible.'),
-            error: true);
-      }
-      return;
-    }
-    if (picked == null || !mounted) return;
-    final file = picked;
-
-    final version = await _askVersion(file.name, replacing?.version ?? '');
-    if (version == null || !mounted) return;
-
-    setState(() {
-      _uploadingLabel = file.name;
-      _uploadProgress = null;
-    });
-    try {
-      final downloads = await context.read<ApiClient>().uploadAppDownload(
-            filename: file.name,
-            path: kIsWeb ? null : file.path,
-            bytes: kIsWeb ? await file.readAsBytes() : null,
-            version: version,
-            onProgress: (sent, total) {
-              if (!mounted || total <= 0) return;
-              setState(() => _uploadProgress = sent / total);
-            },
-          );
-      if (!mounted) return;
-      setState(() {
-        _downloads = downloads;
-        _uploadingLabel = null;
-        _uploadProgress = null;
-      });
-      showSettingsSnack(context, tr('Installeur publié : {0}', [file.name]));
-    } catch (e) {
-      if (!mounted) return;
-      setState(() {
-        _uploadingLabel = null;
-        _uploadProgress = null;
-      });
-      showSettingsSnack(
-          context, settingsErrorText(e, tr('Échec de l’envoi de l’installeur.')),
-          error: true);
-    }
-  }
-
-  Future<void> _delete(AppDownload download) async {
-    final confirmed = await confirmSettingsAction(
-      context,
-      title: tr('Supprimer l’installeur ?'),
-      message: tr('{0} ne sera plus proposé au téléchargement.', [download.file]),
-      confirmLabel: tr('Supprimer'),
-    );
-    if (!confirmed || !mounted) return;
-    try {
-      final downloads =
-          await context.read<ApiClient>().deleteAppDownload(download);
-      if (!mounted) return;
-      setState(() => _downloads = downloads);
-      showSettingsSnack(context, tr('Installeur supprimé.'));
-    } catch (e) {
-      if (mounted) {
-        showSettingsSnack(
-            context, settingsErrorText(e, tr('Échec de la suppression.')),
-            error: true);
-      }
-    }
-  }
-
-  /// Asks for the version to publish under, pre-filled with the one found in
-  /// the file name — a locally built installer carries none.
-  Future<String?> _askVersion(String filename, String fallback) {
-    final match = RegExp(r'(\d+\.\d+(?:\.\d+)?)').firstMatch(filename);
-    final controller = TextEditingController(
-      text: match?.group(1) ?? (fallback.isNotEmpty ? fallback : '1.0.0'),
-    );
-    return showDialog<String>(
-      context: context,
-      builder: (dialogContext) => AlertDialog(
-        backgroundColor: AppColors.surface,
-        title: Text(tr('Publier l’installeur')),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text(filename,
-                style: const TextStyle(
-                    color: AppColors.textSecondary, fontSize: AppType.footnote)),
-            const SizedBox(height: 14),
-            TvDeferredKeyboard(
-              builder: (context, focusNode, canRequestFocus) => TextField(
-                focusNode: focusNode,
-                canRequestFocus: canRequestFocus,
-                controller: controller,
-                autofocus: true,
-                decoration: InputDecoration(
-                  labelText: tr('Version'),
-                  hintText: '1.0.0',
-                ),
-              ),
-            ),
-          ],
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.of(dialogContext).pop(),
-            child: Text(tr('Annuler')),
-          ),
-          TextButton(
-            onPressed: () =>
-                Navigator.of(dialogContext).pop(controller.text.trim()),
-            child: Text(tr('Publier')),
-          ),
-        ],
-      ),
-    );
-  }
-
-  String _extensionOf(String filename) {
-    final dot = filename.lastIndexOf('.');
-    return dot < 0 ? '' : filename.substring(dot + 1).toLowerCase();
-  }
-
   IconData _icon(String platform) => switch (platform) {
         'windows' => Icons.desktop_windows_rounded,
         'windows-portable' => Icons.folder_zip_outlined,
@@ -204,8 +54,6 @@ class _AppsPageState extends State<AppsPage> {
 
   @override
   Widget build(BuildContext context) {
-    // Publishing the installers this server hands out is server administration.
-    final canManage = context.watch<AuthProvider>().permissions.manageSettings;
     final downloads = _downloads;
 
     return SettingsPage(
@@ -235,91 +83,10 @@ class _AppsPageState extends State<AppsPage> {
                       download.formattedSize,
                   ].join(' · '),
                   onTap: () => _open(download),
-                  trailing: canManage
-                      ? _InstallerMenu(
-                          enabled: _uploadingLabel == null,
-                          onReplace: () => _upload(replacing: download),
-                          onDelete: () => _delete(download),
-                        )
-                      : const Icon(Icons.download_rounded,
-                          color: AppColors.textMuted, size: 20),
+                  trailing: const Icon(Icons.download_rounded,
+                      color: AppColors.textMuted, size: 20),
                 ),
           ],
-        ),
-        if (canManage)
-          SettingsGroup(
-            title: tr('Publication'),
-            footer:
-                tr('Un installeur par plateforme : en publier un nouveau '
-                    'remplace le précédent.'),
-            children: [
-              SettingsTile(
-                icon: Icons.upload_file_rounded,
-                title: _uploadingLabel == null
-                    ? tr('Ajouter ou remplacer un installeur')
-                    : tr('Envoi de {0}…', [_uploadingLabel]),
-                subtitle: _uploadingLabel == null
-                    ? tr('Fichier .exe, .zip, .dmg, .apk ou .ipa')
-                    : _uploadProgress == null
-                        ? tr('Envoi en cours…')
-                        : tr('Envoi {0} %', [(_uploadProgress! * 100).clamp(0, 100).toStringAsFixed(0)]),
-                onTap: _uploadingLabel == null ? () => _upload() : null,
-              ),
-              if (_uploadProgress != null)
-                Padding(
-                  padding: const EdgeInsets.fromLTRB(16, 0, 16, 14),
-                  child: ClipRRect(
-                    borderRadius: BorderRadius.circular(4),
-                    child: LinearProgressIndicator(
-                        value: _uploadProgress, minHeight: 4),
-                  ),
-                ),
-            ],
-          ),
-      ],
-    );
-  }
-}
-
-/// Per-artifact admin actions, so tapping the row itself still downloads.
-class _InstallerMenu extends StatelessWidget {
-  const _InstallerMenu({
-    required this.enabled,
-    required this.onReplace,
-    required this.onDelete,
-  });
-
-  final bool enabled;
-  final VoidCallback onReplace;
-  final VoidCallback onDelete;
-
-  @override
-  Widget build(BuildContext context) {
-    return PopupMenuButton<String>(
-      enabled: enabled,
-      tooltip: tr('Gérer cet installeur'),
-      color: AppColors.surfaceElevated,
-      icon: const Icon(Icons.more_horiz_rounded, color: AppColors.textMuted),
-      onSelected: (value) => value == 'replace' ? onReplace() : onDelete(),
-      itemBuilder: (_) => [
-        PopupMenuItem(
-          value: 'replace',
-          child: ListTile(
-            dense: true,
-            contentPadding: EdgeInsets.zero,
-            leading: Icon(Icons.upload_file_rounded, size: 18),
-            title: Text(tr('Remplacer')),
-          ),
-        ),
-        PopupMenuItem(
-          value: 'delete',
-          child: ListTile(
-            dense: true,
-            contentPadding: EdgeInsets.zero,
-            leading: Icon(Icons.delete_outline_rounded,
-                size: 18, color: AppColors.error),
-            title: Text(tr('Supprimer'), style: TextStyle(color: AppColors.error)),
-          ),
         ),
       ],
     );

@@ -12,6 +12,7 @@ import '../../services/api_client.dart';
 import '../../theme/app_colors.dart';
 import '../../theme/app_type.dart';
 import '../../l10n/tr.dart';
+import '../../utils/password_policy.dart';
 
 /// Human labels for the administration rights, in the order they are shown.
 const permissionLabels = <(String, String)>[
@@ -698,18 +699,23 @@ class _Chip extends StatelessWidget {
 }
 
 /// Password prompt shared by the admin reset and the self-service change.
+/// [minLength] : [minNewPasswordLength] pour un mot de passe choisi, 4 pour
+/// en confirmer un existant, qui a pu être créé avec l'ancienne limite.
 Future<String?> promptPassword(
   BuildContext context, {
   required String title,
   String? hint,
   String label = 'Nouveau mot de passe',
+  int minLength = 4,
 }) =>
-    _promptPassword(context, title: title, hint: hint, label: label);
+    _promptPassword(context,
+        title: title, hint: hint, label: label, minLength: minLength);
 
 Future<String?> _promptPassword(BuildContext context,
     {required String title,
     String? hint,
-    String label = 'Nouveau mot de passe'}) {
+    String label = 'Nouveau mot de passe',
+    int minLength = minNewPasswordLength}) {
   final controller = TextEditingController();
   return showDialog<String>(
     context: context,
@@ -733,7 +739,12 @@ Future<String?> _promptPassword(BuildContext context,
               controller: controller,
               obscureText: true,
               autofocus: true,
-              decoration: InputDecoration(labelText: tr(label)),
+              decoration: InputDecoration(
+                labelText: tr(label),
+                helperText: minLength > 4
+                    ? tr('Au moins {0} caractères', ['$minLength'])
+                    : null,
+              ),
                       ),
           ),
         ],
@@ -746,7 +757,7 @@ Future<String?> _promptPassword(BuildContext context,
         FilledButton(
           onPressed: () {
             final value = controller.text;
-            if (value.length < 4) return;
+            if (value.length < minLength) return;
             Navigator.of(ctx).pop(value);
           },
           child: Text(tr('Valider')),

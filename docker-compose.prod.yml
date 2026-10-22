@@ -30,6 +30,14 @@ services:
       # doivent lui être lisibles (`id -u` et `id -g` donnent vos numéros).
       # - PUID=1000
       # - PGID=1000
+      # --- OPTIONNEL : HTTPS sans proxy inverse ---
+      # Sans proxy TLS devant, mots de passe et jetons circulent en clair.
+      # - TLS_CERT_FILE=/app/data/tls/cert.pem
+      # - TLS_KEY_FILE=/app/data/tls/key.pem
+      # --- OPTIONNEL : proxys dont X-Forwarded-For est cru ---
+      # Par défaut, toute adresse locale ou privée. Nommez votre proxy pour
+      # qu'un client du réseau local ne puisse pas déclarer une autre adresse.
+      # - TRUSTED_PROXIES=172.18.0.2
       # --- OPTIONNEL : transcodage par le circuit vidéo (Intel, AMD) ---
       # Décommentez cette ligne ET le bloc `devices` plus bas. Le serveur essaie
       # le circuit au démarrage et retombe sur le processeur s'il ne répond pas ;
