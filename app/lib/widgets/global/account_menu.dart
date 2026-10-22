@@ -4,13 +4,14 @@ import '../../providers/auth_provider.dart';
 import '../../screens/auth/user_choice_screen.dart';
 import '../../screens/settings/settings_screen.dart';
 import '../../screens/settings/tv_link_scanner_screen.dart';
-import '../../services/server_registry.dart';
+import '../../models/profile_avatar.dart';
 import '../../theme/app_colors.dart';
 import '../../tv/tv_mode.dart';
 import '../../utils/app_platform.dart';
 import 'glass_chrome.dart';
 import 'interface_tour/tour_anchor.dart';
 import 'join_watch_party_dialog.dart';
+import 'profile_disc.dart';
 import '../../theme/app_icons.dart';
 import '../../theme/app_type.dart';
 import '../../l10n/tr.dart';
@@ -34,13 +35,10 @@ class AccountMenu extends StatelessWidget {
     // réglages. Voir ADR-0013.
     //
     // Les autres personnes du même serveur passent par « Changer
-    // d'utilisateur » (ADR-0078) : ce menu ne liste que les autres serveurs.
-    final active = authProvider.activeServer;
-    final otherServers = [
-      for (final account in authProvider.servers)
-        if (active == null || !ServerRegistry.sameServer(account, active))
-          account,
-    ];
+    // d'utilisateur » (ADR-0078) : ce menu ne liste que les autres serveurs,
+    // une fois chacun, quel que soit le nombre de comptes qu'on y a.
+    final otherServers =
+        authProvider.apiClient.servers.otherServers(authProvider.activeServer);
     final canSwitch = otherServers.isNotEmpty;
 
     return TourTarget(
@@ -86,16 +84,7 @@ class AccountMenu extends StatelessWidget {
                   const SizedBox(width: 8),
                   Flexible(
                     child: Text(
-                      // Deux personnes de ce serveur sur l'appareil : le nom
-                      // du serveur seul ne dit plus laquelle on rejoint.
-                      tr('Passer sur {0}', [
-                        authProvider.apiClient.servers
-                                    .usersOf(account.id)
-                                    .length >
-                                1
-                            ? '${account.displayName} · ${account.username}'
-                            : account.displayName,
-                      ]),
+                      tr('Passer sur {0}', [account.displayName]),
                       overflow: TextOverflow.ellipsis,
                     ),
                   ),
@@ -107,7 +96,7 @@ class AccountMenu extends StatelessWidget {
         PopupMenuItem(
           value: 'users',
           child: _MenuRow(
-            icon: AppIcons.person,
+            icon: AppIcons.switchUser,
             label: tr('Changer d’utilisateur'),
           ),
         ),
@@ -144,7 +133,16 @@ class AccountMenu extends StatelessWidget {
       ],
       onSelected: (value) async {
         if (value.startsWith('switch:')) {
-          await authProvider.switchServer(value.substring('switch:'.length));
+          final id = value.substring('switch:'.length);
+          // Plusieurs personnes là-bas : on arrive sur « Qui regarde ? »
+          // plutôt que dans la session de la première venue.
+          if (authProvider.apiClient.servers.usersOf(id).length > 1) {
+            Navigator.of(context, rootNavigator: true).push(MaterialPageRoute(
+              builder: (_) => UserChoiceScreen(serverAccountId: id),
+            ));
+            return;
+          }
+          await authProvider.switchServer(id);
           return;
         }
         switch (value) {
@@ -168,15 +166,26 @@ class AccountMenu extends StatelessWidget {
       },
       child: GlassIconButton(
         size: 34,
-        child: Text(
-          (authProvider.currentUser?.username ?? '?')[0].toUpperCase(),
-          style: const TextStyle(
-            fontWeight: FontWeight.w700,
-            fontSize: AppType.subhead,
-            color: AppColors.textPrimary,
-          ),
-        ),
+        child: _avatarOrInitial(),
       ),
+      ),
+    );
+  }
+
+  /// L'image de profil quand la personne en a choisi une, sinon son initiale
+  /// sur le verre du header, comme avant (ADR-0078).
+  Widget _avatarOrInitial() {
+    final active = authProvider.activeServer;
+    if (active != null &&
+        ProfileAvatar.parse(active.avatar) is! InitialAvatar) {
+      return ClipOval(child: ProfileDisc(account: active, size: 32));
+    }
+    return Text(
+      (authProvider.currentUser?.username ?? '?')[0].toUpperCase(),
+      style: const TextStyle(
+        fontWeight: FontWeight.w700,
+        fontSize: AppType.subhead,
+        color: AppColors.textPrimary,
       ),
     );
   }

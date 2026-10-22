@@ -17,7 +17,7 @@ import (
 const userColumns = `id, username, is_owner,
 	perm_manage_settings, perm_manage_library, perm_manage_users,
 	perm_delete_media, perm_invite_users, perm_request_media, perm_share_media,
-	invite_grants, totp_secret <> ''`
+	invite_grants, totp_secret <> '', avatar`
 
 type rowScanner interface {
 	Scan(dest ...any) error
@@ -31,7 +31,7 @@ func scanUser(row rowScanner) (models.User, error) {
 		&u.Permissions.ManageSettings, &u.Permissions.ManageLibrary, &u.Permissions.ManageUsers,
 		&u.Permissions.DeleteMedia, &u.Permissions.InviteUsers, &u.Permissions.RequestMedia,
 		&u.Permissions.ShareMedia,
-		&grants, &u.OTPEnabled,
+		&grants, &u.OTPEnabled, &u.Avatar,
 	)
 	if err != nil {
 		return models.User{}, err

@@ -830,6 +830,26 @@ var migrations = []migration{
 			`CREATE UNIQUE INDEX IF NOT EXISTS ux_watch_list_items_media ON watch_list_items(list_id, media_id) WHERE tmdb_id = 0 AND media_id IS NOT NULL;`,
 		},
 	},
+	{
+		id:   29,
+		name: "user avatars",
+		// Voir ADR-0078. L'image de profil d'un compte : vide (l'initiale),
+		// « preset:<clé> » pour un avatar de la galerie de l'app, ou
+		// « photo:<version> » quand une photo a été envoyée. La photo elle-même
+		// vit dans sa propre table, pour que lire un compte ne charge jamais
+		// ses octets ; la version change à chaque envoi et sert à périmer les
+		// caches des apps.
+		stmts: []string{
+			`ALTER TABLE users ADD COLUMN avatar TEXT NOT NULL DEFAULT '';`,
+			`CREATE TABLE IF NOT EXISTS user_avatar_photos (
+				user_id INTEGER PRIMARY KEY,
+				content_type TEXT NOT NULL,
+				image BLOB NOT NULL,
+				updated_at INTEGER NOT NULL,
+				FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+			);`,
+		},
+	},
 }
 
 // applyMigrations brings the database up to the latest schema version.

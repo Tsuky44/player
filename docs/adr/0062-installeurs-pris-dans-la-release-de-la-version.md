@@ -41,7 +41,14 @@ version, et seulement celle-là.**
 4. **Hors ligne.** Si GitHub ne répond pas, le serveur ressert la dernière liste connue (mémoire,
    puis disque) et réessaie dans une minute. Sans liste jamais vue, la section « Applications »
    disparaît, comme avant. `RELEASE_REPO=off` coupe la source.
-5. **Le dossier posé à la main reste prioritaire.** `DOWNLOADS_DIR` (envoi par l'administrateur,
+5. **Une plateforme non reconstruite garde son installateur précédent** (2026-10-22). Lancé à
+   la main, `release.yml` laisse choisir les plateformes à reconstruire. Les autres sont
+   reprises de la Release la plus récente qui les porte, sous leur nom d'origine
+   (`Onyx-1.0.40-android.apk` dans `v1.0.41`) : la version lue dans le nom reste celle du
+   build, et l'app n'y voit pas de mise à jour. Une Release porte donc toujours un
+   installateur par plateforme, mais pas forcément de sa propre version ; aucune
+   modification du serveur ni de l'app n'est nécessaire.
+6. **Le dossier posé à la main reste prioritaire.** `DOWNLOADS_DIR` (envoi par l'administrateur,
    volume) l'emporte sur la Release pour sa plateforme : c'est un choix délibéré. Les routes
    d'envoi et de suppression ne portent que sur ce dossier.
 

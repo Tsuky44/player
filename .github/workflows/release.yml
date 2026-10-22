@@ -15,6 +15,13 @@ name: Release
 #     par la GitHub Release. Rien a taper, rien a retenir.
 #   - en ligne de commande : `gh workflow run release.yml -f bump=patch`
 #   - ou, comme avant, `git tag v1.0.1 && git push origin v1.0.1`
+#
+# Lance a la main, chaque plateforme se coche ou se decoche : un correctif qui
+# ne touche que LG ne doit pas faire mettre a jour les postes Windows. Une
+# plateforme non reconstruite reprend dans la nouvelle Release l'installateur
+# deja publie, sous son nom d'origine (Onyx-1.0.40-android.apk dans la Release
+# v1.0.41) : le serveur lit la version dans le nom du fichier, donc une app en
+# 1.0.40 n'y voit pas de mise a jour. Un tag pousse reconstruit tout.
 
 on:
   push:
@@ -35,6 +42,30 @@ on:
         description: "Version explicite, sans le v (optionnel, ignore le bump)"
         required: false
         type: string
+      android:
+        description: "Android (APK + App Bundle Play)"
+        type: boolean
+        default: true
+      windows:
+        description: "Windows (installeur + ZIP de mise a jour)"
+        type: boolean
+        default: true
+      macos:
+        description: "macOS (DMG)"
+        type: boolean
+        default: true
+      ios:
+        description: "iOS (IPA + TestFlight)"
+        type: boolean
+        default: true
+      tvos:
+        description: "Apple TV (IPA + TestFlight)"
+        type: boolean
+        default: true
+      webos:
+        description: "Lanceur LG webOS (.ipk)"
+        type: boolean
+        default: true
 
 # Deux publications simultanees calculeraient la meme version a partir du meme
 # dernier tag : la seconde attend la fin de la premiere.
@@ -64,6 +95,8 @@ jobs:
       version_tag: ${{ steps.resolve.outputs.version_tag }}
       minor_tag: ${{ steps.resolve.outputs.minor_tag }}
       image: ${{ steps.resolve.outputs.image }}
+      # Tableau JSON des plateformes a reconstruire, ex. ["android","webos"].
+      builds: ${{ steps.resolve.outputs.builds }}
     steps:
       # Historique complet : sans les tags, impossible de trouver la derniere
       # version publiee.
@@ -81,6 +114,12 @@ jobs:
           BUMP_INPUT: ${{ inputs.bump }}
           REF_NAME: ${{ github.ref_name }}
           OWNER: ${{ github.repository_owner }}
+          BUILD_ANDROID: ${{ inputs.android }}
+          BUILD_WINDOWS: ${{ inputs.windows }}
+          BUILD_MACOS: ${{ inputs.macos }}
+          BUILD_IOS: ${{ inputs.ios }}
+          BUILD_TVOS: ${{ inputs.tvos }}
+          BUILD_WEBOS: ${{ inputs.webos }}
         run: |
           set -euo pipefail
 
@@ -121,20 +160,36 @@ jobs:
           # GitHub est libre.
           OWNER_LC="$(printf '%s' "$OWNER" | tr '[:upper:]' '[:lower:]')"
 
+          # Un tag pousse n'a pas de cases a cocher : il reconstruit tout.
+          BUILDS=()
+          for p in android windows macos ios tvos webos; do
+            var="BUILD_$(printf '%s' "$p" | tr '[:lower:]' '[:upper:]')"
+            if [ "$EVENT_NAME" = "push" ] || [ "${!var:-}" = "true" ]; then
+              BUILDS+=("\"$p\"")
+            fi
+          done
+          BUILDS_JSON="[$(IFS=,; printf '%s' "${BUILDS[*]:-}")]"
+
           {
             echo "version=$VERSION"
             echo "version_tag=v$VERSION"
             echo "minor_tag=v$(printf '%s' "$VERSION" | cut -d. -f1,2)"
             echo "image=ghcr.io/$OWNER_LC/$IMAGE_NAME"
+            echo "builds=$BUILDS_JSON"
           } >> "$GITHUB_OUTPUT"
 
-          echo "### Onyx $VERSION (precedente : ${LATEST:-aucune})" >> "$GITHUB_STEP_SUMMARY"
+          {
+            echo "### Onyx $VERSION (precedente : ${LATEST:-aucune})"
+            echo ""
+            echo "Plateformes reconstruites : \`$BUILDS_JSON\`"
+          } >> "$GITHUB_STEP_SUMMARY"
 
   # ---------------------------------------------------------------------------
   # Android — APK
   # ---------------------------------------------------------------------------
   build-android:
     needs: prepare
+    if: contains(fromJSON(needs.prepare.outputs.builds), 'android')
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -228,6 +283,7 @@ jobs:
   # ---------------------------------------------------------------------------
   build-macos:
     needs: prepare
+    if: contains(fromJSON(needs.prepare.outputs.builds), 'macos')
     runs-on: macos-latest
     steps:
       - uses: actions/checkout@v4
@@ -302,6 +358,7 @@ jobs:
   # apparait en echec dans l'onglet Actions et le resume du run le signale.
   build-ios:
     needs: prepare
+    if: contains(fromJSON(needs.prepare.outputs.builds), 'ios')
     runs-on: macos-latest
     env:
       ASC_KEY_ID: ${{ secrets.ASC_KEY_ID }}
@@ -407,6 +464,7 @@ jobs:
   # la Release part simplement sans l'IPA Apple TV.
   build-tvos:
     needs: prepare
+    if: contains(fromJSON(needs.prepare.outputs.builds), 'tvos')
     runs-on: macos-latest
     continue-on-error: true
     env:
@@ -527,6 +585,7 @@ jobs:
   # ---------------------------------------------------------------------------
   build-windows:
     needs: prepare
+    if: contains(fromJSON(needs.prepare.outputs.builds), 'windows')
     runs-on: windows-latest
     defaults:
       run:
@@ -631,6 +690,7 @@ jobs:
   # installation en mode developpeur accepte un paquet non signe.
   build-webos:
     needs: prepare
+    if: contains(fromJSON(needs.prepare.outputs.builds), 'webos')
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -663,6 +723,18 @@ jobs:
   # ---------------------------------------------------------------------------
   publish:
     needs: [prepare, test, build-android, build-macos, build-ios, build-tvos, build-windows, build-webos]
+    # Un job decoche est « skipped », ce qui suffirait a sauter celui-ci par
+    # defaut : on accepte donc skipped, mais toujours pas un echec. Apple TV
+    # reste a part (continue-on-error) : en echec, son IPA precedent est repris.
+    if: >-
+      !cancelled()
+      && needs.prepare.result == 'success'
+      && needs.test.result == 'success'
+      && contains(fromJSON('["success","skipped"]'), needs.build-android.result)
+      && contains(fromJSON('["success","skipped"]'), needs.build-macos.result)
+      && contains(fromJSON('["success","skipped"]'), needs.build-ios.result)
+      && contains(fromJSON('["success","skipped"]'), needs.build-windows.result)
+      && contains(fromJSON('["success","skipped"]'), needs.build-webos.result)
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -677,11 +749,62 @@ jobs:
       # a la Release ci-dessous, et le serveur de cette version va les y chercher
       # (server/releasedl).
       - name: Recuperer les installateurs
+        if: needs.prepare.outputs.builds != '[]'
         uses: actions/download-artifact@v4
         with:
           pattern: installer-*
           merge-multiple: true
           path: release-assets
+
+      # Chaque Release porte un installateur par plateforme : un serveur ne lit
+      # que celle de sa version (ADR-0062). Ce qui n'a pas ete reconstruit est
+      # donc repris de la Release la plus recente qui l'a, sans le renommer :
+      # la version du nom reste celle du build, et c'est elle que l'app compare
+      # a la sienne. Le ZIP Windows garde aussi sa signature, liee a sa version.
+      - name: Reprendre les installateurs non reconstruits
+        id: carry
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+        run: |
+          set -euo pipefail
+          mkdir -p release-assets
+          gh api "repos/$REPO/releases?per_page=50" > "$RUNNER_TEMP/releases.json"
+
+          CARRIED=""
+          # -ios.ipa ne recouvre pas -tvos.ipa : le tiret fait partie du suffixe.
+          for suffix in android.apk windows.exe windows-portable.zip macos.dmg ios.ipa tvos.ipa webos.ipk; do
+            if compgen -G "release-assets/Onyx-*-$suffix" > /dev/null; then
+              continue
+            fi
+            # L'API rend les Releases de la plus recente a la plus ancienne.
+            found="$(jq -r --arg s "-$suffix" '
+              [ .[] | select((.draft or .prerelease) | not) | . as $r
+                | .assets[] | select((.name | startswith("Onyx-")) and (.name | endswith($s)))
+                | "\($r.tag_name) \(.name)" ] | first // empty' "$RUNNER_TEMP/releases.json")"
+            if [ -z "$found" ]; then
+              echo "::warning::Aucune Release precedente ne porte de *-$suffix : la plateforme sera absente."
+              continue
+            fi
+            read -r tag name <<< "$found"
+            gh release download "$tag" --repo "$REPO" --pattern "$name" --dir release-assets
+            echo "Repris de $tag : $name"
+            CARRIED="$CARRIED- \`$name\` (repris de $tag)"$'\n'
+          done
+
+          # Le meme paragraphe va dans le resume du run et dans la Release.
+          NOTES=""
+          if [ -n "$CARRIED" ]; then
+            NOTES="## Repris d'une version precedente"$'\n\n'
+            NOTES+="Non reconstruits pour cette version : leurs installations ne se mettent pas a jour."$'\n\n'
+            NOTES+="$CARRIED"
+            printf '%s' "$NOTES" >> "$GITHUB_STEP_SUMMARY"
+          fi
+          {
+            echo "notes<<NOTES_EOF"
+            printf '%s\n' "$NOTES"
+            echo "NOTES_EOF"
+          } >> "$GITHUB_OUTPUT"
 
       - name: Inventaire des installateurs
         run: |
@@ -763,3 +886,5 @@ jobs:
             Un serveur en version ${{ needs.prepare.outputs.version }} propose ces
             installateurs sur `/api/downloads` (Parametres -> Applications) : il
             les telecharge ici a la premiere demande.
+
+            ${{ steps.carry.outputs.notes }}

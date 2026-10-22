@@ -44,6 +44,38 @@ Depuis un terminal, avec la CLI GitHub :
 gh workflow run release.yml -f bump=patch
 ```
 
+### Ne reconstruire que certaines plateformes
+
+Le formulaire **Run workflow** propose une case par plateforme (Android, Windows, macOS,
+iOS, Apple TV, LG webOS), toutes cochées par défaut. Un correctif qui ne touche que LG se
+publie en décochant les autres : les postes Windows, Android, etc. ne se voient proposer
+aucune mise à jour.
+
+Une plateforme décochée n'est pas absente de la Release : le job `publish` reprend
+l'installateur de la Release la plus récente qui l'a, **sans le renommer**. La Release
+`v1.0.41` porte alors `Onyx-1.0.40-android.apk`. Le serveur lit la version dans le nom
+du fichier (`/api/downloads`), et l'app la compare à la sienne : une app Android en
+1.0.40 reste à jour. Le ZIP Windows garde sa signature, liée à sa propre version
+(ADR-0030). Les fichiers repris sont listés dans le résumé du run et dans la description
+de la Release.
+
+Ce qui est toujours reconstruit, quelles que soient les cases : les tests, le bundle web,
+l'image Docker et la Release. Le serveur et l'app web (donc les téléviseurs LG, qui
+ouvrent l'app web du serveur, ADR-0076) sont à la nouvelle version. C'est aussi l'image
+qui fait arriver les installateurs : un serveur ne propose que ceux de la Release de sa
+version (ADR-0062), donc sans nouvelle image, aucune mise à jour n'atteindrait les
+clients.
+
+Le même mécanisme rattrape un échec Apple TV (job en `continue-on-error`) : l'IPA
+précédent est repris au lieu de disparaître de la Release. Le build Play (App Bundle) et
+les envois TestFlight suivent la case de leur plateforme.
+
+```bash
+gh workflow run release.yml -f bump=patch -f android=false -f windows=false -f macos=false -f ios=false -f tvos=false
+```
+
+Un tag poussé (`git push origin v1.0.1`) n'a pas de cases : il reconstruit tout.
+
 Pousser un tag reste possible :
 
 ```bash

@@ -114,6 +114,10 @@ class User {
   /// Le compte a configuré la validation en deux étapes (ADR-0041).
   final bool otpEnabled;
 
+  /// L'image de profil telle que le serveur la décrit : vide, « preset:… » ou
+  /// « photo:… ». [ProfileAvatar.parse] la lit (ADR-0078).
+  final String avatar;
+
   User({
     required this.id,
     required this.username,
@@ -121,6 +125,7 @@ class User {
     this.permissions = const Permissions(),
     this.inviteGrants = const Permissions(),
     this.otpEnabled = false,
+    this.avatar = '',
   });
 
   factory User.fromJson(Map<String, dynamic> json) {
@@ -133,6 +138,7 @@ class User {
       inviteGrants:
           Permissions.fromJson(json['invite_grants'] as Map<String, dynamic>?),
       otpEnabled: json['otp_enabled'] == true,
+      avatar: json['avatar'] as String? ?? '',
     );
   }
 
@@ -144,6 +150,7 @@ class User {
       'permissions': permissions.toJson(),
       'invite_grants': inviteGrants.toJson(),
       'otp_enabled': otpEnabled,
+      'avatar': avatar,
     };
   }
 }

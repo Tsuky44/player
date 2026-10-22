@@ -28,6 +28,11 @@ class ServerAccount {
   /// autres serveurs — voir ADR-0017.
   final String? serverId;
 
+  /// La dernière image de profil connue de ce compte (`User.avatar`), gardée
+  /// ici pour que « Qui regarde ? » l'affiche avant qu'aucune session soit
+  /// ouverte (ADR-0078).
+  final String? avatar;
+
   const ServerAccount({
     required this.id,
     required this.url,
@@ -35,6 +40,7 @@ class ServerAccount {
     this.userId,
     this.label,
     this.serverId,
+    this.avatar,
   });
 
   /// Ce que l'interface affiche en premier : le nom donné, sinon l'hôte.
@@ -57,6 +63,7 @@ class ServerAccount {
     int? userId,
     String? label,
     String? serverId,
+    String? avatar,
   }) {
     return ServerAccount(
       id: id,
@@ -65,6 +72,7 @@ class ServerAccount {
       userId: userId ?? this.userId,
       label: label ?? this.label,
       serverId: serverId ?? this.serverId,
+      avatar: avatar ?? this.avatar,
     );
   }
 
@@ -75,6 +83,7 @@ class ServerAccount {
         if (userId != null) 'user_id': userId,
         if (label != null && label!.isNotEmpty) 'label': label,
         if (serverId != null) 'server_id': serverId,
+        if (avatar != null && avatar!.isNotEmpty) 'avatar': avatar,
       };
 
   factory ServerAccount.fromJson(Map<String, dynamic> json) {
@@ -85,6 +94,7 @@ class ServerAccount {
       userId: (json['user_id'] as num?)?.toInt(),
       label: json['label'] as String?,
       serverId: json['server_id'] as String?,
+      avatar: json['avatar'] as String?,
     );
   }
 

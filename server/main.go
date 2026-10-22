@@ -217,6 +217,12 @@ func main() {
 
 	// Réglages de lecture du compte (saut d'intro, langue audio), partagés par
 	// tous ses appareils. Chacun ne lit et n'écrit que les siens. Voir ADR-0043.
+	// L'image de profil (ADR-0078) : chacun change la sienne. La photo d'un
+	// compte se lit avec n'importe quelle session du serveur — une séance
+	// commune ou « Qui regarde ? » affichent celle des autres —, jamais sans.
+	router.PUT("/api/me/avatar", handlers.RequireAuth(handlers.SetMyAvatar))
+	router.POST("/api/me/avatar/photo", handlers.RequireAuth(handlers.UploadMyAvatarPhoto))
+	router.GET("/api/users/:id/avatar", handlers.RequireAuth(handlers.GetUserAvatar))
 	router.GET("/api/me/playback-preferences", handlers.RequireAuth(handlers.GetPlaybackPreferences))
 	router.PUT("/api/me/playback-preferences", handlers.RequireAuth(handlers.UpdatePlaybackPreferences))
 

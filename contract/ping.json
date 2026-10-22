@@ -15,6 +15,7 @@
     "mediahub_link_test",
     "library_tmdb_index",
     "my_requests",
-    "onyxhub_import_signal"
+    "onyxhub_import_signal",
+    "avatars"
   ]
 }

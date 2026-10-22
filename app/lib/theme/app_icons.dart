@@ -124,6 +124,9 @@ abstract final class AppIcons {
       IconData(0xe316, fontFamily: _regular); // mapPin
   static const IconData collection =
       IconData(0xe466, fontFamily: _regular); // stack
+  /// « Changer d'utilisateur » (ADR-0078).
+  static const IconData switchUser =
+      IconData(0xe756, fontFamily: _regular); // userSwitch
   static const IconData edit =
       IconData(0xebc6, fontFamily: _regular); // pencilSimpleLine
   static const IconData identify =

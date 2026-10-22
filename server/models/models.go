@@ -153,6 +153,10 @@ type User struct {
 	// OTPEnabled : le compte a configuré la validation en deux étapes. Le
 	// secret, lui, ne quitte jamais le serveur.
 	OTPEnabled bool `json:"otp_enabled"`
+	// Avatar : l'image de profil. Vide pour l'initiale, « preset:<clé> » pour
+	// un avatar de la galerie de l'app, « photo:<version> » pour une photo
+	// envoyée, lue sur GET /api/users/:id/avatar (ADR-0078).
+	Avatar string `json:"avatar"`
 }
 
 // Media represents any media entity (movie, show, season, episode)

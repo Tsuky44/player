@@ -48,6 +48,9 @@ const (
 	// POST /api/integrations/onyxhub/imported avance l'indexation d'un import
 	// annoncé par OnyxHub (ADR-0074).
 	CapabilityOnyxHubImportSignal = "onyxhub_import_signal"
+	// PUT /api/me/avatar, POST /api/me/avatar/photo et
+	// GET /api/users/:id/avatar existent : l'image de profil (ADR-0078).
+	CapabilityAvatars = "avatars"
 )
 
 type pingResponse struct {
@@ -79,6 +82,7 @@ func pingPayload() pingResponse {
 			CapabilityLibraryTMDBIndex,
 			CapabilityMyRequests,
 			CapabilityOnyxHubImportSignal,
+			CapabilityAvatars,
 		},
 	}
 }

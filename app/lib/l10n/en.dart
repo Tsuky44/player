@@ -304,6 +304,8 @@ const Map<String, String> kEnglish = <String, String>{
       'Other devices',
   'Avancer de 10 s':
       'Forward 10 s',
+  'Avatar {0}':
+      'Avatar {0}',
   'Avec Google Authenticator, Aegis, 1Password…':
       'With Google Authenticator, Aegis, 1Password…',
   'Bande-annonce':
@@ -350,8 +352,12 @@ const Map<String, String> kEnglish = <String, String>{
       'Canada',
   'Casting':
       'Cast',
+  'Ce compte doit se reconnecter sur cet appareil.':
+      'This account needs to sign in again on this device.',
   'Ce document est introuvable dans cette version.':
       'This document cannot be found in this version.',
+  'Ce fichier n’est pas une image lisible.':
+      'This file is not a readable image.',
   'Ce lien est protégé par un mot de passe.':
       'This link is protected by a password.',
   'Ce média n’est pas disponible sur votre compte.':
@@ -372,6 +378,8 @@ const Map<String, String> kEnglish = <String, String>{
       'This network is reported as metered — a hotspot, for example. Downloading {0} can use several gigabytes of the plan behind it: an episode is fetched in its original quality, uncompressed.\n\nOn an unmetered network, the download will restart by itself.',
   'Ce serveur disparaît de cet appareil et il faudra retaper un mot de passe pour y revenir. Le compte lui-même n’est pas supprimé.':
       'This server disappears from this device and you will have to type a password again to come back. The account itself is not deleted.',
+  'Ce serveur doit être mis à jour pour enregistrer une image.':
+      'This server needs an update to save a picture.',
   'Ce serveur est trop ancien pour cette fonction. Mettez-le à jour.':
       'This server is too old for this feature. Update it.',
   'Ce serveur n\'est plus enregistré sur cet appareil.':
@@ -404,6 +412,8 @@ const Map<String, String> kEnglish = <String, String>{
       'Each of these codes replaces your app’s code once, if you lose your phone. Keep them somewhere safe: they will not be shown again.',
   'Changer d’utilisateur':
       'Switch user',
+  'Changer l’image de {0}':
+      'Change {0}’s picture',
   'Changer mon mot de passe':
       'Change my password',
   'Changer':
@@ -448,6 +458,8 @@ const Map<String, String> kEnglish = <String, String>{
       'Choose the match',
   'Choisir sur TMDB':
       'Choose on TMDB',
+  'Choisir une image':
+      'Choose a picture',
   'Choisir une version':
       'Choose a version',
   'Choisissez l’identifiant et le mot de passe que vous aurez sur ce serveur. Le compte n’est créé qu’une fois la demande acceptée.':
@@ -1002,6 +1014,8 @@ const Map<String, String> kEnglish = <String, String>{
       'Manage the library (scans, metadata)',
   'Gérer les paramètres du serveur':
       'Manage server settings',
+  'Gérer les profils':
+      'Manage profiles',
   'Gérer les utilisateurs':
       'Manage users',
   'HEVC (H.265)':
@@ -1052,6 +1066,8 @@ const Map<String, String> kEnglish = <String, String>{
       'Frames per second',
   'Images perdues':
       'Dropped frames',
+  'Importer une photo':
+      'Upload a photo',
   'Impossible de calculer les statistiques.':
       'Could not compute the statistics.',
   'Impossible de charger ce journal.':
@@ -1602,16 +1618,22 @@ const Map<String, String> kEnglish = <String, String>{
       'Who’s watching?',
   'Regarder en tant que {0}':
       'Watch as {0}',
+  'Revenir à l’initiale':
+      'Use the initial',
   'Rien sur ce serveur pour l’instant. Son administrateur peut en ajouter.':
       'Nothing on this server yet. Its administrator can add some.',
   'Sans aucune bande noire, bords rognés':
       'No black bars at all, edges cropped',
   'Sans bandes en haut ni en bas, côtés rognés':
       'No bars above or below, sides cropped',
+  'Se connecter avec son téléphone':
+      'Sign in with their phone',
   'Serveurs et partage':
       'Servers and sharing',
   'Ses titres quittent le catalogue, avec leur progression de lecture. Les fichiers restent sur le disque du serveur.':
       'Its titles leave the catalog, along with their watch progress. The files stay on the server’s disk.',
+  'Son compte sur {0}. Chacun garde sa progression et ses listes.':
+      'Their account on {0}. Everyone keeps their own progress and lists.',
   'Supprimer « {0} »':
       'Delete “{0}”',
   'Supprimer « {0} » ?':

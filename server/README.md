@@ -163,7 +163,16 @@ Toutes les routes API (sauf l'inscription/connexion et le stream) requièrent l'
   bonne clé. Capacité `onyxhub_import_signal`.
 
 #### ➡️ Profil connecté
-* **Route :** `GET /api/auth/me` — même charge utile que `user` ci-dessus.
+* **Route :** `GET /api/auth/me` — même charge utile que `user` ci-dessus. `avatar` vaut `""`
+  (l'initiale), `"preset:<clé>"` (un avatar de la galerie de l'app) ou `"photo:<version>"`.
+
+#### ➡️ Image de profil (ADR-0078, capacité `avatars`)
+* `PUT /api/me/avatar` — corps `{ "preset": "cat" }` (clé `[a-z0-9-]{1,32}`), ou `""` pour revenir
+  à l'initiale. Efface la photo envoyée auparavant. Rend le compte, comme `/api/auth/me`.
+* `POST /api/me/avatar/photo` — octets bruts d'une image JPEG ou PNG dans le corps (1 Mo, 2048 px
+  de côté au plus). Le contenu est décodé avant d'être gardé ; `400` sinon. Rend le compte.
+* `GET /api/users/:id/avatar` (`RequireAuth`) — la photo d'un compte du serveur, `404` sans photo.
+  Toute session du serveur la lit ; l'URL porte la version, d'où `Cache-Control: immutable`.
 
 #### ➡️ Changer son mot de passe
 * **Route :** `POST /api/auth/password`

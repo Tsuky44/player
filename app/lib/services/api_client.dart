@@ -60,6 +60,7 @@ part 'api/artwork.dart';
 part 'api/watch_lists.dart';
 part 'api/my_requests.dart';
 part 'api/request_feed.dart';
+part 'api/avatars.dart';
 
 class _PlaybackRequestScope {
   const _PlaybackRequestScope(this.origin, this.authorization);
@@ -85,7 +86,8 @@ class ApiClient
         _ArtworkEndpoints,
         _WatchListEndpoints,
         _MyRequestEndpoints,
-        _RequestFeedEndpoints {
+        _RequestFeedEndpoints,
+        _AvatarEndpoints {
   static String get _defaultBaseUrl {
     // On web the Go server serves this very bundle, so the page origin is
     // already the API root. Hardcoding a host here would turn every call into a
@@ -114,6 +116,7 @@ class ApiClient
   /// Les serveurs auxquels cet appareil a un compte. Le client ne détient plus
   /// « une » adresse et « un » jeton : il applique ceux du compte actif, et
   /// changer de serveur revient à en désigner un autre. Voir ADR-0013.
+  @override
   final ServerRegistry servers;
   @override
   late final MediaFailover mediaFailover = MediaFailover(servers);
@@ -584,6 +587,7 @@ class ApiClient
       final active = servers.active;
       if (active == null) return;
       await servers.writeProfile(active.id, jsonEncode(user.toJson()));
+      await servers.setAvatar(active.id, user.avatar);
     } catch (_) {
       // Le profil en cache n'est qu'un confort hors ligne.
     }

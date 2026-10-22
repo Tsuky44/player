@@ -1,12 +1,16 @@
 # ADR-0078 — Plusieurs utilisateurs d'un même serveur sur un appareil, et « Qui regarde ? »
 
-- **Statut :** accepté. Testé en Dart (`app/test/user_choice_test.dart`) ; l'écran n'a pas encore
-  été vu tourner sur une vraie télévision.
+- **Statut :** accepté. Testé en Dart (`app/test/user_choice_test.dart`,
+  `app/test/profile_avatar_test.dart`) et en Go (`server/handlers/avatars_test.go`) ; les écrans
+  n'ont pas encore été vus tourner sur une vraie télévision.
 - **Date :** 2026-10-22
 - **Portée :** l'app (`app/lib/screens/auth/user_choice_screen.dart`,
-  `app/lib/providers/auth_provider.dart`, `app/lib/services/server_registry.dart`,
-  `app/lib/widgets/global/account_menu.dart`, `app/lib/screens/auth/tv_login_screen.dart`,
-  `app/lib/main.dart`). Rien côté serveur.
+  `app/lib/screens/auth/add_user_screen.dart`, `app/lib/screens/auth/avatar_picker_screen.dart`,
+  `app/lib/widgets/global/profile_disc.dart`, `app/lib/theme/profile_avatars.dart`,
+  `app/lib/services/api/avatars.dart`, `app/lib/providers/auth_provider.dart`,
+  `app/lib/services/server_registry.dart`, `app/lib/widgets/global/account_menu.dart`,
+  `app/lib/main.dart`) et le serveur pour l'image de profil (`server/handlers/avatars.go`,
+  migration 29, capacité `avatars`).
 
 ## Contexte
 
@@ -26,8 +30,10 @@ jeton de chacun. Changer d'utilisateur, c'est la bascule d'ADR-0013 — rien à 
 `onServerChanged` vide ce que la personne précédente avait chargé.
 
 Deux comptes sont « du même serveur » (`ServerRegistry.sameServer`) quand leurs identités de serveur
-(ADR-0017) concordent, ou à défaut leurs adresses. Les comptes d'un autre serveur restent dans la
-partie « Passer sur… » du menu ; ceux du serveur actif passent par **Changer d'utilisateur**.
+(ADR-0017) concordent, ou à défaut leurs adresses. Les personnes du serveur actif passent par
+**Changer d'utilisateur**. La partie « Passer sur… » du menu liste chaque **autre serveur une
+seule fois** (`ServerRegistry.otherServers`) ; quand on y a plusieurs comptes, le choisir ouvre
+« Qui regarde ? » sur ce serveur au lieu d'entrer dans la session de la première personne venue.
 
 ### Au lancement, partout, dès qu'il y a deux personnes sur ce serveur
 
@@ -46,16 +52,50 @@ que le mot de passe a été demandé. Un verrou par profil serait une autre déc
 
 ### Ajouter quelqu'un
 
-Depuis « Qui regarde ? », **Ajouter** ouvre, sur une télévision, l'appairage par le téléphone
-(ADR-0003, `TvLoginScreen(addingUser: true)`) : la personne scanne avec son propre téléphone, c'est
-son compte qui arrive. Ailleurs — et sur une télévision LG, qui ne peut pas écouter le téléphone
-(ADR-0076) — le formulaire du carnet, adresse déjà remplie. L'app passe ensuite sur le nouveau
-compte : c'est pour lui qu'on vient de l'ouvrir.
+Depuis « Qui regarde ? », **Ajouter** ouvre une page à part (`AddUserScreen`) qui ne demande que
+l'identifiant et le mot de passe : on ajoute quelqu'un au serveur qu'on a sous les yeux, l'adresse
+n'a pas à être tapée. L'écran des serveurs, avec son adresse, sa détection et sa demande d'accès,
+reste celui d'un *autre* serveur. Sur une télévision, la page propose aussi l'appairage par le
+téléphone (ADR-0003, `TvLoginScreen(addingUser: true)`) : la personne scanne avec son propre
+téléphone. L'app passe ensuite sur le nouveau compte : c'est pour lui qu'on vient de l'ouvrir.
 
 Le formulaire de connexion ordinaire n'est pas réutilisé une fois une session ouverte : il remplace
 la session active sans vider ce qu'elle a chargé.
 
+### L'image de profil est gardée par le serveur
+
+Chacun choisit une image : un avatar de la **galerie** de l'app, une **photo**, ou l'initiale sur
+sa teinte. Elle est enregistrée sur le serveur (`users.avatar`, migration 29), pour suivre le
+compte sur tous ses appareils ; une image par appareil aurait obligé à la rechoisir sur la
+télévision, le téléphone et l'ordinateur.
+
+- **La galerie est dessinée par l'app** : des icônes Phosphor pleines, déjà embarquées, sur des
+  dégradés (`ProfileAvatars`). Elle s'affiche hors ligne et reste nette à toutes les tailles. Le
+  serveur ne garde que la clé (`preset:cat`), qu'il borne à `[a-z0-9-]{1,32}` sans connaître la
+  liste ; une clé que l'app ne connaît plus retombe sur l'initiale.
+- **La photo** est recadrée au carré et réduite à 384 px **par l'app**, en PNG, avant l'envoi :
+  le serveur n'a pas de quoi redimensionner sans dépendance. Il vérifie qu'elle se décode (JPEG ou
+  PNG, 1 Mo et 2048 px au plus) et la garde dans sa propre table (`user_avatar_photos`), pour que
+  lire un compte ne charge jamais ses octets. `users.avatar` vaut alors `photo:<version>`, et la
+  version change à chaque envoi : c'est elle qui périme les copies des apps.
+- **La photo se lit avec une session du serveur** (`GET /api/users/:id/avatar`), jamais sans : une
+  photo de quelqu'un n'est pas un fichier public comme `/stream`. L'app la lit avec le jeton du
+  compte concerné et la garde en mémoire (`AvatarPhotoCache`), puisque le cache d'images partagé
+  ne présente qu'un en-tête par adresse.
+- **On change l'image de n'importe quelle personne de l'appareil**, depuis « Qui regarde ? » :
+  l'appel part sur son serveur avec **son** jeton, sans ouvrir sa session. Le crayon apparaît au
+  survol de la souris ; au tactile et à la télécommande, **Gérer les profils** met toutes les
+  pastilles en modification, et la touche menu y mène aussi. Une télévision ne propose pas de
+  photo : elle n'a pas de galerie où la prendre.
+- Le carnet retient la dernière image connue de chaque compte (`ServerAccount.avatar`), pour que
+  « Qui regarde ? » l'affiche avant qu'aucune session soit ouverte. Elle est relue à chaque
+  `/api/auth/me`.
+
 ## Conséquences
+
+- **Mettre à jour le serveur** pour les images de profil : un serveur plus ancien refuse le choix,
+  et l'app le dit (« Ce serveur doit être mis à jour… »). Tout le reste — « Qui regarde ? »,
+  l'ajout, la bascule — marche avec un serveur d'avant.
 
 - `addServerWithPassword` retrouve le compte par `ServerAccount.idFor(adresse, nom)` et plus par
   l'adresse seule, qui désignait le premier utilisateur du serveur.

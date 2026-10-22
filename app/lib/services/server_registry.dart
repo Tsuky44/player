@@ -94,6 +94,19 @@ class ServerRegistry extends ChangeNotifier {
           ? a.serverId == b.serverId
           : a.url == b.url;
 
+  /// Les serveurs autres que celui de [active], une fois chacun : le premier
+  /// compte du carnet le représente, quel que soit le nombre de personnes
+  /// qu'on y a. C'est la liste « Passer sur… » du menu du compte.
+  List<ServerAccount> otherServers(ServerAccount? active) {
+    final result = <ServerAccount>[];
+    for (final account in accounts) {
+      if (active != null && sameServer(account, active)) continue;
+      if (result.any((kept) => sameServer(kept, account))) continue;
+      result.add(account);
+    }
+    return result;
+  }
+
   /// Les utilisateurs de cet appareil sur le serveur de [id], lui compris,
   /// dans l'ordre du carnet. C'est la liste de « Qui regarde ? ».
   List<ServerAccount> usersOf(String id) {
@@ -174,6 +187,18 @@ class ServerRegistry extends ChangeNotifier {
     _accounts = [
       for (final other in _accounts)
         if (other.id == id) other.copyWith(serverId: serverId) else other,
+    ];
+    await _persist();
+    notifyListeners();
+  }
+
+  /// Retient l'image de profil que le serveur vient de rendre pour ce compte.
+  Future<void> setAvatar(String id, String avatar) async {
+    final account = accountById(id);
+    if (account == null || (account.avatar ?? '') == avatar) return;
+    _accounts = [
+      for (final other in _accounts)
+        if (other.id == id) other.copyWith(avatar: avatar) else other,
     ];
     await _persist();
     notifyListeners();
@@ -363,6 +388,7 @@ class ServerRegistry extends ChangeNotifier {
       userId: userId ?? existing?.userId,
       label: label ?? existing?.label,
       serverId: existing?.serverId,
+      avatar: existing?.avatar,
     );
 
     _accounts = [
@@ -416,6 +442,7 @@ class ServerRegistry extends ChangeNotifier {
       userId: account.userId,
       label: account.label,
       serverId: account.serverId,
+      avatar: account.avatar,
     );
     _accounts = [..._accounts, moved];
     if (links.isNotEmpty) _serverLinks[moved.id] = List.of(links);
@@ -446,6 +473,7 @@ class ServerRegistry extends ChangeNotifier {
             label:
                 (label == null || label.trim().isEmpty) ? null : label.trim(),
             serverId: other.serverId,
+            avatar: other.avatar,
           )
         else
           other,
