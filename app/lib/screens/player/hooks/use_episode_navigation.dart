@@ -325,8 +325,9 @@ class EpisodeNavigationController extends ChangeNotifier {
             (recap == null || db.introEnd > recap.end)
         ? (start: db.introStart, end: db.introEnd)
         : null;
-    final intro = dbIntro ??
-        _bestIntroFromChapters(mediaDurationSeconds: mediaDurationSeconds);
+    // Les chapitres du fichier d'abord, la base ne comble que leur absence.
+    final intro = _bestIntroFromChapters(mediaDurationSeconds: mediaDurationSeconds) ??
+        dbIntro;
     if (intro != null && inside(intro)) {
       return (kind: SkipSegment.intro, end: intro.end);
     }
@@ -369,19 +370,23 @@ class EpisodeNavigationController extends ChangeNotifier {
       mediaDurationSeconds: mediaDurationSeconds,
     );
 
-    if (timestamps != null && timestamps!.hasOutro) {
-      inOutro = positionSeconds >= timestamps!.outroStart &&
-          positionSeconds < timestamps!.outroEnd;
-    } else if (_chapters.isNotEmpty) {
+    // Un chapitre de générique nommé dans le fichier prime sur la base ; sans
+    // lui, c'est la base, puis l'heuristique du court dernier chapitre.
+    final hasOutroChapter =
+        _chapters.any((c) => ChapterTitles.isOutro(c.title));
+    if (hasOutroChapter) {
       for (final c in _chapters) {
         final within = positionSeconds >= c.startTime.floor() &&
             positionSeconds < _chapterEndSeconds(c, mediaDurationSeconds: mediaDurationSeconds);
-        if (!within) continue;
-        if (ChapterTitles.isOutro(c.title)) {
+        if (within && ChapterTitles.isOutro(c.title)) {
           inOutro = true;
           break;
         }
       }
+    } else if (timestamps != null && timestamps!.hasOutro) {
+      inOutro = positionSeconds >= timestamps!.outroStart &&
+          positionSeconds < timestamps!.outroEnd;
+    } else if (_chapters.isNotEmpty) {
       if (!inOutro) {
         inOutro = _isInShortLastChapter(
           positionSeconds,

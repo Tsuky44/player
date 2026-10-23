@@ -345,7 +345,7 @@ class DownloadManager extends ChangeNotifier {
   /// Une entrée sans adresse date de l'époque mono-serveur : elle appartient à
   /// celui qui est actif, faute de pouvoir appartenir à quelqu'un d'autre.
   bool _inScope(OfflineDownload entry) =>
-      entry.serverUrl.isEmpty || entry.serverUrl == _scope;
+      entry.serverUrl.isEmpty || ServerAccount.sameAddress(entry.serverUrl, _scope);
 
   OfflineDownload _stamped(OfflineDownload entry) =>
       entry.serverUrl.isEmpty && _scope.isNotEmpty
@@ -360,7 +360,7 @@ class DownloadManager extends ChangeNotifier {
   /// pas de sens.
   Future<void> onServerChanged() async {
     final next = ServerAccount.normalizeUrl(_api?.baseUrl ?? '');
-    if (next == _scope) return;
+    if (ServerAccount.sameAddress(next, _scope)) return;
 
     // Le transfert en cours est coupé net : il tire sur une adresse dont on
     // vient de changer. Il repartira à l'octet près au retour.

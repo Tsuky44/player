@@ -2,7 +2,7 @@ package indexer
 
 import (
 	"database/sql"
-	"encoding/json"
+	"errors"
 	"fmt"
 	"log"
 	"path/filepath"
@@ -11,10 +11,8 @@ import (
 	"time"
 
 	"project-player/server/database"
-	"project-player/server/httpx"
 	"project-player/server/safego"
 	"project-player/server/streaming"
-	"project-player/server/tmdb"
 )
 
 // ChapterItem represents a simplified chapter structure
@@ -137,107 +135,6 @@ func ChapterTitleMatchesOutro(title string) bool {
 	return titleMatchesKeyword(normTitle, "ed")
 }
 
-// MergeIntroDBSkipRange builds the skippable window from IntroDB intro + recap.
-func MergeIntroDBSkipRange(intro, recap *IntroDBSegment) (start, end int, ok bool) {
-	if recap != nil {
-		start = int(recap.StartSec)
-		end = int(recap.EndSec)
-		ok = true
-	}
-	if intro != nil {
-		iStart := int(intro.StartSec)
-		iEnd := int(intro.EndSec)
-		if !ok {
-			start, end, ok = iStart, iEnd, true
-		} else {
-			if iStart < start {
-				start = iStart
-			}
-			end = iEnd
-		}
-	}
-	return start, end, ok
-}
-
-// TheIntroDB API structures
-type IntroDBSegment struct {
-	StartMs         int     `json:"start_ms"`
-	EndMs           int     `json:"end_ms"`
-	StartSec        float64 `json:"start_sec"`
-	EndSec          float64 `json:"end_sec"`
-	Confidence      float64 `json:"confidence"`
-	SubmissionCount int     `json:"submission_count"`
-}
-
-type IntroDBResponse struct {
-	IMDbID  string          `json:"imdb_id"`
-	Season  int             `json:"season"`
-	Episode int             `json:"episode"`
-	Intro   *IntroDBSegment `json:"intro"`
-	Recap   *IntroDBSegment `json:"recap"`
-	Outro   *IntroDBSegment `json:"outro"`
-}
-
-// TMDBExternalIDs represents the external IDs response from TMDB API
-type TMDBExternalIDs struct {
-	IMDbID string `json:"imdb_id"`
-}
-
-// GetIMDbIDFromTMDB converts a TMDB ID to IMDb ID using TMDB API
-func GetIMDbIDFromTMDB(tmdbID int) (string, error) {
-	apiKey := tmdbAPIKey()
-	if apiKey == "" {
-		return "", fmt.Errorf("TMDB_API_KEY not set")
-	}
-
-	url := fmt.Sprintf("/tv/%d/external_ids", tmdbID)
-	resp, err := tmdb.Get(httpx.Standard, url)
-	if err != nil {
-		return "", fmt.Errorf("failed to fetch TMDB external IDs: %v", err)
-	}
-	defer resp.Body.Close()
-
-	if resp.StatusCode != 200 {
-		return "", fmt.Errorf("TMDB API returned status %d", resp.StatusCode)
-	}
-
-	var externalIDs TMDBExternalIDs
-	if err := json.NewDecoder(resp.Body).Decode(&externalIDs); err != nil {
-		return "", fmt.Errorf("failed to decode TMDB response: %v", err)
-	}
-
-	if externalIDs.IMDbID == "" {
-		return "", fmt.Errorf("no IMDb ID found for TMDB ID %d", tmdbID)
-	}
-
-	return externalIDs.IMDbID, nil
-}
-
-// FetchSegmentsFromIntroDB fetches intro/recap/outro segments from TheIntroDB API
-func FetchSegmentsFromIntroDB(imdbID string, season, episode int) (*IntroDBResponse, error) {
-	url := fmt.Sprintf("https://api.introdb.app/segments?imdb_id=%s&season=%d&episode=%d", imdbID, season, episode)
-	resp, err := httpx.Standard.Get(url)
-	if err != nil {
-		return nil, fmt.Errorf("failed to fetch from IntroDB: %v", err)
-	}
-	defer resp.Body.Close()
-
-	if resp.StatusCode == 404 {
-		return nil, nil // No data found, not an error
-	}
-
-	if resp.StatusCode != 200 {
-		return nil, fmt.Errorf("IntroDB API returned status %d", resp.StatusCode)
-	}
-
-	var result IntroDBResponse
-	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
-		return nil, fmt.Errorf("failed to decode IntroDB response: %v", err)
-	}
-
-	return &result, nil
-}
-
 // Normalize string for keyword matching
 func normalizeString(s string) string {
 	s = strings.ToLower(s)
@@ -301,20 +198,44 @@ func DetectFromChapters(episodeID int, filePath string) (bool, error) {
 	}
 
 	if foundIntro || foundOutro {
-		// Update database
+		var current EpisodeMarkers
+		_ = database.DB.QueryRow(
+			"SELECT intro_start, intro_end, outro_start, outro_end FROM medias WHERE id = ?", episodeID,
+		).Scan(&current.IntroStart, &current.IntroEnd, &current.OutroStart, &current.OutroEnd)
+
+		// Les chapitres l'emportent sur ce qui est déjà en base ; ce qu'ils ne
+		// nomment pas reste tel quel.
+		merged := FillMissingMarkers(EpisodeMarkers{
+			IntroStart: introStart, IntroEnd: introEnd,
+			OutroStart: outroStart, OutroEnd: outroEnd,
+		}, current)
 		_, err := database.DB.Exec(
 			"UPDATE medias SET intro_start = ?, intro_end = ?, outro_start = ?, outro_end = ? WHERE id = ?",
-			introStart, introEnd, outroStart, outroEnd, episodeID,
+			merged.IntroStart, merged.IntroEnd, merged.OutroStart, merged.OutroEnd, episodeID,
 		)
 		if err != nil {
 			return false, fmt.Errorf("failed to save chapters timestamps: %v", err)
 		}
 		log.Printf("Detection: Found chapter-based markers for episode %d -> Intro: [%d-%d], Outro: [%d-%d]",
-			episodeID, introStart, introEnd, outroStart, outroEnd)
+			episodeID, merged.IntroStart, merged.IntroEnd, merged.OutroStart, merged.OutroEnd)
 		return true, nil
 	}
 
 	return false, nil
+}
+
+// FillMissingMarkers complète [current] avec [extra] sans jamais écraser un
+// repère déjà connu. Les chapitres du fichier sont prioritaires : TheIntroDB ne
+// comble que ce qu'ils ne nomment pas, et un fichier dont les chapitres ne
+// donnent que le générique garde l'intro de TheIntroDB.
+func FillMissingMarkers(current, extra EpisodeMarkers) EpisodeMarkers {
+	if !current.hasIntro() && extra.hasIntro() {
+		current.IntroStart, current.IntroEnd = extra.IntroStart, extra.IntroEnd
+	}
+	if !current.hasOutro() && extra.hasOutro() {
+		current.OutroStart, current.OutroEnd = extra.OutroStart, extra.OutroEnd
+	}
+	return current
 }
 
 // DetectIntrosOutros coordinates the global detection process
@@ -616,105 +537,85 @@ func analyzeSeason(seasonID int, pendingOnly bool, only map[int]bool) error {
 		return nil
 	}
 
-	// Get the show's TMDB ID (tmdb_id is stored on the show, not the season)
-	var showTMDBID sql.NullInt64
-	_ = database.DB.QueryRow("SELECT tmdb_id FROM medias WHERE id = ? AND type = 'show'", showID).Scan(&showTMDBID)
-
-	// Check if we already have a cached imdb_id for this show
-	var imdbID string
-	_ = database.DB.QueryRow("SELECT imdb_id FROM medias WHERE id = ? AND type = 'show'", showID).Scan(&imdbID)
-
-	// If not cached, try to convert TMDB ID to IMDb ID
-	if imdbID == "" && showTMDBID.Valid {
-		imdbID, err = GetIMDbIDFromTMDB(int(showTMDBID.Int64))
-		if err != nil {
-			log.Printf("Detection: Failed to get IMDb ID for TMDB ID %d: %v (will fallback to chapters)", showTMDBID.Int64, err)
-			// Continue with chapter detection as fallback
-			imdbID = ""
-		} else {
-			// Cache the IMDb ID for future use
-			_, _ = database.DB.Exec("UPDATE medias SET imdb_id = ? WHERE id = ? AND type = 'show'", imdbID, showID)
-			log.Printf("Detection: Cached IMDb ID %s for show ID %d", imdbID, showID)
-		}
-	} else if imdbID == "" {
-		log.Printf("Detection: Season %d has no TMDB ID, will use chapter detection only", seasonID)
-	} else {
-		log.Printf("Detection: Using cached IMDb ID %s for show ID %d", imdbID, showID)
-	}
-
 	// An episode is marked as checked once every source answered for it, even
-	// with "nothing". A source that failed — IntroDB unreachable, ffprobe unable
-	// to read the file — leaves it unmarked, so the next pass tries again.
+	// with "nothing". A source that failed — ffprobe unable to read the file,
+	// TheIntroDB unreachable — leaves it unmarked, so the next pass tries again.
 	unanswered := map[int]bool{}
 
-	// Try TheIntroDB first if we have an IMDb ID
-	if imdbID != "" {
-		log.Printf("Detection: Using TheIntroDB for show %s (IMDb ID: %s)", imdbID, imdbID)
+	// Les chapitres du fichier d'abord : ils décrivent ce fichier précis, ce que
+	// TheIntroDB (des horodatages de la communauté, pour une version qui peut
+	// différer) ne peut pas garantir. TheIntroDB ne vient qu'ensuite, pour ce que
+	// les chapitres ne donnent pas.
+	for _, ep := range episodes {
+		found, err := DetectFromChapters(ep.ID, ep.FilePath)
+		if err != nil {
+			unanswered[ep.ID] = true
+		} else if found {
+			log.Printf("Detection: Episode %d mapped using FFprobe chapters.", ep.ID)
+		}
+	}
 
-		for _, ep := range episodes {
+	// TheIntroDB se lit par l'identifiant TMDB de la série — la numérotation
+	// saison/épisode de la médiathèque est celle de TMDB — ou, à défaut, par
+	// l'IMDb déjà connu. tmdb_id et imdb_id sont portés par la série, pas la saison.
+	var showTMDBID sql.NullInt64
+	var showIMDbID sql.NullString
+	_ = database.DB.QueryRow("SELECT tmdb_id, imdb_id FROM medias WHERE id = ? AND type = 'show'", showID).Scan(&showTMDBID, &showIMDbID)
+	media := introDBMedia{TMDBID: int(showTMDBID.Int64), IMDbID: showIMDbID.String}
+
+	if media.valid() {
+		log.Printf("Detection: Completing with TheIntroDB for show %d (TMDB %d, IMDb %q)", showID, media.TMDBID, media.IMDbID)
+
+		for i, ep := range episodes {
 			if ep.Episode == 0 {
 				log.Printf("Detection: Skipping episode %d (no episode number)", ep.ID)
 				continue
 			}
 
-			segments, err := FetchSegmentsFromIntroDB(imdbID, ep.Season, ep.Episode)
+			var current EpisodeMarkers
+			_ = database.DB.QueryRow(
+				"SELECT intro_start, intro_end, outro_start, outro_end FROM medias WHERE id = ?", ep.ID,
+			).Scan(&current.IntroStart, &current.IntroEnd, &current.OutroStart, &current.OutroEnd)
+			if current.hasIntro() && current.hasOutro() {
+				continue // les chapitres ont tout donné : pas d'appel
+			}
+
+			segments, err := FetchSegmentsFromIntroDB(media, ep.Season, ep.Episode, ep.Duration)
+			if errors.Is(err, ErrIntroDBThrottled) {
+				// Le reste de la saison échouerait pareil : on le laisse pour la
+				// prochaine passe, sans marquer ces épisodes comme vérifiés.
+				log.Printf("Detection: TheIntroDB is throttling us, leaving S%dE%d onwards for later", ep.Season, ep.Episode)
+				for _, rest := range episodes[i:] {
+					unanswered[rest.ID] = true
+				}
+				break
+			}
 			if err != nil {
 				log.Printf("Detection: Failed to fetch segments for S%dE%d: %v", ep.Season, ep.Episode, err)
 				unanswered[ep.ID] = true
 				continue
 			}
-
 			if segments == nil {
-				log.Printf("Detection: No data found in IntroDB for S%dE%d", ep.Season, ep.Episode)
+				log.Printf("Detection: No data found in TheIntroDB for S%dE%d", ep.Season, ep.Episode)
 				continue
 			}
 
-			introStart, introEnd, outroStart, outroEnd := 0, 0, 0, 0
-
-			if skipStart, skipEnd, ok := MergeIntroDBSkipRange(segments.Intro, segments.Recap); ok {
-				if IsPlausibleIntroRange(skipStart, skipEnd, 0) {
-					introStart = skipStart
-					introEnd = skipEnd
-					log.Printf("Detection: IntroDB skip window for S%dE%d: [%d-%ds]",
-						ep.Season, ep.Episode, introStart, introEnd)
-				}
+			merged := FillMissingMarkers(current, PickMarkers(segments, ep.Duration))
+			if merged == current {
+				continue
 			}
+			log.Printf("Detection: TheIntroDB completes S%dE%d: intro [%d-%ds], outro [%d-%ds]",
+				ep.Season, ep.Episode, merged.IntroStart, merged.IntroEnd, merged.OutroStart, merged.OutroEnd)
 
-			// Use outro from IntroDB
-			if segments.Outro != nil {
-				outroStart = int(segments.Outro.StartSec)
-				outroEnd = int(segments.Outro.EndSec)
-				log.Printf("Detection: IntroDB found outro for S%dE%d: [%d-%ds] (confidence: %.2f)",
-					ep.Season, ep.Episode, outroStart, outroEnd, segments.Outro.Confidence)
-			}
-
-			// Update database
-			_, err = database.DB.Exec(
+			if _, err = database.DB.Exec(
 				"UPDATE medias SET intro_start = ?, intro_end = ?, outro_start = ?, outro_end = ? WHERE id = ?",
-				introStart, introEnd, outroStart, outroEnd, ep.ID,
-			)
-			if err != nil {
+				merged.IntroStart, merged.IntroEnd, merged.OutroStart, merged.OutroEnd, ep.ID,
+			); err != nil {
 				log.Printf("Detection: Failed to save timestamps for episode %d: %v", ep.ID, err)
 			}
 		}
-	}
-
-	// Fallback: Try chapters for episodes that still don't have intro/outro
-	for _, ep := range episodes {
-		var currentIntroStart, currentOutroStart int
-		_ = database.DB.QueryRow("SELECT intro_start, outro_start FROM medias WHERE id = ?", ep.ID).Scan(&currentIntroStart, &currentOutroStart)
-
-		// Skip if we already have both intro and outro from IntroDB
-		if currentIntroStart > 0 && currentOutroStart > 0 {
-			continue
-		}
-
-		found, err := DetectFromChapters(ep.ID, ep.FilePath)
-		if err != nil {
-			unanswered[ep.ID] = true
-		} else if found {
-			log.Printf("Detection: Episode %d successfully mapped using FFprobe chapters as fallback.", ep.ID)
-		}
+	} else {
+		log.Printf("Detection: Season %d has no TMDB or IMDb ID, chapters only", seasonID)
 	}
 
 	for _, ep := range episodes {

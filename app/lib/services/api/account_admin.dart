@@ -109,7 +109,7 @@ mixin _AccountAdminEndpoints {
     String? deviceName,
     String? message,
   }) async {
-    final url = ServerAccount.normalizeUrl(serverUrl);
+    final url = await ServerScheme.instance.resolve(serverUrl);
     final response = await _bareClient().post(
       "$url/api/auth/access/request",
       data: {
@@ -150,7 +150,7 @@ mixin _AccountAdminEndpoints {
     required String password,
     bool activate = false,
   }) async {
-    final url = ServerAccount.normalizeUrl(serverUrl);
+    final url = await ServerScheme.instance.resolve(serverUrl);
     final Response<dynamic> response;
     try {
       response = await _bareClient().post(

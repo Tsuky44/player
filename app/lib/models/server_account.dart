@@ -113,6 +113,14 @@ class ServerAccount {
     return value;
   }
 
+  /// Vrai quand [a] et [b] désignent le même serveur, au schéma près : un
+  /// serveur passé de HTTP à HTTPS reste le même (ADR-0080).
+  static bool sameAddress(String a, String b) {
+    String bare(String url) =>
+        normalizeUrl(url).replaceFirst(RegExp(r'^https?://'), '');
+    return bare(a) == bare(b);
+  }
+
   /// Fabrique l'identifiant de stockage d'un couple (serveur, utilisateur).
   ///
   /// Volontairement réduit à `[a-z0-9_]` : cette chaîne devient une clé de

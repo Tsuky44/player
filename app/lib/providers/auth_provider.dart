@@ -102,6 +102,8 @@ class AuthProvider extends ChangeNotifier {
     // Le serveur principal passe avant celui qu'on regardait la dernière fois :
     // c'est tout ce qu'on lui demande d'être.
     await _applyPrimaryServer();
+    // Un serveur passé en HTTPS : ses comptes le suivent (ADR-0080).
+    if (await apiClient.upgradeAccountsToHttps()) _onServerChanged?.call();
 
     // Plusieurs personnes sur ce serveur : c'est à elles de dire qui regarde,
     // avant qu'une session s'ouvre et charge l'accueil de quelqu'un d'autre.
@@ -697,7 +699,7 @@ class AuthProvider extends ChangeNotifier {
     required String password,
     String? message,
   }) async {
-    final url = ServerAccount.normalizeUrl(serverUrl);
+    final url = await apiClient.scheme.resolve(serverUrl);
     final ticket = await apiClient.requestAccess(
       serverUrl: url,
       username: username,

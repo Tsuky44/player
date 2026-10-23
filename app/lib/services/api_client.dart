@@ -36,6 +36,7 @@ import 'conditional_get.dart';
 import 'api_types.dart';
 import 'hls_session.dart';
 import '../l10n/tr.dart';
+import 'server_scheme.dart';
 
 // Le descripteur de session a quitté ce fichier ; ses appelants l'importaient
 // d'ici et continuent de le faire.
@@ -418,12 +419,18 @@ class ApiClient
   }
 
   Future<void> setConnection(String serverUrl, {String? token}) async {
-    final formattedUrl = ServerAccount.normalizeUrl(serverUrl);
+    // HTTPS dès que le serveur le parle (ADR-0080).
+    final formattedUrl = await scheme.resolve(serverUrl);
 
     await servers.load();
-    final match = servers.accountForUrl(formattedUrl);
+    final match = servers.accountForUrl(formattedUrl) ??
+        servers.accountForUrl(formattedUrl.replaceFirst('https://', 'http://'));
     if (token == null && match != null) {
-      await servers.activate(match.id);
+      if (match.url != formattedUrl) {
+        await servers.updateUrl(match.id, formattedUrl);
+      } else {
+        await servers.activate(match.id);
+      }
       await _applyActiveAccount();
       await _rememberLastAddress(formattedUrl);
       return;
@@ -515,6 +522,21 @@ class ApiClient
     await _rememberLastAddress(account.url);
     await saveLastUsername(username);
     return account;
+  }
+
+  /// Le choix de HTTPS ou HTTP pour une adresse ; remplaçable en test.
+  ServerScheme get scheme => ServerScheme.instance;
+
+  /// Fait passer en HTTPS les comptes dont le serveur y répond (ADR-0080).
+  /// Rend vrai quand l'adresse du compte actif a changé.
+  Future<bool> upgradeAccountsToHttps() async {
+    final changed = await scheme.upgradeAccounts(servers);
+    if (changed) {
+      await _applyActiveAccount();
+      final active = servers.active;
+      if (active != null) await _rememberLastAddress(active.url);
+    }
+    return changed;
   }
 
   /// Bascule sur un compte déjà enregistré. Rend faux quand il a disparu.

@@ -279,7 +279,7 @@ class _LoginScreenState extends State<LoginScreen> {
   PendingAccessRequest? _pendingFor(AuthProvider auth) {
     final url = ServerAccount.normalizeUrl(_serverController.text);
     for (final request in auth.pendingAccessRequests) {
-      if (request.url == url) return request;
+      if (ServerAccount.sameAddress(request.url, url)) return request;
     }
     return auth.pendingAccessRequests.isEmpty
         ? null
