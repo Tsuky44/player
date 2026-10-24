@@ -20,7 +20,7 @@ let package = Package(
     .package(name: "FlutterFramework", path: "../FlutterFramework"),
     .package(
       url: "https://github.com/superuser404notfound/AetherEngine",
-      .upToNextMinor(from: "7.47.0")),
+      .upToNextMinor(from: "7.42.0")),
   ],
   targets: [
     .target(

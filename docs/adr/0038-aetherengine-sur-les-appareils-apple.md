@@ -54,12 +54,16 @@ plus qu'à la qualité réduite choisie à la main, qu'AetherEngine lit comme n'
   de `darwin/`, écrite par `tool/sync_tvos.dart` et gardée identique par
   `app/test/onyx_player_apple_sources_test.dart`. Le même script corrige la garde d'import de
   Pigeon, qui oublie tvOS.
-- **AetherEngine est épinglé sur sa mineure** (`7.47.x`), parce qu'il embarque son FFmpeg
-  précompilé : une mineure qui flotte changerait le FFmpeg qui tourne. Monté de `7.17` à `7.47` le
+- **AetherEngine est épinglé sur sa mineure** (`7.42.x`), parce qu'il embarque son FFmpeg
+  précompilé : une mineure qui flotte changerait le FFmpeg qui tourne. Monté de `7.17` à `7.42` le
   2026-10-24 après un plantage sur Apple TV (« Source segment could not be produced », MKV aux
   images clés très espacées) : les API que le plugin appelle sont les mêmes dans les deux versions,
-  mais aucun correctif de ce cas précis n'est nommé dans le changelog. Si la 7.47 plante encore,
+  mais aucun correctif de ce cas précis n'est nommé dans le changelog. Si la 7.42 plante encore,
   le repli en HLS de `aether_failure.dart` prend le relais.
+  **Ne pas monter au-delà de la 7.42 pour l'instant** : dès la 7.43, `AetherEngine.swift` capture
+  un pointeur `codecpar` dans une fermeture (`forcesSoftware`), et Xcode 26.6 (celui de la CI)
+  refuse de compiler (« sending 'codecpar' risks causing data races »), sur iOS, macOS et tvOS.
+  La 7.47.0 a échoué à la CI de cette façon. À retenter quand le moteur publie un correctif.
 
 ## Conséquences
 
