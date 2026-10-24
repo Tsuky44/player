@@ -5,6 +5,7 @@ import 'package:onyx_player_apple/onyx_player_apple.dart';
 
 import '../../../services/client_log.dart';
 import '../playback_profile.dart';
+import 'aether_failure.dart';
 import 'aether_tracks.dart';
 import 'aether_video_fit.dart';
 import 'native_video_framing.dart';
@@ -174,14 +175,7 @@ class AetherPlaybackSession implements PlaybackSession {
       _lastFailure = null;
       return;
     }
-    final failure = PlaybackFailure(
-      switch (kind) {
-        OnyxApplePlayerErrorKind.unsupported => PlaybackFailureKind.unsupported,
-        OnyxApplePlayerErrorKind.source => PlaybackFailureKind.source,
-        OnyxApplePlayerErrorKind.unknown => PlaybackFailureKind.unknown,
-      },
-      status.errorMessage ?? kind.name,
-    );
+    final failure = aetherFailureOf(kind, status.errorMessage);
     if (failure == _lastFailure) return;
     _lastFailure = failure;
     ClientLog.error('AetherEngine: $failure');

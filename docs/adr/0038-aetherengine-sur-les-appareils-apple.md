@@ -54,8 +54,12 @@ plus qu'à la qualité réduite choisie à la main, qu'AetherEngine lit comme n'
   de `darwin/`, écrite par `tool/sync_tvos.dart` et gardée identique par
   `app/test/onyx_player_apple_sources_test.dart`. Le même script corrige la garde d'import de
   Pigeon, qui oublie tvOS.
-- **AetherEngine est épinglé sur sa mineure** (`7.17.x`), parce qu'il embarque son FFmpeg
-  précompilé : une mineure qui flotte changerait le FFmpeg qui tourne.
+- **AetherEngine est épinglé sur sa mineure** (`7.47.x`), parce qu'il embarque son FFmpeg
+  précompilé : une mineure qui flotte changerait le FFmpeg qui tourne. Monté de `7.17` à `7.47` le
+  2026-10-24 après un plantage sur Apple TV (« Source segment could not be produced », MKV aux
+  images clés très espacées) : les API que le plugin appelle sont les mêmes dans les deux versions,
+  mais aucun correctif de ce cas précis n'est nommé dans le changelog. Si la 7.47 plante encore,
+  le repli en HLS de `aether_failure.dart` prend le relais.
 
 ## Conséquences
 
