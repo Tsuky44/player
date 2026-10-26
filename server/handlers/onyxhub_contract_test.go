@@ -159,3 +159,13 @@ func TestRequestFeedRefusesACursorThatIsNotOneOnyxHubGave(t *testing.T) {
 		t.Fatalf("HTTP %d, attendu 400", recorder.Code)
 	}
 }
+
+func TestOnyxHubAvailabilityCarriesWhyARequestWaits(t *testing.T) {
+	hubStub(t, func(w http.ResponseWriter, _ *http.Request) {
+		_, _ = w.Write([]byte(`{"status":"pending","available":false,"seasons":[],"waiting":{"message":"Release non disponible au téléchargement · nouvelle tentative dans 42 min","nextAttemptAt":"2026-10-26T12:42:00Z"}}`))
+	})
+	got := fetchMediaHubAvailability(603, "movie", httpx.Fast)
+	if got == nil || got.Waiting == nil || got.Waiting.Message != "Release non disponible au téléchargement · nouvelle tentative dans 42 min" {
+		t.Fatalf("attente lue = %+v", got)
+	}
+}

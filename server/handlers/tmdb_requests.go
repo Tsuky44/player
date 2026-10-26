@@ -362,7 +362,9 @@ func TmdbRequestDetails(w http.ResponseWriter, r *http.Request, ps httprouter.Pa
 
 	// Enrich with MediaHub/Sonarr availability (same logic as MediaHub badges).
 	status := "unknown"
+	var waiting *mediaHubWaiting
 	if availability := fetchMediaHubAvailability(tmdbID, mtStr, mediaHubHTTPClient); availability != nil {
+		waiting = availability.Waiting
 		if availability.Status != "" {
 			status = availability.Status
 		}
@@ -414,7 +416,9 @@ func TmdbRequestDetails(w http.ResponseWriter, r *http.Request, ps httprouter.Pa
 		NumberOfEpisodes int                  `json:"numberOfEpisodes"`
 		Recommendations  []requestRelatedItem `json:"recommendations"`
 		Similar          []requestRelatedItem `json:"similar"`
+		Waiting          *mediaHubWaiting     `json:"waiting,omitempty"`
 	}{
+		Waiting:          waiting,
 		ID:               tmdbID,
 		MediaType:        mtStr,
 		Title:            details.Title,

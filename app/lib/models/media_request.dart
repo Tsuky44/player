@@ -214,6 +214,9 @@ class RequestMediaDetails extends RequestMediaItem {
   final List<RequestMediaItem> recommendations;
   final List<RequestMediaItem> similar;
 
+  /// Why the request has no download yet (already in French), or null.
+  final String? waitingMessage;
+
   const RequestMediaDetails({
     required super.id,
     required super.mediaType,
@@ -246,6 +249,7 @@ class RequestMediaDetails extends RequestMediaItem {
     this.numberOfEpisodes,
     this.recommendations = const [],
     this.similar = const [],
+    this.waitingMessage,
   });
 
   factory RequestMediaDetails.fromJson(Map<String, dynamic> json) {
@@ -291,6 +295,8 @@ class RequestMediaDetails extends RequestMediaItem {
           .toList(),
       numberOfSeasons: json['numberOfSeasons'] as int?,
       numberOfEpisodes: json['numberOfEpisodes'] as int?,
+      waitingMessage:
+          (json['waiting'] as Map<String, dynamic>?)?['message'] as String?,
       recommendations: recommendations
           .map((item) =>
               RequestMediaItem.fromJson(item as Map<String, dynamic>))

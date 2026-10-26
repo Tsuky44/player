@@ -81,6 +81,15 @@ type mediaHubAvailability struct {
 		SeasonNumber int    `json:"seasonNumber"`
 		Status       string `json:"status"`
 	} `json:"seasons"`
+	// Waiting says why a request has no download yet; nil when nothing waits.
+	Waiting *mediaHubWaiting `json:"waiting,omitempty"`
+}
+
+// mediaHubWaiting is the reason, in French and ready to show, a request waits
+// for a release (OnyxHub fills it from sorraa).
+type mediaHubWaiting struct {
+	Message       string `json:"message"`
+	NextAttemptAt string `json:"nextAttemptAt,omitempty"`
 }
 
 // fetchMediaHubAvailability calls MediaHub GET /api/media/availability/:id.

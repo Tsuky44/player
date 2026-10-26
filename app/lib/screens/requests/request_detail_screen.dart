@@ -312,6 +312,13 @@ class _RequestDetailScreenState extends State<RequestDetailScreen> {
             RequestAvailabilityBadge(status: details.status),
             const SizedBox(height: 14),
           ],
+          if (details.waitingMessage != null &&
+              details.status != RequestMediaStatus.available) ...[
+            Text(details.waitingMessage!,
+                style: TextStyle(
+                    color: AppColors.warning, fontSize: AppType.body)),
+            const SizedBox(height: 14),
+          ],
           if (details.logoUrl != null)
             ConstrainedBox(
               constraints: const BoxConstraints(maxWidth: 420, maxHeight: 150),
