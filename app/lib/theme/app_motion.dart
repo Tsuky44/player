@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 
+import 'lite_mode.dart';
+
 /// Motion tokens — the single place that decides how long anything in the app
 /// takes to move, and how it behaves when the user asked the system for less
 /// motion.
@@ -19,6 +21,11 @@ import 'package:flutter/material.dart';
 abstract final class AppMotion {
   /// Micro-states: hover, selection, a chip changing shape.
   static const Duration micro = Duration(milliseconds: 180);
+
+  /// Le zoom du focus télécommande. Sous la plage 180–280 ms parce qu'il suit
+  /// la répétition des flèches : un focus qui finit de grossir après que le
+  /// suivant est parti traîne derrière la télécommande.
+  static const Duration focus = Duration(milliseconds: 160);
 
   /// The default. Chrome fades, appearances, disappearances.
   static const Duration standard = Duration(milliseconds: 200);
@@ -50,8 +57,13 @@ abstract final class AppMotion {
 
   /// Whether the platform asked for reduced motion — "Reduce Motion" on
   /// macOS/iOS, "Remove animations" on Android.
+  ///
+  /// Le mode léger (ADR-0086) pose la même question : un mouvement
+  /// géométrique redessine tout ce qu'il traverse à chaque image, et c'est ce
+  /// qu'une Apple TV HD ne tient pas. Les fondus restent, comme sous
+  /// « réduire les animations ».
   static bool reduced(BuildContext context) =>
-      MediaQuery.disableAnimationsOf(context);
+      MediaQuery.disableAnimationsOf(context) || LiteScope.of(context);
 
   /// Duration for an opacity or colour animation.
   ///

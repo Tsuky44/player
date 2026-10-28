@@ -52,8 +52,10 @@ import workmanager_apple
   ///
   /// `isTelevision` n'est vrai que sur une Apple TV (idiome `.tv`) : un iPhone
   /// branché sur un téléviseur passe en mode télécommande par le réglage, pas
-  /// par la détection. Le reste du canal Android (mémoire, fréquence d'écran,
-  /// réseau facturé, image dans l'image) n'est pas appelé sur iOS.
+  /// par la détection. `memoryProfile` dit la mémoire et le modèle, pour que
+  /// `DeviceHardware` reconnaisse un vieil iPhone et passe en mode léger. Le
+  /// reste du canal Android (fréquence d'écran, réseau facturé, image dans
+  /// l'image) n'est pas appelé sur iOS.
   private func registerDeviceChannel(messenger: FlutterBinaryMessenger) {
     let channel = FlutterMethodChannel(name: "onyx/device", binaryMessenger: messenger)
     channel.setMethodCallHandler { call, result in
@@ -62,6 +64,17 @@ import workmanager_apple
         result(UIDevice.current.userInterfaceIdiom == .tv)
       case "deviceName":
         result(UIDevice.current.name)
+      case "memoryProfile":
+        var info = utsname()
+        uname(&info)
+        let model = withUnsafeBytes(of: &info.machine) { raw in
+          String(decoding: raw.prefix { $0 != 0 }, as: UTF8.self)
+        }
+        result([
+          "totalMemoryMb": Int(ProcessInfo.processInfo.physicalMemory / (1024 * 1024)),
+          "isLowRamDevice": false,
+          "model": model,
+        ])
       default:
         result(FlutterMethodNotImplemented)
       }

@@ -63,7 +63,19 @@ class AppImageCache {
   /// every poster again — visible as a flash of placeholder on content that was
   /// on screen a second earlier. Desktop and web have the headroom to hold it;
   /// mobile and the Apple TV keep Flutter's defaults.
-  static void configure() {
+  ///
+  /// En mode léger (ADR-0086), le plafond descend sous celui de Flutter : sur
+  /// une Apple TV HD ou un boîtier à 2 Go, les 100 Mo d'images décodées
+  /// disputent la mémoire au décodeur vidéo, et c'est le film qui saccade. Une
+  /// affiche redécodée au retour coûte un éclair de vignette, pas une image
+  /// perdue.
+  static void configure({bool lite = false}) {
+    if (lite) {
+      PaintingBinding.instance.imageCache
+        ..maximumSizeBytes = 48 << 20
+        ..maximumSize = 400;
+      return;
+    }
     if (AppPlatform.isMobile || AppPlatform.isTvOS) return;
     PaintingBinding.instance.imageCache
       ..maximumSizeBytes = 300 << 20

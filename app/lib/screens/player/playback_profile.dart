@@ -1,6 +1,6 @@
 import 'package:flutter/foundation.dart';
-import 'package:flutter/services.dart';
 
+import '../../services/device_hardware.dart';
 import '../../utils/app_platform.dart';
 
 /// How much memory and GPU work a playback is allowed to spend on this device.
@@ -50,6 +50,15 @@ class PlaybackProfile {
   /// one range request to the server.
   final int backBufferMs;
 
+  /// Si mpv dessine l'image au plus simple : mise à l'échelle bilinéaire, ni
+  /// debanding ni tramage, décodage logiciel autorisé à ses raccourcis et à
+  /// lâcher des images plutôt que de ralentir. Vrai en mode léger
+  /// (ADR-0086) : sur une petite puce graphique, la mise à l'échelle par
+  /// défaut d'une image 4K vers l'écran coûte plus que son décodage, et c'est
+  /// elle qui faisait saccader le Direct Play. Ce n'est pas un transcodage :
+  /// le fichier arrive tel quel.
+  final bool fastRendering;
+
   /// Human-readable reason, for the log line when a playback starts.
   final String label;
 
@@ -62,7 +71,21 @@ class PlaybackProfile {
     required this.allowHdrComputePeak,
     required this.label,
     this.backBufferMs = 15000,
+    this.fastRendering = false,
   });
+
+  /// Ce profil, dessiné au plus simple. Voir [fastRendering].
+  PlaybackProfile withFastRendering() => PlaybackProfile(
+        demuxerMaxBytes: demuxerMaxBytes,
+        demuxerBackBytes: demuxerBackBytes,
+        readaheadSecs: readaheadSecs,
+        hlsDemuxerMaxBytes: hlsDemuxerMaxBytes,
+        hlsReadaheadSecs: hlsReadaheadSecs,
+        allowHdrComputePeak: false,
+        label: '$label+léger',
+        backBufferMs: backBufferMs,
+        fastRendering: true,
+      );
 
   static const int _mb = 1024 * 1024;
 
@@ -128,8 +151,6 @@ class PlaybackProfile {
 
 /// Resolves [PlaybackProfile] for this device, once.
 abstract final class PlaybackProfiles {
-  static const MethodChannel _channel = MethodChannel('onyx/device');
-
   static PlaybackProfile? _current;
 
   /// The resolved profile. [initialize] is what fills it in; before that — and
@@ -143,33 +164,32 @@ abstract final class PlaybackProfiles {
   /// [isTv] comes from the caller rather than being read here, so this stays
   /// independent of the TV-mode override — a phone forced into TV mode is still
   /// a phone as far as buffers are concerned.
-  static Future<void> initialize({required bool isTv}) async {
+  ///
+  /// [lite] est le mode léger tel qu'il est au démarrage. Le moteur est mis en
+  /// commun et garde ses options d'une lecture à l'autre : un changement du
+  /// réglage en cours de route vaut pour l'interface tout de suite, et pour
+  /// la vidéo au démarrage suivant.
+  static Future<void> initialize({
+    required bool isTv,
+    bool lite = false,
+  }) async {
     if (_current != null) return;
 
-    var totalMemoryMb = 0;
-    var isLowRamDevice = false;
+    // Un hôte qui ne répond pas laisse 0, qui retombe sur le profil contraint
+    // sur Android, délibérément.
+    await DeviceHardware.initialize();
+    final totalMemoryMb =
+        AppPlatform.isAndroid ? DeviceHardware.totalMemoryMb : 0;
+    final isLowRamDevice = DeviceHardware.isLowRamDevice;
 
-    if (AppPlatform.isAndroid) {
-      try {
-        final raw = await _channel.invokeMapMethod<String, dynamic>(
-          'memoryProfile',
-        );
-        totalMemoryMb = (raw?['totalMemoryMb'] as num?)?.toInt() ?? 0;
-        isLowRamDevice = raw?['isLowRamDevice'] as bool? ?? false;
-      } catch (error) {
-        // An older install of the host app, or a platform that never registered
-        // the channel. Falls through to the constrained profile, deliberately.
-        debugPrint('PlaybackProfiles: memory query unavailable ($error)');
-      }
-    }
-
-    _current = PlaybackProfile.resolve(
+    final resolved = PlaybackProfile.resolve(
       isAndroid: AppPlatform.isAndroid,
       isDesktop: AppPlatform.isDesktop,
       totalMemoryMb: totalMemoryMb,
       isLowRamDevice: isLowRamDevice,
       isTv: isTv,
     );
+    _current = lite ? resolved.withFastRendering() : resolved;
 
     debugPrint('PlaybackProfiles: ${_current!.label} '
         '(${totalMemoryMb}MB, lowRam=$isLowRamDevice, tv=$isTv)');

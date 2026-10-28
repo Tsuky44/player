@@ -1,11 +1,11 @@
-import 'dart:ui';
-
 import 'package:flutter/material.dart';
 import 'package:flutter_animate/flutter_animate.dart';
 import '../../../models/models.dart';
 import '../../../tv/tv_mode.dart';
 import '../../../theme/app_colors.dart';
+import '../../../theme/app_motion.dart';
 import '../../../utils/format.dart';
+import '../../../widgets/global/glass_chrome.dart';
 import '../../../widgets/global/media_download_button.dart';
 import '../../../widgets/global/media_poster.dart';
 import '../../../widgets/global/season_download_button.dart';
@@ -118,8 +118,8 @@ class _PlayerEpisodesPanelState extends State<PlayerEpisodesPanel> {
               alignment: Alignment.bottomCenter,
               child: ClipRRect(
                 borderRadius: const BorderRadius.vertical(top: Radius.circular(20)),
-                child: BackdropFilter(
-                  filter: ImageFilter.blur(sigmaX: 24, sigmaY: 24),
+                child: GlassBlur(
+                  sigma: 24,
                   child: Container(
                     height: panelHeight,
                     decoration: BoxDecoration(
@@ -143,7 +143,7 @@ class _PlayerEpisodesPanelState extends State<PlayerEpisodesPanel> {
             ).animate().slideY(
                   begin: 0.12,
                   end: 0,
-                  duration: 280.ms,
+                  duration: AppMotion.move(context, AppMotion.emphasis),
                   curve: Curves.easeOutCubic,
                 ),
           ],

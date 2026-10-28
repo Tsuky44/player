@@ -11,6 +11,7 @@ import '../tv_link_scanner_screen.dart';
 import 'apps_page.dart';
 import 'logs_page.dart';
 import '../widgets/about_group.dart';
+import '../widgets/lite_mode_tile.dart';
 import '../widgets/new_episode_alerts_group.dart';
 import '../../../providers/auth_provider.dart';
 import '../../../widgets/global/interface_tour/interface_tour.dart';
@@ -66,12 +67,12 @@ class _DevicePageState extends State<DevicePage> {
               'les autres appareils à connecter, et de l’aide si quelque '
               'chose ne va pas.'),
       children: [
-        // Sur une Apple TV le mode télécommande est le seul possible : rien à
-        // régler (voir [TvMode]).
-        if (!AppPlatform.isTvOS)
-          SettingsGroup(
-            title: tr('Affichage'),
-            children: [
+        SettingsGroup(
+          title: tr('Affichage'),
+          children: [
+            // Sur une Apple TV le mode télécommande est le seul possible :
+            // rien à régler (voir [TvMode]).
+            if (!AppPlatform.isTvOS)
               SettingsChoiceTile<TvModePreference>(
                 icon: Icons.settings_remote_rounded,
                 title: tr('Mode télécommande'),
@@ -89,8 +90,9 @@ class _DevicePageState extends State<DevicePage> {
                   if (mounted) setState(() {});
                 },
               ),
-            ],
-          ),
+            const LiteModeTile(),
+          ],
+        ),
         SettingsGroup(
           title: tr('Langue'),
           children: [

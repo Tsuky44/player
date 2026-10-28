@@ -7,6 +7,7 @@ import '../../../theme/app_theme.dart';
 import '../../../widgets/global/app_network_image.dart';
 import '../../../theme/app_type.dart';
 import '../../../l10n/tr.dart';
+import '../../../widgets/global/glass_chrome.dart';
 
 /// Shared chrome of the pages that close an episode: the end-of-season request
 /// ([NextSeasonOverlay]) and the episode a season is still waiting for
@@ -99,7 +100,10 @@ class _Backdrop extends StatelessWidget {
     return Stack(
       fit: StackFit.expand,
       children: [
-        if (url != null)
+        // En mode léger, pas d'image du tout plutôt qu'une image nette : un
+        // flou de 60 px est une passe sur tout l'écran, posée en pleine
+        // lecture (ADR-0086). Le dégradé suffit à donner la couleur de la page.
+        if (url != null && glassBlurs(context))
           ImageFiltered(
             imageFilter: ImageFilter.blur(sigmaX: 60, sigmaY: 60),
             child: Opacity(

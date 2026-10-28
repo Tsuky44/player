@@ -2,6 +2,7 @@ import 'dart:async';
 
 import 'package:flutter/material.dart';
 import '../../theme/app_colors.dart';
+import '../../theme/lite_mode.dart';
 import '../../tv/tv_focus.dart';
 import 'app_network_image.dart';
 import 'pressable.dart';
@@ -254,7 +255,8 @@ class _PosterCardState extends State<PosterCard> {
 /// Durée commune aux animations de survol des affiches. Coupée net quand le
 /// système demande de réduire les animations.
 Duration _posterMotion(BuildContext context, Duration base) =>
-    (MediaQuery.maybeDisableAnimationsOf(context) ?? false)
+    (MediaQuery.maybeDisableAnimationsOf(context) ?? false) ||
+            LiteScope.of(context)
         ? Duration.zero
         : base;
 
@@ -279,6 +281,10 @@ class PosterLift extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final motion = _posterMotion(context, duration);
+    // Une ombre floutée par affiche, repeinte à chaque image d'un défilement :
+    // une grille de cinquante affiches en paie cinquante. Le mode léger garde
+    // le zoom et retire l'ombre (ADR-0086).
+    final shadows = !LiteScope.of(context);
 
     return LayoutBuilder(
       builder: (context, constraints) {
@@ -297,14 +303,17 @@ class PosterLift extends StatelessWidget {
             curve: Curves.easeOutCubic,
             decoration: BoxDecoration(
               borderRadius: BorderRadius.circular(PosterCard.radius),
-              boxShadow: [
-                BoxShadow(
-                  color: Colors.black.withValues(alpha: active ? 0.55 : 0.0),
-                  blurRadius: active ? 22 : 8,
-                  spreadRadius: active ? -4 : -6,
-                  offset: Offset(0, active ? 12 : 4),
-                ),
-              ],
+              boxShadow: shadows
+                  ? [
+                      BoxShadow(
+                        color:
+                            Colors.black.withValues(alpha: active ? 0.55 : 0.0),
+                        blurRadius: active ? 22 : 8,
+                        spreadRadius: active ? -4 : -6,
+                        offset: Offset(0, active ? 12 : 4),
+                      ),
+                    ]
+                  : null,
             ),
             child: child,
           ),

@@ -1,10 +1,10 @@
-import 'dart:ui';
 
 import 'package:flutter/material.dart';
 
 import '../../../theme/app_colors.dart';
 import '../../../theme/app_type.dart';
 import '../video_display_mode.dart';
+import '../../../widgets/global/glass_chrome.dart';
 
 /// Transient label naming the display mode a pinch just landed on.
 ///
@@ -35,8 +35,8 @@ class VideoZoomHint extends StatelessWidget {
           curve: Curves.easeOut,
           child: ClipRRect(
             borderRadius: BorderRadius.circular(12),
-            child: BackdropFilter(
-              filter: ImageFilter.blur(sigmaX: 18, sigmaY: 18),
+            child: GlassBlur(
+              sigma: 18,
               child: Container(
                 padding:
                     const EdgeInsets.symmetric(horizontal: 16, vertical: 11),

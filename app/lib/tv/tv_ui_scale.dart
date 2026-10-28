@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../navigation/search_route_observer.dart';
+import '../theme/app_page_transitions.dart';
 
 /// L'interface d'un téléviseur, à la même échelle quelle que soit sa densité.
 ///
@@ -66,10 +67,25 @@ class TvUiScale extends StatelessWidget {
 /// pas mettre à l'échelle — la page se serait réduite autour d'un trou resté
 /// pleine taille. Le lecteur a d'ailleurs ses propres tailles pour la
 /// télévision, calculées sur la largeur de l'écran.
+///
+/// La transition elle-même est celle du reste de l'app
+/// ([OnyxPageTransitionsBuilder]), plus celle du système : sur Apple TV,
+/// c'était le glissé de Cupertino, qui déplace la page entière et peint une
+/// ombre dégradée sur toute sa hauteur à chaque image, et sur Android TV le
+/// zoom de 450 ms. Deux pages pleines en mouvement, ce qu'une Apple TV HD ne
+/// tient pas ; le geste de retour que le glissé porte n'existe pas à la
+/// télécommande. Le fondu reste, et la montée disparaît en mode léger
+/// (ADR-0086).
 class TvScaledPageTransitionsBuilder extends PageTransitionsBuilder {
   const TvScaledPageTransitionsBuilder();
 
-  static const PageTransitionsTheme _defaults = PageTransitionsTheme();
+  static const OnyxPageTransitionsBuilder _onyx = OnyxPageTransitionsBuilder();
+
+  @override
+  Duration get transitionDuration => _onyx.transitionDuration;
+
+  @override
+  Duration get reverseTransitionDuration => _onyx.reverseTransitionDuration;
 
   @override
   Widget buildTransitions<T>(
@@ -80,7 +96,7 @@ class TvScaledPageTransitionsBuilder extends PageTransitionsBuilder {
     Widget child,
   ) {
     final isPlayer = route.settings.name == SearchRouteObserver.playerRouteName;
-    return _defaults.buildTransitions<T>(
+    return _onyx.buildTransitions<T>(
       route,
       context,
       animation,

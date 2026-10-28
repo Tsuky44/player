@@ -1,4 +1,3 @@
-import 'dart:ui';
 
 import 'package:flutter/material.dart';
 
@@ -6,6 +5,7 @@ import '../../../models/models.dart';
 import '../../../theme/app_colors.dart';
 import '../../../theme/app_type.dart';
 import '../../../l10n/tr.dart';
+import '../../../widgets/global/glass_chrome.dart';
 
 class NextEpisodeOverlay extends StatefulWidget {
   final HomeMediaItem? nextEpisode;
@@ -99,8 +99,8 @@ class _NextEpisodeOverlayState extends State<NextEpisodeOverlay>
           onTap: widget.onPlayNext,
           child: ClipRRect(
             borderRadius: BorderRadius.circular(14),
-            child: BackdropFilter(
-              filter: ImageFilter.blur(sigmaX: 20, sigmaY: 20),
+            child: GlassBlur(
+              sigma: 20,
               child: Container(
                 height: 48,
                 constraints: const BoxConstraints(minWidth: 188),

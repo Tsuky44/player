@@ -15,6 +15,7 @@ import '../../widgets/global/overlay_back_button.dart';
 import '../../theme/app_icons.dart';
 import '../../theme/app_type.dart';
 import '../../l10n/tr.dart';
+import '../../widgets/global/glass_chrome.dart';
 
 class PersonDetailScreen extends StatefulWidget {
   final int personTmdbId;
@@ -187,7 +188,9 @@ class _PersonHeader extends StatelessWidget {
       child: Stack(
         fit: StackFit.expand,
         children: [
-          if (backdrop != null && backdrop.isNotEmpty)
+          // Le flou d'une image fixe, refait à chaque image du défilement :
+          // retiré en mode léger, avec le voile uni à la place (ADR-0086).
+          if (backdrop != null && backdrop.isNotEmpty && glassBlurs(context))
             ImageFiltered(
               imageFilter: ImageFilter.blur(sigmaX: 18, sigmaY: 18),
               child: AppNetworkImage(
@@ -328,7 +331,8 @@ class _InfoBit extends StatelessWidget {
         const SizedBox(width: 6),
         Text(
           text,
-          style: const TextStyle(color: AppColors.textSecondary, fontSize: AppType.subhead),
+          style: const TextStyle(
+              color: AppColors.textSecondary, fontSize: AppType.subhead),
         ),
       ],
     );

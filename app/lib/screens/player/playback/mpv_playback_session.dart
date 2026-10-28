@@ -13,6 +13,7 @@ import '../playback_profile.dart';
 import 'cache_pause_policy.dart';
 import 'mpv_diagnostics.dart';
 import 'mpv_dolby_vision.dart';
+import 'mpv_fast_rendering.dart';
 import 'mpv_native_surface.dart';
 import 'mpv_startup_trace.dart';
 import 'mpv_subtitle_overlay.dart';
@@ -239,8 +240,8 @@ class MpvPlaybackSession implements PlaybackSession {
   @override
   Future<int?> receivingBps() async {
     if (AppPlatform.isWeb) return null;
-    final bytes =
-        int.tryParse(await _read(_player.platform as dynamic, 'cache-speed') ?? '');
+    final bytes = int.tryParse(
+        await _read(_player.platform as dynamic, 'cache-speed') ?? '');
     return bytes == null ? null : bytes * 8;
   }
 
@@ -423,6 +424,7 @@ class MpvPlaybackSession implements PlaybackSession {
       await _set(platform, 'framedrop', 'vo');
       await _set(platform, 'video-sync', 'display-desync');
     }
+    await applyMpvFastRendering(profile, (k, v) => _set(platform, k, v));
     await _applyNativeOutputTuning();
   }
 
@@ -502,6 +504,7 @@ class MpvPlaybackSession implements PlaybackSession {
       await _set(platform, 'framedrop', 'vo');
       await _set(platform, 'video-sync', 'display-desync');
     }
+    await applyMpvFastRendering(profile, (k, v) => _set(platform, k, v));
     await _applyNativeOutputTuning();
   }
 

@@ -35,12 +35,17 @@ class AppDelegate: FlutterAppDelegate {
   ///   avec la version épinglée, la version se lit donc ici.
   /// - `setKeepScreenOn` : l'économiseur d'écran ne sait pas qu'une texture
   ///   Flutter est un film ; la session AVPlayer le suspend pendant la lecture.
+  /// - `memoryProfile` : la mémoire et le modèle, pour que `DeviceHardware`
+  ///   reconnaisse une Apple TV HD (A8, 2 Go) et passe l'interface en mode
+  ///   léger.
   private func registerDeviceChannel(messenger: FlutterBinaryMessenger) {
     let channel = FlutterMethodChannel(name: "onyx/device", binaryMessenger: messenger)
     channel.setMethodCallHandler { call, result in
       switch call.method {
       case "isTelevision":
         result(true)
+      case "memoryProfile":
+        result(AppDelegate.deviceMemoryProfile())
       case "deviceName":
         result(UIDevice.current.name)
       case "appVersion":
@@ -52,6 +57,21 @@ class AppDelegate: FlutterAppDelegate {
         result(FlutterMethodNotImplemented)
       }
     }
+  }
+
+  /// Le pendant de `memoryProfile` sur Android, plus le modèle (`AppleTV5,3`
+  /// pour une Apple TV HD) : la mémoire seule ne dit pas l'âge de la puce.
+  private static func deviceMemoryProfile() -> [String: Any] {
+    var info = utsname()
+    uname(&info)
+    let model = withUnsafeBytes(of: &info.machine) { raw in
+      String(decoding: raw.prefix { $0 != 0 }, as: UTF8.self)
+    }
+    return [
+      "totalMemoryMb": Int(ProcessInfo.processInfo.physicalMemory / (1024 * 1024)),
+      "isLowRamDevice": false,
+      "model": model,
+    ]
   }
 
   /// Même raison que sur iOS (ADR-0011 §3) : sans la catégorie `.playback`,

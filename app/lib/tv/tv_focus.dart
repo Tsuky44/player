@@ -3,6 +3,7 @@ import 'package:flutter/services.dart';
 
 import '../theme/app_colors.dart';
 import '../theme/app_motion.dart';
+import '../theme/lite_mode.dart';
 import '../utils/app_platform.dart';
 import 'tv_focus_memory.dart';
 import 'tv_focus_scroll.dart';
@@ -384,6 +385,7 @@ class _TvFocusableState extends State<TvFocusable> {
   @override
   Widget build(BuildContext context) {
     final isTv = TvScope.of(context);
+    final lite = LiteScope.of(context);
 
     // The stack is unconditional even though the ring is not: swapping the
     // child between "wrapped" and "bare" rebuilds its whole subtree, which
@@ -403,13 +405,17 @@ class _TvFocusableState extends State<TvFocusable> {
                 decoration: BoxDecoration(
                   borderRadius: widget.borderRadius,
                   border: Border.all(color: AppColors.accent, width: 3),
-                  boxShadow: [
-                    BoxShadow(
-                      color: AppColors.accent.withValues(alpha: 0.35),
-                      blurRadius: 18,
-                      spreadRadius: 1,
-                    ),
-                  ],
+                  // Le halo est un flou de plus à chaque pas de focus ;
+                  // l'anneau seul se lit aussi bien du canapé (ADR-0086).
+                  boxShadow: lite
+                      ? null
+                      : [
+                          BoxShadow(
+                            color: AppColors.accent.withValues(alpha: 0.35),
+                            blurRadius: 18,
+                            spreadRadius: 1,
+                          ),
+                        ],
                 ),
               ),
             ),
@@ -422,7 +428,7 @@ class _TvFocusableState extends State<TvFocusable> {
     if (isTv && widget.focusScale != 1.0) {
       content = AnimatedScale(
         scale: _focused ? widget.focusScale : 1.0,
-        duration: const Duration(milliseconds: 160),
+        duration: lite ? Duration.zero : AppMotion.focus,
         curve: Curves.easeOutCubic,
         child: content,
       );
@@ -469,7 +475,7 @@ class TvFocusHalo extends StatelessWidget {
         (Focus.maybeOf(context)?.hasPrimaryFocus ?? false);
     return AnimatedScale(
       scale: focused ? 1.05 : 1.0,
-      duration: const Duration(milliseconds: 160),
+      duration: LiteScope.of(context) ? Duration.zero : AppMotion.focus,
       curve: Curves.easeOutCubic,
       child: DecoratedBox(
         position: DecorationPosition.foreground,

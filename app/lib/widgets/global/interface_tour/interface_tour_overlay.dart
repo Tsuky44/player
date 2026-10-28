@@ -158,7 +158,7 @@ class _InterfaceTourOverlayState extends State<InterfaceTourOverlay>
     final isLast = _index == widget.steps.length - 1;
     // Un flou plein écran sur un boîtier de salon est la dépense que
     // l'ADR-0025 demande d'éviter, et à trois mètres le voile seul suffit.
-    final blurred = !TvScope.of(context);
+    final blurred = !TvScope.of(context) && glassBlurs(context);
 
     // Une route nue n'a pas de `Material` au-dessus d'elle : sans celui-ci,
     // le texte de la carte perd la police et les couleurs du thème.

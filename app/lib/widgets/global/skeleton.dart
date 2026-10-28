@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../../theme/app_colors.dart';
 import '../../theme/app_motion.dart';
+import '../../theme/lite_mode.dart';
 import '../../utils/responsive.dart';
 import 'poster_card.dart';
 
@@ -14,6 +15,9 @@ import 'poster_card.dart';
 ///
 /// La pulsation est un fondu d'opacité : sous « réduire les animations » elle
 /// reste, comme tout fondu ([AppMotion.fade]), mais elle ralentit de moitié.
+/// En mode léger elle s'arrête (ADR-0086) : une grille de squelettes qui
+/// pulse redessine tout l'écran à chaque image, pendant tout le chargement
+/// — sur une Apple TV HD, le temps que le réseau répond.
 class SkeletonPulse extends StatefulWidget {
   final Widget child;
 
@@ -33,8 +37,14 @@ class _SkeletonPulseState extends State<SkeletonPulse>
   @override
   void didChangeDependencies() {
     super.didChangeDependencies();
+    if (LiteScope.of(context)) {
+      _controller
+        ..stop()
+        ..value = 1;
+      return;
+    }
     _controller.duration = Duration(
-      milliseconds: AppMotion.reduced(context) ? 2200 : 1100,
+      milliseconds: MediaQuery.disableAnimationsOf(context) ? 2200 : 1100,
     );
     if (!_controller.isAnimating) _controller.repeat(reverse: true);
   }

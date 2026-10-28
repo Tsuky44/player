@@ -3112,4 +3112,16 @@ const Map<String, String> kEnglish = <String, String>{
       'Approved',
   'Téléchargement':
       'Download',
+  'Mode léger':
+      'Lite mode',
+  'Retire le flou, les mouvements et les ombres pour garder l’interface et la lecture fluides sur un petit appareil. Le fichier reste lu tel quel. {0}':
+      'Removes blur, motion and shadows to keep the interface and playback smooth on a small device. The file still plays as is. {0}',
+  'Actif : cet appareil a peu de ressources.':
+      'On: this device has few resources.',
+  'Actif : l’interface saccadait sur cet appareil.':
+      'On: the interface stuttered on this device.',
+  'Actif.':
+      'On.',
+  'Inactif.':
+      'Off.',
 };

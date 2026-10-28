@@ -4,6 +4,7 @@ import 'dart:math' as math;
 import 'package:flutter/material.dart';
 import '../../theme/app_colors.dart';
 import '../../theme/app_motion.dart';
+import '../../theme/lite_mode.dart';
 import '../../tv/tv_mode.dart';
 import '../../utils/app_platform.dart';
 import '../../utils/responsive.dart';
@@ -20,7 +21,30 @@ import '../../theme/app_type.dart';
 /// chaque image. C'est le premier suspect de l'accueil qui ne suivait plus la
 /// télécommande. Le verre y devient un voile plus dense, qui garde le texte
 /// lisible sans rien relire de dessous.
-bool get glassBlurs => !AppPlatform.isWebOS;
+///
+/// Ni en mode léger (ADR-0086) : une Apple TV HD paie le même prix pour la
+/// même raison, et un Direct Play derrière garde la puce pour lui.
+bool glassBlurs(BuildContext context) =>
+    !AppPlatform.isWebOS && !LiteScope.of(context);
+
+/// Un flou de ce qui est dessous, qui s'efface là où le verre ne floute pas
+/// ([glassBlurs]). Pour les panneaux posés sur le film : leur fond est déjà
+/// assez dense pour porter le texte sans lui.
+class GlassBlur extends StatelessWidget {
+  final double sigma;
+  final Widget child;
+
+  const GlassBlur({super.key, required this.sigma, required this.child});
+
+  @override
+  Widget build(BuildContext context) {
+    if (!glassBlurs(context)) return child;
+    return BackdropFilter(
+      filter: ImageFilter.blur(sigmaX: sigma, sigmaY: sigma),
+      child: child,
+    );
+  }
+}
 
 /// Full-width frosted strip — must float above scrolling content to blur it.
 ///
@@ -33,7 +57,7 @@ class GlassHeaderStrip extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final blurs = glassBlurs;
+    final blurs = glassBlurs(context);
     final veil = DecoratedBox(
       decoration: BoxDecoration(
         gradient: LinearGradient(
@@ -79,7 +103,7 @@ class GlassBarSurface extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final blurs = glassBlurs;
+    final blurs = glassBlurs(context);
     final hairline = BorderSide(color: Colors.white.withValues(alpha: 0.08));
     final veil = DecoratedBox(
       decoration: BoxDecoration(
@@ -121,7 +145,7 @@ class GlassSurface extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final blurs = glassBlurs;
+    final blurs = glassBlurs(context);
     final veil = Container(
       padding: padding,
       decoration: BoxDecoration(
