@@ -135,7 +135,11 @@ class HomeSkeleton extends StatelessWidget {
   /// Hauteur du bandeau, celle de `HeroBanner.heightFor`.
   final double heroHeight;
 
-  const HomeSkeleton({super.key, required this.heroHeight});
+  /// La place de la barre du haut du téléphone : l'accueil réel commence sous
+  /// elle, et le squelette doit y commencer aussi pour que rien ne saute.
+  final double topInset;
+
+  const HomeSkeleton({super.key, required this.heroHeight, this.topInset = 0});
 
   @override
   Widget build(BuildContext context) {
@@ -173,6 +177,7 @@ class HomeSkeleton extends StatelessWidget {
         physics: const NeverScrollableScrollPhysics(),
         padding: EdgeInsets.zero,
         children: [
+          SizedBox(height: topInset),
           SizedBox(
             height: heroHeight,
             child: Padding(

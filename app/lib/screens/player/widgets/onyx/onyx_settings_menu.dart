@@ -11,6 +11,7 @@ import '../../../../tv/tv_mode.dart';
 import '../../../../utils/app_platform.dart';
 import '../../hooks/use_episode_navigation.dart';
 import '../../hooks/use_player_controller.dart';
+import '../../hooks/use_player_popup.dart';
 import '../../video_display_mode.dart';
 import '../direct_source_label.dart';
 import '../track_label.dart';
@@ -82,6 +83,24 @@ class OnyxSettingsMenu extends StatefulWidget {
 
   @override
   State<OnyxSettingsMenu> createState() => _OnyxSettingsMenuState();
+}
+
+/// Retour depuis une section : remonter à l'index au lieu de tout fermer. Sur
+/// l'index, désactivée — le menu se ferme.
+class _UpOneLevelAction extends Action<PlayerPopupBackIntent> {
+  _UpOneLevelAction(this._menu);
+
+  final _OnyxSettingsMenuState _menu;
+
+  @override
+  bool isEnabled(PlayerPopupBackIntent intent) =>
+      _menu.mounted && _menu._section != OnyxMenuSection.root;
+
+  @override
+  Object? invoke(PlayerPopupBackIntent intent) {
+    _menu._backToRoot();
+    return true;
+  }
 }
 
 class _OnyxSettingsMenuState extends State<OnyxSettingsMenu> {
@@ -202,8 +221,7 @@ class _OnyxSettingsMenuState extends State<OnyxSettingsMenu> {
     if (_section == OnyxMenuSection.root) return KeyEventResult.ignored;
 
     final key = event.logicalKey;
-    if (kTvBackKeys.contains(key) ||
-        key == LogicalKeyboardKey.arrowLeft) {
+    if (isSelfHandledBackKey(key) || key == LogicalKeyboardKey.arrowLeft) {
       _backToRoot();
       return KeyEventResult.handled;
     }
@@ -278,8 +296,9 @@ class _OnyxSettingsMenuState extends State<OnyxSettingsMenu> {
     return track == null ? lang : splitTrackLabel(track.displayName).$1;
   }
 
-  String get _speedValue =>
-      widget.playbackRate == 1.0 ? tr('Normale') : '${_trimRate(widget.playbackRate)}×';
+  String get _speedValue => widget.playbackRate == 1.0
+      ? tr('Normale')
+      : '${_trimRate(widget.playbackRate)}×';
 
   String get _displayValue => _mode.label;
 
@@ -333,36 +352,41 @@ class _OnyxSettingsMenuState extends State<OnyxSettingsMenu> {
       canRequestFocus: false,
       skipTraversal: true,
       onKeyEvent: _handleMenuKey,
-      child: Material(
-        color: Colors.transparent,
-        child: Container(
-          width: OnyxSettingsMenu.width,
-          decoration: BoxDecoration(
-            // Flat surface, no blur: this chrome renders no glass anywhere.
-            color: OnyxChromeTheme.tooltipSurface,
-            borderRadius: BorderRadius.circular(10),
-            border: Border.all(color: Colors.white.withValues(alpha: 0.1)),
-            boxShadow: [
-              BoxShadow(
-                color: Colors.black.withValues(alpha: 0.5),
-                blurRadius: 32,
-                offset: const Offset(0, 12),
+      child: Actions(
+        actions: <Type, Action<Intent>>{
+          PlayerPopupBackIntent: _UpOneLevelAction(this),
+        },
+        child: Material(
+          color: Colors.transparent,
+          child: Container(
+            width: OnyxSettingsMenu.width,
+            decoration: BoxDecoration(
+              // Flat surface, no blur: this chrome renders no glass anywhere.
+              color: OnyxChromeTheme.tooltipSurface,
+              borderRadius: BorderRadius.circular(10),
+              border: Border.all(color: Colors.white.withValues(alpha: 0.1)),
+              boxShadow: [
+                BoxShadow(
+                  color: Colors.black.withValues(alpha: 0.5),
+                  blurRadius: 32,
+                  offset: const Offset(0, 12),
+                ),
+              ],
+            ),
+            // Height follows the visible section, so leaving a 12-chapter list
+            // for "Affichage" shrinks the menu instead of leaving a hole.
+            child: AnimatedSize(
+              duration: const Duration(milliseconds: 160),
+              curve: Curves.easeOut,
+              alignment: Alignment.topCenter,
+              child: ConstrainedBox(
+                constraints: const BoxConstraints(
+                  maxHeight: OnyxSettingsMenu.maxHeight,
+                ),
+                child: _section == OnyxMenuSection.root
+                    ? _buildRoot()
+                    : _buildSection(),
               ),
-            ],
-          ),
-          // Height follows the visible section, so leaving a 12-chapter list
-          // for "Affichage" shrinks the menu instead of leaving a hole.
-          child: AnimatedSize(
-            duration: const Duration(milliseconds: 160),
-            curve: Curves.easeOut,
-            alignment: Alignment.topCenter,
-            child: ConstrainedBox(
-              constraints: const BoxConstraints(
-                maxHeight: OnyxSettingsMenu.maxHeight,
-              ),
-              child: _section == OnyxMenuSection.root
-                  ? _buildRoot()
-                  : _buildSection(),
             ),
           ),
         ),
@@ -458,7 +482,8 @@ class _OnyxSettingsMenuState extends State<OnyxSettingsMenu> {
   ];
 
   List<QualityTier> get _qualityTiers {
-    final offered = _controller?.mediaTracks?.qualities ?? const <QualityTier>[];
+    final offered =
+        _controller?.mediaTracks?.qualities ?? const <QualityTier>[];
     return offered.isEmpty ? _legacyQualities : offered;
   }
 
@@ -570,9 +595,8 @@ class _OnyxSettingsMenuState extends State<OnyxSettingsMenu> {
     // Direct Play reads the tracks off the file; a transcode carries the
     // canonical list from the server. Same split as [PlayerSubtitlesPicker].
     if (controller.currentQuality == null) {
-      final subs = widget.session.subtitleTracks
-          .where((t) => t.id != 'auto')
-          .toList();
+      final subs =
+          widget.session.subtitleTracks.where((t) => t.id != 'auto').toList();
       if (subs.isEmpty) return const _OnyxMenuEmpty();
       final current = widget.session.currentSubtitleTrack;
 
@@ -594,7 +618,8 @@ class _OnyxSettingsMenuState extends State<OnyxSettingsMenu> {
       ]);
     }
 
-    final subtitles = controller.mediaTracks?.subtitles ?? const <MediaSubtitleTrack>[];
+    final subtitles =
+        controller.mediaTracks?.subtitles ?? const <MediaSubtitleTrack>[];
     return _sectionList([
       _OnyxMenuOption(
         label: tr('Désactivés'),
@@ -612,9 +637,7 @@ class _OnyxSettingsMenuState extends State<OnyxSettingsMenu> {
             subtitle: subtitle,
             // A bitmap track has to be burned into the video while
             // transcoding, so picking it costs a short reload.
-            badge: !track.ready
-                ? '…'
-                : (track.image ? 'image' : null),
+            badge: !track.ready ? '…' : (track.image ? 'image' : null),
             selected: controller.selectedSubtitleLang == track.lang,
             onTap: () {
               controller.setSubtitle(track.lang);
@@ -722,7 +745,9 @@ class _OnyxSettingsMenuState extends State<OnyxSettingsMenu> {
     return _sectionList([
       for (final chapter in chapters)
         _OnyxMenuOption(
-          label: chapter.title.isEmpty ? tr('Chapitre {0}', [chapter.id]) : chapter.title,
+          label: chapter.title.isEmpty
+              ? tr('Chapitre {0}', [chapter.id])
+              : chapter.title,
           value: _timecode(chapter.startTime),
           selected: false,
           onTap: () {

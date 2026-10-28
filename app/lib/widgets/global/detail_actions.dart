@@ -2,6 +2,8 @@ import 'package:flutter/material.dart';
 
 import '../../models/models.dart';
 import '../../theme/app_colors.dart';
+import '../../theme/app_theme.dart';
+import '../../tv/tv_focus_caption.dart';
 import '../../utils/responsive.dart';
 import '../../theme/app_icons.dart';
 import '../../theme/app_type.dart';
@@ -74,15 +76,17 @@ class DetailActions extends StatelessWidget {
   /// Les actions secondaires en disques de verre de 44 px, tous identiques :
   /// un bouton « Marquer vu » souligné à côté de trois icônes nues se lisait
   /// comme quatre composants de quatre bibliothèques différentes.
-  static final ButtonStyle secondaryStyle = IconButton.styleFrom(
-    backgroundColor: Colors.white.withValues(alpha: 0.08),
-    foregroundColor: AppColors.textPrimary,
-    hoverColor: Colors.white.withValues(alpha: 0.14),
-    highlightColor: Colors.white.withValues(alpha: 0.18),
-    fixedSize: const Size(44, 44),
-    minimumSize: const Size(44, 44),
-    iconSize: 21,
-    shape: const CircleBorder(),
+  static final ButtonStyle secondaryStyle = AppTheme.focusRinged(
+    IconButton.styleFrom(
+      backgroundColor: Colors.white.withValues(alpha: 0.08),
+      foregroundColor: AppColors.textPrimary,
+      hoverColor: Colors.white.withValues(alpha: 0.14),
+      highlightColor: Colors.white.withValues(alpha: 0.18),
+      fixedSize: const Size(44, 44),
+      minimumSize: const Size(44, 44),
+      iconSize: 21,
+      shape: const CircleBorder(),
+    ),
   );
 
   @override
@@ -135,11 +139,13 @@ class DetailActions extends StatelessWidget {
       crossAxisAlignment: CrossAxisAlignment.start,
       mainAxisSize: MainAxisSize.min,
       children: [
-        Wrap(
-          spacing: 16,
-          runSpacing: 8,
-          crossAxisAlignment: WrapCrossAlignment.center,
-          children: [if (play != null) play, ...secondary],
+        TvFocusCaption(
+          child: Wrap(
+            spacing: 16,
+            runSpacing: 8,
+            crossAxisAlignment: WrapCrossAlignment.center,
+            children: [if (play != null) play, ...secondary],
+          ),
         ),
         if (progressLine != null) ...[
           const SizedBox(height: 14),

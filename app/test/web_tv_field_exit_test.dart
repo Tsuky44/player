@@ -15,6 +15,7 @@ void main() {
     WebTvFieldExit.install();
   });
   tearDown(() {
+    WebTvFieldExit.debugKeyboardOwnsRemote = null;
     WebTvFieldExit.debugUninstall();
     TvMode.enabled.value = false;
   });
@@ -97,5 +98,41 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(editing(tester), isTrue);
+  });
+
+  group('Android TV et Apple TV', () {
+    // Leur clavier ouvert garde la télécommande : une flèche qui arrive au
+    // champ veut dire qu'il est fermé, et le champ ne la retient plus.
+    setUp(() => WebTvFieldExit.debugKeyboardOwnsRemote = true);
+
+    for (final arrow in [
+      LogicalKeyboardKey.arrowLeft,
+      LogicalKeyboardKey.arrowRight,
+    ]) {
+      testWidgets('${arrow.keyLabel} sort aussi du champ', (tester) async {
+        await pumpField(tester);
+        expect(editing(tester), isTrue);
+
+        await tester.sendKeyEvent(arrow);
+        await tester.pumpAndSettle();
+
+        expect(editing(tester), isFalse);
+      });
+    }
+
+    testWidgets('Bas sort du champ et fait le pas demandé, d’un seul appui',
+        (tester) async {
+      final key = await pumpField(tester);
+
+      await tester.sendKeyEvent(LogicalKeyboardKey.arrowDown);
+      await tester.pumpAndSettle();
+
+      // Le cadre du champ suivant, pas celui du champ quitté : le premier
+      // appui ne se perd plus à poser l'anneau.
+      expect(editing(tester), isFalse);
+      expect(onFrameOf(key), isFalse);
+      expect(FocusManager.instance.primaryFocus?.debugLabel,
+          'tv-deferred-keyboard');
+    });
   });
 }

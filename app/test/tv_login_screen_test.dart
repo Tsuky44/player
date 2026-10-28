@@ -10,6 +10,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'package:onyx/models/models.dart';
 import 'package:onyx/providers/auth_provider.dart';
 import 'package:onyx/screens/auth/tv_login_screen.dart';
+import 'package:onyx/screens/auth/widgets/closes_on_sign_in.dart';
 import 'package:onyx/services/api_client.dart';
 import 'package:onyx/services/tv_link.dart';
 
@@ -185,6 +186,50 @@ void main() {
     expect(auth.isAuthenticated, isTrue);
     expect(auth.currentUser?.username, 'mathis');
     expect(find.text('Compte connecté'), findsOneWidget);
+
+    await unmount(tester);
+  });
+
+  testWidgets('the password form pushed over the QR closes once signed in',
+      (tester) async {
+    final apiClient = ApiClient();
+    late AuthProvider auth;
+
+    await tester.pumpWidget(
+      MultiProvider(
+        providers: [
+          Provider<ApiClient>.value(value: apiClient),
+          ChangeNotifierProvider(create: (_) {
+            auth = AuthProvider(apiClient);
+            return auth;
+          }),
+        ],
+        child: MaterialApp(
+          home: Builder(
+            builder: (context) => TextButton(
+              onPressed: () => Navigator.of(context).push(MaterialPageRoute(
+                builder: (_) => const ClosesOnSignIn(child: Text('formulaire')),
+              )),
+              child: const Text('ouvrir'),
+            ),
+          ),
+        ),
+      ),
+    );
+    await tester.tap(find.text('ouvrir'));
+    await tester.pumpAndSettle();
+    expect(find.text('formulaire'), findsOneWidget);
+
+    // La panne : la racine passait à l'accueil sous la page poussée, qui
+    // restait affichée — la personne se croyait toujours déconnectée.
+    await auth.adoptPairedSession(
+      token: 'session-token',
+      user: User(id: 7, username: 'mathis'),
+    );
+    await tester.pumpAndSettle();
+
+    expect(find.text('formulaire'), findsNothing);
+    expect(find.text('ouvrir'), findsOneWidget);
 
     await unmount(tester);
   });

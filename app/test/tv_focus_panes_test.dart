@@ -75,6 +75,31 @@ void main() {
     expect(setting.hasFocus, isTrue);
   });
 
+  testWidgets(
+      'droite entre sur le premier réglage de la page, pas sur celui de la '
+      'même hauteur', (tester) async {
+    final first = node('cat0');
+    final fifth = node('cat4');
+    final top = node('top');
+    final level = node('level');
+    await pumpPanes(
+      tester,
+      list: [
+        target(first),
+        const SizedBox(height: 160),
+        target(fifth),
+      ],
+      // Un réglage à la hauteur de la catégorie, sous le premier de la page.
+      page: [target(top), const SizedBox(height: 160), target(level)],
+    );
+    fifth.requestFocus();
+    await tester.pump();
+
+    await press(tester, LogicalKeyboardKey.arrowRight);
+
+    expect(top.hasFocus, isTrue);
+  });
+
   testWidgets('gauche revient à la catégorie quittée, pas à la plus proche',
       (tester) async {
     final first = node('cat0');

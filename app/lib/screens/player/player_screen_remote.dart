@@ -203,7 +203,7 @@ extension _PlayerRemote on _PlayerScreenState {
       case PlayerKeyBack():
         // Innermost first: a menu opened from the chrome, then the episode
         // panel, then the control bar, and only then the player itself.
-        if (_popups.dismissTop()) break;
+        if (_popups.back()) break;
         if (_episodesPanel.isOpen) {
           _closeEpisodesPanel();
           break;
@@ -234,7 +234,7 @@ extension _PlayerRemote on _PlayerScreenState {
     // The remote's Back arrives here, not as a key event — and it has to
     // unwind the same stack the key path does, innermost first, or it
     // walks out of the film with a menu still open on top of it.
-    if (_popups.dismissTop()) return;
+    if (_popups.back()) return;
     if (_episodesPanel.isOpen) {
       _closeEpisodesPanel();
       return;

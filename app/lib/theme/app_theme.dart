@@ -29,6 +29,21 @@ abstract final class AppTheme {
     });
   }
 
+  /// Le bord d'une puce ([ChoiceChip]) : [resting] au repos, l'anneau au
+  /// focus.
+  ///
+  /// Le focus d'une puce n'était qu'un voile bleu — le même que celui d'une
+  /// puce choisie. Dans une rangée « 2 3 4 5 », la télécommande ne savait pas
+  /// distinguer le choix en cours de celui qu'elle survolait.
+  static BorderSide chipSide(BorderSide resting) {
+    return WidgetStateBorderSide.resolveWith((states) {
+      if (states.contains(WidgetState.focused)) {
+        return const BorderSide(color: AppColors.accent, width: 2.5);
+      }
+      return resting;
+    });
+  }
+
   /// Le thème, construit une fois.
   ///
   /// C'était un getter : chaque lecture reconstruisait `ThemeData` et toutes
@@ -97,7 +112,7 @@ abstract final class AppTheme {
           fontWeight: FontWeight.w600,
         ),
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
-        side: BorderSide(color: AppColors.glassBorder),
+        side: chipSide(BorderSide(color: AppColors.glassBorder)),
         padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
       ),
       dividerTheme: DividerThemeData(
@@ -126,7 +141,7 @@ abstract final class AppTheme {
         ),
       ),
       elevatedButtonTheme: ElevatedButtonThemeData(
-        style: _focusRinged(ElevatedButton.styleFrom(
+        style: focusRinged(ElevatedButton.styleFrom(
           backgroundColor: AppColors.textPrimary,
           foregroundColor: AppColors.background,
           disabledBackgroundColor: AppColors.surfaceHover,
@@ -142,7 +157,7 @@ abstract final class AppTheme {
         )),
       ),
       outlinedButtonTheme: OutlinedButtonThemeData(
-        style: _focusRinged(
+        style: focusRinged(
           OutlinedButton.styleFrom(
             foregroundColor: AppColors.textPrimary,
             side: BorderSide(color: AppColors.glassBorder),
@@ -156,8 +171,14 @@ abstract final class AppTheme {
           resting: BorderSide(color: AppColors.glassBorder),
         ),
       ),
+      // Les boutons-icônes aussi : sans anneau, leur focus n'était qu'un voile
+      // de 10 % sur un disque déjà gris — les actions d'une fiche ou d'un
+      // épisode devenaient introuvables à la télécommande.
+      iconButtonTheme: IconButtonThemeData(
+        style: focusRinged(const ButtonStyle()),
+      ),
       textButtonTheme: TextButtonThemeData(
-        style: _focusRinged(TextButton.styleFrom(
+        style: focusRinged(TextButton.styleFrom(
           foregroundColor: AppColors.textSecondary,
           textStyle:
               textTheme.labelLarge?.copyWith(fontWeight: FontWeight.w500),
@@ -248,7 +269,10 @@ abstract final class AppTheme {
 
   /// Adds the focus ring to a button style without disturbing anything else it
   /// declares. [resting] is the border the button wears when it is not focused.
-  static ButtonStyle _focusRinged(ButtonStyle style, {BorderSide? resting}) {
+  ///
+  /// Public for the local button themes, which replace the app's instead of
+  /// merging into it ([DetailActions.secondaryStyle]).
+  static ButtonStyle focusRinged(ButtonStyle style, {BorderSide? resting}) {
     return style.copyWith(side: _focusSide(resting));
   }
 }

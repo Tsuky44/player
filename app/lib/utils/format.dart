@@ -16,7 +16,7 @@ String formatDuration(int seconds) {
 /// rien, pour que l'appelant n'affiche pas « restantes » tout seul.
 String? formatRemaining(int remainingSeconds) {
   final duration = formatDuration(remainingSeconds);
-  return duration.isEmpty ? null : '$duration restantes';
+  return duration.isEmpty ? null : tr('{0} restantes', [duration]);
 }
 
 /// Formats seconds as mm:ss or hh:mm:ss for playback/chapter debug UI.

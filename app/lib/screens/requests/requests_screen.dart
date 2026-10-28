@@ -192,7 +192,7 @@ class _RequestsScreenState extends State<RequestsScreen> {
             child: Padding(
               padding: EdgeInsets.fromLTRB(
                 horizontalPadding,
-                widget.embedded ? embeddedShellContentTopInset(context) : 28,
+                shellTabTopInset(context, embedded: widget.embedded),
                 horizontalPadding,
                 20,
               ),

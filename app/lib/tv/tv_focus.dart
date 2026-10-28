@@ -36,6 +36,23 @@ final Set<LogicalKeyboardKey> kTvBackKeys = <LogicalKeyboardKey>{
   LogicalKeyboardKey.gameButtonB,
 };
 
+/// Vrai pour une touche Retour qu'un widget doit traiter lui-même.
+///
+/// Sur Android, le Retour de la télécommande (`goBack`) arrive deux fois : en
+/// touche, puis en `popRoute` — sur Android 16, même quand la touche a été
+/// traitée (constaté sur l'émulateur Android TV 16, le 2026-10-28). Traité aux
+/// deux endroits, un seul appui défaisait deux couches : Retour sur la feuille
+/// « Ajouter à une liste » fermait aussi la fiche dessous, et Retour sur la
+/// barre du lecteur quittait le film au lieu de la ranger.
+///
+/// Sur Android, Retour passe donc par le système et lui seul : un `PopScope`,
+/// le navigateur, ou le Retour du lecteur. La touche reste à traiter partout
+/// ailleurs — Échap d'un clavier, le Menu de la Siri Remote, le B d'une
+/// manette, qu'aucun système ne transforme en `popRoute`.
+bool isSelfHandledBackKey(LogicalKeyboardKey key) =>
+    kTvBackKeys.contains(key) &&
+    !(AppPlatform.isAndroid && key == LogicalKeyboardKey.goBack);
+
 /// Shortcuts merged into the app's defaults so `select` and the controller's A
 /// button activate anything Flutter already activates with Enter — every
 /// Material button, tile and menu item, without touching a single one of them.
@@ -52,7 +69,10 @@ Map<ShortcutActivator, Intent> get tvSelectShortcuts =>
       const SingleActivator(LogicalKeyboardKey.gameButtonA):
           const ActivateIntent(),
       const SingleActivator(LogicalKeyboardKey.escape): _dismissThenBack,
-      const SingleActivator(LogicalKeyboardKey.goBack): _dismissThenBack,
+      // Pas sur Android : le système en fait un `popRoute`, qui ferme déjà
+      // le dialogue. Voir [isSelfHandledBackKey].
+      if (!AppPlatform.isAndroid)
+        const SingleActivator(LogicalKeyboardKey.goBack): _dismissThenBack,
       const SingleActivator(LogicalKeyboardKey.gameButtonB): _dismissThenBack,
       if (AppPlatform.isWeb && TvMode.isTv) ...webTvShortcuts,
     };

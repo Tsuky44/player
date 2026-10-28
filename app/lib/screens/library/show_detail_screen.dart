@@ -683,7 +683,7 @@ class _ShowDetailScreenState extends State<ShowDetailScreen>
                       // l'espace libre, et le bouton de téléchargement flottait
                       // au milieu de la ligne au lieu de se caler à droite.
                       child: Text(
-                        '$availableCount/$totalCount disponibles',
+                        tr('{0}/{1} disponibles', [availableCount, totalCount]),
                         overflow: TextOverflow.ellipsis,
                         style: Theme.of(context).textTheme.bodyMedium?.copyWith(
                               color: AppColors.textMuted,

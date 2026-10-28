@@ -25,6 +25,7 @@ import '../../widgets/global/interface_tour/tour_anchor.dart';
 import '../../desktop_window.dart';
 import '../../navigation/media_link.dart';
 import '../../navigation/shell_navigator.dart';
+import '../../tv/tv_deferred_keyboard.dart';
 import '../../tv/tv_mode.dart';
 import '../../tv/tv_pairing_link.dart';
 import '../settings/tv_pairing_screen.dart';
@@ -331,6 +332,40 @@ class _MainShellState extends State<MainShell> {
         child: navigator,
       );
     }
+    if (!isWide) {
+      // Une fiche ouverte sur téléphone n'a pas de barre de verre : son
+      // contenu défile sous l'heure et les icônes de la barre d'état et se
+      // superpose à eux. Un voile sombre court les garde lisibles. La pile
+      // reste en place quand la fiche se ferme, pour ne pas déplacer le
+      // navigateur dans l'arbre.
+      navigator = Stack(
+        fit: StackFit.passthrough,
+        children: [
+          navigator,
+          if (_pageOpen)
+            Positioned(
+              top: 0,
+              left: 0,
+              right: 0,
+              height: media.padding.top + 12,
+              child: IgnorePointer(
+                child: DecoratedBox(
+                  decoration: BoxDecoration(
+                    gradient: LinearGradient(
+                      begin: Alignment.topCenter,
+                      end: Alignment.bottomCenter,
+                      colors: [
+                        AppColors.background.withValues(alpha: 0.85),
+                        AppColors.background.withValues(alpha: 0),
+                      ],
+                    ),
+                  ),
+                ),
+              ),
+            ),
+        ],
+      );
+    }
     return NavigatorPopHandler<Object?>(
       // Retour (Android, souris, clavier) ferme d'abord la fiche ouverte.
       onPopWithResult: (_) => shellNavigatorKey.currentState?.maybePop(),
@@ -350,6 +385,9 @@ class _MainShellState extends State<MainShell> {
   /// l'accueil vers la sortie — après confirmation, parce qu'un appui de trop
   /// en remontant ne doit pas fermer l'app.
   void _handleTvBack() {
+    // Le champ de recherche gardait le focus clavier fermé : Retour proposait
+    // de quitter l'app au lieu de rendre la télécommande à la barre.
+    if (TvDeferredKeyboardState.releaseFocused()) return;
     if (!_headerNode.hasFocus) {
       _focusTab(_selectedTab);
       return;
@@ -385,6 +423,22 @@ class _MainShellState extends State<MainShell> {
       }),
       child: child,
     );
+  }
+
+  /// Haut depuis le contenu arrive sur l'onglet affiché, comme sur Android TV.
+  ///
+  /// Le parcours directionnel choisissait l'onglet le plus proche à la
+  /// verticale : depuis le bouton du bandeau on montait sur « Films » en étant
+  /// sur l'accueil, et l'on ne savait plus quel onglet était ouvert. La
+  /// recherche et le compte, à droite, restent atteignables tels quels.
+  void _landOnSelectedTab(String selectedTab) {
+    final landed = FocusManager.instance.primaryFocus;
+    final selected = _tabNodes[selectedTab];
+    if (landed == null || selected == null || identical(landed, selected)) {
+      return;
+    }
+    if (!_tabNodes.values.contains(landed) || selected.context == null) return;
+    selected.requestFocus();
   }
 
   void _focusTab(String tab) {
@@ -437,17 +491,20 @@ class _MainShellState extends State<MainShell> {
     }
 
     final tabWidgets = <String, Widget>{
-      ShellTabs.home: HomeScreen(
-        embedded: isWide,
-        onNavigateToMovies: openFirst(LibraryKind.movies),
-        onNavigateToShows: openFirst(LibraryKind.shows),
-        onOpenLibrary: (libraryId) {
-          for (final library in libraries) {
-            if (library.id == libraryId) {
-              _selectTab(ShellTabs.library(library));
+      ShellTabs.home: _trackScroll(
+        ShellTabs.home,
+        HomeScreen(
+          embedded: isWide,
+          onNavigateToMovies: openFirst(LibraryKind.movies),
+          onNavigateToShows: openFirst(LibraryKind.shows),
+          onOpenLibrary: (libraryId) {
+            for (final library in libraries) {
+              if (library.id == libraryId) {
+                _selectTab(ShellTabs.library(library));
+              }
             }
-          }
-        },
+          },
+        ),
       ),
       for (final library in libraries)
         ShellTabs.library(library): _trackScroll(
@@ -510,6 +567,9 @@ class _MainShellState extends State<MainShell> {
                 focusNode: _headerNode,
                 canRequestFocus: false,
                 skipTraversal: true,
+                onFocusChange: (focused) {
+                  if (focused && isTv) _landOnSelectedTab(selectedTab);
+                },
                 child: ShellDesktopHeader(
                   selected: selectedTab,
                   onTabSelected: _selectTab,
@@ -523,7 +583,7 @@ class _MainShellState extends State<MainShell> {
               ),
             ),
           // Hidden over an open page: it would sit on top of its back button.
-          if (!isWide && selectedTab != ShellTabs.home && !_pageOpen)
+          if (!isWide && !_pageOpen)
             Positioned(
               top: 0,
               left: 0,
@@ -531,6 +591,8 @@ class _MainShellState extends State<MainShell> {
               child: MobileTopBar(
                 scrolled: _scrolledTabs.contains(selectedTab),
                 authProvider: authProvider,
+                homeProvider: homeProvider,
+                onLogoTap: () => _selectTab(ShellTabs.home),
               ),
             ),
         ],

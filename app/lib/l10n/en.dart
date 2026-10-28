@@ -470,8 +470,6 @@ const Map<String, String> kEnglish = <String, String>{
       'OnyxHub integration key',
   'Clé API TMDB':
       'TMDB API key',
-  'Clé OnyxHub effacée.':
-      'OnyxHub key cleared.',
   'Clé TMDB effacée.':
       'TMDB key cleared.',
   'Clé active {0} — laisser vide pour la garder':
@@ -1346,8 +1344,22 @@ const Map<String, String> kEnglish = <String, String>{
       'The other devices have been signed out.',
   'Les comptes du serveur et leurs droits, les personnes qui demandent un accès et les liens d’invitation.':
       'The server accounts and their rights, the people requesting access and the invitation links.',
-  'Les demandes faites depuis l’onglet Demandes y sont transmises pour être téléchargées. Dans OnyxHub, « Connecter Onyx » remplit ces deux champs ; un ancien MediaHub marche aussi.':
-      'Requests made from the Requests tab are sent there to be downloaded. In OnyxHub, “Connect Onyx” fills in both fields; an older MediaHub works too.',
+  'Les demandes faites depuis l’onglet Demandes y sont transmises pour être téléchargées. Dans OnyxHub, « Connecter Onyx » remplit ces deux champs.':
+      'Requests made from the Requests tab are sent there to be downloaded. In OnyxHub, “Connect Onyx” fills in both fields.',
+  'Les demandes faites depuis l’onglet Demandes sont transmises à MediaHub pour être téléchargées. « Mes demandes » et les notifications d’administrateur ne marchent qu’avec OnyxHub.':
+      'Requests made from the Requests tab are sent to MediaHub to be downloaded. “My requests” and admin notifications only work with OnyxHub.',
+  'Service de demandes':
+      'Requests service',
+  'MediaHub':
+      'MediaHub',
+  'MediaHub enregistré.':
+      'MediaHub saved.',
+  'Adresse de MediaHub':
+      'MediaHub address',
+  'Clé API MediaHub':
+      'MediaHub API key',
+  'Clé effacée.':
+      'Key cleared.',
   'Les deux serveurs cessent de se transmettre la progression et les comptes liés entre eux sont dissociés. L’historique déjà partagé reste sur chaque serveur.':
       'The two servers stop sending each other progress, and the accounts linked between them are unlinked. The history already shared stays on each server.',
   'Les dix dernières lectures gardent leur journal.':
@@ -2102,6 +2114,12 @@ const Map<String, String> kEnglish = <String, String>{
       'Server',
   'Serveur actif':
       'Active server',
+  'serveur actif':
+      'active server',
+  'serveur principal':
+      'main server',
+  'Lié à {0}':
+      'Linked to {0}',
   'Serveur actif, comptes et comptes liés':
       'Active server, accounts and linked accounts',
   'Serveur injoignable':
@@ -2700,6 +2718,10 @@ const Map<String, String> kEnglish = <String, String>{
       '{0} result{1}',
   '{0} sur {1}':
       '{0} of {1}',
+  '{0} sur le serveur {1}':
+      '{0} on server {1}',
+  '{0} sur le serveur {1} (en attente des administrateurs)':
+      '{0} on server {1} (waiting for the administrators)',
   '{0} sur disque · {1} de contenu':
       '{0} on disk · {1} of content',
   '{0} sélectionné{1}':
@@ -2734,6 +2756,10 @@ const Map<String, String> kEnglish = <String, String>{
       '{0} episodes',
   '{0} épisode{1}':
       '{0} episode{1}',
+  '{0} saison{1}':
+      '{0} season{1}',
+  '{0} restantes':
+      '{0} left',
   '{0} épisode{1} marqué{2} vu{3}':
       '{0} episode{1} marked as watched',
   '{0} épisode{1} · {2}':

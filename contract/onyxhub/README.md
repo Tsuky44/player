@@ -15,6 +15,7 @@ fait échouer l'autre.
 | `request_feed.json` | OnyxHub → app Onyx (relayé par Onyx) | `GET {OnyxHub}/api/request/feed` |
 | `imported.json` | OnyxHub → Onyx | `POST {Onyx}/api/integrations/onyxhub/imported` |
 | `library_tmdb_index.json` | Onyx → OnyxHub | `GET {Onyx}/api/library/tmdb-index` |
+| `library_show_episodes.json` | Onyx → OnyxHub | `GET {Onyx}/api/library/shows/:tmdb/episodes` |
 | `mediahub_link_test.json` | Onyx → OnyxHub et app Onyx | `POST {Onyx}/api/settings/mediahub/test` |
 
 En-têtes de chaque appel d'Onyx vers OnyxHub : `Authorization: Bearer <clé d'intégration>`,

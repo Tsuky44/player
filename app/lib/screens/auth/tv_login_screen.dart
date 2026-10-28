@@ -14,6 +14,7 @@ import '../../widgets/global/onyx_mark.dart';
 import '../../widgets/global/onyx_wordmark.dart';
 import '../settings/servers_screen.dart';
 import 'login_screen.dart';
+import 'widgets/closes_on_sign_in.dart';
 import '../../theme/app_type.dart';
 import '../../l10n/tr.dart';
 
@@ -152,7 +153,7 @@ class _TvLoginScreenState extends State<TvLoginScreen> {
     final added = await Navigator.of(context).push<bool>(MaterialPageRoute(
       builder: (_) => widget.addingUser
           ? AddServerScreen(initialUrl: serverUrl, signIn: true)
-          : const LoginScreen(),
+          : const ClosesOnSignIn(child: LoginScreen()),
     ));
     if (widget.addingUser && added == true && mounted) {
       Navigator.of(context).pop(true);

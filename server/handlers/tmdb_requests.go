@@ -203,10 +203,16 @@ func TmdbRequestCatalog(w http.ResponseWriter, r *http.Request, _ httprouter.Par
 // enrichCatalogAvailability fills MediaHub availability status on catalog items
 // (same green/purple/yellow dots as MediaHub MediaCardStatus). Une page entière
 // en un appel quand OnyxHub le permet (ADR-0072), sinon un appel par carte.
+// La bibliothèque a le dernier mot sur ce qu'OnyxHub ignore (ADR-0084).
 func enrichCatalogAvailability(items []catalogItem) {
 	if len(items) == 0 {
 		return
 	}
+	enrichFromMediaHub(items)
+	applyLibraryPresence(items)
+}
+
+func enrichFromMediaHub(items []catalogItem) {
 	baseURL := strings.TrimRight(strings.TrimSpace(config.MediaHubURL()), "/")
 	apiKey := strings.TrimSpace(config.MediaHubAPIKey())
 	if baseURL == "" || apiKey == "" {
@@ -382,6 +388,21 @@ func TmdbRequestDetails(w http.ResponseWriter, r *http.Request, ps httprouter.Pa
 				}
 			}
 		}
+	}
+
+	// Ce que la bibliothèque détient pèse plus qu'OnyxHub (ADR-0084).
+	if mediaType == models.TypeShow {
+		// nil : la base ne répond pas, les statuts d'OnyxHub restent.
+		if heldEpisodes := heldShowSeasonEpisodes(tmdbID); heldEpisodes != nil {
+			seasonStatuses := make([]string, len(seasons))
+			for i := range seasons {
+				seasons[i].Status = seasonPresence(seasons[i].Status, heldEpisodes[seasons[i].Number], seasons[i].EpisodeCount)
+				seasonStatuses[i] = seasons[i].Status
+			}
+			status = showStatusFor(status, len(heldEpisodes) > 0, seasonStatuses)
+		}
+	} else if held := libraryHeldTMDB([]catalogItem{{ID: tmdbID, MediaType: mtStr}}); held != nil {
+		status = withLibraryPresence(status, held[availabilityKey(mtStr, tmdbID)])
 	}
 
 	json.NewEncoder(w).Encode(struct {

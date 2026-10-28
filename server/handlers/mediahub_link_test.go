@@ -37,7 +37,7 @@ func TestCatalogAvailabilityAsksOnyxHubForTheWholePageAtOnce(t *testing.T) {
 	})
 
 	items := []catalogItem{{ID: 603, MediaType: "movie"}, {ID: 603, MediaType: "tv"}, {ID: 7, MediaType: "movie"}}
-	enrichCatalogAvailability(items)
+	enrichFromMediaHub(items)
 
 	if calls.Load() != 1 {
 		t.Fatalf("appels = %d, attendu un seul pour toute la page", calls.Load())
@@ -61,7 +61,7 @@ func TestCatalogAvailabilityFallsBackPerCardWhenTheHubHasNoBatchRoute(t *testing
 	})
 
 	items := []catalogItem{{ID: 1, MediaType: "movie"}, {ID: 2, MediaType: "movie"}}
-	enrichCatalogAvailability(items)
+	enrichFromMediaHub(items)
 	if items[0].Status != "pending" || items[1].Status != "pending" || singleCalls.Load() != 2 {
 		t.Fatalf("repli par carte : statuts %q %q, %d appels", items[0].Status, items[1].Status, singleCalls.Load())
 	}

@@ -13,6 +13,13 @@ import '../../../tv/tv_mode.dart';
 /// still on screen. So the content is wrapped in a focus scope the remote is
 /// walked into, and the dismissal is registered where the player's own Back
 /// handling can find it.
+/// Retour adressé au menu ouvert sur le lecteur, avant qu'il ne se ferme.
+/// Un menu à plusieurs niveaux y répond en remontant d'un niveau, et rend
+/// `true`.
+class PlayerPopupBackIntent extends Intent {
+  const PlayerPopupBackIntent();
+}
+
 class PlayerPopupHost {
   PlayerPopupHost({required this.isActive, required this.onDismissed});
 
@@ -63,8 +70,8 @@ class PlayerPopupHost {
         node: _focusScope,
         onKeyEvent: (node, event) {
           if (event is! KeyDownEvent) return KeyEventResult.ignored;
-          if (kTvBackKeys.contains(event.logicalKey)) {
-            dismiss();
+          if (isSelfHandledBackKey(event.logicalKey)) {
+            back();
             return KeyEventResult.handled;
           }
           return KeyEventResult.ignored;
@@ -99,6 +106,26 @@ class PlayerPopupHost {
   bool dismissTop() {
     final popup = _open;
     if (popup == null) return false;
+    popup.dismiss();
+    return true;
+  }
+
+  /// Retour sur le menu ouvert, s'il y en a un. Le menu répond d'abord — une
+  /// section remonte à l'index ([PlayerPopupBackIntent]) — et se ferme sinon.
+  /// Rend vrai si un menu était ouvert, pour que Retour s'arrête là.
+  ///
+  /// La touche passait seule par le menu ; le Retour d'Android, qui n'arrive
+  /// qu'en `popRoute` (voir [isSelfHandledBackKey]), fermait tout d'un coup.
+  bool back() {
+    final popup = _open;
+    if (popup == null) return false;
+    final focused = FocusManager.instance.primaryFocus;
+    final context = focused?.context;
+    if (context != null && _focusScope.hasFocus) {
+      final handled =
+          Actions.maybeInvoke(context, const PlayerPopupBackIntent());
+      if (handled == true) return true;
+    }
     popup.dismiss();
     return true;
   }

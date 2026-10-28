@@ -23,9 +23,23 @@ import 'tv_mode.dart';
 /// Les mémoires s'emboîtent : une rangée dans un onglet signale aussi l'élément
 /// à l'onglet. Hors téléviseur, la zone ne redirige jamais rien.
 class TvFocusMemory extends StatefulWidget {
-  const TvFocusMemory({super.key, required this.child});
+  const TvFocusMemory({
+    super.key,
+    required this.child,
+    this.entersAtTop = false,
+  });
 
   final Widget child;
+
+  /// À la première visite, le focus entre sur le premier élément visible de
+  /// la zone — le plus haut, puis le plus à gauche — au lieu du plus proche
+  /// géométriquement.
+  ///
+  /// Pour le contenu d'un onglet, sous l'en-tête : Bas depuis la recherche,
+  /// à droite de l'en-tête, tombait sur « Voir tout » d'une rangée plus bas,
+  /// seul élément à sa verticale, par-dessus le bandeau et la première
+  /// rangée.
+  final bool entersAtTop;
 
   /// La mémoire la plus proche au-dessus de [context], s'il y en a une.
   ///
@@ -83,7 +97,10 @@ class TvFocusMemoryState extends State<TvFocusMemory> {
   void _handleFocusChange(bool hasFocus) {
     if (!hasFocus || !TvMode.isTv) return;
     final target = _remembered;
-    if (target == null) return;
+    if (target == null) {
+      if (widget.entersAtTop) _enterAtTop();
+      return;
+    }
     if (identical(FocusManager.instance.primaryFocus, target)) return;
     // Encore dans l'arbre, encore dans cette zone, encore atteignable. Une
     // rangée rechargée a pu reconstruire ses cartes : on laisse alors le
@@ -95,6 +112,26 @@ class TvFocusMemoryState extends State<TvFocusMemory> {
       return;
     }
     target.requestFocus();
+  }
+
+  void _enterAtTop() {
+    final zone = _node.rect;
+    final visible = _node.traversalDescendants
+        .where((node) =>
+            node.context != null &&
+            !node.rect.isEmpty &&
+            node.rect.top >= zone.top &&
+            node.rect.top < zone.bottom)
+        .toList();
+    if (visible.isEmpty) return;
+    final first = visible.reduce((best, node) {
+      final byTop = node.rect.top.compareTo(best.rect.top);
+      if (byTop != 0) return byTop < 0 ? node : best;
+      return node.rect.left < best.rect.left ? node : best;
+    });
+    if (!identical(FocusManager.instance.primaryFocus, first)) {
+      first.requestFocus();
+    }
   }
 
   @override

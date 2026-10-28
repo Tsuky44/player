@@ -43,6 +43,9 @@ const (
 	// GET /api/library/tmdb-index existe, et l'app web ouvre une fiche depuis
 	// ?movie=ID ou ?show=ID (ADR-0073).
 	CapabilityLibraryTMDBIndex = "library_tmdb_index"
+	// GET /api/library/shows/:tmdb/episodes rend les épisodes lisibles d'une série par
+	// identifiant TMDB (ADR-0082).
+	CapabilityLibraryShowEpisodes = "library_show_episodes"
 	// GET /api/requests/mine relaie les demandes du compte chez OnyxHub (ADR-0073).
 	CapabilityMyRequests = "my_requests"
 	// POST /api/integrations/onyxhub/imported avance l'indexation d'un import
@@ -80,6 +83,7 @@ func pingPayload() pingResponse {
 			CapabilityWatchLists,
 			CapabilityMediaHubLinkTest,
 			CapabilityLibraryTMDBIndex,
+			CapabilityLibraryShowEpisodes,
 			CapabilityMyRequests,
 			CapabilityOnyxHubImportSignal,
 			CapabilityAvatars,

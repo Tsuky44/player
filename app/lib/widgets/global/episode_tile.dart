@@ -1,7 +1,9 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import '../../models/models.dart';
 import '../../theme/app_colors.dart';
 import '../../tv/tv_focus.dart';
+import '../../tv/tv_mode.dart';
 import '../../utils/format.dart';
 import '../../utils/responsive.dart';
 import 'media_download_button.dart';
@@ -59,6 +61,83 @@ class _EpisodeTileState extends State<EpisodeTile> {
 
   bool get _isAvailable => widget.episode.isAvailable;
 
+  /// La ligne, un seul arrêt de la télécommande.
+  final FocusNode _rowNode = FocusNode(debugLabel: 'episode-row');
+
+  /// Les actions de la ligne, hors du parcours directionnel sur un téléviseur.
+  ///
+  /// Bas depuis un épisode tombait sur l'icône de téléchargement du suivant,
+  /// puis sur sa ligne : deux appuis par épisode, et l'on ne savait jamais
+  /// lequel des deux on tenait. Les icônes ne s'atteignent plus que par la
+  /// droite depuis la ligne ([_handleKey]) ; haut et bas passent d'une ligne à
+  /// l'autre.
+  final FocusNode _actionsNode = FocusNode(
+    debugLabel: 'episode-actions',
+    canRequestFocus: false,
+    skipTraversal: true,
+  );
+
+  @override
+  void dispose() {
+    _rowNode.dispose();
+    _actionsNode.dispose();
+    super.dispose();
+  }
+
+  KeyEventResult _handleKey(FocusNode node, KeyEvent event) {
+    if (event is! KeyDownEvent && event is! KeyRepeatEvent) {
+      return KeyEventResult.ignored;
+    }
+    final key = event.logicalKey;
+    final current = FocusManager.instance.primaryFocus;
+    final vertical = key == LogicalKeyboardKey.arrowUp
+        ? TraversalDirection.up
+        : key == LogicalKeyboardKey.arrowDown
+            ? TraversalDirection.down
+            : null;
+    if (vertical != null) {
+      // Depuis une icône, le parcours partait de son rectangle, en haut de la
+      // ligne : Bas tombait sur la ligne elle-même. On part de la ligne.
+      if (current == null || identical(current, _rowNode)) {
+        return KeyEventResult.ignored;
+      }
+      if (!current.ancestors.contains(_actionsNode)) {
+        return KeyEventResult.ignored;
+      }
+      _rowNode.requestFocus();
+      // Après la microtâche qui applique ce focus, pas avant.
+      Future.microtask(() {
+        if (_rowNode.hasPrimaryFocus) _rowNode.focusInDirection(vertical);
+      });
+      return KeyEventResult.handled;
+    }
+    if (key != LogicalKeyboardKey.arrowRight &&
+        key != LogicalKeyboardKey.arrowLeft) {
+      return KeyEventResult.ignored;
+    }
+    final actions = _actionsNode.descendants
+        .where((n) => n.canRequestFocus && n.context != null)
+        .toList();
+    if (identical(current, _rowNode)) {
+      if (key != LogicalKeyboardKey.arrowRight || actions.isEmpty) {
+        return KeyEventResult.ignored;
+      }
+      actions.first.requestFocus();
+      return KeyEventResult.handled;
+    }
+    final index = current == null ? -1 : actions.indexOf(current);
+    if (index < 0) return KeyEventResult.ignored;
+    if (key == LogicalKeyboardKey.arrowRight) {
+      if (index + 1 < actions.length) actions[index + 1].requestFocus();
+    } else if (index > 0) {
+      actions[index - 1].requestFocus();
+    } else {
+      _rowNode.requestFocus();
+    }
+    // Arrêté au bord de la ligne : la flèche ne doit pas filer ailleurs.
+    return KeyEventResult.handled;
+  }
+
   Future<void> _toggleWatched() async {
     if (!_isAvailable || widget.onToggleWatched == null || _updatingWatched) {
       return;
@@ -94,8 +173,10 @@ class _EpisodeTileState extends State<EpisodeTile> {
     final pad = AppLayout.pagePadding(context);
     final thumbW = compact ? 128.0 : 180.0;
     final thumbH = compact ? 72.0 : 101.0;
+    final isTv = TvScope.of(context);
 
-    return TvFocusable(
+    final row = TvFocusable(
+      focusNode: _rowNode,
       // An episode that has not aired is shown but not reachable: the remote
       // skips straight over it instead of landing on a dead row.
       enabled: _isAvailable && widget.onTap != null,
@@ -196,7 +277,10 @@ class _EpisodeTileState extends State<EpisodeTile> {
                           borderRadius: 10,
                         ),
                       ),
-                      if (!_isAvailable)
+                      // Sur téléphone la vignette est trop petite : la pastille
+                      // recouvrait l'icône d'attente, et la ligne dit déjà
+                      // pourquoi l'épisode n'est pas là (date de sortie).
+                      if (!_isAvailable && !compact)
                         Positioned(
                           top: 8,
                           left: 8,
@@ -265,30 +349,42 @@ class _EpisodeTileState extends State<EpisodeTile> {
                                   fontSize: AppType.subhead,
                                 ),
                               ),
-                            if (_isAvailable && widget.allowDownload)
-                              MediaDownloadButton(
-                                item: widget.episode,
-                                compact: true,
-                                showTitle: widget.showTitle,
-                                showId: widget.showId,
-                                showPosterUrl: widget.showPosterUrl,
-                                seasonNumber: widget.seasonNumber,
+                            Focus(
+                              focusNode: _actionsNode,
+                              canRequestFocus: false,
+                              skipTraversal: true,
+                              descendantsAreTraversable: !isTv,
+                              child: Row(
+                                mainAxisSize: MainAxisSize.min,
+                                children: [
+                                  if (_isAvailable && widget.allowDownload)
+                                    MediaDownloadButton(
+                                      item: widget.episode,
+                                      compact: true,
+                                      showTitle: widget.showTitle,
+                                      showId: widget.showId,
+                                      showPosterUrl: widget.showPosterUrl,
+                                      seasonNumber: widget.seasonNumber,
+                                    ),
+                                  if (_isAvailable)
+                                    ShareMediaButton(
+                                      item: widget.episode,
+                                      compact: true,
+                                      title: widget.showTitle == null
+                                          ? null
+                                          : '${widget.showTitle} · ${widget.episode.media.title}',
+                                    ),
+                                  if (_isAvailable &&
+                                      widget.onToggleWatched != null)
+                                    WatchedActionButton(
+                                      compact: true,
+                                      isWatched: isFinished,
+                                      isLoading: _updatingWatched,
+                                      onPressed: _toggleWatched,
+                                    ),
+                                ],
                               ),
-                            if (_isAvailable)
-                              ShareMediaButton(
-                                item: widget.episode,
-                                compact: true,
-                                title: widget.showTitle == null
-                                    ? null
-                                    : '${widget.showTitle} · ${widget.episode.media.title}',
-                              ),
-                            if (_isAvailable && widget.onToggleWatched != null)
-                              WatchedActionButton(
-                                compact: true,
-                                isWatched: isFinished,
-                                isLoading: _updatingWatched,
-                                onPressed: _toggleWatched,
-                              ),
+                            ),
                           ],
                         ),
                         if (compact && compactMeta.isNotEmpty) ...[
@@ -358,6 +454,13 @@ class _EpisodeTileState extends State<EpisodeTile> {
           ),
         ),
       ),
+    );
+    if (!isTv) return row;
+    return Focus(
+      canRequestFocus: false,
+      skipTraversal: true,
+      onKeyEvent: _handleKey,
+      child: row,
     );
   }
 }

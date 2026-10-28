@@ -152,7 +152,10 @@ class _DownloadShowHeaderState extends State<DownloadShowHeader> {
       if (year != null) parts.add(year);
       if (details.numberOfSeasons > 0) {
         parts.add(
-          '${details.numberOfSeasons} saison${details.numberOfSeasons > 1 ? 's' : ''}',
+          tr('{0} saison{1}', [
+            details.numberOfSeasons,
+            details.numberOfSeasons > 1 ? 's' : '',
+          ]),
         );
       }
       if (details.genres.isNotEmpty) parts.add(details.genres.take(2).join(', '));

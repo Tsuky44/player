@@ -50,9 +50,7 @@ class DownloadsScreen extends StatelessWidget {
             child: Padding(
               padding: EdgeInsets.fromLTRB(
                 pad,
-                embedded
-                    ? embeddedShellContentTopInset(context)
-                    : (compact ? MediaQuery.paddingOf(context).top + 56 : 48),
+                shellTabTopInset(context, embedded: embedded),
                 pad,
                 0,
               ),

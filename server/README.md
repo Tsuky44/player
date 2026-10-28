@@ -162,6 +162,9 @@ Toutes les routes API (sauf l'inscription/connexion et le stream) requièrent l'
 * `GET /api/library/tmdb-index` (`RequireAuth`, ADR-0073) — `{ "movies": { "<tmdb>": id },
   "shows": { "<tmdb>": id } }`, la plus ancienne fiche de chaque titre. L'app web ouvre une fiche
   depuis `?movie=ID` ou `?show=ID`. Capacité `library_tmdb_index`.
+* `GET /api/library/shows/:tmdb/episodes` (`RequireAuth`, ADR-0082) — `{ "seasons": { "<n>": [épisodes] } }`,
+  les épisodes d'une série qui ont un fichier, tous dossiers confondus. Sert à OnyxHub pour marquer
+  « Disponible » ce qu'Onyx peut lire. Capacité `library_show_episodes`.
 * `POST /api/integrations/onyxhub/imported` (sans compte, `Authorization: Bearer <mediahub_api_key>`,
   ADR-0074) — `{ "tmdbId", "mediaType", "paths": [...] }` (100 au plus) → `202 { "status": "queued" }`.
   Oublie le statut en cache du titre, parcourt le dossier de chaque chemin qui tombe dans une

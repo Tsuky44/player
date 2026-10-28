@@ -4,6 +4,7 @@ import 'package:flutter/services.dart';
 import '../../../models/watch_party.dart';
 import '../../../services/watch_party.dart';
 import '../../../theme/app_colors.dart';
+import '../../../theme/app_theme.dart';
 import '../../../theme/app_type.dart';
 import '../../../l10n/tr.dart';
 
@@ -63,7 +64,8 @@ class WatchPartyBarButton extends StatelessWidget {
 /// Visible même quand les commandes sont masquées : c'est précisément quand on
 /// ne touche à rien qu'il faut savoir pourquoi le film s'est arrêté.
 class WatchPartyToast extends StatelessWidget {
-  const WatchPartyToast({super.key, required this.message, required this.visible});
+  const WatchPartyToast(
+      {super.key, required this.message, required this.visible});
 
   final String? message;
   final bool visible;
@@ -163,7 +165,8 @@ class _WatchPartyPanelState extends State<WatchPartyPanel> {
         borderRadius: BorderRadius.circular(16),
         border: Border.all(color: Colors.white.withValues(alpha: 0.1)),
         boxShadow: const [
-          BoxShadow(color: Colors.black54, blurRadius: 32, offset: Offset(0, 12)),
+          BoxShadow(
+              color: Colors.black54, blurRadius: 32, offset: Offset(0, 12)),
         ],
       ),
       child: Column(
@@ -239,7 +242,8 @@ class _WatchPartyPanelState extends State<WatchPartyPanel> {
         children: [
           Text(
             tr('Code de la séance'),
-            style: TextStyle(color: AppColors.textSecondary, fontSize: AppType.footnote),
+            style: TextStyle(
+                color: AppColors.textSecondary, fontSize: AppType.footnote),
           ),
           const SizedBox(height: 6),
           Row(
@@ -258,7 +262,8 @@ class _WatchPartyPanelState extends State<WatchPartyPanel> {
               ),
               TextButton.icon(
                 onPressed: () => _copy(party.code),
-                icon: Icon(_copied ? Icons.check : Icons.copy_rounded, size: 18),
+                icon:
+                    Icon(_copied ? Icons.check : Icons.copy_rounded, size: 18),
                 label: Text(_copied ? tr('Copié') : tr('Copier')),
               ),
             ],
@@ -266,7 +271,8 @@ class _WatchPartyPanelState extends State<WatchPartyPanel> {
           const SizedBox(height: 4),
           Text(
             tr('Pour rejoindre : menu du compte › Rejoindre une séance.'),
-            style: TextStyle(color: AppColors.textMuted, fontSize: AppType.footnote),
+            style: TextStyle(
+                color: AppColors.textMuted, fontSize: AppType.footnote),
           ),
           const SizedBox(height: 16),
           Text(
@@ -284,9 +290,11 @@ class _WatchPartyPanelState extends State<WatchPartyPanel> {
           const SizedBox(height: 16),
           OutlinedButton.icon(
             onPressed: widget.onLeave,
-            style: OutlinedButton.styleFrom(
-              foregroundColor: AppColors.error,
-              side: BorderSide(color: AppColors.error.withValues(alpha: 0.5)),
+            // L'anneau du thème au focus : `side` posé seul le remplaçait.
+            style: AppTheme.focusRinged(
+              OutlinedButton.styleFrom(foregroundColor: AppColors.error),
+              resting:
+                  BorderSide(color: AppColors.error.withValues(alpha: 0.5)),
             ),
             icon: const Icon(Icons.logout_rounded, size: 18),
             label: Text(tr('Quitter la séance')),
@@ -343,7 +351,8 @@ class _MemberRow extends StatelessWidget {
           if (member.isHost)
             Text(
               tr('Hôte'),
-              style: TextStyle(color: AppColors.accentMuted, fontSize: AppType.footnote),
+              style: TextStyle(
+                  color: AppColors.accentMuted, fontSize: AppType.footnote),
             ),
         ],
       ),

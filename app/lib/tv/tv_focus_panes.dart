@@ -13,8 +13,12 @@ import 'package:flutter/widgets.dart';
 ///
 /// Ici le passage est explicite : quand rien ne suit sur la ligne *dans le
 /// volet courant*, la flèche entre dans le volet voisin — sur l'élément qu'on y
-/// avait quitté, sinon sur celui de la même ligne, sinon sur le plus proche en
-/// hauteur. Un volet sans rien de focalisable est sauté.
+/// avait quitté, sinon sur son premier élément (le plus haut, puis le plus à
+/// gauche). Un volet sans rien de focalisable est sauté.
+///
+/// Le premier, et non celui de la même ligne : depuis « Téléchargements », en
+/// cinquième place de la liste, droite tombait au milieu de la page, sur un
+/// réglage pris au hasard de la hauteur, par-dessus ceux qui l'introduisent.
 ///
 /// Les volets sont ordonnés par leur position à l'écran, pas par leur ordre
 /// dans l'arbre.
@@ -44,9 +48,9 @@ class TvFocusPanesState extends State<TvFocusPanes> {
   /// Où va le focus depuis [from] vers la gauche ou la droite.
   ///
   /// [onLine] est ce que la règle « même ligne » a trouvé sur tout l'écran : on
-  /// le garde tel quel s'il est dans le volet de [from], et il sert de point
-  /// d'entrée s'il est dans le volet voisin. Nul quand il n'y a nulle part où
-  /// aller.
+  /// le garde tel quel s'il est dans le volet de [from]. Dans le volet voisin,
+  /// l'entrée se fait sur l'élément mémorisé ou sur le premier. Nul quand il
+  /// n'y a nulle part où aller.
   FocusNode? next(
     FocusNode from,
     TraversalDirection direction, {
@@ -62,7 +66,7 @@ class TvFocusPanesState extends State<TvFocusPanes> {
 
     final step = direction == TraversalDirection.right ? 1 : -1;
     for (var i = index + step; i >= 0 && i < panes.length; i += step) {
-      final entry = panes[i]._entryFrom(from, onLine);
+      final entry = panes[i]._entryFrom();
       if (entry == null) continue;
       here._last = from;
       return entry;
@@ -128,7 +132,7 @@ class _TvFocusPaneState extends State<TvFocusPane> {
 
   bool _contains(FocusNode node) => node.ancestors.contains(_node);
 
-  FocusNode? _entryFrom(FocusNode from, FocusNode? onLine) {
+  FocusNode? _entryFrom() {
     final focusables = _node.traversalDescendants
         .where((node) => node.context != null && !node.rect.isEmpty)
         .toList();
@@ -138,23 +142,12 @@ class _TvFocusPaneState extends State<TvFocusPane> {
     if (last != null && focusables.contains(last)) return last;
     // La page a changé depuis : l'élément mémorisé n'existe plus.
     _last = null;
-    if (onLine != null && focusables.contains(onLine)) return onLine;
 
-    final origin = from.rect;
-    double gap(FocusNode node) {
-      final rect = node.rect;
-      if (rect.top > origin.bottom) return rect.top - origin.bottom;
-      if (rect.bottom < origin.top) return origin.top - rect.bottom;
-      return 0;
-    }
-
-    // Le plus proche en hauteur ; à égalité, le plus proche du volet quitté.
+    // Le premier de la page : le plus haut, puis le plus à gauche.
     return focusables.reduce((best, node) {
-      final byHeight = gap(node).compareTo(gap(best));
-      if (byHeight != 0) return byHeight < 0 ? node : best;
-      final nodeDx = (node.rect.center.dx - origin.center.dx).abs();
-      final bestDx = (best.rect.center.dx - origin.center.dx).abs();
-      return nodeDx < bestDx ? node : best;
+      final byTop = node.rect.top.compareTo(best.rect.top);
+      if (byTop != 0) return byTop < 0 ? node : best;
+      return node.rect.left < best.rect.left ? node : best;
     });
   }
 

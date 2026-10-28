@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import '../../theme/app_colors.dart';
+import '../../theme/app_theme.dart';
 import '../../theme/app_icons.dart';
 import '../../l10n/tr.dart';
 
@@ -20,9 +21,7 @@ class WatchedActionButton extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final label = isWatched ? tr('Marquer non vu') : tr('Marquer vu');
-    final icon = isWatched
-        ? AppIcons.watchedFilled
-        : AppIcons.watched;
+    final icon = isWatched ? AppIcons.watchedFilled : AppIcons.watched;
 
     if (compact) {
       return IconButton(
@@ -55,9 +54,13 @@ class WatchedActionButton extends StatelessWidget {
             )
           : Icon(icon, size: 18),
       label: Text(label),
-      style: OutlinedButton.styleFrom(
-        foregroundColor: isWatched ? AppColors.success : AppColors.textPrimary,
-        side: BorderSide(
+      // L'anneau du thème au focus : `side` posé seul le remplaçait.
+      style: AppTheme.focusRinged(
+        OutlinedButton.styleFrom(
+          foregroundColor:
+              isWatched ? AppColors.success : AppColors.textPrimary,
+        ),
+        resting: BorderSide(
           color: isWatched
               ? AppColors.success.withValues(alpha: 0.5)
               : AppColors.textSecondary,

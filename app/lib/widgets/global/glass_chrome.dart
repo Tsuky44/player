@@ -101,16 +101,22 @@ class GlassBarSurface extends StatelessWidget {
 }
 
 /// Frosted panel for dropdowns and floating elements.
+///
+/// [dense] pour un panneau qui porte du texte secondaire : le voile léger
+/// laissait les affiches claires dessous passer à travers (le « Movie » des
+/// résultats de recherche devenait illisible).
 class GlassSurface extends StatelessWidget {
   final Widget child;
   final BorderRadius borderRadius;
   final EdgeInsetsGeometry? padding;
+  final bool dense;
 
   const GlassSurface({
     super.key,
     required this.child,
     this.borderRadius = const BorderRadius.all(Radius.circular(14)),
     this.padding,
+    this.dense = false,
   });
 
   @override
@@ -119,7 +125,8 @@ class GlassSurface extends StatelessWidget {
     final veil = Container(
       padding: padding,
       decoration: BoxDecoration(
-        color: Colors.black.withValues(alpha: blurs ? 0.45 : 0.88),
+        color: Colors.black
+            .withValues(alpha: blurs ? (dense ? 0.78 : 0.45) : 0.88),
         borderRadius: borderRadius,
         border: Border.all(color: Colors.white.withValues(alpha: 0.1)),
       ),
@@ -253,7 +260,11 @@ class GlassSearchInput extends StatelessWidget {
 class GlassBrand extends StatelessWidget {
   final VoidCallback? onTap;
 
-  const GlassBrand({super.key, this.onTap});
+  /// Le téléphone n'affiche que la lentille : le nom prenait la place de la
+  /// recherche, et il n'apparaissait que sur l'accueil.
+  final bool showWordmark;
+
+  const GlassBrand({super.key, this.onTap, this.showWordmark = true});
 
   @override
   Widget build(BuildContext context) {
@@ -263,11 +274,13 @@ class GlassBrand extends StatelessWidget {
         mainAxisSize: MainAxisSize.min,
         children: [
           const OnyxMark(size: 28),
-          const SizedBox(width: 10),
-          // Le wordmark dessiné de `brand/`, et non « ONYX » en capitales
-          // espacées : composé dans la police de l'interface, le nom se lisait
-          // comme un gabarit d'app.
-          const OnyxWordmark(height: 12, shadow: true),
+          if (showWordmark) ...[
+            const SizedBox(width: 10),
+            // Le wordmark dessiné de `brand/`, et non « ONYX » en capitales
+            // espacées : composé dans la police de l'interface, le nom se lisait
+            // comme un gabarit d'app.
+            const OnyxWordmark(height: 12, shadow: true),
+          ],
         ],
       ),
     );
@@ -458,6 +471,12 @@ class _GlassIconButtonState extends State<GlassIconButton> {
                 decoration: BoxDecoration(
                   shape: BoxShape.circle,
                   color: Colors.white.withValues(alpha: ringed ? 0.18 : 0.08),
+                ),
+                // Par-dessus l'enfant : l'image de profil du compte fait 32 px
+                // dans 34, et recouvrait l'anneau — le focus sur l'avatar
+                // était invisible.
+                foregroundDecoration: BoxDecoration(
+                  shape: BoxShape.circle,
                   border: Border.all(
                     color: ringed
                         ? AppColors.accent

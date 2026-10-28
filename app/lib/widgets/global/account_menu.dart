@@ -64,7 +64,7 @@ class AccountMenu extends StatelessWidget {
                   // faire sur ce serveur — et pourquoi il ne voit pas les
                   // actions d'administration.
                   '${authProvider.activeServer!.displayName} · '
-                  '${authProvider.permissions.isAdmin ? 'Administrateur' : 'Membre'}',
+                  '${authProvider.permissions.isAdmin ? tr('Administrateur') : tr('Membre')}',
                   style: const TextStyle(
                     fontSize: AppType.caption,
                     color: AppColors.textMuted,

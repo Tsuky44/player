@@ -139,11 +139,7 @@ class _LibraryScreenState extends State<LibraryScreen> {
                   child: Padding(
                     padding: EdgeInsets.fromLTRB(
                       horizontalPadding,
-                      widget.embedded
-                          ? embeddedShellContentTopInset(context)
-                          : (compact
-                              ? MediaQuery.paddingOf(context).top + 56
-                              : 48),
+                      shellTabTopInset(context, embedded: widget.embedded),
                       horizontalPadding,
                       0,
                     ),

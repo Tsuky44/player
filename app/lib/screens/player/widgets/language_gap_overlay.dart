@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import '../../../l10n/tr.dart';
 import '../../../models/models.dart';
 import '../../../theme/app_colors.dart';
+import '../../../theme/app_theme.dart';
 import '../../../theme/app_type.dart';
 import '../playback/audio_language_gap.dart';
 import 'end_card_chrome.dart';
@@ -76,8 +77,8 @@ class LanguageGapOverlay extends StatelessWidget {
           Text(
             atLaunch
                 ? tr('Cet épisode n’est pas disponible en {0}.', [wanted])
-                : tr('L’épisode suivant n’est pas disponible en {0}.',
-                    [wanted]),
+                : tr(
+                    'L’épisode suivant n’est pas disponible en {0}.', [wanted]),
             maxLines: 3,
             overflow: TextOverflow.ellipsis,
             style: const TextStyle(
@@ -147,19 +148,22 @@ class LanguageGapOverlay extends StatelessWidget {
           ),
           OutlinedButton.icon(
             onPressed: onWait,
-            style: OutlinedButton.styleFrom(
-              foregroundColor: AppColors.textPrimary,
-              side: const BorderSide(color: AppColors.border),
-              padding: const EdgeInsets.symmetric(horizontal: 22, vertical: 18),
-              shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(10),
-              ),
-              textStyle: const TextStyle(
-                fontSize: AppType.callout,
-                fontWeight: FontWeight.w700,
-                letterSpacing: -0.2,
-              ),
-            ),
+            // L'anneau du thème au focus : `side` posé seul le remplaçait.
+            style: AppTheme.focusRinged(
+                OutlinedButton.styleFrom(
+                  foregroundColor: AppColors.textPrimary,
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 22, vertical: 18),
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(10),
+                  ),
+                  textStyle: const TextStyle(
+                    fontSize: AppType.callout,
+                    fontWeight: FontWeight.w700,
+                    letterSpacing: -0.2,
+                  ),
+                ),
+                resting: const BorderSide(color: AppColors.border)),
             icon: const Icon(Icons.hourglass_top_rounded, size: 19),
             label: Text(tr('Attendre la version en {0}', [wanted])),
           ),

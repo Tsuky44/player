@@ -64,9 +64,10 @@ class _ShellTabStackState extends State<ShellTabStack> {
               child: ExcludeFocus(
                 excluding: position != index,
                 // Redescendre de l'en-tête ramène là où l'on était dans cet
-                // onglet — voir [TvFocusMemory].
+                // onglet, et en haut de la page la première fois — voir
+                // [TvFocusMemory].
                 child: mounted.contains(id)
-                    ? TvFocusMemory(child: tabs[id]!)
+                    ? TvFocusMemory(entersAtTop: true, child: tabs[id]!)
                     : const SizedBox.shrink(),
               ),
             ),

@@ -9,10 +9,7 @@ import '../../tv/tv_mode.dart';
 import '../../utils/hero_slides.dart';
 import '../../utils/on_screen.dart';
 import '../../navigation/search_route_observer.dart';
-import '../../widgets/global/account_menu.dart';
-import '../../widgets/global/app_download_button.dart';
 import '../../widgets/global/empty_state.dart';
-import '../../widgets/global/glass_chrome.dart';
 import '../../widgets/global/interface_tour/tour_anchor.dart';
 import '../../widgets/global/hero_carousel.dart';
 import '../../widgets/global/live_progress_state.dart';
@@ -20,7 +17,6 @@ import '../../widgets/global/media_row.dart';
 import '../../widgets/global/poster_launch_route.dart';
 import '../../widgets/global/remote_playback_banner.dart';
 import '../../widgets/global/skeleton.dart';
-import '../../widgets/global/sticky_glass_search.dart';
 import '../../widgets/global/hero_banner.dart' show HeroBanner;
 import '../library/movie_detail_screen.dart';
 import '../library/show_detail_screen.dart';
@@ -53,7 +49,6 @@ class _HomeScreenState extends State<HomeScreen>
     with OnScreenState, LiveProgressState {
   HomeProvider? _homeProvider;
   final _scrollController = ScrollController();
-  double _scrollOffset = 0;
 
   /// L'accueil n'était chargé qu'à l'ouverture de l'app : un téléphone sorti
   /// de veille gardait la rangée « Reprendre la lecture » d'avant, pendant que
@@ -66,9 +61,6 @@ class _HomeScreenState extends State<HomeScreen>
   @override
   void initState() {
     super.initState();
-    _scrollController.addListener(() {
-      setState(() => _scrollOffset = _scrollController.offset);
-    });
     WidgetsBinding.instance.addPostFrameCallback((_) {
       _homeProvider = Provider.of<HomeProvider>(context, listen: false);
       _homeProvider!.addListener(_onHomeProviderChanged);
@@ -188,6 +180,8 @@ class _HomeScreenState extends State<HomeScreen>
   Widget build(BuildContext context) {
     final homeProvider = Provider.of<HomeProvider>(context);
     final authProvider = Provider.of<AuthProvider>(context);
+    // Barre d'état + la barre du haut du téléphone (voir [MobileTopBar]).
+    final topBarHeight = MediaQuery.paddingOf(context).top + 56;
     final isTv = TvScope.of(context);
     final data = homeProvider.homeData;
     final discovery = data == null
@@ -204,7 +198,10 @@ class _HomeScreenState extends State<HomeScreen>
     return Scaffold(
       backgroundColor: AppColors.background,
       body: homeProvider.isLoading
-          ? HomeSkeleton(heroHeight: HeroBanner.heightFor(context))
+          ? HomeSkeleton(
+              heroHeight: HeroBanner.heightFor(context),
+              topInset: widget.embedded ? 0 : topBarHeight,
+            )
           : homeProvider.errorMessage != null
               ? ErrorStateView(
                   message: homeProvider.errorMessage!,
@@ -215,14 +212,17 @@ class _HomeScreenState extends State<HomeScreen>
                     RefreshIndicator(
                       onRefresh: () => homeProvider.loadHome(),
                       color: AppColors.primary,
-                      edgeOffset: widget.embedded ? 0 : 56,
+                      edgeOffset: widget.embedded ? 0 : topBarHeight,
                       child: CustomScrollView(
                         controller: _scrollController,
                         physics: const AlwaysScrollableScrollPhysics(),
                         slivers: [
+                          // Le carrousel commence sous la barre du haut, pas
+                          // derrière elle : elle y était transparente et
+                          // posée sur l'affiche.
                           if (!widget.embedded)
-                            const SliverToBoxAdapter(
-                              child: SizedBox(height: 56),
+                            SliverToBoxAdapter(
+                              child: SizedBox(height: topBarHeight),
                             ),
                           if (heroSlides.isNotEmpty)
                             SliverToBoxAdapter(
@@ -346,17 +346,6 @@ class _HomeScreenState extends State<HomeScreen>
                         child: Center(child: RemotePlaybackBanner()),
                       ),
                     ),
-                    if (!widget.embedded)
-                      Positioned(
-                        top: 0,
-                        left: 0,
-                        right: 0,
-                        child: _HomeOverlayBar(
-                          scrollOffset: _scrollOffset,
-                          homeProvider: homeProvider,
-                          authProvider: authProvider,
-                        ),
-                      ),
                   ],
                 ),
     );
@@ -373,64 +362,4 @@ List<Media> _interleave(List<Media> movies, List<Media> shows) {
     if (i < shows.length) merged.add(shows[i]);
   }
   return merged;
-}
-
-class _HomeOverlayBar extends StatelessWidget {
-  final double scrollOffset;
-  final HomeProvider homeProvider;
-  final AuthProvider authProvider;
-
-  const _HomeOverlayBar({
-    required this.scrollOffset,
-    required this.homeProvider,
-    required this.authProvider,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    final opaque = scrollOffset > 80;
-
-    return AnimatedContainer(
-      duration: const Duration(milliseconds: 200),
-      decoration: BoxDecoration(
-        color: opaque
-            ? AppColors.background
-            : Colors.black.withValues(alpha: 0.35),
-        boxShadow: opaque
-            ? [
-                BoxShadow(
-                    color: Colors.black.withValues(alpha: 0.5), blurRadius: 12)
-              ]
-            : null,
-      ),
-      child: SafeArea(
-        bottom: false,
-        child: Padding(
-          padding: const EdgeInsets.fromLTRB(16, 4, 12, 8),
-          child: Row(
-            children: [
-              const GlassBrand(),
-              const SizedBox(width: 10),
-              const Expanded(child: InlineCatalogSearch()),
-              const SizedBox(width: 8),
-              if (homeProvider.isScanning ||
-                  homeProvider.isBackfillingMetadata ||
-                  homeProvider.isRedetectingAll ||
-                  homeProvider.isExtractingSubtitles)
-                const Padding(
-                  padding: EdgeInsets.only(right: 8),
-                  child: SizedBox(
-                    width: 18,
-                    height: 18,
-                    child: CircularProgressIndicator(strokeWidth: 2),
-                  ),
-                ),
-              const AppDownloadButton(),
-              AccountMenu(authProvider: authProvider),
-            ],
-          ),
-        ),
-      ),
-    );
-  }
 }

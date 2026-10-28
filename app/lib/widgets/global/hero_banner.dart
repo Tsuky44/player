@@ -6,6 +6,7 @@ import '../../services/api_client.dart';
 import '../../services/media_details_cache.dart';
 import '../../theme/app_colors.dart';
 import '../../theme/app_motion.dart';
+import '../../theme/app_theme.dart';
 import '../../utils/format.dart';
 import '../../utils/poster_url.dart';
 import '../../tv/tv_mode.dart';
@@ -45,8 +46,11 @@ class HeroBanner extends StatefulWidget {
 
   static double heightFor(BuildContext context) {
     final size = MediaQuery.sizeOf(context);
+    // Un téléviseur se met en page sur 1280 × 720 (voir [TvUiScale]) : à 55 %,
+    // le bandeau faisait 396 px pour un contenu de plus de 400, calé en bas.
+    // Le logo et le type sortaient par le haut, coupés sous l'en-tête.
     final fraction = TvScope.of(context)
-        ? 0.55
+        ? 0.7
         : size.width < 600
             ? 0.55
             : 0.65;
@@ -132,6 +136,7 @@ class _HeroBannerState extends State<HeroBanner> {
     ];
     final screenWidth = MediaQuery.sizeOf(context).width;
     final isCompact = screenWidth < 600;
+    final isTv = TvScope.of(context);
     final horizontalPadding = isCompact ? 16.0 : 48.0;
     final bannerHeight = HeroBanner.heightFor(context);
     final detailsOverview = _details?.overview;
@@ -202,7 +207,11 @@ class _HeroBannerState extends State<HeroBanner> {
           Positioned(
             left: horizontalPadding,
             right: horizontalPadding,
-            bottom: isCompact ? 52 : 84,
+            bottom: isCompact
+                ? 52
+                : isTv
+                    ? 72
+                    : 84,
             // L'Align relâche la largeur imposée par le Positioned : sans lui,
             // la limite de 560 px était ignorée et le synopsis courait sur toute
             // la largeur de l'écran.
@@ -256,7 +265,9 @@ class _HeroBannerState extends State<HeroBanner> {
                       const SizedBox(height: 12),
                       Text(
                         overview,
-                        maxLines: isCompact ? 2 : 3,
+                        // Deux lignes sur un téléviseur : lues de loin, la
+                        // troisième poussait le logo sous l'en-tête.
+                        maxLines: isCompact || isTv ? 2 : 3,
                         overflow: TextOverflow.ellipsis,
                         style: const TextStyle(
                           color: AppColors.textSecondary,
@@ -334,14 +345,19 @@ class _InfoButton extends StatelessWidget {
       onPressed: onPressed,
       icon: const Icon(AppIcons.info, size: 22),
       label: Text(compact ? tr('Infos') : tr('Plus d’infos')),
-      style: OutlinedButton.styleFrom(
-        backgroundColor: Colors.white.withValues(alpha: 0.15),
-        side: BorderSide.none,
-        minimumSize: const Size(48, 48),
-        padding: EdgeInsets.symmetric(
-          horizontal: compact ? 16 : 24,
-          vertical: 14,
+      // Sans bordure au repos, mais avec l'anneau au focus : `side` posé ici
+      // remplaçait celui du thème, et « Plus d'infos » n'avait aucun focus
+      // visible à la télécommande.
+      style: AppTheme.focusRinged(
+        OutlinedButton.styleFrom(
+          backgroundColor: Colors.white.withValues(alpha: 0.15),
+          minimumSize: const Size(48, 48),
+          padding: EdgeInsets.symmetric(
+            horizontal: compact ? 16 : 24,
+            vertical: 14,
+          ),
         ),
+        resting: BorderSide.none,
       ),
     );
   }

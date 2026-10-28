@@ -7,6 +7,7 @@ import '../../../models/models.dart';
 import '../../../models/server_activity.dart';
 import '../../../services/api_client.dart';
 import '../../../theme/app_colors.dart';
+import '../../../theme/app_theme.dart';
 import '../widgets/media_thumb.dart';
 import '../widgets/settings_ui.dart';
 import '../../../theme/app_type.dart';
@@ -95,7 +96,8 @@ class _StatsPageState extends State<StatsPage> {
                   showCheckmark: false,
                   selectedColor: AppColors.primary.withValues(alpha: 0.2),
                   backgroundColor: Colors.transparent,
-                  side: BorderSide(color: Colors.white.withValues(alpha: 0.1)),
+                  side: AppTheme.chipSide(
+                      BorderSide(color: Colors.white.withValues(alpha: 0.1))),
                   onSelected: (_) {
                     if (_days == days) return;
                     setState(() => _days = days);

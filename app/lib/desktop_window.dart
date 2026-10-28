@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'theme/app_colors.dart';
 import 'theme/app_motion.dart';
 import 'utils/app_platform.dart';
+import 'utils/responsive.dart';
 import 'utils/window_controls.dart';
 import 'l10n/tr.dart';
 
@@ -30,6 +31,18 @@ double shellHeaderHeight(BuildContext context) {
 double embeddedShellContentTopInset(BuildContext context) {
   const gapBelowHeader = 12.0;
   return shellHeaderHeight(context) + gapBelowHeader;
+}
+
+/// Marge du haut d'un onglet du shell, quelle que soit la barre qui flotte
+/// au-dessus : la barre de verre desktop quand [embedded], sinon la barre
+/// du téléphone (barre d'état + 56) ou, sur tablette, une marge fixe. Un
+/// onglet qui met 28 ici passe son titre sous la barre de recherche.
+double shellTabTopInset(BuildContext context, {required bool embedded}) {
+  if (embedded) return embeddedShellContentTopInset(context);
+  if (MediaQuery.sizeOf(context).width < AppBreakpoints.compact) {
+    return MediaQuery.paddingOf(context).top + 56;
+  }
+  return 48;
 }
 
 /// Controls visibility of the custom desktop caption bar (Windows only).

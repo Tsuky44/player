@@ -58,7 +58,7 @@ func TestOnyxHubContractCatalogPageGoesOutAndComesBackInOneCall(t *testing.T) {
 		_, _ = w.Write(onyxHubContract(t, "availability_batch.json"))
 	})
 	items := []catalogItem{{ID: 603, MediaType: "movie"}, {ID: 1399, MediaType: "tv"}}
-	enrichCatalogAvailability(items)
+	enrichFromMediaHub(items)
 	if items[0].Status != "available" || items[1].Status != "partial" {
 		t.Fatalf("statuts lus = %q %q", items[0].Status, items[1].Status)
 	}
@@ -102,6 +102,14 @@ func TestOnyxHubContractLibraryIndex(t *testing.T) {
 		t.Fatal(err)
 	}
 	sameJSON(t, "library_tmdb_index.json", got)
+}
+
+func TestOnyxHubContractLibraryShowEpisodes(t *testing.T) {
+	got, err := json.Marshal(libraryShowEpisodes{Seasons: map[string][]int{"1": {1, 2, 4}, "2": {5}}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	sameJSON(t, "library_show_episodes.json", got)
 }
 
 func TestOnyxHubContractRequestIsRelayedAsSentWithTheAccount(t *testing.T) {

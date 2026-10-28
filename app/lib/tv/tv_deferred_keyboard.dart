@@ -130,13 +130,39 @@ class TvDeferredKeyboardState extends State<TvDeferredKeyboard> {
   /// Referme la saisie et rend le focus au champ-bouton, tout de suite.
   ///
   /// Pour une plateforme où le champ garde le focus quand le clavier se ferme
-  /// (webOS, voir [WebTvFieldExit]). Lâcher simplement le focus le laissait
+  /// (webOS et Android TV, voir [WebTvFieldExit] et [releaseFocused]). Lâcher simplement le focus le laissait
   /// sans propriétaire le temps d'une frame : [TvFocusGuard] le donnait alors à
   /// l'élément suivant, quelle que soit la flèche.
   void releaseKeyboard() {
     if (!mounted || !_keyboardRequested) return;
     setState(() => _keyboardRequested = false);
     _remoteNode.requestFocus();
+  }
+
+  /// Rend à la télécommande le champ qui a le focus, s'il y en a un, et dit
+  /// s'il l'a fait.
+  ///
+  /// Pour le Retour d'un écran qui contient un champ. Retour referme le
+  /// clavier d'Android TV sans retirer le focus au champ (constaté sur Android
+  /// TV 16, et Android ne déclare aucune hauteur de clavier qui le
+  /// trahirait) : le Retour suivant arrive avec le champ encore focalisé, et
+  /// doit d'abord le relâcher plutôt que quitter l'écran. Même chemin pour le
+  /// Menu de la Siri Remote, qui arrive en touche et passe par
+  /// [TvBackAction] jusqu'au même `PopScope`.
+  static bool releaseFocused() {
+    final state = FocusManager.instance.primaryFocus?.context
+        ?.findAncestorStateOfType<TvDeferredKeyboardState>();
+    if (state == null || !state._keyboardRequested) return false;
+    state.releaseKeyboard();
+    return true;
+  }
+
+  /// Pose la télécommande sur le champ-bouton, clavier fermé.
+  ///
+  /// Pour l'appelant qui a ouvert une page depuis ce champ : au retour, le
+  /// focus doit revenir ici et non sur le voisin que le système choisit.
+  void focusRemote() {
+    if (mounted && TvScope.of(context)) _remoteNode.requestFocus();
   }
 
   @override

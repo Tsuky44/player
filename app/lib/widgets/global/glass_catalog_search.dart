@@ -122,13 +122,19 @@ class _GlassCatalogSearchState extends State<GlassCatalogSearch> {
     }
   }
 
-  void _showAllResults([String? explicitQuery]) {
+  final GlobalKey<TvDeferredKeyboardState> _keyboardKey = GlobalKey();
+
+  Future<void> _showAllResults([String? explicitQuery]) async {
     final query = (explicitQuery ?? _controller.text).trim();
     if (query.isEmpty) return;
     _clear();
-    shellNavigatorOf(context).push(
+    // Retour depuis les résultats : la télécommande revient sur la recherche,
+    // pour en lancer une autre. Elle tombait sur l'avatar du compte, voisin
+    // du champ vidé.
+    await shellNavigatorOf(context).push(
       MaterialPageRoute(builder: (_) => SearchResultsScreen(query: query)),
     );
+    if (mounted) _keyboardKey.currentState?.focusRemote();
   }
 
   // --- Overlay lifecycle ---------------------------------------------------
@@ -171,6 +177,7 @@ class _GlassCatalogSearchState extends State<GlassCatalogSearch> {
             child: SizedBox(
               width: widget.expandedWidth,
               child: GlassSurface(
+                dense: true,
                 borderRadius: BorderRadius.circular(16),
                 child: _SearchResultsPanel(
                   maxWidth: widget.expandedWidth,
@@ -221,6 +228,7 @@ class _GlassCatalogSearchState extends State<GlassCatalogSearch> {
     }
 
     return TvDeferredKeyboard(
+      key: _keyboardKey,
       fieldFocusNode: _focusNode,
       borderRadius: BorderRadius.circular(17),
       builder: (context, focusNode, canRequestFocus) => TapRegion(
@@ -385,14 +393,21 @@ class _SearchResultsPanel extends StatelessWidget {
             child: Row(
               mainAxisAlignment: MainAxisAlignment.center,
               children: [
-                Text(
-                  hasMore
-                      ? tr('Voir les {0} résultats', [results.length])
-                      : tr('Voir tous les résultats'),
-                  style: const TextStyle(
-                    color: AppColors.accent,
-                    fontSize: AppType.subhead,
-                    fontWeight: FontWeight.w600,
+                // Flexible : le panneau fait la largeur de la barre de
+                // recherche du téléphone (~140 px de texte), et « Show all
+                // results » y débordait de 4 px.
+                Flexible(
+                  child: Text(
+                    hasMore
+                        ? tr('Voir les {0} résultats', [results.length])
+                        : tr('Voir tous les résultats'),
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: const TextStyle(
+                      color: AppColors.accent,
+                      fontSize: AppType.subhead,
+                      fontWeight: FontWeight.w600,
+                    ),
                   ),
                 ),
                 const SizedBox(width: 4),

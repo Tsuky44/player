@@ -37,6 +37,7 @@ class _IntegrationsPageState extends State<IntegrationsPage> {
   bool _savingFanart = false;
   bool _savingMediaHub = false;
   bool _testingMediaHub = false;
+  bool _legacyHub = false;
 
   @override
   void initState() {
@@ -136,7 +137,12 @@ class _IntegrationsPageState extends State<IntegrationsPage> {
       if (!mounted) return;
       setState(() => _apply(updated));
       showSettingsSnack(
-          context, clearKey ? tr('Clé OnyxHub effacée.') : tr('OnyxHub enregistré.'));
+          context,
+          clearKey
+              ? tr('Clé effacée.')
+              : _legacyHub
+                  ? tr('MediaHub enregistré.')
+                  : tr('OnyxHub enregistré.'));
     } catch (e) {
       if (mounted) {
         showSettingsSnack(
@@ -268,19 +274,34 @@ class _IntegrationsPageState extends State<IntegrationsPage> {
             ],
           ),
           SettingsGroup(
-            title: tr('OnyxHub'),
+            title: tr('Service de demandes'),
             trailing: _status(
                 settings.mediaHubUrl.isNotEmpty && settings.mediaHubApiKeySet),
-            footer:
-                tr('Les demandes faites depuis l’onglet Demandes y sont '
+            footer: _legacyHub
+                ? tr('Les demandes faites depuis l’onglet Demandes sont '
+                    'transmises à MediaHub pour être téléchargées. « Mes '
+                    'demandes » et les notifications d’administrateur ne '
+                    'marchent qu’avec OnyxHub.')
+                : tr('Les demandes faites depuis l’onglet Demandes y sont '
                     'transmises pour être téléchargées. Dans OnyxHub, « Connecter '
-                    'Onyx » remplit ces deux champs ; un ancien MediaHub marche '
-                    'aussi.'),
+                    'Onyx » remplit ces deux champs.'),
             padded: true,
             children: [
               Column(
                 crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
+                  // Un seul des deux reçoit les demandes : les deux partagent
+                  // les mêmes réglages serveur (ADR-0075), on change les libellés.
+                  SegmentedButton<bool>(
+                    segments: [
+                      ButtonSegment(value: false, label: Text(tr('OnyxHub'))),
+                      ButtonSegment(value: true, label: Text(tr('MediaHub'))),
+                    ],
+                    selected: {_legacyHub},
+                    onSelectionChanged: (v) =>
+                        setState(() => _legacyHub = v.first),
+                  ),
+                  const SizedBox(height: 14),
                   TvDeferredKeyboard(
                     builder: (context, focusNode, canRequestFocus) => TextField(
                       focusNode: focusNode,
@@ -288,7 +309,9 @@ class _IntegrationsPageState extends State<IntegrationsPage> {
                       controller: _mediaHubUrl,
                       keyboardType: TextInputType.url,
                       decoration: InputDecoration(
-                        labelText: tr('Adresse d’OnyxHub'),
+                        labelText: _legacyHub
+                            ? tr('Adresse de MediaHub')
+                            : tr('Adresse d’OnyxHub'),
                         hintText: 'http://192.168.1.10:4400',
                         prefixIcon: Icon(Icons.link_rounded),
                       ),
@@ -297,7 +320,9 @@ class _IntegrationsPageState extends State<IntegrationsPage> {
                   const SizedBox(height: 12),
                   _KeyField(
                     controller: _mediaHubKey,
-                    label: tr('Clé d’intégration OnyxHub'),
+                    label: _legacyHub
+                        ? tr('Clé API MediaHub')
+                        : tr('Clé d’intégration OnyxHub'),
                     configured: settings.mediaHubApiKeySet,
                     hint: settings.mediaHubApiKeyHint,
                   ),

@@ -147,7 +147,9 @@ PlayerKeyAction routePlayerKey(
     );
   }
 
-  if (kTvBackKeys.contains(key)) return const PlayerKeyBack();
+  // Le Retour d'Android n'est pas une touche ici : le système le rejoue en
+  // `popRoute`, que le lecteur traite (voir [isSelfHandledBackKey]).
+  if (isSelfHandledBackKey(key)) return const PlayerKeyBack();
 
   return const PlayerKeyIgnored();
 }

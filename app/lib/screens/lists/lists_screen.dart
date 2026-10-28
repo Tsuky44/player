@@ -90,7 +90,7 @@ class ListsScreen extends StatelessWidget {
               child: Padding(
                 padding: EdgeInsets.fromLTRB(
                   padding,
-                  embedded ? embeddedShellContentTopInset(context) : 28,
+                  shellTabTopInset(context, embedded: embedded),
                   padding,
                   20,
                 ),

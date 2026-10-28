@@ -237,6 +237,7 @@ func main() {
 	// Ce que la bibliothèque a, par identifiant TMDB, pour OnyxHub (ADR-0073) :
 	// tout compte voit déjà toute la bibliothèque, RequireAuth suffit.
 	router.GET("/api/library/tmdb-index", handlers.RequireAuth(handlers.GetLibraryTMDBIndex))
+	router.GET("/api/library/shows/:tmdb/episodes", handlers.RequireAuth(handlers.GetLibraryShowEpisodes))
 	router.GET("/api/progress/sync", handlers.RequireAuth(handlers.ExportProgress))
 	router.POST("/api/progress/sync", handlers.RequireAuth(handlers.NotifiesProgress(handlers.ImportProgress)))
 

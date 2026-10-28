@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 
 import '../../../models/server_activity.dart';
 import '../../../theme/app_colors.dart';
+import '../../../theme/app_theme.dart';
 import '../../../theme/app_type.dart';
 import '../../../l10n/tr.dart';
 
@@ -326,8 +327,8 @@ class SettingsChoiceTile<T> extends StatelessWidget {
                               ? AppColors.textPrimary
                               : AppColors.textSecondary,
                         ),
-                        side: BorderSide(
-                            color: Colors.white.withValues(alpha: 0.1)),
+                        side: AppTheme.chipSide(BorderSide(
+                            color: Colors.white.withValues(alpha: 0.1))),
                         onSelected: (_) => onChanged(option),
                       ),
                   ],

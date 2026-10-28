@@ -14,6 +14,7 @@ import '../../theme/app_colors.dart';
 import '../../tv/tv_deferred_keyboard.dart';
 import '../../utils/on_screen.dart';
 import '../../widgets/global/otp_code_dialog.dart';
+import 'server_account_subtitle.dart';
 import '../../theme/app_type.dart';
 import '../../l10n/tr.dart';
 
@@ -492,9 +493,8 @@ class _ServerTile extends StatelessWidget {
             ],
           ),
           subtitle: Text(
-            '${account.username} · ${isActive ? 'serveur actif' : account.prettyHost}'
-            '${isPrimary ? ' · serveur principal' : ''}'
-            '${links.isEmpty ? '' : '\nLié à ${links.map((l) => '${l.remoteUsername} sur ${l.displayName}${l.isActive ? '' : ' (en attente des administrateurs)'}').join(', ')}'}',
+            serverAccountSubtitle(account,
+                isActive: isActive, isPrimary: isPrimary, links: links),
             style: const TextStyle(color: AppColors.textSecondary),
           ),
           trailing: PopupMenuButton<String>(

@@ -5,6 +5,7 @@ import '../../../models/models.dart';
 import '../../../models/server_activity.dart';
 import '../../../services/api_client.dart';
 import '../../../theme/app_colors.dart';
+import '../../../theme/app_theme.dart';
 import '../playback_logs_screen.dart';
 import '../widgets/history_tile.dart';
 import '../widgets/settings_ui.dart';
@@ -256,11 +257,11 @@ class _FilterChip extends StatelessWidget {
         showCheckmark: false,
         onSelected: (_) => onTap(),
         selectedColor: AppColors.primary.withValues(alpha: 0.22),
-        side: BorderSide(
+        side: AppTheme.chipSide(BorderSide(
           color: selected
               ? AppColors.primary.withValues(alpha: 0.6)
               : Colors.white.withValues(alpha: 0.1),
-        ),
+        )),
       ),
     );
   }

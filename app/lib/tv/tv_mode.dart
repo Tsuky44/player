@@ -67,6 +67,14 @@ abstract final class TvMode {
       try {
         _detected = AppPlatform.isTvOS ||
             (await _channel.invokeMethod<bool>('isTelevision') ?? false);
+        // Android TV garde lui aussi le champ focalisé quand son clavier se
+        // ferme : les flèches doivent pouvoir en sortir (voir
+        // [WebTvFieldExit]). L'Apple TV aussi, par précaution : son clavier
+        // plein écran garde la télécommande tant qu'il est ouvert, et le
+        // filet ne sert que si le champ reste focalisé après.
+        if (AppPlatform.isAndroid || AppPlatform.isTvOS) {
+          WebTvFieldExit.install();
+        }
         final name = await _channel.invokeMethod<String>('deviceName');
         if (name != null && name.trim().isNotEmpty) {
           _deviceName = name.trim();

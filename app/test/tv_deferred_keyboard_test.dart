@@ -99,6 +99,30 @@ void main() {
     expect(fieldNode.hasFocus, isFalse);
   });
 
+  testWidgets(
+      'clavier refermé, champ encore focalisé : Retour rend la télécommande '
+      'à la barre', (tester) async {
+    final fieldNode = await pumpBar(tester, isTv: true);
+    // Rien à relâcher tant que le champ n'a pas été ouvert.
+    expect(TvDeferredKeyboardState.releaseFocused(), isFalse);
+
+    for (var i = 0; i < 6 && !_barHasFocus(tester); i++) {
+      primaryFocus?.nextFocus();
+      await tester.pump();
+    }
+    await tester.sendKeyEvent(LogicalKeyboardKey.enter);
+    await tester.pumpAndSettle();
+    expect(fieldNode.hasFocus, isTrue);
+
+    // Retour ferme le clavier d'Android TV sans retirer le focus au champ :
+    // le Retour suivant proposait de quitter l'app, curseur toujours là.
+    expect(TvDeferredKeyboardState.releaseFocused(), isTrue);
+    await tester.pumpAndSettle();
+
+    expect(fieldNode.hasFocus, isFalse);
+    expect(_barHasFocus(tester), isTrue);
+  });
+
   testWidgets('hors téléviseur, le champ reste un champ ordinaire',
       (tester) async {
     final fieldNode = await pumpBar(tester, isTv: false);

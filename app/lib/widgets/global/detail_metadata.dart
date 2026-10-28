@@ -33,7 +33,7 @@ List<Widget> buildMetadataChips({
 
   if (type == MediaType.show) {
     if (seasons > 0) {
-      items.add(MetadataText('$seasons saison${seasons > 1 ? 's' : ''}'));
+      items.add(MetadataText(tr('{0} saison{1}', [seasons, seasons > 1 ? 's' : ''])));
     }
   } else {
     final seconds = runtimeMinutes > 0 ? runtimeMinutes * 60 : durationSeconds;

@@ -3,6 +3,7 @@ import 'dart:ui';
 import 'package:flutter/material.dart';
 
 import '../../../theme/app_colors.dart';
+import '../../../theme/app_theme.dart';
 import '../../../widgets/global/app_network_image.dart';
 import '../../../theme/app_type.dart';
 import '../../../l10n/tr.dart';
@@ -347,12 +348,15 @@ class EndCardNextEpisodeButton extends StatelessWidget {
 
     return OutlinedButton.icon(
       onPressed: enabled ? onTap : null,
-      style: OutlinedButton.styleFrom(
-        foregroundColor: AppColors.textPrimary,
-        side: const BorderSide(color: AppColors.border),
-        padding: padding,
-        shape: shape,
-        textStyle: textStyle,
+      // L'anneau du thème au focus : `side` posé seul le remplaçait.
+      style: AppTheme.focusRinged(
+        OutlinedButton.styleFrom(
+          foregroundColor: AppColors.textPrimary,
+          padding: padding,
+          shape: shape,
+          textStyle: textStyle,
+        ),
+        resting: const BorderSide(color: AppColors.border),
       ),
       icon: icon,
       label: label,

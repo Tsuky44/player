@@ -154,4 +154,59 @@ void main() {
 
     expect(key.currentState!.remembered, isNull);
   });
+
+  testWidgets(
+      'un onglet visité pour la première fois s’ouvre en haut, pas sous '
+      'l’élément quitté', (tester) async {
+    final header = _nodes('header', 1);
+    final content = _nodes('content', 2);
+    await tester.pumpWidget(TvScope(
+      isTv: true,
+      child: MaterialApp(
+        home: Scaffold(
+          body: Column(
+            crossAxisAlignment: CrossAxisAlignment.end,
+            children: [
+              // La recherche, à droite de l'en-tête.
+              Focus(
+                focusNode: header[0],
+                child: const SizedBox(width: 80, height: 40),
+              ),
+              Expanded(
+                child: TvFocusMemory(
+                  entersAtTop: true,
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      // Le bouton du bandeau, à gauche.
+                      Focus(
+                        focusNode: content[0],
+                        child: const SizedBox(width: 80, height: 40),
+                      ),
+                      const SizedBox(height: 200),
+                      // « Voir tout », à droite, sous la recherche.
+                      Align(
+                        alignment: Alignment.centerRight,
+                        child: Focus(
+                          focusNode: content[1],
+                          child: const SizedBox(width: 80, height: 40),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    ));
+    header[0].requestFocus();
+    await tester.pump();
+
+    await tester.sendKeyEvent(LogicalKeyboardKey.arrowDown);
+    await tester.pumpAndSettle();
+
+    expect(content[0].hasFocus, isTrue);
+  });
 }
