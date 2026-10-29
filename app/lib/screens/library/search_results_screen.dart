@@ -6,6 +6,7 @@ import '../../theme/app_colors.dart';
 import '../../utils/responsive.dart';
 import '../../widgets/global/empty_state.dart';
 import '../../widgets/global/media_card.dart';
+import '../../widgets/global/poster_grid_zoom_region.dart';
 import 'movie_detail_screen.dart';
 import 'show_detail_screen.dart';
 import '../../theme/app_icons.dart';
@@ -52,59 +53,68 @@ class SearchResultsScreen extends StatelessWidget {
         elevation: 0,
         title: Text(
           tr('Résultats pour « {0} »', [query]),
-          style: const TextStyle(fontSize: AppType.headline, fontWeight: FontWeight.w700),
+          style: const TextStyle(
+              fontSize: AppType.headline, fontWeight: FontWeight.w700),
         ),
       ),
       body: results.isEmpty
           ? EmptyStateView(
               icon: AppIcons.search,
               title: tr('Aucun résultat'),
-              message: tr('Aucun film ou série ne correspond à « {0} ».', [query]),
+              message:
+                  tr('Aucun film ou série ne correspond à « {0} ».', [query]),
             )
-          : CustomScrollView(
-              slivers: [
-                SliverToBoxAdapter(
-                  child: Padding(
+          : PosterGridZoomRegion(
+              child: CustomScrollView(
+                scrollCacheExtent: AppLayout.imageCacheExtent(context),
+                slivers: [
+                  SliverToBoxAdapter(
+                    child: Padding(
+                      padding: EdgeInsets.fromLTRB(
+                          horizontalPadding, 8, horizontalPadding, 0),
+                      child: Text(
+                        tr('{0} résultat{1}',
+                            [results.length, results.length > 1 ? 's' : '']),
+                        style: const TextStyle(
+                            color: AppColors.textMuted,
+                            fontSize: AppType.subhead),
+                      ),
+                    ),
+                  ),
+                  SliverPadding(
                     padding: EdgeInsets.fromLTRB(
-                        horizontalPadding, 8, horizontalPadding, 0),
-                    child: Text(
-                      tr('{0} résultat{1}', [results.length, results.length > 1 ? 's' : '']),
-                      style: const TextStyle(
-                          color: AppColors.textMuted, fontSize: AppType.subhead),
-                    ),
-                  ),
-                ),
-                SliverPadding(
-                  padding: EdgeInsets.fromLTRB(
-                      horizontalPadding, 20, horizontalPadding, 48),
-                  sliver: SliverLayoutBuilder(
-                    builder: (context, constraints) => SliverGrid(
-                      gridDelegate: AppLayout.posterGridDelegate(
-                        constraints.crossAxisExtent,
-                        compact: AppLayout.isCompact(context),
-                      ),
-                      delegate: SliverChildBuilderDelegate(
-                        (context, index) {
-                          final media = results[index];
-                          return MediaCard(
-                            media: media,
-                            // La télécommande arrive sur le premier résultat,
-                            // pas sur le bouton retour de la barre du haut.
-                            autofocus: index == 0,
-                            progress: media.type == MediaType.movie
-                                ? lp.movieProgressFor(media.id)
-                                : null,
-                            watched: media.type == MediaType.movie &&
-                                (lp.movieItemFor(media.id)?.isFinished ?? false),
-                            onTap: () => _openMedia(context, media, lp),
-                          );
-                        },
-                        childCount: results.length,
+                        horizontalPadding, 20, horizontalPadding, 48),
+                    sliver: SliverLayoutBuilder(
+                      builder: (context, constraints) => SliverGrid(
+                        gridDelegate: AppLayout.posterGridDelegate(
+                          context,
+                          constraints.crossAxisExtent,
+                          compact: AppLayout.isCompact(context),
+                        ),
+                        delegate: SliverChildBuilderDelegate(
+                          (context, index) {
+                            final media = results[index];
+                            return MediaCard(
+                              media: media,
+                              // La télécommande arrive sur le premier résultat,
+                              // pas sur le bouton retour de la barre du haut.
+                              autofocus: index == 0,
+                              progress: media.type == MediaType.movie
+                                  ? lp.movieProgressFor(media.id)
+                                  : null,
+                              watched: media.type == MediaType.movie &&
+                                  (lp.movieItemFor(media.id)?.isFinished ??
+                                      false),
+                              onTap: () => _openMedia(context, media, lp),
+                            );
+                          },
+                          childCount: results.length,
+                        ),
                       ),
                     ),
                   ),
-                ),
-              ],
+                ],
+              ),
             ),
     );
   }

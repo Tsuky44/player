@@ -11,8 +11,9 @@ import '../../theme/app_icons.dart';
 import '../../utils/external_url.dart';
 import '../../utils/responsive.dart';
 import '../../widgets/global/empty_state.dart';
+import '../../widgets/global/staggered_entrance.dart';
 import 'request_detail_screen.dart';
-import 'widgets/my_request_tile.dart';
+import 'widgets/my_request_card.dart';
 import 'widgets/request_moderation_dialogs.dart';
 
 /// Les demandes du compte et leur avancement, lues chez MediaHub (ADR-0073,
@@ -254,24 +255,32 @@ class _MyRequestsScreenState extends State<MyRequestsScreen> {
         }
         return RefreshIndicator(
           onRefresh: _reload,
-          child: ListView.separated(
-            padding: EdgeInsets.fromLTRB(padding, 12, padding, 32),
-            itemCount: requests.length,
-            separatorBuilder: (_, __) => const SizedBox(height: 10),
-            itemBuilder: (context, index) {
-              final request = requests[index];
-              return MyRequestTile(
-                request: request,
-                showRequester: _scope == _Scope.all,
-                actions: _actionsFor(request),
-                busy: _moderating != null &&
-                    request.requestIds.isNotEmpty &&
-                    request.requestIds.first == _moderating,
-                onTap: () => Navigator.of(context).push(MaterialPageRoute(
-                    builder: (_) =>
-                        RequestDetailScreen(item: request.toRequestItem()))),
-              );
-            },
+          child: StaggeredEntranceScope(
+            playKey: requests,
+            maxAnimated: 8,
+            child: ListView.separated(
+              scrollCacheExtent: AppLayout.imageCacheExtent(context),
+              padding: EdgeInsets.fromLTRB(padding, 12, padding, 32),
+              itemCount: requests.length,
+              separatorBuilder: (_, __) => const SizedBox(height: 14),
+              itemBuilder: (context, index) {
+                final request = requests[index];
+                return StaggeredEntrance(
+                  index: index,
+                  child: MyRequestCard(
+                    request: request,
+                    showRequester: _scope == _Scope.all,
+                    actions: _actionsFor(request),
+                    busy: _moderating != null &&
+                        request.requestIds.isNotEmpty &&
+                        request.requestIds.first == _moderating,
+                    onTap: () => Navigator.of(context).push(MaterialPageRoute(
+                        builder: (_) =>
+                            RequestDetailScreen(item: request.toRequestItem()))),
+                  ),
+                );
+              },
+            ),
           ),
         );
       },

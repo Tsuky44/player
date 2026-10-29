@@ -4,6 +4,7 @@ import '../../../models/media_request.dart';
 import '../../../theme/app_colors.dart';
 import '../../../theme/app_type.dart';
 import '../../../l10n/tr.dart';
+import '../../../utils/long_date.dart';
 
 class RequestInfoTable extends StatelessWidget {
   final RequestMediaDetails details;
@@ -29,7 +30,8 @@ class RequestInfoTable extends StatelessWidget {
         _InfoRow(tr('Revenu'), _formatMoney(details.revenue!)),
       if (details.originalLanguage != null &&
           details.originalLanguage!.isNotEmpty)
-        _InfoRow(tr('Langue originale'), details.originalLanguage!.toUpperCase()),
+        _InfoRow(
+            tr('Langue originale'), details.originalLanguage!.toUpperCase()),
       if (details.countries.isNotEmpty)
         _InfoRow(tr('Pays de production'), details.countries.first),
       if (details.numberOfSeasons != null && details.numberOfSeasons! > 0)
@@ -48,42 +50,41 @@ class RequestInfoTable extends StatelessWidget {
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
           _ratingsHeader(details.rating),
-          if (rows.isNotEmpty)
-            ...[
-              for (int i = 0; i < rows.length; i++) ...[
-                Divider(height: 1, color: Colors.white.withValues(alpha: 0.06)),
-                Padding(
-                  padding:
-                      const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
-                  child: Row(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Expanded(
-                        child: Text(
-                          rows[i].label,
-                          style: TextStyle(
-                            fontSize: AppType.footnote,
-                            fontWeight: FontWeight.w700,
-                            color: Colors.white.withValues(alpha: 0.45),
-                          ),
+          if (rows.isNotEmpty) ...[
+            for (int i = 0; i < rows.length; i++) ...[
+              Divider(height: 1, color: Colors.white.withValues(alpha: 0.06)),
+              Padding(
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+                child: Row(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Expanded(
+                      child: Text(
+                        rows[i].label,
+                        style: TextStyle(
+                          fontSize: AppType.footnote,
+                          fontWeight: FontWeight.w700,
+                          color: Colors.white.withValues(alpha: 0.45),
                         ),
                       ),
-                      const SizedBox(width: 12),
-                      Expanded(
-                        child: Text(
-                          rows[i].value,
-                          textAlign: TextAlign.end,
-                          style: const TextStyle(
-                            fontSize: AppType.footnote,
-                            color: AppColors.textSecondary,
-                          ),
+                    ),
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: Text(
+                        rows[i].value,
+                        textAlign: TextAlign.end,
+                        style: const TextStyle(
+                          fontSize: AppType.footnote,
+                          color: AppColors.textSecondary,
                         ),
                       ),
-                    ],
-                  ),
+                    ),
+                  ],
                 ),
-              ],
+              ),
             ],
+          ],
           if (details.studios.isNotEmpty) ...[
             Divider(height: 1, color: Colors.white.withValues(alpha: 0.06)),
             Padding(
@@ -206,26 +207,8 @@ class RequestInfoTable extends StatelessWidget {
   }
 
   String _formatDate(String date) {
-    try {
-      final d = DateTime.parse(date);
-      const months = [
-        'janvier',
-        'février',
-        'mars',
-        'avril',
-        'mai',
-        'juin',
-        'juillet',
-        'août',
-        'septembre',
-        'octobre',
-        'novembre',
-        'décembre'
-      ];
-      return '${d.day} ${tr(months[d.month - 1])} ${d.year}';
-    } catch (_) {
-      return date;
-    }
+    final parsed = DateTime.tryParse(date);
+    return parsed == null ? date : formatLongDate(parsed);
   }
 
   String _formatMoney(int amount) {

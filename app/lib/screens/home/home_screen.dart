@@ -9,6 +9,7 @@ import '../../tv/tv_mode.dart';
 import '../../utils/hero_slides.dart';
 import '../../utils/on_screen.dart';
 import '../../navigation/search_route_observer.dart';
+import '../../utils/responsive.dart';
 import '../../widgets/global/empty_state.dart';
 import '../../widgets/global/interface_tour/tour_anchor.dart';
 import '../../widgets/global/hero_carousel.dart';
@@ -214,6 +215,7 @@ class _HomeScreenState extends State<HomeScreen>
                       color: AppColors.primary,
                       edgeOffset: widget.embedded ? 0 : topBarHeight,
                       child: CustomScrollView(
+                        scrollCacheExtent: AppLayout.imageCacheExtent(context),
                         controller: _scrollController,
                         physics: const AlwaysScrollableScrollPhysics(),
                         slivers: [

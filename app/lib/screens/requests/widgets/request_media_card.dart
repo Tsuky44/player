@@ -5,17 +5,19 @@ import '../../../utils/poster_url.dart';
 import '../../../widgets/global/poster_card.dart';
 import '../../../theme/app_type.dart';
 import '../../../l10n/tr.dart';
+import 'request_status_dot.dart';
 
+/// Une affiche du catalogue Demander, comme les cartes d'OnyxHub
+/// (`MediaCard`) : l'affiche seule, la pastille de statut en haut à droite, et
+/// le titre, le type et le résumé qui montent du bas quand elle est pointée.
 class RequestMediaCard extends StatelessWidget {
   final RequestMediaItem item;
   final VoidCallback onTap;
-  final bool showTypeBadge;
 
   const RequestMediaCard({
     super.key,
     required this.item,
     required this.onTap,
-    this.showTypeBadge = true,
   });
 
   @override
@@ -23,93 +25,115 @@ class RequestMediaCard extends StatelessWidget {
     return PosterCard(
       posterUrl: cardPosterUrl(item.posterUrl),
       title: item.title,
-      subtitle: [
-        if (item.year != null) item.year!,
-        if (item.rating > 0) '★ ${item.rating.toStringAsFixed(1)}',
-      ].join('  •  '),
+      showMeta: false,
       onTap: onTap,
+      hoverDetails: _RequestCardDetails(item: item),
       overlays: [
-        if (showTypeBadge)
-          Positioned(top: 8, left: 8, child: _TypeBadge(type: item.mediaType)),
         if (item.status != RequestMediaStatus.unknown)
-          Positioned(top: 8, right: 8, child: _StatusDot(status: item.status)),
+          Positioned(
+            top: PosterCard.overlayInset,
+            right: PosterCard.overlayInset,
+            child: RequestStatusDot(
+              status: item.status,
+              awaitingRelease: item.isAwaitingRelease(),
+            ),
+          ),
       ],
     );
   }
 }
 
-/// Subtle glass pill — MediaHub MediaCardOverlay style.
-class _TypeBadge extends StatelessWidget {
-  final RequestMediaType type;
+/// Le cartouche d'une affiche pointée : titre, pastille de type avec l'année
+/// et la note, puis le début du résumé.
+class _RequestCardDetails extends StatelessWidget {
+  final RequestMediaItem item;
 
-  const _TypeBadge({required this.type});
+  const _RequestCardDetails({required this.item});
 
   @override
   Widget build(BuildContext context) {
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
-      decoration: BoxDecoration(
-        color: Colors.black.withValues(alpha: 0.45),
-        borderRadius: BorderRadius.circular(999),
-        border: Border.all(color: Colors.white.withValues(alpha: 0.12)),
-      ),
-      child: Text(
-        type == RequestMediaType.movie ? tr('Film') : tr('Série'),
-        style: TextStyle(
-          fontSize: AppType.micro,
-          fontWeight: FontWeight.w600,
-          letterSpacing: 0.4,
-          color: Colors.white.withValues(alpha: 0.85),
+    final facts = [
+      if (item.year != null) item.year!,
+      if (item.rating > 0) '★ ${item.rating.toStringAsFixed(1)}',
+    ].join('  ·  ');
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(
+          item.title,
+          maxLines: 2,
+          overflow: TextOverflow.ellipsis,
+          style: const TextStyle(
+            color: AppColors.textPrimary,
+            fontWeight: FontWeight.w700,
+            fontSize: AppType.body,
+            height: 1.15,
+          ),
         ),
-      ),
+        const SizedBox(height: 6),
+        Row(
+          children: [
+            _TypePill(type: item.mediaType),
+            if (facts.isNotEmpty) ...[
+              const SizedBox(width: 6),
+              Flexible(
+                child: Text(
+                  facts,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: const TextStyle(
+                    color: AppColors.textSecondary,
+                    fontSize: AppType.micro,
+                  ),
+                ),
+              ),
+            ],
+          ],
+        ),
+        if (item.overview.isNotEmpty) ...[
+          const SizedBox(height: 6),
+          Text(
+            item.overview,
+            maxLines: 3,
+            overflow: TextOverflow.ellipsis,
+            style: const TextStyle(
+              color: AppColors.textSecondary,
+              fontSize: AppType.caption,
+              height: 1.35,
+            ),
+          ),
+        ],
+      ],
     );
   }
 }
 
-/// Colored status bubble — MediaHub MediaCardStatus style.
-class _StatusDot extends StatelessWidget {
-  final RequestMediaStatus status;
+/// Pastille de verre « Film » / « Série ». Fond uni plutôt que flouté : elle
+/// apparaît sur chaque carte pointée, et un flou par carte se paierait à
+/// chaque image d'un déplacement du focus.
+class _TypePill extends StatelessWidget {
+  final RequestMediaType type;
 
-  const _StatusDot({required this.status});
+  const _TypePill({required this.type});
 
   @override
   Widget build(BuildContext context) {
-    final Color color;
-    final String tooltip;
-    switch (status) {
-      case RequestMediaStatus.available:
-        color = AppColors.success;
-        tooltip = tr('Disponible');
-      case RequestMediaStatus.partial:
-        color = AppColors.warning;
-        tooltip = tr('Partiellement disponible');
-      case RequestMediaStatus.pending:
-      case RequestMediaStatus.processing:
-        color = AppColors.accentMuted;
-        tooltip = tr('En attente');
-      case RequestMediaStatus.unknown:
-        return const SizedBox.shrink();
-    }
-
-    return Tooltip(
-      message: tooltip,
-      child: Container(
-        width: 12,
-        height: 12,
-        decoration: BoxDecoration(
-          color: color,
-          shape: BoxShape.circle,
-          boxShadow: [
-            BoxShadow(
-              color: color.withValues(alpha: 0.6),
-              blurRadius: 8,
-              spreadRadius: 0.5,
-            ),
-          ],
-          border: Border.all(
-            color: Colors.black.withValues(alpha: 0.35),
-            width: 1,
-          ),
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 2),
+      decoration: BoxDecoration(
+        color: Colors.white.withValues(alpha: 0.1),
+        borderRadius: BorderRadius.circular(999),
+        border: Border.all(color: Colors.white.withValues(alpha: 0.12)),
+      ),
+      child: Text(
+        (type == RequestMediaType.movie ? tr('Film') : tr('Série'))
+            .toUpperCase(),
+        style: const TextStyle(
+          fontSize: AppType.micro,
+          fontWeight: FontWeight.w600,
+          letterSpacing: 0.6,
+          color: AppColors.textPrimary,
         ),
       ),
     );

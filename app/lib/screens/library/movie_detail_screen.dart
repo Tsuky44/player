@@ -11,6 +11,7 @@ import '../../theme/app_colors.dart';
 import '../../tv/tv_mode.dart';
 import '../../utils/format.dart';
 import '../../utils/on_screen.dart';
+import '../../utils/responsive.dart';
 import '../../widgets/global/detail_actions.dart';
 import '../../widgets/global/detail_facts_section.dart';
 import '../../widgets/global/detail_metadata.dart';
@@ -372,6 +373,7 @@ class _MovieDetailScreenState extends State<MovieDetailScreen>
     return Scaffold(
       backgroundColor: AppColors.background,
       body: CustomScrollView(
+        scrollCacheExtent: AppLayout.imageCacheExtent(context),
         slivers: [
           SliverToBoxAdapter(
             child: DetailBackdropHeader(

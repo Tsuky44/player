@@ -6,7 +6,9 @@ String? resolvePosterUrl(String? posterUrl, {String? serverBaseUrl}) {
   final url = posterUrl.trim();
   if (url.startsWith('http://') || url.startsWith('https://')) return url;
   if (serverBaseUrl == null || serverBaseUrl.isEmpty) return url;
-  final base = serverBaseUrl.endsWith('/') ? serverBaseUrl.substring(0, serverBaseUrl.length - 1) : serverBaseUrl;
+  final base = serverBaseUrl.endsWith('/')
+      ? serverBaseUrl.substring(0, serverBaseUrl.length - 1)
+      : serverBaseUrl;
   final path = url.startsWith('/') ? url : '/$url';
   return '$base$path';
 }
@@ -30,13 +32,64 @@ String tmdbSizedUrl(String url, String size) {
   return url.replaceFirst(_tmdbSizeSegment, '/t/p/$size');
 }
 
+/// Les largeurs que TMDB sert, de la plus petite à la plus grande. Relevé sur
+/// image.tmdb.org : chacune répond pour n'importe quelle image (affiche, fond,
+/// portrait, logo), pas seulement pour celles de sa catégorie.
+const List<int> _tmdbWidths = [92, 154, 185, 300, 342, 500, 780, 1280];
+
+/// Le segment de taille d'une URL TMDB, quand il se lit en largeur :
+/// `w342` (largeur dans le groupe 2) ou `original`. `h632` n'en fait pas partie.
+final RegExp _tmdbWidthSegment = RegExp(r'/t/p/(original|w(\d+))/');
+
+/// La largeur en pixels que sert [url], ou null si ce n'est pas une URL TMDB
+/// en `w…` (`original`, `h632`, autre hôte).
+int? tmdbServedWidth(String url) {
+  final width = _tmdbWidthSegment.firstMatch(url)?.group(2);
+  return width == null ? null : int.parse(width);
+}
+
+/// [url] à la plus petite taille TMDB qui couvre [physicalWidth] pixels, sans
+/// jamais dépasser celle que l'appelant demandait : sa taille est un plafond.
+///
+/// Une carte de grille demande `w500` mais se dessine sur 112 px logiques en
+/// téléphone (336 px physiques) ou 150 px sur un téléviseur à densité 1 :
+/// `w342` pèse moitié moins que `w500` (58 Ko contre 117 Ko mesurés), `w154`
+/// huit fois moins. Le décodage, ce qui fait saccader une petite TV pendant un
+/// défilement, coûte en proportion des pixels de la source.
+///
+/// [allowOriginal] faux plafonne `original` à `w1280` même sur une place plus
+/// large : le mode léger ne décode jamais une image en 4K (ADR-0086).
+String tmdbUrlForWidth(
+  String url,
+  double physicalWidth, {
+  bool allowOriginal = true,
+}) {
+  final match = _tmdbWidthSegment.firstMatch(url);
+  if (match == null || !physicalWidth.isFinite || physicalWidth <= 0) {
+    return url;
+  }
+  final asked = match.group(2) == null ? null : int.parse(match.group(2)!);
+  for (final width in _tmdbWidths) {
+    if (width < physicalWidth) continue;
+    if (asked != null && width >= asked) return url;
+    return url.replaceRange(match.start, match.end, '/t/p/w$width/');
+  }
+  if (asked == null && !allowOriginal) {
+    return url.replaceRange(
+        match.start, match.end, '/t/p/w${_tmdbWidths.last}/');
+  }
+  return url;
+}
+
 /// TMDB serves multiple sizes — upgrade small posters/stills for large hero backgrounds.
 String upgradeTmdbImageUrl(String url, {bool hero = false}) {
   return tmdbSizedUrl(url, hero ? 'w1280' : 'w780');
 }
 
 /// Poster for a grid/row card: TMDB is normalised to w500 — the server stores
-/// some artwork as w300, which is visibly soft on a desktop grid.
+/// some artwork as w300, which is visibly soft on a desktop grid. w500 est un
+/// plafond : `AppNetworkImage` descend à la taille de la place réelle
+/// ([tmdbUrlForWidth], ADR-0087).
 String? cardPosterUrl(String? posterUrl, {String? serverBaseUrl}) {
   final resolved = resolvePosterUrl(posterUrl, serverBaseUrl: serverBaseUrl);
   if (resolved == null) return null;
@@ -75,8 +128,19 @@ String? detailPosterUrl(String? posterUrl, {String? serverBaseUrl}) {
   return tmdbSizedUrl(resolved, 'w500');
 }
 
-/// Backdrop behind a detail header / hero. `w1280` is the largest TMDB size
-/// below `original` and is plenty for a banner that is at most ~600 px tall.
+/// Le fond d'une fiche (bibliothèque ou demande), en pleine page comme sur
+/// OnyxHub : plafonné à `original`. Sur une fenêtre de 2000 px, `w1280` était
+/// agrandi et se voyait flou ; `AppNetworkImage` redescend à `w1280` dès que
+/// la place le permet, et toujours en mode léger (ADR-0087).
+String? detailBackdropUrl(String? backdropUrl, {String? serverBaseUrl}) {
+  final resolved = resolvePosterUrl(backdropUrl, serverBaseUrl: serverBaseUrl);
+  if (resolved == null) return null;
+  return tmdbSizedUrl(resolved, 'original');
+}
+
+/// Backdrop behind a hero or a banner. `w1280` is the largest TMDB size
+/// below `original` and is plenty for a banner that is at most ~600 px tall,
+/// and cheap enough for a carousel that changes image every few seconds.
 String? backdropImageUrl(String? backdropUrl, {String? serverBaseUrl}) {
   final resolved = resolvePosterUrl(backdropUrl, serverBaseUrl: serverBaseUrl);
   if (resolved == null) return null;
@@ -99,7 +163,8 @@ String? heroBackgroundUrl(HomeMediaItem item, {String? serverBaseUrl}) {
   if (episodeStill != null && episodeStill.trim().isNotEmpty) {
     return resolveHeroImageUrl(episodeStill, serverBaseUrl: serverBaseUrl);
   }
-  return resolveHeroImageUrl(item.displayPosterUrl, serverBaseUrl: serverBaseUrl);
+  return resolveHeroImageUrl(item.displayPosterUrl,
+      serverBaseUrl: serverBaseUrl);
 }
 
 /// Estimated card height for layout (poster 2:3 + title line + subtitle line).

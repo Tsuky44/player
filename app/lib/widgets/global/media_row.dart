@@ -104,6 +104,7 @@ class MediaRow extends StatelessWidget {
           child: SizedBox(
             height: rowHeight,
             child: ListView.builder(
+              scrollCacheExtent: AppLayout.imageCacheExtent(context),
               scrollDirection: Axis.horizontal,
               padding: EdgeInsets.only(
                 left: horizontalPadding,

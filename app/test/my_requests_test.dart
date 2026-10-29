@@ -120,9 +120,10 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(find.text('Matrix'), findsOneWidget);
-    expect(find.text('En cours'), findsOneWidget);
+    // Libellés en capitales, comme les pastilles d'OnyxHub.
+    expect(find.text('EN COURS'), findsOneWidget);
     expect(find.text('Saison 1'), findsOneWidget);
-    expect(find.text('Disponible'), findsOneWidget);
+    expect(find.text('DISPONIBLE'), findsOneWidget);
     expect(find.byType(LinearProgressIndicator), findsOneWidget);
   });
 
@@ -228,8 +229,8 @@ void main() {
       child: const MaterialApp(home: MyRequestsScreen()),
     ));
     await tester.pumpAndSettle();
-    expect(find.text('S1 · Disponible'), findsOneWidget);
-    expect(find.text('S2 · Approuvée'), findsOneWidget);
+    expect(find.text('S1 · DISPONIBLE'), findsOneWidget);
+    expect(find.text('S2 · APPROUVÉE'), findsOneWidget);
   });
 
   testWidgets('qui modère voit les demandes de tous et approuve un lot entier',
@@ -257,7 +258,7 @@ void main() {
 
     await tester.tap(find.text('Tous les comptes'));
     await tester.pumpAndSettle();
-    expect(find.text('Saisons 1, 2 · demandé par hugo'), findsOneWidget);
+    expect(find.text('Demandé par hugo'), findsOneWidget);
 
     await tester.tap(find.text('Approuver'));
     await tester.pumpAndSettle();

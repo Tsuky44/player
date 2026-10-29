@@ -852,8 +852,6 @@ const Map<String, String> kEnglish = <String, String>{
       'In progress',
   'En cours de lecture':
       'Now playing',
-  'En cours de traitement...':
-      'Processing...',
   'En erreur':
       'Error',
   'En lecture':
@@ -3148,8 +3146,8 @@ const Map<String, String> kEnglish = <String, String>{
       'MediaHub has no account under your name: your requests go through, but do not show up here.',
   'Aucun compte n’a encore rien demandé.':
       'No account has requested anything yet.',
-  '{0} · demandé par {1}':
-      '{0} · requested by {1}',
+  'Demandé par {0}':
+      'Requested by {0}',
   'S{0}':
       'S{0}',
   'Refusée.':
@@ -3174,4 +3172,22 @@ const Map<String, String> kEnglish = <String, String>{
       'Requests made from the Request tab are sent to MediaHub to be downloaded. The key is MediaHub’s PLAYER_INTEGRATION_API_KEY. For MediaHub to tell Onyx about imports, set its ONYX_WEBHOOK_URL to {0}/api/integrations/mediahub/events.',
   'Clé d’intégration MediaHub':
       'MediaHub integration key',
+  'Films populaires':
+      'Popular movies',
+  'Séries populaires':
+      'Popular shows',
+  'En attente de sortie':
+      'Awaiting release',
+  'En cours de traitement':
+      'Being processed',
+  'Ajouté le {0}':
+      'Added on {0}',
+  'Demandé · en attente de sortie':
+      'Requested · awaiting release',
+  'Sortie le {0}':
+      'Out on {0}',
+  'Envoi de la demande':
+      'Sending request',
+  'Importation':
+      'Importing',
 };

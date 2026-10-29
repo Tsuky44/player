@@ -12,6 +12,7 @@ import '../../theme/app_colors.dart';
 import '../../tv/tv_deferred_keyboard.dart';
 import '../../tv/tv_mode.dart';
 import '../../utils/poster_url.dart';
+import '../../utils/responsive.dart';
 import 'app_network_image.dart';
 import 'glass_chrome.dart';
 import '../../theme/app_icons.dart';
@@ -317,6 +318,7 @@ class _SearchResultsPanel extends StatelessWidget {
         ConstrainedBox(
           constraints: BoxConstraints(maxWidth: maxWidth, maxHeight: 340),
           child: ListView.separated(
+            scrollCacheExtent: AppLayout.imageCacheExtent(context),
             shrinkWrap: true,
             padding: const EdgeInsets.symmetric(vertical: 4),
             itemCount: visibleCount,

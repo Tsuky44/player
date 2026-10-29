@@ -39,13 +39,12 @@ class SeasonSelectorDialog extends StatefulWidget {
 class _SeasonSelectorDialogState extends State<SeasonSelectorDialog> {
   final Set<int> _selected = {};
 
-  List<RequestSeason> get _sorted => [...widget.seasons]
-    ..sort((a, b) => a.number.compareTo(b.number));
+  List<RequestSeason> get _sorted =>
+      [...widget.seasons]..sort((a, b) => a.number.compareTo(b.number));
 
   /// Same filter as MediaHub SeasonSelectorModal — only seasons not yet in the library.
-  List<RequestSeason> get _requestable => _sorted
-      .where((s) => s.number > 0 && s.status.canRequest)
-      .toList();
+  List<RequestSeason> get _requestable =>
+      _sorted.where((s) => s.number > 0 && s.status.canRequest).toList();
 
   bool get _allSelected =>
       _requestable.isNotEmpty && _selected.length == _requestable.length;
@@ -163,8 +162,7 @@ class _SeasonSelectorDialogState extends State<SeasonSelectorDialog> {
               ),
               if (!hasRequestable)
                 Padding(
-                  padding:
-                      const EdgeInsets.fromLTRB(20, 4, 20, 8),
+                  padding: const EdgeInsets.fromLTRB(20, 4, 20, 8),
                   child: Text(
                     tr('Toutes les saisons sont déjà disponibles ou demandées.'),
                     style: TextStyle(
@@ -201,8 +199,7 @@ class _SeasonSelectorDialogState extends State<SeasonSelectorDialog> {
                               borderRadius: BorderRadius.circular(10),
                               border: Border.all(
                                 color: selected
-                                    ? AppColors.primary
-                                        .withValues(alpha: 0.55)
+                                    ? AppColors.primary.withValues(alpha: 0.55)
                                     : Colors.white.withValues(alpha: 0.08),
                               ),
                             ),
@@ -223,7 +220,8 @@ class _SeasonSelectorDialogState extends State<SeasonSelectorDialog> {
                                               ? AppColors.primary
                                               : Colors.white
                                                   .withValues(alpha: 0.3))
-                                          : Colors.white.withValues(alpha: 0.15),
+                                          : Colors.white
+                                              .withValues(alpha: 0.15),
                                     ),
                                   ),
                                   child: selected
@@ -260,7 +258,8 @@ class _SeasonSelectorDialogState extends State<SeasonSelectorDialog> {
                                             WrapCrossAlignment.center,
                                         children: [
                                           Text(
-                                            tr('{0} épisodes', [season.episodeCount]),
+                                            tr('{0} épisodes',
+                                                [season.episodeCount]),
                                             style: TextStyle(
                                               color: Colors.white
                                                   .withValues(alpha: 0.4),

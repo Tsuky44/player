@@ -116,7 +116,7 @@ class DetailBackdropHeader extends StatelessWidget {
     final dpr = devicePixelRatio;
     return Future.wait([
       AppNetworkImage.precache(
-        backdropImageUrl(
+        detailBackdropUrl(
           _backdropSource(details, fallback, loading: false),
           serverBaseUrl: baseUrl,
         ),
@@ -159,7 +159,7 @@ class DetailBackdropHeader extends StatelessWidget {
       details?.posterUrl ?? fallback.posterUrl,
       serverBaseUrl: baseUrl,
     );
-    final backdropUrl = backdropImageUrl(
+    final backdropUrl = detailBackdropUrl(
       _backdropSource(details, fallback, loading: loading),
       serverBaseUrl: baseUrl,
     );
@@ -443,6 +443,7 @@ class CastSection extends StatelessWidget {
           child: SizedBox(
             height: compact ? 178 : 214,
             child: ListView.separated(
+              scrollCacheExtent: AppLayout.imageCacheExtent(context),
               scrollDirection: Axis.horizontal,
               padding: EdgeInsets.symmetric(horizontal: pad),
               itemCount: cast.length,
@@ -764,6 +765,7 @@ class SimilarTitlesSection extends StatelessWidget {
             // height a poster + two metadata lines need at this width.
             height: mediaCardHeight(cardWidth) + PosterCard.liftHeadroom,
             child: ListView.separated(
+              scrollCacheExtent: AppLayout.imageCacheExtent(context),
               scrollDirection: Axis.horizontal,
               padding:
                   EdgeInsets.fromLTRB(pad, PosterCard.liftHeadroom, pad, 0),
@@ -792,8 +794,7 @@ class _CastPlaceholder extends StatelessWidget {
     return Container(
       color: AppColors.surfaceElevated,
       alignment: Alignment.center,
-      child: const Icon(AppIcons.person,
-          size: 40, color: AppColors.textMuted),
+      child: const Icon(AppIcons.person, size: 40, color: AppColors.textMuted),
     );
   }
 }

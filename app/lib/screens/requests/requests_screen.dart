@@ -7,11 +7,15 @@ import '../../models/request_catalog_filters.dart';
 import '../../providers/media_requests_provider.dart';
 import '../../desktop_window.dart';
 import '../../theme/app_colors.dart';
+import '../../theme/app_motion.dart';
+import '../../theme/lite_mode.dart';
 import '../../tv/tv_deferred_keyboard.dart';
 import '../../utils/responsive.dart';
 import '../../utils/poster_url.dart';
 import '../../widgets/global/app_network_image.dart';
 import '../../widgets/global/empty_state.dart';
+import '../../widgets/global/poster_grid_zoom_region.dart';
+import '../../widgets/global/staggered_entrance.dart';
 import '../../services/api_client.dart';
 import 'my_requests_screen.dart';
 import 'request_detail_screen.dart';
@@ -169,6 +173,18 @@ class _RequestsScreenState extends State<RequestsScreen> {
     );
   }
 
+  /// Le titre dit ce que montre la grille, comme sur OnyxHub.
+  String _title(MediaRequestsProvider provider) {
+    if (provider.query.isNotEmpty) {
+      return tr('Résultats pour « {0} »', [provider.query]);
+    }
+    return switch (provider.type) {
+      'movie' => tr('Films populaires'),
+      'tv' => tr('Séries populaires'),
+      _ => tr('Demander'),
+    };
+  }
+
   @override
   Widget build(BuildContext context) {
     final provider = context.watch<MediaRequestsProvider>();
@@ -185,7 +201,9 @@ class _RequestsScreenState extends State<RequestsScreen> {
         tooltip: tr('Filtres avancés'),
         child: const Icon(AppIcons.filters),
       ),
-      body: CustomScrollView(
+      body: PosterGridZoomRegion(
+        child: CustomScrollView(
+          scrollCacheExtent: AppLayout.imageCacheExtent(context),
         controller: _scrollController,
         slivers: [
           SliverToBoxAdapter(
@@ -202,7 +220,9 @@ class _RequestsScreenState extends State<RequestsScreen> {
                   Row(
                     children: [
                       Expanded(
-                        child: Text(tr('Demander'),
+                        child: Text(_title(provider),
+                            maxLines: 2,
+                            overflow: TextOverflow.ellipsis,
                             style: Theme.of(context)
                                 .textTheme
                                 .displaySmall
@@ -307,30 +327,40 @@ class _RequestsScreenState extends State<RequestsScreen> {
               sliver: SliverLayoutBuilder(
                 builder: (context, constraints) {
                   final grid = AppLayout.posterGridDelegate(
+                    context,
                     constraints.crossAxisExtent,
                     compact: AppLayout.isCompact(context),
+                    withMeta: false,
                   ) as SliverGridDelegateWithFixedCrossAxisCount;
                   final columns = grid.crossAxisCount;
                   _cellWidth = (constraints.crossAxisExtent -
                           grid.crossAxisSpacing * (columns - 1)) /
                       columns;
                   _devicePixelRatio = MediaQuery.devicePixelRatioOf(context);
-                  return SliverGrid(
-                    gridDelegate: grid,
-                    delegate: SliverChildBuilderDelegate(
-                      (context, index) {
-                        final item = provider.items[index];
-                        return RequestMediaCard(
-                          item: item,
-                          showTypeBadge: provider.type == 'all',
-                          onTap: () => Navigator.of(context).push(
-                            MaterialPageRoute(
-                                builder: (_) =>
-                                    RequestDetailScreen(item: item)),
-                          ),
-                        );
-                      },
-                      childCount: provider.items.length,
+                  // La grille est recréée à chaque nouveau résultat (le
+                  // chargement la remplace par LoadingView) : la cascade
+                  // rejoue alors, et pas aux pages ajoutées en bas.
+                  return StaggeredEntranceScope(
+                    playKey: provider.type,
+                    child: SliverGrid(
+                      gridDelegate: grid,
+                      delegate: SliverChildBuilderDelegate(
+                        (context, index) {
+                          final item = provider.items[index];
+                          return StaggeredEntrance(
+                            index: index,
+                            child: RequestMediaCard(
+                              item: item,
+                              onTap: () => Navigator.of(context).push(
+                                MaterialPageRoute(
+                                    builder: (_) =>
+                                        RequestDetailScreen(item: item)),
+                              ),
+                            ),
+                          );
+                        },
+                        childCount: provider.items.length,
+                      ),
                     ),
                   );
                 },
@@ -344,6 +374,7 @@ class _RequestsScreenState extends State<RequestsScreen> {
               ),
             ),
         ],
+      ),
       ),
     );
   }
@@ -401,18 +432,26 @@ class _Pill extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    // La couleur passe par le conteneur animé et non par le Material : elle
+    // se fond d'un onglet à l'autre au lieu de sauter. L'ombre colorée part en
+    // mode léger, comme celles des affiches (ADR-0086).
+    final glow = selected && !LiteScope.of(context);
     return Material(
-      color: selected ? AppColors.primary : Colors.transparent,
+      color: Colors.transparent,
       borderRadius: BorderRadius.circular(999),
       child: InkWell(
         onTap: onTap,
         borderRadius: BorderRadius.circular(999),
         child: AnimatedContainer(
-          duration: const Duration(milliseconds: 180),
+          duration: AppMotion.fade(context, AppMotion.micro),
+          curve: AppMotion.curve,
           padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 9),
           decoration: BoxDecoration(
+            color: selected
+                ? AppColors.primary
+                : AppColors.primary.withValues(alpha: 0),
             borderRadius: BorderRadius.circular(999),
-            boxShadow: selected
+            boxShadow: glow
                 ? [
                     BoxShadow(
                       color: AppColors.primary.withValues(alpha: 0.35),
@@ -422,15 +461,17 @@ class _Pill extends StatelessWidget {
                   ]
                 : null,
           ),
-          child: Text(
-            label,
+          child: AnimatedDefaultTextStyle(
+            duration: AppMotion.fade(context, AppMotion.micro),
+            curve: AppMotion.curve,
             style: TextStyle(
               color: selected
-                  ? Colors.white
+                  ? AppColors.onAccent
                   : Colors.white.withValues(alpha: 0.55),
               fontWeight: FontWeight.w600,
               fontSize: AppType.subhead,
             ),
+            child: Text(label),
           ),
         ),
       ),

@@ -6,6 +6,8 @@ import 'package:flutter/scheduler.dart';
 
 import '../../services/app_image_cache.dart';
 import '../../theme/app_colors.dart';
+import '../../theme/lite_mode.dart';
+import '../../utils/poster_url.dart';
 
 /// Every remote image in the app goes through here.
 ///
@@ -104,9 +106,10 @@ class AppNetworkImage extends StatelessWidget {
   }) {
     final resolved = url?.trim();
     if (resolved == null || resolved.isEmpty) return Future.value();
+    final source = _sourceFor(resolved, decodeWidth, devicePixelRatio);
     final provider = providerFor(
-      resolved,
-      memCacheWidth: _decodeWidthFor(decodeWidth, devicePixelRatio),
+      source.url,
+      memCacheWidth: source.memCacheWidth,
     );
     final done = Completer<void>();
     final stream = provider.resolve(
@@ -132,15 +135,34 @@ class AppNetworkImage extends StatelessWidget {
     return done.future;
   }
 
-  static int? _decodeWidthFor(double? logicalWidth, double devicePixelRatio) {
-    if (logicalWidth == null ||
-        !logicalWidth.isFinite ||
-        logicalWidth <= 0) {
-      return null;
+  /// Ce qui se télécharge et à quelle largeur ça se décode, pour une image
+  /// dessinée sur [logicalWidth] px à [devicePixelRatio]. Le widget et
+  /// [precache] passent tous deux par ici : sinon le préchauffage remplirait
+  /// une autre entrée du cache que celle que la carte lira.
+  ///
+  /// Une URL TMDB descend à la taille qui couvre la place réelle
+  /// ([tmdbUrlForWidth]). Une source plus étroite que la largeur de décodage
+  /// arrondie se décode telle quelle : l'agrandir ne ferait que gonfler la
+  /// mémoire.
+  static ({String url, int? memCacheWidth}) _sourceFor(
+    String url,
+    double? logicalWidth,
+    double devicePixelRatio,
+  ) {
+    if (logicalWidth == null || !logicalWidth.isFinite || logicalWidth <= 0) {
+      return (url: url, memCacheWidth: null);
     }
     final physical = logicalWidth * devicePixelRatio;
-    final stepped = (physical / _decodeStep).ceil() * _decodeStep;
-    return stepped.clamp(_decodeStep, 4096).toInt();
+    final stepped = ((physical / _decodeStep).ceil() * _decodeStep)
+        .clamp(_decodeStep, 4096)
+        .toInt();
+    final sized =
+        tmdbUrlForWidth(url, physical, allowOriginal: !LiteMode.isLite);
+    final served = tmdbServedWidth(sized);
+    return (
+      url: sized,
+      memCacheWidth: served != null && served <= stepped ? null : stepped,
+    );
   }
 
   @override
@@ -148,13 +170,15 @@ class AppNetworkImage extends StatelessWidget {
     final resolved = url?.trim();
     if (resolved == null || resolved.isEmpty) return _error();
 
-    if (decodeAtSourceSize) return _image(context, null);
+    if (decodeAtSourceSize) {
+      return _image(context, (url: resolved, memCacheWidth: null));
+    }
 
     final explicit = decodeWidth ?? width;
     if (explicit != null) {
       return _image(
         context,
-        _decodeWidthFor(explicit, MediaQuery.devicePixelRatioOf(context)),
+        _sourceFor(resolved, explicit, MediaQuery.devicePixelRatioOf(context)),
       );
     }
 
@@ -163,7 +187,8 @@ class AppNetworkImage extends StatelessWidget {
     return LayoutBuilder(
       builder: (context, constraints) => _image(
         context,
-        _decodeWidthFor(
+        _sourceFor(
+          resolved,
           constraints.hasBoundedWidth ? constraints.maxWidth : null,
           MediaQuery.devicePixelRatioOf(context),
         ),
@@ -171,9 +196,24 @@ class AppNetworkImage extends StatelessWidget {
     );
   }
 
-  Widget _image(BuildContext context, int? memCacheWidth) {
+  Widget _image(
+    BuildContext context,
+    ({String url, int? memCacheWidth}) source,
+  ) {
+    final memCacheWidth = source.memCacheWidth;
+    // L'image est déjà décodée à peu près à sa taille d'affichage : le
+    // filtrage bilinéaire suffit, et il épargne les mipmaps au processeur
+    // graphique d'un petit appareil (ADR-0086).
+    final quality =
+        filterQuality == FilterQuality.medium && LiteScope.of(context)
+            ? FilterQuality.low
+            : filterQuality;
+    // Des octets déjà sur disque arrivent en quelques millisecondes : un
+    // fondu les ferait paraître téléchargées. Ils se posent d'un coup, et seul
+    // ce qui vient vraiment du réseau garde son fondu (ADR-0088).
+    final onDisk = AppImageCache.isOnDisk(source.url);
     return CachedNetworkImage(
-      imageUrl: url!.trim(),
+      imageUrl: source.url,
       cacheManager: AppImageCache.imageCacheManager,
       width: width,
       height: height,
@@ -181,11 +221,12 @@ class AppNetworkImage extends StatelessWidget {
       alignment: alignment,
       color: color,
       colorBlendMode: colorBlendMode,
-      filterQuality: filterQuality,
-      fadeInDuration: fadeInDuration,
+      filterQuality: quality,
+      fadeInDuration: onDisk ? Duration.zero : fadeInDuration,
       // A cached hit should appear on the frame it is requested, with no
       // cross-fade from the placeholder.
-      fadeOutDuration: const Duration(milliseconds: 80),
+      fadeOutDuration:
+          onDisk ? Duration.zero : const Duration(milliseconds: 80),
       memCacheWidth: memCacheWidth,
       placeholder: (_, __) => _placeholder(),
       errorWidget: (_, __, ___) => _error(),

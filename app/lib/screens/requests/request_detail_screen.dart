@@ -9,6 +9,10 @@ import '../../theme/app_colors.dart';
 import '../../utils/poster_url.dart';
 import '../../widgets/global/app_network_image.dart';
 import '../../widgets/global/empty_state.dart';
+import '../../utils/long_date.dart';
+import '../../utils/responsive.dart';
+import '../../widgets/global/staggered_entrance.dart';
+import 'widgets/request_detail_hero.dart';
 import 'widgets/request_cast_list.dart';
 import 'widgets/request_info_table.dart';
 import 'widgets/request_related_slider.dart';
@@ -112,7 +116,8 @@ class _RequestDetailScreenState extends State<RequestDetailScreen> {
           }
           if (snapshot.hasError || !snapshot.hasData) {
             return ErrorStateView(
-                message: tr('Impossible de charger ce média.'), onRetry: _retry);
+                message: tr('Impossible de charger ce média.'),
+                onRetry: _retry);
           }
           return _content(snapshot.data!);
         },
@@ -120,22 +125,44 @@ class _RequestDetailScreenState extends State<RequestDetailScreen> {
     );
   }
 
+  /// La marge des côtés : la page court d'un bord à l'autre, comme le fond.
+  ///
+  /// OnyxHub plafonne son contenu à 1600 px et le centre : sur un écran de
+  /// 2000 px, l'en-tête et le corps se retrouvaient chacun centré à sa façon,
+  /// avec 200 px de vide de chaque côté. Ici une seule marge, proportionnelle
+  /// à l'écran (3 %, entre 48 et 72 px), aligne le logo, le texte et les
+  /// rangées sur le même bord. Ce sont les blocs de texte qui gardent une
+  /// largeur lisible, pas la page.
+  static double _gutter(BuildContext context) {
+    final width = MediaQuery.sizeOf(context).width;
+    if (AppLayout.isCompact(context)) return 16;
+    if (width < 900) return 24;
+    return (width * 0.03).clamp(48.0, 72.0);
+  }
+
+  /// La colonne d'informations à droite : un quart de l'écran, assez pour
+  /// les studios sur une ligne, jamais au point d'écraser le texte.
+  static double _sidebarWidth(double width) =>
+      (width * 0.24).clamp(340.0, 460.0);
+
   Widget _content(RequestMediaDetails details) {
     final hasUnrequestedSeasons =
         details.seasons.any((season) => season.status.canRequest);
     final canRequest = details.mediaType == RequestMediaType.tv
         ? hasUnrequestedSeasons
         : details.status.canRequest;
-    final width = MediaQuery.sizeOf(context).width;
-    final wide = width >= 1100;
-    final horizontal = width >= 900 ? 48.0 : 20.0;
+    final size = MediaQuery.sizeOf(context);
+    final wide = size.width >= 1100;
+    final compact = AppLayout.isCompact(context);
+    final horizontal = _gutter(context);
 
     return CustomScrollView(
+      scrollCacheExtent: AppLayout.imageCacheExtent(context),
       slivers: [
         SliverToBoxAdapter(
           child: Stack(
             children: [
-              _heroBackdrop(details),
+              RequestDetailBackdrop(backdropUrl: details.backdropUrl),
               SafeArea(
                 bottom: false,
                 child: Padding(
@@ -144,9 +171,13 @@ class _RequestDetailScreenState extends State<RequestDetailScreen> {
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
                       _backButton(),
-                      SizedBox(height: width >= 800 ? 120 : 72),
+                      // Le titre se pose dans le bas de l'image, comme sur
+                      // OnyxHub.
+                      SizedBox(
+                          height:
+                              compact ? size.height * 0.22 : size.height * 0.3),
                       _heroHeader(details, canRequest, hasUnrequestedSeasons),
-                      const SizedBox(height: 36),
+                      const SizedBox(height: 48),
                     ],
                   ),
                 ),
@@ -154,111 +185,69 @@ class _RequestDetailScreenState extends State<RequestDetailScreen> {
             ],
           ),
         ),
-        SliverPadding(
-          padding: EdgeInsets.fromLTRB(horizontal, 0, horizontal, 56),
-          sliver: SliverList(
-            delegate: SliverChildListDelegate([
-              if (wide)
-                Row(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Expanded(flex: 8, child: _mainColumn(details)),
-                    const SizedBox(width: 36),
-                    SizedBox(
-                        width: 340, child: RequestInfoTable(details: details)),
-                  ],
-                )
-              else ...[
-                _mainColumn(details),
-                const SizedBox(height: 28),
-                RequestInfoTable(details: details),
+        SliverToBoxAdapter(
+          child: Padding(
+            padding: EdgeInsets.fromLTRB(horizontal, 0, horizontal, 56),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                if (wide)
+                  Row(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Expanded(child: _mainColumn(details)),
+                      const SizedBox(width: 56),
+                      SizedBox(
+                        width: _sidebarWidth(size.width),
+                        child: RequestInfoTable(details: details),
+                      ),
+                    ],
+                  )
+                else ...[
+                  _mainColumn(details),
+                  const SizedBox(height: 28),
+                  RequestInfoTable(details: details),
+                ],
+                if (details.mediaType == RequestMediaType.tv &&
+                    details.seasons.isNotEmpty) ...[
+                  const SizedBox(height: 56),
+                  RequestSeasonList(
+                    tmdbId: details.id,
+                    showItem: widget.item,
+                    seasons: details.seasons,
+                  ),
+                ],
+                if (details.cast.isNotEmpty) ...[
+                  const SizedBox(height: 48),
+                  Text(tr('Casting'),
+                      style: const TextStyle(
+                          fontSize: AppType.title1,
+                          fontWeight: FontWeight.w700,
+                          color: AppColors.textPrimary)),
+                  const SizedBox(height: 16),
+                  RequestCastList(cast: details.cast),
+                ],
+                if (details.recommendations.isNotEmpty) ...[
+                  const SizedBox(height: 56),
+                  RequestRelatedSlider(
+                    title: tr('Recommandations'),
+                    items: details.recommendations,
+                    onTap: _openRelated,
+                  ),
+                ],
+                if (details.similar.isNotEmpty) ...[
+                  const SizedBox(height: 40),
+                  RequestRelatedSlider(
+                    title: tr('Titres similaires'),
+                    items: details.similar,
+                    onTap: _openRelated,
+                  ),
+                ],
               ],
-              if (details.mediaType == RequestMediaType.tv &&
-                  details.seasons.isNotEmpty) ...[
-                const SizedBox(height: 40),
-                RequestSeasonList(
-                  tmdbId: details.id,
-                  showItem: widget.item,
-                  seasons: details.seasons,
-                ),
-              ],
-              if (details.cast.isNotEmpty) ...[
-                const SizedBox(height: 40),
-                Text(tr('Casting'),
-                    style: TextStyle(
-                        fontSize: AppType.title2,
-                        fontWeight: FontWeight.w700,
-                        color: Colors.white)),
-                const SizedBox(height: 14),
-                RequestCastList(cast: details.cast),
-              ],
-              if (details.recommendations.isNotEmpty) ...[
-                const SizedBox(height: 44),
-                RequestRelatedSlider(
-                  title: tr('Recommandations'),
-                  items: details.recommendations,
-                  onTap: _openRelated,
-                ),
-              ],
-              if (details.similar.isNotEmpty) ...[
-                const SizedBox(height: 36),
-                RequestRelatedSlider(
-                  title: tr('Titres similaires'),
-                  items: details.similar,
-                  onTap: _openRelated,
-                ),
-              ],
-            ]),
+            ),
           ),
         ),
       ],
-    );
-  }
-
-  Widget _heroBackdrop(RequestMediaDetails details) {
-    return SizedBox(
-      height: MediaQuery.sizeOf(context).height * 0.62,
-      width: double.infinity,
-      child: Stack(
-        fit: StackFit.expand,
-        children: [
-          AppNetworkImage(
-            url: backdropImageUrl(details.backdropUrl),
-            fit: BoxFit.cover,
-            alignment: Alignment.topCenter,
-            decodeWidth: MediaQuery.sizeOf(context).width,
-            fadeInDuration: const Duration(milliseconds: 220),
-            placeholder: const ColoredBox(color: AppColors.background),
-            errorWidget: const ColoredBox(color: AppColors.background),
-          ),
-          DecoratedBox(
-            decoration: BoxDecoration(
-              gradient: LinearGradient(
-                begin: Alignment.centerLeft,
-                end: Alignment.centerRight,
-                colors: [
-                  AppColors.background.withValues(alpha: 0.92),
-                  AppColors.background.withValues(alpha: 0.55),
-                  AppColors.background.withValues(alpha: 0.2),
-                ],
-              ),
-            ),
-          ),
-          const DecoratedBox(
-            decoration: BoxDecoration(
-              gradient: LinearGradient(
-                begin: Alignment.topCenter,
-                end: Alignment.bottomCenter,
-                colors: [
-                  Colors.transparent,
-                  AppColors.background,
-                ],
-                stops: [0.35, 1],
-              ),
-            ),
-          ),
-        ],
-      ),
     );
   }
 
@@ -282,104 +271,158 @@ class _RequestDetailScreenState extends State<RequestDetailScreen> {
     bool canRequest,
     bool hasUnrequestedSeasons,
   ) {
+    final compact = AppLayout.isCompact(context);
     final runtime = details.formattedRuntime;
     final hasLogo = details.logoUrl != null;
+    final muted = Colors.white.withValues(alpha: 0.6);
     final metaParts = <Widget>[
       if (hasLogo && details.year != null)
         Text(details.year!,
             style: const TextStyle(
-                color: Colors.white,
+                color: AppColors.textPrimary,
                 fontWeight: FontWeight.w800,
-                fontSize: AppType.callout)),
+                fontSize: AppType.headline)),
       if (runtime.isNotEmpty)
         Row(
           mainAxisSize: MainAxisSize.min,
           children: [
-            Icon(AppIcons.schedule,
-                size: 16, color: Colors.white.withValues(alpha: 0.45)),
-            const SizedBox(width: 5),
+            Icon(AppIcons.schedule, size: 16, color: muted),
+            const SizedBox(width: 6),
             Text(runtime,
                 style: TextStyle(
-                    color: Colors.white.withValues(alpha: 0.7), fontSize: AppType.body)),
+                    color: muted,
+                    fontSize: AppType.body,
+                    fontWeight: FontWeight.w500)),
           ],
         ),
       ...details.genres.map(
         (genre) => Text('• $genre',
             style: TextStyle(
-                color: Colors.white.withValues(alpha: 0.75), fontSize: AppType.body)),
+                color: Colors.white.withValues(alpha: 0.8),
+                fontSize: AppType.body,
+                fontWeight: FontWeight.w500)),
       ),
     ];
 
+    // OnyxHub cache le surtitre en téléphone : la pastille de statut des
+    // boutons dit déjà la même chose, juste en dessous.
+    final showBadge = !compact && details.status != RequestMediaStatus.unknown;
+
     return ConstrainedBox(
-      constraints: const BoxConstraints(maxWidth: 920),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          if (details.status != RequestMediaStatus.unknown) ...[
-            RequestAvailabilityBadge(status: details.status),
-            const SizedBox(height: 14),
-          ],
-          if (details.waitingMessage != null &&
-              details.status != RequestMediaStatus.available) ...[
-            Text(details.waitingMessage!,
-                style: TextStyle(
-                    color: AppColors.warning, fontSize: AppType.body)),
-            const SizedBox(height: 14),
-          ],
-          if (details.logoUrl != null)
-            ConstrainedBox(
-              constraints: const BoxConstraints(maxWidth: 420, maxHeight: 150),
-              child: AppNetworkImage(
-                // Same normalised size the library detail header asks for, so
-                // a title already browsed there draws from cache.
-                url: logoImageUrl(details.logoUrl),
-                fit: BoxFit.contain,
-                alignment: Alignment.centerLeft,
-                decodeAtSourceSize: true,
-                placeholder: _titleFallback(details),
-                errorWidget: _titleFallback(details),
-              ),
-            )
-          else
-            _titleFallback(details),
-          const SizedBox(height: 16),
-          Wrap(
-            spacing: 14,
-            runSpacing: 8,
-            crossAxisAlignment: WrapCrossAlignment.center,
-            children: metaParts,
-          ),
-          const SizedBox(height: 22),
-          Divider(color: Colors.white.withValues(alpha: 0.08), height: 1),
-          const SizedBox(height: 18),
-          Wrap(
-            spacing: 12,
-            runSpacing: 12,
-            crossAxisAlignment: WrapCrossAlignment.center,
-            children: [
-              ..._requestActions(details, canRequest, hasUnrequestedSeasons),
-              if (details.trailerKey != null && details.trailerKey!.isNotEmpty)
-                _primaryButton(
-                  label: tr('Bande-annonce'),
-                  icon: AppIcons.playCircle,
-                  filled: false,
-                  enabled: true,
-                  onPressed: () => _openTrailer(details.trailerKey!),
+      constraints: const BoxConstraints(maxWidth: 1150),
+      child: StaggeredEntranceScope(
+        playKey: details.id,
+        maxAnimated: 4,
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            StaggeredEntrance(
+              index: 0,
+              child: showBadge
+                  ? Padding(
+                      padding: const EdgeInsets.only(bottom: 18),
+                      child: RequestAvailabilityBadge(
+                        status: details.status,
+                        awaitingRelease: details.isAwaitingRelease(),
+                      ),
+                    )
+                  : const SizedBox.shrink(),
+            ),
+            StaggeredEntrance(
+              index: 1,
+              child: details.logoUrl != null
+                  ? ConstrainedBox(
+                      constraints: BoxConstraints(
+                          maxWidth: compact ? 280 : 420,
+                          maxHeight: compact ? 140 : 180),
+                      child: AppNetworkImage(
+                        // Same normalised size the library detail header asks
+                        // for, so a title already browsed there draws from
+                        // cache.
+                        url: logoImageUrl(details.logoUrl),
+                        fit: BoxFit.contain,
+                        alignment: Alignment.centerLeft,
+                        decodeAtSourceSize: true,
+                        placeholder: _titleFallback(details),
+                        errorWidget: _titleFallback(details),
+                      ),
+                    )
+                  : _titleFallback(details),
+            ),
+            StaggeredEntrance(
+              index: 2,
+              child: Padding(
+                padding: const EdgeInsets.only(top: 18),
+                child: Wrap(
+                  spacing: 14,
+                  runSpacing: 8,
+                  crossAxisAlignment: WrapCrossAlignment.center,
+                  children: metaParts,
                 ),
-              // Un titre que le serveur n'a pas peut déjà aller dans « À
-              // regarder plus tard » (ADR-0070).
-              IconButtonTheme(
-                data: IconButtonThemeData(style: DetailActions.secondaryStyle),
-                child: AddToListButton(title: ListableTitle.catalog(widget.item)),
               ),
-            ],
-          ),
-        ],
+            ),
+            StaggeredEntrance(
+              index: 3,
+              child: Padding(
+                padding: const EdgeInsets.only(top: 24),
+                child: _actions(details, canRequest, hasUnrequestedSeasons),
+              ),
+            ),
+          ],
+        ),
       ),
     );
   }
 
-  /// Action buttons mirroring MediaHub RequestStatusButton.
+  /// La rangée d'actions d'OnyxHub (`MediaPrimaryActions`) : un filet, puis
+  /// le statut ou « Demander », la bande-annonce et les listes ; le cadre
+  /// d'import dessous quand le serveur en a un.
+  Widget _actions(
+    RequestMediaDetails details,
+    bool canRequest,
+    bool hasUnrequestedSeasons,
+  ) {
+    final compact = AppLayout.isCompact(context);
+    final waiting = details.waitingMessage;
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Divider(color: Colors.white.withValues(alpha: 0.06), height: 1),
+        SizedBox(height: compact ? 14 : 20),
+        Wrap(
+          spacing: compact ? 8 : 14,
+          runSpacing: compact ? 8 : 12,
+          crossAxisAlignment: WrapCrossAlignment.center,
+          children: [
+            ..._requestActions(details, canRequest, hasUnrequestedSeasons),
+            if (details.trailerKey != null && details.trailerKey!.isNotEmpty)
+              HeroPill(
+                label: tr('Bande-annonce'),
+                icon: AppIcons.playCircle,
+                style: HeroPillStyle.trailer,
+                iconOnlyWhenCompact: true,
+                onPressed: () => _openTrailer(details.trailerKey!),
+              ),
+            // Un titre que le serveur n'a pas peut déjà aller dans « À
+            // regarder plus tard » (ADR-0070).
+            IconButtonTheme(
+              data: IconButtonThemeData(
+                  style: heroRoundButtonStyle(
+                      context, DetailActions.secondaryStyle)),
+              child: AddToListButton(title: ListableTitle.catalog(widget.item)),
+            ),
+          ],
+        ),
+        if (waiting != null &&
+            details.status != RequestMediaStatus.available) ...[
+          SizedBox(height: compact ? 14 : 20),
+          RequestImportNotice(message: waiting),
+        ],
+      ],
+    );
+  }
+
+  /// Les pastilles de statut d'OnyxHub (`RequestStatusButton`).
   List<Widget> _requestActions(
     RequestMediaDetails details,
     bool canRequest,
@@ -387,123 +430,87 @@ class _RequestDetailScreenState extends State<RequestDetailScreen> {
   ) {
     final status = details.status;
     final isTv = details.mediaType == RequestMediaType.tv;
+    final more = canRequest && isTv && hasUnrequestedSeasons;
+
+    Widget moreButton(String label) => HeroPill(
+          label: label,
+          icon: AppIcons.add,
+          style: HeroPillStyle.glass,
+          loading: _submitting,
+          onPressed: _submitting ? null : () => _request(details),
+        );
 
     if (status == RequestMediaStatus.partial) {
       return [
-        _statusActionButton(
+        HeroPill(
           label: tr('Partiellement disponible'),
-          icon: AppIcons.check,
-          foreground: AppColors.warning,
-          background: AppColors.warning,
+          icon: AppIcons.pending,
+          iconColor: AppColors.warning,
+          style: HeroPillStyle.status,
         ),
-        if (canRequest && isTv && hasUnrequestedSeasons)
-          _primaryButton(
-            label: tr('Compléter'),
-            icon: AppIcons.add,
-            filled: true,
-            enabled: !_submitting,
-            loading: _submitting,
-            onPressed: () => _request(details),
-          ),
+        if (more) moreButton(tr('Compléter')),
       ];
     }
 
     if (status == RequestMediaStatus.available) {
       return [
-        _statusActionButton(
+        HeroPill(
           label: tr('Disponible'),
           icon: AppIcons.check,
-          foreground: AppColors.success,
-          background: AppColors.success,
+          iconColor: AppColors.success,
+          style: HeroPillStyle.status,
+          beam: true,
         ),
-        if (canRequest && hasUnrequestedSeasons && isTv)
-          _primaryButton(
-            label: tr('Demander plus'),
-            icon: AppIcons.add,
-            filled: true,
-            enabled: !_submitting,
-            loading: _submitting,
-            onPressed: () => _request(details),
-          ),
+        if (more) moreButton(tr('Demander plus')),
       ];
     }
 
     if (status == RequestMediaStatus.pending ||
         status == RequestMediaStatus.processing) {
+      final awaiting = details.isAwaitingRelease();
+      final release = DateTime.tryParse(details.releaseDate ?? '');
       return [
-        _statusActionButton(
-          label: tr('En cours de traitement...'),
-          icon: AppIcons.pending,
-          foreground: AppColors.accentMuted,
-          background: AppColors.primary,
-        ),
-        if (canRequest && hasUnrequestedSeasons && isTv)
-          _primaryButton(
-            label: tr('Demander plus'),
-            icon: AppIcons.add,
-            filled: true,
-            enabled: !_submitting,
-            loading: _submitting,
-            onPressed: () => _request(details),
-          ),
+        awaiting
+            ? HeroPill(
+                label: release == null
+                    ? tr('En attente de sortie')
+                    : tr('Sortie le {0}', [formatLongDate(release)]),
+                icon: AppIcons.calendar,
+                style: HeroPillStyle.status,
+              )
+            : HeroPill(
+                label: tr('En cours de traitement'),
+                style: HeroPillStyle.status,
+                track: true,
+              ),
+        if (more) moreButton(tr('Demander plus')),
       ];
     }
 
     if (!canRequest) return const [];
 
     return [
-      _primaryButton(
-        label: tr('Demander'),
+      HeroPill(
+        label: _submitting ? tr('Envoi de la demande') : tr('Demander'),
         icon: AppIcons.download,
-        filled: true,
-        enabled: !_submitting,
+        style: HeroPillStyle.glass,
         loading: _submitting,
-        onPressed: () => _request(details),
+        onPressed: _submitting ? null : () => _request(details),
       ),
     ];
   }
 
-  Widget _statusActionButton({
-    required String label,
-    required IconData icon,
-    required Color foreground,
-    required Color background,
-  }) {
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 12),
-      decoration: BoxDecoration(
-        color: background.withValues(alpha: 0.2),
-        borderRadius: BorderRadius.circular(10),
-        border: Border.all(color: background.withValues(alpha: 0.3)),
-      ),
-      child: Row(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Icon(icon, size: 20, color: foreground),
-          const SizedBox(width: 10),
-          Text(
-            label,
-            style: TextStyle(
-              color: foreground,
-              fontWeight: FontWeight.w700,
-              fontSize: AppType.body,
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-
   Widget _titleFallback(RequestMediaDetails details) {
+    final compact = AppLayout.isCompact(context);
     return Text.rich(
       TextSpan(
         children: [
           TextSpan(
-            text: details.title.toUpperCase(),
-            style: const TextStyle(
-              fontSize: AppType.hero,
+            text: details.title,
+            style: TextStyle(
+              fontSize: compact ? AppType.largeTitle : AppType.hero + 16,
               fontWeight: FontWeight.w900,
-              color: Colors.white,
+              color: AppColors.textPrimary,
               height: 1.05,
               letterSpacing: -0.5,
             ),
@@ -512,68 +519,12 @@ class _RequestDetailScreenState extends State<RequestDetailScreen> {
             TextSpan(
               text: ' (${details.year})',
               style: TextStyle(
-                fontSize: AppType.largeTitle,
-                fontWeight: FontWeight.w300,
+                fontSize: compact ? AppType.title1 : AppType.hero,
+                fontWeight: FontWeight.w200,
                 color: Colors.white.withValues(alpha: 0.45),
               ),
             ),
         ],
-      ),
-    );
-  }
-
-  Widget _primaryButton({
-    required String label,
-    required IconData icon,
-    required bool filled,
-    required bool enabled,
-    required VoidCallback onPressed,
-    bool loading = false,
-  }) {
-    final bg = filled
-        ? AppColors.textPrimary
-        : Colors.white.withValues(alpha: 0.06);
-    final border = filled
-        ? Colors.transparent
-        : Colors.white.withValues(alpha: 0.12);
-    final baseFg = filled ? AppColors.background : AppColors.textPrimary;
-    final fg = enabled ? baseFg : baseFg.withValues(alpha: 0.4);
-
-    return Material(
-      color: enabled ? bg : bg.withValues(alpha: 0.35),
-      borderRadius: BorderRadius.circular(12),
-      child: InkWell(
-        onTap: enabled ? onPressed : null,
-        borderRadius: BorderRadius.circular(12),
-        child: Container(
-          padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 12),
-          decoration: BoxDecoration(
-            borderRadius: BorderRadius.circular(12),
-            border: Border.all(color: border),
-          ),
-          child: Row(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              if (loading)
-                SizedBox(
-                  width: 18,
-                  height: 18,
-                  child: CircularProgressIndicator(strokeWidth: 2, color: fg),
-                )
-              else
-                Icon(icon, size: 20, color: fg),
-              const SizedBox(width: 10),
-              Text(
-                label,
-                style: TextStyle(
-                  color: fg,
-                  fontWeight: FontWeight.w700,
-                  fontSize: AppType.body,
-                ),
-              ),
-            ],
-          ),
-        ),
       ),
     );
   }
@@ -612,7 +563,7 @@ class _RequestDetailScreenState extends State<RequestDetailScreen> {
                           keyword,
                           style: TextStyle(
                             fontSize: AppType.footnote,
-                            color: Colors.white.withValues(alpha: 0.55),
+                            color: AppColors.textMuted,
                           ),
                         ),
                       ],
@@ -631,14 +582,19 @@ class _RequestDetailScreenState extends State<RequestDetailScreen> {
                 fontWeight: FontWeight.w700,
                 color: Colors.white)),
         const SizedBox(height: 12),
-        Text(
-          details.overview.isEmpty
-              ? tr('Aucun synopsis disponible.')
-              : details.overview,
-          style: TextStyle(
-            height: 1.6,
-            fontSize: AppType.callout,
-            color: Colors.white.withValues(alpha: 0.72),
+        // La page va d'un bord à l'autre ; le paragraphe garde une ligne
+        // lisible (~110 caractères), comme le `max-w-4xl` d'OnyxHub.
+        ConstrainedBox(
+          constraints: const BoxConstraints(maxWidth: 900),
+          child: Text(
+            details.overview.isEmpty
+                ? tr('Aucun synopsis disponible.')
+                : details.overview,
+            style: TextStyle(
+              height: 1.6,
+              fontSize: AppType.callout,
+              color: Colors.white.withValues(alpha: 0.72),
+            ),
           ),
         ),
       ],
@@ -684,5 +640,4 @@ class _RequestDetailScreenState extends State<RequestDetailScreen> {
       },
     );
   }
-
 }

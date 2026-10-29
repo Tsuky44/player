@@ -84,6 +84,7 @@ class ListsScreen extends StatelessWidget {
       body: RefreshIndicator(
         onRefresh: () => provider.load(silent: true),
         child: CustomScrollView(
+          scrollCacheExtent: AppLayout.imageCacheExtent(context),
           physics: const AlwaysScrollableScrollPhysics(),
           slivers: [
             SliverToBoxAdapter(

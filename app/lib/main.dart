@@ -239,6 +239,9 @@ void main() async {
 
   await Future.wait(independent);
   AppImageCache.configure(lite: LiteMode.isLite);
+  // Sans attendre : il ne sert qu'à poser sans fondu les images déjà sur
+  // disque, et la première image n'a pas à patienter derrière lui (ADR-0088).
+  unawaited(AppImageCache.loadDiskIndex());
 
   // Un lien de partage public (/share#code) ouvre l'app en invité : la page du
   // lien et le lecteur, sans compte ni bibliothèque. Voir ADR-0037.

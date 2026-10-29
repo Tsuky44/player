@@ -12,6 +12,7 @@ import '../../utils/responsive.dart';
 import '../../widgets/global/app_network_image.dart';
 import '../../widgets/global/media_detail_widgets.dart';
 import '../../widgets/global/overlay_back_button.dart';
+import '../../widgets/global/poster_grid_zoom_region.dart';
 import '../../theme/app_icons.dart';
 import '../../theme/app_type.dart';
 import '../../l10n/tr.dart';
@@ -66,100 +67,105 @@ class _PersonDetailScreenState extends State<PersonDetailScreen> {
 
     return Scaffold(
       backgroundColor: AppColors.background,
-      body: CustomScrollView(
-        slivers: [
-          SliverToBoxAdapter(
-            child: _PersonHeader(
-              person: person,
-              fallbackName: widget.initialName,
-              onBack: () => Navigator.of(context).pop(),
-            ),
-          ),
-          if (_loading)
-            const SliverToBoxAdapter(
-              child: Padding(
-                padding: EdgeInsets.all(64),
-                child:
-                    Center(child: CircularProgressIndicator(strokeWidth: 2.5)),
-              ),
-            )
-          else if (_failed || person == null)
+      body: PosterGridZoomRegion(
+        child: CustomScrollView(
+          scrollCacheExtent: AppLayout.imageCacheExtent(context),
+          slivers: [
             SliverToBoxAdapter(
-              child: Padding(
-                padding: EdgeInsets.all(64),
-                child: Center(
-                  child: Text(
-                    tr('Impossible de charger cette fiche.'),
-                    style: TextStyle(color: AppColors.textMuted),
-                  ),
-                ),
+              child: _PersonHeader(
+                person: person,
+                fallbackName: widget.initialName,
+                onBack: () => Navigator.of(context).pop(),
               ),
-            )
-          else ...[
-            if (person.biography != null && person.biography!.isNotEmpty)
+            ),
+            if (_loading)
+              const SliverToBoxAdapter(
+                child: Padding(
+                  padding: EdgeInsets.all(64),
+                  child: Center(
+                      child: CircularProgressIndicator(strokeWidth: 2.5)),
+                ),
+              )
+            else if (_failed || person == null)
               SliverToBoxAdapter(
                 child: Padding(
-                  padding: AppLayout.pageInsets(context, top: 28, bottom: 8),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        tr('Biographie'),
-                        style: Theme.of(context).textTheme.titleLarge?.copyWith(
-                              fontWeight: FontWeight.w700,
-                            ),
-                      ),
-                      const SizedBox(height: 12),
-                      Text(
-                        person.biography!,
-                        style: const TextStyle(
-                          color: AppColors.textSecondary,
-                          fontSize: AppType.callout,
-                          height: 1.6,
-                        ),
-                      ),
-                    ],
+                  padding: EdgeInsets.all(64),
+                  child: Center(
+                    child: Text(
+                      tr('Impossible de charger cette fiche.'),
+                      style: TextStyle(color: AppColors.textMuted),
+                    ),
                   ),
                 ),
-              ),
-            if (person.filmography.isNotEmpty) ...[
-              SliverToBoxAdapter(
-                child: Padding(
-                  padding: AppLayout.pageInsets(context, top: 32, bottom: 16),
-                  child: Text(
-                    tr('Filmographie'),
-                    style: Theme.of(context).textTheme.titleLarge?.copyWith(
-                          fontWeight: FontWeight.w700,
+              )
+            else ...[
+              if (person.biography != null && person.biography!.isNotEmpty)
+                SliverToBoxAdapter(
+                  child: Padding(
+                    padding: AppLayout.pageInsets(context, top: 28, bottom: 8),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          tr('Biographie'),
+                          style:
+                              Theme.of(context).textTheme.titleLarge?.copyWith(
+                                    fontWeight: FontWeight.w700,
+                                  ),
                         ),
+                        const SizedBox(height: 12),
+                        Text(
+                          person.biography!,
+                          style: const TextStyle(
+                            color: AppColors.textSecondary,
+                            fontSize: AppType.callout,
+                            height: 1.6,
+                          ),
+                        ),
+                      ],
+                    ),
                   ),
                 ),
-              ),
-              SliverPadding(
-                padding: AppLayout.pageInsets(context, bottom: 48),
-                sliver: SliverLayoutBuilder(
-                  builder: (context, constraints) {
-                    return SliverGrid(
-                      gridDelegate: AppLayout.posterGridDelegate(
-                        constraints.crossAxisExtent,
-                        compact: AppLayout.isCompact(context),
-                      ),
-                      delegate: SliverChildBuilderDelegate(
-                        (context, index) {
-                          final item = person.filmography[index];
-                          return CatalogPosterCard(
-                            item: item,
-                            onTap: () => openCatalogItem(context, item),
-                          );
-                        },
-                        childCount: person.filmography.length,
-                      ),
-                    );
-                  },
+              if (person.filmography.isNotEmpty) ...[
+                SliverToBoxAdapter(
+                  child: Padding(
+                    padding: AppLayout.pageInsets(context, top: 32, bottom: 16),
+                    child: Text(
+                      tr('Filmographie'),
+                      style: Theme.of(context).textTheme.titleLarge?.copyWith(
+                            fontWeight: FontWeight.w700,
+                          ),
+                    ),
+                  ),
                 ),
-              ),
+                SliverPadding(
+                  padding: AppLayout.pageInsets(context, bottom: 48),
+                  sliver: SliverLayoutBuilder(
+                    builder: (context, constraints) {
+                      return SliverGrid(
+                        gridDelegate: AppLayout.posterGridDelegate(
+                          context,
+                          constraints.crossAxisExtent,
+                          compact: AppLayout.isCompact(context),
+                        ),
+                        delegate: SliverChildBuilderDelegate(
+                          (context, index) {
+                            final item = person.filmography[index];
+                            return CatalogPosterCard(
+                              item: item,
+                              onTap: () => openCatalogItem(context, item),
+                            );
+                          },
+                          childCount: person.filmography.length,
+                        ),
+                      );
+                    },
+                  ),
+                ),
+              ],
             ],
           ],
-        ],
+        ),
       ),
     );
   }

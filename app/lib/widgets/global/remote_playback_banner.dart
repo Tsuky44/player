@@ -14,6 +14,7 @@ import '../../utils/poster_url.dart';
 import '../../theme/app_icons.dart';
 import '../../theme/app_type.dart';
 import '../../l10n/tr.dart';
+import 'app_network_image.dart';
 
 /// « Lecture en cours sur un autre appareil » : ce que le compte lit ailleurs,
 /// avec de quoi le reprendre ici là où il en est.
@@ -149,10 +150,11 @@ class _RemotePlaybackBannerState extends State<RemotePlaybackBanner>
                       height: 60,
                       child: poster == null
                           ? const ColoredBox(color: AppColors.surfaceHover)
-                          : Image.network(
-                              poster,
-                              fit: BoxFit.cover,
-                              errorBuilder: (_, __, ___) => const ColoredBox(
+                          : AppNetworkImage(
+                              url: poster,
+                              width: 40,
+                              height: 60,
+                              errorWidget: const ColoredBox(
                                   color: AppColors.surfaceHover),
                             ),
                     ),

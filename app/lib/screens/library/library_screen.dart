@@ -11,6 +11,7 @@ import '../../utils/responsive.dart';
 import '../../utils/search_match.dart';
 import '../../widgets/global/empty_state.dart';
 import '../../widgets/global/media_card.dart';
+import '../../widgets/global/poster_grid_zoom_region.dart';
 import '../../widgets/global/skeleton.dart';
 import 'movie_detail_screen.dart';
 import 'show_detail_screen.dart';
@@ -48,7 +49,8 @@ class LibraryScreen extends StatefulWidget {
   final MediaLibrary library;
   final bool embedded;
 
-  const LibraryScreen({super.key, required this.library, this.embedded = false});
+  const LibraryScreen(
+      {super.key, required this.library, this.embedded = false});
 
   @override
   State<LibraryScreen> createState() => _LibraryScreenState();
@@ -79,7 +81,10 @@ class _LibraryScreenState extends State<LibraryScreen> {
 
   List<_Entry> _entries(LibraryProvider lp) {
     final List<_Entry> entries = _isShows
-        ? [for (final show in lp.showsOf(widget.library)) (media: show, movie: null)]
+        ? [
+            for (final show in lp.showsOf(widget.library))
+              (media: show, movie: null)
+          ]
         : [
             for (final item in lp.moviesOf(widget.library))
               (media: item.media, movie: item),
@@ -122,7 +127,8 @@ class _LibraryScreenState extends State<LibraryScreen> {
     final compact = AppLayout.isCompact(context);
     final error = lp.libraryError(library);
     // Rien de reçu encore se lit comme un chargement, pas comme « vide ».
-    final loading = lp.isLoadingLibrary(library) || !lp.hasLoadedLibrary(library);
+    final loading =
+        lp.isLoadingLibrary(library) || !lp.hasLoadedLibrary(library);
     final entries = _entries(lp);
     final count = entries.length;
 
@@ -133,81 +139,85 @@ class _LibraryScreenState extends State<LibraryScreen> {
               message: error,
               onRetry: () => lp.loadLibrary(library),
             )
-          : CustomScrollView(
-              slivers: [
-                SliverToBoxAdapter(
-                  child: Padding(
-                    padding: EdgeInsets.fromLTRB(
-                      horizontalPadding,
-                      shellTabTopInset(context, embedded: widget.embedded),
-                      horizontalPadding,
-                      0,
-                    ),
-                    child: CatalogHeader<_SortOption>(
-                      title: ShellTabs.label(library),
-                      countLabel: loading
-                          ? null
-                          : tr('{0} titre{1}', [count, count > 1 ? 's' : '']),
-                      sortOptions: {
-                        for (final option in _sortLabels.entries)
-                          // Une série n'a pas de position de lecture à elle.
-                          if (!_isShows || option.key != _SortOption.progress)
-                            option.key: option.value,
-                      },
-                      sort: _sort,
-                      onSortChanged: (v) => setState(() => _sort = v),
-                      compact: compact,
-                    ),
-                  ),
-                ),
-                if (loading)
-                  SliverPadding(
-                    padding: EdgeInsets.fromLTRB(
-                        horizontalPadding, 24, horizontalPadding, 48),
-                    sliver: const PosterGridSkeleton(),
-                  )
-                else if (entries.isEmpty)
-                  SliverFillRemaining(
-                    child: EmptyStateView(
-                      icon: libraryIcon(library.kind),
-                      title: tr('Bibliothèque vide'),
-                      message: tr('Les fichiers ajoutés au dossier de cette '
-                          'bibliothèque apparaissent ici d’eux-mêmes.'),
-                    ),
-                  )
-                else
-                  SliverPadding(
-                    padding: EdgeInsets.fromLTRB(
-                      horizontalPadding,
-                      24,
-                      horizontalPadding,
-                      MediaQuery.paddingOf(context).bottom + 48,
-                    ),
-                    sliver: SliverLayoutBuilder(
-                      builder: (context, constraints) => SliverGrid(
-                        gridDelegate: AppLayout.posterGridDelegate(
-                          constraints.crossAxisExtent,
-                          compact: compact,
-                        ),
-                        delegate: SliverChildBuilderDelegate(
-                          (context, index) {
-                            final entry = entries[index];
-                            final movie = entry.movie;
-                            return MediaCard(
-                              media: entry.media,
-                              watched: movie?.isFinished ?? false,
-                              progress: movie == null || movie.isFinished
-                                  ? null
-                                  : movie.percentWatched,
-                              onTap: () => _open(entry),
-                            );
-                          },
-                          childCount: entries.length,
-                        ),
+          : PosterGridZoomRegion(
+              child: CustomScrollView(
+                scrollCacheExtent: AppLayout.imageCacheExtent(context),
+                slivers: [
+                  SliverToBoxAdapter(
+                    child: Padding(
+                      padding: EdgeInsets.fromLTRB(
+                        horizontalPadding,
+                        shellTabTopInset(context, embedded: widget.embedded),
+                        horizontalPadding,
+                        0,
+                      ),
+                      child: CatalogHeader<_SortOption>(
+                        title: ShellTabs.label(library),
+                        countLabel: loading
+                            ? null
+                            : tr('{0} titre{1}', [count, count > 1 ? 's' : '']),
+                        sortOptions: {
+                          for (final option in _sortLabels.entries)
+                            // Une série n'a pas de position de lecture à elle.
+                            if (!_isShows || option.key != _SortOption.progress)
+                              option.key: option.value,
+                        },
+                        sort: _sort,
+                        onSortChanged: (v) => setState(() => _sort = v),
+                        compact: compact,
                       ),
                     ),
                   ),
-              ],
+                  if (loading)
+                    SliverPadding(
+                      padding: EdgeInsets.fromLTRB(
+                          horizontalPadding, 24, horizontalPadding, 48),
+                      sliver: const PosterGridSkeleton(),
+                    )
+                  else if (entries.isEmpty)
+                    SliverFillRemaining(
+                      child: EmptyStateView(
+                        icon: libraryIcon(library.kind),
+                        title: tr('Bibliothèque vide'),
+                        message: tr('Les fichiers ajoutés au dossier de cette '
+                            'bibliothèque apparaissent ici d’eux-mêmes.'),
+                      ),
+                    )
+                  else
+                    SliverPadding(
+                      padding: EdgeInsets.fromLTRB(
+                        horizontalPadding,
+                        24,
+                        horizontalPadding,
+                        MediaQuery.paddingOf(context).bottom + 48,
+                      ),
+                      sliver: SliverLayoutBuilder(
+                        builder: (context, constraints) => SliverGrid(
+                          gridDelegate: AppLayout.posterGridDelegate(
+                            context,
+                            constraints.crossAxisExtent,
+                            compact: compact,
+                          ),
+                          delegate: SliverChildBuilderDelegate(
+                            (context, index) {
+                              final entry = entries[index];
+                              final movie = entry.movie;
+                              return MediaCard(
+                                media: entry.media,
+                                watched: movie?.isFinished ?? false,
+                                progress: movie == null || movie.isFinished
+                                    ? null
+                                    : movie.percentWatched,
+                                onTap: () => _open(entry),
+                              );
+                            },
+                            childCount: entries.length,
+                          ),
+                        ),
+                      ),
+                    ),
+                ],
+              ),
             ),
     );
   }
