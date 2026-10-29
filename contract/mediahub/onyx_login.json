@@ -1,0 +1,28 @@
+{
+  "token": "5f0c3a1e9b7d4c2a8e6f1b3d5a7c9e0f2b4d6a8c0e1f3a5b7d9c2e4f6a8b0c1d",
+  "user": {
+    "avatar": "",
+    "id": 1,
+    "invite_grants": {
+      "delete_media": false,
+      "invite_users": false,
+      "manage_library": false,
+      "manage_settings": false,
+      "manage_users": false,
+      "request_media": false,
+      "share_media": false
+    },
+    "is_owner": false,
+    "otp_enabled": false,
+    "permissions": {
+      "delete_media": false,
+      "invite_users": false,
+      "manage_library": false,
+      "manage_settings": false,
+      "manage_users": false,
+      "request_media": true,
+      "share_media": false
+    },
+    "username": "lea"
+  }
+}

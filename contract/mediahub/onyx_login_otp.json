@@ -1,0 +1,7 @@
+{
+  "error": "Code de vérification requis. Mets l'application à jour si elle ne te le demande pas.",
+  "otp": {
+    "challenge": "c4e1a7b9d3f5a2c8e0b6d4f1a3c5e7b9",
+    "setup": false
+  }
+}

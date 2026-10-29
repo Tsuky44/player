@@ -173,6 +173,8 @@ abstract final class AppIcons {
       IconData(0xe68e, fontFamily: _regular); // usersThree
   static const IconData scan = IconData(0xebb6, fontFamily: _regular); // scan
   static const IconData link = IconData(0xe2e2, fontFamily: _regular); // link
+  static const IconData openInBrowser =
+      IconData(0xe288, fontFamily: _regular); // globe
   static const IconData copy = IconData(0xe1ca, fontFamily: _regular); // copy
 
   // Listes (ADR-0070) : le signet creux propose d'ajouter, plein il dit que

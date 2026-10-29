@@ -3106,6 +3106,10 @@ const Map<String, String> kEnglish = <String, String>{
       'What you request from the Request tab shows up here, with its progress.',
   'Impossible de charger vos demandes.':
       'Could not load your requests.',
+  'Ouvrir MediaHub': 'Open MediaHub',
+  'Lien copié : ouvrez-le dans votre navigateur dans la minute.':
+      'Link copied: open it in your browser within a minute.',
+  'Impossible d’ouvrir MediaHub.': 'Could not open MediaHub.',
   'Saisons {0}':
       'Seasons {0}',
   'Approuvée':

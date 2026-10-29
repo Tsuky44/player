@@ -85,8 +85,8 @@ func (c Client) do(ctx context.Context, method, path string, as Account, query u
 	if as.Username != "" {
 		req.Header.Set("X-Player-Username", as.Username)
 	}
-	// MediaHub ignore l'identifiant ; OnyxHub y rattache ses demandes, il
-	// survit à un renommage du compte (ADR-0075).
+	// L'id du compte Onyx est le lien stable : MediaHub y rattache le compte
+	// connecté avec Onyx (ADR-0088), OnyxHub ses demandes (ADR-0075).
 	if as.ID > 0 {
 		req.Header.Set("X-Player-Id", strconv.Itoa(as.ID))
 	}

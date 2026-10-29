@@ -19,6 +19,7 @@
     "onyxhub_import_signal",
     "avatars",
     "mediahub_requests",
-    "mediahub_events"
+    "mediahub_events",
+    "mediahub_sso"
   ]
 }

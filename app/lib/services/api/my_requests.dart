@@ -25,6 +25,17 @@ mixin _MyRequestEndpoints {
   Future<bool> supportsMyRequests() =>
       _serverSupports(ServerCapabilities.myRequests);
 
+  Future<bool> supportsMediaHubSso() =>
+      _serverSupports(ServerCapabilities.mediaHubSso);
+
+  /// Tire l'adresse qui ouvre MediaHub au nom du compte (ADR-0088). Lève
+  /// l'erreur du serveur (503 sans MediaHub, 501 chez OnyxHub).
+  Future<MediaHubTicket> openMediaHubTicket() async {
+    final response = await _dio.post('/api/integrations/mediahub/sso');
+    return MediaHubTicket.fromJson(
+        Map<String, dynamic>.from(response.data as Map));
+  }
+
   /// Les plus récentes d'abord.
   Future<List<MyRequest>> getMyRequests() => _requestLots('/api/requests/mine');
 

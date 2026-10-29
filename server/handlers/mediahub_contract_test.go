@@ -141,8 +141,9 @@ func TestMediaHubContractRequestIsRelayedAsSentWithTheAccount(t *testing.T) {
 		"POST /requests": func(w http.ResponseWriter, r *http.Request) {
 			body, _ := io.ReadAll(r.Body)
 			sameContractJSON(t, "mediahub", mediaHubContract(t, "request_create.json"), "request_create.json", body)
-			if r.Header.Get("X-Player-Username") != "lea" {
-				t.Errorf("compte transmis : %q", r.Header.Get("X-Player-Username"))
+			// L'id survit à tout ; MediaHub y lie le compte (ADR-0088).
+			if r.Header.Get("X-Player-Username") != "lea" || r.Header.Get("X-Player-Id") != "3" {
+				t.Errorf("compte transmis : %q / %q", r.Header.Get("X-Player-Username"), r.Header.Get("X-Player-Id"))
 			}
 			w.WriteHeader(http.StatusCreated)
 			_, _ = w.Write(mediaHubContract(t, "request_create_response.json"))

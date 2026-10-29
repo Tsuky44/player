@@ -1,0 +1,25 @@
+{
+  "avatar": "",
+  "id": 1,
+  "invite_grants": {
+    "delete_media": false,
+    "invite_users": false,
+    "manage_library": false,
+    "manage_settings": false,
+    "manage_users": false,
+    "request_media": false,
+    "share_media": false
+  },
+  "is_owner": false,
+  "otp_enabled": false,
+  "permissions": {
+    "delete_media": false,
+    "invite_users": false,
+    "manage_library": false,
+    "manage_settings": false,
+    "manage_users": false,
+    "request_media": true,
+    "share_media": false
+  },
+  "username": "lea"
+}

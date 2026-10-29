@@ -1,5 +1,6 @@
 import 'package:dio/dio.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
 
 import '../../l10n/tr.dart';
@@ -7,6 +8,7 @@ import '../../models/my_request.dart';
 import '../../services/api_client.dart';
 import '../../theme/app_colors.dart';
 import '../../theme/app_icons.dart';
+import '../../utils/external_url.dart';
 import '../../utils/responsive.dart';
 import '../../widgets/global/empty_state.dart';
 import 'request_detail_screen.dart';
@@ -34,6 +36,10 @@ class _MyRequestsScreenState extends State<MyRequestsScreen> {
   /// Le lot dont une décision part, par son premier identifiant.
   int? _moderating;
 
+  /// Le serveur sait ouvrir MediaHub déjà connecté (ADR-0088).
+  bool _canOpenHub = false;
+  bool _openingHub = false;
+
   @override
   void initState() {
     super.initState();
@@ -47,12 +53,45 @@ class _MyRequestsScreenState extends State<MyRequestsScreen> {
   }
 
   Future<void> _loadAccess() async {
+    final api = context.read<ApiClient>();
     try {
-      final access = await context.read<ApiClient>().getRequestAccess();
+      final access = await api.getRequestAccess();
       if (mounted) setState(() => _access = access);
     } catch (error) {
       // Sans les droits, l'écran reste celui des seules demandes du compte.
       debugPrint('MyRequestsScreen: droits illisibles ($error)');
+    }
+    try {
+      final canOpen = await api.supportsMediaHubSso();
+      if (mounted) setState(() => _canOpenHub = canOpen);
+    } catch (error) {
+      // Sans réponse, le bouton reste caché : rien d'autre n'en dépend.
+      debugPrint('MyRequestsScreen: SSO MediaHub inconnu ($error)');
+    }
+  }
+
+  /// Ouvre MediaHub dans le navigateur, connecté au compte Onyx. Le code ne
+  /// vaut qu'une minute : il se tire au clic, jamais à l'avance.
+  Future<void> _openHub() async {
+    final api = context.read<ApiClient>();
+    final messenger = ScaffoldMessenger.of(context);
+    setState(() => _openingHub = true);
+    try {
+      final ticket = await api.openMediaHubTicket();
+      if (await openExternalUrl(ticket.url)) return;
+      // Le mobile ne sait pas confier une adresse au navigateur : elle passe
+      // par le presse-papiers.
+      await Clipboard.setData(ClipboardData(text: ticket.url));
+      messenger.showSnackBar(SnackBar(
+          content: Text(tr('Lien copié : ouvrez-le dans votre navigateur '
+              'dans la minute.'))));
+    } catch (error) {
+      debugPrint('MyRequestsScreen: MediaHub pas ouvert ($error)');
+      messenger.showSnackBar(SnackBar(
+          content: Text(
+              _errorText(error, tr('Impossible d’ouvrir MediaHub.')))));
+    } finally {
+      if (mounted) setState(() => _openingHub = false);
     }
   }
 
@@ -141,8 +180,17 @@ class _MyRequestsScreenState extends State<MyRequestsScreen> {
     return Scaffold(
       backgroundColor: AppColors.background,
       appBar: AppBar(
-          title: Text(
-              _scope == _Scope.all ? tr('Toutes les demandes') : tr('Mes demandes'))),
+        title: Text(
+            _scope == _Scope.all ? tr('Toutes les demandes') : tr('Mes demandes')),
+        actions: [
+          if (_canOpenHub && _access.service == 'mediahub')
+            IconButton(
+              tooltip: tr('Ouvrir MediaHub'),
+              icon: const Icon(AppIcons.openInBrowser),
+              onPressed: _openingHub ? null : _openHub,
+            ),
+        ],
+      ),
       body: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [

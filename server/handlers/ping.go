@@ -61,6 +61,9 @@ const (
 	// PUT /api/me/avatar, POST /api/me/avatar/photo et
 	// GET /api/users/:id/avatar existent : l'image de profil (ADR-0078).
 	CapabilityAvatars = "avatars"
+	// POST /api/integrations/mediahub/sso tire le code qui ouvre MediaHub
+	// déjà connecté (ADR-0088).
+	CapabilityMediaHubSSO = "mediahub_sso"
 )
 
 type pingResponse struct {
@@ -96,6 +99,7 @@ func pingPayload() pingResponse {
 			CapabilityAvatars,
 			CapabilityMediaHubRequests,
 			CapabilityMediaHubEvents,
+			CapabilityMediaHubSSO,
 		},
 	}
 }

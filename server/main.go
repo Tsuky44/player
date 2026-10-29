@@ -250,6 +250,11 @@ func main() {
 	// MediaHub signe en plus le corps avec la clé, et la route n'en fait pas
 	// plus qu'oublier un cache et avancer le moniteur.
 	router.POST("/api/integrations/mediahub/events", handlers.RateLimited(handlers.PollLimiter, handlers.MediaHubEvents))
+	// Ouvrir MediaHub déjà connecté (ADR-0088) : l'app tire un code court, le
+	// serveur MediaHub le rachète avec la clé d'intégration. Le rachat est
+	// limité comme une connexion, puisqu'il en ouvre une chez MediaHub.
+	router.POST("/api/integrations/mediahub/sso", handlers.RequireAuth(handlers.IssueMediaHubSSO))
+	router.POST("/api/integrations/mediahub/sso/redeem", handlers.RateLimited(handlers.LoginLimiter, handlers.RedeemMediaHubSSO))
 
 	// Serveurs liés (ADR-0017) : la progression passe d'un serveur à l'autre
 	// sans dépendre d'une app ouverte.

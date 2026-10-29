@@ -3,7 +3,6 @@ package mediahub
 import (
 	"crypto/hmac"
 	"crypto/sha256"
-	"crypto/subtle"
 	"encoding/hex"
 	"encoding/json"
 	"errors"
@@ -66,10 +65,8 @@ var (
 // même clé. La clé seule dit qui appelle ; la signature dit que le corps n'a
 // pas été changé en route (un proxy qui journalise, une réémission).
 func VerifyDelivery(header http.Header, body []byte, key string) error {
-	key = strings.TrimSpace(key)
-	presented := strings.TrimSpace(strings.TrimPrefix(header.Get("Authorization"), "Bearer "))
-	if key == "" || presented == "" || subtle.ConstantTimeCompare([]byte(key), []byte(presented)) != 1 {
-		return ErrBadKey
+	if err := VerifyKey(header, key); err != nil {
+		return err
 	}
 	signature, ok := strings.CutPrefix(header.Get("X-MediaHub-Signature"), "sha256=")
 	if !ok {

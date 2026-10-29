@@ -177,6 +177,7 @@ func TestAPIContract(t *testing.T) {
 		"requests_feed":      requestFeed,
 		"requests_access":    requestAccess,
 		"mediahub_link_test": linkTest,
+		"mediahub_sso":       filled[mediahub.SSOTicket](),
 	}
 
 	update := os.Getenv("ONYX_UPDATE_CONTRACT") != ""

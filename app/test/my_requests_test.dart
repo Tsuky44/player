@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:onyx/models/media_request.dart';
 import 'package:onyx/models/my_request.dart';
@@ -11,11 +12,27 @@ import 'package:shared_preferences/shared_preferences.dart';
 /// lots rendus par le serveur depuis MediaHub ou OnyxHub (ADR-0073, ADR-0087).
 
 class _Api extends ApiClient {
-  _Api(this.requests, {this.all = const [], this.access = RequestAccess.basic});
+  _Api(this.requests,
+      {this.all = const [],
+      this.access = RequestAccess.basic,
+      this.sso = false});
   final List<MyRequest> requests;
   final List<MyRequest> all;
   final RequestAccess access;
+  final bool sso;
   final moderated = <(List<int>, RequestModeration, String?)>[];
+  int tickets = 0;
+
+  @override
+  Future<bool> supportsMediaHubSso() async => sso;
+
+  @override
+  Future<MediaHubTicket> openMediaHubTicket() async {
+    tickets++;
+    // Une adresse que openExternalUrl refuse : le test ne lance pas de
+    // navigateur, il passe par le presse-papiers.
+    return const MediaHubTicket(url: 'pas-une-adresse', expiresIn: 60);
+  }
 
   @override
   Future<List<MyRequest>> getMyRequests() async => requests;
@@ -279,5 +296,46 @@ void main() {
     await tester.pumpAndSettle();
     expect(api.moderated.single.$2, RequestModeration.decline);
     expect(api.moderated.single.$3, 'Doublon');
+  });
+
+  testWidgets(
+      'Ouvrir MediaHub tire un code au clic, seulement chez un MediaHub qui le permet',
+      (tester) async {
+    final copied = <String>[];
+    tester.binding.defaultBinaryMessenger
+        .setMockMethodCallHandler(SystemChannels.platform, (call) async {
+      if (call.method == 'Clipboard.setData') {
+        copied.add((call.arguments as Map)['text'] as String);
+      }
+      return null;
+    });
+    addTearDown(() => tester.binding.defaultBinaryMessenger
+        .setMockMethodCallHandler(SystemChannels.platform, null));
+    final api = _Api(const [], access: _moderator, sso: true);
+    await tester.pumpWidget(Provider<ApiClient>.value(
+      value: api,
+      child: const MaterialApp(home: MyRequestsScreen()),
+    ));
+    await tester.pumpAndSettle();
+    expect(api.tickets, 0, reason: 'le code ne vaut qu’une minute');
+
+    await tester.tap(find.byTooltip('Ouvrir MediaHub'));
+    await tester.pumpAndSettle();
+    expect(api.tickets, 1);
+    expect(copied, ['pas-une-adresse']);
+    expect(find.textContaining('Lien copié'), findsOneWidget);
+
+    // OnyxHub, ou un serveur qui ne sait pas tirer de code : pas de bouton.
+    for (final other in [
+      _Api(const [], access: _moderator),
+      _Api(const [], sso: true),
+    ]) {
+      await tester.pumpWidget(Provider<ApiClient>.value(
+        value: other,
+        child: MaterialApp(home: MyRequestsScreen(key: UniqueKey())),
+      ));
+      await tester.pumpAndSettle();
+      expect(find.byTooltip('Ouvrir MediaHub'), findsNothing);
+    }
   });
 }

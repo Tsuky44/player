@@ -191,5 +191,21 @@ class RequestAccess {
   }
 }
 
+/// L'adresse qui ouvre MediaHub déjà connecté, par
+/// `POST /api/integrations/mediahub/sso` (ADR-0088). Elle porte un code à
+/// usage unique qui ne vaut que [expiresIn] secondes : elle s'ouvre tout de
+/// suite et ne se garde pas.
+class MediaHubTicket {
+  const MediaHubTicket({required this.url, required this.expiresIn});
+
+  final String url;
+  final int expiresIn;
+
+  factory MediaHubTicket.fromJson(Map<String, dynamic> json) => MediaHubTicket(
+        url: json['url'] as String? ?? '',
+        expiresIn: (json['expires_in'] as num?)?.toInt() ?? 0,
+      );
+}
+
 /// Une décision sur un lot de demandes.
 enum RequestModeration { approve, decline, delete }

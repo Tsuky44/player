@@ -305,5 +305,14 @@ void main() {
     final link = MediaHubLinkTest.fromJson(_contract('mediahub_link_test'));
     expect(link.ok, isTrue);
     expect(link.notes, isNotEmpty);
+
+    // Ouvrir MediaHub déjà connecté (ADR-0088).
+    expect(
+        ServerCapabilities.tryParse(_contract('ping'))!
+            .supports(ServerCapabilities.mediaHubSso),
+        isTrue);
+    final ticket = MediaHubTicket.fromJson(_contract('mediahub_sso'));
+    expect(ticket.url, isNotEmpty);
+    expect(ticket.expiresIn, greaterThan(0));
   });
 }
