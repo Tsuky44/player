@@ -9,7 +9,7 @@ import 'package:provider/provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 /// « Mes demandes » montre ce que le compte a demandé et où ça en est, en
-/// lots rendus par le serveur depuis MediaHub ou OnyxHub (ADR-0073, ADR-0087).
+/// lots rendus par le serveur depuis MediaHub ou OnyxHub (ADR-0073, ADR-0089).
 
 class _Api extends ApiClient {
   _Api(this.requests,

@@ -1,4 +1,4 @@
-# ADR-0087 — MediaHub, compagnon de demandes d'Onyx par son API v1
+# ADR-0089 — MediaHub, compagnon de demandes d'Onyx par son API v1
 
 - **Statut :** accepté
 - **Date :** 2026-10-29

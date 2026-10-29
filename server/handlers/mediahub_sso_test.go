@@ -16,7 +16,7 @@ import (
 	"project-player/server/models"
 )
 
-// Se connecter à MediaHub avec son compte Onyx (ADR-0088). MediaHub lit les
+// Se connecter à MediaHub avec son compte Onyx (ADR-0090). MediaHub lit les
 // réponses de l'auth d'Onyx et rachète les codes d'« Ouvrir MediaHub » : ces
 // formats, écrits par Onyx, sont épinglés sous contract/mediahub/onyx_*.json
 // et se régénèrent avec ONYX_UPDATE_CONTRACT=1, comme TestAPIContract.

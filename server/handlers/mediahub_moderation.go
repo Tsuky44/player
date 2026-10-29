@@ -9,7 +9,7 @@ import (
 	"github.com/julienschmidt/httprouter"
 )
 
-// Ce que l'API v1 de MediaHub ajoute aux demandes (ADR-0087) : les droits du
+// Ce que l'API v1 de MediaHub ajoute aux demandes (ADR-0089) : les droits du
 // compte, la liste de tous les comptes et la modération. MediaHub juge chaque
 // droit d'après le rôle du compte qui porte le même nom ; Onyx exige en plus
 // manage_settings pour lire tout le monde et modérer (main.go).

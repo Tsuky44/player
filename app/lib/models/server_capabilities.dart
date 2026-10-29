@@ -48,10 +48,10 @@ class ServerCapabilities {
   static const myRequests = 'my_requests';
 
   /// Le serveur dit les droits du compte chez MediaHub, liste toutes les
-  /// demandes et les modère (ADR-0087).
+  /// demandes et les modère (ADR-0089).
   static const mediaHubRequests = 'mediahub_requests';
 
-  /// Le serveur tire le code qui ouvre MediaHub déjà connecté (ADR-0088).
+  /// Le serveur tire le code qui ouvre MediaHub déjà connecté (ADR-0090).
   static const mediaHubSso = 'mediahub_sso';
 
   bool supports(String capability) => capabilities.contains(capability);

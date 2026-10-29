@@ -43,7 +43,7 @@ class MediaHubLinkTest {
   final String message;
 
   /// Ce qui manque encore à une liaison qui marche, prêt à afficher
-  /// (ADR-0087).
+  /// (ADR-0089).
   final List<String> notes;
 
   factory MediaHubLinkTest.fromJson(Map<String, dynamic> json) =>

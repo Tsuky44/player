@@ -15,7 +15,7 @@ import (
 // hubStub simule OnyxHub (ou MediaHub) derrière l'adresse réglée dans Onyx.
 //
 // Il n'a pas l'API v1 de MediaHub : son 404 sur le ping v1 fait parler Onyx
-// dans le dialecte d'OnyxHub (ADR-0087).
+// dans le dialecte d'OnyxHub (ADR-0089).
 func hubStub(t *testing.T, handler http.HandlerFunc) *httptest.Server {
 	t.Helper()
 	return companionStub(t, func(w http.ResponseWriter, r *http.Request) {

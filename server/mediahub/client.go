@@ -1,5 +1,5 @@
 // Package mediahub est le client d'Onyx vers son compagnon de demandes
-// (ADR-0087) : MediaHub par son API d'intégration v1, ou OnyxHub, l'ancien
+// (ADR-0089) : MediaHub par son API d'intégration v1, ou OnyxHub, l'ancien
 // compagnon, par ses routes d'origine (ADR-0072 à 0077). L'appelant ne voit
 // qu'un Client ; le dialecte se reconnaît au premier appel et se retient.
 package mediahub
@@ -86,7 +86,7 @@ func (c Client) do(ctx context.Context, method, path string, as Account, query u
 		req.Header.Set("X-Player-Username", as.Username)
 	}
 	// L'id du compte Onyx est le lien stable : MediaHub y rattache le compte
-	// connecté avec Onyx (ADR-0088), OnyxHub ses demandes (ADR-0075).
+	// connecté avec Onyx (ADR-0090), OnyxHub ses demandes (ADR-0075).
 	if as.ID > 0 {
 		req.Header.Set("X-Player-Id", strconv.Itoa(as.ID))
 	}

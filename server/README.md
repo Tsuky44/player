@@ -136,7 +136,7 @@ Toutes les routes API (sauf l'inscription/connexion et le stream) requièrent l'
   `disabled`, `optional` (défaut), `admins`, `everyone`. Variable d'environnement de repli :
   `OTP_POLICY`.
 
-#### ➡️ Liaison avec MediaHub (ADR-0072, ADR-0087)
+#### ➡️ Liaison avec MediaHub (ADR-0072, ADR-0089)
 * Réglée par `mediahub_url` et `mediahub_api_key` dans `PUT /api/settings` (`manage_settings`).
   Le compagnon est MediaHub par son API d'intégration v1 (`{url}/api/integrations/player/v1`), ou
   OnyxHub tant qu'il n'est pas retiré. Le serveur reconnaît le dialecte à `GET {url}/api/integrations/player/v1/ping`
@@ -155,19 +155,19 @@ Toutes les routes API (sauf l'inscription/connexion et le stream) requièrent l'
   retomber sur l'appel par carte, et le lot n'est retenté qu'au bout de 10 minutes.
 * `POST /api/requests` (`request_media`) — relaie le corps `{ "tmdbId", "mediaType", "title",
   "posterPath", "seasons" }` au nom du compte ; statut et corps de la réponse reviennent tels quels.
-* `GET /api/requests/mine` (`request_media`, ADR-0073, ADR-0087) — les demandes du compte en lots,
+* `GET /api/requests/mine` (`request_media`, ADR-0073, ADR-0089) — les demandes du compte en lots,
   les plus récentes d'abord : `{ "requests": [{ "requestIds", "mediaType", "tmdbId", "title",
   "posterPath", "seasons", "status", "seasonStatuses": [{ "seasonNumber", "status" }],
   "requestedAt", "updatedAt"?, "progress", "waiting"?: { "message", "releaseDate"?, "nextAttemptAt"? },
   "note"?, "requester"? }] }`. Un lot regroupe les lignes par saison d'une même série et d'un même
   compte ; `status` est `pending`, `approved`, `processing`, `partial`, `available` ou `declined`,
   `note` le motif d'un refus. Capacité `my_requests` (format en lots : `mediahub_requests`).
-* `GET /api/requests/access` (`request_media`, ADR-0087) — `{ "service", "version"?, "linked",
+* `GET /api/requests/access` (`request_media`, ADR-0089) — `{ "service", "version"?, "linked",
   "can": { "read", "request", "readAllRequests", "moderate", "delete" } }`, les droits du compte
   MediaHub de même nom (OnyxHub : `request` seulement).
-* `GET /api/requests/all` (`manage_settings`, ADR-0087) — même forme que `mine`, tous comptes,
+* `GET /api/requests/all` (`manage_settings`, ADR-0089) — même forme que `mine`, tous comptes,
   avec `requester`. MediaHub exige en plus `read MediaRequest`. `501` avec OnyxHub.
-* `POST /api/requests/moderation` (`manage_settings`, ADR-0087) — `{ "requestIds": [...],
+* `POST /api/requests/moderation` (`manage_settings`, ADR-0089) — `{ "requestIds": [...],
   "action": "approve"|"decline"|"delete", "reason"? }` (60 lignes au plus) → `200 { "status": "ok" }`,
   ou l'erreur de MediaHub telle quelle (`403`, `409` déjà disponible…). `501` avec OnyxHub.
   Capacité `mediahub_requests` pour ces trois routes.
@@ -182,7 +182,7 @@ Toutes les routes API (sauf l'inscription/connexion et le stream) requièrent l'
 * `GET /api/library/shows/:tmdb/episodes` (`RequireAuth`, ADR-0082) — `{ "seasons": { "<n>": [épisodes] } }`,
   les épisodes d'une série qui ont un fichier, tous dossiers confondus. Sert au compagnon pour marquer
   « Disponible » ce qu'Onyx peut lire. Capacité `library_show_episodes`.
-* `POST /api/integrations/mediahub/events` (sans compte, ADR-0087) — l'adresse à régler dans
+* `POST /api/integrations/mediahub/events` (sans compte, ADR-0089) — l'adresse à régler dans
   `ONYX_WEBHOOK_URL` chez MediaHub. Exige `Authorization: Bearer <mediahub_api_key>` et
   `X-MediaHub-Signature: sha256=<HMAC-SHA256 du corps, clé d'intégration>` (`401` sinon). Corps
   `{ "id", "event", "apiVersion", "occurredAt", "data" }` → `202 { "status": "accepted" }`. Une

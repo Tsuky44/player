@@ -26,7 +26,7 @@ class MyRequestActions {
 /// Une demande du compte, à la manière des cartes « Mes demandes » d'OnyxHub
 /// (`RequestCard`) : l'affiche à gauche, le type en surtitre, le titre, le
 /// statut en pastille, les saisons demandées et la date de la demande. Avec
-/// MediaHub (ADR-0087), la carte dit aussi le statut de chaque saison quand
+/// MediaHub (ADR-0089), la carte dit aussi le statut de chaque saison quand
 /// elles diffèrent, la raison d'attente ou le motif de refus, qui a demandé
 /// dans la liste de tous les comptes, et les décisions de qui modère.
 class MyRequestCard extends StatelessWidget {

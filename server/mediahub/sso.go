@@ -12,7 +12,7 @@ import (
 	"time"
 )
 
-// Ouvrir MediaHub déjà connecté depuis l'app Onyx (ADR-0088). Onyx tire un
+// Ouvrir MediaHub déjà connecté depuis l'app Onyx (ADR-0090). Onyx tire un
 // code court pour le compte connecté ; le navigateur le porte jusqu'à
 // MediaHub, qui le rachète auprès d'Onyx, serveur à serveur, avec la clé
 // d'intégration. Le code est opaque : MediaHub n'a ni signature à vérifier ni

@@ -53,16 +53,16 @@ const (
 	CapabilityOnyxHubImportSignal = "onyxhub_import_signal"
 	// GET /api/requests/access et /api/requests/all, POST
 	// /api/requests/moderation existent, et « mes demandes » vient en lots
-	// avec leurs saisons, raisons et motifs de refus (ADR-0087).
+	// avec leurs saisons, raisons et motifs de refus (ADR-0089).
 	CapabilityMediaHubRequests = "mediahub_requests"
 	// POST /api/integrations/mediahub/events reçoit les évènements signés de
-	// MediaHub (ADR-0087).
+	// MediaHub (ADR-0089).
 	CapabilityMediaHubEvents = "mediahub_events"
 	// PUT /api/me/avatar, POST /api/me/avatar/photo et
 	// GET /api/users/:id/avatar existent : l'image de profil (ADR-0078).
 	CapabilityAvatars = "avatars"
 	// POST /api/integrations/mediahub/sso tire le code qui ouvre MediaHub
-	// déjà connecté (ADR-0088).
+	// déjà connecté (ADR-0090).
 	CapabilityMediaHubSSO = "mediahub_sso"
 )
 

@@ -23,7 +23,7 @@ class MyRequestSeason {
 }
 
 /// Une demande du compte, lue par `GET /api/requests/mine` (ADR-0073,
-/// ADR-0087). Le serveur regroupe en un lot les saisons d'une série demandées
+/// ADR-0089). Le serveur regroupe en un lot les saisons d'une série demandées
 /// par un même compte ; MediaHub, lui, écrit une ligne par saison.
 class MyRequest {
   const MyRequest({
@@ -144,7 +144,7 @@ String? _nonEmpty(Object? value) =>
     value is String && value.trim().isNotEmpty ? value : null;
 
 /// Ce que le compte peut faire chez le compagnon, par
-/// `GET /api/requests/access` (ADR-0087).
+/// `GET /api/requests/access` (ADR-0089).
 class RequestAccess {
   const RequestAccess({
     required this.service,
@@ -192,7 +192,7 @@ class RequestAccess {
 }
 
 /// L'adresse qui ouvre MediaHub déjà connecté, par
-/// `POST /api/integrations/mediahub/sso` (ADR-0088). Elle porte un code à
+/// `POST /api/integrations/mediahub/sso` (ADR-0090). Elle porte un code à
 /// usage unique qui ne vaut que [expiresIn] secondes : elle s'ouvre tout de
 /// suite et ne se garde pas.
 class MediaHubTicket {

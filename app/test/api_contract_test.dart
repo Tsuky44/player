@@ -278,7 +278,7 @@ void main() {
     expect(feed.requests.first.requestedAt, isNotNull);
   });
 
-  // Ce que le serveur rend à l'app depuis MediaHub (ADR-0087) : des lots de
+  // Ce que le serveur rend à l'app depuis MediaHub (ADR-0089) : des lots de
   // demandes, le flux des nouvelles demandes et les droits du compte.
   test('MediaHub : lots de demandes, flux, droits et test de liaison', () {
     final lot = MyRequest.fromJson(
@@ -306,7 +306,7 @@ void main() {
     expect(link.ok, isTrue);
     expect(link.notes, isNotEmpty);
 
-    // Ouvrir MediaHub déjà connecté (ADR-0088).
+    // Ouvrir MediaHub déjà connecté (ADR-0090).
     expect(
         ServerCapabilities.tryParse(_contract('ping'))!
             .supports(ServerCapabilities.mediaHubSso),

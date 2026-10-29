@@ -1,4 +1,4 @@
-# ADR-0088 — Se connecter à MediaHub avec son compte Onyx
+# ADR-0090 — Se connecter à MediaHub avec son compte Onyx
 
 - **Statut :** accepté
 - **Date :** 2026-10-29
@@ -6,7 +6,7 @@
   `POST /api/integrations/mediahub/sso` et `/sso/redeem`, la capacité `mediahub_sso`,
   `contract/mediahub/onyx_*.json`, `contract/mediahub_sso.json`, et côté app `MediaHubTicket`
   (`models/my_request.dart`), `services/api/my_requests.dart` et le bouton « Ouvrir MediaHub » de
-  `screens/requests/my_requests_screen.dart`. Prolonge l'ADR-0087.
+  `screens/requests/my_requests_screen.dart`. Prolonge l'ADR-0089.
 
 ## Contexte
 

@@ -8,7 +8,7 @@ import '../widgets/settings_ui.dart';
 import '../../../l10n/tr.dart';
 
 /// TMDB (métadonnées, affiches, catalogue de demandes), Fanart.tv (affiches
-/// en plus, ADR-0068) et MediaHub (demandes, ADR-0087 ; un OnyxHub à la même
+/// en plus, ADR-0068) et MediaHub (demandes, ADR-0089 ; un OnyxHub à la même
 /// adresse est reconnu par le serveur). Les clés ne sont jamais renvoyées en
 /// clair par le serveur.
 class IntegrationsPage extends StatefulWidget {

@@ -17,7 +17,7 @@ import 'widgets/my_request_card.dart';
 import 'widgets/request_moderation_dialogs.dart';
 
 /// Les demandes du compte et leur avancement, lues chez MediaHub (ADR-0073,
-/// ADR-0087) : ce que l'onglet Demander envoie, on le retrouve ici jusqu'à ce
+/// ADR-0089) : ce que l'onglet Demander envoie, on le retrouve ici jusqu'à ce
 /// que ce soit disponible. Un compte que MediaHub laisse lire toutes les
 /// demandes voit aussi celles des autres, et les modère s'il en a le droit.
 class MyRequestsScreen extends StatefulWidget {
@@ -37,7 +37,7 @@ class _MyRequestsScreenState extends State<MyRequestsScreen> {
   /// Le lot dont une décision part, par son premier identifiant.
   int? _moderating;
 
-  /// Le serveur sait ouvrir MediaHub déjà connecté (ADR-0088).
+  /// Le serveur sait ouvrir MediaHub déjà connecté (ADR-0090).
   bool _canOpenHub = false;
   bool _openingHub = false;
 

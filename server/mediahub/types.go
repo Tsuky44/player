@@ -1,7 +1,7 @@
 package mediahub
 
 // Les messages de l'API d'intégration v1 de MediaHub, tels qu'Onyx les lit.
-// Les exemples réels sont épinglés dans contract/mediahub/ (ADR-0087).
+// Les exemples réels sont épinglés dans contract/mediahub/ (ADR-0089).
 
 // Waiting dit, en français et prêt à afficher, pourquoi rien ne se télécharge
 // encore. MediaHub donne la date de sortie attendue ; OnyxHub donnait l'heure

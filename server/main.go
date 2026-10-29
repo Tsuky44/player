@@ -246,11 +246,11 @@ func main() {
 	// que le moniteur ferait de toute façon. Limitée comme un sondage : les
 	// webhooks d'une saison entière passent, un balayage de clés non.
 	router.POST("/api/integrations/onyxhub/imported", handlers.RateLimited(handlers.PollLimiter, handlers.OnyxHubImported))
-	// Les évènements de MediaHub (ADR-0087) : même raison d'être publique, mais
+	// Les évènements de MediaHub (ADR-0089) : même raison d'être publique, mais
 	// MediaHub signe en plus le corps avec la clé, et la route n'en fait pas
 	// plus qu'oublier un cache et avancer le moniteur.
 	router.POST("/api/integrations/mediahub/events", handlers.RateLimited(handlers.PollLimiter, handlers.MediaHubEvents))
-	// Ouvrir MediaHub déjà connecté (ADR-0088) : l'app tire un code court, le
+	// Ouvrir MediaHub déjà connecté (ADR-0090) : l'app tire un code court, le
 	// serveur MediaHub le rachète avec la clé d'intégration. Le rachat est
 	// limité comme une connexion, puisqu'il en ouvre une chez MediaHub.
 	router.POST("/api/integrations/mediahub/sso", handlers.RequireAuth(handlers.IssueMediaHubSSO))
@@ -367,9 +367,9 @@ func main() {
 	router.POST("/api/requests", handlers.RequirePermission(models.PermRequestMedia, handlers.MediaHubRequest))
 	// Les demandes du compte, lues chez le compagnon (ADR-0073) : même droit que les envoyer.
 	router.GET("/api/requests/mine", handlers.RequirePermission(models.PermRequestMedia, handlers.MediaHubMyRequests))
-	// Les droits du compte chez MediaHub (ADR-0087) : même droit que demander.
+	// Les droits du compte chez MediaHub (ADR-0089) : même droit que demander.
 	router.GET("/api/requests/access", handlers.RequirePermission(models.PermRequestMedia, handlers.MediaHubRequestAccess))
-	// Toutes les demandes et leur modération (ADR-0087) : MediaHub juge le droit
+	// Toutes les demandes et leur modération (ADR-0089) : MediaHub juge le droit
 	// d'après le rôle du compte de même nom, et Onyx exige en plus
 	// manage_settings, comme pour le flux. Un nom pris par hasard à
 	// l'inscription ne suffit pas à modérer.

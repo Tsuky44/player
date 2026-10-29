@@ -14,7 +14,7 @@ import (
 	"github.com/julienschmidt/httprouter"
 )
 
-// Les évènements que MediaHub pousse vers Onyx (ADR-0087), à la place de
+// Les évènements que MediaHub pousse vers Onyx (ADR-0089), à la place de
 // l'import annoncé par OnyxHub (ADR-0074) : une demande a changé, ou Radarr
 // et Sonarr viennent d'importer un fichier. Onyx oublie ce qu'il gardait en
 // cache sur le titre, et indexe le fichier maintenant plutôt qu'au prochain

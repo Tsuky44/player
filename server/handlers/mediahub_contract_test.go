@@ -17,7 +17,7 @@ import (
 	"project-player/server/mediahub"
 )
 
-// Le contrat avec MediaHub, vu d'Onyx (ADR-0087).
+// Le contrat avec MediaHub, vu d'Onyx (ADR-0089).
 //
 // contract/mediahub/ est une copie des exemples de MediaHub
 // (docs/player-integration/v1/examples/ dans son dépôt) : ce que MediaHub
@@ -141,7 +141,7 @@ func TestMediaHubContractRequestIsRelayedAsSentWithTheAccount(t *testing.T) {
 		"POST /requests": func(w http.ResponseWriter, r *http.Request) {
 			body, _ := io.ReadAll(r.Body)
 			sameContractJSON(t, "mediahub", mediaHubContract(t, "request_create.json"), "request_create.json", body)
-			// L'id survit à tout ; MediaHub y lie le compte (ADR-0088).
+			// L'id survit à tout ; MediaHub y lie le compte (ADR-0090).
 			if r.Header.Get("X-Player-Username") != "lea" || r.Header.Get("X-Player-Id") != "3" {
 				t.Errorf("compte transmis : %q / %q", r.Header.Get("X-Player-Username"), r.Header.Get("X-Player-Id"))
 			}

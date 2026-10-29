@@ -140,7 +140,7 @@ func TestAPIContract(t *testing.T) {
 	watchListItem := filled[models.WatchListItem]()
 	watchListItem.MediaType = string(models.TypeMovie)
 
-	// Les demandes viennent de MediaHub en lots (ADR-0087) : leurs statuts
+	// Les demandes viennent de MediaHub en lots (ADR-0089) : leurs statuts
 	// sont ceux que l'app connaît.
 	myRequests := filled[myRequestsResponse]()
 	myRequests.Requests[0].MediaType = "tv"

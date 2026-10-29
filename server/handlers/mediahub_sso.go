@@ -15,7 +15,7 @@ import (
 	"github.com/julienschmidt/httprouter"
 )
 
-// Ouvrir MediaHub déjà connecté depuis l'app (ADR-0088). Le format est
+// Ouvrir MediaHub déjà connecté depuis l'app (ADR-0090). Le format est
 // épinglé par contract/mediahub/sso_*.json.
 
 // mediaHubSSOCodes : les codes tirés et pas encore rachetés. En mémoire : un

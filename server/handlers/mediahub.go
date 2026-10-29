@@ -21,7 +21,7 @@ var mediaHubHTTPClient = httpx.Long
 
 // Le compagnon de demandes : MediaHub par son API v1, ou OnyxHub tant qu'il
 // n'est pas retiré, réglé par mediahub_url et mediahub_api_key. Le dialecte se
-// reconnaît dans le package mediahub (ADR-0087) ; les handlers ne voient que
+// reconnaît dans le package mediahub (ADR-0089) ; les handlers ne voient que
 // le client. Les formats échangés sont épinglés par contract/mediahub/ et,
 // pour OnyxHub, contract/onyxhub/ (ADR-0075).
 
@@ -38,7 +38,7 @@ func mediaHubClient(client *http.Client) mediahub.Client {
 }
 
 // mediaHubAccount rend le compte Onyx au nom duquel parler. MediaHub retrouve
-// son compte par l'id, puis par le nom en repli (ADR-0088).
+// son compte par l'id, puis par le nom en repli (ADR-0090).
 func mediaHubAccount(userID int) (mediahub.Account, error) {
 	username, err := playerUsername(userID)
 	if err != nil {
