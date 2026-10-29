@@ -117,6 +117,21 @@ mixin _MediaEndpoints {
         .toList();
   }
 
+  /// Ce que la bibliothèque tient par identifiant TMDB : `{movies: {tmdb: id},
+  /// shows: {tmdb: id}}` (ADR-0073). Sert à traduire un lien `onyx://play`.
+  Future<({Map<int, int> movies, Map<int, int> shows})>
+      getLibraryTmdbIndex() async {
+    final response = await _dio.get("/api/library/tmdb-index");
+    final data = response.data as Map<String, dynamic>;
+    Map<int, int> read(String key) => {
+          for (final entry
+              in (data[key] as Map<String, dynamic>? ?? const {}).entries)
+            if (int.tryParse(entry.key) != null && entry.value is int)
+              int.parse(entry.key): entry.value as int,
+        };
+    return (movies: read('movies'), shows: read('shows'));
+  }
+
   Future<ShowResumeResponse> getShowResumeEpisode(int showId) async {
     final response = await _dio.get("/api/shows/$showId/resume");
     return ShowResumeResponse.fromJson(response.data as Map<String, dynamic>);

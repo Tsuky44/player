@@ -34,10 +34,14 @@ class MovieDetailScreen extends StatefulWidget {
   final HomeMediaItem? movieItem;
   final Media? movie;
 
+  /// Lance la lecture dès l'ouverture : le lien `onyx://play` (ADR-0091).
+  final bool autoPlay;
+
   const MovieDetailScreen({
     super.key,
     this.movieItem,
     this.movie,
+    this.autoPlay = false,
   }) : assert(movieItem != null || movie != null);
 
   @override
@@ -84,6 +88,13 @@ class _MovieDetailScreenState extends State<MovieDetailScreen>
     // One progress read per visit. With a library item in hand the page
     // already shows its progress, so the check runs without a spinner.
     _loadProgress(silent: widget.movieItem != null);
+    // Le lecteur relit lui-même la position sauvegardée : pas besoin
+    // d'attendre celle de la fiche pour reprendre au bon endroit.
+    if (widget.autoPlay) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted) _play();
+      });
+    }
   }
 
   /// Folds a details payload into the page state, enriching the local handle

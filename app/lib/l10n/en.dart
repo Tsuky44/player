@@ -2778,6 +2778,8 @@ const Map<String, String> kEnglish = <String, String>{
       '“{0}” will free up space on this device. Its progress will be sent to the server as soon as possible.',
   '« {0} » n’est pas dans ta bibliothèque':
       '“{0}” is not in your library',
+  'Ce titre n’est pas dans ta bibliothèque':
+      'This title is not in your library',
   'À découvrir':
       'Discover',
   'À faire si le mot de passe Emby a changé ou si la session a été révoquée.':

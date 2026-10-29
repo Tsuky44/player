@@ -155,6 +155,7 @@ dependencies:
   # (android/app/build.gradle.kts). Aucun des deux paquets ne déclare tvOS :
   # l'Apple TV n'en embarque rien.
   flutter_local_notifications: ^22.3.2
+  app_links: ^7.2.2
 
 # Les bibliothèques natives de media_kit, avec un FFmpeg complet. Les versions
 # publiées embarquent un FFmpeg réduit à une liste blanche de décodeurs sans

@@ -24,6 +24,7 @@ import '../../widgets/global/interface_tour/interface_tour.dart';
 import '../../widgets/global/interface_tour/tour_anchor.dart';
 import '../../desktop_window.dart';
 import '../../navigation/media_link.dart';
+import '../../navigation/play_link.dart';
 import '../../navigation/shell_navigator.dart';
 import '../../tv/tv_deferred_keyboard.dart';
 import '../../tv/tv_mode.dart';
@@ -216,8 +217,21 @@ class _MainShellState extends State<MainShell> {
     });
   }
 
+  Future<void> _openPlayLink() async {
+    if (PlayLink.pending.value == null) return;
+    final api = context.read<ApiClient>();
+    final messenger = ScaffoldMessenger.maybeOf(context);
+    final route = await PlayLink.takeRoute(api, messenger);
+    if (route == null || !mounted) return;
+    // Une fiche ou un lecteur déjà ouvert cède la place au titre demandé.
+    Navigator.of(context, rootNavigator: true).popUntil((r) => r.isFirst);
+    shellNavigatorKey.currentState?.popUntil((r) => r.isFirst);
+    unawaited(shellNavigatorKey.currentState?.push(route));
+  }
+
   @override
   void dispose() {
+    PlayLink.pending.removeListener(_openPlayLink);
     _auth.removeListener(_onAuthChanged);
     InterfaceTourReplay.requests.removeListener(_onTourReplayRequested);
     _warmTimer?.cancel();
@@ -251,6 +265,9 @@ class _MainShellState extends State<MainShell> {
         // « Lire dans Onyx » depuis OnyxHub : la fiche s'ouvre par-dessus les onglets.
         final linked = MediaLink.takeRoute();
         if (linked != null) unawaited(shellNavigatorKey.currentState?.push(linked));
+        // « Lire sur Onyx » depuis MediaHub : le lien attendait la session.
+        PlayLink.pending.addListener(_openPlayLink);
+        _openPlayLink();
         return;
       }
       Navigator.of(context).push(

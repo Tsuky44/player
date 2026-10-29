@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../../models/media_request.dart';
@@ -37,7 +39,11 @@ import '../../widgets/global/add_to_list_button.dart';
 class ShowDetailScreen extends StatefulWidget {
   final Media show;
 
-  const ShowDetailScreen({super.key, required this.show});
+  /// Lance l'épisode à reprendre dès qu'il est connu : le lien `onyx://play`
+  /// (ADR-0091).
+  final bool autoPlay;
+
+  const ShowDetailScreen({super.key, required this.show, this.autoPlay = false});
 
   @override
   State<ShowDetailScreen> createState() => _ShowDetailScreenState();
@@ -194,6 +200,21 @@ class _ShowDetailScreenState extends State<ShowDetailScreen>
     if (season != null) {
       await lp.loadEpisodes(showId: showId, season: season);
     }
+    _autoPlayOnce();
+  }
+
+  bool _autoPlayDone = false;
+
+  /// Une seule fois par ouverture, et pas à chaque rafraîchissement de la
+  /// fiche : l'épisode à reprendre, sinon le premier qui se lit.
+  void _autoPlayOnce() {
+    if (!widget.autoPlay || _autoPlayDone || !mounted) return;
+    _autoPlayDone = true;
+    final lp = Provider.of<LibraryProvider>(context, listen: false);
+    final episode = _resumeEpisode != null && _resumeEpisode!.isAvailable
+        ? _resumeEpisode
+        : _firstPlayable(lp.episodes);
+    if (episode != null) unawaited(_playEpisode(episode));
   }
 
   /// La série a avancé sur un autre appareil, ou on revient sur la fiche (du

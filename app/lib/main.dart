@@ -46,6 +46,7 @@ import 'tv/tv_key_repeat.dart';
 import 'tv/tv_mode.dart';
 import 'tv/tv_pairing_link.dart';
 import 'navigation/media_link.dart';
+import 'navigation/play_link.dart';
 import 'tv/tv_touchpad.dart';
 import 'tv/tv_ui_scale.dart';
 import 'screens/player/display_frame_rate.dart';
@@ -168,6 +169,8 @@ void main() async {
   TvPairingLink.capture();
   // « Lire dans Onyx » depuis OnyxHub arrive en ?movie=ID ou ?show=ID (ADR-0073).
   MediaLink.capture();
+  // « Lire sur Onyx » depuis MediaHub arrive en onyx://play (ADR-0091).
+  unawaited(PlayLink.listen());
   // Observe les flèches maintenues, pour que le focus ne coure pas plus vite
   // que les rangées ne défilent. Voir [TvKeyRepeat].
   TvKeyRepeat.install();
