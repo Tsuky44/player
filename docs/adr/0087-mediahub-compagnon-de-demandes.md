@@ -48,8 +48,7 @@ rendait un lot par geste ; il ne donne pas de progression ; il retrouve un compt
   évènement inconnu est accepté (`202`) sans effet, un corps illisible refusé en `400` pour que
   MediaHub ne le réessaie pas.
 - **Contrat.** `contract/mediahub/` est une copie des exemples de MediaHub, relue par
-  `mediahub_contract_test.go`. `availability_batch.json` manquait chez MediaHub : Onyx l'a écrit
-  d'après sa documentation et l'a proposé à MediaHub.
+  `mediahub_contract_test.go`.
 
 ## Conséquences
 

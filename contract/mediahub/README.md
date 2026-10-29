@@ -12,7 +12,7 @@ Base : `{MediaHub}/api/integrations/player/v1`.
 | `ping.json` | MediaHub → Onyx | `GET /ping` (test de liaison, dialecte, droits du compte) |
 | `availability.json` | MediaHub → Onyx | `GET /availability/:tmdbId?type=` |
 | `availability_batch_request.json` | Onyx → MediaHub | `POST /availability` |
-| `availability_batch.json` | MediaHub → Onyx | réponse de la précédente (écrit par Onyx d'après la doc de MediaHub) |
+| `availability_batch.json` | MediaHub → Onyx | réponse de la précédente |
 | `request_create.json` | app Onyx → MediaHub (relayé par Onyx) | `POST /requests` |
 | `request_create_response.json` | MediaHub → app Onyx (relayé) | réponse de la précédente |
 | `requests_list.json` | MediaHub → Onyx | `GET /requests?scope=mine\|all` |
