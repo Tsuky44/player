@@ -79,9 +79,10 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(find.text('Matrix'), findsOneWidget);
-    expect(find.text('En cours'), findsOneWidget);
+    // Libellés en capitales, comme les pastilles d'OnyxHub.
+    expect(find.text('EN COURS'), findsOneWidget);
     expect(find.text('Saison 1'), findsOneWidget);
-    expect(find.text('Disponible'), findsOneWidget);
+    expect(find.text('DISPONIBLE'), findsOneWidget);
     expect(find.byType(LinearProgressIndicator), findsOneWidget);
   });
 

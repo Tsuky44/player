@@ -5,68 +5,53 @@ import '../../../theme/app_icons.dart';
 import '../../../theme/app_type.dart';
 import '../../../l10n/tr.dart';
 
-/// Hero availability pill — Quiet Premium semantic colors.
+/// Le surtitre de statut de la fiche, comme OnyxHub
+/// (`MediaAvailabilityBadges`) : capitales serrées, fond teinté à 15 %.
 class RequestAvailabilityBadge extends StatelessWidget {
   final RequestMediaStatus status;
 
-  const RequestAvailabilityBadge({super.key, required this.status});
+  /// Demandé mais pas encore sorti : pastille blanche.
+  final bool awaitingRelease;
 
-  @override
-  Widget build(BuildContext context) {
-    return switch (status) {
-      RequestMediaStatus.available => _HeroBadge(
-          label: tr('Disponible'),
-          foreground: AppColors.success,
-          background: AppColors.success,
-          border: AppColors.success,
-        ),
-      RequestMediaStatus.partial => _HeroBadge(
-          label: tr('Partiellement disponible'),
-          foreground: AppColors.warning,
-          background: AppColors.warning,
-          border: AppColors.warning,
-        ),
-      RequestMediaStatus.pending || RequestMediaStatus.processing =>
-        _HeroBadge(
-          label: tr('Demandé'),
-          foreground: AppColors.accentMuted,
-          background: AppColors.primary,
-          border: AppColors.primary,
-        ),
-      RequestMediaStatus.unknown => const SizedBox.shrink(),
-    };
-  }
-}
-
-class _HeroBadge extends StatelessWidget {
-  final String label;
-  final Color foreground;
-  final Color background;
-  final Color border;
-
-  const _HeroBadge({
-    required this.label,
-    required this.foreground,
-    required this.background,
-    required this.border,
+  const RequestAvailabilityBadge({
+    super.key,
+    required this.status,
+    this.awaitingRelease = false,
   });
 
   @override
   Widget build(BuildContext context) {
+    final (label, tint) = switch (status) {
+      RequestMediaStatus.unknown => (null, AppColors.textPrimary),
+      _ when awaitingRelease => (
+          tr('Demandé · en attente de sortie'),
+          AppColors.textPrimary
+        ),
+      RequestMediaStatus.available => (tr('Disponible'), AppColors.success),
+      RequestMediaStatus.partial => (
+          tr('Partiellement disponible'),
+          AppColors.warning
+        ),
+      RequestMediaStatus.pending || RequestMediaStatus.processing => (
+          tr('Demandé'),
+          AppColors.warning
+        ),
+    };
+    if (label == null) return const SizedBox.shrink();
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 5),
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
       decoration: BoxDecoration(
-        color: background.withValues(alpha: 0.14),
+        color: tint.withValues(alpha: 0.15),
         borderRadius: BorderRadius.circular(999),
-        border: Border.all(color: border.withValues(alpha: 0.28)),
+        border: Border.all(color: tint.withValues(alpha: 0.3)),
       ),
       child: Text(
-        label,
+        label.toUpperCase(),
         style: TextStyle(
-          color: foreground,
-          fontSize: AppType.caption,
-          fontWeight: FontWeight.w600,
-          letterSpacing: 0.2,
+          color: tint,
+          fontSize: AppType.micro,
+          fontWeight: FontWeight.w700,
+          letterSpacing: 0.9,
         ),
       ),
     );
@@ -92,7 +77,8 @@ class RequestStatusBadge extends StatelessWidget {
           icon: AppIcons.check,
           foreground: AppColors.warning,
         ),
-      RequestMediaStatus.pending || RequestMediaStatus.processing =>
+      RequestMediaStatus.pending ||
+      RequestMediaStatus.processing =>
         _SeasonBadge(
           label: tr('En attente'),
           icon: AppIcons.schedule,

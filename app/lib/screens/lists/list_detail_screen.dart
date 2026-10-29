@@ -16,6 +16,7 @@ import '../../utils/responsive.dart';
 import '../../widgets/global/empty_state.dart';
 import '../../widgets/global/overlay_back_button.dart';
 import '../../widgets/global/poster_card.dart';
+import '../../widgets/global/poster_grid_zoom_region.dart';
 import '../../widgets/global/progress_pill.dart';
 import '../../widgets/global/watch_list_editor_dialog.dart';
 import '../library/movie_detail_screen.dart';
@@ -192,6 +193,7 @@ class _ListDetailScreenState extends State<ListDetailScreen> {
         sliver: SliverLayoutBuilder(
           builder: (context, constraints) => SliverGrid(
             gridDelegate: AppLayout.posterGridDelegate(
+              context,
               constraints.crossAxisExtent,
               compact: AppLayout.isCompact(context),
             ),
@@ -214,37 +216,40 @@ class _ListDetailScreenState extends State<ListDetailScreen> {
 
     return Scaffold(
       backgroundColor: AppColors.background,
-      body: CustomScrollView(
-        slivers: [
-          SliverToBoxAdapter(
-            child: SafeArea(
-              bottom: false,
-              child: Padding(
-                padding: EdgeInsets.fromLTRB(padding - 8, 4, padding, 20),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    const OverlayBackButton(),
-                    if (list != null)
-                      Padding(
-                        padding: const EdgeInsets.only(left: 8),
-                        child: _Header(
-                          list: list,
-                          hasItems: items.isNotEmpty,
-                          removing: _removing,
-                          onEdit: () => _edit(list),
-                          onDelete: () => _delete(list),
-                          onToggleRemoving: () =>
-                              setState(() => _removing = !_removing),
+      body: PosterGridZoomRegion(
+        child: CustomScrollView(
+          scrollCacheExtent: AppLayout.imageCacheExtent(context),
+          slivers: [
+            SliverToBoxAdapter(
+              child: SafeArea(
+                bottom: false,
+                child: Padding(
+                  padding: EdgeInsets.fromLTRB(padding - 8, 4, padding, 20),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      const OverlayBackButton(),
+                      if (list != null)
+                        Padding(
+                          padding: const EdgeInsets.only(left: 8),
+                          child: _Header(
+                            list: list,
+                            hasItems: items.isNotEmpty,
+                            removing: _removing,
+                            onEdit: () => _edit(list),
+                            onDelete: () => _delete(list),
+                            onToggleRemoving: () =>
+                                setState(() => _removing = !_removing),
+                          ),
                         ),
-                      ),
-                  ],
+                    ],
+                  ),
                 ),
               ),
             ),
-          ),
-          body,
-        ],
+            body,
+          ],
+        ),
       ),
     );
   }

@@ -569,6 +569,7 @@ class _ShowDetailScreenState extends State<ShowDetailScreen>
     return Scaffold(
       backgroundColor: AppColors.background,
       body: CustomScrollView(
+        scrollCacheExtent: AppLayout.imageCacheExtent(context),
         slivers: [
           SliverToBoxAdapter(
             child: DetailBackdropHeader(

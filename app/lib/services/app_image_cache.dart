@@ -28,7 +28,49 @@ class AppImageCache {
   static const Duration _stalePeriod = Duration(days: 60);
   static const int _maxObjects = 3000;
 
-  static final CacheManager manager = CacheManager(_config());
+  static final CacheManager manager = _IndexedCacheManager(_config());
+
+  /// Les URL dont les octets sont sur disque, lisibles sans attendre.
+  ///
+  /// Une image déjà téléchargée s'affiche en quelques millisecondes (lecture du
+  /// fichier, décodage hors du fil principal), mais `CachedNetworkImage` la
+  /// fait quand même apparaître en fondu de 180 ms : elle semblait arriver du
+  /// réseau à chaque ouverture de l'app. Savoir *avant* de construire le widget
+  /// que l'image est là permet de la poser sans fondu (ADR-0088).
+  ///
+  /// Le nettoyage par capacité du paquet ne passe pas par ici : une entrée
+  /// peut survivre à son fichier. Le seul effet est une image réseau qui
+  /// arrive sans fondu, jamais une image manquante.
+  static final Set<String> _onDisk = <String>{};
+
+  /// Vrai quand les octets de [url] sont sur disque.
+  static bool isOnDisk(String url) => _onDisk.contains(url);
+
+  @visibleForTesting
+  static void markOnDiskForTest(String url) => _onDisk.add(url);
+
+  @visibleForTesting
+  static void resetOnDiskForTest() => _onDisk.clear();
+
+  /// Charge l'index du cache disque en mémoire, une requête au démarrage.
+  ///
+  /// Appelé sans attendre : la première image ne patiente pas derrière lui, et
+  /// une image demandée avant la fin garde simplement son fondu.
+  static Future<void> loadDiskIndex() async {
+    if (kIsWeb) return;
+    try {
+      final repo = manager.config.repo;
+      // `open` est partagé : c'est la même ouverture que celle du dépôt.
+      await repo.open();
+      for (final object in await repo.getAllObjects()) {
+        _onDisk.add(object.key);
+      }
+    } catch (error) {
+      // Sans index, les images s'affichent comme avant, en fondu : rien ne
+      // casse, on le note seulement.
+      debugPrint('AppImageCache: index disque illisible: $error');
+    }
+  }
 
   /// L'Apple TV n'a pas d'Application Support, où le paquet range son index :
   /// sans son propre dépôt, aucune image ne s'y affichait. Ailleurs, `repo`
@@ -80,5 +122,44 @@ class AppImageCache {
     PaintingBinding.instance.imageCache
       ..maximumSizeBytes = 300 << 20
       ..maximumSize = 2000;
+  }
+}
+
+/// Le gestionnaire du cache, qui tient [AppImageCache._onDisk] à jour à
+/// chaque fichier servi ou retiré.
+class _IndexedCacheManager extends CacheManager {
+  _IndexedCacheManager(super.config);
+
+  @override
+  Stream<FileResponse> getFileStream(
+    String url, {
+    String? key,
+    Map<String, String>? headers,
+    bool withProgress = false,
+  }) {
+    final cacheKey = key ?? url;
+    return super
+        .getFileStream(
+      url,
+      key: key,
+      headers: headers,
+      withProgress: withProgress,
+    )
+        .map((response) {
+      if (response is FileInfo) AppImageCache._onDisk.add(cacheKey);
+      return response;
+    });
+  }
+
+  @override
+  Future<void> removeFile(String key) async {
+    AppImageCache._onDisk.remove(key);
+    await super.removeFile(key);
+  }
+
+  @override
+  Future<void> emptyCache() async {
+    AppImageCache._onDisk.clear();
+    await super.emptyCache();
   }
 }

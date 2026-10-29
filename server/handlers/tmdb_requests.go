@@ -301,6 +301,7 @@ func TmdbRequestDetails(w http.ResponseWriter, r *http.Request, ps httprouter.Pa
 		Name         string `json:"name"`
 		EpisodeCount int    `json:"episodeCount"`
 		PosterPath   string `json:"posterPath,omitempty"`
+		AirDate      string `json:"airDate,omitempty"`
 		Status       string `json:"status"`
 	}
 
@@ -320,6 +321,7 @@ func TmdbRequestDetails(w http.ResponseWriter, r *http.Request, ps httprouter.Pa
 						Name         string  `json:"name"`
 						EpisodeCount int     `json:"episode_count"`
 						PosterPath   *string `json:"poster_path"`
+						AirDate      string  `json:"air_date"`
 					} `json:"seasons"`
 				}
 				if json.NewDecoder(resp.Body).Decode(&tvResp) == nil {
@@ -336,6 +338,7 @@ func TmdbRequestDetails(w http.ResponseWriter, r *http.Request, ps httprouter.Pa
 							Name:         s.Name,
 							EpisodeCount: s.EpisodeCount,
 							PosterPath:   poster,
+							AirDate:      s.AirDate,
 							Status:       "unknown",
 						})
 					}

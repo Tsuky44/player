@@ -197,9 +197,7 @@ class _RequestFiltersSheetState extends State<RequestFiltersSheet> {
                 Expanded(
                   child: SingleChildScrollView(
                     padding: const EdgeInsets.all(20),
-                    child: width >= 800
-                        ? _wideLayout()
-                        : _narrowLayout(),
+                    child: width >= 800 ? _wideLayout() : _narrowLayout(),
                   ),
                 ),
                 const Divider(height: 1),
@@ -320,7 +318,7 @@ class _RequestFiltersSheetState extends State<RequestFiltersSheet> {
                     onChanged: (v) => setState(
                       () => _draft = _draft.copyWith(minDuration: v.trim()),
                     ),
-                                  ),
+                  ),
                 ),
               ),
               const SizedBox(width: 12),
@@ -338,7 +336,7 @@ class _RequestFiltersSheetState extends State<RequestFiltersSheet> {
                     onChanged: (v) => setState(
                       () => _draft = _draft.copyWith(maxDuration: v.trim()),
                     ),
-                                  ),
+                  ),
                 ),
               ),
             ],
@@ -353,7 +351,8 @@ class _RequestFiltersSheetState extends State<RequestFiltersSheet> {
       title: tr('Genres'),
       icon: AppIcons.filter,
       trailing: Text(
-        tr('{0} sélectionné{1}', [_draft.genres.length, _draft.genres.length > 1 ? 's' : '']),
+        tr('{0} sélectionné{1}',
+            [_draft.genres.length, _draft.genres.length > 1 ? 's' : '']),
         style: const TextStyle(
           color: AppColors.primary,
           fontSize: AppType.footnote,
@@ -402,10 +401,10 @@ class _RequestFiltersSheetState extends State<RequestFiltersSheet> {
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
           DropdownButtonFormField<String>(
-            initialValue: requestCatalogRegions
-                    .any((r) => r.value == _draft.watchRegion)
-                ? _draft.watchRegion
-                : 'FR',
+            initialValue:
+                requestCatalogRegions.any((r) => r.value == _draft.watchRegion)
+                    ? _draft.watchRegion
+                    : 'FR',
             decoration: InputDecoration(
               labelText: tr('Région'),
               border: OutlineInputBorder(),
@@ -432,7 +431,8 @@ class _RequestFiltersSheetState extends State<RequestFiltersSheet> {
               child: Text(
                 tr('Aucun service pour cette région.'),
                 textAlign: TextAlign.center,
-                style: TextStyle(color: AppColors.textMuted.withValues(alpha: 0.9)),
+                style: TextStyle(
+                    color: AppColors.textMuted.withValues(alpha: 0.9)),
               ),
             )
           else ...[
@@ -448,8 +448,7 @@ class _RequestFiltersSheetState extends State<RequestFiltersSheet> {
               itemCount: visible.length,
               itemBuilder: (context, index) {
                 final p = visible[index];
-                final selected =
-                    _draft.watchProviders.contains(p.providerId);
+                final selected = _draft.watchProviders.contains(p.providerId);
                 return Material(
                   color: selected
                       ? AppColors.primary.withValues(alpha: 0.12)
@@ -597,9 +596,8 @@ class _RequestFiltersSheetState extends State<RequestFiltersSheet> {
             icon: const Icon(AppIcons.calendar, size: 18),
             onPressed: () async {
               final value = controller.text;
-              final initial = value.isNotEmpty
-                  ? DateTime.tryParse(value)
-                  : DateTime.now();
+              final initial =
+                  value.isNotEmpty ? DateTime.tryParse(value) : DateTime.now();
               final picked = await showDatePicker(
                 context: context,
                 initialDate: initial ?? DateTime.now(),
@@ -607,8 +605,7 @@ class _RequestFiltersSheetState extends State<RequestFiltersSheet> {
                 lastDate: DateTime(2100),
               );
               if (picked != null) {
-                final formatted =
-                    '${picked.year.toString().padLeft(4, '0')}-'
+                final formatted = '${picked.year.toString().padLeft(4, '0')}-'
                     '${picked.month.toString().padLeft(2, '0')}-'
                     '${picked.day.toString().padLeft(2, '0')}';
                 controller.text = formatted;
@@ -618,7 +615,7 @@ class _RequestFiltersSheetState extends State<RequestFiltersSheet> {
           ),
         ),
         onChanged: onChanged,
-          ),
+      ),
     );
   }
 }

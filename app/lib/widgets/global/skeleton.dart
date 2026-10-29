@@ -126,6 +126,7 @@ class PosterGridSkeleton extends StatelessWidget {
     return SliverLayoutBuilder(
       builder: (context, constraints) => SliverGrid(
         gridDelegate: AppLayout.posterGridDelegate(
+          context,
           constraints.crossAxisExtent,
           compact: compact,
         ),

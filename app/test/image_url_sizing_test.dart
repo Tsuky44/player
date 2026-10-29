@@ -95,4 +95,59 @@ void main() {
           castProfileUrl(profileH632));
     });
   });
+
+  group('size for the slot', () {
+    const posterW500 =
+        'https://image.tmdb.org/t/p/w500/kqjL17yufvn9OVLyXYpvtyrFfak.jpg';
+
+    test('picks the smallest TMDB width that covers the physical width', () {
+      // Une carte de téléphone : 112 px logiques à densité 3.
+      expect(tmdbUrlForWidth(posterW500, 336),
+          'https://image.tmdb.org/t/p/w342/kqjL17yufvn9OVLyXYpvtyrFfak.jpg');
+      // Une carte de TV à densité 1.
+      expect(tmdbUrlForWidth(posterW500, 150),
+          'https://image.tmdb.org/t/p/w154/kqjL17yufvn9OVLyXYpvtyrFfak.jpg');
+    });
+
+    test('never goes above the size the caller asked for', () {
+      // La taille demandée est un plafond : un fond de 1920 px reste en w500.
+      expect(tmdbUrlForWidth(posterW500, 1920), posterW500);
+      expect(tmdbUrlForWidth(posterW500, 480), posterW500);
+    });
+
+    test('original comes down too, h-sizes and other hosts stay', () {
+      expect(tmdbUrlForWidth(logoOriginal, 400),
+          'https://image.tmdb.org/t/p/w500/aX9lSBQmR8Vd6dNM1Sm5V4LtcuS.png');
+      expect(tmdbUrlForWidth(profileH632, 100), profileH632);
+      const local = 'https://media.example.com/covers/w300/film.jpg';
+      expect(tmdbUrlForWidth(local, 100), local);
+    });
+
+    test('reads the served width back', () {
+      expect(tmdbServedWidth(posterW500), 500);
+      expect(tmdbServedWidth(logoOriginal), isNull);
+      expect(tmdbServedWidth(profileH632), isNull);
+    });
+  });
+
+  group('detail backdrop', () {
+    const backdropW780 =
+        'https://image.tmdb.org/t/p/w780/fNG7i7RqMErkcqhohV2a6cV1Ehy.jpg';
+
+    test('a full-page backdrop is capped at original, not w1280', () {
+      // Sur une fenêtre de 2000 px, w1280 était agrandi et se voyait flou.
+      final url = detailBackdropUrl(backdropW780)!;
+      expect(url,
+          'https://image.tmdb.org/t/p/original/fNG7i7RqMErkcqhohV2a6cV1Ehy.jpg');
+      expect(tmdbUrlForWidth(url, 2000), url);
+      expect(tmdbUrlForWidth(url, 1200),
+          'https://image.tmdb.org/t/p/w1280/fNG7i7RqMErkcqhohV2a6cV1Ehy.jpg');
+    });
+
+    test('lite mode never decodes original', () {
+      final url = detailBackdropUrl(backdropW780)!;
+      expect(tmdbUrlForWidth(url, 3840, allowOriginal: false),
+          'https://image.tmdb.org/t/p/w1280/fNG7i7RqMErkcqhohV2a6cV1Ehy.jpg');
+    });
+  });
 }

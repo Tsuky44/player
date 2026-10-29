@@ -852,8 +852,6 @@ const Map<String, String> kEnglish = <String, String>{
       'In progress',
   'En cours de lecture':
       'Now playing',
-  'En cours de traitement...':
-      'Processing...',
   'En erreur':
       'Error',
   'En lecture':
@@ -3124,4 +3122,22 @@ const Map<String, String> kEnglish = <String, String>{
       'On.',
   'Inactif.':
       'Off.',
+  'Films populaires':
+      'Popular movies',
+  'Séries populaires':
+      'Popular shows',
+  'En attente de sortie':
+      'Awaiting release',
+  'En cours de traitement':
+      'Being processed',
+  'Ajouté le {0}':
+      'Added on {0}',
+  'Demandé · en attente de sortie':
+      'Requested · awaiting release',
+  'Sortie le {0}':
+      'Out on {0}',
+  'Envoi de la demande':
+      'Sending request',
+  'Importation':
+      'Importing',
 };

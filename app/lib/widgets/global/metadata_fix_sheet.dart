@@ -3,6 +3,7 @@ import '../../tv/tv_deferred_keyboard.dart';
 import '../../models/models.dart';
 import '../../services/api_client.dart';
 import '../../theme/app_colors.dart';
+import '../../utils/responsive.dart';
 import 'app_network_image.dart';
 import '../../theme/app_icons.dart';
 import '../../theme/app_type.dart';
@@ -219,6 +220,7 @@ class _MetadataFixSheetState extends State<MetadataFixSheet> {
       );
     }
     return ListView.separated(
+      scrollCacheExtent: AppLayout.imageCacheExtent(context),
       controller: scrollController,
       padding: const EdgeInsets.fromLTRB(20, 8, 20, 24),
       itemCount: _results.length,

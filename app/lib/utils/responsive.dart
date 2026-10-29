@@ -1,4 +1,8 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/rendering.dart' show ScrollCacheExtent;
+
+import '../theme/lite_mode.dart';
+import 'poster_grid_zoom.dart';
 
 /// Breakpoints and layout helpers for adaptive phone / tablet / desktop UI.
 abstract final class AppBreakpoints {
@@ -67,6 +71,9 @@ abstract final class AppLayout {
 
   /// Cell ratio for poster grids: 2:3 poster + title + subtitle line.
   static const double posterGridAspectRatio = 0.56;
+
+  /// Cell ratio for a grid of bare posters (2:3, no text underneath).
+  static const double posterOnlyAspectRatio = 2 / 3;
   static const double posterGridMainSpacing = 24;
   static const double posterGridCrossSpacing = 14;
   static const double posterGridCompactMainSpacing = 16;
@@ -75,23 +82,52 @@ abstract final class AppLayout {
   /// The one grid delegate every catalog grid uses. [contentWidth] is the row
   /// width inside the page gutters — take it from a `SliverLayoutBuilder` so
   /// side navigation is accounted for, not from the window width.
+  ///
+  /// [withMeta] faux pour une grille d'affiches seules, sans titre dessous :
+  /// la cellule prend le ratio 2:3 de l'affiche.
+  ///
+  /// [context] est celui du `SliverLayoutBuilder` : la grille suit le zoom
+  /// Ctrl + molette de `PosterGridZoomRegion` (`PosterGridZoom`).
   static SliverGridDelegate posterGridDelegate(
+    BuildContext context,
     double contentWidth, {
     bool compact = false,
+    bool withMeta = true,
   }) {
     final cross =
         compact ? posterGridCompactCrossSpacing : posterGridCrossSpacing;
+    final zoom = PosterGridZoomScope.watch(context);
     return SliverGridDelegateWithFixedCrossAxisCount(
-      crossAxisCount: posterGridCount(contentWidth, spacing: cross),
+      crossAxisCount: zoom.apply(posterGridCount(contentWidth, spacing: cross)),
       crossAxisSpacing: cross,
-      mainAxisSpacing:
-          compact ? posterGridCompactMainSpacing : posterGridMainSpacing,
-      childAspectRatio: posterGridAspectRatio,
+      // Sans ligne de titre à séparer de la rangée suivante, l'écart vertical
+      // reprend l'horizontal : une trame régulière, comme sur OnyxHub.
+      mainAxisSpacing: !withMeta
+          ? cross
+          : compact
+              ? posterGridCompactMainSpacing
+              : posterGridMainSpacing,
+      childAspectRatio:
+          withMeta ? posterGridAspectRatio : posterOnlyAspectRatio,
     );
   }
 
   static double mediaRowCardWidth(BuildContext context) =>
       isCompact(context) ? 118.0 : 150.0;
+
+  /// La marge construite hors de l'écran par une liste d'images : une
+  /// fenêtre entière de chaque côté, sur l'axe du défilement.
+  ///
+  /// Les 250 px de Flutter ne couvrent même pas une rangée d'affiches : une
+  /// carte ne demandait son image qu'en entrant à l'écran, et l'espace réservé
+  /// se voyait le temps du téléchargement et du décodage. Une fenêtre d'avance,
+  /// c'est l'image déjà décodée quand la carte arrive (ADR-0088).
+  ///
+  /// Null en mode léger : la valeur de Flutter. Sur une Apple TV HD, des
+  /// dizaines d'affiches décodées en plus disputeraient la mémoire au
+  /// décodeur vidéo (ADR-0086).
+  static ScrollCacheExtent? imageCacheExtent(BuildContext context) =>
+      LiteScope.of(context) ? null : const ScrollCacheExtent.viewport(1);
 
   static double minTouchTarget(BuildContext context) =>
       isCompact(context) ? 48.0 : 44.0;

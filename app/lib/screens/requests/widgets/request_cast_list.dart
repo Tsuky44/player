@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import '../../../models/media_request.dart';
 import '../../../theme/app_colors.dart';
 import '../../../utils/poster_url.dart';
+import '../../../utils/responsive.dart';
 import '../../../widgets/global/app_network_image.dart';
 import '../../../theme/app_type.dart';
 
@@ -17,6 +18,7 @@ class RequestCastList extends StatelessWidget {
     return SizedBox(
       height: 160,
       child: ListView.separated(
+        scrollCacheExtent: AppLayout.imageCacheExtent(context),
         scrollDirection: Axis.horizontal,
         itemCount: cast.length.clamp(0, 25),
         separatorBuilder: (_, __) => const SizedBox(width: 12),

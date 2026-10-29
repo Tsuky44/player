@@ -2,6 +2,7 @@ import 'dart:async';
 
 import 'package:flutter/material.dart';
 import '../../theme/app_colors.dart';
+import '../../theme/app_motion.dart';
 import '../../theme/lite_mode.dart';
 import '../../tv/tv_focus.dart';
 import 'app_network_image.dart';
@@ -38,6 +39,17 @@ class PosterCard extends StatefulWidget {
   /// Dims the poster for titles absent from the library.
   final bool dimmed;
 
+  /// Titre et sous-titre sous l'affiche. Faux pour une grille d'affiches
+  /// seules (Demander, comme OnyxHub) : l'affiche remplit alors toute la
+  /// cellule, de ratio 2:3 (`AppLayout.posterGridDelegate(withMeta: false)`),
+  /// et le titre reste lu par les lecteurs d'écran.
+  final bool showMeta;
+
+  /// Posé sur l'affiche quand elle est pointée (survol ou focus TV) : titre,
+  /// type, résumé. Non peint tant qu'elle ne l'est pas — rien ne coûte pour
+  /// les cartes au repos d'une grille.
+  final Widget? hoverDetails;
+
   /// Play affordance revealed on hover — only for playable local content.
   final bool showPlayOnHover;
   final IconData placeholderIcon;
@@ -61,6 +73,8 @@ class PosterCard extends StatefulWidget {
     this.overlays = const [],
     this.footerOverlay,
     this.dimmed = false,
+    this.showMeta = true,
+    this.hoverDetails,
     this.showPlayOnHover = false,
     this.placeholderIcon = AppIcons.movie,
     this.compact = false,
@@ -162,7 +176,7 @@ class _PosterCardState extends State<PosterCard> {
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               Expanded(
-                child: PressScale(
+                child: _maybeLabelled(PressScale(
                   pressed: pressed,
                   child: PosterLift(
                     active: _active,
@@ -180,6 +194,11 @@ class _PosterCardState extends State<PosterCard> {
                           showPlay: widget.showPlayOnHover,
                           playSize: compact ? 44 : 50,
                         ),
+                        if (widget.hoverDetails != null)
+                          PosterHoverDetails(
+                            active: _active,
+                            child: widget.hoverDetails!,
+                          ),
                         ...widget.overlays,
                         if (widget.footerOverlay != null)
                           Positioned(
@@ -191,40 +210,47 @@ class _PosterCardState extends State<PosterCard> {
                       ],
                     ),
                   ),
-                ),
+                )),
               ),
-              SizedBox(height: compact ? 7 : 9),
-              Text(
-                widget.title,
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
-                style: TextStyle(
-                  fontSize: compact ? 13 : 14,
-                  fontWeight: FontWeight.w600,
-                  height: 1.2,
-                  letterSpacing: -0.1,
-                  color: widget.dimmed
-                      ? AppColors.textSecondary
-                      : AppColors.textPrimary,
+              if (widget.showMeta) ...[
+                SizedBox(height: compact ? 7 : 9),
+                Text(
+                  widget.title,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: TextStyle(
+                    fontSize: compact ? 13 : 14,
+                    fontWeight: FontWeight.w600,
+                    height: 1.2,
+                    letterSpacing: -0.1,
+                    color: widget.dimmed
+                        ? AppColors.textSecondary
+                        : AppColors.textPrimary,
+                  ),
                 ),
-              ),
-              const SizedBox(height: 3),
-              Text(
-                widget.subtitle ?? '',
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
-                style: TextStyle(
-                  fontSize: compact ? 11 : 12,
-                  height: 1.2,
-                  color: AppColors.textMuted,
+                const SizedBox(height: 3),
+                Text(
+                  widget.subtitle ?? '',
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: TextStyle(
+                    fontSize: compact ? 11 : 12,
+                    height: 1.2,
+                    color: AppColors.textMuted,
+                  ),
                 ),
-              ),
+              ],
             ],
           ),
         ),
       ),
     );
   }
+
+  /// Sans ligne de titre, l'affiche porte le nom de la carte.
+  Widget _maybeLabelled(Widget poster) => widget.showMeta
+      ? poster
+      : Semantics(label: widget.title, button: true, child: poster);
 
   Widget _poster() {
     return AppNetworkImage(
@@ -414,6 +440,62 @@ class PosterHoverOverlay extends StatelessWidget {
             ),
           ),
         ],
+      ),
+    );
+  }
+}
+
+/// Le cartouche d'une affiche pointée, à la manière des cartes d'OnyxHub : un
+/// dégradé qui monte du bas et [child] (titre, type, résumé) qui glisse de
+/// quelques pixels en apparaissant.
+///
+/// Au repos, l'opacité nulle saute la peinture entière du sous-arbre : une
+/// grille de cinquante affiches n'en dessine aucun. Le glissé passe par
+/// [_posterMotion], donc disparaît en mode léger ; le fondu reste.
+class PosterHoverDetails extends StatelessWidget {
+  final bool active;
+  final Widget child;
+
+  const PosterHoverDetails({
+    super.key,
+    required this.active,
+    required this.child,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return IgnorePointer(
+      child: AnimatedOpacity(
+        opacity: active ? 1 : 0,
+        duration: AppMotion.fade(context),
+        curve: AppMotion.curve,
+        child: DecoratedBox(
+          decoration: BoxDecoration(
+            borderRadius: BorderRadius.circular(PosterCard.radius),
+            gradient: LinearGradient(
+              begin: Alignment.bottomCenter,
+              end: Alignment.topCenter,
+              colors: [
+                Colors.black.withValues(alpha: 0.92),
+                Colors.black.withValues(alpha: 0.4),
+                Colors.black.withValues(alpha: 0),
+              ],
+              stops: const [0, 0.5, 0.85],
+            ),
+          ),
+          child: Align(
+            alignment: Alignment.bottomLeft,
+            child: AnimatedSlide(
+              offset: active ? Offset.zero : const Offset(0, 0.08),
+              duration: _posterMotion(context, AppMotion.standard),
+              curve: AppMotion.curve,
+              child: Padding(
+                padding: const EdgeInsets.all(PosterCard.overlayInset + 3),
+                child: child,
+              ),
+            ),
+          ),
+        ),
       ),
     );
   }

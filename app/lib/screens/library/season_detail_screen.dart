@@ -187,6 +187,7 @@ class _SeasonDetailScreenState extends State<SeasonDetailScreen>
     return Scaffold(
       backgroundColor: AppColors.background,
       body: CustomScrollView(
+        scrollCacheExtent: AppLayout.imageCacheExtent(context),
         slivers: [
           SliverToBoxAdapter(
             child: DetailBackdropHeader(

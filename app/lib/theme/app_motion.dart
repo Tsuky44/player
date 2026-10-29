@@ -47,6 +47,18 @@ abstract final class AppMotion {
   /// sous « réduire les animations ».
   static const Duration ambient = Duration(milliseconds: 2600);
 
+  /// L'écart entre deux cartes d'une arrivée en cascade
+  /// (`StaggeredEntranceScope`). Un décalage de départ, pas une durée :
+  /// chaque carte dure [emphasis]. 35 ms, comme la cascade d'OnyxHub : assez
+  /// pour lire l'ordre, trop peu pour qu'on attende la dernière.
+  static const Duration stagger = Duration(milliseconds: 35);
+
+  /// Le faisceau qui traverse une fois un badge « Disponible ». Hors de la
+  /// plage 180–280 ms parce que ce n'est pas une transition : rien n'attend
+  /// qu'il finisse, il signale seulement l'état en passant. Toujours passé par
+  /// [move], donc absent sous « réduire les animations » et en mode léger.
+  static const Duration sweep = Duration(milliseconds: 900);
+
   /// The app's only curve (`PROJECT_DESIGN.md` §10: "ease-out").
   static const Curve curve = Curves.easeOut;
 

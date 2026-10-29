@@ -89,6 +89,7 @@ class _SharedLinkShowViewState extends State<SharedLinkShowView> {
     return Scaffold(
       backgroundColor: AppColors.background,
       body: CustomScrollView(
+        scrollCacheExtent: AppLayout.imageCacheExtent(context),
         slivers: [
           SliverToBoxAdapter(
             child: DetailBackdropHeader(

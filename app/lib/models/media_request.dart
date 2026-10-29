@@ -23,6 +23,25 @@ extension RequestMediaStatusX on RequestMediaStatus {
       this == RequestMediaStatus.processing;
 }
 
+/// Demandé mais pas encore sorti : OnyxHub le dit « en attente de sortie »
+/// (pastille blanche). Le lot de disponibilités que lit le serveur ne porte
+/// que le statut ; la date de sortie TMDB suffit à le retrouver. Pur
+/// affichage : la demande reste ce que le serveur en dit.
+bool requestAwaitingRelease(
+  RequestMediaStatus status,
+  String? releaseDate, [
+  DateTime? now,
+]) {
+  if (status != RequestMediaStatus.pending &&
+      status != RequestMediaStatus.processing) {
+    return false;
+  }
+  final release = DateTime.tryParse(releaseDate ?? '');
+  if (release == null) return false;
+  final today = now ?? DateTime.now();
+  return release.isAfter(DateTime(today.year, today.month, today.day));
+}
+
 class RequestMediaItem {
   final int id;
   final RequestMediaType mediaType;
@@ -62,17 +81,19 @@ class RequestMediaItem {
     );
   }
 
-  String? get posterUrl =>
-      posterPath == null || posterPath!.isEmpty
-          ? null
-          : 'https://image.tmdb.org/t/p/w500$posterPath';
-  String? get backdropUrl =>
-      backdropPath == null || backdropPath!.isEmpty
-          ? null
-          : 'https://image.tmdb.org/t/p/original$backdropPath';
+  String? get posterUrl => posterPath == null || posterPath!.isEmpty
+      ? null
+      : 'https://image.tmdb.org/t/p/w500$posterPath';
+  String? get backdropUrl => backdropPath == null || backdropPath!.isEmpty
+      ? null
+      : 'https://image.tmdb.org/t/p/original$backdropPath';
   String? get year => releaseDate != null && releaseDate!.length >= 4
       ? releaseDate!.substring(0, 4)
       : null;
+
+  /// Demandé mais pas encore sorti (voir [requestAwaitingRelease]).
+  bool isAwaitingRelease([DateTime? now]) =>
+      requestAwaitingRelease(status, releaseDate, now);
 }
 
 class RequestCatalogPage {
@@ -103,12 +124,16 @@ class RequestSeason {
   final String? posterPath;
   final RequestMediaStatus status;
 
+  /// Date de première diffusion (AAAA-MM-JJ), quand TMDB la donne.
+  final String? airDate;
+
   const RequestSeason({
     required this.number,
     required this.name,
     required this.episodeCount,
     required this.posterPath,
     required this.status,
+    this.airDate,
   });
 
   factory RequestSeason.fromJson(Map<String, dynamic> json) {
@@ -118,13 +143,18 @@ class RequestSeason {
       episodeCount: json['episodeCount'] as int? ?? 0,
       posterPath: json['posterPath'] as String?,
       status: _statusFromJson(json['status'] as String?),
+      airDate: json['airDate'] as String?,
     );
   }
 
-  String? get posterUrl =>
-      posterPath == null || posterPath!.isEmpty
-          ? null
-          : 'https://image.tmdb.org/t/p/w300$posterPath';
+  /// L'année de première diffusion, sous le nom de la saison.
+  int? get year => airDate == null || airDate!.length < 4
+      ? null
+      : int.tryParse(airDate!.substring(0, 4));
+
+  String? get posterUrl => posterPath == null || posterPath!.isEmpty
+      ? null
+      : 'https://image.tmdb.org/t/p/w300$posterPath';
 }
 
 class RequestEpisode {
@@ -161,10 +191,9 @@ class RequestEpisode {
     );
   }
 
-  String? get stillUrl =>
-      stillPath == null || stillPath!.isEmpty
-          ? null
-          : 'https://image.tmdb.org/t/p/w500$stillPath';
+  String? get stillUrl => stillPath == null || stillPath!.isEmpty
+      ? null
+      : 'https://image.tmdb.org/t/p/w500$stillPath';
 }
 
 class RequestCastMember {
@@ -256,7 +285,8 @@ class RequestMediaDetails extends RequestMediaItem {
     final base = RequestMediaItem.fromJson(json);
     final seasons = json['seasons'] as List<dynamic>? ?? const [];
     final cast = json['cast'] as List<dynamic>? ?? const [];
-    final recommendations = json['recommendations'] as List<dynamic>? ?? const [];
+    final recommendations =
+        json['recommendations'] as List<dynamic>? ?? const [];
     final similar = json['similar'] as List<dynamic>? ?? const [];
     return RequestMediaDetails(
       id: base.id,
@@ -281,7 +311,8 @@ class RequestMediaDetails extends RequestMediaItem {
       countries:
           (json['countries'] as List<dynamic>? ?? const []).cast<String>(),
       originalLanguage: json['originalLanguage'] as String?,
-      tmdbStatus: (json['tmdbStatus'] as String?) ?? (json['status'] as String?),
+      tmdbStatus:
+          (json['tmdbStatus'] as String?) ?? (json['status'] as String?),
       director: json['director'] as String?,
       writers: (json['writers'] as List<dynamic>? ?? const []).cast<String>(),
       editors: (json['editors'] as List<dynamic>? ?? const []).cast<String>(),
@@ -298,20 +329,19 @@ class RequestMediaDetails extends RequestMediaItem {
       waitingMessage:
           (json['waiting'] as Map<String, dynamic>?)?['message'] as String?,
       recommendations: recommendations
-          .map((item) =>
-              RequestMediaItem.fromJson(item as Map<String, dynamic>))
+          .map(
+              (item) => RequestMediaItem.fromJson(item as Map<String, dynamic>))
           .toList(),
       similar: similar
-          .map((item) =>
-              RequestMediaItem.fromJson(item as Map<String, dynamic>))
+          .map(
+              (item) => RequestMediaItem.fromJson(item as Map<String, dynamic>))
           .toList(),
     );
   }
 
-  String? get logoUrl =>
-      logoPath == null || logoPath!.isEmpty
-          ? null
-          : 'https://image.tmdb.org/t/p/original$logoPath';
+  String? get logoUrl => logoPath == null || logoPath!.isEmpty
+      ? null
+      : 'https://image.tmdb.org/t/p/original$logoPath';
 
   String get formattedRuntime {
     final minutes = runtime ?? 0;

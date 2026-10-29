@@ -10,6 +10,7 @@ import '../../theme/app_icons.dart';
 import '../../theme/app_type.dart';
 import '../../tv/tv_focus.dart';
 import '../../tv/tv_mode.dart';
+import '../../utils/responsive.dart';
 import 'app_network_image.dart';
 import 'empty_state.dart';
 
@@ -226,6 +227,7 @@ class _PosterPickerSheetState extends State<PosterPickerSheet> {
       );
     }
     return CustomScrollView(
+      scrollCacheExtent: AppLayout.imageCacheExtent(context),
       controller: scrollController,
       slivers: [
         SliverPadding(
