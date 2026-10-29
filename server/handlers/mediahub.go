@@ -38,7 +38,7 @@ func mediaHubClient(client *http.Client) mediahub.Client {
 }
 
 // mediaHubAccount rend le compte Onyx au nom duquel parler. MediaHub retrouve
-// son compte par le nom (ADR-0087).
+// son compte par l'id, puis par le nom en repli (ADR-0088).
 func mediaHubAccount(userID int) (mediahub.Account, error) {
 	username, err := playerUsername(userID)
 	if err != nil {
