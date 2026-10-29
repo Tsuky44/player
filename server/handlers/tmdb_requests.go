@@ -12,6 +12,7 @@ import (
 	"project-player/server/config"
 	"project-player/server/httpx"
 	"project-player/server/indexer"
+	"project-player/server/mediahub"
 	"project-player/server/models"
 	"project-player/server/safego"
 	"project-player/server/tmdb"
@@ -202,8 +203,8 @@ func TmdbRequestCatalog(w http.ResponseWriter, r *http.Request, _ httprouter.Par
 
 // enrichCatalogAvailability fills MediaHub availability status on catalog items
 // (same green/purple/yellow dots as MediaHub MediaCardStatus). Une page entière
-// en un appel quand OnyxHub le permet (ADR-0072), sinon un appel par carte.
-// La bibliothèque a le dernier mot sur ce qu'OnyxHub ignore (ADR-0084).
+// en un appel quand le compagnon le permet (ADR-0072), sinon un appel par
+// carte. La bibliothèque a le dernier mot sur ce qu'il ignore (ADR-0084).
 func enrichCatalogAvailability(items []catalogItem) {
 	if len(items) == 0 {
 		return
@@ -213,15 +214,13 @@ func enrichCatalogAvailability(items []catalogItem) {
 }
 
 func enrichFromMediaHub(items []catalogItem) {
-	baseURL := strings.TrimRight(strings.TrimSpace(config.MediaHubURL()), "/")
-	apiKey := strings.TrimSpace(config.MediaHubAPIKey())
-	if baseURL == "" || apiKey == "" {
+	if !mediaHubClient(mediaHubHTTPClient).Configured() {
 		return
 	}
 
-	batch := make([]availabilityBatchItem, len(items))
+	batch := make([]mediahub.BatchItem, len(items))
 	for i, item := range items {
-		batch[i] = availabilityBatchItem{TMDBID: item.ID, MediaType: item.MediaType}
+		batch[i] = mediahub.BatchItem{TMDBID: item.ID, MediaType: item.MediaType}
 	}
 	if statuses, supported := fetchMediaHubAvailabilityBatch(batch, mediaHubHTTPClient); supported {
 		for i := range items {

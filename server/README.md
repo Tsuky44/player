@@ -136,40 +136,63 @@ Toutes les routes API (sauf l'inscription/connexion et le stream) requièrent l'
   `disabled`, `optional` (défaut), `admins`, `everyone`. Variable d'environnement de repli :
   `OTP_POLICY`.
 
-#### ➡️ Liaison avec OnyxHub (ADR-0072)
-* Réglée par `mediahub_url` et `mediahub_api_key` dans `PUT /api/settings` (`manage_settings`) ;
-  OnyxHub peut les écrire lui-même avec le jeton de son admin (« Connecter Onyx »).
-* Chaque appel relayé vers OnyxHub porte `Authorization: Bearer <mediahub_api_key>`,
-  `X-Player-Username` et `X-Player-Id` (ADR-0075). Les formats échangés sont dans
-  `contract/onyxhub/`, relus par les tests d'Onyx et d'OnyxHub.
+#### ➡️ Liaison avec MediaHub (ADR-0072, ADR-0087)
+* Réglée par `mediahub_url` et `mediahub_api_key` dans `PUT /api/settings` (`manage_settings`).
+  Le compagnon est MediaHub par son API d'intégration v1 (`{url}/api/integrations/player/v1`), ou
+  OnyxHub tant qu'il n'est pas retiré. Le serveur reconnaît le dialecte à `GET {url}/api/integrations/player/v1/ping`
+  (`200`, `401`/`403` : MediaHub ; `404` : OnyxHub) et le retient 10 minutes.
+* Chaque appel porte `Authorization: Bearer <mediahub_api_key>`, et, au nom d'un compte,
+  `X-Player-Username` (MediaHub retrouve son compte par ce nom) et `X-Player-Id` (OnyxHub, ADR-0075).
+  Formats échangés : `contract/mediahub/` (copie des exemples de MediaHub) et `contract/onyxhub/`.
 * `POST /api/settings/mediahub/test` (`manage_settings`) — body facultatif
-  `{ "mediahub_url", "mediahub_api_key" }` (vides : les valeurs enregistrées). Le serveur appelle
-  `GET {url}/api/integration/ping` avec la clé et rend toujours `200`
-  `{ "ok", "message", "service"?: "onyxhub"|"mediahub", "version"? }`. Un MediaHub (sans ping) est
-  reconnu à sa route de disponibilité. Capacité `mediahub_link_test` sur `/api/ping`.
-* Le catalogue de demandes lit les disponibilités d'une page en un appel
-  (`POST {url}/api/media/availability`, `{ "items": [{ "tmdbId", "mediaType" }] }`) ; sur `404`/`405`
-  (MediaHub, OnyxHub ancien), il retombe sur `GET {url}/api/media/availability/:id` par carte
-  et ne retente le lot qu'au bout de 10 minutes.
-* `GET /api/requests/mine` (`request_media`, ADR-0073) — relaie `GET {url}/api/request` au nom du
-  compte : `{ "requests": [{ "tmdbId", "mediaType", "title", "posterPath", "seasons", "status",
-  "requestedAt", "progress" }] }`, tel qu'OnyxHub le rend. Capacité `my_requests`.
-* `GET /api/requests/feed?after=<curseur>` (`manage_settings`, ADR-0077) — relaie
-  `GET {url}/api/request/feed` : les demandes de tous les comptes faites depuis le curseur, sauf
-  celles de l'appelant, `{ "cursor", "requests": [{ "id", "mediaType", "tmdbId", "title",
-  "posterPath", "seasons", "requester", "requestedAt" }] }`. Sans `after`, `requests` est vide et
+  `{ "mediahub_url", "mediahub_api_key" }` (vides : les valeurs enregistrées). Le serveur appelle le
+  ping v1 au nom de l'administrateur, puis, sur `404`, `GET {url}/api/integration/ping` d'OnyxHub, et
+  rend toujours `200` `{ "ok", "message", "service"?: "onyxhub"|"mediahub", "version"?, "notes"? }`.
+  `notes` : compte de l'administrateur absent de MediaHub, `ONYX_WEBHOOK_URL` non réglé.
+  Capacité `mediahub_link_test` sur `/api/ping`.
+* Le catalogue de demandes lit les disponibilités d'une page en un appel (`POST …/availability`,
+  `{ "items": [{ "tmdbId", "mediaType" }] }`) ; un OnyxHub ancien qui répond `404`/`405` fait
+  retomber sur l'appel par carte, et le lot n'est retenté qu'au bout de 10 minutes.
+* `POST /api/requests` (`request_media`) — relaie le corps `{ "tmdbId", "mediaType", "title",
+  "posterPath", "seasons" }` au nom du compte ; statut et corps de la réponse reviennent tels quels.
+* `GET /api/requests/mine` (`request_media`, ADR-0073, ADR-0087) — les demandes du compte en lots,
+  les plus récentes d'abord : `{ "requests": [{ "requestIds", "mediaType", "tmdbId", "title",
+  "posterPath", "seasons", "status", "seasonStatuses": [{ "seasonNumber", "status" }],
+  "requestedAt", "updatedAt"?, "progress", "waiting"?: { "message", "releaseDate"?, "nextAttemptAt"? },
+  "note"?, "requester"? }] }`. Un lot regroupe les lignes par saison d'une même série et d'un même
+  compte ; `status` est `pending`, `approved`, `processing`, `partial`, `available` ou `declined`,
+  `note` le motif d'un refus. Capacité `my_requests` (format en lots : `mediahub_requests`).
+* `GET /api/requests/access` (`request_media`, ADR-0087) — `{ "service", "version"?, "linked",
+  "can": { "read", "request", "readAllRequests", "moderate", "delete" } }`, les droits du compte
+  MediaHub de même nom (OnyxHub : `request` seulement).
+* `GET /api/requests/all` (`manage_settings`, ADR-0087) — même forme que `mine`, tous comptes,
+  avec `requester`. MediaHub exige en plus `read MediaRequest`. `501` avec OnyxHub.
+* `POST /api/requests/moderation` (`manage_settings`, ADR-0087) — `{ "requestIds": [...],
+  "action": "approve"|"decline"|"delete", "reason"? }` (60 lignes au plus) → `200 { "status": "ok" }`,
+  ou l'erreur de MediaHub telle quelle (`403`, `409` déjà disponible…). `501` avec OnyxHub.
+  Capacité `mediahub_requests` pour ces trois routes.
+* `GET /api/requests/feed?after=<curseur>` (`manage_settings`, ADR-0077) — les demandes de tous les
+  comptes faites depuis le curseur, sauf celles de l'appelant, `{ "cursor", "requests": [{ "id",
+  "mediaType", "tmdbId", "title", "posterPath", "seasons", "requester", "requestedAt" }] }`. Les
+  saisons d'une série demandées d'un geste font une entrée. Sans `after`, `requests` est vide et
   `cursor` pointe sur la dernière demande. Sert à la notification « Nouvelle demande » de l'app.
 * `GET /api/library/tmdb-index` (`RequireAuth`, ADR-0073) — `{ "movies": { "<tmdb>": id },
   "shows": { "<tmdb>": id } }`, la plus ancienne fiche de chaque titre. L'app web ouvre une fiche
   depuis `?movie=ID` ou `?show=ID`. Capacité `library_tmdb_index`.
 * `GET /api/library/shows/:tmdb/episodes` (`RequireAuth`, ADR-0082) — `{ "seasons": { "<n>": [épisodes] } }`,
-  les épisodes d'une série qui ont un fichier, tous dossiers confondus. Sert à OnyxHub pour marquer
+  les épisodes d'une série qui ont un fichier, tous dossiers confondus. Sert au compagnon pour marquer
   « Disponible » ce qu'Onyx peut lire. Capacité `library_show_episodes`.
+* `POST /api/integrations/mediahub/events` (sans compte, ADR-0087) — l'adresse à régler dans
+  `ONYX_WEBHOOK_URL` chez MediaHub. Exige `Authorization: Bearer <mediahub_api_key>` et
+  `X-MediaHub-Signature: sha256=<HMAC-SHA256 du corps, clé d'intégration>` (`401` sinon). Corps
+  `{ "id", "event", "apiVersion", "occurredAt", "data" }` → `202 { "status": "accepted" }`. Une
+  livraison (`X-MediaHub-Delivery`) n'est appliquée qu'une fois. `media.imported` oublie le statut en
+  cache du titre et avance le moniteur sur ses chemins ; `request.created`, `request.status_changed`
+  et `request.deleted` oublient le statut en cache ; un évènement inconnu est accepté sans effet.
+  Capacité `mediahub_events`.
 * `POST /api/integrations/onyxhub/imported` (sans compte, `Authorization: Bearer <mediahub_api_key>`,
-  ADR-0074) — `{ "tmdbId", "mediaType", "paths": [...] }` (100 au plus) → `202 { "status": "queued" }`.
-  Oublie le statut en cache du titre, parcourt le dossier de chaque chemin qui tombe dans une
-  bibliothèque, et avance le poll du moniteur (au plus une fois toutes les 30 s). `401` sans la
-  bonne clé. Capacité `onyxhub_import_signal`.
+  ADR-0074) — l'équivalent pour OnyxHub : `{ "tmdbId", "mediaType", "paths": [...] }` (100 au plus)
+  → `202 { "status": "queued" }`. Capacité `onyxhub_import_signal`.
 
 #### ➡️ Profil connecté
 * **Route :** `GET /api/auth/me` — même charge utile que `user` ci-dessus. `avatar` vaut `""`

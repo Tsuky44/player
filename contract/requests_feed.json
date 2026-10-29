@@ -1,0 +1,17 @@
+{
+  "cursor": 1,
+  "requests": [
+    {
+      "id": 2,
+      "mediaType": "tv",
+      "tmdbId": 3,
+      "title": "title-value",
+      "posterPath": "posterPath-value",
+      "seasons": [
+        4
+      ],
+      "requester": "requester-value",
+      "requestedAt": "requestedAt-value"
+    }
+  ]
+}

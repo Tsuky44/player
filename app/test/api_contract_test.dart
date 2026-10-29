@@ -277,4 +277,33 @@ void main() {
     expect(feed.requests.last.requester, 'hugo');
     expect(feed.requests.first.requestedAt, isNotNull);
   });
+
+  // Ce que le serveur rend à l'app depuis MediaHub (ADR-0087) : des lots de
+  // demandes, le flux des nouvelles demandes et les droits du compte.
+  test('MediaHub : lots de demandes, flux, droits et test de liaison', () {
+    final lot = MyRequest.fromJson(
+        (_contract('requests_mine')['requests'] as List).single
+            as Map<String, dynamic>);
+    expect(lot.requestIds, isNotEmpty);
+    expect(lot.mediaType, RequestMediaType.tv);
+    expect(lot.status, MyRequestStatus.partial);
+    expect(lot.seasonStatuses.single.status, MyRequestStatus.available);
+    expect(lot.waitingMessage, isNotNull);
+    expect(lot.note, isNotNull);
+    expect(lot.requester, isNotNull);
+    expect(lot.progress, isNotNull);
+
+    final feed = RequestFeed.fromJson(_contract('requests_feed'));
+    expect(feed.requests.single.mediaType, RequestMediaType.tv);
+    expect(feed.requests.single.requester, isNotEmpty);
+
+    final access = RequestAccess.fromJson(_contract('requests_access'));
+    expect(access.service, 'mediahub');
+    expect(access.linked, isTrue);
+    expect(access.canModerate && access.canReadAll && access.canDelete, isTrue);
+
+    final link = MediaHubLinkTest.fromJson(_contract('mediahub_link_test'));
+    expect(link.ok, isTrue);
+    expect(link.notes, isNotEmpty);
+  });
 }

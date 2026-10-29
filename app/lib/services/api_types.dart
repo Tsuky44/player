@@ -36,15 +36,23 @@ class EmbyLinkStatus {
 /// test n'est pas une erreur HTTP, il arrive ici avec [ok] à false et le
 /// message à montrer.
 class MediaHubLinkTest {
-  const MediaHubLinkTest({required this.ok, required this.message});
+  const MediaHubLinkTest(
+      {required this.ok, required this.message, this.notes = const []});
 
   final bool ok;
   final String message;
+
+  /// Ce qui manque encore à une liaison qui marche, prêt à afficher
+  /// (ADR-0087).
+  final List<String> notes;
 
   factory MediaHubLinkTest.fromJson(Map<String, dynamic> json) =>
       MediaHubLinkTest(
         ok: json['ok'] as bool? ?? false,
         message: json['message'] as String? ?? '',
+        notes: (json['notes'] as List<dynamic>? ?? const [])
+            .whereType<String>()
+            .toList(),
       );
 }
 

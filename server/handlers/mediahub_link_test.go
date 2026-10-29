@@ -8,17 +8,35 @@ import (
 	"strings"
 	"sync/atomic"
 	"testing"
+
+	"project-player/server/mediahub"
 )
 
 // hubStub simule OnyxHub (ou MediaHub) derrière l'adresse réglée dans Onyx.
+//
+// Il n'a pas l'API v1 de MediaHub : son 404 sur le ping v1 fait parler Onyx
+// dans le dialecte d'OnyxHub (ADR-0087).
 func hubStub(t *testing.T, handler http.HandlerFunc) *httptest.Server {
+	t.Helper()
+	return companionStub(t, func(w http.ResponseWriter, r *http.Request) {
+		if strings.HasPrefix(r.URL.Path, mediahub.V1Path) {
+			http.NotFound(w, r)
+			return
+		}
+		handler(w, r)
+	})
+}
+
+// companionStub monte le faux compagnon tel quel, et oublie le dialecte et le
+// délai de grâce du lot retenus par le test précédent.
+func companionStub(t *testing.T, handler http.HandlerFunc) *httptest.Server {
 	t.Helper()
 	server := httptest.NewServer(handler)
 	t.Cleanup(server.Close)
 	t.Setenv("MEDIAHUB_URL", server.URL)
 	t.Setenv("MEDIAHUB_API_KEY", "cle")
-	batchUnsupportedUntil.Store(0)
-	t.Cleanup(func() { batchUnsupportedUntil.Store(0) })
+	mediahub.Reset()
+	t.Cleanup(mediahub.Reset)
 	return server
 }
 

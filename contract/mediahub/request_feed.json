@@ -1,0 +1,11 @@
+{
+  "cursor": 42,
+  "requests": [
+    {
+      "id": 41, "mediaType": "tv", "tmdbId": 1399, "title": "Game of Thrones", "posterPath": "/got.jpg",
+      "seasons": [1], "status": "approved", "statusCode": 2,
+      "requestedAt": "2026-10-29T10:00:00.000Z", "updatedAt": "2026-10-29T10:00:00.000Z",
+      "progress": null, "awaitingRelease": false, "waiting": null, "note": null, "requester": "lea"
+    }
+  ]
+}

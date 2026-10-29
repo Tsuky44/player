@@ -17,6 +17,8 @@
     "library_show_episodes",
     "my_requests",
     "onyxhub_import_signal",
-    "avatars"
+    "avatars",
+    "mediahub_requests",
+    "mediahub_events"
   ]
 }

@@ -3124,4 +3124,50 @@ const Map<String, String> kEnglish = <String, String>{
       'On.',
   'Inactif.':
       'Off.',
+  'Demande envoyée à MediaHub.':
+      'Request sent to MediaHub.',
+  'Demande approuvée.':
+      'Request approved.',
+  'Demande refusée.':
+      'Request declined.',
+  'Demande supprimée.':
+      'Request deleted.',
+  'MediaHub n’a pas pris la décision.':
+      'MediaHub did not take the decision.',
+  'Toutes les demandes':
+      'All requests',
+  'Les miennes':
+      'Mine',
+  'Tous les comptes':
+      'All accounts',
+  'MediaHub n’a pas de compte à votre nom : vos demandes partent, mais ne se retrouvent pas ici.':
+      'MediaHub has no account under your name: your requests go through, but do not show up here.',
+  'Aucun compte n’a encore rien demandé.':
+      'No account has requested anything yet.',
+  '{0} · demandé par {1}':
+      '{0} · requested by {1}',
+  'S{0}':
+      'S{0}',
+  'Refusée.':
+      'Declined.',
+  'Refusée : {0}':
+      'Declined: {0}',
+  'Approuver':
+      'Approve',
+  'Refusée':
+      'Declined',
+  'Refuser « {0} » ?':
+      'Decline “{0}”?',
+  'Motif (facultatif)':
+      'Reason (optional)',
+  'Déjà disponible ailleurs, doublon…':
+      'Already available elsewhere, duplicate…',
+  'Supprimer la demande « {0} » ?':
+      'Delete the request for “{0}”?',
+  'La demande disparaît de MediaHub. Ce que Radarr ou Sonarr ont déjà téléchargé reste en place.':
+      'The request disappears from MediaHub. What Radarr or Sonarr already downloaded stays in place.',
+  'Les demandes faites depuis l’onglet Demander sont transmises à MediaHub pour être téléchargées. La clé est PLAYER_INTEGRATION_API_KEY de MediaHub. Pour que MediaHub prévienne Onyx des imports, réglez-y ONYX_WEBHOOK_URL sur {0}/api/integrations/mediahub/events.':
+      'Requests made from the Request tab are sent to MediaHub to be downloaded. The key is MediaHub’s PLAYER_INTEGRATION_API_KEY. For MediaHub to tell Onyx about imports, set its ONYX_WEBHOOK_URL to {0}/api/integrations/mediahub/events.',
+  'Clé d’intégration MediaHub':
+      'MediaHub integration key',
 };

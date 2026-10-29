@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"project-player/server/libraries"
+	"project-player/server/mediahub"
 	"project-player/server/models"
 )
 
@@ -139,6 +140,19 @@ func TestAPIContract(t *testing.T) {
 	watchListItem := filled[models.WatchListItem]()
 	watchListItem.MediaType = string(models.TypeMovie)
 
+	// Les demandes viennent de MediaHub en lots (ADR-0087) : leurs statuts
+	// sont ceux que l'app connaît.
+	myRequests := filled[myRequestsResponse]()
+	myRequests.Requests[0].MediaType = "tv"
+	myRequests.Requests[0].Status = "partial"
+	myRequests.Requests[0].SeasonStatuses[0].Status = "available"
+	requestFeed := filled[mediahub.Feed]()
+	requestFeed.Requests[0].MediaType = "tv"
+	requestAccess := filled[mediahub.Access]()
+	requestAccess.Service = "mediahub"
+	linkTest := filled[mediaHubLinkResult]()
+	linkTest.Service = "mediahub"
+
 	contract := map[string]interface{}{
 		"home":               filled[models.HomeResponse](),
 		"media_details":      filled[models.MediaDetails](),
@@ -159,6 +173,10 @@ func TestAPIContract(t *testing.T) {
 		"watch_lists":        watchLists,
 		"watch_list":         watchList,
 		"watch_list_item":    watchListItem,
+		"requests_mine":      myRequests,
+		"requests_feed":      requestFeed,
+		"requests_access":    requestAccess,
+		"mediahub_link_test": linkTest,
 	}
 
 	update := os.Getenv("ONYX_UPDATE_CONTRACT") != ""

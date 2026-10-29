@@ -8,7 +8,9 @@ import '../widgets/settings_ui.dart';
 import '../../../l10n/tr.dart';
 
 /// TMDB (métadonnées, affiches, catalogue de demandes), Fanart.tv (affiches
-/// en plus, ADR-0068) et OnyxHub, ou un ancien MediaHub (envoi des demandes, ADR-0075). Les clés ne sont jamais renvoyées en clair par le serveur.
+/// en plus, ADR-0068) et MediaHub (demandes, ADR-0087 ; un OnyxHub à la même
+/// adresse est reconnu par le serveur). Les clés ne sont jamais renvoyées en
+/// clair par le serveur.
 class IntegrationsPage extends StatefulWidget {
   const IntegrationsPage({super.key});
 
@@ -37,7 +39,10 @@ class _IntegrationsPageState extends State<IntegrationsPage> {
   bool _savingFanart = false;
   bool _savingMediaHub = false;
   bool _testingMediaHub = false;
-  bool _legacyHub = false;
+
+  /// Les réserves du dernier test de liaison réussi (compte absent de
+  /// MediaHub, notifications sans adresse).
+  List<String> _linkNotes = const [];
 
   @override
   void initState() {
@@ -137,12 +142,7 @@ class _IntegrationsPageState extends State<IntegrationsPage> {
       if (!mounted) return;
       setState(() => _apply(updated));
       showSettingsSnack(
-          context,
-          clearKey
-              ? tr('Clé effacée.')
-              : _legacyHub
-                  ? tr('MediaHub enregistré.')
-                  : tr('OnyxHub enregistré.'));
+          context, clearKey ? tr('Clé effacée.') : tr('MediaHub enregistré.'));
     } catch (e) {
       if (mounted) {
         showSettingsSnack(
@@ -169,6 +169,7 @@ class _IntegrationsPageState extends State<IntegrationsPage> {
             tr('Ce serveur est trop ancien pour cette fonction. Mettez-le à jour.'),
             error: true);
       } else {
+        setState(() => _linkNotes = result.ok ? result.notes : const []);
         showSettingsSnack(context, result.message, error: !result.ok);
       }
     } catch (e) {
@@ -277,31 +278,18 @@ class _IntegrationsPageState extends State<IntegrationsPage> {
             title: tr('Service de demandes'),
             trailing: _status(
                 settings.mediaHubUrl.isNotEmpty && settings.mediaHubApiKeySet),
-            footer: _legacyHub
-                ? tr('Les demandes faites depuis l’onglet Demandes sont '
-                    'transmises à MediaHub pour être téléchargées. « Mes '
-                    'demandes » et les notifications d’administrateur ne '
-                    'marchent qu’avec OnyxHub.')
-                : tr('Les demandes faites depuis l’onglet Demandes y sont '
-                    'transmises pour être téléchargées. Dans OnyxHub, « Connecter '
-                    'Onyx » remplit ces deux champs.'),
+            footer: tr('Les demandes faites depuis l’onglet Demander sont '
+                'transmises à MediaHub pour être téléchargées. La clé est '
+                'PLAYER_INTEGRATION_API_KEY de MediaHub. Pour que MediaHub '
+                'prévienne Onyx des imports, réglez-y ONYX_WEBHOOK_URL sur '
+                '{0}/api/integrations/mediahub/events.', [
+              context.read<ApiClient>().baseUrl
+            ]),
             padded: true,
             children: [
               Column(
                 crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
-                  // Un seul des deux reçoit les demandes : les deux partagent
-                  // les mêmes réglages serveur (ADR-0075), on change les libellés.
-                  SegmentedButton<bool>(
-                    segments: [
-                      ButtonSegment(value: false, label: Text(tr('OnyxHub'))),
-                      ButtonSegment(value: true, label: Text(tr('MediaHub'))),
-                    ],
-                    selected: {_legacyHub},
-                    onSelectionChanged: (v) =>
-                        setState(() => _legacyHub = v.first),
-                  ),
-                  const SizedBox(height: 14),
                   TvDeferredKeyboard(
                     builder: (context, focusNode, canRequestFocus) => TextField(
                       focusNode: focusNode,
@@ -309,9 +297,7 @@ class _IntegrationsPageState extends State<IntegrationsPage> {
                       controller: _mediaHubUrl,
                       keyboardType: TextInputType.url,
                       decoration: InputDecoration(
-                        labelText: _legacyHub
-                            ? tr('Adresse de MediaHub')
-                            : tr('Adresse d’OnyxHub'),
+                        labelText: tr('Adresse de MediaHub'),
                         hintText: 'http://192.168.1.10:4400',
                         prefixIcon: Icon(Icons.link_rounded),
                       ),
@@ -320,13 +306,15 @@ class _IntegrationsPageState extends State<IntegrationsPage> {
                   const SizedBox(height: 12),
                   _KeyField(
                     controller: _mediaHubKey,
-                    label: _legacyHub
-                        ? tr('Clé API MediaHub')
-                        : tr('Clé d’intégration OnyxHub'),
+                    label: tr('Clé d’intégration MediaHub'),
                     configured: settings.mediaHubApiKeySet,
                     hint: settings.mediaHubApiKeyHint,
                   ),
                   const SizedBox(height: 14),
+                  for (final note in _linkNotes) ...[
+                    SettingsBanner(note),
+                    const SizedBox(height: 10),
+                  ],
                   _Actions(
                     saving: _savingMediaHub || _testingMediaHub,
                     onTest: _testMediaHub,
@@ -406,7 +394,7 @@ class _Actions extends StatelessWidget {
   final VoidCallback onSave;
   final VoidCallback? onClear;
 
-  /// Seul MediaHub/OnyxHub se teste : c'est le serveur qui doit le joindre.
+  /// Seul MediaHub se teste : c'est le serveur qui doit le joindre.
   final VoidCallback? onTest;
   final bool testing;
 

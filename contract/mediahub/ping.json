@@ -1,0 +1,15 @@
+{
+  "status": "ok",
+  "service": "mediahub",
+  "version": "0.9.691",
+  "apiVersion": 1,
+  "features": ["catalog", "media-detail", "availability", "availability-batch", "requests-create", "my-requests", "all-requests", "request-detail", "request-feed", "request-moderation", "request-delete", "webhook-events"],
+  "webhookConfigured": true,
+  "user": {
+    "linked": true,
+    "id": 12,
+    "name": "lea",
+    "role": "Membre",
+    "can": { "read": true, "request": true, "readAllRequests": false, "moderate": false, "delete": false }
+  }
+}

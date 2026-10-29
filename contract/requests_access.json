@@ -1,0 +1,12 @@
+{
+  "service": "mediahub",
+  "version": "version-value",
+  "linked": true,
+  "can": {
+    "read": true,
+    "request": true,
+    "readAllRequests": true,
+    "moderate": true,
+    "delete": true
+  }
+}

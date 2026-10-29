@@ -1,5 +1,6 @@
 import '../../utils/external_url.dart';
 
+import 'package:dio/dio.dart';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../../models/media_request.dart';
@@ -66,12 +67,18 @@ class _RequestDetailScreenState extends State<RequestDetailScreen> {
           );
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text(tr('Demande envoyée à OnyxHub.'))));
+          SnackBar(content: Text(tr('Demande envoyée à MediaHub.'))));
       Navigator.of(context).pop();
-    } catch (_) {
+    } catch (error) {
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(content: Text(tr('Impossible d’envoyer la demande.'))));
+        // MediaHub dit pourquoi il refuse (droit, quota, déjà demandé) :
+        // son message passe tel quel.
+        final data = error is DioException ? error.response?.data : null;
+        final message = data is Map && data['error'] is String
+            ? data['error'] as String
+            : tr('Impossible d’envoyer la demande.');
+        ScaffoldMessenger.of(context)
+            .showSnackBar(SnackBar(content: Text(message)));
         setState(() => _submitting = false);
       }
     }

@@ -1,0 +1,13 @@
+{
+  "requests": [
+    {
+      "id": 40, "mediaType": "movie", "tmdbId": 603, "title": "Matrix", "posterPath": "/matrix.jpg",
+      "seasons": [], "status": "approved", "statusCode": 2,
+      "requestedAt": "2026-10-28T08:00:00.000Z", "updatedAt": "2026-10-28T08:00:00.000Z",
+      "progress": null, "awaitingRelease": true,
+      "waiting": { "message": "Pas encore sorti, le téléchargement démarrera après sa sortie (2026-12-01).", "releaseDate": "2026-12-01T00:00:00Z" },
+      "note": null
+    }
+  ],
+  "nextBefore": null
+}

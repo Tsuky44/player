@@ -1,0 +1,9 @@
+{
+  "ok": true,
+  "message": "message-value",
+  "service": "mediahub",
+  "version": "version-value",
+  "notes": [
+    "notes-value"
+  ]
+}

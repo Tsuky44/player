@@ -246,6 +246,10 @@ func main() {
 	// que le moniteur ferait de toute façon. Limitée comme un sondage : les
 	// webhooks d'une saison entière passent, un balayage de clés non.
 	router.POST("/api/integrations/onyxhub/imported", handlers.RateLimited(handlers.PollLimiter, handlers.OnyxHubImported))
+	// Les évènements de MediaHub (ADR-0087) : même raison d'être publique, mais
+	// MediaHub signe en plus le corps avec la clé, et la route n'en fait pas
+	// plus qu'oublier un cache et avancer le moniteur.
+	router.POST("/api/integrations/mediahub/events", handlers.RateLimited(handlers.PollLimiter, handlers.MediaHubEvents))
 
 	// Serveurs liés (ADR-0017) : la progression passe d'un serveur à l'autre
 	// sans dépendre d'une app ouverte.
@@ -356,8 +360,16 @@ func main() {
 	router.GET("/api/requests/media/:id/seasons/:num/episodes", handlers.RequirePermission(models.PermRequestMedia, handlers.TmdbRequestSeasonEpisodes))
 	router.GET("/api/requests/media/:id", handlers.RequirePermission(models.PermRequestMedia, handlers.TmdbRequestDetails))
 	router.POST("/api/requests", handlers.RequirePermission(models.PermRequestMedia, handlers.MediaHubRequest))
-	// Les demandes du compte, lues chez OnyxHub (ADR-0073) : même droit que les envoyer.
+	// Les demandes du compte, lues chez le compagnon (ADR-0073) : même droit que les envoyer.
 	router.GET("/api/requests/mine", handlers.RequirePermission(models.PermRequestMedia, handlers.MediaHubMyRequests))
+	// Les droits du compte chez MediaHub (ADR-0087) : même droit que demander.
+	router.GET("/api/requests/access", handlers.RequirePermission(models.PermRequestMedia, handlers.MediaHubRequestAccess))
+	// Toutes les demandes et leur modération (ADR-0087) : MediaHub juge le droit
+	// d'après le rôle du compte de même nom, et Onyx exige en plus
+	// manage_settings, comme pour le flux. Un nom pris par hasard à
+	// l'inscription ne suffit pas à modérer.
+	router.GET("/api/requests/all", handlers.RequirePermission(models.PermManageSettings, handlers.MediaHubAllRequests))
+	router.POST("/api/requests/moderation", handlers.RequirePermission(models.PermManageSettings, handlers.MediaHubModerateRequests))
 	// Les demandes de tous les comptes, pour la notification « Nouvelle
 	// demande » (ADR-0077) : réservé à qui administre les réglages, comme
 	// OnyxHub, qui fait de manage_settings son administrateur.

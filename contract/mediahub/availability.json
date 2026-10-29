@@ -1,0 +1,11 @@
+{
+  "status": "partial",
+  "available": true,
+  "awaitingRelease": false,
+  "waiting": null,
+  "expectedReleaseDate": null,
+  "seasons": [
+    { "seasonNumber": 1, "status": "available", "available": true, "totalEpisodes": 10 },
+    { "seasonNumber": 2, "status": "processing", "available": false, "totalEpisodes": 8 }
+  ]
+}

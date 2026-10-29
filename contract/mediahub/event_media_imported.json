@@ -1,0 +1,12 @@
+{
+  "id": "5c9e7d10-77b2-45d3-b0c1-3a9f0e6b7d33",
+  "event": "media.imported",
+  "apiVersion": 1,
+  "occurredAt": "2026-10-29T11:30:00.000Z",
+  "data": {
+    "tmdbId": 1399,
+    "mediaType": "tv",
+    "seasons": [1],
+    "paths": ["/series/Game of Thrones/Season 01/Game.of.Thrones.S01E01.mkv"]
+  }
+}

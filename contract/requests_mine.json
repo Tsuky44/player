@@ -1,0 +1,33 @@
+{
+  "requests": [
+    {
+      "requestIds": [
+        1
+      ],
+      "mediaType": "tv",
+      "tmdbId": 2,
+      "title": "title-value",
+      "posterPath": "posterPath-value",
+      "seasons": [
+        3
+      ],
+      "status": "partial",
+      "seasonStatuses": [
+        {
+          "seasonNumber": 4,
+          "status": "available"
+        }
+      ],
+      "requestedAt": "requestedAt-value",
+      "updatedAt": "updatedAt-value",
+      "progress": 5.5,
+      "waiting": {
+        "message": "message-value",
+        "releaseDate": "releaseDate-value",
+        "nextAttemptAt": "nextAttemptAt-value"
+      },
+      "note": "note-value",
+      "requester": "requester-value"
+    }
+  ]
+}

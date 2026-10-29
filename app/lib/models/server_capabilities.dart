@@ -47,6 +47,10 @@ class ServerCapabilities {
   /// Le serveur relaie les demandes du compte chez OnyxHub (ADR-0073).
   static const myRequests = 'my_requests';
 
+  /// Le serveur dit les droits du compte chez MediaHub, liste toutes les
+  /// demandes et les modère (ADR-0087).
+  static const mediaHubRequests = 'mediahub_requests';
+
   bool supports(String capability) => capabilities.contains(capability);
 
   /// Null quand la réponse n'est pas celle d'un serveur Onyx qui va bien.

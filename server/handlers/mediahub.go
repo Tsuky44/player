@@ -1,32 +1,53 @@
 package handlers
 
 import (
-	"bytes"
 	"database/sql"
 	"encoding/json"
+	"errors"
 	"io"
+	"log"
 	"net/http"
-	"net/url"
 	"strconv"
-	"strings"
 
 	"project-player/server/config"
 	"project-player/server/database"
 	"project-player/server/httpx"
+	"project-player/server/mediahub"
 
 	"github.com/julienschmidt/httprouter"
 )
 
-const maxMediaHubResponseSize = 8 << 20
-
 var mediaHubHTTPClient = httpx.Long
 
-// Le compagnon de demandes : OnyxHub, ou un ancien MediaHub, réglé par
-// mediahub_url et mediahub_api_key (les noms d'origine, gardés pour les
-// installations existantes). Les formats échangés sont épinglés par
-// contract/onyxhub/ (ADR-0075).
+// Le compagnon de demandes : MediaHub par son API v1, ou OnyxHub tant qu'il
+// n'est pas retiré, réglé par mediahub_url et mediahub_api_key. Le dialecte se
+// reconnaît dans le package mediahub (ADR-0087) ; les handlers ne voient que
+// le client. Les formats échangés sont épinglés par contract/mediahub/ et,
+// pour OnyxHub, contract/onyxhub/ (ADR-0075).
 
-// MediaHubRequest relaie une demande (POST /api/requests → POST {OnyxHub}/api/request).
+// mediaHubAvailability et mediaHubWaiting gardent les noms que lisent les
+// écrans du catalogue.
+type (
+	mediaHubAvailability = mediahub.Availability
+	mediaHubWaiting      = mediahub.Waiting
+)
+
+// mediaHubClient rend le client réglé, avec l'échéance choisie.
+func mediaHubClient(client *http.Client) mediahub.Client {
+	return mediahub.Client{BaseURL: config.MediaHubURL(), APIKey: config.MediaHubAPIKey(), HTTP: client}
+}
+
+// mediaHubAccount rend le compte Onyx au nom duquel parler. MediaHub retrouve
+// son compte par le nom (ADR-0087).
+func mediaHubAccount(userID int) (mediahub.Account, error) {
+	username, err := playerUsername(userID)
+	if err != nil {
+		return mediahub.Account{}, err
+	}
+	return mediahub.Account{ID: userID, Username: username}, nil
+}
+
+// MediaHubRequest relaie une demande (POST /api/requests).
 func MediaHubRequest(w http.ResponseWriter, r *http.Request, _ httprouter.Params, userID int) {
 	body, err := io.ReadAll(io.LimitReader(r.Body, 1<<20))
 	if err != nil || !json.Valid(body) {
@@ -44,146 +65,130 @@ func MediaHubRequest(w http.ResponseWriter, r *http.Request, _ httprouter.Params
 		invalidateMediaHubStatus(payload.TMDBID)
 	}
 
-	proxyMediaHub(w, r, userID, http.MethodPost, "/api/request", nil, body)
+	account, ok := mediaHubAccountOrFail(w, userID)
+	if !ok {
+		return
+	}
+	status, answer, err := mediaHubClient(mediaHubHTTPClient).CreateRequest(r.Context(), account, body)
+	if err != nil {
+		writeMediaHubFailure(w, "MediaHubRequest", err)
+		return
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(status)
+	_, _ = w.Write(answer)
 }
 
-// MediaHubMyRequests relaie les demandes du compte et leur progression
-// (GET /api/requests/mine → GET {OnyxHub}/api/request, ADR-0073). La réponse
-// passe telle quelle : c'est le format d'OnyxHub que l'app lit. MediaHub n'a
-// pas cette route ; son 404 ou son 405 arrive à l'app, qui n'affiche alors pas
-// l'écran.
+// myRequestsResponse est la liste de « Mes demandes » et de « Toutes les
+// demandes », au format d'Onyx (contract/requests_mine.json).
+type myRequestsResponse struct {
+	Requests []mediahub.Lot `json:"requests"`
+}
+
+// MediaHubMyRequests rend les demandes du compte en lots
+// (GET /api/requests/mine, ADR-0073 et 0087).
 func MediaHubMyRequests(w http.ResponseWriter, r *http.Request, _ httprouter.Params, userID int) {
-	proxyMediaHub(w, r, userID, http.MethodGet, "/api/request", nil, nil)
+	serveMediaHubLots(w, r, userID, mediahub.ScopeMine)
 }
 
-// MediaHubRequestFeed relaie le flux des nouvelles demandes de tous les
-// comptes (GET /api/requests/feed?after= → GET {OnyxHub}/api/request/feed),
-// que l'app d'un administrateur relève en tâche de fond pour notifier
-// (ADR-0077). Le curseur est un entier rendu par OnyxHub : on ne transmet que
-// lui, pas la requête brute de l'app.
+func serveMediaHubLots(w http.ResponseWriter, r *http.Request, userID int, scope mediahub.Scope) {
+	account, ok := mediaHubAccountOrFail(w, userID)
+	if !ok {
+		return
+	}
+	lots, err := mediaHubClient(mediaHubHTTPClient).Requests(r.Context(), account, scope)
+	if err != nil {
+		writeMediaHubFailure(w, "MediaHubRequests", err)
+		return
+	}
+	if lots == nil {
+		lots = []mediahub.Lot{}
+	}
+	w.Header().Set("Content-Type", "application/json")
+	_ = json.NewEncoder(w).Encode(myRequestsResponse{Requests: lots})
+}
+
+// MediaHubRequestFeed rend les nouvelles demandes de tous les comptes
+// (GET /api/requests/feed?after=), que l'app d'un administrateur relève en
+// tâche de fond pour notifier (ADR-0077). Le curseur est un entier rendu par
+// le compagnon : on ne transmet que lui, pas la requête brute de l'app.
 func MediaHubRequestFeed(w http.ResponseWriter, r *http.Request, _ httprouter.Params, userID int) {
-	query := url.Values{}
+	var after *int
 	if raw := r.URL.Query().Get("after"); raw != "" {
-		after, err := strconv.Atoi(raw)
-		if err != nil || after < 0 {
+		value, err := strconv.Atoi(raw)
+		if err != nil || value < 0 {
 			writeMediaHubError(w, http.StatusBadRequest, "Curseur invalide")
 			return
 		}
-		query.Set("after", strconv.Itoa(after))
+		after = &value
 	}
-	proxyMediaHub(w, r, userID, http.MethodGet, "/api/request/feed", query, nil)
+	account, ok := mediaHubAccountOrFail(w, userID)
+	if !ok {
+		return
+	}
+	feed, err := mediaHubClient(mediaHubHTTPClient).Feed(r.Context(), account, after)
+	if err != nil {
+		writeMediaHubFailure(w, "MediaHubRequestFeed", err)
+		return
+	}
+	w.Header().Set("Content-Type", "application/json")
+	_ = json.NewEncoder(w).Encode(feed)
 }
 
-// mediaHubAvailability mirrors MediaHub's getMediaAvailability response.
-type mediaHubAvailability struct {
-	Status  string `json:"status"`
-	Seasons []struct {
-		SeasonNumber int    `json:"seasonNumber"`
-		Status       string `json:"status"`
-	} `json:"seasons"`
-	// Waiting says why a request has no download yet; nil when nothing waits.
-	Waiting *mediaHubWaiting `json:"waiting,omitempty"`
-}
-
-// mediaHubWaiting is the reason, in French and ready to show, a request waits
-// for a release (OnyxHub fills it from sorraa).
-type mediaHubWaiting struct {
-	Message       string `json:"message"`
-	NextAttemptAt string `json:"nextAttemptAt,omitempty"`
-}
-
-// fetchMediaHubAvailability calls MediaHub GET /api/media/availability/:id.
-// Returns nil when MediaHub is not configured or the call fails.
+// fetchMediaHubAvailability rend la disponibilité d'un titre, ou nil quand le
+// compagnon n'est pas réglé ou que l'appel échoue.
 //
 // client selects the timeout budget: pass tmdbFastClient on screens that used
 // to be a local read, mediaHubHTTPClient when the caller can afford to wait.
 func fetchMediaHubAvailability(tmdbID int, mediaType string, client *http.Client) *mediaHubAvailability {
-	baseURL := strings.TrimRight(strings.TrimSpace(config.MediaHubURL()), "/")
-	apiKey := strings.TrimSpace(config.MediaHubAPIKey())
-	if baseURL == "" || apiKey == "" {
+	hub := mediaHubClient(client)
+	if !hub.Configured() {
 		return nil
 	}
-
-	target := baseURL + "/api/media/availability/" + strconv.Itoa(tmdbID) +
-		"?type=" + url.QueryEscape(mediaType)
-	req, err := http.NewRequest(http.MethodGet, target, nil)
+	availability, err := hub.Availability(contextBackground(), tmdbID, mediaType)
 	if err != nil {
+		// Un MediaHub muet se dirait vingt fois par page du catalogue : seule
+		// une réponse inattendue mérite le journal.
+		if !mediahub.IsUnreachable(err) {
+			log.Printf("fetchMediaHubAvailability: %s %d: %v", mediaType, tmdbID, err)
+		}
 		return nil
 	}
-	req.Header.Set("Authorization", "Bearer "+apiKey)
-
-	resp, err := client.Do(req)
-	if err != nil {
-		return nil
-	}
-	defer resp.Body.Close()
-	if resp.StatusCode != http.StatusOK {
-		return nil
-	}
-
-	body, err := io.ReadAll(io.LimitReader(resp.Body, 1<<20))
-	if err != nil {
-		return nil
-	}
-	var availability mediaHubAvailability
-	if err := json.Unmarshal(body, &availability); err != nil {
-		return nil
-	}
-	if availability.Status == "" {
-		availability.Status = "unknown"
-	}
-	return &availability
+	return availability
 }
 
-func proxyMediaHub(w http.ResponseWriter, r *http.Request, userID int, method, path string, query url.Values, body []byte) {
-	baseURL := strings.TrimRight(strings.TrimSpace(config.MediaHubURL()), "/")
-	apiKey := strings.TrimSpace(config.MediaHubAPIKey())
-	if baseURL == "" || apiKey == "" {
-		writeMediaHubError(w, http.StatusServiceUnavailable, "OnyxHub n'est pas configuré sur ce serveur")
-		return
-	}
-
-	username, err := playerUsername(userID)
+func mediaHubAccountOrFail(w http.ResponseWriter, userID int) (mediahub.Account, bool) {
+	account, err := mediaHubAccount(userID)
 	if err != nil {
 		writeMediaHubError(w, http.StatusUnauthorized, "Player user not found")
-		return
+		return mediahub.Account{}, false
 	}
+	return account, true
+}
 
-	target := baseURL + path
-	if len(query) > 0 {
-		target += "?" + query.Encode()
+// writeMediaHubFailure traduit une erreur du client pour l'app : la réponse
+// du compagnon passe telle quelle (MediaHub y met { error, code }), le reste
+// devient un message court. L'app lit 503 comme « pas de compagnon » et 502
+// comme une panne passagère (ADR-0077).
+func writeMediaHubFailure(w http.ResponseWriter, where string, err error) {
+	var status *mediahub.StatusError
+	switch {
+	case errors.As(err, &status):
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(status.Status)
+		if json.Valid(status.Body) {
+			_, _ = w.Write(status.Body)
+		} else {
+			_ = json.NewEncoder(w).Encode(errorResponse{Error: "Réponse illisible de MediaHub"})
+		}
+	case errors.Is(err, mediahub.ErrNotConfigured):
+		writeMediaHubError(w, http.StatusServiceUnavailable, "MediaHub n'est pas configuré sur ce serveur")
+	case errors.Is(err, mediahub.ErrUnsupported):
+		writeMediaHubError(w, http.StatusNotImplemented, "Le compagnon de demandes de ce serveur ne le permet pas")
+	default:
+		log.Printf("%s: %v", where, err)
+		writeMediaHubError(w, http.StatusBadGateway, "MediaHub ne répond pas")
 	}
-
-	request, err := http.NewRequestWithContext(r.Context(), method, target, bytes.NewReader(body))
-	if err != nil {
-		writeMediaHubError(w, http.StatusBadGateway, "OnyxHub est injoignable")
-		return
-	}
-	request.Header.Set("Authorization", "Bearer "+apiKey)
-	request.Header.Set("X-Player-Username", username)
-	// L'identifiant survit à un renommage du compte : OnyxHub y rattache ses
-	// demandes (ADR-0075). MediaHub l'ignore.
-	request.Header.Set("X-Player-Id", strconv.Itoa(userID))
-	if len(body) > 0 {
-		request.Header.Set("Content-Type", "application/json")
-	}
-
-	response, err := mediaHubHTTPClient.Do(request)
-	if err != nil {
-		writeMediaHubError(w, http.StatusBadGateway, "OnyxHub ne répond pas")
-		return
-	}
-	defer response.Body.Close()
-
-	responseBody, err := io.ReadAll(io.LimitReader(response.Body, maxMediaHubResponseSize))
-	if err != nil {
-		writeMediaHubError(w, http.StatusBadGateway, "Réponse illisible d'OnyxHub")
-		return
-	}
-
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(response.StatusCode)
-	_, _ = w.Write(responseBody)
 }
 
 func playerUsername(userID int) (string, error) {
@@ -198,5 +203,5 @@ func playerUsername(userID int) (string, error) {
 func writeMediaHubError(w http.ResponseWriter, status int, message string) {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(status)
-	_ = json.NewEncoder(w).Encode(map[string]string{"error": message})
+	_ = json.NewEncoder(w).Encode(errorResponse{Error: message})
 }

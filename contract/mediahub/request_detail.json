@@ -1,0 +1,13 @@
+{
+  "id": 41, "mediaType": "tv", "tmdbId": 1399, "title": "Game of Thrones", "posterPath": "/got.jpg",
+  "seasons": [1], "status": "partial", "statusCode": 4,
+  "requestedAt": "2026-10-29T10:00:00.000Z", "updatedAt": "2026-10-29T11:30:00.000Z",
+  "progress": null, "awaitingRelease": false, "waiting": null, "note": null, "requester": "lea",
+  "availability": {
+    "status": "partial", "available": true, "awaitingRelease": false, "waiting": null, "expectedReleaseDate": null,
+    "seasons": [
+      { "seasonNumber": 1, "status": "available", "available": true, "totalEpisodes": 10 },
+      { "seasonNumber": 2, "status": "processing", "available": false, "totalEpisodes": 8 }
+    ]
+  }
+}

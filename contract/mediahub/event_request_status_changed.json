@@ -1,0 +1,16 @@
+{
+  "id": "0b3d2c9e-1f0a-4c0e-8f55-2e7a9a5d4c22",
+  "event": "request.status_changed",
+  "apiVersion": 1,
+  "occurredAt": "2026-10-29T11:30:00.000Z",
+  "data": {
+    "previousStatus": "approved",
+    "requesterId": 12,
+    "request": {
+      "id": 41, "mediaType": "tv", "tmdbId": 1399, "title": "Game of Thrones", "posterPath": "/got.jpg",
+      "seasons": [1], "status": "available", "statusCode": 5,
+      "requestedAt": "2026-10-29T10:00:00.000Z", "updatedAt": "2026-10-29T11:30:00.000Z",
+      "progress": null, "awaitingRelease": false, "waiting": null, "note": null, "requester": "lea"
+    }
+  }
+}

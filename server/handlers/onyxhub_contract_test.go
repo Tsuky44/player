@@ -14,6 +14,7 @@ import (
 
 	"project-player/server/database"
 	"project-player/server/httpx"
+	"project-player/server/mediahub"
 )
 
 // Le contrat avec OnyxHub, vu d'Onyx (ADR-0075).
@@ -39,15 +40,21 @@ func onyxHubContract(t *testing.T, name string) []byte {
 // page du fichier ne comptent pas.
 func sameJSON(t *testing.T, name string, got []byte) {
 	t.Helper()
+	sameContractJSON(t, "onyxhub", onyxHubContract(t, name), name, got)
+}
+
+// sameContractJSON compare ce qu'Onyx produit au fichier d'un compagnon.
+func sameContractJSON(t *testing.T, companion string, file []byte, name string, got []byte) {
+	t.Helper()
 	var want, have interface{}
-	if err := json.Unmarshal(onyxHubContract(t, name), &want); err != nil {
-		t.Fatalf("contract/onyxhub/%s illisible : %v", name, err)
+	if err := json.Unmarshal(file, &want); err != nil {
+		t.Fatalf("contract/%s/%s illisible : %v", companion, name, err)
 	}
 	if err := json.Unmarshal(got, &have); err != nil {
 		t.Fatalf("%s : JSON produit illisible : %v (%s)", name, err, got)
 	}
 	if !reflect.DeepEqual(want, have) {
-		t.Fatalf("Onyx ne produit plus contract/onyxhub/%s : OnyxHub lit ce format-là.\nObtenu : %s", name, got)
+		t.Fatalf("Onyx ne produit plus contract/%s/%s : %s lit ce format-là.\nObtenu : %s", companion, name, companion, got)
 	}
 }
 
@@ -78,7 +85,7 @@ func TestOnyxHubContractLinkTestReadsThePingAndAnswersTheSettingsScreen(t *testi
 	hubStub(t, func(w http.ResponseWriter, _ *http.Request) {
 		_, _ = w.Write(onyxHubContract(t, "integration_ping.json"))
 	})
-	result, err := json.Marshal(probeMediaHub(os.Getenv("MEDIAHUB_URL"), "cle", httpx.Fast))
+	result, err := json.Marshal(probeMediaHub(os.Getenv("MEDIAHUB_URL"), "cle", mediahub.Account{}, httpx.Fast))
 	if err != nil {
 		t.Fatal(err)
 	}
