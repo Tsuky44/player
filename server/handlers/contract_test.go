@@ -220,8 +220,9 @@ func TestNoUntypedJSONResponses(t *testing.T) {
 	// Des maps qui ne sont pas des réponses : elles lisent ou écrivent le JSON
 	// d'un autre programme, dont la forme n'est pas à nous.
 	allowed := map[string]string{
-		"emby_reconcile.go": "corps d'une requête envoyée à Emby, dans son format",
-		"playback_logs.go":  "sortie de ffprobe relue pour le journal, de forme libre",
+		"emby_reconcile.go":       "corps d'une requête envoyée à Emby, dans son format",
+		"playback_logs.go":        "sortie de ffprobe relue pour le journal, de forme libre",
+		"playback_logs_export.go": "mesures opaques du client, relues pour l'export et jamais renvoyées en JSON",
 	}
 	files, err := filepath.Glob("*.go")
 	if err != nil {
