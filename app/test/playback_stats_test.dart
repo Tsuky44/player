@@ -78,6 +78,34 @@ void main() {
     expect(collector.summary.bufferingEvents, 2);
   });
 
+  test('un remplissage court après un seek n’est pas une mise en tampon', () {
+    var now = DateTime(2026);
+    final collector = PlaybackStatsCollector(now: () => now);
+    for (var i = 0; i < 50; i++) {
+      collector.noteSeek();
+      collector.noteBuffering(true);
+      now = now.add(const Duration(milliseconds: 400));
+      collector.noteBuffering(false);
+      now = now.add(const Duration(seconds: 3));
+    }
+
+    expect(collector.summary.bufferingEvents, 0);
+    expect(collector.summary.bufferingSeconds, 0);
+  });
+
+  test('un seek qui attend longtemps reste une mise en tampon', () async {
+    var now = DateTime(2026);
+    final collector = PlaybackStatsCollector(now: () => now);
+    collector.start(_FakeSession([const PlaybackDiagnostics()]));
+    collector.noteSeek();
+    collector.noteBuffering(true);
+    now = now.add(const Duration(seconds: 3));
+    await collector.finish();
+    collector.noteBuffering(false);
+
+    expect(collector.summary.bufferingEvents, 1);
+  });
+
   test('un résumé sans échantillon se dit vide', () {
     expect(PlaybackStatsCollector().summary.isEmpty, isTrue);
   });
