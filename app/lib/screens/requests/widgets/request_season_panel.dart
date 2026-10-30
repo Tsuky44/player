@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../../../models/media_request.dart';
+import '../../../models/request_release.dart';
 import '../../../providers/media_requests_provider.dart';
 import '../../../theme/app_colors.dart';
 import '../../../theme/app_icons.dart';
@@ -9,6 +10,7 @@ import '../../../utils/format.dart';
 import '../../../widgets/global/app_network_image.dart';
 import '../../../l10n/tr.dart';
 import 'request_detail_hero.dart';
+import 'request_release_sheet.dart';
 import 'season_cascade.dart';
 import 'request_status_badge.dart';
 
@@ -46,6 +48,9 @@ class _RequestSeasonPanelState extends State<RequestSeasonPanel>
   bool _requesting = false;
   String? _error;
 
+  /// Le compagnon accorde la recherche interactive à ce compte (ADR-0098).
+  bool _canSearch = false;
+
   List<RequestEpisode>? get _episodes => widget.cache[widget.season.number];
 
   @override
@@ -54,6 +59,30 @@ class _RequestSeasonPanelState extends State<RequestSeasonPanel>
     _head = SeasonCascade(this);
     _list = SeasonCascade(this);
     if (_episodes == null) _load();
+    _loadAccess();
+  }
+
+  Future<void> _loadAccess() async {
+    final access = await context.read<MediaRequestsProvider>().loadAccess();
+    if (mounted && access.canInteractiveSearch) {
+      setState(() => _canSearch = true);
+    }
+  }
+
+  /// Ouvre la recherche de la saison, ou de l'épisode [episode].
+  void _search({RequestEpisode? episode}) {
+    final season = widget.season.number;
+    RequestReleaseSheet.show(
+      context,
+      target: RequestReleaseTarget(
+        tmdbId: widget.tmdbId,
+        season: season,
+        episode: episode?.number,
+      ),
+      heading: episode == null
+          ? seasonTitle(widget.season)
+          : tr('Saison {0} · Épisode {1}', [season, episode.number]),
+    );
   }
 
   @override
@@ -176,6 +205,14 @@ class _RequestSeasonPanelState extends State<RequestSeasonPanel>
               status: season.status,
               remaining: season.remainingEpisodes,
             ),
+          if (_canSearch)
+            HeroPill(
+              label: tr('Recherche interactive'),
+              icon: AppIcons.search,
+              style: HeroPillStyle.glass,
+              dense: true,
+              onPressed: _search,
+            ),
         ],
       ),
     );
@@ -234,7 +271,13 @@ class _RequestSeasonPanelState extends State<RequestSeasonPanel>
       children: [
         for (var i = 0; i < episodes.length; i++) ...[
           if (i > 0) const SizedBox(height: 10),
-          _list.item(i, _EpisodeCard(episode: episodes[i])),
+          _list.item(
+            i,
+            _EpisodeCard(
+              episode: episodes[i],
+              onSearch: _canSearch ? () => _search(episode: episodes[i]) : null,
+            ),
+          ),
         ],
       ],
     );
@@ -248,7 +291,11 @@ String seasonTitle(RequestSeason season) =>
 class _EpisodeCard extends StatelessWidget {
   final RequestEpisode episode;
 
-  const _EpisodeCard({required this.episode});
+  /// Ouvre la recherche interactive de l'épisode ; nul quand le compte n'y a
+  /// pas droit.
+  final VoidCallback? onSearch;
+
+  const _EpisodeCard({required this.episode, this.onSearch});
 
   @override
   Widget build(BuildContext context) {
@@ -280,6 +327,17 @@ class _EpisodeCard extends StatelessWidget {
                 ),
               ),
             ],
+            if (onSearch != null)
+              IconButton(
+                tooltip: tr('Recherche interactive'),
+                visualDensity: VisualDensity.compact,
+                constraints: const BoxConstraints.tightFor(width: 32, height: 24),
+                padding: EdgeInsets.zero,
+                iconSize: 18,
+                icon: Icon(AppIcons.search,
+                    color: Colors.white.withValues(alpha: 0.7)),
+                onPressed: onSearch,
+              ),
           ],
         ),
         const SizedBox(height: 8),

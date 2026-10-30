@@ -9,6 +9,7 @@ import 'package:onyx/models/server_capabilities.dart';
 import 'package:onyx/models/media_request.dart';
 import 'package:onyx/models/my_request.dart';
 import 'package:onyx/models/request_feed.dart';
+import 'package:onyx/models/request_release.dart';
 import 'package:onyx/services/api_types.dart';
 
 /// Le contrat entre le serveur et l'app, vu de l'app.
@@ -301,6 +302,17 @@ void main() {
     expect(access.service, 'mediahub');
     expect(access.linked, isTrue);
     expect(access.canModerate && access.canReadAll && access.canDelete, isTrue);
+    expect(access.canInteractiveSearch, isTrue);
+
+    // La recherche interactive (ADR-0098).
+    final releases = (_contract('request_releases')['releases'] as List)
+        .map((e) => RequestRelease.fromJson(Map<String, dynamic>.from(e as Map)))
+        .toList();
+    expect(releases, isNotEmpty);
+    expect(releases.first.title, isNotEmpty);
+    expect(releases.first.size, greaterThan(0));
+    expect(releases.first.seeders, isNotNull);
+    expect(releases.first.isDownloadable, isTrue);
 
     final link = MediaHubLinkTest.fromJson(_contract('mediahub_link_test'));
     expect(link.ok, isTrue);

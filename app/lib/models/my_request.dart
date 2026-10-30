@@ -153,6 +153,7 @@ class RequestAccess {
     required this.canReadAll,
     required this.canModerate,
     required this.canDelete,
+    this.canInteractiveSearch = false,
   });
 
   /// Ce que sait l'app d'un serveur d'avant cette route : demander, et
@@ -176,6 +177,9 @@ class RequestAccess {
   final bool canModerate;
   final bool canDelete;
 
+  /// Choisir soi-même la release d'une saison ou d'un épisode (ADR-0098).
+  final bool canInteractiveSearch;
+
   factory RequestAccess.fromJson(Map<String, dynamic> json) {
     final can = json['can'] is Map
         ? Map<String, dynamic>.from(json['can'] as Map)
@@ -187,6 +191,7 @@ class RequestAccess {
       canReadAll: can['readAllRequests'] as bool? ?? false,
       canModerate: can['moderate'] as bool? ?? false,
       canDelete: can['delete'] as bool? ?? false,
+      canInteractiveSearch: can['interactiveSearch'] as bool? ?? false,
     );
   }
 }

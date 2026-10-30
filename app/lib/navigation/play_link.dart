@@ -61,18 +61,32 @@ abstract final class PlayLink {
     pending.value = null;
     if (target == null) return null;
     final (type, tmdbId) = target;
+    final route = await routeForTmdb(api, type, tmdbId);
+    if (route == null) notFound(messenger);
+    return route;
+  }
+
+  /// La fiche qui lance la lecture du titre TMDB [tmdbId], ou null quand la
+  /// bibliothèque ne l'a pas (ou ne répond pas). Sert aussi au bouton « Lire »
+  /// d'une fiche de demande, dont le titre est connu par son seul id TMDB.
+  static Future<Route<void>?> routeForTmdb(
+      ApiClient api, MediaType type, int tmdbId) async {
     try {
       final index = await api.getLibraryTmdbIndex();
       final id =
           (type == MediaType.show ? index.shows : index.movies)[tmdbId];
       if (id != null) return routeFor(type, id);
     } catch (_) {
-      // Même message qu'un titre absent : la lecture n'a pas pu être lancée.
+      // Même issue qu'un titre absent : la lecture n'a pas pu être lancée.
     }
+    return null;
+  }
+
+  /// Dit à l'écran que la lecture n'a pas pu être lancée.
+  static void notFound(ScaffoldMessengerState? messenger) {
     messenger?.showSnackBar(
       SnackBar(content: Text(tr('Ce titre n’est pas dans ta bibliothèque'))),
     );
-    return null;
   }
 
   /// La fiche de [id], qui lance la lecture dès qu'elle sait quoi lire.

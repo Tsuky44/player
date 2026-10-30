@@ -23,6 +23,7 @@ import '../models/media_request.dart';
 import '../models/my_request.dart';
 import '../models/request_feed.dart';
 import '../models/request_progress.dart';
+import '../models/request_release.dart';
 import '../models/media_share.dart';
 import '../models/shared_show.dart';
 import '../models/server_activity.dart';
@@ -62,6 +63,7 @@ part 'api/artwork.dart';
 part 'api/watch_lists.dart';
 part 'api/my_requests.dart';
 part 'api/request_feed.dart';
+part 'api/request_releases.dart';
 part 'api/avatars.dart';
 
 class _PlaybackRequestScope {
@@ -89,6 +91,7 @@ class ApiClient
         _WatchListEndpoints,
         _MyRequestEndpoints,
         _RequestFeedEndpoints,
+        _RequestReleaseEndpoints,
         _AvatarEndpoints {
   static String get _defaultBaseUrl {
     // On web the Go server serves this very bundle, so the page origin is

@@ -19,6 +19,10 @@ Base : `{MediaHub}/api/integrations/player/v1`.
 | `request_detail.json` | MediaHub → Onyx | `GET /requests/:id`, réponse de `PATCH /requests/:id` |
 | `request_moderate.json` | Onyx → MediaHub | `PATCH /requests/:id` |
 | `request_feed.json` | MediaHub → Onyx | `GET /requests/feed?after=` |
+| `releases.json` | MediaHub → Onyx | `GET /releases?tmdbId=&type=&season=&episode=` quand sorraa cherche (recherche interactive, ADR-0098) : jeton, verdict, aucune adresse |
+| `releases_arr.json` | MediaHub → Onyx | la même route quand Radarr/Sonarr cherchent : guid et adresse de téléchargement, pas de verdict |
+| `release_grab.json` | app Onyx → MediaHub (relayé par Onyx) | `POST /releases` avec sorraa : le jeton suffit |
+| `release_grab_arr.json` | app Onyx → MediaHub (relayé par Onyx) | `POST /releases` avec Radarr/Sonarr : la release en entier |
 | `event_*.json` | MediaHub → Onyx | `POST {Onyx}/api/integrations/mediahub/events` |
 
 En-têtes de chaque appel d'Onyx : `Authorization: Bearer <clé d'intégration>` et, au nom d'un

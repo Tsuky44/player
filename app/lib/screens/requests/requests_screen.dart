@@ -15,6 +15,7 @@ import '../../utils/poster_url.dart';
 import '../../widgets/global/app_network_image.dart';
 import '../../widgets/global/empty_state.dart';
 import '../../widgets/global/poster_grid_zoom_region.dart';
+import '../../widgets/global/poster_grid_zoom_slider.dart';
 import '../../widgets/global/staggered_entrance.dart';
 import '../../services/api_client.dart';
 import 'my_requests_screen.dart';
@@ -295,12 +296,23 @@ class _RequestsScreenState extends State<RequestsScreen> {
                       ),
                     ],
                     const SizedBox(height: 18),
-                    _TypeFilterPills(
-                      selected: _draftType,
-                      onChanged: (type) {
-                        setState(() => _draftType = type);
-                        _reloadCatalog();
-                      },
+                    // Les pastilles à gauche, le curseur de densité à droite ;
+                    // sur un écran étroit il passe dessous plutôt que de
+                    // rogner les pastilles.
+                    Wrap(
+                      alignment: WrapAlignment.spaceBetween,
+                      crossAxisAlignment: WrapCrossAlignment.center,
+                      runSpacing: 12,
+                      children: [
+                        _TypeFilterPills(
+                          selected: _draftType,
+                          onChanged: (type) {
+                            setState(() => _draftType = type);
+                            _reloadCatalog();
+                          },
+                        ),
+                        const PosterGridZoomSlider(),
+                      ],
                     ),
                   ],
                 ),

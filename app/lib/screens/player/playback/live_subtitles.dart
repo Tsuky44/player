@@ -91,6 +91,25 @@ class LiveSubtitleFeed {
     _timer = Timer.periodic(pollInterval, (_) => _poll(generation));
   }
 
+  /// Affiche un WebVTT déjà complet, au rythme de [positions].
+  ///
+  /// Pour un moteur dont le `<track>` natif ne se voit pas : le `<video>` d'un
+  /// téléviseur LG est dans le plan vidéo du pipeline matériel, et les
+  /// répliques que le navigateur dessine pour lui n'y sont pas garanties. Les
+  /// peindre ici donne le même rendu que les sous-titres vivants d'une session
+  /// HLS, qui s'affichent déjà sur cette page.
+  void showCues(String vtt,
+      {required Stream<Duration> positions, Duration from = Duration.zero}) {
+    stop();
+    _cues = VttCues.parse(vtt);
+    _position = from;
+    _positions = positions.listen((position) {
+      _position = position;
+      _refreshLines();
+    });
+    _refreshLines();
+  }
+
   /// Arrête de suivre et efface ce qui est à l'écran.
   void stop() {
     _generation++;

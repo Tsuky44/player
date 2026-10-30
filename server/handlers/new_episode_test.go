@@ -59,11 +59,37 @@ func TestIsNewEpisodeRelease_SeasonImportedInOneBatch(t *testing.T) {
 	var eps []episodeProgressRow
 	arrived := daysAgo(2)
 	for i := 0; i < 8; i++ {
-		// Aired weekly last spring, all downloaded in one go two days ago.
-		eps = append(eps, episodeArrival(200+i, arrived, dateOf(daysAgo(9+7*(7-i)))))
+		// A whole season dropped on one day and downloaded in one go.
+		eps = append(eps, episodeArrival(200+i, arrived, dateOf(daysAgo(3))))
 	}
 	if isNewEpisodeRelease(eps, &eps[len(eps)-1], newEpisodeNow) {
 		t.Fatal("season that landed as a single batch should not be flagged")
+	}
+}
+
+func TestIsNewEpisodeRelease_BackCatalogueAiredWeeklyImportedInOneBatch(t *testing.T) {
+	var eps []episodeProgressRow
+	arrived := daysAgo(2)
+	for i := 0; i < 8; i++ {
+		// Aired weekly last spring, all downloaded in one go two days ago.
+		eps = append(eps, episodeArrival(210+i, arrived, dateOf(daysAgo(40+7*(7-i)))))
+	}
+	if isNewEpisodeRelease(eps, &eps[len(eps)-1], newEpisodeNow) {
+		t.Fatal("old season imported in one batch should not be flagged")
+	}
+}
+
+func TestIsNewEpisodeRelease_DownloadedTogetherButAiredWeeks(t *testing.T) {
+	// The show was added the day before the latest episode dropped: episodes 1 to
+	// 5 and the new one all landed within a day, but the new one aired a week
+	// after the previous one.
+	arrived := daysAgo(1)
+	var eps []episodeProgressRow
+	for i, d := range []int{29, 22, 15, 8, 1} {
+		eps = append(eps, episodeArrival(230+i, arrived, dateOf(daysAgo(d))))
+	}
+	if !isNewEpisodeRelease(eps, &eps[len(eps)-1], newEpisodeNow) {
+		t.Fatal("episode aired after the previous one should be flagged even if downloaded alongside it")
 	}
 }
 

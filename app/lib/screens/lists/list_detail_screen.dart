@@ -17,6 +17,7 @@ import '../../widgets/global/empty_state.dart';
 import '../../widgets/global/overlay_back_button.dart';
 import '../../widgets/global/poster_card.dart';
 import '../../widgets/global/poster_grid_zoom_region.dart';
+import '../../widgets/global/poster_grid_zoom_slider.dart';
 import '../../widgets/global/progress_pill.dart';
 import '../../widgets/global/watch_list_editor_dialog.dart';
 import '../library/movie_detail_screen.dart';
@@ -188,30 +189,33 @@ class _ListDetailScreenState extends State<ListDetailScreen> {
         ),
       );
     } else {
-      body = SliverPadding(
-        padding: EdgeInsets.fromLTRB(padding, 8, padding, 48),
-        sliver: SliverLayoutBuilder(
-          builder: (context, constraints) => SliverGrid(
-            gridDelegate: AppLayout.posterGridDelegate(
-              context,
-              constraints.crossAxisExtent,
-              compact: AppLayout.isCompact(context),
-            ),
-            delegate: SliverChildBuilderDelegate(
-              (context, index) {
-                final item = items[index];
-                return _ItemCard(
-                  item: item,
-                  removing: _removing,
-                  autofocus: TvMode.isTv && index == 0,
-                  onTap: () => _removing ? _remove(item) : _open(item),
-                );
-              },
-              childCount: items.length,
+      body = SliverMainAxisGroup(slivers: [
+        const SliverPosterGridZoomBar(),
+        SliverPadding(
+          padding: EdgeInsets.fromLTRB(padding, 8, padding, 48),
+          sliver: SliverLayoutBuilder(
+            builder: (context, constraints) => SliverGrid(
+              gridDelegate: AppLayout.posterGridDelegate(
+                context,
+                constraints.crossAxisExtent,
+                compact: AppLayout.isCompact(context),
+              ),
+              delegate: SliverChildBuilderDelegate(
+                (context, index) {
+                  final item = items[index];
+                  return _ItemCard(
+                    item: item,
+                    removing: _removing,
+                    autofocus: TvMode.isTv && index == 0,
+                    onTap: () => _removing ? _remove(item) : _open(item),
+                  );
+                },
+                childCount: items.length,
+              ),
             ),
           ),
         ),
-      );
+      ]);
     }
 
     return Scaffold(

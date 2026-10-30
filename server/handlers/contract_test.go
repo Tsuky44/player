@@ -176,6 +176,7 @@ func TestAPIContract(t *testing.T) {
 		"requests_mine":      myRequests,
 		"requests_feed":      requestFeed,
 		"requests_access":    requestAccess,
+		"request_releases":   filled[releasesResponse](),
 		"mediahub_link_test": linkTest,
 		"mediahub_sso":       filled[mediahub.SSOTicket](),
 	}

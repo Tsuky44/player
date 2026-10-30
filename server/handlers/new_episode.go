@@ -66,6 +66,22 @@ func latestArrivalBefore(episodes []episodeProgressRow, idx int) time.Time {
 	return latest
 }
 
+// latestAirBefore is latestArrivalBefore for TMDB air dates.
+func latestAirBefore(episodes []episodeProgressRow, idx int) (time.Time, bool) {
+	var latest time.Time
+	found := false
+	for i := 0; i < idx && i < len(episodes); i++ {
+		air, ok := parseAirDate(episodes[i].item.ReleaseDate)
+		if !ok {
+			continue
+		}
+		if !found || air.After(latest) {
+			latest, found = air, true
+		}
+	}
+	return latest, found
+}
+
 // isNewEpisodeRelease reports whether the episode the user is about to resume
 // is a freshly released one — the weekly drop they have not watched yet.
 //
@@ -74,9 +90,9 @@ func latestArrivalBefore(episodes []episodeProgressRow, idx int) time.Time {
 //  1. It is the last episode the show has. If the user is several episodes
 //     behind, the one waiting for them is not the new one, and the badge would
 //     say nothing they don't already know.
-//  2. It landed on the server recently, and later than everything before it.
-//     A season imported in a single batch fails this: its episodes all share
-//     one arrival time.
+//  2. It landed on the server recently, and either later than everything
+//     before it or after it on the air calendar. A season imported in a single
+//     batch fails this: its episodes share one arrival time and one air day.
 //  3. Its TMDB air date is close to that arrival. This is what separates a
 //     genuine premiere or weekly episode from an old season added to the
 //     library today — the latter aired years before it arrived.
@@ -109,5 +125,12 @@ func isNewEpisodeRelease(episodes []episodeProgressRow, row *episodeProgressRow,
 		// index with no arrival dates. Only the air date can vouch for it.
 		return hasAir
 	}
-	return arrived.Sub(previous) > newEpisodeBatchGap
+	if arrived.Sub(previous) > newEpisodeBatchGap {
+		return true
+	}
+	// Arrived together with the previous episode, but aired after it: someone who
+	// added the show a day or two before this episode dropped, or whose download
+	// ran late. A season dropped in one go airs on a single day and stays out.
+	prevAir, hasPrevAir := latestAirBefore(episodes, idx)
+	return hasAir && hasPrevAir && air.Sub(prevAir) >= newEpisodeBatchGap
 }

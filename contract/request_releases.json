@@ -1,0 +1,25 @@
+{
+  "manager": "manager-value",
+  "releases": [
+    {
+      "id": "id-value",
+      "guid": "guid-value",
+      "title": "title-value",
+      "size": 1,
+      "indexer": "indexer-value",
+      "indexerId": 2,
+      "publishDate": "publishDate-value",
+      "seeders": 3,
+      "leechers": 4,
+      "age": 5.5,
+      "downloadUrl": "downloadUrl-value",
+      "magnetUrl": "magnetUrl-value",
+      "protocol": "protocol-value",
+      "accepted": true,
+      "rejections": [
+        "rejections-value"
+      ],
+      "customFormatScore": 6
+    }
+  ]
+}

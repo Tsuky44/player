@@ -116,6 +116,32 @@ void main() {
     expect(feed.url, isNull);
   });
 
+  test('un WebVTT complet s\'affiche au rythme des positions du moteur',
+      () async {
+    feed.showCues(
+      'WEBVTT\n\n00:00:01.000 --> 00:00:02.000\nBonjour\n\n',
+      positions: positions.stream,
+    );
+    await at(const Duration(milliseconds: 500));
+    expect(feed.lines.value, isEmpty);
+
+    await at(const Duration(milliseconds: 1500));
+    expect(feed.lines.value, ['Bonjour']);
+
+    feed.stop();
+    expect(feed.lines.value, isEmpty);
+  });
+
+  test('un WebVTT affiché dès la position de reprise, sans attendre un tic',
+      () async {
+    feed.showCues(
+      'WEBVTT\n\n00:00:01.000 --> 00:00:02.000\nBonjour\n\n',
+      positions: positions.stream,
+      from: const Duration(milliseconds: 1500),
+    );
+    expect(feed.lines.value, ['Bonjour']);
+  });
+
   test('completeBlocksEnd coupe après la dernière ligne vide', () {
     List<int> b(String s) => utf8.encode(s);
     expect(completeBlocksEnd(b('WEBVTT')), 0);

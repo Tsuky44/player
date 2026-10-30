@@ -31,15 +31,17 @@ class _PosterGridZoomRegionState extends State<PosterGridZoomRegion> {
   /// qu'un pincement fasse sauter dix colonnes d'un coup.
   static const double _scrollPerStep = 40;
 
-  final PosterGridZoom _zoom = PosterGridZoom.instance;
+  final PosterGridZoom _zoom = PosterGridZoom();
   double _pendingScroll = 0;
   bool _modifierHeld = false;
 
   @override
   void initState() {
     super.initState();
+    // Le curseur de zoom règle aussi les téléphones et les tablettes : l'écart
+    // enregistré se lit partout, la molette n'est écoutée que là où il y en a.
+    PosterGridZoom.load();
     if (!PosterGridZoomRegion.supported) return;
-    _zoom.load();
     HardwareKeyboard.instance.addHandler(_onKey);
   }
 
@@ -48,6 +50,7 @@ class _PosterGridZoomRegionState extends State<PosterGridZoomRegion> {
     if (PosterGridZoomRegion.supported) {
       HardwareKeyboard.instance.removeHandler(_onKey);
     }
+    _zoom.dispose();
     super.dispose();
   }
 
@@ -73,7 +76,9 @@ class _PosterGridZoomRegionState extends State<PosterGridZoomRegion> {
 
   @override
   Widget build(BuildContext context) {
-    if (!PosterGridZoomRegion.supported) return widget.child;
+    if (!PosterGridZoomRegion.supported) {
+      return PosterGridZoomScope(zoom: _zoom, child: widget.child);
+    }
     // Le défilement ne doit pas bouger pendant qu'on zoome : Flutter ne
     // distingue pas Ctrl + molette de la molette seule. Tant qu'on tient Ctrl,
     // la page ignore le pointeur et seul ce Listener (translucent, donc touché

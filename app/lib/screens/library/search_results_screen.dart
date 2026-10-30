@@ -7,6 +7,7 @@ import '../../utils/responsive.dart';
 import '../../widgets/global/empty_state.dart';
 import '../../widgets/global/media_card.dart';
 import '../../widgets/global/poster_grid_zoom_region.dart';
+import '../../widgets/global/poster_grid_zoom_slider.dart';
 import 'movie_detail_screen.dart';
 import 'show_detail_screen.dart';
 import '../../theme/app_icons.dart';
@@ -72,12 +73,22 @@ class SearchResultsScreen extends StatelessWidget {
                     child: Padding(
                       padding: EdgeInsets.fromLTRB(
                           horizontalPadding, 8, horizontalPadding, 0),
-                      child: Text(
-                        tr('{0} résultat{1}',
-                            [results.length, results.length > 1 ? 's' : '']),
-                        style: const TextStyle(
-                            color: AppColors.textMuted,
-                            fontSize: AppType.subhead),
+                      child: Row(
+                        children: [
+                          Expanded(
+                            child: Text(
+                              tr('{0} résultat{1}', [
+                                results.length,
+                                results.length > 1 ? 's' : ''
+                              ]),
+                              style: const TextStyle(
+                                  color: AppColors.textMuted,
+                                  fontSize: AppType.subhead),
+                            ),
+                          ),
+                          PosterGridZoomSlider(
+                              width: AppLayout.isCompact(context) ? 100 : 140),
+                        ],
                       ),
                     ),
                   ),

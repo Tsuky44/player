@@ -8,6 +8,7 @@ import '../web/web_playback.dart';
 import '../display_frame_rate.dart';
 import '../hardware_decoding.dart';
 import '../playback/audio_language_gap.dart';
+import '../playback/audio_track_pairing.dart';
 import '../playback/auto_quality.dart';
 import '../playback/carried_subtitle.dart';
 import '../playback/embedded_subtitle_pairing.dart';
@@ -468,10 +469,12 @@ class PlayerController {
     }
 
     final track = session.currentSubtitleTrack;
-    final subsActive = track != null &&
-        track.id != 'no' &&
-        track.id != 'auto' &&
-        track.id.isNotEmpty;
+    final subsActive = listsEmbeddedSubtitles
+        ? track != null &&
+            track.id != 'no' &&
+            track.id != 'auto' &&
+            track.id.isNotEmpty
+        : _selectedSubtitleLang != null;
 
     if (!subsActive) {
       return PlayerPlaybackPreferences(
@@ -491,7 +494,7 @@ class PlayerController {
           : key == null
               ? null
               : CarriedSubtitle.fromKey(key),
-      internalSubId: _selectedInternalSubId ?? track.id,
+      internalSubId: _selectedInternalSubId ?? track?.id,
       subtitlesOff: false,
     );
   }

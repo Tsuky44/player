@@ -1,8 +1,10 @@
 import 'package:dio/dio.dart';
 import 'package:flutter/foundation.dart';
 import '../models/media_request.dart';
+import '../models/my_request.dart';
 import '../models/request_catalog_filters.dart';
 import '../models/request_progress.dart';
+import '../models/request_release.dart';
 import '../services/api_client.dart';
 import '../l10n/tr.dart';
 
@@ -50,6 +52,7 @@ class MediaRequestsProvider extends ChangeNotifier {
   void reset() {
     _loadGeneration++;
     _ahead.clear();
+    _access = null;
     _items = const [];
     _type = 'all';
     _query = '';
@@ -184,6 +187,29 @@ class MediaRequestsProvider extends ChangeNotifier {
   Future<List<RequestEpisode>> loadSeasonEpisodes(
       int tmdbId, int seasonNumber) {
     return apiClient.getRequestSeasonEpisodes(tmdbId, seasonNumber);
+  }
+
+  /// Les droits du compte chez le compagnon, lus une fois par serveur : les
+  /// panneaux de saison les demandent à chaque ouverture. Un échec ne se
+  /// retient pas (le prochain panneau réessaie) et vaut « rien de plus que
+  /// demander » : une panne ne propose pas ce qu'elle ne peut pas vérifier.
+  Future<RequestAccess> loadAccess() {
+    return _access ??= apiClient.getRequestAccess().catchError((Object _) {
+      _access = null;
+      return RequestAccess.basic;
+    });
+  }
+
+  Future<RequestAccess>? _access;
+
+  /// Les releases d'une saison ou d'un épisode (recherche interactive).
+  Future<List<RequestRelease>> loadReleases(RequestReleaseTarget target) {
+    return apiClient.getRequestReleases(target);
+  }
+
+  /// Envoie [release] au téléchargement.
+  Future<void> grabRelease(RequestReleaseTarget target, RequestRelease release) {
+    return apiClient.grabRequestRelease(target, release);
   }
 
   Future<void> request(RequestMediaItem item, {List<int>? seasons}) async {

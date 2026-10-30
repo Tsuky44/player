@@ -1,9 +1,14 @@
+import 'dart:async';
+
 import '../../utils/external_url.dart';
 
 import 'package:dio/dio.dart';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../../models/media_request.dart';
+import '../../models/models.dart' show MediaType;
+import '../../navigation/play_link.dart';
+import '../../services/api_client.dart';
 import '../../providers/media_requests_provider.dart';
 import '../../theme/app_colors.dart';
 import '../../utils/poster_url.dart';
@@ -40,6 +45,7 @@ class RequestDetailScreen extends StatefulWidget {
 class _RequestDetailScreenState extends State<RequestDetailScreen> {
   late Future<RequestMediaDetails> _details;
   bool _submitting = false;
+  bool _launching = false;
 
   @override
   void initState() {
@@ -88,6 +94,27 @@ class _RequestDetailScreenState extends State<RequestDetailScreen> {
         setState(() => _submitting = false);
       }
     }
+  }
+
+  /// « Lire » : le titre est déjà dans la bibliothèque (en entier ou en
+  /// partie), la fiche de lecture s'ouvre et lance la lecture, comme le lien
+  /// « Lire sur Onyx » de MediaHub (ADR-0091).
+  Future<void> _play(RequestMediaDetails details) async {
+    final api = context.read<ApiClient>();
+    final navigator = Navigator.of(context);
+    final messenger = ScaffoldMessenger.of(context);
+    final type = details.mediaType == RequestMediaType.tv
+        ? MediaType.show
+        : MediaType.movie;
+    setState(() => _launching = true);
+    final route = await PlayLink.routeForTmdb(api, type, details.id);
+    if (!mounted) return;
+    setState(() => _launching = false);
+    if (route == null) {
+      PlayLink.notFound(messenger);
+      return;
+    }
+    unawaited(navigator.push(route));
   }
 
   Future<void> _openTrailer(String key) async {
@@ -464,27 +491,26 @@ class _RequestDetailScreenState extends State<RequestDetailScreen> {
           onPressed: _submitting ? null : () => _request(details),
         );
 
+    // Disponible, même en partie : le bouton lance le média. Le statut se
+    // lit dans le surtitre au-dessus du titre (RequestAvailabilityBadge).
+    Widget playButton() => HeroPill(
+          label: tr('Lire'),
+          icon: AppIcons.play,
+          style: HeroPillStyle.glass,
+          loading: _launching,
+          onPressed: _launching ? null : () => _play(details),
+        );
+
     if (status == RequestMediaStatus.partial) {
       return [
-        HeroPill(
-          label: tr('Partiellement disponible'),
-          icon: AppIcons.pending,
-          iconColor: AppColors.warning,
-          style: HeroPillStyle.status,
-        ),
+        playButton(),
         if (more) moreButton(tr('Compléter')),
       ];
     }
 
     if (status == RequestMediaStatus.available) {
       return [
-        HeroPill(
-          label: tr('Disponible'),
-          icon: AppIcons.check,
-          iconColor: AppColors.success,
-          style: HeroPillStyle.status,
-          beam: true,
-        ),
+        playButton(),
         if (more) moreButton(tr('Demander plus')),
       ];
     }

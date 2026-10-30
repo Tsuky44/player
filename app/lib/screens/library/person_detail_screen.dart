@@ -13,6 +13,7 @@ import '../../widgets/global/app_network_image.dart';
 import '../../widgets/global/media_detail_widgets.dart';
 import '../../widgets/global/overlay_back_button.dart';
 import '../../widgets/global/poster_grid_zoom_region.dart';
+import '../../widgets/global/poster_grid_zoom_slider.dart';
 import '../../theme/app_icons.dart';
 import '../../theme/app_type.dart';
 import '../../l10n/tr.dart';
@@ -130,11 +131,22 @@ class _PersonDetailScreenState extends State<PersonDetailScreen> {
                 SliverToBoxAdapter(
                   child: Padding(
                     padding: AppLayout.pageInsets(context, top: 32, bottom: 16),
-                    child: Text(
-                      tr('Filmographie'),
-                      style: Theme.of(context).textTheme.titleLarge?.copyWith(
-                            fontWeight: FontWeight.w700,
+                    child: Row(
+                      children: [
+                        Expanded(
+                          child: Text(
+                            tr('Filmographie'),
+                            style: Theme.of(context)
+                                .textTheme
+                                .titleLarge
+                                ?.copyWith(
+                                  fontWeight: FontWeight.w700,
+                                ),
                           ),
+                        ),
+                        PosterGridZoomSlider(
+                            width: AppLayout.isCompact(context) ? 100 : 140),
+                      ],
                     ),
                   ),
                 ),

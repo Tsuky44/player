@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:onyx/models/media_request.dart';
+import 'package:onyx/models/my_request.dart';
 import 'package:onyx/providers/media_requests_provider.dart';
 import 'package:onyx/screens/requests/widgets/request_season_list.dart';
 import 'package:onyx/screens/requests/widgets/season_liquid.dart';
@@ -15,6 +16,11 @@ import 'package:shared_preferences/shared_preferences.dart';
 
 class _Api extends ApiClient {
   final List<int> calls = [];
+
+  // Le panneau d'une saison lit les droits du compte (ADR-0098) : sans cette
+  // doublure, il appellerait un vrai serveur.
+  @override
+  Future<RequestAccess> getRequestAccess() async => RequestAccess.basic;
 
   @override
   Future<List<RequestEpisode>> getRequestSeasonEpisodes(

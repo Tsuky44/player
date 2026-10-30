@@ -163,6 +163,12 @@ extension PlayerControllerTracks on PlayerController {
     });
   }
 
+  /// Si les sous-titres proposés sont ceux que le moteur lit dans le fichier.
+  /// Un `<video>` de navigateur — celui d'un téléviseur LG compris — n'en voit
+  /// aucun : la liste est alors celle du serveur, Direct Play ou non.
+  bool get listsEmbeddedSubtitles =>
+      currentQuality == null && _readsEmbeddedSubtitles;
+
   void _notifyTracksChanged() {
     _onTracksChanged?.call();
     if (!_tracksStreamController.isClosed) {
@@ -248,7 +254,7 @@ extension PlayerControllerTracks on PlayerController {
     if (applyIfSelected &&
         !_subtitlesExplicitlyOff &&
         _selectedSubtitleLang != null &&
-        currentQuality != null &&
+        !listsEmbeddedSubtitles &&
         _isSubtitleReady(_selectedSubtitleLang!)) {
       final signature = _subtitleSignature(_selectedSubtitleLang!);
       if (signature != _attachedSubtitleSignature) {
@@ -441,7 +447,7 @@ extension PlayerControllerTracks on PlayerController {
       return;
     }
 
-    if (currentQuality == null) {
+    if (listsEmbeddedSubtitles) {
       final tracks = session.subtitleTracks;
       for (final track in tracks) {
         if (track.id == 'no' || track.id == 'auto') continue;
@@ -499,7 +505,7 @@ extension PlayerControllerTracks on PlayerController {
       return;
     }
 
-    if (currentQuality != null && !_isSubtitleReady(lang)) {
+    if (!listsEmbeddedSubtitles && !_isSubtitleReady(lang)) {
       _ensureSubtitlesExtracted();
       _startSubtitleWatch();
       return;
@@ -546,9 +552,15 @@ extension PlayerControllerTracks on PlayerController {
     if (real.isEmpty) return;
     final pos = _playerAudioPosition(_selectedAudioIndex);
     if (pos == null) return; // not published by this session
-    final i = pos.clamp(0, real.length - 1);
+    // En Direct Play le rang du serveur n'est pas toujours celui du moteur :
+    // la langue départage (voir [engineAudioTrackFor]).
+    final track = currentQuality == null
+        ? engineAudioTrackFor(
+            _selectedAudioIndex, mediaTracks?.audio ?? const [], real)
+        : real[pos.clamp(0, real.length - 1)];
+    if (track == null) return;
     try {
-      session.setAudioTrack(real[i]);
+      session.setAudioTrack(track);
     } catch (_) {
       // Piste refusée par le moteur : la lecture garde celle qu'elle a.
     }
@@ -648,6 +660,11 @@ extension PlayerControllerTracks on PlayerController {
       debugPrint(
           "SUB: #$reqId lang=$lang fetched ${vtt.length} chars, $cueCount cues");
       try {
+        if (AppPlatform.isWebOS) {
+          liveSubtitles.showCues(vtt,
+              positions: session.positions, from: session.position);
+          return;
+        }
         if (AppPlatform.isWeb) {
           // Never media_kit's setSubtitleTrack here: it installs an oncuechange
           // handler that throws on every cue and prints a stack trace with it,

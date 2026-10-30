@@ -282,7 +282,7 @@ class _OnyxSettingsMenuState extends State<OnyxSettingsMenu> {
     final controller = _controller;
     if (controller == null) return '—';
 
-    if (controller.currentQuality == null) {
+    if (controller.listsEmbeddedSubtitles) {
       final current = widget.session.currentSubtitleTrack;
       if (current == null || current.id == 'no') return tr('Désactivés');
       return current.title ?? current.language ?? tr('Piste 1');
@@ -594,7 +594,7 @@ class _OnyxSettingsMenuState extends State<OnyxSettingsMenu> {
 
     // Direct Play reads the tracks off the file; a transcode carries the
     // canonical list from the server. Same split as [PlayerSubtitlesPicker].
-    if (controller.currentQuality == null) {
+    if (controller.listsEmbeddedSubtitles) {
       final subs =
           widget.session.subtitleTracks.where((t) => t.id != 'auto').toList();
       if (subs.isEmpty) return const _OnyxMenuEmpty();

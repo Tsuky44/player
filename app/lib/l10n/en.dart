@@ -1424,6 +1424,8 @@ const Map<String, String> kEnglish = <String, String>{
       'Link to {0} on {1}?',
   'Liez vos comptes, même avec des noms différents : les serveurs se transmettent votre progression, vos serveurs vous suivent sur tous vos appareils, et la lecture reprend sur un serveur disponible.':
       'Link your accounts, even with different names: the servers send each other your progress, your servers follow you on all your devices, and playback resumes on an available server.',
+  'Lire':
+      'Play',
   'Lire le synopsis complet':
       'Read the full synopsis',
   'Lié · {0}':
@@ -2356,6 +2358,10 @@ const Map<String, String> kEnglish = <String, String>{
       'Transfer ownership',
   'Transférer la propriété à {0} ?':
       'Transfer ownership to {0}?',
+  'Affiches par ligne':
+      'Posters per row',
+  '{0} par ligne':
+      '{0} per row',
   'Trier':
       'Sort',
   'Trier par':
@@ -3208,4 +3214,40 @@ const Map<String, String> kEnglish = <String, String>{
       'Import failed',
   'Copie de {0}':
       'Copying {0}',
+  'Recherche interactive':
+      'Interactive search',
+  'Saison {0} · Épisode {1}':
+      'Season {0} · Episode {1}',
+  'Impossible de charger les releases.':
+      'Couldn’t load the releases.',
+  'Impossible d’envoyer la release.':
+      'Couldn’t send the release.',
+  'Release envoyée au téléchargement.':
+      'Release sent to download.',
+  'Release envoyée':
+      'Release sent',
+  'Télécharger cette release':
+      'Download this release',
+  'Ce serveur ne propose pas la recherche interactive.':
+      'This server doesn’t offer interactive search.',
+  'Filtrer : 1080p, MULTI, remux…':
+      'Filter: 1080p, MULTI, remux…',
+  'Recommandées':
+      'Recommended',
+  'Seeders':
+      'Seeders',
+  'Taille':
+      'Size',
+  'Récentes':
+      'Newest',
+  'Aucune release trouvée.':
+      'No releases found.',
+  'Aucune release ne correspond au filtre.':
+      'No release matches the filter.',
+  '{0} j':
+      '{0} d',
+  '{0} mois':
+      '{0} mo',
+  '{0} ans':
+      '{0} y',
 };

@@ -379,6 +379,11 @@ func main() {
 	// l'inscription ne suffit pas à modérer.
 	router.GET("/api/requests/all", handlers.RequirePermission(models.PermManageSettings, handlers.MediaHubAllRequests))
 	router.POST("/api/requests/moderation", handlers.RequirePermission(models.PermManageSettings, handlers.MediaHubModerateRequests))
+	// La recherche interactive (ADR-0098) : choisir soi-même la release d'une
+	// saison ou d'un épisode. Même garde que la modération, parce qu'elle
+	// déclenche un téléchargement.
+	router.GET("/api/requests/releases", handlers.RequirePermission(models.PermManageSettings, handlers.MediaHubReleases))
+	router.POST("/api/requests/releases/grab", handlers.RequirePermission(models.PermManageSettings, handlers.MediaHubGrabRelease))
 	// Les demandes de tous les comptes, pour la notification « Nouvelle
 	// demande » (ADR-0077) : réservé à qui administre les réglages, comme
 	// OnyxHub, qui fait de manage_settings son administrateur.

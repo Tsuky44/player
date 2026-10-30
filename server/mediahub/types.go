@@ -81,6 +81,9 @@ type Abilities struct {
 	ReadAllRequests bool `json:"readAllRequests"`
 	Moderate        bool `json:"moderate"`
 	Delete          bool `json:"delete"`
+	// InteractiveSearch : choisir soi-même la release d'une saison ou d'un
+	// épisode (ADR-0098). Absent chez un MediaHub d'avant la route.
+	InteractiveSearch bool `json:"interactiveSearch"`
 }
 
 // PingUser est le compte MediaHub retrouvé par X-Player-Username.

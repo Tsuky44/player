@@ -5,6 +5,7 @@ import (
 	"net/http"
 
 	"project-player/server/mediahub"
+	"project-player/server/models"
 
 	"github.com/julienschmidt/httprouter"
 )
@@ -26,6 +27,12 @@ func MediaHubRequestAccess(w http.ResponseWriter, r *http.Request, _ httprouter.
 	if err != nil {
 		writeMediaHubFailure(w, "MediaHubRequestAccess", err)
 		return
+	}
+	// La recherche interactive déclenche un téléchargement : Onyx la réserve à
+	// manage_settings (main.go), l'app ne la propose donc qu'à qui l'a (ADR-0098).
+	if access.Can.InteractiveSearch {
+		user, err := LoadUser(userID)
+		access.Can.InteractiveSearch = err == nil && user.Permissions.Has(models.PermManageSettings)
 	}
 	w.Header().Set("Content-Type", "application/json")
 	_ = json.NewEncoder(w).Encode(access)
