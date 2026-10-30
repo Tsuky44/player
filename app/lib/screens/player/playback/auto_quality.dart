@@ -493,6 +493,18 @@ class AutoLadder {
         below: sending > 0 ? sending : 1 << 62);
   }
 
+  /// Le barreau juste en dessous de ce qui est lu, ou null au bas de
+  /// l'échelle. Une descente sur une seule mesure ne va pas plus loin.
+  AutoTarget? oneRungDown() {
+    final sending = _sending;
+    final lower = _rungs
+        .where((t) =>
+            t.key != currentKey &&
+            _demand(t) < (sending > 0 ? sending : 1 << 62))
+        .toList();
+    return lower.isEmpty ? null : AutoTarget.tier(lower.first);
+  }
+
   /// Si une ligne qui porte [capacityBps] tient ce qui est lu, marge
   /// comprise : ce n'est alors pas elle qui a vidé le tampon.
   bool carries(int capacityBps) {
