@@ -16,7 +16,9 @@ final class AetherPlayer {
   let engine: AetherEngine
 
   /// Appliqué à la prochaine ouverture. Changer d'audio après coup reconstruit
-  /// la session, ce qui se voit (image noire) et s'entend.
+  /// la session HLS locale (le moteur n'y sert qu'une rendition audio, pas de
+  /// groupe `AVMediaSelection` à basculer) : image tenue mais ~1 s d'attente
+  /// et un son qui repart. Voir ADR-0092.
   var preferredAudioLanguages: [String] = []
 
   private let onStatus: (OnyxApplePlayerStatus) -> Void
@@ -86,7 +88,15 @@ final class AetherPlayer {
     // plus, un remux 4K à 52 Mb/s se mettait en tampon toutes les 20 s. mpv,
     // en TCP sur une seule connexion, le lisait sans à-coup. Le HLS de
     // transcodage garde le transport par défaut : ce sont de petits segments.
-    options.heldSourceConnection = source.pathExtension.lowercased() != "m3u8"
+    let isRawFile = source.pathExtension.lowercased() != "m3u8"
+    options.heldSourceConnection = isRawFile
+    // Le premier segment d'un remux 4K pèse ~15 Mo : mesuré 1,1 s d'attente
+    // avant son premier octet (journal macOS 1.1.26, `seg575 wait=1102.8ms`),
+    // parce que la boucle locale ne répond qu'une fois le segment coupé. En
+    // progressif, elle envoie chaque fragment (~0,5 s) dès qu'il est écrit.
+    // Le HLS de transcodage du serveur n'est pas concerné : AVPlayer parle
+    // directement au serveur. Voir ADR-0092.
+    options.progressiveSegmentDelivery = isRawFile
     let loadOptions = options
     let start: Double? = startMs > 0 ? Double(startMs) / 1000 : nil
     loadTask = Task { [weak self] in
