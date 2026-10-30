@@ -155,7 +155,9 @@ class AutoQualityPilot {
       debugPrint('Auto: ligne mesurée à ${(line / 1e6).toStringAsFixed(1)} '
           'Mbit/s — passage de ${ladder.currentKey ?? 'direct'} à $target '
           '(coupure, sans attendre)');
-      if (await _move(target, urgent: true)) _noteMoved(up: false);
+      final moved = await _switch(target, ladder,
+          urgent: true, why: 'tampon vide, sans attendre', lineBps: line);
+      if (moved) _noteMoved(up: false);
     }, quietOnFailure: false);
   }
 
@@ -207,13 +209,48 @@ class AutoQualityPilot {
         _rules.noteDisturbance(_now());
         return;
       }
-      final moved = await _move(target, urgent: urgent);
+      final moved = await _switch(target, ladder,
+          urgent: urgent,
+          why: sounding.encoderBehind
+              ? 'encodeur du serveur trop lent'
+              : urgent
+                  ? 'coupure'
+                  : 'pente du tampon',
+          lineBps: sounding.lineBps);
       if (moved) {
         _noteMoved(up: false);
       } else {
         _rules.noteDisturbance(_now());
       }
     });
+  }
+
+  /// Exécute une bascule de l'Auto en écrivant son motif.
+  ///
+  /// « Pourquoi la qualité a changé » est la première question devant un journal
+  /// de lecture, et les lignes de décision éparses ne la tranchaient pas : elles
+  /// disent la mesure, pas le palier retenu ni le seuil, et pas si la bascule a
+  /// abouti. Cette ligne les réunit : ligne mesurée, exigence du palier choisi,
+  /// seuil (la ligne moins la marge de [AutoQuality.headroom]) et issue.
+  Future<bool> _switch(
+    AutoTarget target,
+    AutoLadder ladder, {
+    required bool urgent,
+    required String why,
+    required int? lineBps,
+  }) async {
+    String mbit(num bps) => (bps / 1e6).toStringAsFixed(1);
+    final from = ladder.currentKey ?? 'direct';
+    final demand = ladder.demandOf(target);
+    final line = lineBps == null || lineBps <= 0
+        ? 'ligne non mesurée'
+        : 'ligne mesurée ${mbit(lineBps)} Mbit/s, '
+            'seuil ${mbit(lineBps * AutoQuality.headroom)} Mbit/s';
+    final moved = await _move(target, urgent: urgent);
+    debugPrint('Auto: bascule $from → $target ($why) · $line · '
+        '$target demande ${demand > 0 ? '${mbit(demand)} Mbit/s' : '? Mbit/s'}'
+        ' · ${moved ? 'effectuée' : 'non effectuée'}');
+    return moved;
   }
 
   /// Un changement de source vient d'aboutir. [carried] : la mesure qui l'a
@@ -237,7 +274,11 @@ class AutoQualityPilot {
     debugPrint('Auto: le serveur n’encode pas '
         '${ladder.currentKey} assez vite, et la ligne porte '
         '${(capacity / 1e6).toStringAsFixed(1)} Mbit/s — retour au fichier');
-    if (!await _move(const AutoTarget.direct(), urgent: true)) return false;
+    final moved = await _switch(const AutoTarget.direct(), ladder,
+        urgent: true,
+        why: 'encodeur du serveur trop lent',
+        lineBps: capacity);
+    if (!moved) return false;
     _noteMoved(up: true, carried: true);
     return true;
   }
@@ -342,7 +383,8 @@ class AutoQualityPilot {
       debugPrint('Auto: ligne mesurée à '
           '${(capacity! / 1e6).toStringAsFixed(1)} Mbit/s — '
           'remontée à $target');
-      final moved = await _move(target, urgent: false);
+      final moved = await _switch(target, ladder,
+          urgent: false, why: 'remontée', lineBps: capacity);
       if (moved) {
         // Une fois et demie ce que la nouvelle source demande : la ligne est
         // déjà disculpée pour elle.

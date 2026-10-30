@@ -22,9 +22,12 @@ import (
 // téléviseur. Rattachées à leur ligne d'historique, ces lignes se relisent
 // depuis n'importe quel appareil, par qui administre le serveur.
 //
-// Ce qui monte est la tranche d'une lecture, envoyée une fois, à la fin —
-// pas un flux continu. Le serveur n'est pas un collecteur de journaux : il
-// garde ce qui documente une séance, borné, et l'efface avec elle.
+// Ce qui monte est la tranche d'une lecture, renvoyée en entier à intervalle
+// régulier pendant la séance puis une dernière fois à la fin — pas un flux
+// continu. Un envoi remplace le précédent, donc une app tuée en pleine lecture
+// laisse au moins le journal du dernier envoi. Le serveur n'est pas un
+// collecteur de journaux : il garde ce qui documente une séance, borné, et
+// l'efface avec elle.
 
 const (
 	// Au-delà, les lignes les plus anciennes de la tranche sont écartées. Un
@@ -46,9 +49,11 @@ const (
 	// Combien de lectures gardent leur journal, au total.
 	//
 	// Sans ce plafond, rien ne bornerait la table : un journal disparaît avec sa
-	// ligne d'historique, et l'historique ne s'efface qu'à la main. Dix séances
-	// couvrent largement « la panne d'hier » — ce pour quoi tout ceci existe.
-	playbackLogMaxRows = 10
+		// ligne d'historique, et l'historique ne s'efface qu'à la main. Dix séances
+		// ne couvraient pas un week-end : des lectures « sans journal » étaient des
+		// journaux déjà purgés. Cinquante, de 128 Ko au plus chacune (6,4 Mo en tout),
+		// couvrent la semaine sans que la base s'en ressente.
+		playbackLogMaxRows = 50
 )
 
 // PlaybackLogLine is one line of a client's log.
@@ -92,6 +97,9 @@ func AttachPlaybackLogs(w http.ResponseWriter, r *http.Request, _ httprouter.Par
 	var body struct {
 		Lines []PlaybackLogLine `json:"lines"`
 		Stats json.RawMessage   `json:"stats"`
+		// HistoryID est la lecture que le client croit alimenter, apprise d'un
+		// envoi précédent. Ne sert que si la séance n'est plus ouverte.
+		HistoryID int64 `json:"history_id"`
 	}
 	if err := json.NewDecoder(http.MaxBytesReader(w, r.Body, playbackLogMaxBytes*2)).Decode(&body); err != nil {
 		writeJSONError(w, http.StatusBadRequest, "Invalid log payload")
@@ -100,9 +108,14 @@ func AttachPlaybackLogs(w http.ResponseWriter, r *http.Request, _ httprouter.Par
 
 	historyID, ok := playbackActivity.historyIDFor(sessionKey(bearerToken(r)), userID)
 	if !ok {
-		// Pas de lecture ouverte pour cette session : il n'y a rien à quoi
-		// rattacher ces lignes. Ce n'est pas une erreur du client — une séance
-		// a pu être fermée par le balayage pendant qu'il envoyait.
+		// La séance n'est plus ouverte : fermée par le balayage pendant une
+		// pause longue, ou envoi rejoué au lancement suivant après une app tuée.
+		// Le client redonne alors la ligne qu'il alimentait ; elle n'est crue que
+		// si elle est à ce compte, car l'identifiant vient du client.
+		historyID, ok = ownedHistoryRow(body.HistoryID, userID)
+	}
+	if !ok {
+		// Rien à quoi rattacher ces lignes. Ce n'est pas une erreur du client.
 		w.WriteHeader(http.StatusNoContent)
 		return
 	}
@@ -146,7 +159,22 @@ func AttachPlaybackLogs(w http.ResponseWriter, r *http.Request, _ httprouter.Par
 		return
 	}
 	pruneOldPlaybackLogs()
-	w.WriteHeader(http.StatusNoContent)
+	// Le client garde cet identifiant pour rattacher un envoi ultérieur à la même
+	// lecture, même si sa séance a été fermée entre-temps.
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(map[string]int64{"history_id": historyID})
+}
+
+// ownedHistoryRow says whether this history row exists and belongs to userID.
+func ownedHistoryRow(historyID int64, userID int) (int64, bool) {
+	if historyID <= 0 {
+		return 0, false
+	}
+	var found int
+	err := database.DB.QueryRow(
+		`SELECT 1 FROM playback_history WHERE id = ? AND user_id = ?`, historyID, userID,
+	).Scan(&found)
+	return historyID, err == nil
 }
 
 // pruneOldPlaybackLogs keeps the table to the newest [playbackLogMaxRows] plays.

@@ -180,7 +180,7 @@ class PlayerController {
     // failed to start falls back silently, and the setting tells you nothing
     // about whether a frame ever reached the GPU that way.
     debugPrint('Playback: ${params.width}x${params.height} '
-        '${info.videoCodec} @ ${fps.toStringAsFixed(3)}fps '
+        '${info.videoCodec ?? '?'} @ ${fps > 0 ? '${fps.toStringAsFixed(3)}fps' : 'fps inconnu'} '
         '· hwdec=${info.hardwareDecoder} '
         '(asked ${HardwareDecoding.describe()}) · '
         'buffers=${PlaybackProfiles.current.label}'
@@ -190,8 +190,8 @@ class PlayerController {
     // unanswerable: this line says whether the device received six channels and
     // folded them itself — the case the dialogue-forward mix levels apply to —
     // or was handed a stereo pair the server had already folded for it.
-    debugPrint('Audio: ${info.sourceChannels}ch source → '
-        '${info.outputChannels}ch out · ${info.audioCodec}');
+    debugPrint('Audio: ${info.sourceChannels ?? '?'}ch source → '
+        '${info.outputChannels ?? '?'}ch out · ${info.audioCodec ?? '?'}');
 
     // The engine's own chance to correct what it just observed of itself.
     await session.onPictureLive();

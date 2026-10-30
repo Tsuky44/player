@@ -413,10 +413,31 @@ class ExoPlaybackSession implements PlaybackSession {
     );
   }
 
+  /// Le dernier relevé d'images rendues, pour en déduire la cadence réelle.
+  int? _lastRendered;
+  DateTime? _lastRenderedAt;
+
+  /// Les images rendues entre deux relevés, rapportées au temps écoulé.
+  ///
+  /// ExoPlayer n'a pas d'`estimated-vf-fps` : sans ceci la cadence mesurée
+  /// manquait sur Android TV, et la sonde ne pouvait pas dire si l'image
+  /// tenait ses 23,976. Null au premier relevé et quand la lecture est en
+  /// pause (aucune image rendue ne veut pas dire cadence nulle).
+  double? _renderedFps(int rendered, bool playing) {
+    final now = DateTime.now();
+    final previous = _lastRendered;
+    final previousAt = _lastRenderedAt;
+    _lastRendered = rendered;
+    _lastRenderedAt = now;
+    if (previous == null || previousAt == null || !playing) return null;
+    final seconds = now.difference(previousAt).inMilliseconds / 1000;
+    if (seconds < 0.5 || rendered <= previous) return null;
+    return (rendered - previous) / seconds;
+  }
+
   @override
   Future<PlaybackDiagnostics> readDiagnostics() async {
     final stats = await (await _ready).stats();
-    final status = _status;
     return PlaybackDiagnostics(
       // Le nom que MediaCodec a donné au décodeur retenu, et non plus
       // « mediacodec » en dur : ExoPlayer ne se rabat pas en silence comme mpv,
@@ -429,7 +450,13 @@ class ExoPlaybackSession implements PlaybackSession {
       videoBitrate: stats.videoBitrate?.toDouble(),
       audioBitrate: stats.audioBitrate?.toDouble(),
       bytesLoaded: stats.bytesLoaded,
-      audioCodec: status?.selectedAudioTrackId,
+      videoCodec: stats.videoCodec,
+      // Le type MIME du flux, et non l'identifiant de piste « 1:0 » qui
+      // remontait ici et ne disait rien du codec.
+      audioCodec: stats.audioCodec,
+      sourceChannels: stats.audioSourceChannels?.toString(),
+      outputChannels: stats.audioOutputChannels?.toString(),
+      estimatedFps: _renderedFps(stats.renderedFrames, _lastPlaying),
     );
   }
 

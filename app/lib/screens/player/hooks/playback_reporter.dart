@@ -6,6 +6,7 @@ import '../../../models/server_activity.dart';
 import '../../../services/api_client.dart';
 import '../../../services/client_log.dart';
 import '../../../services/download_manager.dart';
+import '../../../services/pending_playback_logs.dart';
 import '../../../services/playback_access.dart';
 import '../../../utils/watched_verdict.dart';
 import '../playback/playback_stats.dart';
@@ -45,6 +46,19 @@ class PlaybackReporter {
 
   Timer? _heartbeat;
 
+  /// Les envois de journal pendant la séance : un premier au deuxième battement
+  /// (de quoi connaître la ligne d'historique), puis toutes les trente secondes.
+  /// Avant, le journal ne partait qu'à l'arrêt : une app tuée ou une coupure
+  /// réseau juste avant la fermeture laissait la lecture sans aucun journal.
+  static const firstFlushBeat = 2;
+  static const flushEveryBeats = 6;
+
+  /// La ligne d'historique que le serveur a nommée au premier envoi réussi.
+  /// Renvoyée ensuite pour rester rattaché à la même lecture si la séance est
+  /// fermée entre-temps, et clé du rejeu sur disque.
+  int? _historyId;
+  bool _wasPlaying = false;
+
   /// Le signal d'arrêt part une seule fois, quel que soit le chemin qui y
   /// mène en premier : fin, abandon ou fermeture de l'écran.
   bool _stopped = false;
@@ -66,7 +80,10 @@ class PlaybackReporter {
   /// ces journaux-là qu'on vient chercher.
   void open({required int mediaId, required ApiClient apiClient}) {
     _stopped = false;
+    _historyId = null;
     _report(mediaId: mediaId, apiClient: apiClient, event: 'start');
+    // Les journaux d'une lecture précédente que le serveur n'avait pas reçus.
+    unawaited(PendingPlaybackLogs.replay(apiClient));
   }
 
   /// La progression de ce média appartient à un autre appareil : celui à qui
@@ -109,7 +126,16 @@ class PlaybackReporter {
       if (++beat % activityEveryBeats == 0) {
         _report(mediaId: mediaId, apiClient: apiClient);
       }
-      if (moment().playing && !_yielded) {
+      // Une pause est le moment où l'on quitte volontiers l'app : le journal
+      // part à ce moment-là plutôt que d'attendre le prochain palier.
+      final playing = moment().playing;
+      if (beat == firstFlushBeat ||
+          beat % flushEveryBeats == 0 ||
+          (_wasPlaying && !playing)) {
+        flushLogs(apiClient);
+      }
+      _wasPlaying = playing;
+      if (playing && !_yielded) {
         _sendProgress(
             mediaId: mediaId, apiClient: apiClient, isFinished: false);
       }
@@ -227,14 +253,21 @@ class PlaybackReporter {
     final summary = last ? await stats.finish() : stats.summary;
     final lines = ClientLog.since(_logMark);
     if (lines.isEmpty && summary.isEmpty) return;
+    final statsJson = summary.isEmpty ? null : summary.toJson();
     try {
-      await apiClient.uploadPlaybackLogs(
+      final id = await apiClient.uploadPlaybackLogs(
         lines,
-        stats: summary.isEmpty ? null : summary.toJson(),
+        stats: statsJson,
+        historyId: _historyId,
       );
+      _historyId = id ?? _historyId;
+      if (_historyId != null) await PendingPlaybackLogs.discard(_historyId!);
     } catch (_) {
       // Un serveur plus ancien n'a pas cette route, et une lecture ne dépend
-      // pas de son journal.
+      // pas de son journal. Mais un échec réseau ne doit pas le perdre : la
+      // tranche est gardée sur disque et rejouée au prochain lancement.
+      final id = _historyId;
+      if (id != null) await PendingPlaybackLogs.save(id, lines, statsJson);
     }
   }
 

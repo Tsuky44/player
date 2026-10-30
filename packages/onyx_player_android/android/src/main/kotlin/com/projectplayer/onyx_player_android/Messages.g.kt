@@ -565,7 +565,21 @@ data class OnyxPlaybackStats (
   val videoBitrate: Long? = null,
   val audioBitrate: Long? = null,
   /** La cadence déclarée par le format vidéo. */
-  val containerFps: Double? = null
+  val containerFps: Double? = null,
+  /**
+   * Les types MIME des flux, `video/hevc` et `audio/eac3`.
+   *
+   * Lus dans le format que MediaCodec reçoit : sans eux la sonde de la lecture
+   * rapportait « null » pour le codec, faute d'équivalent du `video-codec` de mpv.
+   */
+  val videoCodec: String? = null,
+  val audioCodec: String? = null,
+  /**
+   * Les canaux du flux source, puis ceux que la piste audio d'Android a
+   * réellement ouverts en sortie. L'écart dit si l'appareil a replié le flux.
+   */
+  val audioSourceChannels: Long? = null,
+  val audioOutputChannels: Long? = null
 )
  {
   companion object {
@@ -578,7 +592,11 @@ data class OnyxPlaybackStats (
       val videoBitrate = pigeonVar_list[5] as Long?
       val audioBitrate = pigeonVar_list[6] as Long?
       val containerFps = pigeonVar_list[7] as Double?
-      return OnyxPlaybackStats(droppedFrames, renderedFrames, bytesLoaded, videoDecoder, audioDecoder, videoBitrate, audioBitrate, containerFps)
+      val videoCodec = pigeonVar_list[8] as String?
+      val audioCodec = pigeonVar_list[9] as String?
+      val audioSourceChannels = pigeonVar_list[10] as Long?
+      val audioOutputChannels = pigeonVar_list[11] as Long?
+      return OnyxPlaybackStats(droppedFrames, renderedFrames, bytesLoaded, videoDecoder, audioDecoder, videoBitrate, audioBitrate, containerFps, videoCodec, audioCodec, audioSourceChannels, audioOutputChannels)
     }
   }
   fun toList(): List<Any?> {
@@ -591,6 +609,10 @@ data class OnyxPlaybackStats (
       videoBitrate,
       audioBitrate,
       containerFps,
+      videoCodec,
+      audioCodec,
+      audioSourceChannels,
+      audioOutputChannels,
     )
   }
   override fun equals(other: Any?): Boolean {
@@ -601,7 +623,7 @@ data class OnyxPlaybackStats (
       return true
     }
     val other = other as OnyxPlaybackStats
-    return MessagesPigeonUtils.deepEquals(this.droppedFrames, other.droppedFrames) && MessagesPigeonUtils.deepEquals(this.renderedFrames, other.renderedFrames) && MessagesPigeonUtils.deepEquals(this.bytesLoaded, other.bytesLoaded) && MessagesPigeonUtils.deepEquals(this.videoDecoder, other.videoDecoder) && MessagesPigeonUtils.deepEquals(this.audioDecoder, other.audioDecoder) && MessagesPigeonUtils.deepEquals(this.videoBitrate, other.videoBitrate) && MessagesPigeonUtils.deepEquals(this.audioBitrate, other.audioBitrate) && MessagesPigeonUtils.deepEquals(this.containerFps, other.containerFps)
+    return MessagesPigeonUtils.deepEquals(this.droppedFrames, other.droppedFrames) && MessagesPigeonUtils.deepEquals(this.renderedFrames, other.renderedFrames) && MessagesPigeonUtils.deepEquals(this.bytesLoaded, other.bytesLoaded) && MessagesPigeonUtils.deepEquals(this.videoDecoder, other.videoDecoder) && MessagesPigeonUtils.deepEquals(this.audioDecoder, other.audioDecoder) && MessagesPigeonUtils.deepEquals(this.videoBitrate, other.videoBitrate) && MessagesPigeonUtils.deepEquals(this.audioBitrate, other.audioBitrate) && MessagesPigeonUtils.deepEquals(this.containerFps, other.containerFps) && MessagesPigeonUtils.deepEquals(this.videoCodec, other.videoCodec) && MessagesPigeonUtils.deepEquals(this.audioCodec, other.audioCodec) && MessagesPigeonUtils.deepEquals(this.audioSourceChannels, other.audioSourceChannels) && MessagesPigeonUtils.deepEquals(this.audioOutputChannels, other.audioOutputChannels)
   }
 
   override fun hashCode(): Int {
@@ -614,10 +636,14 @@ data class OnyxPlaybackStats (
     result = 31 * result + MessagesPigeonUtils.deepHash(this.videoBitrate)
     result = 31 * result + MessagesPigeonUtils.deepHash(this.audioBitrate)
     result = 31 * result + MessagesPigeonUtils.deepHash(this.containerFps)
+    result = 31 * result + MessagesPigeonUtils.deepHash(this.videoCodec)
+    result = 31 * result + MessagesPigeonUtils.deepHash(this.audioCodec)
+    result = 31 * result + MessagesPigeonUtils.deepHash(this.audioSourceChannels)
+    result = 31 * result + MessagesPigeonUtils.deepHash(this.audioOutputChannels)
     return result
   }
   override fun toString(): String {
-    return "OnyxPlaybackStats(droppedFrames=$droppedFrames, renderedFrames=$renderedFrames, bytesLoaded=$bytesLoaded, videoDecoder=$videoDecoder, audioDecoder=$audioDecoder, videoBitrate=$videoBitrate, audioBitrate=$audioBitrate, containerFps=$containerFps)"
+    return "OnyxPlaybackStats(droppedFrames=$droppedFrames, renderedFrames=$renderedFrames, bytesLoaded=$bytesLoaded, videoDecoder=$videoDecoder, audioDecoder=$audioDecoder, videoBitrate=$videoBitrate, audioBitrate=$audioBitrate, containerFps=$containerFps, videoCodec=$videoCodec, audioCodec=$audioCodec, audioSourceChannels=$audioSourceChannels, audioOutputChannels=$audioOutputChannels)"
   }
 }
 

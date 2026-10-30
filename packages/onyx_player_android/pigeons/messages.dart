@@ -218,6 +218,18 @@ class OnyxPlaybackStats {
 
   /// La cadence déclarée par le format vidéo.
   final double? containerFps;
+
+  /// Les types MIME des flux, `video/hevc` et `audio/eac3`.
+  ///
+  /// Lus dans le format que MediaCodec reçoit : sans eux la sonde de la lecture
+  /// rapportait « null » pour le codec, faute d'équivalent du `video-codec` de mpv.
+  final String? videoCodec;
+  final String? audioCodec;
+
+  /// Les canaux du flux source, puis ceux que la piste audio d'Android a
+  /// réellement ouverts en sortie. L'écart dit si l'appareil a replié le flux.
+  final int? audioSourceChannels;
+  final int? audioOutputChannels;
 }
 
 /// Ce que l'appareil sait décoder et restituer.

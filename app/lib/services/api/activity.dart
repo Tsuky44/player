@@ -111,12 +111,19 @@ mixin _ActivityEndpoints {
   /// vit derrière `manage_settings`, qu'un compte ordinaire n'a pas, donc ce
   /// client ne peut pas le connaître. C'est le serveur qui écarte la tranche,
   /// par un 204 — la seule place où la réponse est sûre.
-  Future<void> uploadPlaybackLogs(
+  ///
+  /// Rend la ligne d'historique qui a reçu la tranche, ou null quand le serveur
+  /// ne l'a pas rangée (conservation coupée, séance inconnue). Le client la
+  /// renvoie en [historyId] aux envois suivants : c'est ce qui les rattache à
+  /// la bonne lecture quand la séance est déjà fermée.
+  Future<int?> uploadPlaybackLogs(
     List<LogEntry> lines, {
     Map<String, dynamic>? stats,
+    int? historyId,
   }) async {
-    if (lines.isEmpty && stats == null) return;
-    await _dio.post('/api/playing/logs', data: {
+    if (lines.isEmpty && stats == null) return null;
+    final response = await _dio.post('/api/playing/logs', data: {
+      if (historyId != null) 'history_id': historyId,
       'lines': [
         for (final line in lines)
           {
@@ -127,6 +134,10 @@ mixin _ActivityEndpoints {
       ],
       if (stats != null) 'stats': stats,
     });
+    final data = response.data;
+    return data is Map && data['history_id'] is int
+        ? data['history_id'] as int
+        : null;
   }
 
   /// Ce qu'une lecture passée a enregistré. Vide pour une lecture faite par un

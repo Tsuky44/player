@@ -457,6 +457,10 @@ class OnyxPlaybackStats {
     this.videoBitrate,
     this.audioBitrate,
     this.containerFps,
+    this.videoCodec,
+    this.audioCodec,
+    this.audioSourceChannels,
+    this.audioOutputChannels,
   });
 
   int droppedFrames;
@@ -490,6 +494,20 @@ class OnyxPlaybackStats {
   /// La cadence déclarée par le format vidéo.
   double? containerFps;
 
+  /// Les types MIME des flux, `video/hevc` et `audio/eac3`.
+  ///
+  /// Lus dans le format que MediaCodec reçoit : sans eux la sonde de la lecture
+  /// rapportait « null » pour le codec, faute d'équivalent du `video-codec` de mpv.
+  String? videoCodec;
+
+  String? audioCodec;
+
+  /// Les canaux du flux source, puis ceux que la piste audio d'Android a
+  /// réellement ouverts en sortie. L'écart dit si l'appareil a replié le flux.
+  int? audioSourceChannels;
+
+  int? audioOutputChannels;
+
   List<Object?> _toList() {
     return <Object?>[
       droppedFrames,
@@ -500,6 +518,10 @@ class OnyxPlaybackStats {
       videoBitrate,
       audioBitrate,
       containerFps,
+      videoCodec,
+      audioCodec,
+      audioSourceChannels,
+      audioOutputChannels,
     ];
   }
 
@@ -517,6 +539,10 @@ class OnyxPlaybackStats {
       videoBitrate: result[5] as int?,
       audioBitrate: result[6] as int?,
       containerFps: result[7] as double?,
+      videoCodec: result[8] as String?,
+      audioCodec: result[9] as String?,
+      audioSourceChannels: result[10] as int?,
+      audioOutputChannels: result[11] as int?,
     );
   }
 
@@ -529,7 +555,7 @@ class OnyxPlaybackStats {
     if (identical(this, other)) {
       return true;
     }
-    return _deepEquals(droppedFrames, other.droppedFrames) && _deepEquals(renderedFrames, other.renderedFrames) && _deepEquals(bytesLoaded, other.bytesLoaded) && _deepEquals(videoDecoder, other.videoDecoder) && _deepEquals(audioDecoder, other.audioDecoder) && _deepEquals(videoBitrate, other.videoBitrate) && _deepEquals(audioBitrate, other.audioBitrate) && _deepEquals(containerFps, other.containerFps);
+    return _deepEquals(droppedFrames, other.droppedFrames) && _deepEquals(renderedFrames, other.renderedFrames) && _deepEquals(bytesLoaded, other.bytesLoaded) && _deepEquals(videoDecoder, other.videoDecoder) && _deepEquals(audioDecoder, other.audioDecoder) && _deepEquals(videoBitrate, other.videoBitrate) && _deepEquals(audioBitrate, other.audioBitrate) && _deepEquals(containerFps, other.containerFps) && _deepEquals(videoCodec, other.videoCodec) && _deepEquals(audioCodec, other.audioCodec) && _deepEquals(audioSourceChannels, other.audioSourceChannels) && _deepEquals(audioOutputChannels, other.audioOutputChannels);
   }
 
   @override
@@ -538,7 +564,7 @@ class OnyxPlaybackStats {
 
   @override
   String toString() {
-    return 'OnyxPlaybackStats(droppedFrames: $droppedFrames, renderedFrames: $renderedFrames, bytesLoaded: $bytesLoaded, videoDecoder: $videoDecoder, audioDecoder: $audioDecoder, videoBitrate: $videoBitrate, audioBitrate: $audioBitrate, containerFps: $containerFps)';
+    return 'OnyxPlaybackStats(droppedFrames: $droppedFrames, renderedFrames: $renderedFrames, bytesLoaded: $bytesLoaded, videoDecoder: $videoDecoder, audioDecoder: $audioDecoder, videoBitrate: $videoBitrate, audioBitrate: $audioBitrate, containerFps: $containerFps, videoCodec: $videoCodec, audioCodec: $audioCodec, audioSourceChannels: $audioSourceChannels, audioOutputChannels: $audioOutputChannels)';
   }
 }
 

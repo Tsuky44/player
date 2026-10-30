@@ -443,6 +443,11 @@ class AutoLadder {
   /// Ce que la lecture en cours demande à la ligne, 0 quand rien ne le dit.
   int get sendingBps => _sending;
 
+  /// Ce que [target] demanderait à la ligne, 0 quand rien ne le dit. Sert au
+  /// journal des bascules : le palier choisi y est écrit avec son exigence.
+  int demandOf(AutoTarget target) =>
+      target.tier == null ? sourceBps : _demand(target.tier!);
+
   int get _sending {
     if (currentBps > 0) return currentBps;
     if (currentKey == null) return sourceBps;

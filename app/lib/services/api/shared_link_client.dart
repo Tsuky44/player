@@ -288,8 +288,9 @@ class SharedLinkApiClient extends ApiClient {
   Future<PlaybackHandoff?> getPlaybackHandoff() async => null;
 
   @override
-  Future<void> uploadPlaybackLogs(List<LogEntry> lines,
-      {Map<String, dynamic>? stats}) async {}
+  Future<int?> uploadPlaybackLogs(List<LogEntry> lines,
+          {Map<String, dynamic>? stats, int? historyId}) async =>
+      null;
 
   @override
   Future<List<MediaSubtitleTrack>> forceMediaSubtitleExtract(int mediaId,

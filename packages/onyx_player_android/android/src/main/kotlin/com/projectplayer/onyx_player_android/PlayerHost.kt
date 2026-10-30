@@ -77,6 +77,10 @@ internal class PlayerInstance(
     private var videoBitrate: Long? = null
     private var audioBitrate: Long? = null
     private var containerFps: Double? = null
+    private var videoCodec: String? = null
+    private var audioCodec: String? = null
+    private var audioSourceChannels: Long? = null
+    private var audioOutputChannels: Long? = null
 
     private var lastErrorKind: OnyxPlayerErrorKind? = null
     private var lastErrorMessage: String? = null
@@ -171,6 +175,7 @@ internal class PlayerInstance(
             // bitrate négatif jusqu'à l'interface.
             videoBitrate = format.bitrate.takeIf { it > 0 }?.toLong()
             containerFps = format.frameRate.takeIf { it > 0f }?.toDouble()
+            videoCodec = format.sampleMimeType
         }
 
         override fun onAudioInputFormatChanged(
@@ -179,6 +184,19 @@ internal class PlayerInstance(
             decoderReuseEvaluation: androidx.media3.exoplayer.DecoderReuseEvaluation?,
         ) {
             audioBitrate = format.bitrate.takeIf { it > 0 }?.toLong()
+            audioCodec = format.sampleMimeType
+            audioSourceChannels = format.channelCount.takeIf { it > 0 }?.toLong()
+        }
+
+        // Ce que la piste audio d'Android a ouvert, et non ce que le flux
+        // contient : un ampli stéréo reçoit un flux 5.1 replié, et seul ce
+        // callback dit combien de canaux sortent vraiment.
+        override fun onAudioTrackInitialized(
+            eventTime: AnalyticsListener.EventTime,
+            audioTrackConfig: androidx.media3.exoplayer.audio.AudioSink.AudioTrackConfig,
+        ) {
+            audioOutputChannels =
+                Integer.bitCount(audioTrackConfig.channelConfig).takeIf { it > 0 }?.toLong()
         }
 
         override fun onLoadCompleted(
@@ -336,6 +354,10 @@ internal class PlayerInstance(
         videoBitrate = null
         audioBitrate = null
         containerFps = null
+        videoCodec = null
+        audioCodec = null
+        audioSourceChannels = null
+        audioOutputChannels = null
         val exo = ensurePlayer()
         exo.setMediaItem(buildMediaItem(url), startPositionMs)
         exo.prepare()
@@ -564,6 +586,10 @@ internal class PlayerInstance(
             videoBitrate = videoBitrate,
             audioBitrate = audioBitrate,
             containerFps = containerFps,
+            videoCodec = videoCodec,
+            audioCodec = audioCodec,
+            audioSourceChannels = audioSourceChannels,
+            audioOutputChannels = audioOutputChannels,
         )
 
     // --- Fin ---------------------------------------------------------------

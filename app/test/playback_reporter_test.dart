@@ -1,14 +1,18 @@
 import 'package:flutter_test/flutter_test.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import 'package:onyx/models/server_activity.dart';
 import 'package:onyx/screens/player/hooks/playback_reporter.dart';
 import 'package:onyx/screens/player/playback/playback_stats.dart';
 import 'package:onyx/services/api_client.dart';
 import 'package:onyx/services/client_log.dart';
+import 'package:onyx/services/pending_playback_logs.dart';
 
 /// Un serveur qui note ce qu'on lui envoie, dans l'ordre.
 class _RecordingApi extends ApiClient {
   final List<String> calls = [];
   bool? lastFinished;
+  bool failUploads = false;
+  final List<int?> historyIds = [];
 
   @override
   Future<void> reportPlayback({
@@ -24,9 +28,12 @@ class _RecordingApi extends ApiClient {
   }
 
   @override
-  Future<void> uploadPlaybackLogs(List<LogEntry> lines,
-      {Map<String, dynamic>? stats}) async {
+  Future<int?> uploadPlaybackLogs(List<LogEntry> lines,
+      {Map<String, dynamic>? stats, int? historyId}) async {
     calls.add('logs');
+    historyIds.add(historyId);
+    if (failUploads) throw Exception('hors ligne');
+    return 42;
   }
 
   @override
@@ -49,6 +56,7 @@ void main() {
   late PlaybackReporter reporter;
 
   setUp(() {
+    SharedPreferences.setMockInitialValues({});
     api = _RecordingApi();
     position = 120;
     reporter = PlaybackReporter(
@@ -122,5 +130,61 @@ void main() {
     reporter.cancelHeartbeat();
     await settle();
     expect(api.calls, ['playing:progress@120']);
+  });
+
+  // Une lecture sans journal : l'app coupée du réseau juste avant sa
+  // fermeture. La tranche attend sur disque, nommée par la ligne d'historique
+  // apprise au premier envoi, et repart à la lecture suivante.
+  test('un envoi raté est rejoué au lancement suivant, vers la même ligne',
+      () async {
+    reporter.open(mediaId: 1, apiClient: api);
+    reporter.flushLogs(api);
+    for (var i = 0; i < 5; i++) {
+      await settle();
+    }
+    expect(api.historyIds, [null]);
+
+    api.failUploads = true;
+    reporter.stop(mediaId: 1, apiClient: api);
+    for (var i = 0; i < 10; i++) {
+      await settle();
+    }
+    expect(api.historyIds, [null, 42]);
+
+    api.failUploads = false;
+    api.historyIds.clear();
+    final next = PlaybackReporter(
+      moment: () => (
+        positionSeconds: 0,
+        durationSeconds: 1000,
+        playing: true,
+        method: PlayMethod.direct,
+        quality: '',
+      ),
+      stats: PlaybackStatsCollector(),
+    );
+    next.open(mediaId: 2, apiClient: api);
+    for (var i = 0; i < 10; i++) {
+      await settle();
+    }
+    expect(api.historyIds, [42]);
+
+    api.historyIds.clear();
+    await PendingPlaybackLogs.replay(api);
+    expect(api.historyIds, isEmpty, reason: 'la tranche rejouée est effacée');
+  });
+
+  test('les envois suivants nomment la ligne historique déjà apprise',
+      () async {
+    reporter.open(mediaId: 1, apiClient: api);
+    reporter.flushLogs(api);
+    for (var i = 0; i < 5; i++) {
+      await settle();
+    }
+    reporter.flushLogs(api);
+    for (var i = 0; i < 5; i++) {
+      await settle();
+    }
+    expect(api.historyIds, [null, 42]);
   });
 }

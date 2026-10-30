@@ -193,8 +193,16 @@ class ApiClient
       return handler.next(response);
     }, onError: (DioException e, handler) {
       // Global error logging
-      ClientLog.error(
-          "API Error [${e.requestOptions.method}] ${redactPlaybackDiagnostic(e.requestOptions.path)}: ${e.type.name} (${e.response?.statusCode ?? '-'})");
+      final line =
+          "API Error [${e.requestOptions.method}] ${redactPlaybackDiagnostic(e.requestOptions.path)}: ${e.type.name} (${e.response?.statusCode ?? '-'})";
+      // Une annulation est voulue (l'écran qui change annule ses requêtes, le
+      // sondage de révision se relance) : la compter en erreur allumait le
+      // badge « Erreur » de l'historique à chaque démarrage de lecture.
+      if (e.type == DioExceptionType.cancel) {
+        debugPrint(line);
+      } else {
+        ClientLog.error(line);
+      }
       switch (e.type) {
         case DioExceptionType.connectionError:
         case DioExceptionType.connectionTimeout:

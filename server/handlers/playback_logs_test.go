@@ -1,9 +1,15 @@
 package handlers
 
 import (
+	"encoding/json"
+	"net/http"
+	"net/http/httptest"
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/julienschmidt/httprouter"
+	"project-player/server/database"
 )
 
 func logLines(n int, level string) []PlaybackLogLine {
@@ -161,5 +167,105 @@ func TestNormalizePlaybackStatsHoldsTheByteCeiling(t *testing.T) {
 	big := `{"note": "` + strings.Repeat("x", playbackStatsMaxBytes) + `"}`
 	if out := normalizePlaybackStats([]byte(big)); out != "" {
 		t.Fatalf("le plafond n'a pas mordu : %d octets gardés", len(out))
+	}
+}
+
+func postLogs(t *testing.T, token string, payload map[string]any) *httptest.ResponseRecorder {
+	t.Helper()
+	router := httprouter.New()
+	router.POST("/api/playing/logs", RequireAuth(AttachPlaybackLogs))
+	body, _ := json.Marshal(payload)
+	rec := httptest.NewRecorder()
+	router.ServeHTTP(rec, bearerRequest(http.MethodPost, "/api/playing/logs", token, body))
+	return rec
+}
+
+func countLogs(t *testing.T) int {
+	t.Helper()
+	var n int
+	if err := database.DB.QueryRow(`SELECT COUNT(*) FROM playback_logs`).Scan(&n); err != nil {
+		t.Fatal(err)
+	}
+	return n
+}
+
+func TestPlaybackLogsReachTheRowAfterTheSessionClosed(t *testing.T) {
+	// Une app tuée envoie son journal au lancement suivant, quand la séance a
+	// été fermée par le balayage : l'identifiant appris à l'envoi précédent doit
+	// suffire à retrouver la lecture.
+	fx := setupActivityTestDB(t)
+	insertSession(t, "lea-tv", 3)
+	key := sessionKey("lea-tv")
+	if err := playbackActivity.report(key, 3, "lea", sessionClient{device: "Salon"}, PlaybackReport{
+		MediaID: fx.movieID, Event: "start", Duration: 9000, PlayMethod: "direct",
+	}); err != nil {
+		t.Fatal(err)
+	}
+	// Assez longue pour survivre à la règle des trente secondes à la fermeture.
+	for i := 1; i <= 4; i++ {
+		fx.advance(15 * time.Second)
+		if err := playbackActivity.report(key, 3, "lea", sessionClient{device: "Salon"}, PlaybackReport{
+			MediaID: fx.movieID, Event: "progress", Position: i * 15, Duration: 9000, PlayMethod: "direct",
+		}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	line := []map[string]any{{"at": "2026-09-14T20:00:00Z", "level": "info", "message": "premier envoi"}}
+
+	rec := postLogs(t, "lea-tv", map[string]any{"lines": line})
+	var first struct {
+		HistoryID int64 `json:"history_id"`
+	}
+	if rec.Code != http.StatusOK || json.Unmarshal(rec.Body.Bytes(), &first) != nil || first.HistoryID == 0 {
+		t.Fatalf("premier envoi : %d %s", rec.Code, rec.Body)
+	}
+
+	playbackActivity.dropSession(key)
+	line[0]["message"] = "envoi rejoué"
+	rec = postLogs(t, "lea-tv", map[string]any{"lines": line, "history_id": first.HistoryID})
+	if rec.Code != http.StatusOK {
+		t.Fatalf("envoi rejoué : %d %s", rec.Code, rec.Body)
+	}
+	var body string
+	if err := database.DB.QueryRow(`SELECT body FROM playback_logs WHERE history_id = ?`, first.HistoryID).Scan(&body); err != nil || !strings.Contains(body, "envoi rejoué") {
+		t.Fatalf("le journal rejoué n'a pas remplacé le premier : %q (%v)", body, err)
+	}
+}
+
+func TestPlaybackLogsRefuseAnotherAccountsHistoryRow(t *testing.T) {
+	fx := setupActivityTestDB(t)
+	insertSession(t, "lea-tv", 3)
+	res, err := database.DB.Exec(`INSERT INTO playback_history (user_id, media_id, media_type, title, started_at, ended_at, watched_seconds)
+		VALUES (1, ?, 'movie', 'Dune', ?, ?, 600)`, fx.movieID, historyStamp(fx.clock), historyStamp(fx.clock))
+	if err != nil {
+		t.Fatal(err)
+	}
+	id, _ := res.LastInsertId()
+
+	rec := postLogs(t, "lea-tv", map[string]any{
+		"lines":      []map[string]any{{"level": "info", "message": "intrus"}},
+		"history_id": id,
+	})
+	if rec.Code != http.StatusNoContent || countLogs(t) != 0 {
+		t.Fatalf("la lecture d'un autre compte a reçu un journal : %d, %d lignes", rec.Code, countLogs(t))
+	}
+}
+
+func TestPlaybackLogsKeepTheFiftyNewestPlays(t *testing.T) {
+	setupActivityTestDB(t)
+	for i := 1; i <= playbackLogMaxRows+5; i++ {
+		res, err := database.DB.Exec(`INSERT INTO playback_history (user_id, media_type, title, started_at, ended_at, watched_seconds)
+			VALUES (3, 'movie', 'Dune', ?, ?, 600)`, historyStamp(time.Now()), historyStamp(time.Now()))
+		if err != nil {
+			t.Fatal(err)
+		}
+		id, _ := res.LastInsertId()
+		if _, err := database.DB.Exec(`INSERT INTO playback_logs (history_id, has_error, line_count, body, stats, updated_at) VALUES (?, 0, 0, '[]', '', ?)`, id, historyStamp(time.Now())); err != nil {
+			t.Fatal(err)
+		}
+	}
+	pruneOldPlaybackLogs()
+	if got := countLogs(t); got != playbackLogMaxRows || playbackLogMaxRows != 50 {
+		t.Fatalf("%d journaux gardés, attendu %d (50)", got, playbackLogMaxRows)
 	}
 }
