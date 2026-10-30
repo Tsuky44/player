@@ -191,6 +191,9 @@ jobs:
     needs: prepare
     if: contains(fromJSON(needs.prepare.outputs.builds), 'android')
     runs-on: ubuntu-latest
+    env:
+      # Au niveau du job : un `if` d'etape ne lit pas directement les secrets.
+      PLAY_SERVICE_ACCOUNT_JSON: ${{ secrets.PLAY_SERVICE_ACCOUNT_JSON }}
     steps:
       - uses: actions/checkout@v4
 
@@ -277,6 +280,20 @@ jobs:
           path: app/build/app/outputs/bundle/release/app-release.aab
           retention-days: 30
           if-no-files-found: error
+
+      # Depose le bundle sur la piste Tests internes : la version arrive chez
+      # les testeurs sans passer par la Play Console. Sans le secret (fork,
+      # compte de service pas encore cree), l'etape est sautee et l'AAB reste
+      # disponible en artefact.
+      - name: Envoyer sur le test interne Google Play
+        if: env.PLAY_SERVICE_ACCOUNT_JSON != ''
+        uses: r0adkll/upload-google-play@v1
+        with:
+          serviceAccountJsonPlainText: ${{ secrets.PLAY_SERVICE_ACCOUNT_JSON }}
+          packageName: com.tsuky.onyx
+          releaseFiles: app/build/app/outputs/bundle/release/app-release.aab
+          track: internal
+          status: completed
 
   # ---------------------------------------------------------------------------
   # macOS — DMG

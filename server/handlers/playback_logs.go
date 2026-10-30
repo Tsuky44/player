@@ -49,11 +49,11 @@ const (
 	// Combien de lectures gardent leur journal, au total.
 	//
 	// Sans ce plafond, rien ne bornerait la table : un journal disparaît avec sa
-		// ligne d'historique, et l'historique ne s'efface qu'à la main. Dix séances
-		// ne couvraient pas un week-end : des lectures « sans journal » étaient des
-		// journaux déjà purgés. Cinquante, de 128 Ko au plus chacune (6,4 Mo en tout),
-		// couvrent la semaine sans que la base s'en ressente.
-		playbackLogMaxRows = 50
+	// ligne d'historique, et l'historique ne s'efface qu'à la main. Dix séances
+	// ne couvraient pas un week-end : des lectures « sans journal » étaient des
+	// journaux déjà purgés. Cinquante, de 128 Ko au plus chacune (6,4 Mo en tout),
+	// couvrent la semaine sans que la base s'en ressente.
+	playbackLogMaxRows = 50
 )
 
 // PlaybackLogLine is one line of a client's log.
