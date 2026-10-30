@@ -2,6 +2,7 @@ import 'dart:async';
 
 import 'package:flutter/foundation.dart';
 
+import '../playback/auto_descent.dart';
 import '../playback/auto_quality.dart';
 import '../playback/auto_trust.dart';
 
@@ -52,8 +53,10 @@ class AutoQualityPilot {
         sound,
     AutoQuality? rules,
     AutoTrust? trust,
+    AutoDescentGate? gate,
     DateTime Function() now = DateTime.now,
-  })  : _read = read,
+  })  : _gate = gate ?? AutoDescentGate(),
+        _read = read,
         _measureLine = measureLine,
         _move = move,
         _sound = sound,
@@ -75,6 +78,7 @@ class AutoQualityPilot {
       _sound;
   final AutoQuality _rules;
   final AutoTrust _trust;
+  final AutoDescentGate _gate;
   final DateTime Function() _now;
 
   Timer? _timer;
@@ -117,7 +121,10 @@ class AutoQualityPilot {
 
   /// Le lecteur vient de vider son tampon de lui-même : recherche, reprise,
   /// changement de piste ou de source.
-  void noteDisturbance() => _rules.noteDisturbance(_now());
+  void noteDisturbance() {
+    _gate.reset();
+    _rules.noteDisturbance(_now());
+  }
 
   /// Une mise en mémoire tampon vient de commencer en pleine lecture.
   Future<void> noteStall() async {
@@ -143,20 +150,59 @@ class AutoQualityPilot {
     final sound = _sound;
     if (sound == null) return;
     await _run(() async {
+      // Cache plein : le moteur ne télécharge pas à plein débit, la mesure
+      // ne dit rien de la ligne.
+      if (!_gate.measurable(buffered: _read().buffered)) {
+        debugPrint('Auto: coupure sans conséquence, le tampon est plein — '
+            'mesure ignorée');
+        return;
+      }
       final line = (await sound(passive: true)).lineBps;
       if (line == null) return;
-      final ladder = _read().ladder;
+      final reading = _read();
+      final ladder = reading.ladder;
+      // La mesure a pris du temps : un tampon rempli entre-temps l'invalide.
+      if (!_gate.measurable(buffered: reading.buffered)) return;
       final starved = ladder.currentKey == null
           ? line < ladder.sendingBps * AutoTrust.directShortfall
           : ladder.starves(line);
-      if (!starved) return;
-      final target = ladder.downTo(line);
+      if (!starved) {
+        _gate.noteFine();
+        return;
+      }
+      final target = _gatedTarget(ladder, line, reason: 'coupure');
       if (target == null) return;
       debugPrint('Auto: ligne mesurée à ${(line / 1e6).toStringAsFixed(1)} '
           'Mbit/s — passage de ${ladder.currentKey ?? 'direct'} à $target '
-          '(coupure, sans attendre)');
+          '(coupure, mesure confirmée)');
       if (await _move(target, urgent: true)) _noteMoved(up: false);
     }, quietOnFailure: false);
+  }
+
+  /// Le barreau à viser sur une mesure basse, une fois que les règles de
+  /// [AutoDescentGate] l'autorisent : mesure confirmée par une deuxième,
+  /// descente d'un seul barreau sauf trois mesures concordantes. Null (avec sa
+  /// raison au journal) tant qu'elles ne le permettent pas.
+  AutoTarget? _gatedTarget(AutoLadder ladder, int line,
+      {required String reason, bool cool = false}) {
+    final now = _now();
+    final mbit = (line / 1e6).toStringAsFixed(1);
+    if (cool && _gate.coolingDown(now)) {
+      debugPrint('Auto: ligne mesurée à $mbit Mbit/s — descente différée, '
+          'la dernière est trop récente ($reason)');
+      return null;
+    }
+    _gate.noteLow(now, line);
+    if (!_gate.confirmed(now)) {
+      debugPrint('Auto: ligne mesurée à $mbit Mbit/s — à confirmer par une '
+          'deuxième mesure avant de descendre ($reason)');
+      return null;
+    }
+    final capacity = _gate.confirmedBps(now) ?? line;
+    final target = _gate.confirmedBig(now)
+        ? ladder.downTo(capacity)
+        : ladder.oneRungDown();
+    return target;
   }
 
   /// Un relevé. Appelé chaque seconde par [start] ; public pour les tests.
@@ -221,6 +267,11 @@ class AutoQualityPilot {
   void _noteMoved({required bool up, bool carried = false}) {
     final now = _now();
     _rules.noteMoved(now, up: up);
+    if (up) {
+      _gate.reset();
+    } else {
+      _gate.noteDescended(now);
+    }
     _trust.reset();
     if (carried) _trust.noteCarried(now);
   }
@@ -273,7 +324,13 @@ class AutoQualityPilot {
         debugPrint('Auto: ligne non mesurée — on reste en direct$why');
         return null;
       }
-      final target = ladder.down(_rules.fillRatio);
+      // Sans mesure, rien ne justifie de sauter des barreaux ni de redescendre
+      // juste après une descente : un cran, après un délai.
+      if (!urgent && _gate.coolingDown(now)) {
+        debugPrint('Auto: descente différée, la dernière est trop récente');
+        return null;
+      }
+      final target = ladder.oneRungDown();
       if (target != null) {
         debugPrint('Auto: la ligne porte '
             '${(_rules.fillRatio * 100).round()} % de $from — '
@@ -289,6 +346,7 @@ class AutoQualityPilot {
       // coupure, un accroc ou une scène plus lourde que la moyenne du
       // fichier : on en laisse passer, puis un cran de moins.
       _trust.noteCarried(now);
+      _gate.noteFine();
       if (!urgent || _trust.stallTolerated(now, direct: direct)) {
         debugPrint('Auto: ligne mesurée à $mbit Mbit/s, assez pour $from — '
             'on ne change rien$why');
@@ -301,10 +359,11 @@ class AutoQualityPilot {
       }
       return target;
     }
-    final target = ladder.downTo(line);
+    final target = _gatedTarget(ladder, line,
+        reason: urgent ? 'coupure' : 'tampon qui fond', cool: !urgent);
     if (target != null) {
       debugPrint('Auto: ligne mesurée à $mbit Mbit/s — '
-          'passage de $from à $target$why');
+          'passage de $from à $target$why (mesure confirmée)');
     }
     return target;
   }

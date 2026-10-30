@@ -1,6 +1,7 @@
 import 'package:flutter_test/flutter_test.dart';
 import 'package:onyx/models/models.dart';
 import 'package:onyx/screens/player/hooks/use_auto_quality.dart';
+import 'package:onyx/screens/player/playback/auto_descent.dart';
 import 'package:onyx/screens/player/playback/auto_quality.dart';
 
 const _ladder = <QualityTier>[
@@ -90,9 +91,10 @@ void main() {
     final playback = _Playback()
       ..slope = -0.5
       ..sounding = const AutoSounding(lineBps: 10000000);
-    await playback.play(20);
+    await playback.play(50);
 
-    expect(playback.moves, ['1080p']);
+    expect(playback.moves, ['1080p-10'],
+        reason: 'un barreau à la fois, sur deux mesures concordantes');
     expect(playback.urgent, [false]);
   });
 
@@ -110,12 +112,14 @@ void main() {
     final playback = _Playback()
       ..slope = -0.5
       ..sounding = const AutoSounding(lineBps: 10000000);
-    await playback.play(20);
+    await playback.play(50);
     // Après la grâce du changement de source, le tampon fond encore.
-    playback.sounding = const AutoSounding();
-    await playback.play(10);
+    playback
+      ..buffered = 14
+      ..sounding = const AutoSounding();
+    await playback.play(40);
 
-    expect(playback.moves, ['1080p', '720p-2']);
+    expect(playback.moves, ['1080p-10', '1080p']);
   });
 
   test('une coupure sur un barreau fait descendre tout de suite, dans '
@@ -216,24 +220,27 @@ void main() {
       ..slope = -0.5
       ..sounding = const AutoSounding(lineBps: 10000000)
       ..moveSucceeds = false;
-    await playback.play(20);
+    await playback.play(50);
 
-    expect(playback.moves, ['1080p']);
+    expect(playback.moves, ['1080p-10']);
     expect(playback.quality, isNull);
   });
 
   group('avec une ligne mesurée', () {
     test('une coupure en Direct Play va droit au barreau que la ligne tient',
         () async {
-      // 20 Mbit/s de fichier, 2,6 de ligne : 720p · 2, sans passer par les
-      // deux barreaux au-dessus.
+      // 20 Mbit/s de fichier, 2,6 de ligne : une seule mesure ne descend pas,
+      // deux concordantes descendent d'un barreau.
       final playback = _Playback()
         ..buffered = 60
         ..sounding = const AutoSounding(lineBps: 2600000);
       await playback.play(30);
       await playback.pilot.noteStall();
+      expect(playback.moves, isEmpty);
+      await playback.play(20);
+      await playback.pilot.noteStall();
 
-      expect(playback.moves, ['720p-2']);
+      expect(playback.moves, ['1080p-10']);
       expect(playback.urgent, [true]);
     });
 
@@ -241,11 +248,12 @@ void main() {
       final playback = _Playback()
         ..slope = -0.5
         ..sounding = const AutoSounding(lineBps: 1300000);
-      await playback.play(20);
+      await playback.play(50);
 
-      expect(playback.moves, ['360p']);
-      expect(playback.soundings, 1);
-      expect(playback.sideMeasures, [true],
+      expect(playback.moves, ['1080p-10'],
+          reason: 'deux mesures concordantes, un barreau à la fois');
+      expect(playback.soundings, 2);
+      expect(playback.sideMeasures, [true, true],
           reason: 'un cache plein ne reçoit que ce qu’il lit : la ligne se '
               'mesure à côté');
     });
@@ -268,7 +276,7 @@ void main() {
 
   group('pendant un délai de grâce', () {
     test('une coupure n’accuse rien sans mesure', () async {
-      final playback = _Playback()..buffered = 60;
+      final playback = _Playback()..buffered = 5;
       playback.pilot.noteDisturbance();
       await playback.play(5);
       await playback.pilot.noteStall();
@@ -289,8 +297,11 @@ void main() {
       playback.pilot.noteDisturbance();
       await playback.play(2);
       await playback.pilot.noteStall();
+      expect(playback.moves, isEmpty, reason: 'une mesure ne suffit pas');
+      await playback.play(4);
+      await playback.pilot.noteStall();
 
-      expect(playback.moves, ['720p-2']);
+      expect(playback.moves, ['1080p-10']);
       expect(playback.urgent, [true]);
     });
 
@@ -505,5 +516,118 @@ void main() {
     await playback.play(15);
 
     expect(playback.moves, ['direct']);
+  });
+
+  group('descendre sans faux positif (journaux Windows 1.1.30)', () {
+    test('cache plein : une coupure juste après une recherche ne mesure rien',
+        () async {
+      // 20,8 Mbit/s « mesurés » alors que mpv avait 90 s en mémoire.
+      final playback = _Playback()
+        ..buffered = 100
+        ..sounding = const AutoSounding(lineBps: 20800000);
+      playback.pilot.noteDisturbance();
+      await playback.play(3);
+      await playback.pilot.noteStall();
+      await playback.play(6);
+      await playback.pilot.noteStall();
+
+      expect(playback.soundings, 0, reason: 'le moteur ne téléchargeait pas');
+      expect(playback.moves, isEmpty);
+    });
+
+    test('une seule mesure basse ne fait jamais descendre, ni à 360p',
+        () async {
+      final playback = _Playback()
+        ..buffered = 2
+        ..sounding = const AutoSounding(lineBps: 1800000);
+      playback.pilot.noteDisturbance();
+      await playback.play(2);
+      await playback.pilot.noteStall();
+
+      expect(playback.moves, isEmpty);
+    });
+
+    test('une recherche entre deux mesures annule la première', () async {
+      final playback = _Playback()
+        ..buffered = 2
+        ..sounding = const AutoSounding(lineBps: 4800000);
+      playback.pilot.noteDisturbance();
+      await playback.play(2);
+      await playback.pilot.noteStall();
+      playback.pilot.noteDisturbance();
+      await playback.play(5);
+      await playback.pilot.noteStall();
+
+      expect(playback.moves, isEmpty);
+    });
+
+    test('une mesure normale entre deux basses les annule', () async {
+      final playback = _Playback()
+        ..buffered = 2
+        ..sounding = const AutoSounding(lineBps: 4800000);
+      playback.pilot.noteDisturbance();
+      await playback.play(2);
+      await playback.pilot.noteStall();
+      playback.sounding = const AutoSounding(lineBps: 90000000);
+      await playback.play(4);
+      await playback.pilot.noteStall();
+      playback.sounding = const AutoSounding(lineBps: 4800000);
+      await playback.play(4);
+      await playback.pilot.noteStall();
+
+      expect(playback.moves, isEmpty);
+    });
+
+    test('un vrai débit faible descend d’un seul barreau sur deux mesures',
+        () async {
+      final playback = _Playback()
+        ..buffered = 2
+        ..sounding = const AutoSounding(lineBps: 1800000);
+      playback.pilot.noteDisturbance();
+      for (var i = 0; i < 2; i++) {
+        await playback.play(4);
+        await playback.pilot.noteStall();
+      }
+      expect(playback.moves, ['1080p-10']);
+    });
+  });
+
+  group('AutoDescentGate', () {
+    final t0 = DateTime(2026, 10, 30, 1);
+
+    test('deux mesures espacées confirment, une seule non', () {
+      final gate = AutoDescentGate()..noteLow(t0, 1000000);
+      expect(gate.confirmed(t0), isFalse);
+      gate.noteLow(t0.add(const Duration(seconds: 5)), 1500000);
+      expect(gate.confirmed(t0.add(const Duration(seconds: 5))), isTrue);
+      expect(gate.confirmedBig(t0.add(const Duration(seconds: 5))), isFalse);
+      expect(gate.confirmedBps(t0.add(const Duration(seconds: 5))), 1500000);
+    });
+
+    test('deux relevés du même instant ne font qu’une mesure', () {
+      final gate = AutoDescentGate()
+        ..noteLow(t0, 1000000)
+        ..noteLow(t0.add(const Duration(seconds: 1)), 1000000);
+      expect(gate.confirmed(t0.add(const Duration(seconds: 1))), isFalse);
+    });
+
+    test('une mesure trop vieille ne confirme plus', () {
+      final gate = AutoDescentGate()..noteLow(t0, 1000000);
+      final later = t0.add(const Duration(minutes: 3));
+      gate.noteLow(later, 1000000);
+      expect(gate.confirmed(later), isFalse);
+    });
+
+    test('un tampon plein ne se mesure pas', () {
+      final gate = AutoDescentGate();
+      expect(gate.measurable(buffered: const Duration(seconds: 90)), isFalse);
+      expect(gate.measurable(buffered: const Duration(seconds: 3)), isTrue);
+    });
+
+    test('après une descente, le délai court puis passe', () {
+      final gate = AutoDescentGate()..noteDescended(t0);
+      expect(gate.coolingDown(t0.add(const Duration(seconds: 10))), isTrue);
+      expect(gate.coolingDown(t0.add(const Duration(seconds: 40))), isFalse);
+    });
   });
 }
