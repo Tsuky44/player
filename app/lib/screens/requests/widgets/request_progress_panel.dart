@@ -8,6 +8,7 @@ import '../../../models/request_progress.dart';
 import '../../../providers/media_requests_provider.dart';
 import '../../../theme/app_colors.dart';
 import '../../../theme/app_type.dart';
+import '../../../utils/on_screen.dart';
 
 /// Les widgets de téléchargement et d'import de MediaHub, sous les boutons
 /// d'une demande. Tout vient de MediaHub (qui lit Radarr, Sonarr ou sorraa) :
@@ -29,7 +30,8 @@ class RequestProgressPanel extends StatefulWidget {
   State<RequestProgressPanel> createState() => _RequestProgressPanelState();
 }
 
-class _RequestProgressPanelState extends State<RequestProgressPanel> {
+class _RequestProgressPanelState extends State<RequestProgressPanel>
+    with OnScreenState<RequestProgressPanel> {
   RequestProgress? _progress;
   Timer? _timer;
 
@@ -37,7 +39,14 @@ class _RequestProgressPanelState extends State<RequestProgressPanel> {
   void initState() {
     super.initState();
     _refresh();
-    _timer = Timer.periodic(widget.interval, (_) => _refresh());
+  }
+
+  @override
+  void didChangeOnScreen(bool onScreen) {
+    _timer?.cancel();
+    _timer = onScreen
+        ? Timer.periodic(widget.interval, (_) => _refresh())
+        : null;
   }
 
   @override

@@ -27,6 +27,7 @@ import '../../widgets/global/season_download_button.dart';
 import '../../widgets/global/season_watched_button.dart';
 import '../../widgets/global/share_media_button.dart';
 import '../requests/widgets/season_selector_dialog.dart';
+import 'release_folder_hint.dart';
 import 'season_detail_screen.dart';
 import 'show_episode_actions.dart';
 import 'widgets/missing_season_banner.dart';
@@ -361,7 +362,13 @@ class _ShowDetailScreenState extends State<ShowDetailScreen>
     ApiClient api,
     LibraryProvider lp,
   ) async {
-    String? folder = _sampleReleaseNameFromLibrary(lp);
+    String? folder = releaseFolderHint([
+      for (final ep in [
+        if (_resumeEpisode != null) _resumeEpisode!,
+        ...lp.episodes,
+      ])
+        ep.media.filePath,
+    ]);
     String? episode;
     for (final ep in [
       if (_resumeEpisode != null) _resumeEpisode!,
@@ -382,32 +389,6 @@ class _ShowDetailScreenState extends State<ShowDetailScreen>
       // Sans fiche, le dossier et l'épisode déduits du chemin suffisent.
     }
     return (folder: folder, episode: episode);
-  }
-
-  String? _sampleReleaseNameFromLibrary(LibraryProvider lp) {
-    for (final ep in [
-      if (_resumeEpisode != null) _resumeEpisode!,
-      ...lp.episodes,
-    ]) {
-      final path = ep.media.filePath;
-      if (path == null || path.isEmpty) continue;
-      final segments = path.replaceAll('\\', '/').split('/')
-        ..removeWhere((s) => s.trim().isEmpty);
-      if (segments.length < 2) continue;
-      for (var i = segments.length - 2; i >= 0; i--) {
-        final part = segments[i].trim();
-        if (part.isEmpty) continue;
-        final lower = part.toLowerCase();
-        if (lower.startsWith('season ') || lower.startsWith('saison ')) {
-          continue;
-        }
-        if (RegExp(r's\d{1,2}e\d{1,3}', caseSensitive: false).hasMatch(part)) {
-          continue;
-        }
-        return part;
-      }
-    }
-    return null;
   }
 
   Future<void> _reloadShowAfterMetadataChange() async {
