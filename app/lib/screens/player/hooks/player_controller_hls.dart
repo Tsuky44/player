@@ -454,6 +454,7 @@ extension PlayerControllerHls on PlayerController {
   Future<void> seekToAbsoluteSeconds(int absoluteSeconds) async {
     final target = absoluteSeconds < 0 ? 0 : absoluteSeconds;
     _noteDisturbance();
+    _stats.noteSeek();
 
     if (currentQuality == null) {
       await session.seek(Duration(seconds: target));
@@ -489,6 +490,7 @@ extension PlayerControllerHls on PlayerController {
   Future<void> seekToAbsolutePosition(Duration target) async {
     if (target.isNegative) target = Duration.zero;
     _noteDisturbance();
+    _stats.noteSeek();
     if (currentQuality == null) {
       position = target;
       _onPositionChanged?.call();

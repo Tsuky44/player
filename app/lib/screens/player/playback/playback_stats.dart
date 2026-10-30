@@ -115,9 +115,13 @@ class PlaybackStatsSummary {
 /// D'où les deux traitements côte à côte : moyenne pour ce qui est instantané,
 /// cumul rattrapé pour ce qui compte.
 class PlaybackStatsCollector {
-  PlaybackStatsCollector({this.interval = const Duration(seconds: 5)});
+  PlaybackStatsCollector({
+    this.interval = const Duration(seconds: 5),
+    DateTime Function()? now,
+  }) : _now = now ?? DateTime.now;
 
   final Duration interval;
+  final DateTime Function() _now;
 
   Timer? _timer;
   PlaybackSession? _session;
@@ -179,15 +183,48 @@ class PlaybackStatsCollector {
     _bufferingWatch.stop();
   }
 
+  /// Un seek vient d'être demandé : le remplissage qui le suit est voulu.
+  void noteSeek() => _lastSeekAt = _now();
+
+  DateTime? _lastSeekAt;
+
+  /// Début du remplissage en cours s'il suit un seek, pas encore compté.
+  DateTime? _seekRefillSince;
+
+  /// Un remplissage de seek plus court que ça n'est pas une coupure.
+  ///
+  /// Mesuré sur un journal Windows : un va-et-vient de 275 seeks rapides
+  /// (reprise en 0,3 à 0,5 s) affichait « 321 mises en tampon » pour deux seeks
+  /// seulement lents. Le compteur disait la fréquence des seeks, pas la santé
+  /// du réseau. Un seek qui attend plus longtemps reste compté : lui est une
+  /// vraie attente, avec son temps.
+  static const seekRefillGrace = Duration(seconds: 2);
+
   /// Le temps passé à remplir le tampon, compté séparément du reste.
   void noteBuffering(bool buffering) {
     if (buffering) {
-      if (_bufferingWatch.isRunning) return;
+      if (_bufferingWatch.isRunning || _seekRefillSince != null) return;
+      final seekAt = _lastSeekAt;
+      if (seekAt != null && _now().difference(seekAt) < seekRefillGrace) {
+        _seekRefillSince = _now();
+        return;
+      }
       _bufferingEvents++;
       _bufferingWatch.start();
     } else {
+      _seekRefillSince = null;
       _bufferingWatch.stop();
     }
+  }
+
+  /// Un remplissage de seek qui dure encore passé [seekRefillGrace] devient une
+  /// attente comptée. Rappelé à chaque relevé.
+  void _promoteLongSeekRefill() {
+    final since = _seekRefillSince;
+    if (since == null || _now().difference(since) < seekRefillGrace) return;
+    _seekRefillSince = null;
+    _bufferingEvents++;
+    _bufferingWatch.start();
   }
 
   void noteStartup(int millis) => _startupMillis ??= millis;
@@ -237,6 +274,7 @@ class PlaybackStatsCollector {
   }
 
   Future<void> _sample() async {
+    _promoteLongSeekRefill();
     final session = _session;
     if (session == null) return;
     late final PlaybackDiagnostics info;

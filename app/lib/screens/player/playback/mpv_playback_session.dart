@@ -376,6 +376,7 @@ class MpvPlaybackSession implements PlaybackSession {
 
     await _set(platform, 'audio-swresample-o', dialogueForwardMixLevels);
     await _set(platform, 'cache', 'yes');
+    await _set(platform, 'cache-on-disk', 'no'); // fichier de cache non créé
     await _set(platform, 'demuxer-max-bytes', '${profile.demuxerMaxBytes}');
     await _set(platform, 'demuxer-readahead-secs', '${profile.readaheadSecs}');
     await _set(platform, 'demuxer-seekable-cache', 'yes');
@@ -466,7 +467,7 @@ class MpvPlaybackSession implements PlaybackSession {
     await _set(platform, 'audio-swresample-o', dialogueForwardMixLevels);
     await _set(platform, 'force-seekable', 'yes');
     await _set(platform, 'cache', 'yes');
-    await _set(platform, 'demuxer-seekable-cache', 'yes');
+    await _set(platform, 'cache-on-disk', 'no');    await _set(platform, 'demuxer-seekable-cache', 'yes');
     await _set(platform, 'demuxer-max-bytes', '${profile.hlsDemuxerMaxBytes}');
     await _set(
         platform, 'demuxer-readahead-secs', '${profile.hlsReadaheadSecs}');
