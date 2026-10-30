@@ -1,4 +1,4 @@
-# ADR-0092 — Piste audio et premier segment sur Apple
+# ADR-0093 — Piste audio et premier segment sur Apple
 
 - **Statut :** accepté, à vérifier sur Mac et iPhone (le Swift n'est pas compilé sous Windows)
 - **Date :** 2026-10-30

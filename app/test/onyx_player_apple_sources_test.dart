@@ -66,13 +66,13 @@ void main() {
     );
   });
 
-  test('le fichier brut est servi en segments progressifs (ADR-0092)', () {
+  test('le fichier brut est servi en segments progressifs (ADR-0093)', () {
     // Sans ce réglage, le premier segment d'un remux 4K attend sa coupe
     // entière (~1,1 s mesuré). Il ne vaut que pour le fichier brut : le HLS
     // de transcodage du serveur ne passe pas par la boucle locale.
     final player = File('$_darwin/AetherPlayer.swift').readAsStringSync();
     expect(player, contains('options.progressiveSegmentDelivery = isRawFile'),
         reason: 'Démarrage progressif retiré : le premier segment attend '
-            'de nouveau sa coupe entière (ADR-0092).');
+            'de nouveau sa coupe entière (ADR-0093).');
   });
 }
