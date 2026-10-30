@@ -1,6 +1,4 @@
 PODS:
-  - flutter_secure_storage_macos (6.1.3):
-    - FlutterMacOS
   - FlutterMacOS (1.0.0)
   - media_kit_libs_macos_video (1.0.4):
     - FlutterMacOS
@@ -10,15 +8,12 @@ PODS:
     - FlutterMacOS
 
 DEPENDENCIES:
-  - flutter_secure_storage_macos (from `Flutter/ephemeral/.symlinks/plugins/flutter_secure_storage_macos/macos`)
   - FlutterMacOS (from `Flutter/ephemeral`)
   - media_kit_libs_macos_video (from `Flutter/ephemeral/.symlinks/plugins/media_kit_libs_macos_video/macos`)
   - media_kit_video (from `Flutter/ephemeral/.symlinks/plugins/media_kit_video/macos`)
   - onyx_mpv_macos (from `Flutter/ephemeral/.symlinks/plugins/onyx_mpv_macos/macos`)
 
 EXTERNAL SOURCES:
-  flutter_secure_storage_macos:
-    :path: Flutter/ephemeral/.symlinks/plugins/flutter_secure_storage_macos/macos
   FlutterMacOS:
     :path: Flutter/ephemeral
   media_kit_libs_macos_video:
@@ -29,12 +24,11 @@ EXTERNAL SOURCES:
     :path: Flutter/ephemeral/.symlinks/plugins/onyx_mpv_macos/macos
 
 SPEC CHECKSUMS:
-  flutter_secure_storage_macos: 7f45e30f838cf2659862a4e4e3ee1c347c2b3b54
-  FlutterMacOS: d0db08ddef1a9af05a5ec4b724367152bb0500b1
-  media_kit_libs_macos_video: 85a23e549b5f480e72cae3e5634b5514bc692f65
-  media_kit_video: fa6564e3799a0a28bff39442334817088b7ca758
-  onyx_mpv_macos: 026fad236be6050708fd603073d3047c0d684b8e
+  FlutterMacOS: c232990155153907050900a2e175c7773903ba4e
+  media_kit_libs_macos_video: bd0a888eb3e2a2aab9fa330013befed388a14339
+  media_kit_video: 28d7d27611c7769a2464eb7621c37386a61dcc9a
+  onyx_mpv_macos: c3103395fee8482f4cdb83c1ddbaa16fe6cd04be
 
-PODFILE CHECKSUM: 346bfb2deb41d4a6ebd6f6799f92188bde2d246f
+PODFILE CHECKSUM: ffff6c81f9439f6fee6296cc6978038d80676a12
 
 COCOAPODS: 1.16.2

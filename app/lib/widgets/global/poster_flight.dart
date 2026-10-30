@@ -313,16 +313,27 @@ class _FlightLayer extends StatelessWidget {
     // Se soulève jusqu'à 1,08 au milieu du retournement, puis se repose.
     final lift = 1 + 0.08 * _bump(a / timeline.turnEnd);
     final size = from.size;
+    // Le fond se monte dès le début du retournement, invisible tant que le
+    // dos ne s'est pas présenté : sur un titre jamais survolé, son décodage
+    // démarre là plutôt qu'au milieu du virage, et n'a plus à rattraper son
+    // retard en plein vol.
     final face = ClipRRect(
       borderRadius: BorderRadius.circular(radius),
-      child: backFace
-          ? Transform(
+      child: Stack(
+        fit: StackFit.expand,
+        children: [
+          Opacity(
+            opacity: backFace ? 1 : 0,
+            child: Transform(
               alignment: Alignment.center,
               // Le dos est vu par derrière : on le remet à l'endroit.
               transform: Matrix4.identity()..rotateY(3.141592653589793),
               child: _backdrop(size, 1),
-            )
-          : _poster(size),
+            ),
+          ),
+          if (!backFace) _poster(size),
+        ],
+      ),
     );
     return Stack(
       children: [

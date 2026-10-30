@@ -18,7 +18,17 @@ class CastSection extends StatelessWidget {
   final List<CastMember> cast;
   final void Function(CastMember member)? onTapMember;
 
-  const CastSection({super.key, required this.cast, this.onTapMember});
+  /// Marge gauche/droite du titre et du bord de défilement. Par défaut la
+  /// marge de page — sauf quand la section est déjà nichée dans une colonne
+  /// qui la pose elle-même (ex. à côté de la fiche TMDB), où elle vaut 0.
+  final double? horizontalPadding;
+
+  const CastSection({
+    super.key,
+    required this.cast,
+    this.onTapMember,
+    this.horizontalPadding,
+  });
 
   /// Le diamètre d'un portrait, qui est aussi sa largeur de décodage.
   static const double avatarSize = 70;
@@ -28,7 +38,7 @@ class CastSection extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     if (cast.isEmpty) return const SizedBox.shrink();
-    final pad = AppLayout.pagePadding(context);
+    final pad = horizontalPadding ?? AppLayout.pagePadding(context);
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -50,8 +60,9 @@ class CastSection extends StatelessWidget {
               separatorBuilder: (_, __) => const SizedBox(width: 12),
               itemBuilder: (context, index) => _CastCard(
                 member: cast[index],
-                onTap:
-                    onTapMember == null ? null : () => onTapMember!(cast[index]),
+                onTap: onTapMember == null
+                    ? null
+                    : () => onTapMember!(cast[index]),
               ),
             ),
           ),

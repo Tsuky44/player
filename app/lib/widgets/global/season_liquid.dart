@@ -91,6 +91,11 @@ class SeasonDropPlan {
   final double dir;
   late final double _peak;
 
+  /// Distance totale du trajet. Le cou se détache sur une fraction de cette
+  /// distance : avec un seuil fixe, une saison voisine (quelques dizaines de
+  /// pixels) ne le franchissait jamais et restait soudée toute la traversée.
+  double get travel => (target - origin).abs();
+
   double get _step => span / (_frames - 1);
 
   /// Diamètre de la goutte, en pixels.
@@ -172,7 +177,12 @@ class SeasonDropPainter extends CustomPainter {
     final anchor = anchorX() ?? plan.origin;
     final drop = shapes.first;
     final gap = (drop.center.dx - anchor).abs();
-    final neck = 20 * (1 - smooth(gap / 120));
+    // Détache sur 55 % du trajet plutôt que sur 120 px fixes : entre deux
+    // bulles voisines, un trajet entier tient parfois sous ces 120 px, et le
+    // cou ne lâchait alors jamais — la goutte restait soudée aux deux bulles
+    // tout le temps, visible comme un empâtement qui tremble.
+    final detach = math.min(120.0, plan.travel * 0.55);
+    final neck = 20 * (1 - smooth(gap / (detach < 1 ? 1 : detach)));
     if (neck > 1.5) {
       final hull = _hull(anchor, neck, drop.center.dx, drop.width / 2, cy);
       if (hull != null) path.addPath(hull, Offset.zero);

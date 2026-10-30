@@ -7,6 +7,7 @@ import '../../theme/app_icons.dart';
 import '../../theme/app_type.dart';
 import '../../utils/responsive.dart';
 import 'detail_info_table.dart';
+import 'detail_metadata.dart';
 
 /// Un crédit de la fiche : « Réalisateur », « Denis Villeneuve ».
 typedef DetailCredit = ({String label, String value});
@@ -19,11 +20,23 @@ class DetailSummarySection extends StatelessWidget {
   final List<String> keywords;
   final Widget infoTable;
 
+  /// Un bloc de plus avant les crédits et les mots-clés — le casting, par
+  /// exemple — pour combler le vide que [infoTable] laisse sous lui sur un
+  /// grand écran, au lieu de lui laisser sa propre section pleine largeur.
+  final Widget? extra;
+
+  /// Le titre des crédits, affiché juste au-dessus d'eux. Quand [extra] passe
+  /// devant, c'est lui qui ouvre la colonne — ce titre le suit, à la place
+  /// du titre de section que la page n'a plus besoin de poser elle-même.
+  final String? mainTitle;
+
   const DetailSummarySection({
     super.key,
     required this.credits,
     required this.infoTable,
     this.keywords = const [],
+    this.extra,
+    this.mainTitle,
   });
 
   /// Le même corps pour un titre de la bibliothèque. [details] peut manquer le
@@ -31,6 +44,8 @@ class DetailSummarySection extends StatelessWidget {
   factory DetailSummarySection.forDetails({
     Key? key,
     required MediaDetails? details,
+    Widget? extra,
+    String? mainTitle,
   }) {
     final director = details?.director;
     return DetailSummarySection(
@@ -44,6 +59,8 @@ class DetailSummarySection extends StatelessWidget {
       infoTable: details == null
           ? const SizedBox.shrink()
           : DetailInfoTable.forDetails(details),
+      extra: extra,
+      mainTitle: mainTitle,
     );
   }
 
@@ -56,9 +73,18 @@ class DetailSummarySection extends StatelessWidget {
   Widget build(BuildContext context) {
     final width = MediaQuery.sizeOf(context).width;
     final hasMain = credits.isNotEmpty || keywords.isNotEmpty;
+    final hasMainContent = hasMain || extra != null;
     final main = Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
+        if (extra != null) ...[
+          extra!,
+          if (hasMain) const SizedBox(height: 28),
+        ],
+        if (hasMain && mainTitle != null) ...[
+          Text(mainTitle!, style: detailSectionTitleStyle(context)),
+          const SizedBox(height: 16),
+        ],
         if (credits.isNotEmpty) _CreditsGrid(credits: credits),
         if (credits.isNotEmpty && keywords.isNotEmpty)
           const SizedBox(height: 24),
@@ -84,7 +110,7 @@ class DetailSummarySection extends StatelessWidget {
           : Column(
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
-                if (hasMain) ...[main, const SizedBox(height: 28)],
+                if (hasMainContent) ...[main, const SizedBox(height: 28)],
                 infoTable,
               ],
             ),

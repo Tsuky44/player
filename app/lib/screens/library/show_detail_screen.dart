@@ -27,6 +27,7 @@ import '../../widgets/global/poster_picker_sheet.dart';
 import '../../widgets/global/season_download_button.dart';
 import '../../widgets/global/season_watched_button.dart';
 import '../../widgets/global/share_media_button.dart';
+import '../../widgets/global/staggered_entrance.dart';
 import 'release_folder_hint.dart';
 import 'season_detail_screen.dart';
 import 'show_episode_actions.dart';
@@ -596,9 +597,6 @@ class _ShowDetailScreenState extends State<ShowDetailScreen>
               ),
             ),
           ),
-          SliverToBoxAdapter(
-            child: DetailSummarySection.forDetails(details: _details),
-          ),
           if (lp.isLoadingSeasons)
             SliverToBoxAdapter(
               child: Padding(
@@ -725,38 +723,60 @@ class _ShowDetailScreenState extends State<ShowDetailScreen>
               ),
             )
           else
-            SliverList(
-              delegate: SliverChildBuilderDelegate(
-                (context, index) {
-                  final episode = lp.episodes[index];
-                  return EpisodeTile(
-                    episode: episode,
-                    episodeNumber: episode.media.episodeNumber ?? index + 1,
-                    showTitle: _show.title,
-                    showId: _show.id,
-                    showPosterUrl: _show.posterUrl,
-                    seasonNumber: _playerSeasonNumber,
-                    onToggleWatched: episode.isAvailable
-                        ? (watched) => _toggleEpisodeWatched(episode, watched)
-                        : null,
-                    onTap: episode.isAvailable
-                        ? () => _playEpisode(episode)
-                        : null,
-                  );
-                },
-                childCount: lp.episodes.length,
+            // Rejoue à chaque saison : sans ça la liste remplaçait l'autre
+            // d'un coup sec, pendant que les bulles au-dessus prennent 0,7 à
+            // 0,9 s pour la même transition.
+            StaggeredEntranceScope(
+              playKey: _playerSeasonNumber,
+              child: SliverList(
+                delegate: SliverChildBuilderDelegate(
+                  (context, index) {
+                    final episode = lp.episodes[index];
+                    return StaggeredEntrance(
+                      index: index,
+                      child: EpisodeTile(
+                        episode: episode,
+                        episodeNumber: episode.media.episodeNumber ?? index + 1,
+                        showTitle: _show.title,
+                        showId: _show.id,
+                        showPosterUrl: _show.posterUrl,
+                        seasonNumber: _playerSeasonNumber,
+                        onToggleWatched: episode.isAvailable
+                            ? (watched) =>
+                                _toggleEpisodeWatched(episode, watched)
+                            : null,
+                        onTap: episode.isAvailable
+                            ? () => _playEpisode(episode)
+                            : null,
+                      ),
+                    );
+                  },
+                  childCount: lp.episodes.length,
+                ),
               ),
             ),
-          // Sur une série, on vient pour les épisodes : la distribution passe
-          // après eux, au lieu de les repousser sous le pli.
-          if (_details?.cast.isNotEmpty ?? false)
+          // Le casting, les crédits et la fiche TMDB (réalisateur, scénario,
+          // studios…) viennent après les saisons et les épisodes : sur une
+          // série, on vient pour les regarder, pas pour lire qui l'a tournée.
+          // Le casting ouvre la colonne et les crédits le suivent, sous leur
+          // propre titre — au lieu d'ouvrir sa propre section pleine largeur,
+          // il comble le vide que la fiche TMDB, plus haute, laisse sous eux.
+          if (_details != null)
             SliverToBoxAdapter(
               child: Padding(
                 padding: const EdgeInsets.only(top: 32),
-                child: CastSection(
-                  cast: _details!.cast,
-                  onTapMember: (member) =>
-                      openPerson(context, member.tmdbId, name: member.name),
+                child: DetailSummarySection.forDetails(
+                  details: _details,
+                  mainTitle: tr('Informations'),
+                  extra: _details!.cast.isEmpty
+                      ? null
+                      : CastSection(
+                          cast: _details!.cast,
+                          horizontalPadding: 0,
+                          onTapMember: (member) => openPerson(
+                              context, member.tmdbId,
+                              name: member.name),
+                        ),
                 ),
               ),
             ),

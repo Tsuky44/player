@@ -1,0 +1,15 @@
+{
+  "permissions": {
+    "deny": [
+      "Read(./.claude/worktrees/**)",
+      "Read(./app/build/**)",
+      "Read(./app/macos/build_xcode/**)",
+      "Read(./app/windows/flutter/ephemeral/**)",
+      "Read(./jellyfin code/**)",
+      "Read(./server/downloads/**)",
+      "Read(./server/data/**)",
+      "Read(./dist/**)",
+      "Read(./app/Output/**)"
+    ]
+  }
+}

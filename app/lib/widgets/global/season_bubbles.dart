@@ -221,7 +221,35 @@ class _SeasonBubbleRowState extends State<SeasonBubbleRow>
   }
 
   void _measureAfterFrame() {
-    WidgetsBinding.instance.addPostFrameCallback((_) => _measureBeam());
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _measureBeam();
+      // Seulement pendant le trajet : sinon la rangée se rebloquerait sur la
+      // bulle ouverte chaque fois que l'utilisateur essaie de la dépasser au
+      // défilement manuel.
+      if (_follow.isAnimating) _followScroll();
+    });
+  }
+
+  /// Garde la bulle choisie dans le cadre visible tout le temps qu'elle
+  /// grossit, au lieu d'attendre la fin du trajet pour y sauter d'un coup
+  /// (`Scrollable.ensureVisible` dans [_followStatus] ne faisait que ça).
+  void _followScroll() {
+    if (!mounted || !_scroll.hasClients) return;
+    final rect = _bubbleRect(widget.selected);
+    if (rect == null) return;
+    final position = _scroll.position;
+    const margin = 8.0;
+    double target;
+    if (rect.left < position.pixels + margin) {
+      target = rect.left - margin;
+    } else if (rect.right > position.pixels + position.viewportDimension) {
+      target = rect.right - position.viewportDimension + margin;
+    } else {
+      return;
+    }
+    target = target.clamp(position.minScrollExtent, position.maxScrollExtent);
+    if ((target - position.pixels).abs() < 0.5) return;
+    position.jumpTo(target);
   }
 
   void _measureBeam() {
@@ -417,9 +445,10 @@ class _SeasonBubble extends StatelessWidget {
               ),
             ),
           ),
-          // Le sablier reste monté : il rentre dans la bulle qui s'ouvre
-          // (échelle et fondu) et ressort quand elle se ferme.
-          if (entry.requested)
+          // Le sablier ou le nuage barré reste monté : il rentre dans la
+          // bulle qui s'ouvre (échelle et fondu) et ressort quand elle se
+          // ferme.
+          if (entry.requested || entry.missing)
             Positioned(
               right: 0,
               bottom: 0,
@@ -431,7 +460,9 @@ class _SeasonBubble extends StatelessWidget {
                   child: AnimatedOpacity(
                     opacity: selected ? 0 : 1,
                     duration: AppMotion.fade(context, AppMotion.standard),
-                    child: const _RequestedPip(),
+                    child: entry.requested
+                        ? const _RequestedPip()
+                        : const _MissingPip(),
                   ),
                 ),
               ),
@@ -451,9 +482,8 @@ class _SeasonBubble extends StatelessWidget {
         onSelect: onTap,
         focusScale: 1.0,
         borderRadius: radius,
-        child: tooltip == null
-            ? bubble
-            : Tooltip(message: tooltip, child: bubble),
+        child:
+            tooltip == null ? bubble : Tooltip(message: tooltip, child: bubble),
       ),
     );
   }
@@ -496,7 +526,7 @@ class _Lead extends StatelessWidget {
                 entry.code,
                 style: TextStyle(
                   color:
-                      Colors.white.withValues(alpha: entry.missing ? 0.4 : 0.7),
+                      entry.missing ? AppColors.textMuted : AppColors.primary,
                   fontSize: AppType.subhead,
                   fontWeight: FontWeight.w700,
                   fontFeatures: const [FontFeature.tabularFigures()],
@@ -620,6 +650,26 @@ class _RequestedPip extends StatelessWidget {
       child: SizedBox.square(
         dimension: 18,
         child: Icon(AppIcons.pending, size: 13, color: AppColors.warning),
+      ),
+    );
+  }
+}
+
+/// Le nuage barré d'une saison absente et pas demandée, même emplacement que
+/// [_RequestedPip] : les deux badges sont mutuellement exclusifs.
+class _MissingPip extends StatelessWidget {
+  const _MissingPip();
+
+  @override
+  Widget build(BuildContext context) {
+    return const DecoratedBox(
+      decoration: BoxDecoration(
+        shape: BoxShape.circle,
+        color: AppColors.background,
+      ),
+      child: SizedBox.square(
+        dimension: 18,
+        child: Icon(AppIcons.cloudOff, size: 13, color: AppColors.textMuted),
       ),
     );
   }
