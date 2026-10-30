@@ -58,14 +58,18 @@ class RequestAvailabilityBadge extends StatelessWidget {
   }
 }
 
-/// Compact season-row badges.
+/// Pastille d'état d'une saison, comme MediaHub (`SeasonStatusBadges`) : sa
+/// disponibilité et, tant qu'elle n'est pas complète, le nombre d'épisodes
+/// encore à venir ([remaining]).
 class RequestStatusBadge extends StatelessWidget {
   final RequestMediaStatus status;
+  final int? remaining;
 
-  const RequestStatusBadge({super.key, required this.status});
+  const RequestStatusBadge({super.key, required this.status, this.remaining});
 
   @override
   Widget build(BuildContext context) {
+    final left = remaining;
     return switch (status) {
       RequestMediaStatus.available => _SeasonBadge(
           label: tr('Disponible'),
@@ -73,21 +77,26 @@ class RequestStatusBadge extends StatelessWidget {
           foreground: AppColors.success,
         ),
       RequestMediaStatus.partial => _SeasonBadge(
-          label: tr('Partiellement disponible'),
+          label: left == null
+              ? tr('Partiellement disponible')
+              : '${tr('Partiellement disponible')} · ${_remaining(left)}',
           icon: AppIcons.check,
           foreground: AppColors.warning,
         ),
       RequestMediaStatus.pending ||
       RequestMediaStatus.processing =>
         _SeasonBadge(
-          label: tr('En attente'),
+          label: left == null ? tr('En attente') : _remaining(left),
           icon: AppIcons.schedule,
-          foreground: AppColors.accentMuted,
+          foreground: AppColors.warning,
         ),
       RequestMediaStatus.unknown => const SizedBox.shrink(),
     };
   }
 }
+
+String _remaining(int n) =>
+    n == 1 ? tr('1 épisode restant') : tr('{0} restants', [n]);
 
 class _SeasonBadge extends StatelessWidget {
   final String label;

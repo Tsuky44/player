@@ -20,7 +20,8 @@ class MyRequestActions {
   final VoidCallback? onDecline;
   final VoidCallback? onDelete;
 
-  bool get isEmpty => onApprove == null && onDecline == null && onDelete == null;
+  bool get isEmpty =>
+      onApprove == null && onDecline == null && onDelete == null;
 }
 
 /// Une demande du compte, à la manière des cartes « Mes demandes » d'OnyxHub
@@ -299,8 +300,8 @@ class _ModerationBar extends StatelessWidget {
               onPressed: enabled(actions.onDelete),
               icon: const Icon(AppIcons.delete, size: 18),
               label: Text(tr('Supprimer')),
-              style:
-                  TextButton.styleFrom(foregroundColor: AppColors.textSecondary),
+              style: TextButton.styleFrom(
+                  foregroundColor: AppColors.textSecondary),
             ),
           if (actions.onDecline != null)
             TextButton.icon(

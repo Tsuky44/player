@@ -138,6 +138,10 @@ enum HeroPillStyle {
 
   /// Teinte rouge de la bande-annonce.
   trailer,
+
+  /// Bleu plein de « Demander » sur une saison pas encore demandée, comme
+  /// MediaHub (`SeasonRequestButton`).
+  request,
 }
 
 /// Une pastille d'action de la fiche, au gabarit d'OnyxHub
@@ -202,6 +206,11 @@ class HeroPill extends StatelessWidget {
           AppColors.error.withValues(alpha: 0.22),
           AppColors.error,
         ),
+      HeroPillStyle.request => (
+          AppColors.request,
+          Colors.white.withValues(alpha: 0.25),
+          Colors.white,
+        ),
     };
     final iconOnly = !dense && compact && iconOnlyWhenCompact && icon != null;
     final iconSize = dense ? 14.0 : (compact ? 16.0 : 20.0);
@@ -262,6 +271,23 @@ class HeroPill extends StatelessWidget {
         ),
       ),
     );
+    if (style == HeroPillStyle.request) {
+      // La lueur bleue sous la pastille, comme `shadow-[0_6px_18px_-8px]` chez MediaHub.
+      return DecoratedBox(
+        decoration: BoxDecoration(
+          borderRadius: BorderRadius.circular(999),
+          boxShadow: [
+            BoxShadow(
+              color: AppColors.request.withValues(alpha: 0.5),
+              blurRadius: 18,
+              spreadRadius: -8,
+              offset: const Offset(0, 6),
+            ),
+          ],
+        ),
+        child: pill,
+      );
+    }
     return iconOnly ? Tooltip(message: label, child: pill) : pill;
   }
 }

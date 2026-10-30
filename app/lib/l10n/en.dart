@@ -2762,6 +2762,8 @@ const Map<String, String> kEnglish = <String, String>{
       '{0} episode{1}',
   '{0} saison{1}':
       '{0} season{1}',
+  '{0} restants':
+      '{0} left',
   '{0} restantes':
       '{0} left',
   '{0} épisode{1} marqué{2} vu{3}':
@@ -3198,4 +3200,12 @@ const Map<String, String> kEnglish = <String, String>{
       'Sending request',
   'Importation':
       'Importing',
+  '{0} restant':
+      '{0} remaining',
+  '{0} sur {1} fichiers copiés':
+      '{0} of {1} files copied',
+  'Import échoué':
+      'Import failed',
+  'Copie de {0}':
+      'Copying {0}',
 };

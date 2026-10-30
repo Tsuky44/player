@@ -127,6 +127,9 @@ class RequestSeason {
   /// Date de première diffusion (AAAA-MM-JJ), quand TMDB la donne.
   final String? airDate;
 
+  /// Les épisodes que la bibliothèque détient déjà.
+  final int availableEpisodes;
+
   const RequestSeason({
     required this.number,
     required this.name,
@@ -134,6 +137,7 @@ class RequestSeason {
     required this.posterPath,
     required this.status,
     this.airDate,
+    this.availableEpisodes = 0,
   });
 
   factory RequestSeason.fromJson(Map<String, dynamic> json) {
@@ -144,7 +148,20 @@ class RequestSeason {
       posterPath: json['posterPath'] as String?,
       status: _statusFromJson(json['status'] as String?),
       airDate: json['airDate'] as String?,
+      availableEpisodes: json['availableEpisodes'] as int? ?? 0,
     );
+  }
+
+  /// Les épisodes encore à venir, comme MediaHub : ceux de la saison moins
+  /// ceux que la bibliothèque détient. Rien pour une saison qui n'attend
+  /// rien (inconnue, disponible) ni quand TMDB n'en compte aucun.
+  int? get remainingEpisodes {
+    final waiting = status == RequestMediaStatus.pending ||
+        status == RequestMediaStatus.processing ||
+        status == RequestMediaStatus.partial;
+    if (!waiting || episodeCount <= 0) return null;
+    final left = episodeCount - availableEpisodes;
+    return left > 0 ? left : null;
   }
 
   /// L'année de première diffusion, sous le nom de la saison.

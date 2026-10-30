@@ -3,7 +3,9 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:onyx/models/media_request.dart';
 import 'package:onyx/providers/media_requests_provider.dart';
 import 'package:onyx/screens/requests/widgets/request_season_list.dart';
+import 'package:onyx/screens/requests/widgets/season_liquid.dart';
 import 'package:onyx/services/api_client.dart';
+import 'package:onyx/theme/app_icons.dart';
 import 'package:provider/provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
@@ -81,6 +83,7 @@ Future<_Api> _pump(WidgetTester tester) async {
                 episodeCount: 6,
                 posterPath: null,
                 status: RequestMediaStatus.partial,
+                availableEpisodes: 4,
               ),
             ],
           ),
@@ -109,7 +112,8 @@ void main() {
     final two = tester.getRect(find.text('2'));
     expect(one.center.dy, two.center.dy);
     expect(two.left, greaterThan(one.left));
-    expect(tester.getSize(_bubble('Saison 1, 10 épisodes')), const Size(48, 48));
+    expect(
+        tester.getSize(_bubble('Saison 1, 10 épisodes')), const Size(48, 48));
     expect(find.text('Saison 1'), findsNothing);
     expect(find.textContaining('Épisode pilote'), findsNothing);
   });
@@ -143,7 +147,8 @@ void main() {
     expect(find.text('Disponible'), findsOneWidget);
   });
 
-  testWidgets('un nom de saison long est coupé dans la bulle, entier dans l’en-tête',
+  testWidgets(
+      'un nom de saison long est coupé dans la bulle, entier dans l’en-tête',
       (tester) async {
     await _pump(tester);
 
@@ -169,7 +174,8 @@ void main() {
     expect(find.text('Épisode pilote S1'), findsNothing);
     expect(find.text('Épisode pilote S2'), findsOneWidget);
     // La première bulle est redevenue un rond.
-    expect(tester.getSize(_bubble('Saison 1, 10 épisodes')), const Size(48, 48));
+    expect(
+        tester.getSize(_bubble('Saison 1, 10 épisodes')), const Size(48, 48));
 
     // Revenir à une saison déjà vue ne refait pas d'appel réseau.
     await tester.tap(find.text('1'));
@@ -195,5 +201,107 @@ void main() {
     final beam = tester.getRect(line);
     expect((beam.center.dx - bubble.center.dx).abs(), lessThan(1));
     expect(beam.top, greaterThan(bubble.bottom));
+  });
+
+  testWidgets('une saison à demander porte un « + » bleu, pas les autres',
+      (tester) async {
+    await _pump(tester);
+
+    // Seule la saison 1 est inconnue : un seul « + » sur les bulles fermées.
+    expect(find.byIcon(AppIcons.add), findsOneWidget);
+  });
+
+  testWidgets('une saison partielle dit combien d’épisodes restent à venir',
+      (tester) async {
+    await _pump(tester);
+
+    await tester.tap(find.text('3'));
+    await tester.pumpAndSettle();
+
+    expect(find.text('Partiellement disponible · 2 restants'), findsOneWidget);
+  });
+
+  test('les épisodes restants suivent le statut de la saison', () {
+    RequestSeason season(RequestMediaStatus status, [int available = 0]) =>
+        RequestSeason(
+          number: 1,
+          name: '',
+          episodeCount: 10,
+          posterPath: null,
+          status: status,
+          availableEpisodes: available,
+        );
+
+    expect(season(RequestMediaStatus.pending).remainingEpisodes, 10);
+    expect(season(RequestMediaStatus.partial, 7).remainingEpisodes, 3);
+    expect(season(RequestMediaStatus.available, 10).remainingEpisodes, isNull);
+    expect(season(RequestMediaStatus.unknown).remainingEpisodes, isNull);
+    expect(season(RequestMediaStatus.processing, 12).remainingEpisodes, isNull);
+  });
+
+  testWidgets(
+      'changer de saison lâche une goutte, qui s’efface une fois la bulle éclairée',
+      (tester) async {
+    await _pump(tester);
+
+    await tester.tap(find.text('1'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('2'));
+    await tester.pump(const Duration(milliseconds: 150));
+
+    // En route : la goutte est peinte, la bulle choisie ne montre pas encore
+    // son nom.
+    expect(
+        find.byWidgetPredicate(
+            (w) => w is CustomPaint && w.painter is SeasonDropPainter),
+        findsOneWidget);
+
+    await tester.pumpAndSettle();
+    expect(
+        find.byWidgetPredicate(
+            (w) => w is CustomPaint && w.painter is SeasonDropPainter),
+        findsNothing);
+    expect(find.text('Saison 2'), findsNWidgets(2));
+    expect(
+        tester.getSize(_bubble('Saison 1, 10 épisodes')), const Size(48, 48));
+  });
+
+  testWidgets('sans animation, pas de goutte : la bulle s’ouvre d’emblée',
+      (tester) async {
+    tester.platformDispatcher.accessibilityFeaturesTestValue =
+        const FakeAccessibilityFeatures(disableAnimations: true);
+    addTearDown(tester.platformDispatcher.clearAccessibilityFeaturesTestValue);
+    await _pump(tester);
+
+    await tester.tap(find.text('1'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('2'));
+    await tester.pump();
+
+    expect(
+        find.byWidgetPredicate(
+            (w) => w is CustomPaint && w.painter is SeasonDropPainter),
+        findsNothing);
+  });
+
+  testWidgets('les épisodes montent en cascade puis sont rendus tels quels',
+      (tester) async {
+    await _pump(tester);
+
+    await tester.tap(find.text('1'));
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 50));
+    // À l'arrivée, l'épisode est encore sous un fondu...
+    expect(
+        find.ancestor(
+            of: find.text('Épisode pilote S1'), matching: find.byType(Opacity)),
+        findsWidgets);
+
+    await tester.pumpAndSettle();
+    // ...et une fois posé, plus aucun calque d'opacité ne reste.
+    expect(
+        find.ancestor(
+            of: find.text('Épisode pilote S1'), matching: find.byType(Opacity)),
+        findsNothing);
   });
 }

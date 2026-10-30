@@ -18,7 +18,6 @@ import '../../widgets/global/poster_grid_zoom_region.dart';
 import '../../widgets/global/staggered_entrance.dart';
 import '../../services/api_client.dart';
 import 'my_requests_screen.dart';
-import 'request_detail_screen.dart';
 import 'widgets/request_filters_sheet.dart';
 import 'widgets/request_media_card.dart';
 import '../../theme/app_icons.dart';
@@ -204,177 +203,174 @@ class _RequestsScreenState extends State<RequestsScreen> {
       body: PosterGridZoomRegion(
         child: CustomScrollView(
           scrollCacheExtent: AppLayout.imageCacheExtent(context),
-        controller: _scrollController,
-        slivers: [
-          SliverToBoxAdapter(
-            child: Padding(
-              padding: EdgeInsets.fromLTRB(
-                horizontalPadding,
-                shellTabTopInset(context, embedded: widget.embedded),
-                horizontalPadding,
-                20,
-              ),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Row(
-                    children: [
-                      Expanded(
-                        child: Text(_title(provider),
-                            maxLines: 2,
-                            overflow: TextOverflow.ellipsis,
-                            style: Theme.of(context)
-                                .textTheme
-                                .displaySmall
-                                ?.copyWith(
-                                    fontWeight: FontWeight.w800,
-                                    fontSize: compact ? 26 : 32)),
-                      ),
-                      if (_hasMyRequests)
-                        TextButton.icon(
-                          onPressed: () => Navigator.of(context).push(
-                              MaterialPageRoute(
-                                  builder: (_) => const MyRequestsScreen())),
-                          icon: const Icon(AppIcons.request),
-                          label: Text(tr('Mes demandes')),
-                        ),
-                    ],
-                  ),
-                  const SizedBox(height: 6),
-                  Text(tr('Recherchez et demandez de nouveaux films et séries'),
-                      style: TextStyle(color: AppColors.textSecondary)),
-                  const SizedBox(height: 22),
-                  TvDeferredKeyboard(
-                    builder: (context, focusNode, canRequestFocus) => TextField(
-                      controller: _searchController,
-                      focusNode: focusNode,
-                      canRequestFocus: canRequestFocus,
-                      onChanged: (_) {
-                        setState(() {});
-                        _scheduleSearch();
-                      },
-                      onSubmitted: (_) {
-                        _searchDebounce?.cancel();
-                        _runSearch();
-                      },
-                      textInputAction: TextInputAction.search,
-                      decoration: InputDecoration(
-                        hintText: tr('Rechercher un film ou une série…'),
-                        prefixIcon: const Icon(AppIcons.search),
-                        suffixIcon: _searchController.text.isEmpty
-                            ? null
-                            : IconButton(
-                                onPressed: () {
-                                  _searchDebounce?.cancel();
-                                  _searchController.clear();
-                                  setState(() {});
-                                  _runSearch();
-                                },
-                                icon: const Icon(AppIcons.close),
-                              ),
-                      ),
-                    ),
-                  ),
-                  if (!provider.filters.isDefault) ...[
-                    const SizedBox(height: 8),
-                    Wrap(
-                      spacing: 8,
+          controller: _scrollController,
+          slivers: [
+            SliverToBoxAdapter(
+              child: Padding(
+                padding: EdgeInsets.fromLTRB(
+                  horizontalPadding,
+                  shellTabTopInset(context, embedded: widget.embedded),
+                  horizontalPadding,
+                  20,
+                ),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Row(
                       children: [
-                        Chip(
-                          label: Text(tr('Filtres avancés actifs')),
-                          deleteIcon: const Icon(AppIcons.close, size: 16),
-                          onDeleted: () {
-                            setState(() {
-                              _draftFilters = RequestCatalogFilters.defaults;
-                            });
-                            _reloadCatalog();
-                          },
+                        Expanded(
+                          child: Text(_title(provider),
+                              maxLines: 2,
+                              overflow: TextOverflow.ellipsis,
+                              style: Theme.of(context)
+                                  .textTheme
+                                  .displaySmall
+                                  ?.copyWith(
+                                      fontWeight: FontWeight.w800,
+                                      fontSize: compact ? 26 : 32)),
                         ),
+                        if (_hasMyRequests)
+                          TextButton.icon(
+                            onPressed: () => Navigator.of(context).push(
+                                MaterialPageRoute(
+                                    builder: (_) => const MyRequestsScreen())),
+                            icon: const Icon(AppIcons.request),
+                            label: Text(tr('Mes demandes')),
+                          ),
                       ],
                     ),
-                  ],
-                  const SizedBox(height: 18),
-                  _TypeFilterPills(
-                    selected: _draftType,
-                    onChanged: (type) {
-                      setState(() => _draftType = type);
-                      _reloadCatalog();
-                    },
-                  ),
-                ],
-              ),
-            ),
-          ),
-          if (provider.isLoading)
-            const SliverFillRemaining(child: LoadingView())
-          else if (provider.errorMessage != null && provider.items.isEmpty)
-            SliverFillRemaining(
-              child: ErrorStateView(
-                  message: provider.errorMessage!, onRetry: _reloadCatalog),
-            )
-          else if (provider.items.isEmpty)
-            SliverFillRemaining(
-              child: EmptyStateView(
-                icon: AppIcons.search,
-                title: tr('Aucun média trouvé'),
-                message: tr('Essayez une autre recherche ou un autre filtre.'),
-              ),
-            )
-          else
-            SliverPadding(
-              padding: EdgeInsets.fromLTRB(
-                  horizontalPadding, 8, horizontalPadding, 36),
-              sliver: SliverLayoutBuilder(
-                builder: (context, constraints) {
-                  final grid = AppLayout.posterGridDelegate(
-                    context,
-                    constraints.crossAxisExtent,
-                    compact: AppLayout.isCompact(context),
-                    withMeta: false,
-                  ) as SliverGridDelegateWithFixedCrossAxisCount;
-                  final columns = grid.crossAxisCount;
-                  _cellWidth = (constraints.crossAxisExtent -
-                          grid.crossAxisSpacing * (columns - 1)) /
-                      columns;
-                  _devicePixelRatio = MediaQuery.devicePixelRatioOf(context);
-                  // La grille est recréée à chaque nouveau résultat (le
-                  // chargement la remplace par LoadingView) : la cascade
-                  // rejoue alors, et pas aux pages ajoutées en bas.
-                  return StaggeredEntranceScope(
-                    playKey: provider.type,
-                    child: SliverGrid(
-                      gridDelegate: grid,
-                      delegate: SliverChildBuilderDelegate(
-                        (context, index) {
-                          final item = provider.items[index];
-                          return StaggeredEntrance(
-                            index: index,
-                            child: RequestMediaCard(
-                              item: item,
-                              onTap: () => Navigator.of(context).push(
-                                MaterialPageRoute(
-                                    builder: (_) =>
-                                        RequestDetailScreen(item: item)),
-                              ),
-                            ),
-                          );
+                    const SizedBox(height: 6),
+                    Text(
+                        tr('Recherchez et demandez de nouveaux films et séries'),
+                        style: TextStyle(color: AppColors.textSecondary)),
+                    const SizedBox(height: 22),
+                    TvDeferredKeyboard(
+                      builder: (context, focusNode, canRequestFocus) =>
+                          TextField(
+                        controller: _searchController,
+                        focusNode: focusNode,
+                        canRequestFocus: canRequestFocus,
+                        onChanged: (_) {
+                          setState(() {});
+                          _scheduleSearch();
                         },
-                        childCount: provider.items.length,
+                        onSubmitted: (_) {
+                          _searchDebounce?.cancel();
+                          _runSearch();
+                        },
+                        textInputAction: TextInputAction.search,
+                        decoration: InputDecoration(
+                          hintText: tr('Rechercher un film ou une série…'),
+                          prefixIcon: const Icon(AppIcons.search),
+                          suffixIcon: _searchController.text.isEmpty
+                              ? null
+                              : IconButton(
+                                  onPressed: () {
+                                    _searchDebounce?.cancel();
+                                    _searchController.clear();
+                                    setState(() {});
+                                    _runSearch();
+                                  },
+                                  icon: const Icon(AppIcons.close),
+                                ),
+                        ),
                       ),
                     ),
-                  );
-                },
+                    if (!provider.filters.isDefault) ...[
+                      const SizedBox(height: 8),
+                      Wrap(
+                        spacing: 8,
+                        children: [
+                          Chip(
+                            label: Text(tr('Filtres avancés actifs')),
+                            deleteIcon: const Icon(AppIcons.close, size: 16),
+                            onDeleted: () {
+                              setState(() {
+                                _draftFilters = RequestCatalogFilters.defaults;
+                              });
+                              _reloadCatalog();
+                            },
+                          ),
+                        ],
+                      ),
+                    ],
+                    const SizedBox(height: 18),
+                    _TypeFilterPills(
+                      selected: _draftType,
+                      onChanged: (type) {
+                        setState(() => _draftType = type);
+                        _reloadCatalog();
+                      },
+                    ),
+                  ],
+                ),
               ),
             ),
-          if (provider.isLoadingMore)
-            const SliverToBoxAdapter(
-              child: Padding(
-                padding: EdgeInsets.all(24),
-                child: Center(child: CircularProgressIndicator(strokeWidth: 2)),
+            if (provider.isLoading)
+              const SliverFillRemaining(child: LoadingView())
+            else if (provider.errorMessage != null && provider.items.isEmpty)
+              SliverFillRemaining(
+                child: ErrorStateView(
+                    message: provider.errorMessage!, onRetry: _reloadCatalog),
+              )
+            else if (provider.items.isEmpty)
+              SliverFillRemaining(
+                child: EmptyStateView(
+                  icon: AppIcons.search,
+                  title: tr('Aucun média trouvé'),
+                  message:
+                      tr('Essayez une autre recherche ou un autre filtre.'),
+                ),
+              )
+            else
+              SliverPadding(
+                padding: EdgeInsets.fromLTRB(
+                    horizontalPadding, 8, horizontalPadding, 36),
+                sliver: SliverLayoutBuilder(
+                  builder: (context, constraints) {
+                    final grid = AppLayout.posterGridDelegate(
+                      context,
+                      constraints.crossAxisExtent,
+                      compact: AppLayout.isCompact(context),
+                      withMeta: false,
+                    ) as SliverGridDelegateWithFixedCrossAxisCount;
+                    final columns = grid.crossAxisCount;
+                    _cellWidth = (constraints.crossAxisExtent -
+                            grid.crossAxisSpacing * (columns - 1)) /
+                        columns;
+                    _devicePixelRatio = MediaQuery.devicePixelRatioOf(context);
+                    // La grille est recréée à chaque nouveau résultat (le
+                    // chargement la remplace par LoadingView) : la cascade
+                    // rejoue alors, et pas aux pages ajoutées en bas.
+                    return StaggeredEntranceScope(
+                      playKey: provider.type,
+                      child: SliverGrid(
+                        gridDelegate: grid,
+                        delegate: SliverChildBuilderDelegate(
+                          (context, index) {
+                            final item = provider.items[index];
+                            return StaggeredEntrance(
+                              index: index,
+                              child: RequestMediaCard(item: item),
+                            );
+                          },
+                          childCount: provider.items.length,
+                        ),
+                      ),
+                    );
+                  },
+                ),
               ),
-            ),
-        ],
-      ),
+            if (provider.isLoadingMore)
+              const SliverToBoxAdapter(
+                child: Padding(
+                  padding: EdgeInsets.all(24),
+                  child:
+                      Center(child: CircularProgressIndicator(strokeWidth: 2)),
+                ),
+              ),
+          ],
+        ),
       ),
     );
   }

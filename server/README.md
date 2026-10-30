@@ -165,6 +165,11 @@ Toutes les routes API (sauf l'inscription/connexion et le stream) requièrent l'
 * `GET /api/requests/access` (`request_media`, ADR-0089) — `{ "service", "version"?, "linked",
   "can": { "read", "request", "readAllRequests", "moderate", "delete" } }`, les droits du compte
   MediaHub de même nom (OnyxHub : `request` seulement).
+* `GET /api/requests/progress?tmdbId=&type=movie|tv` (`request_media`) — le téléchargement et
+  l'import du titre, lus chez MediaHub (`GET /progress/:tmdbId`) : `{ "active", "downloading",
+  "download": { "progress", "timeleft", "speed", "size", "sizeLeft", "releaseTitle" } | null,
+  "imports": [{ "releaseName", "progress", "files", "filesDone", "size", "sizeDone", "sizeLeft",
+  "current", "failed", "message" }] }`. `501` chez OnyxHub ou un MediaHub sans la route.
 * `GET /api/requests/all` (`manage_settings`, ADR-0089) — même forme que `mine`, tous comptes,
   avec `requester`. MediaHub exige en plus `read MediaRequest`. `501` avec OnyxHub.
 * `POST /api/requests/moderation` (`manage_settings`, ADR-0089) — `{ "requestIds": [...],

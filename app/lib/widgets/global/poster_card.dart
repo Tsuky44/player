@@ -252,7 +252,25 @@ class _PosterCardState extends State<PosterCard> {
       ? poster
       : Semantics(label: widget.title, button: true, child: poster);
 
+  /// L'image grossit de 5 % sous le pointeur, lentement (700 ms), pendant que
+  /// la carte se soulève : OnyxHub (`group-hover:scale-105`). Un simple
+  /// agrandissement de l'image déjà décodée, que le GPU fait seul ; rien à
+  /// repeindre ni à redécoder. Absent en mode léger et en mouvement réduit.
   Widget _poster() {
+    final image = _posterImage();
+    final motion = _posterMotion(context, _zoom);
+    if (motion == Duration.zero) return image;
+    return AnimatedScale(
+      scale: _active ? 1.05 : 1,
+      duration: motion,
+      curve: Curves.easeOutCubic,
+      child: image,
+    );
+  }
+
+  static const Duration _zoom = Duration(milliseconds: 700);
+
+  Widget _posterImage() {
     return AppNetworkImage(
       url: widget.posterUrl,
       fit: BoxFit.cover,
@@ -446,8 +464,8 @@ class PosterHoverOverlay extends StatelessWidget {
 }
 
 /// Le cartouche d'une affiche pointée, à la manière des cartes d'OnyxHub : un
-/// dégradé qui monte du bas et [child] (titre, type, résumé) qui glisse de
-/// quelques pixels en apparaissant.
+/// dégradé qui monte du bas et les [HoverLine] de [child] (titre, type,
+/// résumé) qui montent l'une après l'autre en apparaissant.
 ///
 /// Au repos, l'opacité nulle saute la peinture entière du sous-arbre : une
 /// grille de cinquante affiches n'en dessine aucun. Le glissé passe par
@@ -485,10 +503,8 @@ class PosterHoverDetails extends StatelessWidget {
           ),
           child: Align(
             alignment: Alignment.bottomLeft,
-            child: AnimatedSlide(
-              offset: active ? Offset.zero : const Offset(0, 0.08),
-              duration: _posterMotion(context, AppMotion.standard),
-              curve: AppMotion.curve,
+            child: _HoverActive(
+              active: active,
               child: Padding(
                 padding: const EdgeInsets.all(PosterCard.overlayInset + 3),
                 child: child,
@@ -497,6 +513,49 @@ class PosterHoverDetails extends StatelessWidget {
           ),
         ),
       ),
+    );
+  }
+}
+
+class _HoverActive extends InheritedWidget {
+  final bool active;
+
+  const _HoverActive({required this.active, required super.child});
+
+  @override
+  bool updateShouldNotify(_HoverActive old) => active != old.active;
+}
+
+/// Une ligne du cartouche : elle monte de quelques pixels quand la carte est
+/// pointée, [rank] fois 75 ms après la précédente (`delay-75`, `delay-100`
+/// chez OnyxHub), et redescend aussitôt, sans attendre son tour.
+///
+/// Un seul `AnimatedSlide` par ligne et pas de contrôleur : le retard est
+/// une part de la durée (`Interval`), pas une minuterie.
+class HoverLine extends StatelessWidget {
+  final int rank;
+  final Widget child;
+
+  const HoverLine({super.key, required this.rank, required this.child});
+
+  static const Duration _rise = Duration(milliseconds: 300);
+  static const Duration _step = Duration(milliseconds: 75);
+
+  @override
+  Widget build(BuildContext context) {
+    final active =
+        context.dependOnInheritedWidgetOfExactType<_HoverActive>()?.active ??
+            true;
+    final wait = _step * rank;
+    final total = active ? _rise + wait : AppMotion.micro;
+    return AnimatedSlide(
+      offset: active ? Offset.zero : const Offset(0, 0.7),
+      duration: _posterMotion(context, total),
+      curve: active
+          ? Interval(wait.inMicroseconds / total.inMicroseconds, 1,
+              curve: Curves.easeOutCubic)
+          : Curves.easeIn,
+      child: child,
     );
   }
 }

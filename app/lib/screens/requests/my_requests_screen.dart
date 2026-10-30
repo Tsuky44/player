@@ -89,8 +89,8 @@ class _MyRequestsScreenState extends State<MyRequestsScreen> {
     } catch (error) {
       debugPrint('MyRequestsScreen: MediaHub pas ouvert ($error)');
       messenger.showSnackBar(SnackBar(
-          content: Text(
-              _errorText(error, tr('Impossible d’ouvrir MediaHub.')))));
+          content:
+              Text(_errorText(error, tr('Impossible d’ouvrir MediaHub.')))));
     } finally {
       if (mounted) setState(() => _openingHub = false);
     }
@@ -163,12 +163,10 @@ class _MyRequestsScreenState extends State<MyRequestsScreen> {
     }
     final decides = _access.canModerate && request.awaitsDecision;
     return MyRequestActions(
-      onApprove: decides
-          ? () => _moderate(request, RequestModeration.approve)
-          : null,
-      onDecline: decides
-          ? () => _moderate(request, RequestModeration.decline)
-          : null,
+      onApprove:
+          decides ? () => _moderate(request, RequestModeration.approve) : null,
+      onDecline:
+          decides ? () => _moderate(request, RequestModeration.decline) : null,
       onDelete: _access.canDelete
           ? () => _moderate(request, RequestModeration.delete)
           : null,
@@ -181,8 +179,9 @@ class _MyRequestsScreenState extends State<MyRequestsScreen> {
     return Scaffold(
       backgroundColor: AppColors.background,
       appBar: AppBar(
-        title: Text(
-            _scope == _Scope.all ? tr('Toutes les demandes') : tr('Mes demandes')),
+        title: Text(_scope == _Scope.all
+            ? tr('Toutes les demandes')
+            : tr('Mes demandes')),
         actions: [
           if (_canOpenHub && _access.service == 'mediahub')
             IconButton(
@@ -275,8 +274,8 @@ class _MyRequestsScreenState extends State<MyRequestsScreen> {
                         request.requestIds.isNotEmpty &&
                         request.requestIds.first == _moderating,
                     onTap: () => Navigator.of(context).push(MaterialPageRoute(
-                        builder: (_) =>
-                            RequestDetailScreen(item: request.toRequestItem()))),
+                        builder: (_) => RequestDetailScreen(
+                            item: request.toRequestItem()))),
                   ),
                 );
               },

@@ -5,19 +5,25 @@ import '../../../utils/poster_url.dart';
 import '../../../widgets/global/poster_card.dart';
 import '../../../theme/app_type.dart';
 import '../../../l10n/tr.dart';
+import '../../../widgets/global/poster_flight.dart';
+import '../request_detail_launch.dart';
 import 'request_status_dot.dart';
 
 /// Une affiche du catalogue Demander, comme les cartes d'OnyxHub
 /// (`MediaCard`) : l'affiche seule, la pastille de statut en haut à droite, et
 /// le titre, le type et le résumé qui montent du bas quand elle est pointée.
+///
+/// Sans [onTap], toucher la carte ouvre la fiche par l'envol de l'affiche
+/// (`openRequestDetail`), et s'attarder dessus préchauffe les images que
+/// l'envol dessinera.
 class RequestMediaCard extends StatelessWidget {
   final RequestMediaItem item;
-  final VoidCallback onTap;
+  final VoidCallback? onTap;
 
   const RequestMediaCard({
     super.key,
     required this.item,
-    required this.onTap,
+    this.onTap,
   });
 
   @override
@@ -26,7 +32,15 @@ class RequestMediaCard extends StatelessWidget {
       posterUrl: cardPosterUrl(item.posterUrl),
       title: item.title,
       showMeta: false,
-      onTap: onTap,
+      onTap: onTap ?? () => openRequestDetail(context, item),
+      onPrefetch: onTap != null
+          ? null
+          : () => PosterFlight.warm(
+                context,
+                posterUrl: cardPosterUrl(item.posterUrl),
+                posterWidth: context.size?.width ?? 0,
+                backdropUrl: detailBackdropUrl(item.backdropUrl),
+              ),
       hoverDetails: _RequestCardDetails(item: item),
       overlays: [
         if (item.status != RequestMediaStatus.unknown)
@@ -60,47 +74,56 @@ class _RequestCardDetails extends StatelessWidget {
       mainAxisSize: MainAxisSize.min,
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Text(
-          item.title,
-          maxLines: 2,
-          overflow: TextOverflow.ellipsis,
-          style: const TextStyle(
-            color: AppColors.textPrimary,
-            fontWeight: FontWeight.w700,
-            fontSize: AppType.body,
-            height: 1.15,
+        HoverLine(
+          rank: 0,
+          child: Text(
+            item.title,
+            maxLines: 2,
+            overflow: TextOverflow.ellipsis,
+            style: const TextStyle(
+              color: AppColors.textPrimary,
+              fontWeight: FontWeight.w700,
+              fontSize: AppType.body,
+              height: 1.15,
+            ),
           ),
         ),
         const SizedBox(height: 6),
-        Row(
-          children: [
-            _TypePill(type: item.mediaType),
-            if (facts.isNotEmpty) ...[
-              const SizedBox(width: 6),
-              Flexible(
-                child: Text(
-                  facts,
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  style: const TextStyle(
-                    color: AppColors.textSecondary,
-                    fontSize: AppType.micro,
+        HoverLine(
+          rank: 1,
+          child: Row(
+            children: [
+              _TypePill(type: item.mediaType),
+              if (facts.isNotEmpty) ...[
+                const SizedBox(width: 6),
+                Flexible(
+                  child: Text(
+                    facts,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: const TextStyle(
+                      color: AppColors.textSecondary,
+                      fontSize: AppType.micro,
+                    ),
                   ),
                 ),
-              ),
+              ],
             ],
-          ],
+          ),
         ),
         if (item.overview.isNotEmpty) ...[
           const SizedBox(height: 6),
-          Text(
-            item.overview,
-            maxLines: 3,
-            overflow: TextOverflow.ellipsis,
-            style: const TextStyle(
-              color: AppColors.textSecondary,
-              fontSize: AppType.caption,
-              height: 1.35,
+          HoverLine(
+            rank: 2,
+            child: Text(
+              item.overview,
+              maxLines: 3,
+              overflow: TextOverflow.ellipsis,
+              style: const TextStyle(
+                color: AppColors.textSecondary,
+                fontSize: AppType.caption,
+                height: 1.35,
+              ),
             ),
           ),
         ],

@@ -302,6 +302,10 @@ func TmdbRequestDetails(w http.ResponseWriter, r *http.Request, ps httprouter.Pa
 		PosterPath   string `json:"posterPath,omitempty"`
 		AirDate      string `json:"airDate,omitempty"`
 		Status       string `json:"status"`
+
+		// AvailableEpisodes : les épisodes que la bibliothèque détient, pour
+		// dire combien il en reste à venir.
+		AvailableEpisodes int `json:"availableEpisodes,omitempty"`
 	}
 
 	// Fetch seasons for TV shows
@@ -399,6 +403,7 @@ func TmdbRequestDetails(w http.ResponseWriter, r *http.Request, ps httprouter.Pa
 			seasonStatuses := make([]string, len(seasons))
 			for i := range seasons {
 				seasons[i].Status = seasonPresence(seasons[i].Status, heldEpisodes[seasons[i].Number], seasons[i].EpisodeCount)
+				seasons[i].AvailableEpisodes = heldEpisodes[seasons[i].Number]
 				seasonStatuses[i] = seasons[i].Status
 			}
 			status = showStatusFor(status, len(heldEpisodes) > 0, seasonStatuses)

@@ -267,7 +267,9 @@ class _SeasonSelectorDialogState extends State<SeasonSelectorDialog> {
                                             ),
                                           ),
                                           RequestStatusBadge(
-                                              status: season.status),
+                                            status: season.status,
+                                            remaining: season.remainingEpisodes,
+                                          ),
                                         ],
                                       ),
                                     ],

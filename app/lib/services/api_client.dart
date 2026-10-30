@@ -22,6 +22,7 @@ import 'media_failover.dart';
 import '../models/media_request.dart';
 import '../models/my_request.dart';
 import '../models/request_feed.dart';
+import '../models/request_progress.dart';
 import '../models/media_share.dart';
 import '../models/shared_show.dart';
 import '../models/server_activity.dart';

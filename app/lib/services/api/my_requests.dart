@@ -63,6 +63,26 @@ mixin _MyRequestEndpoints {
         Map<String, dynamic>.from(response.data as Map));
   }
 
+  /// Le téléchargement et l'import du titre, lus chez MediaHub. Un serveur ou
+  /// un compagnon qui n'a pas la route rend `null`, comme « rien en cours » :
+  /// le suivi est un plus, l'écran ne s'en passe pas.
+  Future<RequestProgress?> getRequestProgress(
+    int tmdbId,
+    RequestMediaType mediaType,
+  ) async {
+    try {
+      final response = await _dio.get('/api/requests/progress',
+          queryParameters: {'tmdbId': tmdbId, 'type': mediaType.name});
+      final progress = RequestProgress.fromJson(
+          Map<String, dynamic>.from(response.data as Map));
+      return progress.isEmpty ? null : progress;
+    } on DioException {
+      // Pas de suivi (MediaHub muet, route absente, droit refusé) : l'écran
+      // n'affiche simplement pas le cadre.
+      return null;
+    }
+  }
+
   /// Approuve, refuse ou supprime les lignes d'un lot. Lève l'erreur de
   /// MediaHub (403, 409…), que l'écran affiche.
   Future<void> moderateRequests(

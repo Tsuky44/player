@@ -370,6 +370,9 @@ func main() {
 	router.GET("/api/requests/mine", handlers.RequirePermission(models.PermRequestMedia, handlers.MediaHubMyRequests))
 	// Les droits du compte chez MediaHub (ADR-0089) : même droit que demander.
 	router.GET("/api/requests/access", handlers.RequirePermission(models.PermRequestMedia, handlers.MediaHubRequestAccess))
+	// Le téléchargement et l'import d'un titre, lus chez MediaHub : même droit
+	// que demander, puisque l'écran de détail d'une demande les montre.
+	router.GET("/api/requests/progress", handlers.RequirePermission(models.PermRequestMedia, handlers.MediaHubProgress))
 	// Toutes les demandes et leur modération (ADR-0089) : MediaHub juge le droit
 	// d'après le rôle du compte de même nom, et Onyx exige en plus
 	// manage_settings, comme pour le flux. Un nom pris par hasard à

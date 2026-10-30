@@ -12,9 +12,11 @@ import '../../widgets/global/empty_state.dart';
 import '../../utils/long_date.dart';
 import '../../utils/responsive.dart';
 import '../../widgets/global/staggered_entrance.dart';
+import '../../widgets/global/poster_flight.dart';
 import 'widgets/request_detail_hero.dart';
 import 'widgets/request_cast_list.dart';
 import 'widgets/request_info_table.dart';
+import 'widgets/request_progress_panel.dart';
 import 'widgets/request_related_slider.dart';
 import 'widgets/request_season_list.dart';
 import 'widgets/request_status_badge.dart';
@@ -104,6 +106,18 @@ class _RequestDetailScreenState extends State<RequestDetailScreen> {
     );
   }
 
+  /// Le chargement garde le fond que l'envol vient de poser : la carte le
+  /// connaît déjà, et la fiche n'attend pas le réseau pour avoir son image.
+  Widget _loading() {
+    if (widget.item.backdropUrl == null) return const LoadingView();
+    return Stack(
+      children: [
+        RequestDetailBackdrop(backdropUrl: widget.item.backdropUrl),
+        const LoadingView(),
+      ],
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -112,7 +126,7 @@ class _RequestDetailScreenState extends State<RequestDetailScreen> {
         future: _details,
         builder: (context, snapshot) {
           if (snapshot.connectionState != ConnectionState.done) {
-            return const LoadingView();
+            return _loading();
           }
           if (snapshot.hasError || !snapshot.hasData) {
             return ErrorStateView(
@@ -170,13 +184,17 @@ class _RequestDetailScreenState extends State<RequestDetailScreen> {
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      _backButton(),
+                      FlightDrop(child: _backButton()),
                       // Le titre se pose dans le bas de l'image, comme sur
                       // OnyxHub.
                       SizedBox(
                           height:
                               compact ? size.height * 0.22 : size.height * 0.3),
-                      _heroHeader(details, canRequest, hasUnrequestedSeasons),
+                      FlightDrop(
+                        delay: const Duration(milliseconds: 170),
+                        child: _heroHeader(
+                            details, canRequest, hasUnrequestedSeasons),
+                      ),
                       const SizedBox(height: 48),
                     ],
                   ),
@@ -418,6 +436,12 @@ class _RequestDetailScreenState extends State<RequestDetailScreen> {
           SizedBox(height: compact ? 14 : 20),
           RequestImportNotice(message: waiting),
         ],
+        // Le suivi vient de MediaHub : un titre disponible n'a plus rien à
+        // montrer, les autres sont interrogés tant que l'écran est ouvert.
+        if (details.status != RequestMediaStatus.available &&
+            details.status != RequestMediaStatus.unknown)
+          RequestProgressPanel(
+              tmdbId: details.id, mediaType: details.mediaType),
       ],
     );
   }

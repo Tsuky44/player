@@ -1,12 +1,14 @@
-import 'package:flutter/foundation.dart' show ValueListenable;
 import 'package:flutter/material.dart';
 import '../../../models/media_request.dart';
 import '../../../theme/app_colors.dart';
+import '../../../theme/app_icons.dart';
 import '../../../theme/app_motion.dart';
 import '../../../theme/app_type.dart';
 import '../../../widgets/global/app_network_image.dart';
 import '../../../l10n/tr.dart';
 import 'request_season_panel.dart';
+import 'season_frame.dart';
+import 'season_liquid.dart';
 
 /// Diamètre d'une bulle de saison fermée, et marge entre deux bulles.
 const _bubbleSize = 48.0;
@@ -19,9 +21,11 @@ const _bubbleGap = 12.0;
 /// retoucher la saison ouverte replie le tout. Une lumière glisse en haut du
 /// panneau jusque sous la bulle ouverte.
 ///
-/// La goutte liquide d'OnyxHub (filtre de fusion SVG) n'est pas portée : elle
-/// redessinerait toute la ligne à chaque image, ce que les TV ne tiennent pas
-/// (ADR-0086). La bulle se gonfle et la lumière suit, sans la goutte.
+/// Changer de saison lâche une goutte qui file d'une bulle à l'autre
+/// (`season_liquid.dart`) : la bulle quittée se retracte, la choisie se gonfle
+/// en rebondissant quand la goutte l'atteint, et ne s'éclaire qu'à ce
+/// moment. Pas de filtre de fusion comme chez OnyxHub : un seul chemin peint,
+/// supprimé en mode léger (ADR-0086).
 class RequestSeasonList extends StatefulWidget {
   final int tmdbId;
   final RequestMediaItem showItem;
@@ -47,6 +51,7 @@ class _RequestSeasonListState extends State<RequestSeasonList>
   double _direction = 1;
 
   final _frameKey = GlobalKey();
+  final _rowKey = GlobalKey();
   final _scroll = ScrollController();
   final Map<int, GlobalKey> _bubbleKeys = {};
 
@@ -58,6 +63,25 @@ class _RequestSeasonListState extends State<RequestSeasonList>
   /// Tourne le temps que les bulles changent de largeur, pour que la lumière
   /// suive la bulle ouverte au lieu d'attendre qu'elle ait fini de bouger.
   late final AnimationController _follow;
+
+  /// La bulle éclairée : la choisie, mais seulement une fois la goutte arrivée.
+  int? _lit;
+
+  /// La saison quittée au dernier changement : sa bulle se retracte.
+  int? _from;
+
+  /// Part de l'animation (0 à 1) après laquelle la goutte a atteint la bulle
+  /// choisie, qui s'éclaire alors.
+  double _inflateAt = 0;
+
+  /// Durée du dernier changement, en secondes, et les ressorts qui en
+  /// découlent pour la bulle choisie et la bulle quittée.
+  double _span = 0.7;
+  Curve _grow = const SeasonSpring.grow(span: 0.7);
+  Curve _shrink = const SeasonSpring.shrink(span: 0.7);
+
+  /// La goutte en route, nulle quand rien ne voyage.
+  SeasonDropPlan? _plan;
 
   /// Épisodes déjà chargés par numéro de saison : passer d'une saison à
   /// l'autre ne refait pas d'appel réseau.
@@ -71,6 +95,7 @@ class _RequestSeasonListState extends State<RequestSeasonList>
     _follow = AnimationController(vsync: this)
       ..addListener(_measureAfterFrame)
       ..addStatusListener(_followStatus);
+    _follow.addListener(_lightWhenReached);
     _scroll.addListener(_measureAfterFrame);
   }
 
@@ -84,18 +109,70 @@ class _RequestSeasonListState extends State<RequestSeasonList>
 
   void _select(int number) {
     final previous = _selected;
-    if (previous != null && previous != number) {
-      _direction = number > previous ? 1 : -1;
+    final travelling = previous != null && previous != number;
+    if (travelling) _direction = number > previous ? 1 : -1;
+    final reduced = AppMotion.reduced(context);
+    final next = previous == number ? null : number;
+
+    // La goutte part du centre de la bulle quittée : on le mesure avant que
+    // la rangée ne change.
+    SeasonDropPlan? plan;
+    if (travelling && !reduced) {
+      final from = _bubbleRect(previous);
+      final to = _bubbleRect(number);
+      if (from != null && to != null) {
+        _span = 0.9;
+        plan = SeasonDropPlan(
+          origin: from.center.dx,
+          target: to.left + _bubbleSize / 2,
+          span: _span,
+        );
+      }
     }
-    setState(() => _selected = previous == number ? null : number);
-    if (_selected == null) return;
-    _follow.duration = AppMotion.move(context, AppMotion.emphasis);
+    if (plan == null) _span = 0.7;
+    _inflateAt = plan == null ? 0 : 0.36;
+    _grow = SeasonSpring.grow(span: _span, delay: _inflateAt * _span);
+    _shrink = SeasonSpring.shrink(span: _span);
+
+    setState(() {
+      _from = previous;
+      _selected = next;
+      _plan = plan;
+      // Avec une goutte, la bulle choisie attend qu'elle l'atteigne.
+      _lit = plan == null ? next : null;
+    });
+    if (next == null) return;
+    _follow.duration = AppMotion.move(
+      context,
+      Duration(milliseconds: (_span * 1000).round()),
+    );
     _follow.forward(from: 0);
     _measureAfterFrame();
   }
 
+  /// La goutte a atteint la bulle choisie : elle s'éclaire.
+  void _lightWhenReached() {
+    if (!mounted || _lit == _selected || _selected == null) return;
+    if (_follow.value >= _inflateAt) setState(() => _lit = _selected);
+  }
+
+  /// Le rectangle d'une bulle dans la rangée, ou nul si elle n'est pas posée.
+  Rect? _bubbleRect(int? number) {
+    final box = _bubbleKeys[number]?.currentContext?.findRenderObject();
+    final row = _rowKey.currentContext?.findRenderObject();
+    if (box is! RenderBox || row is! RenderBox) return null;
+    if (!box.attached || !row.attached) return null;
+    return box.localToGlobal(Offset.zero, ancestor: row) & box.size;
+  }
+
   void _followStatus(AnimationStatus status) {
     if (status != AnimationStatus.completed || !mounted) return;
+    if (_plan != null || _lit != _selected) {
+      setState(() {
+        _plan = null;
+        _lit = _selected;
+      });
+    }
     // La bulle a pris sa largeur : c'est maintenant qu'on sait si elle dépasse.
     final bubble = _bubbleKeys[_selected]?.currentContext;
     if (bubble != null) {
@@ -134,8 +211,7 @@ class _RequestSeasonListState extends State<RequestSeasonList>
   Widget build(BuildContext context) {
     final sorted = [...widget.seasons]
       ..sort((a, b) => a.number.compareTo(b.number));
-    final selected =
-        sorted.where((s) => s.number == _selected).firstOrNull;
+    final selected = sorted.where((s) => s.number == _selected).firstOrNull;
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -155,28 +231,64 @@ class _RequestSeasonListState extends State<RequestSeasonList>
           // pour que le défilement ne la coupe pas.
           padding: const EdgeInsets.symmetric(vertical: 8),
           clipBehavior: Clip.none,
-          child: Row(
+          child: Stack(
+            key: _rowKey,
+            clipBehavior: Clip.none,
             children: [
-              for (final season in sorted) ...[
-                _SeasonBubble(
-                  key: _bubbleKeys.putIfAbsent(season.number, GlobalKey.new),
-                  season: season,
-                  selected: _selected == season.number,
-                  onTap: () => _select(season.number),
+              Row(
+                children: [
+                  for (final season in sorted) ...[
+                    _SeasonBubble(
+                      key:
+                          _bubbleKeys.putIfAbsent(season.number, GlobalKey.new),
+                      season: season,
+                      selected: _selected == season.number,
+                      lit: _lit == season.number,
+                      duration: Duration(milliseconds: (_span * 1000).round()),
+                      curve: _selected == season.number ? _grow : _shrink,
+                      onTap: () => _select(season.number),
+                    ),
+                    if (season != sorted.last)
+                      const SizedBox(width: _bubbleGap),
+                  ],
+                ],
+              ),
+              if (_plan case final plan?)
+                Positioned.fill(
+                  child: IgnorePointer(
+                    child: RepaintBoundary(
+                      child: CustomPaint(
+                        painter: SeasonDropPainter(
+                          clock: _follow,
+                          plan: plan,
+                          targetX: () {
+                            final rect = _bubbleRect(_selected);
+                            return rect == null
+                                ? null
+                                : rect.left + _bubbleSize / 2;
+                          },
+                          anchorX: () {
+                            final rect = _bubbleRect(_from);
+                            return rect == null
+                                ? null
+                                : rect.left + _bubbleSize / 2;
+                          },
+                        ),
+                      ),
+                    ),
+                  ),
                 ),
-                if (season != sorted.last) const SizedBox(width: _bubbleGap),
-              ],
             ],
           ),
         ),
         const SizedBox(height: 4),
-        AnimatedSize(
-          duration: AppMotion.move(context, AppMotion.emphasis),
+        _SizeTween(
+          duration: AppMotion.emphasis,
           curve: AppMotion.curve,
           alignment: Alignment.topCenter,
           child: selected == null
               ? const SizedBox(width: double.infinity)
-              : _SeasonFrame(
+              : SeasonFrame(
                   key: _frameKey,
                   beamX: _beamX,
                   direction: _direction,
@@ -194,120 +306,32 @@ class _RequestSeasonListState extends State<RequestSeasonList>
   }
 }
 
-/// Le cadre de verre du panneau, et la lumière posée sur son bord haut, sous
-/// la bulle ouverte. Changer de saison glisse l'ancienne liste hors du cadre
-/// pendant que la nouvelle entre du côté de la bulle choisie.
-class _SeasonFrame extends StatelessWidget {
-  final ValueListenable<double?> beamX;
-  final double direction;
+/// Un `AnimatedSize` qui s'efface quand le mouvement est réduit : à durée
+/// nulle, il se mute lui-même pendant sa mise en page.
+class _SizeTween extends StatelessWidget {
+  final Duration duration;
+  final Curve curve;
+  final Alignment alignment;
   final Widget child;
 
-  const _SeasonFrame({
-    super.key,
-    required this.beamX,
-    required this.direction,
+  const _SizeTween({
+    required this.duration,
+    required this.curve,
+    required this.alignment,
     required this.child,
   });
 
   @override
   Widget build(BuildContext context) {
-    return SizedBox(
-      width: double.infinity,
-      child: DecoratedBox(
-        decoration: BoxDecoration(
-          color: Colors.white.withValues(alpha: 0.02),
-          borderRadius: BorderRadius.circular(24),
-          border: Border.all(color: Colors.white.withValues(alpha: 0.07)),
-        ),
-        child: ClipRRect(
-          borderRadius: BorderRadius.circular(24),
-          child: Stack(
-            children: [
-              Positioned.fill(
-                child: IgnorePointer(child: _Beam(x: beamX)),
-              ),
-              Padding(
-                padding: const EdgeInsets.all(14),
-                child: AnimatedSwitcher(
-                  duration: AppMotion.fade(context, AppMotion.emphasis),
-                  switchInCurve: AppMotion.curve,
-                  layoutBuilder: (current, previous) => Stack(
-                    alignment: Alignment.topCenter,
-                    children: [...previous, if (current != null) current],
-                  ),
-                  transitionBuilder: (child, animation) => FadeTransition(
-                    opacity: animation,
-                    child: SlideTransition(
-                      position: Tween(
-                        begin: Offset(0.04 * direction, 0),
-                        end: Offset.zero,
-                      ).animate(animation),
-                      child: child,
-                    ),
-                  ),
-                  child: child,
-                ),
-              ),
-            ],
-          ),
-        ),
-      ),
-    );
-  }
-}
-
-/// La lumière du panneau : une lueur douce et un filet clair sur le bord haut.
-class _Beam extends StatelessWidget {
-  final ValueListenable<double?> x;
-
-  const _Beam({required this.x});
-
-  @override
-  Widget build(BuildContext context) {
-    return ValueListenableBuilder<double?>(
-      valueListenable: x,
-      builder: (_, value, __) {
-        if (value == null) return const SizedBox.shrink();
-        return Stack(
-          children: [
-            Positioned(
-              left: value - 160,
-              top: 0,
-              width: 320,
-              height: 112,
-              child: DecoratedBox(
-                decoration: BoxDecoration(
-                  gradient: RadialGradient(
-                    center: Alignment.topCenter,
-                    radius: 1.2,
-                    colors: [
-                      Colors.white.withValues(alpha: 0.13),
-                      Colors.white.withValues(alpha: 0),
-                    ],
-                  ),
-                ),
-              ),
-            ),
-            Positioned(
-              left: value - 88,
-              top: 0,
-              width: 176,
-              height: 1,
-              child: DecoratedBox(
-                decoration: BoxDecoration(
-                  gradient: LinearGradient(
-                    colors: [
-                      Colors.white.withValues(alpha: 0),
-                      Colors.white.withValues(alpha: 0.8),
-                      Colors.white.withValues(alpha: 0),
-                    ],
-                  ),
-                ),
-              ),
-            ),
-          ],
-        );
-      },
+    if (AppMotion.reduced(context)) {
+      return Align(
+          alignment: alignment, widthFactor: 1, heightFactor: 1, child: child);
+    }
+    return AnimatedSize(
+      duration: duration,
+      curve: curve,
+      alignment: alignment,
+      child: child,
     );
   }
 }
@@ -317,13 +341,26 @@ class _Beam extends StatelessWidget {
 /// se gonfle en pilule qui montre l'affiche, le nom et le nombre d'épisodes.
 class _SeasonBubble extends StatelessWidget {
   final RequestSeason season;
+
+  /// Ouverte : la bulle prend sa largeur de pilule.
   final bool selected;
+
+  /// Éclairée : verre, affiche et nom apparaissent. Plus tard que [selected]
+  /// quand une goutte voyage : elle doit d'abord atteindre la bulle.
+  final bool lit;
+
+  /// Durée et ressort de la largeur (`season_liquid.dart`).
+  final Duration duration;
+  final Curve curve;
   final VoidCallback onTap;
 
   const _SeasonBubble({
     super.key,
     required this.season,
     required this.selected,
+    required this.lit,
+    required this.duration,
+    required this.curve,
     required this.onTap,
   });
 
@@ -343,9 +380,9 @@ class _SeasonBubble extends StatelessWidget {
       onTap: onTap,
       child: Tooltip(
         message: '$title · $count',
-        child: AnimatedSize(
-          duration: AppMotion.move(context, AppMotion.emphasis),
-          curve: AppMotion.curve,
+        child: _SizeTween(
+          duration: duration,
+          curve: curve,
           alignment: Alignment.centerLeft,
           child: Stack(
             children: [
@@ -354,13 +391,13 @@ class _SeasonBubble extends StatelessWidget {
                 duration: AppMotion.fade(context, AppMotion.emphasis),
                 curve: AppMotion.curve,
                 decoration: BoxDecoration(
-                  color: Colors.white.withValues(alpha: selected ? 0.2 : 0.1),
+                  color: Colors.white.withValues(alpha: lit ? 0.2 : 0.1),
                   borderRadius: radius,
                   border: Border.all(
-                    color: Colors.white.withValues(alpha: selected ? 0.32 : 0.14),
+                    color: Colors.white.withValues(alpha: lit ? 0.32 : 0.14),
                   ),
                   boxShadow: [
-                    if (selected)
+                    if (lit)
                       BoxShadow(
                         color: Colors.white.withValues(alpha: 0.08),
                         blurRadius: 22,
@@ -376,23 +413,43 @@ class _SeasonBubble extends StatelessWidget {
                       mainAxisSize: MainAxisSize.min,
                       children: [
                         Padding(
-                          padding: EdgeInsets.fromLTRB(
-                              6, 0, selected ? 0 : 6, 0),
-                          child: _Lead(season: season, selected: selected),
+                          padding:
+                              EdgeInsets.fromLTRB(6, 0, selected ? 0 : 6, 0),
+                          child: _Lead(season: season, lit: lit),
                         ),
                         if (selected)
-                          _Label(title: title, detail: detail, status: season.status),
+                          _Label(
+                            title: title,
+                            detail: detail,
+                            status: season.status,
+                            lit: lit,
+                          ),
                       ],
                     ),
                   ),
                 ),
               ),
-              if (!selected)
-                Positioned(
-                  right: 4,
-                  bottom: 4,
-                  child: IgnorePointer(child: _StatusDot(season.status, ring: true)),
+              // Le point reste monté : il rentre dans la bulle qui s'ouvre
+              // (échelle et fondu) et ressort quand elle se ferme.
+              Positioned(
+                right: 4,
+                bottom: 4,
+                child: IgnorePointer(
+                  child: AnimatedScale(
+                    scale: selected ? 0 : 1,
+                    duration: AppMotion.move(context, AppMotion.standard),
+                    curve: selected ? Curves.easeIn : Curves.easeOutBack,
+                    child: AnimatedOpacity(
+                      opacity: selected ? 0 : 1,
+                      duration: AppMotion.fade(context, AppMotion.standard),
+                      // Saison à demander : un « + » bleu à la place du point.
+                      child: season.status.canRequest
+                          ? const _RequestPip()
+                          : _StatusDot(season.status, ring: true),
+                    ),
+                  ),
                 ),
+              ),
             ],
           ),
         ),
@@ -405,9 +462,9 @@ class _SeasonBubble extends StatelessWidget {
 /// l'affiche de la saison quand elle est ouverte.
 class _Lead extends StatelessWidget {
   final RequestSeason season;
-  final bool selected;
+  final bool lit;
 
-  const _Lead({required this.season, required this.selected});
+  const _Lead({required this.season, required this.lit});
 
   @override
   Widget build(BuildContext context) {
@@ -427,30 +484,45 @@ class _Lead extends StatelessWidget {
             ),
             child: const SizedBox.expand(),
           ),
-          AnimatedOpacity(
-            opacity: selected ? 0 : 1,
-            duration: fade,
-            child: Text(
-              season.number == 0 ? 'SP' : '${season.number}',
-              style: TextStyle(
-                color: Colors.white.withValues(alpha: 0.7),
-                fontSize: AppType.subhead,
-                fontWeight: FontWeight.w700,
-                fontFeatures: const [FontFeature.tabularFigures()],
+          AnimatedScale(
+            scale: lit ? 0.5 : 1,
+            duration: AppMotion.move(context, AppMotion.emphasis),
+            curve: AppMotion.curve,
+            child: AnimatedOpacity(
+              opacity: lit ? 0 : 1,
+              duration: fade,
+              child: Text(
+                season.number == 0 ? 'SP' : '${season.number}',
+                style: TextStyle(
+                  color: Colors.white.withValues(alpha: 0.7),
+                  fontSize: AppType.subhead,
+                  fontWeight: FontWeight.w700,
+                  fontFeatures: const [FontFeature.tabularFigures()],
+                ),
               ),
             ),
           ),
-          if (selected)
+          // L'affiche prend la place du numéro en rebondissant (ressort de
+          // `--ease-spring` chez OnyxHub), sans rien monter tant que la
+          // bulle est fermée.
+          if (lit)
             Padding(
               padding: const EdgeInsets.all(3),
-              child: ClipOval(
-                child: AppNetworkImage(
-                  url: season.posterUrl,
-                  width: 28,
-                  height: 28,
-                  fit: BoxFit.cover,
-                  errorWidget: ColoredBox(
-                    color: Colors.white.withValues(alpha: 0.1),
+              child: TweenAnimationBuilder<double>(
+                tween: Tween(begin: 0.4, end: 1),
+                duration: AppMotion.move(context, AppMotion.emphasis),
+                curve: Curves.easeOutBack,
+                builder: (_, scale, child) =>
+                    Transform.scale(scale: scale, child: child),
+                child: ClipOval(
+                  child: AppNetworkImage(
+                    url: season.posterUrl,
+                    width: 28,
+                    height: 28,
+                    fit: BoxFit.cover,
+                    errorWidget: ColoredBox(
+                      color: Colors.white.withValues(alpha: 0.1),
+                    ),
                   ),
                 ),
               ),
@@ -468,58 +540,90 @@ class _Label extends StatelessWidget {
   final String detail;
   final RequestMediaStatus status;
 
+  /// Le nom entre en fondu et glisse de 8 px quand la bulle est éclairée,
+  /// donc après la goutte.
+  final bool lit;
+
   const _Label({
     required this.title,
     required this.detail,
     required this.status,
+    required this.lit,
   });
 
   @override
   Widget build(BuildContext context) {
-    return TweenAnimationBuilder<double>(
-      tween: Tween(begin: 0, end: 1),
-      duration: AppMotion.fade(context, AppMotion.emphasis),
+    return AnimatedSlide(
+      offset: lit ? Offset.zero : const Offset(-0.04, 0),
+      duration: AppMotion.move(context, AppMotion.emphasis),
       curve: AppMotion.curve,
-      builder: (_, opacity, child) => Opacity(opacity: opacity, child: child),
-      child: ConstrainedBox(
-        constraints: const BoxConstraints(maxWidth: 240),
-        child: Padding(
-          padding: const EdgeInsets.fromLTRB(10, 0, 16, 0),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text(
-                title,
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
-                style: const TextStyle(
-                  color: Colors.white,
-                  fontWeight: FontWeight.w700,
-                  fontSize: AppType.subhead,
+      child: AnimatedOpacity(
+        opacity: lit ? 1 : 0,
+        duration: AppMotion.fade(context, AppMotion.emphasis),
+        curve: AppMotion.curve,
+        child: ConstrainedBox(
+          constraints: const BoxConstraints(maxWidth: 240),
+          child: Padding(
+            padding: const EdgeInsets.fromLTRB(10, 0, 16, 0),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  title,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: const TextStyle(
+                    color: Colors.white,
+                    fontWeight: FontWeight.w700,
+                    fontSize: AppType.subhead,
+                  ),
                 ),
-              ),
-              const SizedBox(height: 2),
-              Row(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  _StatusDot(status),
-                  Flexible(
-                    child: Text(
-                      detail,
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: TextStyle(
-                        color: Colors.white.withValues(alpha: 0.55),
-                        fontSize: AppType.caption,
+                const SizedBox(height: 2),
+                Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    _StatusDot(status),
+                    Flexible(
+                      child: Text(
+                        detail,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: TextStyle(
+                          color: Colors.white.withValues(alpha: 0.55),
+                          fontSize: AppType.caption,
+                        ),
                       ),
                     ),
-                  ),
-                ],
-              ),
-            ],
+                  ],
+                ),
+              ],
+            ),
           ),
         ),
+      ),
+    );
+  }
+}
+
+/// Le « + » bleu d'une saison pas encore demandée, au bord de sa bulle
+/// fermée, détouré du fond de la page comme le point de statut.
+class _RequestPip extends StatelessWidget {
+  const _RequestPip();
+
+  @override
+  Widget build(BuildContext context) {
+    return const DecoratedBox(
+      decoration: BoxDecoration(
+        shape: BoxShape.circle,
+        color: AppColors.request,
+        border: Border.fromBorderSide(
+          BorderSide(color: AppColors.background, width: 2),
+        ),
+      ),
+      child: SizedBox.square(
+        dimension: 18,
+        child: Icon(AppIcons.add, size: 12, color: Colors.white),
       ),
     );
   }

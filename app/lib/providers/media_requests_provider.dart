@@ -2,6 +2,7 @@ import 'package:dio/dio.dart';
 import 'package:flutter/foundation.dart';
 import '../models/media_request.dart';
 import '../models/request_catalog_filters.dart';
+import '../models/request_progress.dart';
 import '../services/api_client.dart';
 import '../l10n/tr.dart';
 
@@ -173,6 +174,11 @@ class MediaRequestsProvider extends ChangeNotifier {
 
   Future<RequestMediaDetails> loadDetails(RequestMediaItem item) {
     return apiClient.getRequestMediaDetails(item.id, item.mediaType);
+  }
+
+  /// Le téléchargement et l'import du titre chez MediaHub, ou `null`.
+  Future<RequestProgress?> loadProgress(int tmdbId, RequestMediaType type) {
+    return apiClient.getRequestProgress(tmdbId, type);
   }
 
   Future<List<RequestEpisode>> loadSeasonEpisodes(

@@ -9,6 +9,7 @@ import '../../../utils/format.dart';
 import '../../../widgets/global/app_network_image.dart';
 import '../../../l10n/tr.dart';
 import 'request_detail_hero.dart';
+import 'season_cascade.dart';
 import 'request_status_badge.dart';
 
 /// Le contenu du panneau sous les bulles de saisons, comme OnyxHub
@@ -34,7 +35,13 @@ class RequestSeasonPanel extends StatefulWidget {
   State<RequestSeasonPanel> createState() => _RequestSeasonPanelState();
 }
 
-class _RequestSeasonPanelState extends State<RequestSeasonPanel> {
+class _RequestSeasonPanelState extends State<RequestSeasonPanel>
+    with TickerProviderStateMixin {
+  /// L'en-tête arrive à l'ouverture, les épisodes quand ils sont là : deux
+  /// horloges, parce que le réseau peut les séparer de plusieurs secondes.
+  late final SeasonCascade _head;
+  late final SeasonCascade _list;
+  bool _arrived = false;
   bool _loading = false;
   bool _requesting = false;
   String? _error;
@@ -44,7 +51,27 @@ class _RequestSeasonPanelState extends State<RequestSeasonPanel> {
   @override
   void initState() {
     super.initState();
+    _head = SeasonCascade(this);
+    _list = SeasonCascade(this);
     if (_episodes == null) _load();
+  }
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    if (_arrived) return;
+    _arrived = true;
+    // Avant la première image, pour qu'aucun texte ne s'affiche en entier
+    // avant de monter.
+    _head.play(context);
+    if (_episodes != null) _list.play(context);
+  }
+
+  @override
+  void dispose() {
+    _head.dispose();
+    _list.dispose();
+    super.dispose();
   }
 
   Future<void> _load() async {
@@ -58,6 +85,7 @@ class _RequestSeasonPanelState extends State<RequestSeasonPanel> {
           .loadSeasonEpisodes(widget.tmdbId, widget.season.number);
       widget.cache[widget.season.number] = episodes;
       if (!mounted) return;
+      _list.play(context);
       setState(() => _loading = false);
     } catch (_) {
       if (!mounted) return;
@@ -101,7 +129,7 @@ class _RequestSeasonPanelState extends State<RequestSeasonPanel> {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        _header(),
+        _head.item(0, _header()),
         const SizedBox(height: 14),
         _body(),
       ],
@@ -138,13 +166,16 @@ class _RequestSeasonPanelState extends State<RequestSeasonPanel> {
             HeroPill(
               label: tr('Demander'),
               icon: AppIcons.download,
-              style: HeroPillStyle.glass,
+              style: HeroPillStyle.request,
               dense: true,
               loading: _requesting,
               onPressed: _requesting ? null : _requestThisSeason,
             )
           else
-            RequestStatusBadge(status: season.status),
+            RequestStatusBadge(
+              status: season.status,
+              remaining: season.remainingEpisodes,
+            ),
         ],
       ),
     );
@@ -203,7 +234,7 @@ class _RequestSeasonPanelState extends State<RequestSeasonPanel> {
       children: [
         for (var i = 0; i < episodes.length; i++) ...[
           if (i > 0) const SizedBox(height: 10),
-          _EpisodeCard(episode: episodes[i]),
+          _list.item(i, _EpisodeCard(episode: episodes[i])),
         ],
       ],
     );
@@ -211,9 +242,8 @@ class _RequestSeasonPanelState extends State<RequestSeasonPanel> {
 }
 
 /// Le nom d'une saison : celui de TMDB, ou « Saison N » quand il manque.
-String seasonTitle(RequestSeason season) => season.name.isNotEmpty
-    ? season.name
-    : tr('Saison {0}', [season.number]);
+String seasonTitle(RequestSeason season) =>
+    season.name.isNotEmpty ? season.name : tr('Saison {0}', [season.number]);
 
 class _EpisodeCard extends StatelessWidget {
   final RequestEpisode episode;
