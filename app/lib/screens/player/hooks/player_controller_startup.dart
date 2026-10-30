@@ -23,11 +23,28 @@ extension PlayerControllerStartup on PlayerController {
   }) async {
     _mark('init');
     _reporter.markLogStart();
+    // Le ticket ne dépend ni du moteur ni de son réglage : il part avant eux
+    // et court pendant `prepare` et le tuning, au lieu de s'y ajouter (0,3 à
+    // 1,1 s mesurées sur Android TV, en série derrière 0,1 à 0,6 s de moteur).
+    // Pas pour le visiteur d'un lien de partage : son média porte l'identifiant
+    // d'un autre serveur, qui peut être celui d'un téléchargement d'ici.
+    _localFilePath = apiClient.isGuest
+        ? null
+        : DownloadManager.instance.localVideoPath(media.id);
+    final Future<PlaybackAccess>? accessFuture = _localFilePath == null
+        ? apiClient.openPlaybackAccess(media.id)
+        : null;
+    // L'échec est relu à l'`await` plus bas ; sans ceci, une sortie anticipée
+    // (moteur qui échoue, écran fermé) le laisserait remonter sans preneur.
+    accessFuture?.ignore();
     // Un moteur repris au vestiaire peut encore décharger le film précédent.
     // Ouvrir par-dessus est ce qui laissait une lecture derrière un indicateur
     // qui ne s'arrêtait jamais.
     await session.prepare();
-    if (_disposed) return;
+    if (_disposed) {
+      _releaseEarlyAccess(accessFuture);
+      return;
+    }
     _mark('engine');
     _resumePositionFuture = resumePositionFuture;
     // Must run before media_kit injects hls.js: the bridge intercepts the
@@ -42,7 +59,10 @@ extension PlayerControllerStartup on PlayerController {
     }
     _mark('tuned');
 
-    if (_disposed) return;
+    if (_disposed) {
+      _releaseEarlyAccess(accessFuture);
+      return;
+    }
     _positionSubscription = session.positions.listen((pos) {
       if (_disposed) return;
       // A session swap retires one stream and starts another. Until the new one
@@ -137,12 +157,6 @@ extension PlayerControllerStartup on PlayerController {
     _onTracksChanged = onTracksChanged;
     _onFailure = onFailure;
 
-    // Pas pour le visiteur d'un lien de partage : son média porte l'identifiant
-    // d'un autre serveur, qui peut être celui d'un téléchargement d'ici.
-    _localFilePath = apiClient.isGuest
-        ? null
-        : DownloadManager.instance.localVideoPath(media.id);
-
     // Sans choix transmis par l'épisode qu'on quitte, c'est celui que le
     // compte a retenu pour la série (ADR-0044). La demande part ici pour
     // courir pendant celle du ticket, et se lit juste après.
@@ -170,8 +184,8 @@ extension PlayerControllerStartup on PlayerController {
     // passé à ouvrir fait partie de ce qu'on veut pouvoir relire.
     _stats.start(session);
 
-    if (_localFilePath == null) {
-      final access = await apiClient.openPlaybackAccess(media.id);
+    if (accessFuture != null) {
+      final access = await accessFuture;
       if (_disposed) {
         await access.close();
         return;
@@ -282,6 +296,14 @@ extension PlayerControllerStartup on PlayerController {
         // Moteur pas encore prêt : la sélection est réappliquée au chargement.
       }
     }
+  }
+
+  /// Un ticket demandé d'avance dont personne ne se servira : l'écran a été
+  /// fermé avant qu'il soit lu. On le rend au serveur quand il arrive.
+  void _releaseEarlyAccess(Future<PlaybackAccess>? pending) {
+    pending?.then((access) => access.close()).catchError((Object _) {
+      // Pas de ticket à rendre : rien n'a été ouvert côté serveur.
+    });
   }
 
   /// Ce que le moteur doit ouvrir en Direct Play : le fichier local s'il est
