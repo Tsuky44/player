@@ -4,7 +4,6 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
 import '../../models/models.dart';
-import '../../navigation/catalog_navigation.dart';
 import '../../providers/auth_provider.dart';
 import '../../theme/app_colors.dart';
 import '../../utils/poster_url.dart';
@@ -161,13 +160,13 @@ class _PersonDetailScreenState extends State<PersonDetailScreen> {
                           compact: AppLayout.isCompact(context),
                         ),
                         delegate: SliverChildBuilderDelegate(
-                          (context, index) {
-                            final item = person.filmography[index];
-                            return CatalogPosterCard(
-                              item: item,
-                              onTap: () => openCatalogItem(context, item),
-                            );
-                          },
+                          // Le rôle est ce qu'on vient lire ici : il reste
+                          // écrit sous l'affiche, y compris sur un téléphone,
+                          // qui n'a pas de survol pour montrer le cartouche.
+                          (context, index) => CatalogPosterCard(
+                            item: person.filmography[index],
+                            showMeta: true,
+                          ),
                           childCount: person.filmography.length,
                         ),
                       );

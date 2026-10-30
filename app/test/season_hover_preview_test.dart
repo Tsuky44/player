@@ -103,7 +103,7 @@ void main() {
   testWidgets('la fiche se ferme quand le curseur quitte l’onglet',
       (tester) async {
     await pumpTabs(tester);
-    final mouse = await hover(tester, find.text('Saison 2'));
+    final mouse = await hover(tester, find.text('2'));
     await tester.pump(SeasonHoverPreview.openDelay);
     await tester.pumpAndSettle();
     expect(find.text('Pas de résumé pour cette saison.'), findsOneWidget);
@@ -118,7 +118,7 @@ void main() {
   testWidgets('un clic sur l’onglet change de saison sans ouvrir sa page',
       (tester) async {
     final calls = await pumpTabs(tester);
-    await tester.tap(find.text('Saison 2'));
+    await tester.tap(find.text('2'));
     await tester.pumpAndSettle();
 
     expect(calls.selected.map((s) => s.id), [12]);

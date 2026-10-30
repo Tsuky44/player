@@ -5,6 +5,7 @@ import '../../../utils/format.dart';
 import '../../../theme/app_icons.dart';
 import '../../../theme/app_type.dart';
 import '../../../l10n/tr.dart';
+import '../../../widgets/global/detail_hero.dart';
 
 /// Panel shown under the season picker when the selected season is not on the
 /// server, or is there but incomplete (still airing, files missing). It offers the request when MediaHub allows it, states that the
@@ -13,21 +14,14 @@ import '../../../l10n/tr.dart';
 class MissingSeasonBanner extends StatelessWidget {
   final Media season;
 
-  /// How many seasons of this show could be requested right now. A second entry
-  /// point for multi-selection only appears when it would add something.
-  final int requestableCount;
-
   final bool submitting;
   final VoidCallback onRequest;
-  final VoidCallback onRequestMore;
 
   const MissingSeasonBanner({
     super.key,
     required this.season,
-    required this.requestableCount,
     required this.submitting,
     required this.onRequest,
-    required this.onRequestMore,
   });
 
   @override
@@ -65,8 +59,7 @@ class MissingSeasonBanner extends StatelessWidget {
                     ? AppIcons.pending
                     : AppIcons.cloudOff,
                 size: 18,
-                color:
-                    season.isRequested ? AppColors.accentMuted : AppColors.textMuted,
+                color: season.isRequested ? AppColors.warning : AppColors.textMuted,
               ),
               const SizedBox(width: 8),
               Expanded(
@@ -114,31 +107,15 @@ class MissingSeasonBanner extends StatelessWidget {
           ],
           if (season.canRequest) ...[
             const SizedBox(height: 12),
-            Row(
-              children: [
-                ElevatedButton.icon(
-                  onPressed: submitting ? null : onRequest,
-                  icon: submitting
-                      ? const SizedBox(
-                          width: 16,
-                          height: 16,
-                          child: CircularProgressIndicator(strokeWidth: 2),
-                        )
-                      : const Icon(AppIcons.download, size: 18),
-                  label: Text(
-                    seasonNumber > 0
-                        ? tr('Demander la saison {0}', [seasonNumber])
-                        : tr('Demander cette saison'),
-                  ),
-                ),
-                if (requestableCount > 1) ...[
-                  const SizedBox(width: 8),
-                  TextButton(
-                    onPressed: submitting ? null : onRequestMore,
-                    child: Text(tr('Demander plusieurs saisons…')),
-                  ),
-                ],
-              ],
+            HeroPill(
+              label: seasonNumber > 0
+                  ? tr('Demander la saison {0}', [seasonNumber])
+                  : tr('Demander cette saison'),
+              icon: AppIcons.download,
+              style: HeroPillStyle.request,
+              dense: true,
+              loading: submitting,
+              onPressed: submitting ? null : onRequest,
             ),
           ],
         ],

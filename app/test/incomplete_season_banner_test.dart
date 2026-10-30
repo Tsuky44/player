@@ -24,10 +24,8 @@ void main() {
           home: Scaffold(
             body: MissingSeasonBanner(
               season: season,
-              requestableCount: 1,
               submitting: false,
               onRequest: () {},
-              onRequestMore: () {},
             ),
           ),
         ),

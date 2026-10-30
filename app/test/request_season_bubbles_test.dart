@@ -4,8 +4,9 @@ import 'package:onyx/models/media_request.dart';
 import 'package:onyx/models/my_request.dart';
 import 'package:onyx/providers/media_requests_provider.dart';
 import 'package:onyx/screens/requests/widgets/request_season_list.dart';
-import 'package:onyx/screens/requests/widgets/season_liquid.dart';
+import 'package:onyx/widgets/global/season_liquid.dart';
 import 'package:onyx/services/api_client.dart';
+import 'package:onyx/theme/app_colors.dart';
 import 'package:onyx/theme/app_icons.dart';
 import 'package:provider/provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -142,7 +143,7 @@ void main() {
     expect(find.text('Épisode pilote S1'), findsOneWidget);
   });
 
-  testWidgets('une saison disponible montre son statut au lieu de « Demander »',
+  testWidgets('une saison disponible ne dit rien de plus, ni « Demander »',
       (tester) async {
     await _pump(tester);
 
@@ -150,7 +151,7 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(find.text('Demander'), findsNothing);
-    expect(find.text('Disponible'), findsOneWidget);
+    expect(find.text('Disponible'), findsNothing);
   });
 
   testWidgets(
@@ -209,12 +210,16 @@ void main() {
     expect(beam.top, greaterThan(bubble.bottom));
   });
 
-  testWidgets('une saison à demander porte un « + » bleu, pas les autres',
+  testWidgets('seule une saison demandée porte une marque : le sablier orange',
       (tester) async {
     await _pump(tester);
 
-    // Seule la saison 1 est inconnue : un seul « + » sur les bulles fermées.
-    expect(find.byIcon(AppIcons.add), findsOneWidget);
+    // Saison 1 à demander, saison 2 disponible : rien. Saison 3 en partie là,
+    // le reste attendu : le sablier. Et plus de « + » : on demande en dépliant.
+    expect(find.byIcon(AppIcons.add), findsNothing);
+    final hourglass = tester.widget<Icon>(find.byIcon(AppIcons.pending));
+    expect(hourglass.color, AppColors.warning);
+    expect(find.text('Demander'), findsNothing);
   });
 
   testWidgets('une saison partielle dit combien d’épisodes restent à venir',

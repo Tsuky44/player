@@ -8,8 +8,6 @@ import '../../widgets/global/empty_state.dart';
 import '../../widgets/global/media_card.dart';
 import '../../widgets/global/poster_grid_zoom_region.dart';
 import '../../widgets/global/poster_grid_zoom_slider.dart';
-import 'movie_detail_screen.dart';
-import 'show_detail_screen.dart';
 import '../../theme/app_icons.dart';
 import '../../theme/app_type.dart';
 import '../../l10n/tr.dart';
@@ -20,25 +18,6 @@ class SearchResultsScreen extends StatelessWidget {
   final String query;
 
   const SearchResultsScreen({super.key, required this.query});
-
-  void _openMedia(BuildContext context, Media media, LibraryProvider lp) {
-    if (media.type == MediaType.movie) {
-      Navigator.of(context).push(
-        MaterialPageRoute(
-          builder: (_) => MovieDetailScreen(
-            movie: media,
-            movieItem: lp.movieItemFor(media.id),
-          ),
-        ),
-      );
-      return;
-    }
-    if (media.type == MediaType.show) {
-      Navigator.of(context).push(
-        MaterialPageRoute(builder: (_) => ShowDetailScreen(show: media)),
-      );
-    }
-  }
 
   @override
   Widget build(BuildContext context) {
@@ -101,6 +80,7 @@ class SearchResultsScreen extends StatelessWidget {
                           context,
                           constraints.crossAxisExtent,
                           compact: AppLayout.isCompact(context),
+                          withMeta: false,
                         ),
                         delegate: SliverChildBuilderDelegate(
                           (context, index) {
@@ -116,7 +96,9 @@ class SearchResultsScreen extends StatelessWidget {
                               watched: media.type == MediaType.movie &&
                                   (lp.movieItemFor(media.id)?.isFinished ??
                                       false),
-                              onTap: () => _openMedia(context, media, lp),
+                              item: media.type == MediaType.movie
+                                  ? lp.movieItemFor(media.id)
+                                  : null,
                             );
                           },
                           childCount: results.length,

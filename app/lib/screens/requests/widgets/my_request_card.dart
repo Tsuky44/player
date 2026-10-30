@@ -10,7 +10,7 @@ import '../../../theme/app_type.dart';
 import '../../../utils/long_date.dart';
 import '../../../utils/responsive.dart';
 import '../../../widgets/global/app_network_image.dart';
-import 'request_status_motion.dart';
+import '../../../widgets/global/status_motion.dart';
 
 /// Ce que la modération propose sur une carte, ou null pour aucune action.
 class MyRequestActions {

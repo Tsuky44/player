@@ -129,10 +129,11 @@ class PosterGridSkeleton extends StatelessWidget {
           context,
           constraints.crossAxisExtent,
           compact: compact,
+          withMeta: false,
         ),
         delegate: SliverChildBuilderDelegate(
-          (context, index) => SkeletonPulse(
-            child: PosterCardSkeleton(compact: compact),
+          (context, index) => const SkeletonPulse(
+            child: SkeletonBox(radius: PosterCard.radius),
           ),
           childCount: count,
         ),

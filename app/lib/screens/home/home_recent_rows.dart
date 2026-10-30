@@ -22,7 +22,6 @@ List<Widget> homeRecentSlivers({
   required void Function(int libraryId)? onOpenLibrary,
   required VoidCallback? onSeeAllMovies,
   required VoidCallback? onSeeAllShows,
-  required void Function(Media media) onOpenMedia,
 }) {
   final List<_RecentRow> rows = data.libraries.isNotEmpty
       ? [
@@ -62,7 +61,6 @@ List<Widget> homeRecentSlivers({
       items: row.items,
       autofocusFirstItem: !isTv && leads,
       onSeeAll: row.onSeeAll,
-      onItemTap: (item) => onOpenMedia(item as Media),
     );
     slivers
       ..add(const SliverToBoxAdapter(child: SizedBox(height: 32)))

@@ -6,10 +6,11 @@ import '../../theme/app_colors.dart';
 import '../../utils/format.dart';
 import '../../utils/responsive.dart';
 import '../../widgets/global/detail_actions.dart';
-import '../../widgets/global/detail_facts_section.dart';
+import '../../widgets/global/detail_backdrop_header.dart';
+import '../../widgets/global/detail_cast_section.dart';
 import '../../widgets/global/detail_metadata.dart';
+import '../../widgets/global/detail_summary_section.dart';
 import '../../widgets/global/episode_tile.dart';
-import '../../widgets/global/media_detail_widgets.dart';
 import '../library/widgets/season_tabs.dart';
 import 'shared_link_viewer.dart';
 import '../../l10n/tr.dart';
@@ -122,6 +123,9 @@ class _SharedLinkShowViewState extends State<SharedLinkShowView> {
               ),
             ),
           ),
+          SliverToBoxAdapter(
+            child: DetailSummarySection.forDetails(details: details),
+          ),
           if (widget.viewerName != null)
             SliverToBoxAdapter(
               child: Padding(
@@ -217,7 +221,6 @@ class _SharedLinkShowViewState extends State<SharedLinkShowView> {
                 child: CastSection(cast: details!.cast),
               ),
             ),
-          SliverToBoxAdapter(child: DetailFactsSection(details: details)),
           const SliverToBoxAdapter(child: SizedBox(height: 48)),
         ],
       ),

@@ -8,6 +8,7 @@ import '../../utils/responsive.dart';
 import '../../theme/app_icons.dart';
 import '../../theme/app_type.dart';
 import '../../l10n/tr.dart';
+import 'detail_hero.dart';
 
 /// Le libellé du bouton principal d'une fiche.
 ///
@@ -36,8 +37,8 @@ String detailPlayLabel({
       : '$verb E$number';
 }
 
-/// La rangée d'actions d'une fiche film ou série : le bouton de lecture, où
-/// l'on en est, puis les actions secondaires.
+/// La rangée d'actions d'une fiche film ou série : la pastille de lecture, où
+/// l'on en est, puis les boutons ronds, au dessin de ceux des demandes.
 ///
 /// Sur téléphone, la rangée d'une fiche film faisait près de 600 px pour 328
 /// de place et débordait. Le bouton de lecture y prend désormais toute la
@@ -92,30 +93,20 @@ class DetailActions extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final compact = AppLayout.isCompact(context);
-    final secondary = this.secondary.isEmpty
-        ? const <Widget>[]
-        : [
-            IconButtonTheme(
-              data: IconButtonThemeData(style: secondaryStyle),
-              child: Wrap(
-                spacing: 10,
-                runSpacing: 8,
-                crossAxisAlignment: WrapCrossAlignment.center,
-                children: this.secondary,
-              ),
-            ),
-          ];
     final play = onPlay == null
         ? null
-        : ElevatedButton.icon(
+        : HeroPill(
+            label: playLabel,
+            icon: AppIcons.play,
+            style: HeroPillStyle.glass,
             autofocus: autofocusPlay,
             onPressed: onPlay,
-            icon: const Icon(AppIcons.play),
-            label: Text(playLabel, overflow: TextOverflow.ellipsis),
           );
     final progressLine = progress == null
         ? null
         : _ProgressLine(value: progress!, label: progressLabel);
+    final style = IconButtonThemeData(
+        style: heroRoundButtonStyle(context, secondaryStyle));
 
     if (compact) {
       return Column(
@@ -129,7 +120,15 @@ class DetailActions extends StatelessWidget {
           ],
           if (secondary.isNotEmpty) ...[
             const SizedBox(height: 14),
-            ...secondary,
+            IconButtonTheme(
+              data: style,
+              child: Wrap(
+                spacing: 8,
+                runSpacing: 8,
+                crossAxisAlignment: WrapCrossAlignment.center,
+                children: secondary,
+              ),
+            ),
           ],
         ],
       );
@@ -140,11 +139,14 @@ class DetailActions extends StatelessWidget {
       mainAxisSize: MainAxisSize.min,
       children: [
         TvFocusCaption(
-          child: Wrap(
-            spacing: 16,
-            runSpacing: 8,
-            crossAxisAlignment: WrapCrossAlignment.center,
-            children: [if (play != null) play, ...secondary],
+          child: IconButtonTheme(
+            data: style,
+            child: Wrap(
+              spacing: 14,
+              runSpacing: 8,
+              crossAxisAlignment: WrapCrossAlignment.center,
+              children: [if (play != null) play, ...secondary],
+            ),
           ),
         ),
         if (progressLine != null) ...[

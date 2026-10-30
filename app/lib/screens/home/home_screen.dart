@@ -8,6 +8,7 @@ import '../../theme/app_colors.dart';
 import '../../tv/tv_mode.dart';
 import '../../utils/hero_slides.dart';
 import '../../utils/on_screen.dart';
+import '../../navigation/detail_flight.dart';
 import '../../navigation/search_route_observer.dart';
 import '../../utils/responsive.dart';
 import '../../widgets/global/empty_state.dart';
@@ -117,30 +118,15 @@ class _HomeScreenState extends State<HomeScreen>
   }) {
     final target = item.detailMedia;
     if (target == null) return;
-
-    if (target.type == MediaType.movie) {
-      pushPosterLaunch(
-        Navigator.of(context),
-        origin: origin,
-        destination: LaunchDestination.details,
-        builder: (_) => MovieDetailScreen(
-          movieItem: item,
-          movie: target,
-        ),
-      );
-      return;
-    }
-
-    if (target.type == MediaType.show) {
-      final library = Provider.of<LibraryProvider>(context, listen: false);
-      final resolved = library.resolveCanonicalShow(target);
-      pushPosterLaunch(
-        Navigator.of(context),
-        origin: origin,
-        destination: LaunchDestination.details,
-        builder: (_) => ShowDetailScreen(show: resolved),
-      );
-    }
+    // Pas de carte à mesurer ici, ce contexte est celui de l'accueil : sans
+    // [origin], une route ordinaire.
+    openMediaDetail(
+      context,
+      target,
+      item: target.type == MediaType.movie ? item : null,
+      origin: origin,
+      measureCard: false,
+    );
   }
 
   Future<void> _playMedia(
@@ -151,7 +137,6 @@ class _HomeScreenState extends State<HomeScreen>
     await pushPosterLaunch(
       Navigator.of(context, rootNavigator: true),
       origin: origin,
-      destination: LaunchDestination.player,
       settings: const RouteSettings(name: SearchRouteObserver.playerRouteName),
       builder: (_) => PlayerScreen(media: media),
     );
@@ -313,8 +298,6 @@ class _HomeScreenState extends State<HomeScreen>
                                 onOpenLibrary: widget.onOpenLibrary,
                                 onSeeAllMovies: widget.onNavigateToMovies,
                                 onSeeAllShows: widget.onNavigateToShows,
-                                onOpenMedia: (media) =>
-                                    _openMedia(context, media),
                               ),
                             if (data != null && discovery.isNotEmpty) ...[
                               const SliverToBoxAdapter(
@@ -328,8 +311,6 @@ class _HomeScreenState extends State<HomeScreen>
                                 child: MediaRow(
                                   title: tr('À découvrir'),
                                   items: discovery,
-                                  onItemTap: (item) =>
-                                      _openMedia(context, item as Media),
                                 ),
                               ),
                             ],

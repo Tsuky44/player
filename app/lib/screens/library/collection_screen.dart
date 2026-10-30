@@ -2,7 +2,6 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
 import '../../models/models.dart';
-import '../../navigation/catalog_navigation.dart';
 import '../../providers/auth_provider.dart';
 import '../../theme/app_colors.dart';
 import '../../utils/poster_url.dart';
@@ -116,15 +115,11 @@ class _CollectionScreenState extends State<CollectionScreen> {
                         context,
                         constraints.crossAxisExtent,
                         compact: AppLayout.isCompact(context),
+                        withMeta: false,
                       ),
                       delegate: SliverChildBuilderDelegate(
-                        (context, index) {
-                          final item = collection.parts[index];
-                          return CatalogPosterCard(
-                            item: item,
-                            onTap: () => openCatalogItem(context, item),
-                          );
-                        },
+                        (context, index) =>
+                            CatalogPosterCard(item: collection.parts[index]),
                         childCount: collection.parts.length,
                       ),
                     );

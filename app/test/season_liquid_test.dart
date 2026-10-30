@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:onyx/screens/requests/widgets/season_liquid.dart';
+import 'package:onyx/widgets/global/season_liquid.dart';
 
 /// Le mouvement liquide des bulles de saisons : ressort exact aux bornes,
 /// goutte qui part de la bulle quittée et se pose sur la choisie.

@@ -1,11 +1,11 @@
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 import '../../../models/media_request.dart';
-import '../../../theme/app_colors.dart';
-import '../../../theme/app_type.dart';
 import '../../../l10n/tr.dart';
-import '../../../utils/long_date.dart';
+import '../../../widgets/global/detail_info_table.dart';
 
+/// La colonne d'informations d'une fiche de demande : ce que MediaHub sait de
+/// plus que la bibliothèque, le budget et le revenu.
 class RequestInfoTable extends StatelessWidget {
   final RequestMediaDetails details;
 
@@ -13,212 +13,45 @@ class RequestInfoTable extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final rows = <_InfoRow>[
-      if (details.originalTitle != null &&
-          details.originalTitle!.isNotEmpty &&
-          details.originalTitle != details.title)
-        _InfoRow(tr('Titre original'), details.originalTitle!),
-      if (details.tmdbStatus != null &&
-          details.tmdbStatus!.isNotEmpty &&
-          details.tmdbStatus != 'unknown')
-        _InfoRow(tr('Statut'), _translateStatus(details.tmdbStatus!)),
-      if (details.releaseDate != null && details.releaseDate!.isNotEmpty)
-        _InfoRow(tr('Date de sortie'), _formatDate(details.releaseDate!)),
-      if (details.budget != null && details.budget! > 0)
-        _InfoRow(tr('Budget'), _formatMoney(details.budget!)),
-      if (details.revenue != null && details.revenue! > 0)
-        _InfoRow(tr('Revenu'), _formatMoney(details.revenue!)),
-      if (details.originalLanguage != null &&
-          details.originalLanguage!.isNotEmpty)
-        _InfoRow(
-            tr('Langue originale'), details.originalLanguage!.toUpperCase()),
-      if (details.countries.isNotEmpty)
-        _InfoRow(tr('Pays de production'), details.countries.first),
-      if (details.numberOfSeasons != null && details.numberOfSeasons! > 0)
-        _InfoRow(tr('Saisons'), '${details.numberOfSeasons}'),
-      if (details.numberOfEpisodes != null && details.numberOfEpisodes! > 0)
-        _InfoRow(tr('Épisodes'), '${details.numberOfEpisodes}'),
-    ];
-
-    return Container(
-      decoration: BoxDecoration(
-        color: Colors.white.withValues(alpha: 0.04),
-        borderRadius: BorderRadius.circular(14),
-        border: Border.all(color: Colors.white.withValues(alpha: 0.06)),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          _ratingsHeader(details.rating),
-          if (rows.isNotEmpty) ...[
-            for (int i = 0; i < rows.length; i++) ...[
-              Divider(height: 1, color: Colors.white.withValues(alpha: 0.06)),
-              Padding(
-                padding:
-                    const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
-                child: Row(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Expanded(
-                      child: Text(
-                        rows[i].label,
-                        style: TextStyle(
-                          fontSize: AppType.footnote,
-                          fontWeight: FontWeight.w700,
-                          color: Colors.white.withValues(alpha: 0.45),
-                        ),
-                      ),
-                    ),
-                    const SizedBox(width: 12),
-                    Expanded(
-                      child: Text(
-                        rows[i].value,
-                        textAlign: TextAlign.end,
-                        style: const TextStyle(
-                          fontSize: AppType.footnote,
-                          color: AppColors.textSecondary,
-                        ),
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-            ],
-          ],
-          if (details.studios.isNotEmpty) ...[
-            Divider(height: 1, color: Colors.white.withValues(alpha: 0.06)),
-            Padding(
-              padding: const EdgeInsets.fromLTRB(16, 14, 16, 16),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.end,
-                children: [
-                  Align(
-                    alignment: Alignment.centerLeft,
-                    child: Text(
-                      tr('Studios'),
-                      style: TextStyle(
-                        fontSize: AppType.caption,
-                        fontWeight: FontWeight.w700,
-                        color: Colors.white.withValues(alpha: 0.45),
-                      ),
-                    ),
-                  ),
-                  const SizedBox(height: 8),
-                  for (final studio in details.studios.take(3))
-                    Padding(
-                      padding: const EdgeInsets.only(top: 2),
-                      child: Text(
-                        studio,
-                        textAlign: TextAlign.end,
-                        style: const TextStyle(
-                          fontSize: AppType.caption,
-                          color: AppColors.textSecondary,
-                          height: 1.3,
-                        ),
-                      ),
-                    ),
-                ],
-              ),
-            ),
-          ],
-        ],
-      ),
-    );
-  }
-
-  Widget _ratingsHeader(double rating) {
-    return Container(
-      padding: const EdgeInsets.symmetric(vertical: 16),
-      decoration: BoxDecoration(
-        color: Colors.white.withValues(alpha: 0.05),
-        borderRadius: const BorderRadius.vertical(top: Radius.circular(14)),
-      ),
-      child: Row(
-        mainAxisAlignment: MainAxisAlignment.center,
-        children: [
-          _ratingBadge(
-            label: tr('IMDb'),
-            value: rating.toStringAsFixed(1),
-            color: const Color(0xFFF5C518),
-            textColor: Colors.black,
+    return DetailInfoTable(
+      rating: details.rating,
+      studios: details.studios,
+      rows: [
+        if (details.originalTitle != null &&
+            details.originalTitle!.isNotEmpty &&
+            details.originalTitle != details.title)
+          (label: tr('Titre original'), value: details.originalTitle!),
+        if (details.tmdbStatus != null &&
+            details.tmdbStatus!.isNotEmpty &&
+            details.tmdbStatus != 'unknown')
+          (label: tr('Statut'), value: detailStatusLabel(details.tmdbStatus!)),
+        if (details.releaseDate != null && details.releaseDate!.isNotEmpty)
+          (
+            label: tr('Date de sortie'),
+            value: detailDateLabel(details.releaseDate!)
           ),
-          const SizedBox(width: 28),
-          _ratingBadge(
-            label: tr('TMDB'),
-            value: '${(rating * 10).round()}%',
-            color: const Color(0xFF01D277),
-            textColor: Colors.black,
+        if (details.budget != null && details.budget! > 0)
+          (label: tr('Budget'), value: _formatMoney(details.budget!)),
+        if (details.revenue != null && details.revenue! > 0)
+          (label: tr('Revenu'), value: _formatMoney(details.revenue!)),
+        if (details.originalLanguage != null &&
+            details.originalLanguage!.isNotEmpty)
+          (
+            label: tr('Langue originale'),
+            value: details.originalLanguage!.toUpperCase()
           ),
-        ],
-      ),
-    );
-  }
-
-  Widget _ratingBadge({
-    required String label,
-    required String value,
-    required Color color,
-    required Color textColor,
-  }) {
-    return Row(
-      children: [
-        Container(
-          padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-          decoration: BoxDecoration(
-            color: color,
-            borderRadius: BorderRadius.circular(3),
-          ),
-          child: Text(
-            label,
-            style: TextStyle(
-              fontSize: AppType.micro,
-              fontWeight: FontWeight.w900,
-              color: textColor,
-            ),
-          ),
-        ),
-        const SizedBox(width: 8),
-        Text(
-          value,
-          style: const TextStyle(
-            fontSize: AppType.body,
-            fontWeight: FontWeight.w700,
-            color: Colors.white,
-          ),
-        ),
+        if (details.countries.isNotEmpty)
+          (label: tr('Pays de production'), value: details.countries.first),
+        if (details.numberOfSeasons != null && details.numberOfSeasons! > 0)
+          (label: tr('Saisons'), value: '${details.numberOfSeasons}'),
+        if (details.numberOfEpisodes != null && details.numberOfEpisodes! > 0)
+          (label: tr('Épisodes'), value: '${details.numberOfEpisodes}'),
       ],
     );
-  }
-
-  String _translateStatus(String status) {
-    const map = {
-      'Released': 'Sorti',
-      'Post Production': 'Post-production',
-      'In Production': 'En production',
-      'Planned': 'Planifié',
-      'Rumored': 'Rumeur',
-      'Canceled': 'Annulé',
-      'Ended': 'Terminé',
-      'Returning Series': 'En cours',
-      'Pilot': 'Pilote',
-    };
-    final label = map[status];
-    return label == null ? status : tr(label);
-  }
-
-  String _formatDate(String date) {
-    final parsed = DateTime.tryParse(date);
-    return parsed == null ? date : formatLongDate(parsed);
   }
 
   String _formatMoney(int amount) {
     final formatted = NumberFormat('#,###', 'fr_FR').format(amount);
     return '$formatted \$US';
   }
-}
-
-class _InfoRow {
-  final String label;
-  final String value;
-  _InfoRow(this.label, this.value);
 }

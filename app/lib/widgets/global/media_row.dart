@@ -2,7 +2,6 @@ import 'package:flutter/material.dart';
 import '../../models/models.dart';
 import '../../theme/app_colors.dart';
 import '../../tv/tv_focus_memory.dart';
-import '../../utils/poster_url.dart';
 import '../../utils/responsive.dart';
 import 'continue_watching_card.dart';
 import 'media_card.dart';
@@ -15,7 +14,9 @@ class MediaRow extends StatelessWidget {
   final String title;
   final List<dynamic> items;
   final VoidCallback? onSeeAll;
-  final void Function(dynamic item) onItemTap;
+
+  /// Sans lui, une affiche ouvre sa fiche par l'envol ([MediaCard.onTap]).
+  final void Function(dynamic item)? onItemTap;
 
   /// Lecture depuis « Reprendre ». Sans elle, la carte retombe sur [onItemTap].
   final void Function(HomeMediaItem item, LaunchOrigin? origin)?
@@ -36,7 +37,7 @@ class MediaRow extends StatelessWidget {
     super.key,
     required this.title,
     required this.items,
-    required this.onItemTap,
+    this.onItemTap,
     this.onContinueWatchingPlay,
     this.onContinueWatchingTitleTap,
     this.onContinueWatchingMarkWatched,
@@ -55,9 +56,7 @@ class MediaRow extends StatelessWidget {
     final compact = AppLayout.isCompact(context);
     final rowHeight = isContinueWatching
         ? ContinueWatchingCard.rowHeight + PosterCard.liftHeadroom
-        : mediaCardHeight(cardWidth, compact: true) +
-            4 +
-            PosterCard.liftHeadroom;
+        : cardWidth / AppLayout.posterOnlyAspectRatio + PosterCard.liftHeadroom;
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -123,7 +122,7 @@ class MediaRow extends StatelessWidget {
                           autofocus: autofocusFirstItem && index == 0,
                           onTap: (origin) => onContinueWatchingPlay != null
                               ? onContinueWatchingPlay!(item, origin)
-                              : onItemTap(item),
+                              : onItemTap?.call(item),
                           onTitleTap: onContinueWatchingTitleTap != null
                               ? (origin) =>
                                   onContinueWatchingTitleTap!(item, origin)
@@ -137,7 +136,9 @@ class MediaRow extends StatelessWidget {
                             media: item as Media,
                             compact: true,
                             autofocus: autofocusFirstItem && index == 0,
-                            onTap: () => onItemTap(item),
+                            onTap: onItemTap == null
+                                ? null
+                                : () => onItemTap!(item),
                           ),
                         ),
                 );

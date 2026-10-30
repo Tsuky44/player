@@ -164,13 +164,10 @@ List<String> techBadgesFor(MediaTracks? tracks) {
 
 /// Le titre d'une section de fiche (« Distribution », « Épisodes »…).
 ///
-/// En 22 px extra-gras, chaque section criait aussi fort que le titre du
-/// film. Plus petit et demi-gras, il range la page sans lui disputer la
-/// vedette.
+/// Le même partout, fiches de la bibliothèque et des demandes (ADR-0099).
 TextStyle? detailSectionTitleStyle(BuildContext context) =>
     Theme.of(context).textTheme.titleMedium?.copyWith(
-          fontSize: AppType.title3,
-          fontWeight: FontWeight.w600,
-          letterSpacing: -0.2,
+          fontSize: AppType.title2,
+          fontWeight: FontWeight.w700,
           color: AppColors.textPrimary,
         );

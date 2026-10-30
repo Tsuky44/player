@@ -13,8 +13,10 @@ import '../../utils/format.dart';
 import '../../utils/on_screen.dart';
 import '../../utils/responsive.dart';
 import '../../widgets/global/detail_actions.dart';
-import '../../widgets/global/detail_facts_section.dart';
+import '../../widgets/global/detail_backdrop_header.dart';
+import '../../widgets/global/detail_cast_section.dart';
 import '../../widgets/global/detail_metadata.dart';
+import '../../widgets/global/detail_summary_section.dart';
 import '../../widgets/global/live_progress_state.dart';
 import '../../widgets/global/media_detail_widgets.dart';
 import '../../widgets/global/media_download_button.dart';
@@ -464,7 +466,9 @@ class _MovieDetailScreenState extends State<MovieDetailScreen>
                 ),
               ),
             ),
-          SliverToBoxAdapter(child: DetailFactsSection(details: _details)),
+          SliverToBoxAdapter(
+            child: DetailSummarySection.forDetails(details: _details),
+          ),
           if (_details?.collection != null)
             SliverToBoxAdapter(
               child: CollectionSection(
@@ -487,10 +491,7 @@ class _MovieDetailScreenState extends State<MovieDetailScreen>
             SliverToBoxAdapter(
               child: Padding(
                 padding: const EdgeInsets.only(top: 32),
-                child: SimilarTitlesSection(
-                  items: _details!.similarTitles,
-                  onTapItem: (item) => openCatalogItem(context, item),
-                ),
+                child: SimilarTitlesSection(items: _details!.similarTitles),
               ),
             ),
           // Codec, définition exacte, pistes : ce qui intéresse qui vérifie un

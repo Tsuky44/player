@@ -5,11 +5,10 @@ import '../models/media_request.dart';
 import '../models/models.dart';
 import '../providers/auth_provider.dart';
 import '../screens/library/collection_screen.dart';
-import '../screens/library/movie_detail_screen.dart';
 import '../screens/library/person_detail_screen.dart';
-import '../screens/library/show_detail_screen.dart';
-import '../screens/requests/request_detail_screen.dart';
+import '../screens/requests/request_detail_launch.dart';
 import '../utils/poster_url.dart';
+import 'detail_flight.dart';
 import '../l10n/tr.dart';
 
 /// Opens the actor/crew profile page for a TMDB person id.
@@ -37,20 +36,14 @@ void openCollection(BuildContext context, CollectionInfo collection) {
 
 /// Opens the detail page for a catalog item when it is owned; otherwise sends
 /// the user to the request page for that title.
-void openCatalogItem(BuildContext context, CatalogItem item) {
+///
+/// [cardContext] est celui de la carte touchée : l'affiche s'envole depuis elle.
+void openCatalogItem(BuildContext cardContext, CatalogItem item) {
   if (!item.isOwned) {
-    _openRequestFor(context, item);
+    _openRequestFor(cardContext, item);
     return;
   }
-
-  final media = item.toLocalMedia();
-  Navigator.of(context).push(
-    MaterialPageRoute(
-      builder: (_) => item.mediaType == MediaType.show
-          ? ShowDetailScreen(show: media)
-          : MovieDetailScreen(movie: media),
-    ),
-  );
+  openMediaDetail(cardContext, item.toLocalMedia());
 }
 
 /// A filmography or saga entry the library does not have opens the MediaHub
@@ -70,11 +63,7 @@ void _openRequestFor(BuildContext context, CatalogItem item) {
     return;
   }
 
-  Navigator.of(context).push(
-    MaterialPageRoute(
-      builder: (_) => RequestDetailScreen(item: _asRequestItem(item)),
-    ),
-  );
+  openRequestDetail(context, _asRequestItem(item));
 }
 
 /// The request page reloads everything from TMDB by id and media type; the

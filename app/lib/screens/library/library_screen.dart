@@ -13,8 +13,6 @@ import '../../widgets/global/empty_state.dart';
 import '../../widgets/global/media_card.dart';
 import '../../widgets/global/poster_grid_zoom_region.dart';
 import '../../widgets/global/skeleton.dart';
-import 'movie_detail_screen.dart';
-import 'show_detail_screen.dart';
 import '../shell/shell_tabs.dart';
 import 'widgets/catalog_header.dart';
 
@@ -106,17 +104,6 @@ class _LibraryScreenState extends State<LibraryScreen> {
     return entries;
   }
 
-  void _open(_Entry entry) {
-    final movie = entry.movie;
-    Navigator.of(context).push(
-      MaterialPageRoute(
-        builder: (_) => movie != null
-            ? MovieDetailScreen(movieItem: movie)
-            : ShowDetailScreen(show: entry.media),
-      ),
-    );
-  }
-
   @override
   Widget build(BuildContext context) {
     final lp = Provider.of<LibraryProvider>(context);
@@ -197,6 +184,7 @@ class _LibraryScreenState extends State<LibraryScreen> {
                             context,
                             constraints.crossAxisExtent,
                             compact: compact,
+                            withMeta: false,
                           ),
                           delegate: SliverChildBuilderDelegate(
                             (context, index) {
@@ -204,11 +192,11 @@ class _LibraryScreenState extends State<LibraryScreen> {
                               final movie = entry.movie;
                               return MediaCard(
                                 media: entry.media,
+                                item: movie,
                                 watched: movie?.isFinished ?? false,
                                 progress: movie == null || movie.isFinished
                                     ? null
                                     : movie.percentWatched,
-                                onTap: () => _open(entry),
                               );
                             },
                             childCount: entries.length,

@@ -50,8 +50,6 @@ class PosterCard extends StatefulWidget {
   /// les cartes au repos d'une grille.
   final Widget? hoverDetails;
 
-  /// Play affordance revealed on hover — only for playable local content.
-  final bool showPlayOnHover;
   final IconData placeholderIcon;
   final bool compact;
 
@@ -75,7 +73,6 @@ class PosterCard extends StatefulWidget {
     this.dimmed = false,
     this.showMeta = true,
     this.hoverDetails,
-    this.showPlayOnHover = false,
     this.placeholderIcon = AppIcons.movie,
     this.compact = false,
     this.autofocus = false,
@@ -191,12 +188,15 @@ class _PosterCardState extends State<PosterCard> {
                         PosterHoverOverlay(
                           active: _active,
                           focused: _focused,
-                          showPlay: widget.showPlayOnHover,
-                          playSize: compact ? 44 : 50,
+                          showPlay: false,
                         ),
                         if (widget.hoverDetails != null)
                           PosterHoverDetails(
                             active: _active,
+                            // Le texte s'arrête au-dessus de la barre de
+                            // progression, qui reste lisible sous le cartouche.
+                            bottomClearance:
+                                widget.footerOverlay == null ? 0 : 8,
                             child: widget.hoverDetails!,
                           ),
                         ...widget.overlays,
@@ -474,10 +474,14 @@ class PosterHoverDetails extends StatelessWidget {
   final bool active;
   final Widget child;
 
+  /// La place à laisser sous le texte pour ce qui flotte en bas de l'affiche.
+  final double bottomClearance;
+
   const PosterHoverDetails({
     super.key,
     required this.active,
     required this.child,
+    this.bottomClearance = 0,
   });
 
   @override
@@ -506,7 +510,9 @@ class PosterHoverDetails extends StatelessWidget {
             child: _HoverActive(
               active: active,
               child: Padding(
-                padding: const EdgeInsets.all(PosterCard.overlayInset + 3),
+                padding: const EdgeInsets.all(PosterCard.overlayInset + 3)
+                    .copyWith(
+                        bottom: PosterCard.overlayInset + 3 + bottomClearance),
                 child: child,
               ),
             ),

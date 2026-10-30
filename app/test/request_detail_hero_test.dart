@@ -1,9 +1,10 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:onyx/models/media_request.dart';
-import 'package:onyx/screens/requests/widgets/request_detail_hero.dart';
+import 'package:onyx/widgets/global/detail_hero.dart';
 import 'package:onyx/screens/requests/widgets/request_status_badge.dart';
-import 'package:onyx/screens/requests/widgets/request_status_motion.dart';
+import 'package:onyx/widgets/global/status_motion.dart';
+import 'package:onyx/theme/app_colors.dart';
 import 'package:onyx/theme/lite_mode.dart';
 
 /// La fiche de demande reprend l'en-tête d'OnyxHub : surtitre de statut en
@@ -45,6 +46,26 @@ void main() {
     )));
     expect(
         tester.widget<InkWell>(find.byType(InkWell)).canRequestFocus, isTrue);
+  });
+
+  testWidgets('la télécommande arrive sur la pastille et voit son focus',
+      (tester) async {
+    tester.binding.focusManager.highlightStrategy =
+        FocusHighlightStrategy.alwaysTraditional;
+    addTearDown(() => tester.binding.focusManager.highlightStrategy =
+        FocusHighlightStrategy.automatic);
+    await tester.pumpWidget(host(HeroPill(
+      label: 'Lecture',
+      style: HeroPillStyle.glass,
+      autofocus: true,
+      onPressed: () {},
+    )));
+    await tester.pump();
+
+    final shape = tester.widget<Material>(find.byType(Material).last).shape
+        as StadiumBorder;
+    expect(shape.side.color, AppColors.accent);
+    expect(shape.side.width, 3);
   });
 
   testWidgets('« En cours » court sous la pastille, sauf en mode léger',

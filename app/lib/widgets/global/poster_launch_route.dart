@@ -1,7 +1,4 @@
-import 'dart:math' as math;
-
 import 'package:flutter/material.dart';
-import '../../theme/app_colors.dart';
 import 'app_network_image.dart';
 import 'poster_card.dart';
 
@@ -24,18 +21,10 @@ class LaunchOrigin {
   }
 }
 
-/// Où mène l'ouverture, et donc quelle mise en scène.
-enum LaunchDestination {
-  /// Zoom : l'affiche quitte sa carte et grandit jusqu'au plein écran en se
-  /// fondant dans le noir ; le lecteur — noir lui aussi tant que sa première
-  /// image n'est pas là — prend le relais une fois l'écran couvert.
-  player,
-
-  /// Ouverture circulaire depuis la carte touchée, qui dévoile la fiche.
-  details,
-}
-
-/// Ouvre [builder] avec la transition de [destination], partie de [origin].
+/// Lance le lecteur [builder] par le zoom, parti de [origin] : l'affiche quitte
+/// sa carte et grandit jusqu'au plein écran en se fondant dans le noir ; le
+/// lecteur — noir lui aussi tant que sa première image n'est pas là — prend le
+/// relais une fois l'écran couvert.
 ///
 /// Sans origine mesurable (carte sortie de l'écran…) ou quand le système
 /// demande moins d'animations, retombe sur une [MaterialPageRoute] ordinaire.
@@ -43,7 +32,6 @@ Future<T?> pushPosterLaunch<T>(
   NavigatorState navigator, {
   required WidgetBuilder builder,
   required LaunchOrigin? origin,
-  required LaunchDestination destination,
   RouteSettings? settings,
 }) {
   final reduceMotion =
@@ -65,7 +53,6 @@ Future<T?> pushPosterLaunch<T>(
       builder: builder,
       originRect: topLeft & origin.rect.size,
       imageUrl: origin.imageUrl,
-      destination: destination,
       settings: settings,
     ),
   );
@@ -75,28 +62,21 @@ class PosterLaunchRoute<T> extends PageRoute<T> {
   final WidgetBuilder builder;
   final Rect originRect;
   final String? imageUrl;
-  final LaunchDestination destination;
 
   PosterLaunchRoute({
     required this.builder,
     required this.originRect,
-    required this.destination,
     this.imageUrl,
     super.settings,
   });
 
   @override
-  Duration get transitionDuration => destination == LaunchDestination.player
-      ? const Duration(milliseconds: 520)
-      : const Duration(milliseconds: 560);
+  Duration get transitionDuration => const Duration(milliseconds: 520);
 
   // Le retour rejoue la même scène à l'envers, en plus vif : le panneau se
-  // resserre vers la carte, le cercle aussi.
+  // resserre vers la carte.
   @override
-  Duration get reverseTransitionDuration =>
-      destination == LaunchDestination.player
-          ? const Duration(milliseconds: 360)
-          : const Duration(milliseconds: 420);
+  Duration get reverseTransitionDuration => const Duration(milliseconds: 360);
 
   @override
   bool get opaque => true;
@@ -121,19 +101,13 @@ class PosterLaunchRoute<T> extends PageRoute<T> {
     return AnimatedBuilder(
       animation: animation,
       child: child,
-      builder: (context, page) => destination == LaunchDestination.player
-          ? _ZoomFrame(
-              progress: animation.value,
-              reversing: animation.status == AnimationStatus.reverse,
-              originRect: originRect,
-              imageUrl: imageUrl,
-              page: page!,
-            )
-          : _IrisFrame(
-              progress: animation.value,
-              originRect: originRect,
-              page: page!,
-            ),
+      builder: (context, page) => _ZoomFrame(
+        progress: animation.value,
+        reversing: animation.status == AnimationStatus.reverse,
+        originRect: originRect,
+        imageUrl: imageUrl,
+        page: page!,
+      ),
     );
   }
 }
@@ -147,7 +121,6 @@ double _interval(double t, double begin, double end, Curve curve) =>
 Widget _stage({
   required Widget page,
   required double pageOpacity,
-  CustomClipper<Path>? pageClip,
   required List<Widget> under,
   required List<Widget> over,
 }) {
@@ -158,15 +131,10 @@ Widget _stage({
         key: const ValueKey('launch-page'),
         child: Opacity(
           opacity: pageOpacity,
-          child: ClipPath(
-            clipper: pageClip,
-            clipBehavior: pageClip == null ? Clip.none : Clip.antiAlias,
-            // The clip and the opacity change every frame of the transition;
-            // the page under them does not. Without its own layer the whole
-            // detail page — backdrop, rows of artwork — was repainted 60 times
-            // a second for the length of the opening.
-            child: RepaintBoundary(child: page),
-          ),
+          // The opacity changes during the transition; the page under it does
+          // not. Without its own layer it was repainted 60 times a second for
+          // the length of the opening.
+          child: RepaintBoundary(child: page),
         ),
       ),
       Positioned.fill(child: IgnorePointer(child: Stack(children: over))),
@@ -275,97 +243,4 @@ class _ZoomFrame extends StatelessWidget {
       },
     );
   }
-}
-
-class _IrisFrame extends StatelessWidget {
-  final double progress;
-  final Rect originRect;
-  final Widget page;
-
-  const _IrisFrame({
-    required this.progress,
-    required this.originRect,
-    required this.page,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    return LayoutBuilder(
-      builder: (context, constraints) {
-        final size = constraints.biggest;
-        final t = progress;
-
-        final centre = originRect.center;
-        // Le cercle final doit atteindre le coin le plus éloigné de la carte.
-        final farthest = [
-          Offset.zero,
-          Offset(size.width, 0),
-          Offset(0, size.height),
-          Offset(size.width, size.height),
-        ].map((c) => (c - centre).distance).reduce(math.max);
-        final startRadius = originRect.shortestSide / 2;
-
-        final open = _interval(t, 0.0, 0.9, Curves.easeInOutCubicEmphasized);
-        final radius = startRadius + (farthest - startRadius) * open;
-
-        // La page n'apparaît qu'une fois le cercle assez grand pour qu'on n'en
-        // voie pas un fragment découpé ; avant, c'est le fond de l'app qui
-        // s'ouvre depuis la carte.
-        final reveal = _interval(t, 0.18, 0.7, Curves.easeOutCubic);
-        final dim = _interval(t, 0.0, 0.6, Curves.easeOut);
-        final done = t >= 1.0;
-
-        return _stage(
-          page: page,
-          pageOpacity: reveal,
-          pageClip: done ? null : _CircleClipper(centre, radius),
-          under: [
-            if (!done) ...[
-              Positioned.fill(
-                child: ColoredBox(
-                  color: Colors.black.withValues(alpha: 0.5 * dim),
-                ),
-              ),
-              Positioned.fromRect(
-                rect: Rect.fromCircle(center: centre, radius: radius),
-                child: DecoratedBox(
-                  decoration: BoxDecoration(
-                    shape: BoxShape.circle,
-                    color: AppColors.background,
-                    // Un halo d'accent borde le cercle pendant qu'il s'ouvre,
-                    // et s'efface en arrivant.
-                    boxShadow: [
-                      BoxShadow(
-                        color: AppColors.accent.withValues(
-                          alpha: 0.35 * (1 - open),
-                        ),
-                        blurRadius: 40,
-                        spreadRadius: 2,
-                      ),
-                    ],
-                  ),
-                ),
-              ),
-            ],
-          ],
-          over: const [],
-        );
-      },
-    );
-  }
-}
-
-class _CircleClipper extends CustomClipper<Path> {
-  final Offset centre;
-  final double radius;
-
-  _CircleClipper(this.centre, this.radius);
-
-  @override
-  Path getClip(Size size) =>
-      Path()..addOval(Rect.fromCircle(center: centre, radius: radius));
-
-  @override
-  bool shouldReclip(_CircleClipper old) =>
-      old.centre != centre || old.radius != radius;
 }

@@ -9,7 +9,7 @@ import '../../../theme/app_type.dart';
 import '../../../utils/format.dart';
 import '../../../widgets/global/app_network_image.dart';
 import '../../../l10n/tr.dart';
-import 'request_detail_hero.dart';
+import '../../../widgets/global/detail_hero.dart';
 import 'request_release_sheet.dart';
 import 'season_cascade.dart';
 import 'request_status_badge.dart';
@@ -200,7 +200,8 @@ class _RequestSeasonPanelState extends State<RequestSeasonPanel>
               loading: _requesting,
               onPressed: _requesting ? null : _requestThisSeason,
             )
-          else
+          // Une saison là n'a rien à dire de plus que ses épisodes.
+          else if (season.status != RequestMediaStatus.available)
             RequestStatusBadge(
               status: season.status,
               remaining: season.remainingEpisodes,

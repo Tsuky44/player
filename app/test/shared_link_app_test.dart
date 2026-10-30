@@ -255,8 +255,8 @@ void main() {
     await tester.pump(const Duration(milliseconds: 100));
     expect(find.text('Lioness'), findsOneWidget);
     expect(find.text('Saison 1'), findsOneWidget);
-    expect(find.text('Saison 2'), findsOneWidget,
-        reason: 'plusieurs saisons : chacune a son onglet');
+    expect(find.text('2'), findsOneWidget,
+        reason: 'plusieurs saisons : chacune a sa bulle');
     expect(find.text('Épisode 1'), findsOneWidget,
         reason: 'seule la saison choisie est listée');
     expect(find.byType(TextField), findsNothing);

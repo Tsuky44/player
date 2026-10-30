@@ -12,8 +12,6 @@ import 'package:flutter_test/flutter_test.dart';
 /// retard à chaque défilement.
 const Map<String, String> _allowed = {
   'lib/widgets/global/skeleton.dart': 'des espaces réservés, aucune image',
-  'lib/screens/requests/widgets/season_selector_dialog.dart':
-      'une liste de saisons en texte, aucune image',
   'lib/screens/requests/widgets/request_filters_sheet.dart':
       'grille en shrinkWrap sans défilement : tout est construit d’emblée',
 };

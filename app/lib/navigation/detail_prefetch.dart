@@ -9,7 +9,7 @@ import '../services/api_client.dart';
 import '../services/media_details_cache.dart';
 import '../services/media_tracks_cache.dart';
 import '../utils/responsive.dart';
-import '../widgets/global/media_detail_widgets.dart';
+import '../widgets/global/detail_backdrop_header.dart';
 
 /// Head start for a movie or show page, taken while the user is still pointing
 /// at its card (mouse hover, remote focus) or pressing it.

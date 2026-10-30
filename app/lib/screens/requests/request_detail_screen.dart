@@ -6,28 +6,28 @@ import 'package:dio/dio.dart';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../../models/media_request.dart';
-import '../../models/models.dart' show MediaType;
+import '../../models/models.dart' show CastMember, MediaType;
+import '../../navigation/catalog_navigation.dart';
 import '../../navigation/play_link.dart';
 import '../../services/api_client.dart';
 import '../../providers/media_requests_provider.dart';
 import '../../theme/app_colors.dart';
 import '../../utils/poster_url.dart';
-import '../../widgets/global/app_network_image.dart';
+import '../../widgets/global/detail_cast_section.dart';
+import '../../widgets/global/detail_hero.dart';
+import '../../widgets/global/detail_metadata.dart';
+import '../../widgets/global/detail_summary_section.dart';
 import '../../widgets/global/empty_state.dart';
+import '../../widgets/global/poster_rail.dart';
 import '../../utils/long_date.dart';
 import '../../utils/responsive.dart';
-import '../../widgets/global/staggered_entrance.dart';
-import '../../widgets/global/poster_flight.dart';
 import 'widgets/request_detail_hero.dart';
-import 'widgets/request_cast_list.dart';
 import 'widgets/request_info_table.dart';
+import 'widgets/request_media_card.dart';
 import 'widgets/request_progress_panel.dart';
-import 'widgets/request_related_slider.dart';
 import 'widgets/request_season_list.dart';
 import 'widgets/request_status_badge.dart';
-import 'widgets/season_selector_dialog.dart';
 import '../../theme/app_icons.dart';
-import '../../theme/app_type.dart';
 import '../../l10n/tr.dart';
 import '../../widgets/global/detail_actions.dart';
 import '../../models/watch_list.dart';
@@ -59,24 +59,12 @@ class _RequestDetailScreenState extends State<RequestDetailScreen> {
     });
   }
 
+  /// Un film se demande d'ici. Une saison se demande en la dépliant, dans la
+  /// liste des saisons ([RequestSeasonList]).
   Future<void> _request(RequestMediaDetails details) async {
-    List<int>? seasons;
-    if (details.mediaType == RequestMediaType.tv) {
-      seasons = await SeasonSelectorDialog.show(
-        context,
-        title: details.title,
-        seasons: details.seasons,
-      );
-      if (seasons == null || seasons.isEmpty) return;
-    }
-
-    if (!mounted) return;
     setState(() => _submitting = true);
     try {
-      await context.read<MediaRequestsProvider>().request(
-            details,
-            seasons: seasons,
-          );
+      await context.read<MediaRequestsProvider>().request(details);
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(content: Text(tr('Demande envoyée à MediaHub.'))));
@@ -127,19 +115,13 @@ class _RequestDetailScreenState extends State<RequestDetailScreen> {
     }
   }
 
-  void _openRelated(RequestMediaItem item) {
-    Navigator.of(context).push(
-      MaterialPageRoute(builder: (_) => RequestDetailScreen(item: item)),
-    );
-  }
-
   /// Le chargement garde le fond que l'envol vient de poser : la carte le
   /// connaît déjà, et la fiche n'attend pas le réseau pour avoir son image.
   Widget _loading() {
     if (widget.item.backdropUrl == null) return const LoadingView();
     return Stack(
       children: [
-        RequestDetailBackdrop(backdropUrl: widget.item.backdropUrl),
+        DetailBackdrop(url: detailBackdropUrl(widget.item.backdropUrl)),
         const LoadingView(),
       ],
     );
@@ -166,330 +148,173 @@ class _RequestDetailScreenState extends State<RequestDetailScreen> {
     );
   }
 
-  /// La marge des côtés : la page court d'un bord à l'autre, comme le fond.
-  ///
-  /// OnyxHub plafonne son contenu à 1600 px et le centre : sur un écran de
-  /// 2000 px, l'en-tête et le corps se retrouvaient chacun centré à sa façon,
-  /// avec 200 px de vide de chaque côté. Ici une seule marge, proportionnelle
-  /// à l'écran (3 %, entre 48 et 72 px), aligne le logo, le texte et les
-  /// rangées sur le même bord. Ce sont les blocs de texte qui gardent une
-  /// largeur lisible, pas la page.
-  static double _gutter(BuildContext context) {
-    final width = MediaQuery.sizeOf(context).width;
-    if (AppLayout.isCompact(context)) return 16;
-    if (width < 900) return 24;
-    return (width * 0.03).clamp(48.0, 72.0);
-  }
-
-  /// La colonne d'informations à droite : un quart de l'écran, assez pour
-  /// les studios sur une ligne, jamais au point d'écraser le texte.
-  static double _sidebarWidth(double width) =>
-      (width * 0.24).clamp(340.0, 460.0);
-
   Widget _content(RequestMediaDetails details) {
-    final hasUnrequestedSeasons =
-        details.seasons.any((season) => season.status.canRequest);
-    final canRequest = details.mediaType == RequestMediaType.tv
-        ? hasUnrequestedSeasons
-        : details.status.canRequest;
-    final size = MediaQuery.sizeOf(context);
-    final wide = size.width >= 1100;
-    final compact = AppLayout.isCompact(context);
-    final horizontal = _gutter(context);
+    final isTv = details.mediaType == RequestMediaType.tv;
+    final waiting = details.waitingMessage;
+    final tracked = details.status != RequestMediaStatus.available &&
+        details.status != RequestMediaStatus.unknown;
 
     return CustomScrollView(
       scrollCacheExtent: AppLayout.imageCacheExtent(context),
       slivers: [
         SliverToBoxAdapter(
-          child: Stack(
-            children: [
-              RequestDetailBackdrop(backdropUrl: details.backdropUrl),
-              SafeArea(
-                bottom: false,
-                child: Padding(
-                  padding: EdgeInsets.fromLTRB(horizontal, 8, horizontal, 0),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      FlightDrop(child: _backButton()),
-                      // Le titre se pose dans le bas de l'image, comme sur
-                      // OnyxHub.
-                      SizedBox(
-                          height:
-                              compact ? size.height * 0.22 : size.height * 0.3),
-                      FlightDrop(
-                        delay: const Duration(milliseconds: 170),
-                        child: _heroHeader(
-                            details, canRequest, hasUnrequestedSeasons),
-                      ),
-                      const SizedBox(height: 48),
-                    ],
-                  ),
-                ),
-              ),
-            ],
+          child: DetailHero(
+            playKey: details.id,
+            backdropUrl: detailBackdropUrl(details.backdropUrl),
+            posterUrl: detailPosterUrl(details.posterUrl),
+            logoUrl: logoImageUrl(details.logoUrl),
+            title: details.title,
+            tagline: details.tagline,
+            overview: details.overview,
+            emptyOverviewLabel: tr('Aucun synopsis disponible.'),
+            eyebrow: _eyebrow(details),
+            metadata: buildMetadataChips(
+              type: isTv ? MediaType.show : MediaType.movie,
+              releaseDate: details.releaseDate,
+              runtimeMinutes: details.runtime ?? 0,
+              rating: details.rating,
+              seasons: details.numberOfSeasons ?? 0,
+              genres: details.genres,
+            ),
+            actions: _actions(details),
+            onBack: () => Navigator.of(context).pop(),
           ),
         ),
-        SliverToBoxAdapter(
-          child: Padding(
-            padding: EdgeInsets.fromLTRB(horizontal, 0, horizontal, 56),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.stretch,
-              children: [
-                if (wide)
-                  Row(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Expanded(child: _mainColumn(details)),
-                      const SizedBox(width: 56),
-                      SizedBox(
-                        width: _sidebarWidth(size.width),
-                        child: RequestInfoTable(details: details),
-                      ),
-                    ],
-                  )
-                else ...[
-                  _mainColumn(details),
-                  const SizedBox(height: 28),
-                  RequestInfoTable(details: details),
+        // Sous l'en-tête et non dedans : sa hauteur est fixe, et le suivi d'une
+        // demande a la taille qu'il veut.
+        if ((waiting != null && details.status != RequestMediaStatus.available) ||
+            tracked)
+          SliverToBoxAdapter(
+            child: Padding(
+              padding: AppLayout.pageInsets(context, top: 12),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  if (waiting != null &&
+                      details.status != RequestMediaStatus.available)
+                    RequestImportNotice(message: waiting),
+                  // Le suivi vient de MediaHub : un titre disponible n'a plus
+                  // rien à montrer, les autres sont interrogés tant que l'écran
+                  // est ouvert.
+                  if (tracked)
+                    RequestProgressPanel(
+                        tmdbId: details.id, mediaType: details.mediaType),
                 ],
-                if (details.mediaType == RequestMediaType.tv &&
-                    details.seasons.isNotEmpty) ...[
-                  const SizedBox(height: 56),
-                  RequestSeasonList(
-                    tmdbId: details.id,
-                    showItem: widget.item,
-                    seasons: details.seasons,
-                  ),
-                ],
-                if (details.cast.isNotEmpty) ...[
-                  const SizedBox(height: 48),
-                  Text(tr('Casting'),
-                      style: const TextStyle(
-                          fontSize: AppType.title1,
-                          fontWeight: FontWeight.w700,
-                          color: AppColors.textPrimary)),
-                  const SizedBox(height: 16),
-                  RequestCastList(cast: details.cast),
-                ],
-                if (details.recommendations.isNotEmpty) ...[
-                  const SizedBox(height: 56),
-                  RequestRelatedSlider(
-                    title: tr('Recommandations'),
-                    items: details.recommendations,
-                    onTap: _openRelated,
-                  ),
-                ],
-                if (details.similar.isNotEmpty) ...[
-                  const SizedBox(height: 40),
-                  RequestRelatedSlider(
-                    title: tr('Titres similaires'),
-                    items: details.similar,
-                    onTap: _openRelated,
-                  ),
-                ],
-              ],
+              ),
             ),
           ),
+        SliverToBoxAdapter(
+          child: DetailSummarySection(
+            credits: [
+              if (details.director != null && details.director!.isNotEmpty)
+                (label: tr('Réalisateur'), value: details.director!),
+              for (final writer in details.writers)
+                (label: tr('Scénario'), value: writer),
+              for (final editor in details.editors)
+                (label: tr('Montage'), value: editor),
+            ],
+            keywords: details.keywords,
+            infoTable: RequestInfoTable(details: details),
+          ),
         ),
+        if (isTv && details.seasons.isNotEmpty)
+          SliverToBoxAdapter(
+            child: Padding(
+              padding: AppLayout.pageInsets(context, top: 48),
+              child: RequestSeasonList(
+                tmdbId: details.id,
+                showItem: widget.item,
+                seasons: details.seasons,
+              ),
+            ),
+          ),
+        if (details.cast.isNotEmpty)
+          SliverToBoxAdapter(
+            child: Padding(
+              padding: const EdgeInsets.only(top: 40),
+              child: CastSection(
+                cast: [
+                  for (final member in details.cast.take(25))
+                    CastMember(
+                      tmdbId: member.tmdbId,
+                      name: member.name,
+                      character: member.character,
+                      profileUrl: member.profileUrl,
+                    ),
+                ],
+                onTapMember: (member) =>
+                    openPerson(context, member.tmdbId, name: member.name),
+              ),
+            ),
+          ),
+        for (final (title, items) in [
+          (tr('Recommandations'), details.recommendations),
+          (tr('Titres similaires'), details.similar),
+        ])
+          if (items.isNotEmpty)
+            SliverToBoxAdapter(
+              child: Padding(
+                padding: const EdgeInsets.only(top: 32),
+                child: PosterRail(
+                  title: title,
+                  itemCount: items.length,
+                  itemBuilder: (context, index) =>
+                      RequestMediaCard(item: items[index]),
+                ),
+              ),
+            ),
+        const SliverToBoxAdapter(child: SizedBox(height: 56)),
       ],
     );
   }
 
-  Widget _backButton() {
-    return Material(
-      color: Colors.black.withValues(alpha: 0.35),
-      shape: const CircleBorder(),
-      child: InkWell(
-        customBorder: const CircleBorder(),
-        onTap: () => Navigator.of(context).pop(),
-        child: const Padding(
-          padding: EdgeInsets.all(10),
-          child: Icon(AppIcons.back, color: Colors.white, size: 22),
-        ),
-      ),
+  /// OnyxHub cache le surtitre en téléphone : la pastille de statut des
+  /// boutons dit déjà la même chose, juste en dessous.
+  Widget? _eyebrow(RequestMediaDetails details) {
+    if (AppLayout.isCompact(context) ||
+        details.status == RequestMediaStatus.unknown) {
+      return null;
+    }
+    return RequestAvailabilityBadge(
+      status: details.status,
+      awaitingRelease: details.isAwaitingRelease(),
     );
   }
 
-  Widget _heroHeader(
-    RequestMediaDetails details,
-    bool canRequest,
-    bool hasUnrequestedSeasons,
-  ) {
+  /// La rangée d'actions : le statut ou « Demander », la bande-annonce et les
+  /// listes.
+  Widget _actions(RequestMediaDetails details) {
     final compact = AppLayout.isCompact(context);
-    final runtime = details.formattedRuntime;
-    final hasLogo = details.logoUrl != null;
-    final muted = Colors.white.withValues(alpha: 0.6);
-    final metaParts = <Widget>[
-      if (hasLogo && details.year != null)
-        Text(details.year!,
-            style: const TextStyle(
-                color: AppColors.textPrimary,
-                fontWeight: FontWeight.w800,
-                fontSize: AppType.headline)),
-      if (runtime.isNotEmpty)
-        Row(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Icon(AppIcons.schedule, size: 16, color: muted),
-            const SizedBox(width: 6),
-            Text(runtime,
-                style: TextStyle(
-                    color: muted,
-                    fontSize: AppType.body,
-                    fontWeight: FontWeight.w500)),
-          ],
-        ),
-      ...details.genres.map(
-        (genre) => Text('• $genre',
-            style: TextStyle(
-                color: Colors.white.withValues(alpha: 0.8),
-                fontSize: AppType.body,
-                fontWeight: FontWeight.w500)),
-      ),
-    ];
-
-    // OnyxHub cache le surtitre en téléphone : la pastille de statut des
-    // boutons dit déjà la même chose, juste en dessous.
-    final showBadge = !compact && details.status != RequestMediaStatus.unknown;
-
-    return ConstrainedBox(
-      constraints: const BoxConstraints(maxWidth: 1150),
-      child: StaggeredEntranceScope(
-        playKey: details.id,
-        maxAnimated: 4,
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            StaggeredEntrance(
-              index: 0,
-              child: showBadge
-                  ? Padding(
-                      padding: const EdgeInsets.only(bottom: 18),
-                      child: RequestAvailabilityBadge(
-                        status: details.status,
-                        awaitingRelease: details.isAwaitingRelease(),
-                      ),
-                    )
-                  : const SizedBox.shrink(),
-            ),
-            StaggeredEntrance(
-              index: 1,
-              child: details.logoUrl != null
-                  ? ConstrainedBox(
-                      constraints: BoxConstraints(
-                          maxWidth: compact ? 280 : 420,
-                          maxHeight: compact ? 140 : 180),
-                      child: AppNetworkImage(
-                        // Same normalised size the library detail header asks
-                        // for, so a title already browsed there draws from
-                        // cache.
-                        url: logoImageUrl(details.logoUrl),
-                        fit: BoxFit.contain,
-                        alignment: Alignment.centerLeft,
-                        decodeAtSourceSize: true,
-                        placeholder: _titleFallback(details),
-                        errorWidget: _titleFallback(details),
-                      ),
-                    )
-                  : _titleFallback(details),
-            ),
-            StaggeredEntrance(
-              index: 2,
-              child: Padding(
-                padding: const EdgeInsets.only(top: 18),
-                child: Wrap(
-                  spacing: 14,
-                  runSpacing: 8,
-                  crossAxisAlignment: WrapCrossAlignment.center,
-                  children: metaParts,
-                ),
-              ),
-            ),
-            StaggeredEntrance(
-              index: 3,
-              child: Padding(
-                padding: const EdgeInsets.only(top: 24),
-                child: _actions(details, canRequest, hasUnrequestedSeasons),
-              ),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-
-  /// La rangée d'actions d'OnyxHub (`MediaPrimaryActions`) : un filet, puis
-  /// le statut ou « Demander », la bande-annonce et les listes ; le cadre
-  /// d'import dessous quand le serveur en a un.
-  Widget _actions(
-    RequestMediaDetails details,
-    bool canRequest,
-    bool hasUnrequestedSeasons,
-  ) {
-    final compact = AppLayout.isCompact(context);
-    final waiting = details.waitingMessage;
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
+    return Wrap(
+      spacing: compact ? 8 : 14,
+      runSpacing: compact ? 8 : 12,
+      crossAxisAlignment: WrapCrossAlignment.center,
       children: [
-        Divider(color: Colors.white.withValues(alpha: 0.06), height: 1),
-        SizedBox(height: compact ? 14 : 20),
-        Wrap(
-          spacing: compact ? 8 : 14,
-          runSpacing: compact ? 8 : 12,
-          crossAxisAlignment: WrapCrossAlignment.center,
-          children: [
-            ..._requestActions(details, canRequest, hasUnrequestedSeasons),
-            if (details.trailerKey != null && details.trailerKey!.isNotEmpty)
-              HeroPill(
-                label: tr('Bande-annonce'),
-                icon: AppIcons.playCircle,
-                style: HeroPillStyle.trailer,
-                iconOnlyWhenCompact: true,
-                onPressed: () => _openTrailer(details.trailerKey!),
-              ),
-            // Un titre que le serveur n'a pas peut déjà aller dans « À
-            // regarder plus tard » (ADR-0070).
-            IconButtonTheme(
-              data: IconButtonThemeData(
-                  style: heroRoundButtonStyle(
-                      context, DetailActions.secondaryStyle)),
-              child: AddToListButton(title: ListableTitle.catalog(widget.item)),
-            ),
-          ],
+        ..._requestActions(details),
+        if (details.trailerKey != null && details.trailerKey!.isNotEmpty)
+          HeroPill(
+            label: tr('Bande-annonce'),
+            icon: AppIcons.playCircle,
+            style: HeroPillStyle.trailer,
+            iconOnlyWhenCompact: true,
+            onPressed: () => _openTrailer(details.trailerKey!),
+          ),
+        // Un titre que le serveur n'a pas peut déjà aller dans « À
+        // regarder plus tard » (ADR-0070).
+        IconButtonTheme(
+          data: IconButtonThemeData(
+              style:
+                  heroRoundButtonStyle(context, DetailActions.secondaryStyle)),
+          child: AddToListButton(title: ListableTitle.catalog(widget.item)),
         ),
-        if (waiting != null &&
-            details.status != RequestMediaStatus.available) ...[
-          SizedBox(height: compact ? 14 : 20),
-          RequestImportNotice(message: waiting),
-        ],
-        // Le suivi vient de MediaHub : un titre disponible n'a plus rien à
-        // montrer, les autres sont interrogés tant que l'écran est ouvert.
-        if (details.status != RequestMediaStatus.available &&
-            details.status != RequestMediaStatus.unknown)
-          RequestProgressPanel(
-              tmdbId: details.id, mediaType: details.mediaType),
       ],
     );
   }
 
   /// Les pastilles de statut d'OnyxHub (`RequestStatusButton`).
-  List<Widget> _requestActions(
-    RequestMediaDetails details,
-    bool canRequest,
-    bool hasUnrequestedSeasons,
-  ) {
+  List<Widget> _requestActions(RequestMediaDetails details) {
     final status = details.status;
     final isTv = details.mediaType == RequestMediaType.tv;
-    final more = canRequest && isTv && hasUnrequestedSeasons;
-
-    Widget moreButton(String label) => HeroPill(
-          label: label,
-          icon: AppIcons.add,
-          style: HeroPillStyle.glass,
-          loading: _submitting,
-          onPressed: _submitting ? null : () => _request(details),
-        );
 
     // Disponible, même en partie : le bouton lance le média. Le statut se
     // lit dans le surtitre au-dessus du titre (RequestAvailabilityBadge).
@@ -501,18 +326,9 @@ class _RequestDetailScreenState extends State<RequestDetailScreen> {
           onPressed: _launching ? null : () => _play(details),
         );
 
-    if (status == RequestMediaStatus.partial) {
-      return [
-        playButton(),
-        if (more) moreButton(tr('Compléter')),
-      ];
-    }
-
-    if (status == RequestMediaStatus.available) {
-      return [
-        playButton(),
-        if (more) moreButton(tr('Demander plus')),
-      ];
+    if (status == RequestMediaStatus.partial ||
+        status == RequestMediaStatus.available) {
+      return [playButton()];
     }
 
     if (status == RequestMediaStatus.pending ||
@@ -533,11 +349,11 @@ class _RequestDetailScreenState extends State<RequestDetailScreen> {
                 style: HeroPillStyle.status,
                 track: true,
               ),
-        if (more) moreButton(tr('Demander plus')),
       ];
     }
 
-    if (!canRequest) return const [];
+    // Une série se demande saison par saison, en dépliant celle qu'on veut.
+    if (isTv || !status.canRequest) return const [];
 
     return [
       HeroPill(
@@ -548,146 +364,5 @@ class _RequestDetailScreenState extends State<RequestDetailScreen> {
         onPressed: _submitting ? null : () => _request(details),
       ),
     ];
-  }
-
-  Widget _titleFallback(RequestMediaDetails details) {
-    final compact = AppLayout.isCompact(context);
-    return Text.rich(
-      TextSpan(
-        children: [
-          TextSpan(
-            text: details.title,
-            style: TextStyle(
-              fontSize: compact ? AppType.largeTitle : AppType.hero + 16,
-              fontWeight: FontWeight.w900,
-              color: AppColors.textPrimary,
-              height: 1.05,
-              letterSpacing: -0.5,
-            ),
-          ),
-          if (details.year != null)
-            TextSpan(
-              text: ' (${details.year})',
-              style: TextStyle(
-                fontSize: compact ? AppType.title1 : AppType.hero,
-                fontWeight: FontWeight.w200,
-                color: Colors.white.withValues(alpha: 0.45),
-              ),
-            ),
-        ],
-      ),
-    );
-  }
-
-  Widget _mainColumn(RequestMediaDetails details) {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        _crewGrid(details),
-        if (details.keywords.isNotEmpty) ...[
-          const SizedBox(height: 24),
-          Divider(color: Colors.white.withValues(alpha: 0.06)),
-          const SizedBox(height: 16),
-          Wrap(
-            spacing: 8,
-            runSpacing: 8,
-            children: details.keywords
-                .map(
-                  (keyword) => Container(
-                    padding:
-                        const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-                    decoration: BoxDecoration(
-                      color: Colors.white.withValues(alpha: 0.04),
-                      borderRadius: BorderRadius.circular(999),
-                      border: Border.all(
-                          color: Colors.white.withValues(alpha: 0.12)),
-                    ),
-                    child: Row(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        Icon(AppIcons.tag,
-                            size: 12,
-                            color: Colors.white.withValues(alpha: 0.4)),
-                        const SizedBox(width: 6),
-                        Text(
-                          keyword,
-                          style: TextStyle(
-                            fontSize: AppType.footnote,
-                            color: AppColors.textMuted,
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                )
-                .toList(),
-          ),
-        ],
-        const SizedBox(height: 28),
-        Divider(color: Colors.white.withValues(alpha: 0.06)),
-        const SizedBox(height: 18),
-        Text(tr('Résumé'),
-            style: TextStyle(
-                fontSize: AppType.title2,
-                fontWeight: FontWeight.w700,
-                color: Colors.white)),
-        const SizedBox(height: 12),
-        // La page va d'un bord à l'autre ; le paragraphe garde une ligne
-        // lisible (~110 caractères), comme le `max-w-4xl` d'OnyxHub.
-        ConstrainedBox(
-          constraints: const BoxConstraints(maxWidth: 900),
-          child: Text(
-            details.overview.isEmpty
-                ? tr('Aucun synopsis disponible.')
-                : details.overview,
-            style: TextStyle(
-              height: 1.6,
-              fontSize: AppType.callout,
-              color: Colors.white.withValues(alpha: 0.72),
-            ),
-          ),
-        ),
-      ],
-    );
-  }
-
-  Widget _crewGrid(RequestMediaDetails details) {
-    final entries = <MapEntry<String, String>>[
-      if (details.director != null && details.director!.isNotEmpty)
-        MapEntry(tr('Réalisateur'), details.director!),
-      ...details.writers.map((w) => MapEntry(tr('Scénario'), w)),
-      ...details.editors.map((e) => MapEntry(tr('Montage'), e)),
-    ];
-    if (entries.isEmpty) return const SizedBox.shrink();
-
-    return LayoutBuilder(
-      builder: (context, constraints) {
-        final columns = constraints.maxWidth >= 520 ? 3 : 2;
-        return Wrap(
-          spacing: 24,
-          runSpacing: 22,
-          children: entries.map((entry) {
-            return SizedBox(
-              width: (constraints.maxWidth - (columns - 1) * 24) / columns,
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(entry.key,
-                      style: const TextStyle(
-                          color: Colors.white,
-                          fontWeight: FontWeight.w700,
-                          fontSize: AppType.body)),
-                  const SizedBox(height: 4),
-                  Text(entry.value,
-                      style: TextStyle(
-                          color: Colors.white.withValues(alpha: 0.55),
-                          fontSize: AppType.body)),
-                ],
-              ),
-            );
-          }).toList(),
-        );
-      },
-    );
   }
 }

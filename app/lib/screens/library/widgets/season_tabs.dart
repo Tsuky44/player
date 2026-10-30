@@ -1,12 +1,10 @@
 import 'package:flutter/material.dart';
+import 'package:provider/provider.dart';
 
 import '../../../models/models.dart';
-import '../../../theme/app_colors.dart';
-import '../../../theme/app_motion.dart';
-import '../../../tv/tv_focus.dart';
-import '../../../tv/tv_focus_memory.dart';
-import '../../../theme/app_icons.dart';
-import '../../../theme/app_type.dart';
+import '../../../services/api_client.dart';
+import '../../../utils/poster_url.dart';
+import '../../../widgets/global/season_bubbles.dart';
 import '../../../l10n/tr.dart';
 import 'season_preview.dart';
 
@@ -16,18 +14,20 @@ String seasonLabel(Media season) {
   return number != null && number > 0 ? tr('Saison {0}', [number]) : season.title;
 }
 
-/// Les saisons d'une série, en onglets.
+/// Les saisons d'une série, en bulles ([SeasonBubbleRow]) comme sur la fiche
+/// d'une demande. Une saison demandée porte un sablier orange, une saison là
+/// ne porte rien. Une saison absente se reconnaît à son numéro effacé, et se
+/// demande en la dépliant.
 ///
-/// C'était un menu déroulant : il fallait l'ouvrir pour savoir combien de
-/// saisons existaient et lesquelles manquaient. En onglets, tout se lit sans
-/// geste — et les saisons absentes du serveur le disent sur l'onglet même.
-/// Sur un téléviseur, la rangée se souvient de l'onglet où était la
-/// télécommande ([TvFocusMemory]).
+/// Sur un téléviseur, la rangée se souvient de la bulle où était la
+/// télécommande.
 ///
-/// Avec [onOpen], la souris laissée sur un onglet ouvre la fiche de la saison
+/// Avec [onOpen], la souris laissée sur une bulle ouvre la fiche de la saison
 /// ([SeasonHoverPreview]), d'où un clic mène à sa page.
 class SeasonTabs extends StatelessWidget {
   final List<Media> seasons;
+
+  /// Nulle : toutes les saisons sont repliées.
   final Media? selected;
   final ValueChanged<Media> onSelected;
   final ValueChanged<Media>? onOpen;
@@ -46,111 +46,52 @@ class SeasonTabs extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return TvFocusMemory(
-      child: SingleChildScrollView(
-        scrollDirection: Axis.horizontal,
-        clipBehavior: Clip.none,
-        child: Row(
-          children: [
-            for (final season in seasons) ...[
-              _withPreview(
-                season,
-                _SeasonTab(
-                  season: season,
-                  selected: identical(season, selected),
-                  onTap: () => onSelected(season),
-                ),
-              ),
-              const SizedBox(width: 8),
-            ],
-          ],
-        ),
-      ),
-    );
-  }
-
-  Widget _withPreview(Media season, Widget tab) {
+    final baseUrl = Provider.of<ApiClient>(context, listen: false).baseUrl;
     final open = onOpen;
-    if (open == null) return tab;
-    return SeasonHoverPreview(
-      season: season,
-      fallbackPosterUrl: fallbackPosterUrl,
-      onOpen: () => open(season),
-      child: tab,
+    final selectedIndex = seasons.indexWhere((s) => identical(s, selected));
+    return SeasonBubbleRow(
+      entries: [
+        for (var i = 0; i < seasons.length; i++)
+          _entry(i, seasons[i], baseUrl),
+      ],
+      selected: selectedIndex < 0 ? null : selectedIndex,
+      onTap: (index) => onSelected(seasons[index]),
+      wrap: open == null
+          ? null
+          : (entry, bubble) => SeasonHoverPreview(
+                season: seasons[entry.id],
+                fallbackPosterUrl: fallbackPosterUrl,
+                onOpen: () => open(seasons[entry.id]),
+                child: bubble,
+              ),
     );
   }
-}
 
-class _SeasonTab extends StatelessWidget {
-  final Media season;
-  final bool selected;
-  final VoidCallback onTap;
-
-  const _SeasonTab({
-    required this.season,
-    required this.selected,
-    required this.onTap,
-  });
-
-  @override
-  Widget build(BuildContext context) {
+  SeasonBubbleEntry _entry(int index, Media season, String? baseUrl) {
+    final number = season.effectiveSeasonNumber;
     final label = seasonLabel(season);
-    final missing = !season.isAvailable;
-    final text = !missing
+    final count = season.episodeCount;
+    final poster = season.posterUrl;
+    final state = season.isAvailable
         ? label
         : season.isRequested
             ? tr('{0} · demandée', [label])
             : '$label · manquante';
-    final radius = BorderRadius.circular(20);
-
-    return TvFocusable(
-      onSelect: onTap,
-      borderRadius: radius,
-      child: MouseRegion(
-        cursor: SystemMouseCursors.click,
-        child: GestureDetector(
-          onTap: onTap,
-          child: AnimatedContainer(
-            duration: AppMotion.fade(context, AppMotion.micro),
-            curve: AppMotion.curve,
-            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 9),
-            decoration: BoxDecoration(
-              color: selected
-                  ? AppColors.textPrimary
-                  : Colors.white.withValues(alpha: 0.06),
-              borderRadius: radius,
-            ),
-            child: Row(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                if (missing) ...[
-                  Icon(
-                    season.isRequested
-                        ? AppIcons.pending
-                        : AppIcons.cloudOff,
-                    size: 14,
-                    color:
-                        selected ? AppColors.background : AppColors.textMuted,
-                  ),
-                  const SizedBox(width: 6),
-                ],
-                Text(
-                  text,
-                  style: TextStyle(
-                    color: selected
-                        ? AppColors.background
-                        : missing
-                            ? AppColors.textMuted
-                            : AppColors.textSecondary,
-                    fontSize: AppType.body,
-                    fontWeight: selected ? FontWeight.w600 : FontWeight.w500,
-                  ),
-                ),
-              ],
-            ),
-          ),
-        ),
+    return SeasonBubbleEntry(
+      // La place dans la rangée et non l'id : une saison virtuelle a l'id 0.
+      id: index,
+      code: number != null && number > 0 ? '$number' : 'SP',
+      title: label,
+      detail: count != null && count > 0 ? tr('{0} épisodes', [count]) : '',
+      semanticLabel: state,
+      posterUrl: cardPosterUrl(
+        poster != null && poster.isNotEmpty ? poster : fallbackPosterUrl,
+        serverBaseUrl: baseUrl,
       ),
+      requested: season.isRequested,
+      missing: !season.isAvailable && !season.isRequested,
+      // L'aperçu au survol dit déjà tout ça, quand la rangée en a un.
+      tooltip: onOpen != null ? null : state,
     );
   }
 }

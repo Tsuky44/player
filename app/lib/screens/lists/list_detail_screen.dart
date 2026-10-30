@@ -20,9 +20,9 @@ import '../../widgets/global/poster_grid_zoom_region.dart';
 import '../../widgets/global/poster_grid_zoom_slider.dart';
 import '../../widgets/global/progress_pill.dart';
 import '../../widgets/global/watch_list_editor_dialog.dart';
-import '../library/movie_detail_screen.dart';
-import '../library/show_detail_screen.dart';
-import '../requests/request_detail_screen.dart';
+import '../../navigation/detail_flight.dart';
+import '../../widgets/global/poster_card_details.dart';
+import '../requests/request_detail_launch.dart';
 import 'widgets/watch_list_tile.dart';
 
 /// Une liste et ses titres (ADR-0070). Son propriétaire la modifie ; une liste
@@ -66,28 +66,21 @@ class _ListDetailScreenState extends State<ListDetailScreen> {
         SnackBar(content: Text(message), backgroundColor: AppColors.error));
   }
 
-  Future<void> _open(WatchListItem item) async {
+  Future<void> _open(BuildContext cardContext, WatchListItem item) async {
     final media = item.media;
-    final Widget? page;
     if (media != null) {
-      page = item.mediaType == WatchListMediaType.show
-          ? ShowDetailScreen(show: media.media)
-          : MovieDetailScreen(movieItem: media);
+      await openMediaDetail(cardContext, media.media, item: media);
     } else if (context.read<AuthProvider>().permissions.requestMedia &&
         item.tmdbId > 0) {
       // Ce que le serveur n'a pas s'ouvre là où on peut le demander.
-      page = RequestDetailScreen(item: item.toRequestItem());
+      await openRequestDetail(cardContext, item.toRequestItem());
     } else {
-      page = null;
-    }
-    if (page == null) {
       ScaffoldMessenger.of(context).showSnackBar(SnackBar(
         content:
             Text(tr('« {0} » n’est pas encore sur le serveur', [item.title])),
       ));
       return;
     }
-    await Navigator.of(context).push(MaterialPageRoute(builder: (_) => page!));
     // La fiche a pu retirer ce titre de la liste, ou l'avoir fait avancer.
     if (mounted) _provider.loadDetail(widget.listId, silent: true);
   }
@@ -199,6 +192,7 @@ class _ListDetailScreenState extends State<ListDetailScreen> {
                 context,
                 constraints.crossAxisExtent,
                 compact: AppLayout.isCompact(context),
+                withMeta: false,
               ),
               delegate: SliverChildBuilderDelegate(
                 (context, index) {
@@ -207,7 +201,9 @@ class _ListDetailScreenState extends State<ListDetailScreen> {
                     item: item,
                     removing: _removing,
                     autofocus: TvMode.isTv && index == 0,
-                    onTap: () => _removing ? _remove(item) : _open(item),
+                    onTap: (cardContext) => _removing
+                        ? _remove(item)
+                        : _open(cardContext, item),
                   );
                 },
                 childCount: items.length,
@@ -367,12 +363,18 @@ class _ItemCard extends StatelessWidget {
 
   final WatchListItem item;
   final bool removing;
-  final VoidCallback onTap;
+  final void Function(BuildContext cardContext) onTap;
   final bool autofocus;
 
   @override
   Widget build(BuildContext context) {
     final baseUrl = context.read<ApiClient>().baseUrl;
+    final facts = item.isOnServer
+        ? item.year
+        : [
+            if (item.year != null) item.year!,
+            tr('Pas sur le serveur'),
+          ].join(' · ');
     final media = item.media;
     final progress = media?.percentWatched ?? 0;
     final inProgress = item.mediaType == WatchListMediaType.movie &&
@@ -383,19 +385,20 @@ class _ItemCard extends StatelessWidget {
       child: PosterCard(
         posterUrl: cardPosterUrl(item.posterUrl, serverBaseUrl: baseUrl),
         title: item.title,
-        subtitle: item.isOnServer
-            ? item.year
-            : [
-                if (item.year != null) item.year!,
-                tr('Pas sur le serveur'),
-              ].join(' · '),
+        showMeta: false,
+        hoverDetails: PosterCardDetails(
+          title: item.title,
+          typeLabel: item.mediaType == WatchListMediaType.show
+              ? tr('Série')
+              : tr('Film'),
+          facts: facts,
+        ),
         dimmed: !item.isOnServer,
-        showPlayOnHover: false,
         autofocus: autofocus,
         placeholderIcon: item.mediaType == WatchListMediaType.show
             ? AppIcons.series
             : AppIcons.movie,
-        onTap: onTap,
+        onTap: () => onTap(context),
         overlays: [
           if (removing)
             Positioned(

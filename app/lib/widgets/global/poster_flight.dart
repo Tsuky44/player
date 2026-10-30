@@ -36,12 +36,11 @@ class PosterFlight {
   static const Duration flight = Duration(milliseconds: 430);
   static const Duration squash = Duration(milliseconds: 520);
 
-  /// Le fond cadré au quart haut, comme celui de la fiche
-  /// (`RequestDetailBackdrop`).
-  static const Alignment focus = Alignment(0, -0.5);
+  /// Le fond cadré par le haut, comme celui de la fiche (`DetailBackdrop`).
+  static const Alignment focus = Alignment.topCenter;
 
-  /// La part du fond que la fiche laisse voir (`Opacity(0.8)`).
-  static const double backdropOpacity = 0.8;
+  /// La part du fond que la fiche laisse voir : tout, ses voiles sont dessus.
+  static const double backdropOpacity = 1;
 
   /// Charge dans le cache mémoire ce que l'envol dessinera : l'affiche et le
   /// fond, à la largeur exacte où la carte et la fiche les décodent.
@@ -378,7 +377,7 @@ class _FlightLayer extends StatelessWidget {
     final since = ((a - t.landing) / (1 - t.landing)).clamp(0.0, 1.0);
     final (sx, sy) = lite ? (1.0, 1.0) : _squash(flightP, since);
 
-    // Le fond finit à 80 % sur le fond de la page, comme la fiche.
+    // Le fond finit à l'opacité qu'il a sur la fiche.
     final opacity = 1 - (1 - PosterFlight.backdropOpacity) * p;
     // Le fondu final sur l'image réelle de la fiche, identique dessous.
     final out = Curves.easeOut.transform(

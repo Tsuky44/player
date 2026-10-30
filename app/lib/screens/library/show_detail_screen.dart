@@ -2,7 +2,6 @@ import 'dart:async';
 
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
-import '../../models/media_request.dart';
 import '../../models/models.dart';
 import '../../navigation/catalog_navigation.dart';
 import '../../providers/auth_provider.dart';
@@ -16,8 +15,10 @@ import '../../utils/on_screen.dart';
 import '../../utils/responsive.dart';
 import '../../utils/format.dart';
 import '../../widgets/global/detail_actions.dart';
-import '../../widgets/global/detail_facts_section.dart';
+import '../../widgets/global/detail_backdrop_header.dart';
+import '../../widgets/global/detail_cast_section.dart';
 import '../../widgets/global/detail_metadata.dart';
+import '../../widgets/global/detail_summary_section.dart';
 import '../../widgets/global/episode_tile.dart';
 import '../../widgets/global/live_progress_state.dart';
 import '../../widgets/global/media_detail_widgets.dart';
@@ -26,7 +27,6 @@ import '../../widgets/global/poster_picker_sheet.dart';
 import '../../widgets/global/season_download_button.dart';
 import '../../widgets/global/season_watched_button.dart';
 import '../../widgets/global/share_media_button.dart';
-import '../requests/widgets/season_selector_dialog.dart';
 import 'release_folder_hint.dart';
 import 'season_detail_screen.dart';
 import 'show_episode_actions.dart';
@@ -44,7 +44,8 @@ class ShowDetailScreen extends StatefulWidget {
   /// (ADR-0091).
   final bool autoPlay;
 
-  const ShowDetailScreen({super.key, required this.show, this.autoPlay = false});
+  const ShowDetailScreen(
+      {super.key, required this.show, this.autoPlay = false});
 
   @override
   State<ShowDetailScreen> createState() => _ShowDetailScreenState();
@@ -66,6 +67,9 @@ class _ShowDetailScreenState extends State<ShowDetailScreen>
   /// Set once the user picks a season, so a background refresh of the page
   /// never yanks them back to the resume season.
   bool _seasonPickedByUser = false;
+
+  /// La saison ouverte a été repliée : ni ses épisodes ni sa demande ne s'affichent.
+  bool _seasonFolded = false;
 
   @override
   void initState() {
@@ -229,10 +233,6 @@ class _ShowDetailScreenState extends State<ShowDetailScreen>
     _loadShowData();
   }
 
-  /// Seasons the server does not hold and MediaHub has not been asked for yet.
-  List<Media> _requestableSeasons(List<Media> seasons) =>
-      seasons.where((s) => s.canRequest).toList();
-
   Future<void> _requestSeasons(List<int> seasonNumbers) async {
     if (_requesting || seasonNumbers.isEmpty) return;
     setState(() => _requesting = true);
@@ -254,43 +254,6 @@ class _ShowDetailScreenState extends State<ShowDetailScreen>
     }
   }
 
-  /// Maps a library season onto the status vocabulary of the request dialog.
-  /// The dialog only lets `unknown` be selected, so anything the server did not
-  /// mark requestable — including an unreachable MediaHub — is reported as a
-  /// state that cannot be picked.
-  RequestMediaStatus _dialogStatusOf(Media season) {
-    if (!season.canRequest) {
-      return RequestMediaStatus.values.firstWhere(
-        (status) =>
-            status.name == season.requestStatus &&
-            status != RequestMediaStatus.unknown,
-        orElse: () => RequestMediaStatus.available,
-      );
-    }
-    return RequestMediaStatus.unknown;
-  }
-
-  Future<void> _openSeasonSelector(List<Media> seasons) async {
-    final picked = await SeasonSelectorDialog.show(
-      context,
-      title: _show.title,
-      seasons: [
-        for (final season in seasons)
-          if ((season.effectiveSeasonNumber ?? 0) > 0)
-            RequestSeason(
-              number: season.effectiveSeasonNumber!,
-              name: season.title,
-              episodeCount: season.episodeCount ?? 0,
-              posterPath: null,
-              status: _dialogStatusOf(season),
-            ),
-      ],
-    );
-    if (picked != null && picked.isNotEmpty) {
-      await _requestSeasons(picked);
-    }
-  }
-
   /// Lowest-numbered episode that actually has a file, ignoring the TMDB-only
   /// placeholders a partially indexed season can contain.
   static HomeMediaItem? _firstPlayable(List<HomeMediaItem> episodes) {
@@ -307,11 +270,20 @@ class _ShowDetailScreenState extends State<ShowDetailScreen>
         seasonNumber: _playerSeasonNumber,
       );
 
+  /// Comme sur la fiche d'une demande : toucher la saison ouverte la replie.
   Future<void> _onSeasonChanged(Media season) async {
+    final library = Provider.of<LibraryProvider>(context, listen: false);
+    if (!_seasonFolded &&
+        identical(season, _resolveSelectedSeason(library.seasons))) {
+      setState(() => _seasonFolded = true);
+      return;
+    }
     _seasonPickedByUser = true;
-    setState(() => _selectedSeason = season);
-    await Provider.of<LibraryProvider>(context, listen: false)
-        .loadEpisodes(showId: _show.id, season: season);
+    setState(() {
+      _selectedSeason = season;
+      _seasonFolded = false;
+    });
+    await library.loadEpisodes(showId: _show.id, season: season);
   }
 
   void _openSeason(Media season) {
@@ -414,17 +386,20 @@ class _ShowDetailScreenState extends State<ShowDetailScreen>
     final local = await _fetchLocalLibraryContext(api, lp);
     if (!mounted) return;
 
-    final folderLine =
-        local.folder?.isNotEmpty == true ? local.folder! : tr('dossier inconnu');
+    final folderLine = local.folder?.isNotEmpty == true
+        ? local.folder!
+        : tr('dossier inconnu');
 
     final confirmed = await showDialog<bool>(
       context: context,
       builder: (ctx) => AlertDialog(
         title: Text(tr('Relancer la détection')),
         content: Text(
-          tr('TMDB sera recherché à partir du dossier local '
+          tr(
+              'TMDB sera recherché à partir du dossier local '
               ':\n\n{0}\n\nL’affiche et les métadonnées de cette série '
-              'seront remplacées.', [folderLine]),
+              'seront remplacées.',
+              [folderLine]),
         ),
         actions: [
           TextButton(
@@ -456,7 +431,8 @@ class _ShowDetailScreenState extends State<ShowDetailScreen>
       if (!mounted) return;
       messenger.showSnackBar(
         SnackBar(
-          content: Text(tr('Détection impossible — essayez le choix manuel TMDB')),
+          content:
+              Text(tr('Détection impossible — essayez le choix manuel TMDB')),
         ),
       );
     }
@@ -620,6 +596,9 @@ class _ShowDetailScreenState extends State<ShowDetailScreen>
               ),
             ),
           ),
+          SliverToBoxAdapter(
+            child: DetailSummarySection.forDetails(details: _details),
+          ),
           if (lp.isLoadingSeasons)
             SliverToBoxAdapter(
               child: Padding(
@@ -632,7 +611,7 @@ class _ShowDetailScreenState extends State<ShowDetailScreen>
             SliverToBoxAdapter(
               child: Padding(
                 padding: AppLayout.pageInsets(context, top: 24, bottom: 8),
-                // Les onglets d'un côté, « marquer la saison vue » de l'autre :
+                // Les bulles d'un côté, « marquer la saison vue » de l'autre :
                 // la ligne qui dit de quelle saison on parle est aussi celle
                 // d'où on la solde d'un coup.
                 child: Column(
@@ -640,84 +619,90 @@ class _ShowDetailScreenState extends State<ShowDetailScreen>
                   children: [
                     SeasonTabs(
                       seasons: lp.seasons,
-                      selected: selectedSeason,
+                      selected: _seasonFolded ? null : selectedSeason,
                       onSelected: _onSeasonChanged,
                       onOpen: _openSeason,
                       fallbackPosterUrl: _show.posterUrl,
                     ),
-                    const SizedBox(height: 12),
-                    SeasonWatchedButton(
-                      episodes: lp.episodes,
-                      busy: _updatingSeasonWatched,
-                      onSetWatched: _setSeasonWatched,
-                    ),
+                    if (!_seasonFolded) ...[
+                      const SizedBox(height: 12),
+                      SeasonWatchedButton(
+                        episodes: lp.episodes,
+                        busy: _updatingSeasonWatched,
+                        onSetWatched: _setSeasonWatched,
+                      ),
+                    ],
                   ],
                 ),
               ),
             ),
-          if (selectedMissing || selectedIncomplete)
+          if (!_seasonFolded && (selectedMissing || selectedIncomplete))
             SliverToBoxAdapter(
               child: Padding(
                 padding: AppLayout.pageInsets(context, top: 8),
                 child: MissingSeasonBanner(
                   season: selectedSeason,
-                  requestableCount: _requestableSeasons(lp.seasons).length,
                   submitting: _requesting,
                   onRequest: () => _requestSeasons(
                     [selectedSeason.effectiveSeasonNumber!],
                   ),
-                  onRequestMore: () => _openSeasonSelector(lp.seasons),
                 ),
               ),
             ),
-          SliverToBoxAdapter(
-            child: Padding(
-              padding: AppLayout.pageInsets(context, top: 16, bottom: 8),
-              child: Row(
-                children: [
-                  Text(
-                    tr('Épisodes'),
-                    style: detailSectionTitleStyle(context),
-                  ),
-                  if (totalCount > 0) ...[
-                    const SizedBox(width: 12),
-                    Expanded(
-                      // Expanded et non Flexible + Spacer : les deux se partageaient
-                      // l'espace libre, et le bouton de téléchargement flottait
-                      // au milieu de la ligne au lieu de se caler à droite.
-                      child: Text(
-                        tr('{0}/{1} disponibles', [availableCount, totalCount]),
-                        overflow: TextOverflow.ellipsis,
-                        style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                              color: AppColors.textMuted,
-                            ),
-                      ),
+          if (!_seasonFolded)
+            SliverToBoxAdapter(
+              child: Padding(
+                padding: AppLayout.pageInsets(context, top: 16, bottom: 8),
+                child: Row(
+                  children: [
+                    Text(
+                      tr('Épisodes'),
+                      style: detailSectionTitleStyle(context),
                     ),
-                  ] else
-                    const Spacer(),
-                  ShareCollectionButton(
-                    mediaId: selectedSeason?.id ?? 0,
-                    title: _playerSeasonNumber == null
-                        ? _show.title
-                        : tr('{0} · Saison {1}', [_show.title, _playerSeasonNumber]),
-                    tooltip: tr('Partager la saison par lien'),
-                    hasPlayableEpisode: availableCount > 0,
-                    compact: true,
-                  ),
-                  // Le geste qu'on fait avant de partir : toute la saison d'un
-                  // coup, plutôt que vingt appuis sur vingt lignes.
-                  SeasonDownloadButton(
-                    episodes: lp.episodes,
-                    showTitle: _show.title,
-                    showId: _show.id,
-                    showPosterUrl: _show.posterUrl,
-                    seasonNumber: _playerSeasonNumber,
-                  ),
-                ],
+                    if (totalCount > 0) ...[
+                      const SizedBox(width: 12),
+                      Expanded(
+                        // Expanded et non Flexible + Spacer : les deux se partageaient
+                        // l'espace libre, et le bouton de téléchargement flottait
+                        // au milieu de la ligne au lieu de se caler à droite.
+                        child: Text(
+                          tr('{0}/{1} disponibles',
+                              [availableCount, totalCount]),
+                          overflow: TextOverflow.ellipsis,
+                          style:
+                              Theme.of(context).textTheme.bodyMedium?.copyWith(
+                                    color: AppColors.textMuted,
+                                  ),
+                        ),
+                      ),
+                    ] else
+                      const Spacer(),
+                    ShareCollectionButton(
+                      mediaId: selectedSeason?.id ?? 0,
+                      title: _playerSeasonNumber == null
+                          ? _show.title
+                          : tr('{0} · Saison {1}',
+                              [_show.title, _playerSeasonNumber]),
+                      tooltip: tr('Partager la saison par lien'),
+                      hasPlayableEpisode: availableCount > 0,
+                      compact: true,
+                    ),
+                    // Le geste qu'on fait avant de partir : toute la saison d'un
+                    // coup, plutôt que vingt appuis sur vingt lignes.
+                    SeasonDownloadButton(
+                      episodes: lp.episodes,
+                      showTitle: _show.title,
+                      showId: _show.id,
+                      showPosterUrl: _show.posterUrl,
+                      seasonNumber: _playerSeasonNumber,
+                    ),
+                  ],
+                ),
               ),
             ),
-          ),
-          if (lp.isLoadingEpisodes)
+          if (_seasonFolded)
+            const SliverToBoxAdapter(child: SizedBox.shrink())
+          else if (lp.isLoadingEpisodes)
             SliverToBoxAdapter(
               child: Padding(
                 padding: EdgeInsets.all(AppLayout.pagePadding(context)),
@@ -762,8 +747,8 @@ class _ShowDetailScreenState extends State<ShowDetailScreen>
                 childCount: lp.episodes.length,
               ),
             ),
-          // Sur une série, on vient pour les épisodes : la distribution et les
-          // crédits passent après eux, au lieu de les repousser sous le pli.
+          // Sur une série, on vient pour les épisodes : la distribution passe
+          // après eux, au lieu de les repousser sous le pli.
           if (_details?.cast.isNotEmpty ?? false)
             SliverToBoxAdapter(
               child: Padding(
@@ -775,15 +760,11 @@ class _ShowDetailScreenState extends State<ShowDetailScreen>
                 ),
               ),
             ),
-          SliverToBoxAdapter(child: DetailFactsSection(details: _details)),
           if (_details?.similarTitles.isNotEmpty ?? false)
             SliverToBoxAdapter(
               child: Padding(
                 padding: const EdgeInsets.only(top: 32),
-                child: SimilarTitlesSection(
-                  items: _details!.similarTitles,
-                  onTapItem: (item) => openCatalogItem(context, item),
-                ),
+                child: SimilarTitlesSection(items: _details!.similarTitles),
               ),
             ),
           const SliverToBoxAdapter(child: SizedBox(height: 48)),

@@ -33,7 +33,6 @@ Future<List<int>> _pump(WidgetTester tester, HomeResponse data) async {
             onOpenLibrary: opened.add,
             onSeeAllMovies: () => opened.add(-1),
             onSeeAllShows: () => opened.add(-2),
-            onOpenMedia: (_) {},
           ),
         ),
       ),

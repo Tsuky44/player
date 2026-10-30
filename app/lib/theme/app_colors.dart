@@ -31,6 +31,9 @@ abstract final class AppColors {
   /// réservé à ce seul usage.
   static const rating = Color(0xFFF5C518);
 
+  /// Le vert de la pastille TMDB, dans la colonne d'informations des fiches.
+  static const tmdb = Color(0xFF01D277);
+
   static const gradientBottom = Color(0xFF0A0A0A);
   static const gradientTop = Colors.transparent;
 
