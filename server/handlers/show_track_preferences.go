@@ -74,12 +74,26 @@ func normalizeSubtitleChoice(choice models.ShowSubtitleChoice) (models.ShowSubti
 // préférences. Deux lignes de la même série (doublon d'indexation) partagent
 // la ligne canonique : sans cela, le choix fait en saison 1 ne vaudrait pas en
 // saison 2.
-func showIDForTrackPreferences(episodeID int) (int, bool) {
-	showID, ok := resolveShowIDForEpisode(episodeID)
+//
+// Un film porte ses propres préférences : il n'a pas de série, c'est lui qui
+// tient la ligne (ADR-0096). La colonne show_id désigne alors le film.
+func showIDForTrackPreferences(mediaID int) (int, bool) {
+	if isMovie(mediaID) {
+		return mediaID, true
+	}
+	showID, ok := resolveShowIDForEpisode(mediaID)
 	if !ok {
 		return 0, false
 	}
 	return indexer.ResolveCanonicalShowID(showID), true
+}
+
+func isMovie(mediaID int) bool {
+	var id int
+	err := database.DB.QueryRow(
+		`SELECT id FROM medias WHERE id = ? AND type = 'movie' LIMIT 1`, mediaID,
+	).Scan(&id)
+	return err == nil
 }
 
 // loadShowTrackPreferences renvoie les préférences du compte pour la série, ou
@@ -146,7 +160,7 @@ func episodeShowForTrackPreferences(w http.ResponseWriter, ps httprouter.Params)
 	}
 	showID, ok := showIDForTrackPreferences(mediaID)
 	if !ok {
-		writeJSONError(w, http.StatusNotFound, "Media is not an episode of a show")
+		writeJSONError(w, http.StatusNotFound, "Media is not an episode or a movie")
 		return 0, false
 	}
 	return showID, true

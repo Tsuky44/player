@@ -111,9 +111,26 @@ void main() {
     expect(await memory.load(), isNull);
   });
 
-  test('un film ne retient rien', () {
+  test('un film retient son propre choix, pas celui d\'un autre film', () async {
+    final server = _SeriesServer();
     final movie = Media.fromJson({'id': 5, 'type': 'movie', 'title': 'Film'});
-    expect(SeriesTrackMemory.forMedia(_SeriesServer(), movie), isNull);
+    final other = Media.fromJson({'id': 6, 'type': 'movie', 'title': 'Autre'});
+    final memory = SeriesTrackMemory.forMedia(server, movie)!;
+    memory.rememberAudio('en');
+    await memory.settled;
+
+    // Hors ligne, seule la copie de l'appareil répond : elle est rangée par
+    // film, et un autre film n'y trouve rien.
+    server.offline = true;
+    final again = await SeriesTrackMemory.forMedia(server, movie)!.load();
+    expect(again?.audioLang, 'en');
+    final stranger = await SeriesTrackMemory.forMedia(server, other)!.load();
+    expect(stranger, isNull);
+  });
+
+  test('un média qui n\'est ni un épisode ni un film ne retient rien', () {
+    final show = Media.fromJson({'id': 7, 'type': 'show', 'title': 'Série'});
+    expect(SeriesTrackMemory.forMedia(_SeriesServer(), show), isNull);
   });
 
   test('un choix fait sans réseau sert tout de suite, puis part vers le compte',

@@ -384,7 +384,6 @@ class MpvPlaybackSession implements PlaybackSession {
         platform, 'demuxer-max-back-bytes', '${profile.demuxerBackBytes}');
     await _set(platform, 'hr-seek', 'yes');
     await _set(platform, 'hwdec', HardwareDecoding.mpvValue);
-    await _resetZeroCopyCrop(platform);
     // Le rendu direct est une source connue de gels périodiques avec l'API de
     // rendu de libmpv qu'utilise media_kit. Android n'utilise pas cette API —
     // il reçoit une vraie Surface — et la copie supplémentaire y est tout sauf
@@ -467,12 +466,12 @@ class MpvPlaybackSession implements PlaybackSession {
     await _set(platform, 'audio-swresample-o', dialogueForwardMixLevels);
     await _set(platform, 'force-seekable', 'yes');
     await _set(platform, 'cache', 'yes');
-    await _set(platform, 'cache-on-disk', 'no');    await _set(platform, 'demuxer-seekable-cache', 'yes');
+    await _set(platform, 'cache-on-disk', 'no');
+    await _set(platform, 'demuxer-seekable-cache', 'yes');
     await _set(platform, 'demuxer-max-bytes', '${profile.hlsDemuxerMaxBytes}');
     await _set(
         platform, 'demuxer-readahead-secs', '${profile.hlsReadaheadSecs}');
     await _set(platform, 'hwdec', HardwareDecoding.mpvValue);
-    await _resetZeroCopyCrop(platform);
     if (!AppPlatform.isAndroid && !MpvNativeView.enabled) {
       await _set(platform, 'vd-lavc-dr', 'no');
     }
@@ -695,45 +694,6 @@ class MpvPlaybackSession implements PlaybackSession {
   /// Un seul échange de décodeur par lecture.
   bool _softwareDecodeHandled = false;
 
-  /// Le moteur est mis en commun : un rognage posé pour la lecture précédente
-  /// ne doit pas survivre à la suivante. `""` rend le rognage du conteneur.
-  Future<void> _resetZeroCopyCrop(dynamic platform) async {
-    if (AppPlatform.isWindows) await _set(platform, 'video-crop', '');
-  }
-
-  /// Repasse cette lecture sur `d3d11va-copy` quand le sans-copie n'y gagne
-  /// rien — voir [HardwareDecoding.windowsZeroCopyUnwanted]. Pour cette lecture
-  /// seulement : la suivante peut être un 4K, et le réglage est reposé à chaque
-  /// ouverture.
-  Future<bool> _leaveUnwantedZeroCopy() async {
-    if (!AppPlatform.isWindows) return false;
-    final platform = _player.platform as dynamic;
-    final unwanted = HardwareDecoding.windowsZeroCopyUnwanted(
-      preference: HardwareDecoding.preference,
-      decoder: (await _read(platform, 'hwdec-current') ?? '').trim(),
-      height: _player.state.videoParams.h ?? 0,
-    );
-    if (unwanted) await _set(platform, 'hwdec', 'd3d11va-copy');
-    return unwanted;
-  }
-
-  /// Cache la bande verte que le décodage sans copie laisse au bord de l'image
-  /// — voir [HardwareDecoding.zeroCopyEdgeCrop].
-  Future<void> _cropZeroCopyPadding() async {
-    if (!AppPlatform.isWindows) return;
-    final platform = _player.platform as dynamic;
-    // `d3d11va` seul : `d3d11va-copy` et le logiciel n'exposent que l'image.
-    final decoded = (await _read(platform, 'hwdec-current') ?? '').trim();
-    if (decoded != 'd3d11va') return;
-    final params = _player.state.videoParams;
-    final width = params.w;
-    final height = params.h;
-    if (width == null || height == null) return;
-    final crop = HardwareDecoding.zeroCopyEdgeCrop(width, height);
-    if (crop == null) return;
-    await _set(platform, 'video-crop', crop);
-  }
-
   @override
   Future<void> onPictureLive() async {
     if (!AppPlatform.isWeb) {
@@ -758,16 +718,12 @@ class MpvPlaybackSession implements PlaybackSession {
       await MpvDolbyVisionOutput.log((name) => _read(platform, name));
     }
     if (AppPlatform.isWeb) return;
-    // La copie n'expose que l'image : ni rognage ni rattrapage à faire ensuite.
-    if (await _leaveUnwantedZeroCopy()) return;
-    await _cropZeroCopyPadding();
     if (_softwareDecodeHandled) return;
     // Les plateformes où le chemin sans copie peut échouer vers le logiciel :
-    // MediaCodec sur Android, l'interop d3d11-egl sur Windows, l'interop
-    // VideoToolbox → Vulkan de gpu-next sur macOS.
-    final zeroCopyAsked = AppPlatform.isAndroid ||
-        AppPlatform.isWindows ||
-        (AppPlatform.isMacOS && MpvNativeView.enabled);
+    // MediaCodec sur Android, l'interop VideoToolbox → Vulkan de gpu-next sur
+    // macOS. Windows décode toujours avec recopie (ADR-0095).
+    final zeroCopyAsked =
+        AppPlatform.isAndroid || (AppPlatform.isMacOS && MpvNativeView.enabled);
     if (!zeroCopyAsked) return;
     if (HardwareDecoding.preference != HardwareDecodingPreference.auto) return;
 

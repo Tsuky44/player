@@ -4,8 +4,6 @@ import 'package:onyx/screens/player/hardware_decoding.dart';
 
 void main() {
   _zeroCopyFallback();
-  _zeroCopyEdgeCrop();
-  _zeroCopyOnlyWherePaid();
   tearDown(
       () => HardwareDecoding.overrideWith(HardwareDecodingPreference.auto));
 
@@ -76,19 +74,17 @@ void main() {
         zeroCopyFailed: zeroCopyFailed,
       );
 
-  // mpv's own whitelist tries d3d11va without a copy first, and takes the
-  // copy when the interop does not load — which is the order Windows wants.
-  test('Windows lets mpv try the zero-copy decoder first', () {
-    expect(windows(HardwareDecodingPreference.auto), 'auto-safe');
-  });
-
-  test(
-      'Windows caught decoding in software falls back to the copy, not the CPU',
-      () {
-    expect(
-      windows(HardwareDecodingPreference.auto, zeroCopyFailed: true),
-      'd3d11va-copy',
-    );
+  // ADR-0095 : sans copie, mpv lisait la surface du décodeur, plus grande que
+  // l'image, et laissait une bande verte en bas de certains fichiers, en 1080p
+  // comme en 4K. La recopie ne sort que l'image utile.
+  test('Windows never decodes without a copy, whatever the file', () {
+    for (final zeroCopyFailed in [false, true]) {
+      final value = windows(HardwareDecodingPreference.auto,
+          zeroCopyFailed: zeroCopyFailed);
+      expect(value, 'auto-copy-safe');
+      expect(value, isNot(anyOf('auto', 'auto-safe', 'd3d11va')));
+    }
+    expect(windows(HardwareDecodingPreference.copy), 'auto-copy-safe');
   });
 
   test('software decoding is the one unambiguous value', () {
@@ -169,60 +165,5 @@ void _zeroCopyFallback() {
         'auto-safe',
       );
     });
-  });
-}
-
-void _zeroCopyOnlyWherePaid() {
-  bool unwanted(int height,
-          {String decoder = 'd3d11va',
-          HardwareDecodingPreference preference =
-              HardwareDecodingPreference.auto}) =>
-      HardwareDecoding.windowsZeroCopyUnwanted(
-          preference: preference, decoder: decoder, height: height);
-
-  // Une bande verte de ~40 lignes a été vue en bas d'un épisode 1080p décodé
-  // sans copie : la surface du décodeur y est plus grande que l'image.
-  test('a 1080p picture decoded without a copy goes back to the copy', () {
-    expect(unwanted(1080), isTrue);
-    expect(unwanted(960), isTrue);
-  });
-
-  // ADR-0019 : c'est en 4K que la recopie coûte un tiers de cœur.
-  test('4K keeps the zero-copy decoder', () {
-    expect(unwanted(2160), isFalse);
-    expect(unwanted(1600), isFalse);
-  });
-
-  test('a decoder that already copies, or software, is left alone', () {
-    expect(unwanted(1080, decoder: 'd3d11va-copy'), isFalse);
-    expect(unwanted(1080, decoder: 'no'), isFalse);
-  });
-
-  test('a pinned preference is never second-guessed', () {
-    expect(unwanted(1080, preference: HardwareDecodingPreference.copy), isFalse);
-  });
-
-  test('unknown dimensions change nothing', () {
-    expect(unwanted(0), isFalse);
-  });
-}
-
-void _zeroCopyEdgeCrop() {
-  // A 4K frame lives in a 2176-line D3D11 surface: the scaler must not reach
-  // the 16 lines the decoder never writes.
-  test('4K trims the bottom edge only', () {
-    expect(HardwareDecoding.zeroCopyEdgeCrop(3840, 2160), '3840x2152+0+0');
-  });
-
-  test('a scope film trims the bottom edge too', () {
-    expect(HardwareDecoding.zeroCopyEdgeCrop(3840, 1600), '3840x1592+0+0');
-  });
-
-  test('an unaligned width trims the right edge', () {
-    expect(HardwareDecoding.zeroCopyEdgeCrop(3832, 1024), '3824x1024+0+0');
-  });
-
-  test('a surface-aligned frame is left alone', () {
-    expect(HardwareDecoding.zeroCopyEdgeCrop(3840, 2176), isNull);
   });
 }

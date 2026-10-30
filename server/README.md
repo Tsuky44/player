@@ -456,7 +456,8 @@ audio par défaut). Les réglages liés au matériel restent sur l'appareil. Voi
 #### 🗣 Pistes retenues par série
 La langue audio et le sous-titre choisis dans un épisode valent pour toute sa série, sur tous les
 appareils du compte. Voir `docs/adr/0044-pistes-retenues-par-serie.md`.
-* **Route :** `GET /api/episodes/:id/track-preferences` (`404` si le média n'est pas un épisode)
+* **Route :** `GET /api/episodes/:id/track-preferences` (`404` si le média n'est ni un épisode ni
+  un film ; un film porte ses propres préférences, ADR-0096)
 * **Réponse (JSON) :** `updated_at` est vide tant que rien n'a été choisi pour la série ;
   `subtitle.mode` vaut `""` (pas de choix), `"off"` ou `"on"` ; `await_audio_lang` est vide tant
   que le compte n'attend aucune langue pour cette série.

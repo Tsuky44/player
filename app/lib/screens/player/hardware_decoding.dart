@@ -39,7 +39,8 @@ enum HardwareDecodingPreference {
 abstract final class HardwareDecoding {
   static const String _preferenceKey = 'hwdec_preference';
 
-  static HardwareDecodingPreference _preference = HardwareDecodingPreference.auto;
+  static HardwareDecodingPreference _preference =
+      HardwareDecodingPreference.auto;
 
   static HardwareDecodingPreference get preference => _preference;
 
@@ -131,70 +132,25 @@ abstract final class HardwareDecoding {
         // un Mac qui chauffe pour rien. Le gel image figée / son qui continue
         // de la bêta de macOS 27 a été vu sur la texture de media_kit
         // (CVPixelBuffer → Metal) : elle garde la copie. Un Mac pris à décoder
-        // en logiciel repasse sur la copie, comme Android et Windows.
+        // en logiciel repasse sur la copie, comme Android.
         if (isMacOS) {
           return macOSNativeOutput && !zeroCopyFailed
               ? 'videotoolbox'
               : 'videotoolbox-copy';
         }
-        // Windows : `auto-safe` essaie d3d11va sans copie en premier — possible
-        // depuis le correctif de libmpv, voir l'ADR-0019 — et prend la copie
-        // quand l'interop ne se charge pas. Mais une interop chargée qui échoue
-        // ensuite, sur un pilote qui refuse le flux EGL, fait tomber mpv sur le
-        // logiciel et non sur la copie : c'est le même piège qu'Android, et la
-        // même sortie.
-        if (isWindows && zeroCopyFailed) return 'd3d11va-copy';
+        // Windows : toujours la recopie (ADR-0095). Sans copie, mpv dessine
+        // depuis la surface du décodeur, que FFmpeg alloue plus grande que
+        // l'image, et une bande verte apparaît sur certains fichiers — en
+        // 1080p comme en 4K, d'une hauteur qu'aucun rognage ne couvre à coup
+        // sûr. La recopie ne sort que l'image utile.
+        if (isWindows) return 'auto-copy-safe';
         return 'auto-safe';
     }
   }
 
-  /// La hauteur d'image à partir de laquelle le décodage sans copie se paie.
-  ///
-  /// La recopie pèse ~24 Mo par image en 4K HDR (ADR-0019) et ~3 Mo en 1080p
-  /// SDR : en dessous de ce seuil elle ne se mesure pas, et un décodage logiciel
-  /// y tient la cadence — c'est aussi le seuil du rattrapage logiciel → copie.
+  /// La hauteur d'image à partir de laquelle le décodage sans copie se paie,
+  /// et celle du rattrapage logiciel → copie.
   static const int zeroCopyMinHeight = 1440;
-
-  /// Vrai quand une image décodée par `d3d11va` sans copie doit repasser sur
-  /// `d3d11va-copy`.
-  ///
-  /// Sans copie, mpv dessine depuis la surface du décodeur, plus grande que
-  /// l'image, et une bande verte de plusieurs dizaines de lignes a été vue en
-  /// bas d'un épisode 1080p — bien au-delà de ce que [zeroCopyEdgeCrop] rogne.
-  /// La copie ne sort que l'image utile : sous le seuil elle ne coûte rien et
-  /// ferme toute cette famille de défauts.
-  static bool windowsZeroCopyUnwanted({
-    required HardwareDecodingPreference preference,
-    required String decoder,
-    required int height,
-  }) =>
-      preference == HardwareDecodingPreference.auto &&
-      decoder == 'd3d11va' &&
-      height > 0 &&
-      height < zeroCopyMinHeight;
-
-  /// Le `video-crop` qui cache la bande verte du décodage sans copie sous
-  /// Windows, ou `null` quand l'image n'en a pas besoin.
-  ///
-  /// FFmpeg alloue les surfaces D3D11 alignées (128 pixels en HEVC et AV1) :
-  /// une image 3840x2160 vit dans une texture de 2176 lignes, dont les 16
-  /// dernières ne sont jamais écrites — du YUV à zéro, donc du vert. Avec
-  /// `d3d11va-copy` seule l'image utile est recopiée. Sans copie, le scaler de
-  /// mpv lit la texture du décodeur elle-même, et ses échantillons du bord
-  /// débordent dans ce remplissage : une bande verte en bas (ou à droite),
-  /// visible dès que le pilote y laisse autre chose que du noir.
-  ///
-  /// Rogner quelques lignes garde les lectures du scaler dans l'image. Huit
-  /// pixels couvrent le rayon d'un filtre à une réduction 2x, restent pairs pour
-  /// la chrominance 4:2:0, et ne font que 0,4 % d'une image 4K.
-  static String? zeroCopyEdgeCrop(int width, int height) {
-    const alignment = 128;
-    const trim = 8;
-    final cropWidth = width % alignment == 0 ? width : width - trim;
-    final cropHeight = height % alignment == 0 ? height : height - trim;
-    if (cropWidth == width && cropHeight == height) return null;
-    return '${cropWidth}x$cropHeight+0+0';
-  }
 
   static String describe() => '${_preference.name} → $mpvValue';
 

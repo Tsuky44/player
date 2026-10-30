@@ -17,14 +17,20 @@ import '../../../services/api_client.dart';
 class SeriesTrackMemory {
   SeriesTrackMemory._(this._api, this._episodeId, this._cacheKey);
 
-  /// Null pour tout ce qui n'est pas un épisode : un film n'a pas de suite à
-  /// qui transmettre son réglage.
+  /// Null pour tout ce qui n'est ni un épisode ni un film. Un film retient son
+  /// propre choix, pour qu'une reprise le retrouve (ADR-0096).
   static SeriesTrackMemory? forMedia(ApiClient api, Media media) {
-    if (media.type != MediaType.episode) return null;
-    // La copie locale se range par saison, faute de connaître la série sans
-    // le serveur : elle n'est qu'un repli, la série entière vit sur le compte.
-    final scope =
-        media.parentId != null ? 's${media.parentId}' : 'e${media.id}';
+    if (media.type != MediaType.episode && media.type != MediaType.movie) {
+      return null;
+    }
+    // La copie locale d'un épisode se range par saison, faute de connaître la
+    // série sans le serveur : elle n'est qu'un repli, la série entière vit sur
+    // le compte. Un film se range sous son propre identifiant.
+    final scope = media.type == MediaType.movie
+        ? 'm${media.id}'
+        : media.parentId != null
+            ? 's${media.parentId}'
+            : 'e${media.id}';
     final account = api.accountId ?? api.baseUrl;
     return SeriesTrackMemory._(api, media.id, 'series_tracks|$account|$scope');
   }

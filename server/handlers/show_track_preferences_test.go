@@ -151,12 +151,46 @@ func TestShowTrackPreferencesRejectInvalidInput(t *testing.T) {
 		t.Fatalf("a rejected update was stored: %+v", prefs)
 	}
 
-	// Un film n'appartient à aucune série : rien à retenir pour lui.
-	var movieID int
-	if err := database.DB.QueryRow(`SELECT id FROM medias WHERE type = 'movie' LIMIT 1`).Scan(&movieID); err != nil {
-		t.Fatalf("find movie: %v", err)
+	// Ni un épisode ni un film : rien à qui rattacher le choix.
+	if rec := putShowTrackPreferences(user, 999999, `{"audio_lang":"en"}`); rec.Code != http.StatusNotFound {
+		t.Errorf("unknown media: status %d, want 404", rec.Code)
 	}
-	if rec := putShowTrackPreferences(user, movieID, `{"audio_lang":"en"}`); rec.Code != http.StatusNotFound {
-		t.Errorf("movie: status %d, want 404", rec.Code)
+}
+
+// Un film n'a pas de série : il retient son propre choix, sans le partager
+// avec un autre film ni avec une série (ADR-0096).
+func TestShowTrackPreferencesAMovieKeepsItsOwnChoice(t *testing.T) {
+	setupAuthDB(t)
+	user := createTestUser(t, "alice", false, models.Permissions{})
+	seedMovies(t, 2)
+	rows, err := database.DB.Query(`SELECT id FROM medias WHERE type = 'movie' ORDER BY id`)
+	if err != nil {
+		t.Fatalf("list movies: %v", err)
+	}
+	defer rows.Close()
+	var movies []int
+	for rows.Next() {
+		var id int
+		if err := rows.Scan(&id); err != nil {
+			t.Fatalf("scan movie id: %v", err)
+		}
+		movies = append(movies, id)
+	}
+	if len(movies) < 2 {
+		t.Fatalf("seeded %d movies, want 2", len(movies))
+	}
+
+	body := `{"audio_lang":"EN","subtitle":{"mode":"on","lang":"fr","key":"fr","forced":false,"image":false}}`
+	if rec := putShowTrackPreferences(user, movies[0], body); rec.Code != http.StatusOK {
+		t.Fatalf("put for a movie: status %d", rec.Code)
+	}
+
+	got := getShowTrackPreferences(t, user, movies[0])
+	want := models.ShowSubtitleChoice{Mode: models.SubtitleModeOn, Lang: "fr", Key: "fr"}
+	if got.AudioLang != "en" || got.Subtitle != want || got.UpdatedAt == "" {
+		t.Fatalf("same movie: got %+v", got)
+	}
+	if other := getShowTrackPreferences(t, user, movies[1]); other.AudioLang != "" || other.UpdatedAt != "" {
+		t.Fatalf("another movie inherited the choice: %+v", other)
 	}
 }
