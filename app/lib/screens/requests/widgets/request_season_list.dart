@@ -78,6 +78,7 @@ class _RequestSeasonListState extends State<RequestSeasonList> {
       posterUrl: season.posterUrl,
       requested: _isRequested(season.status),
       missing: season.status.canRequest,
+      missingBadge: true,
       tooltip: '$title · $count',
     );
   }

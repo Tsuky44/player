@@ -38,6 +38,11 @@ class SeasonBubbleEntry {
   /// Absente du serveur, et pas demandée : son numéro s'efface.
   final bool missing;
 
+  /// Le nuage barré d'une saison [missing], pour une rangée où l'absence se
+  /// demande ailleurs (la fiche d'une demande). Sur la fiche de la série,
+  /// une saison absente se reconnaît à son seul numéro effacé.
+  final bool missingBadge;
+
   /// Le message au survol, pour une rangée qui n'a pas de fiche à y ouvrir.
   final String? tooltip;
 
@@ -50,6 +55,7 @@ class SeasonBubbleEntry {
     this.posterUrl,
     this.requested = false,
     this.missing = false,
+    this.missingBadge = false,
     this.tooltip,
   });
 }
@@ -448,7 +454,7 @@ class _SeasonBubble extends StatelessWidget {
           // Le sablier ou le nuage barré reste monté : il rentre dans la
           // bulle qui s'ouvre (échelle et fondu) et ressort quand elle se
           // ferme.
-          if (entry.requested || entry.missing)
+          if (entry.requested || (entry.missing && entry.missingBadge))
             Positioned(
               right: 0,
               bottom: 0,

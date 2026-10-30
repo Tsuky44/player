@@ -1134,6 +1134,8 @@ const Map<String, String> kEnglish = <String, String>{
       'Unavailable here',
   'Indéterminé':
       'Undetermined',
+  'Informations':
+      'Information',
   'Informations techniques':
       'Technical information',
   'Infos':
