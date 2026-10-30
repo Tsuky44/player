@@ -335,6 +335,7 @@ func main() {
 	router.GET("/api/admin/history", handlers.RequirePermission(models.PermManageUsers, handlers.ListPlaybackHistory))
 	router.DELETE("/api/admin/history", handlers.RequirePermission(models.PermManageUsers, handlers.ClearPlaybackHistory))
 	router.GET("/api/admin/history/:id/logs", handlers.RequirePermission(models.PermManageUsers, handlers.GetPlaybackLogs))
+	router.GET("/api/admin/playback-logs.zip", handlers.RequirePermission(models.PermManageUsers, handlers.ExportPlaybackLogs))
 	router.GET("/api/admin/stats", handlers.RequirePermission(models.PermManageUsers, handlers.GetPlaybackStats))
 	router.GET("/api/admin/devices", handlers.RequirePermission(models.PermManageUsers, handlers.ListAllDevices))
 	router.DELETE("/api/admin/devices/:id", handlers.RequirePermission(models.PermManageUsers, handlers.RevokeAnyDevice))

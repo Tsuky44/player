@@ -1172,6 +1172,12 @@ const Map<String, String> kEnglish = <String, String>{
       'Log',
   'Journal copié':
       'Log copied',
+  'Télécharger tous les journaux':
+      'Download all logs',
+  'Journaux enregistrés.':
+      'Logs saved.',
+  'Impossible d’exporter les journaux.':
+      'Couldn’t export the logs.',
   'Journal copié.':
       'Log copied.',
   'Journal de cette application':

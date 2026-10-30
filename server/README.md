@@ -573,6 +573,14 @@ Exige `manage_library`. Détails : `docs/adr/0068-affiche-choisie-parmi-tmdb-et-
 
 ---
 
+#### 🧾 Exporter les journaux de lecture
+
+* **Route :** `GET /api/admin/playback-logs.zip` (permission `manage_users`).
+* **Réponse :** `application/zip`, un fichier texte par lecture ayant un journal, du plus récent au plus ancien (500 au plus). Nom : `2026-10-30_01-36_Haikyu-S01E05_ChatMallow.txt` (date et heure de début, média, compte ; caractères interdits Windows retirés, titre tronqué à 50 caractères, `_2`, `_3`… en cas de doublon). Contenu : l'en-tête (média, compte · appareil · client, mode de lecture · date), les mesures, puis les lignes horodatées — le texte du bouton « Copier » de l'écran de journal.
+* **Paramètres (tous facultatifs) :** `user_id` (compte), `history_id` (une seule lecture), `from` et `to` (`2026-10-30` ou RFC 3339 ; `to` en date inclut la journée), `tz_offset` (minutes à l'est d'UTC, pour les heures et les noms ; UTC par défaut). Une date illisible renvoie `400`.
+* **Pourquoi pas `/api/admin/history/logs.zip` :** `:id` occupe déjà ce segment de `/api/admin/history/:id/logs`.
+* **Essayer :** `curl -H "Authorization: Bearer <jeton admin>" -o journaux.zip "http://localhost:8080/api/admin/playback-logs.zip?tz_offset=120"`, ou, dans l'app, Réglages > Activité > Historique > menu ⋯ > « Télécharger tous les journaux ».
+
 ### 🔗 5 bis. Liens de partage publics
 
 Un film, un épisode, une saison ou une série entière partagé par un lien qui s'ouvre sans compte,

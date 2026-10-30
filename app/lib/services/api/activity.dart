@@ -147,6 +147,21 @@ mixin _ActivityEndpoints {
     return PlaybackLogs.fromJson(response.data as Map<String, dynamic>);
   }
 
+  /// Tous les journaux de lecture dans une archive ZIP, ou ceux d'un compte
+  /// avec [userId]. Les dates des noms de fichier suivent le fuseau de cet
+  /// appareil. Voir `server/handlers/playback_logs_export.go`.
+  Future<Uint8List> downloadPlaybackLogsZip({int? userId}) async {
+    final response = await _dio.get<List<int>>(
+      '/api/admin/playback-logs.zip',
+      queryParameters: {
+        'tz_offset': DateTime.now().timeZoneOffset.inMinutes,
+        if (userId != null) 'user_id': userId,
+      },
+      options: Options(responseType: ResponseType.bytes),
+    );
+    return Uint8List.fromList(response.data ?? const []);
+  }
+
   /// Statistiques du serveur entier, ou d'un compte avec [userId]. Les jours
   /// sont découpés dans le fuseau de cet appareil.
   Future<PlaybackStats> getPlaybackStats({int days = 30, int? userId}) async {

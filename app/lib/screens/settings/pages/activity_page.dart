@@ -1,3 +1,5 @@
+import 'package:file_picker/file_picker.dart';
+import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
@@ -109,6 +111,36 @@ class _ActivityPageState extends State<ActivityPage> {
     _reload();
   }
 
+  /// Les journaux de toutes les lectures (ou du compte filtré) en un ZIP.
+  ///
+  /// `saveFile` couvre les trois cas : téléchargement du navigateur sur le web,
+  /// sélecteur d'enregistrement sur desktop, feuille de partage sur mobile.
+  Future<void> _exportLogs() async {
+    final api = context.read<ApiClient>();
+    final now = DateTime.now();
+    String two(int v) => v.toString().padLeft(2, '0');
+    try {
+      final bytes = await api.downloadPlaybackLogsZip(userId: _userFilter);
+      final saved = await FilePicker.saveFile(
+        fileName:
+            'onyx-journaux-${now.year}-${two(now.month)}-${two(now.day)}.zip',
+        bytes: bytes,
+        mimeType: 'application/zip',
+        dialogTitle: tr('Télécharger tous les journaux'),
+      );
+      // Un sélecteur fermé sans choix renvoie null : rien à dire.
+      if (mounted && (saved != null || kIsWeb)) {
+        showSettingsSnack(context, tr('Journaux enregistrés.'));
+      }
+    } catch (e) {
+      if (mounted) {
+        showSettingsSnack(
+            context, settingsErrorText(e, tr('Impossible d’exporter les journaux.')),
+            error: true);
+      }
+    }
+  }
+
   String _dayLabel(DateTime day) {
     final now = DateTime.now();
     final today = DateTime(now.year, now.month, now.day);
@@ -141,8 +173,13 @@ class _ActivityPageState extends State<ActivityPage> {
           tooltip: tr('Plus'),
           color: AppColors.surfaceElevated,
           icon: const Icon(Icons.more_horiz_rounded),
-          onSelected: (_) => _clear(),
+          onSelected: (value) =>
+              value == 'export' ? _exportLogs() : _clear(),
           itemBuilder: (_) => [
+            PopupMenuItem(
+              value: 'export',
+              child: Text(tr('Télécharger tous les journaux')),
+            ),
             PopupMenuItem(
               value: 'clear',
               child: Text(tr('Vider l’historique'),
