@@ -19,7 +19,7 @@ dependencies:
   # Network & Persistence
   dio: ^5.4.0
   flutter_secure_storage: ^11.2.0
-  shared_preferences: ^2.2.2
+  shared_preferences: ^2.5.6
 
   # Téléchargements hors ligne : le dossier privé de l'app où les médias
   # atterrissent, et la manipulation de chemins qui va avec.
@@ -36,14 +36,14 @@ dependencies:
   # épisode de 4 Go sans qu'on l'ait demandé. La joignabilité du serveur, elle,
   # continue de se mesurer sur `GET /api/ping` (ADR-0010 §6) — avoir du réseau
   # n'est pas avoir *ce* serveur.
-  connectivity_plus: ^7.3.1
+  connectivity_plus: ^7.3.2
 
   # UI & Media Kit Packages
   cached_network_image: ^4.0.0
   # Already pulled in by cached_network_image; declared so the app can widen the
   # default 200-file image store (see services/app_image_cache.dart).
-  flutter_cache_manager: ^3.4.1
-  intl: ^0.20.2
+  flutter_cache_manager: ^3.4.6
+  intl: ^0.20.3
   audio_video_progress_bar: ^2.0.3
   flutter_animate: ^4.5.0
   
@@ -56,17 +56,17 @@ dependencies:
   window_manager: ^0.5.2
 
   # Browser APIs, used only by the web-side conditional imports in lib/utils/
-  web: ^1.1.0
+  web: ^1.1.2
   package_info_plus: ^10.2.2
 
   # SHA-256 du bundle d'une mise à jour macOS, dont la signature est vérifiée
   # avant de remplacer l'app. Déjà tiré par d'autres paquets : le déclarer ne
   # fait qu'autoriser l'import.
-  crypto: ^3.0.6
+  crypto: ^3.0.8
 
   # Sélecteur de fichier natif : la photo de profil (ADR-0078).
   # 13 : `FilePicker.pickFile` (fichier unique) remplace `platform.pickFiles`.
-  file_picker: ^13.1.0
+  file_picker: ^13.3.0
   qr_flutter: ^4.1.0
 
   # Backlight control for the player's brightness bar. Only the *application*
@@ -109,7 +109,7 @@ dependencies:
   # le build Apple TV casse sur « Module 'wakelock_plus' not found ». L'hôte
   # tvOS garde l'écran allumé lui-même (`ScreenAwake`). Gardé par
   # test/tvos_plugins_linkable_test.dart.
-  wakelock_plus: '>=1.1.6 <1.8.0'
+  wakelock_plus: ^1.8.2
 
   # --- Apple TV (tvOS) ---------------------------------------------------
   # tvOS se construit avec flutter-tvos (voir l'ADR-0028), qui n'embarque que
@@ -154,7 +154,7 @@ dependencies:
   # `initialize` et `show`. Exige le désucrage côté Android
   # (android/app/build.gradle.kts). Aucun des deux paquets ne déclare tvOS :
   # l'Apple TV n'en embarque rien.
-  flutter_local_notifications: ^22.3.2
+  flutter_local_notifications: ^22.3.3
   app_links: ^7.2.2
 
 # Les bibliothèques natives de media_kit, avec un FFmpeg complet. Les versions
