@@ -19,7 +19,7 @@ dependencies:
   # Network & Persistence
   dio: ^5.4.0
   flutter_secure_storage: ^11.2.0
-  shared_preferences: ^2.2.2
+  shared_preferences: ^2.5.6
 
   # Téléchargements hors ligne : le dossier privé de l'app où les médias
   # atterrissent, et la manipulation de chemins qui va avec.
@@ -36,13 +36,13 @@ dependencies:
   # épisode de 4 Go sans qu'on l'ait demandé. La joignabilité du serveur, elle,
   # continue de se mesurer sur `GET /api/ping` (ADR-0010 §6) — avoir du réseau
   # n'est pas avoir *ce* serveur.
-  connectivity_plus: ^7.3.1
+  connectivity_plus: ^7.3.2
 
   # UI & Media Kit Packages
-  cached_network_image: ^4.0.0
+  cached_network_image: ^4.0.6
   # Already pulled in by cached_network_image; declared so the app can widen the
   # default 200-file image store (see services/app_image_cache.dart).
-  flutter_cache_manager: ^3.4.1
+  flutter_cache_manager: ^3.5.0
   intl: ^0.20.2
   audio_video_progress_bar: ^2.0.3
   flutter_animate: ^4.5.0
@@ -64,24 +64,24 @@ dependencies:
   media_kit_libs_video: ^1.0.7
 
   # Desktop window management
-  window_manager: ^0.5.2
+  window_manager: ^0.6.0
   # Écran qui porte la fenêtre (zone visible, barre des tâches exclue) : sert à
   # poser la petite fenêtre de l'image dans l'image dans un coin. Déjà tirée par
   # window_manager, déclarée ici parce que le code l'importe.
-  screen_retriever: ^0.2.0
+  screen_retriever: ^0.3.1
 
   # Browser APIs, used only by the web-side conditional imports in lib/utils/
-  web: ^1.1.0
+  web: ^1.1.2
   package_info_plus: ^10.2.2
 
   # SHA-256 du bundle d'une mise à jour macOS, dont la signature est vérifiée
   # avant de remplacer l'app. Déjà tiré par d'autres paquets : le déclarer ne
   # fait qu'autoriser l'import.
-  crypto: ^3.0.6
+  crypto: ^3.0.8
 
   # Sélecteur de fichier natif : la photo de profil (ADR-0078).
   # 13 : `FilePicker.pickFile` (fichier unique) remplace `platform.pickFiles`.
-  file_picker: ^13.1.0
+  file_picker: ^13.3.2
   qr_flutter: ^4.1.0
 
   # Backlight control for the player's brightness bar. Only the *application*
@@ -90,7 +90,7 @@ dependencies:
   # Figé en 7.4.0 : la 7.4.1 ne compile plus ses sources Kotlin quand
   # android.builtInKotlin=false (android/gradle.properties) — la classe du
   # plugin manque au build Android.
-  mobile_scanner: ^7.4.2
+  mobile_scanner: ^7.5.0
 
   # Le lecteur Android (ExoPlayer dans une SurfaceView). Le paquet ne déclare
   # que la plateforme Android : les builds macOS et Windows ne l'embarquent
@@ -124,7 +124,7 @@ dependencies:
   # le build Apple TV casse sur « Module 'wakelock_plus' not found ». L'hôte
   # tvOS garde l'écran allumé lui-même (`ScreenAwake`). Gardé par
   # test/tvos_plugins_linkable_test.dart.
-  wakelock_plus: '>=1.1.6 <1.8.0'
+  wakelock_plus: ^1.8.2
 
   # --- Apple TV (tvOS) ---------------------------------------------------
   # tvOS se construit avec flutter-tvos (voir l'ADR-0028), qui n'embarque que
